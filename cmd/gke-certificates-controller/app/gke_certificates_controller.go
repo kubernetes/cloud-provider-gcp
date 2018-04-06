@@ -72,18 +72,26 @@ func Run(s *GKECertificatesController) error {
 
 	sharedInformers := informers.NewSharedInformerFactory(client, time.Duration(12)*time.Hour)
 
-	signer, err := NewGKESigner(s.ClusterSigningGKEKubeconfig, s.ClusterSigningGKERetryBackoff.Duration, recorder, client)
+	approver := newGKEApprover(client)
+	approveController := certificates.NewCertificateController(
+		client,
+		sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
+		approver.handle,
+	)
+
+	signer, err := newGKESigner(s.ClusterSigningGKEKubeconfig, s.ClusterSigningGKERetryBackoff.Duration, recorder, client)
 	if err != nil {
 		return err
 	}
-
-	controller := certificates.NewCertificateController(
+	signController := certificates.NewCertificateController(
 		client,
 		sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
 		signer.handle,
 	)
 
 	sharedInformers.Start(nil)
-	controller.Run(5, nil) // runs forever
-	panic("unreachable")
+	// controller.Run calls block forever.
+	go approveController.Run(5, nil)
+	go signController.Run(5, nil)
+	select {} // block forever
 }
