@@ -32,8 +32,8 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 
-	// Install all auth plugins
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	// Install GCP auth plugin.
+	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
