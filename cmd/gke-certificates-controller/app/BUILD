@@ -1,5 +1,3 @@
-package(default_visibility = ["//visibility:public"])
-
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -15,6 +13,9 @@ go_library(
         "options.go",
     ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/gke-certificates-controller/app",
+    visibility = [
+        "//cmd/gke-certificates-controller:__subpackages__",
+    ],
     deps = [
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/github.com/spf13/cobra:go_default_library",
@@ -40,19 +41,6 @@ go_library(
     ],
 )
 
-filegroup(
-    name = "package-srcs",
-    srcs = glob(["**"]),
-    tags = ["automanaged"],
-    visibility = ["//visibility:private"],
-)
-
-filegroup(
-    name = "all-srcs",
-    srcs = [":package-srcs"],
-    tags = ["automanaged"],
-)
-
 go_test(
     name = "go_default_test",
     srcs = [
@@ -60,7 +48,6 @@ go_test(
         "gke_signer_test.go",
     ],
     embed = [":go_default_library"],
-    importpath = "k8s.io/kubernetes/cmd/gke-certificates-controller/app",
     deps = [
         "//vendor/k8s.io/api/authorization/v1beta1:go_default_library",
         "//vendor/k8s.io/api/certificates/v1beta1:go_default_library",

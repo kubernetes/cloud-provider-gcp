@@ -1,5 +1,10 @@
 startup --expand_configs_in_place
 
+build --workspace_status_command tools/workspace-status.sh
+build --define RELEASE=devel
+
+build:prod --define RELEASE=prod
+
 # Show us information about failures.
 build --verbose_failures
 test --test_output=errors
