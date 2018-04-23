@@ -4,7 +4,7 @@ load(
     "container_push",
 )
 
-# image macro creates basice image and push rules for a main
+# image macro creates basic image and push rules for a main
 def image(binary):
   if len(binary) == 0:
     fail("binary is a required argument")
@@ -17,7 +17,7 @@ def image(binary):
       files = [":" + name],
   )
   _image_registry = select({
-      "//tools:release-prod": "gcr.k8s.io",
+      "//tools:release-prod": "k8s.gcr.io",
       "//tools:release-devel": "{STABLE_DEVEL_REGISTRY}",
   })
   _image_repo = select({
@@ -31,5 +31,5 @@ def image(binary):
       registry = _image_registry,
       repository = _image_repo + "/" + name,
       stamp = True,
-      tag = "{BUILD_TIMESTAMP}",
+      tag = "{STABLE_GIT_COMMIT}",
   )
