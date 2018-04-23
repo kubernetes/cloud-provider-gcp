@@ -24,6 +24,8 @@ export WORKSPACE_ROOT=$(dirname "${BASH_SOURCE}")/..
 
 source "${WORKSPACE_ROOT}/tools/env.sh"
 
+commit_sha=$(git rev-parse HEAD)
+
 # Prefix with STABLE_ so that these values are saved to stable-status.txt
 # instead of volatile-status.txt.
 # Stamped rules will be retriggered by changes to stable-status.txt, but not by
@@ -33,4 +35,5 @@ source "${WORKSPACE_ROOT}/tools/env.sh"
 cat <<EOF
 STABLE_DEVEL_REGISTRY ${DEVEL_REGISTRY}
 STABLE_DEVEL_REPO ${DEVEL_REPO}
+STABLE_GIT_COMMIT ${commit_sha}
 EOF
