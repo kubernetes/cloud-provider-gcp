@@ -2,8 +2,8 @@ workspace(name = "io_k8s_cloud_provider_gcp")
 
 http_archive(
     name = "io_bazel_rules_go",
-    sha256 = "4b2c61795ac2eefcb28f3eb8e1cb2d8fb3c2eafa0f6712473bc5f93728f38758",
-    urls = ["https://github.com/bazelbuild/rules_go/releases/download/0.10.2/rules_go-0.10.2.tar.gz"],
+    url = "https://github.com/bazelbuild/rules_go/releases/download/0.11.0/rules_go-0.11.0.tar.gz",
+    sha256 = "f70c35a8c779bb92f7521ecb5a1c6604e9c3edd431e50b6376d7497abc8ad3c1",
 )
 
 http_archive(
@@ -31,7 +31,7 @@ go_rules_dependencies()
 go_download_sdk(
     name = "go_sdk",
     sdks = {
-        "linux_amd64": ("go1.9.4b4.linux-amd64.tar.gz", "c595338b66c4ce2c2085309987c43949be3dbf60109fb535029f0f625c79ef2e"),
+        "linux_amd64": ("go1.10rc2b4.linux-amd64.tar.gz", "2e61af549c16e02e3b591c03108fc04eb49e09635a3ea0ae2cdcc226ee7a3292"),
     },
     urls = ["https://storage.googleapis.com/go-boringcrypto/{}"],
 )

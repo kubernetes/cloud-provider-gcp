@@ -14,15 +14,25 @@ limitations under the License.
 package app
 
 import (
+	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 
+	"cloud.google.com/go/compute/metadata"
+	"github.com/golang/glog"
+	"golang.org/x/oauth2"
+	compute "google.golang.org/api/compute/v1"
+	gcfg "gopkg.in/gcfg.v1"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
+	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 )
 
@@ -30,11 +40,12 @@ import (
 // CSR attestation data.
 type gkeApprover struct {
 	client     clientset.Interface
+	opts       approverOptions
 	validators []csrValidator
 }
 
-func newGKEApprover(client clientset.Interface) *gkeApprover {
-	return &gkeApprover{client: client, validators: validators}
+func newGKEApprover(opts approverOptions, client clientset.Interface) *gkeApprover {
+	return &gkeApprover{client: client, validators: validators, opts: opts}
 }
 
 func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
@@ -52,11 +63,11 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 
 	var tried []string
 	for _, r := range a.validators {
-		if !r.recognize(csr, x509cr) {
+		if !r.recognize(a.opts, csr, x509cr) {
 			continue
 		}
 		tried = append(tried, r.permission.Subresource)
-		if r.validate != nil && !r.validate(csr, x509cr) {
+		if r.validate != nil && !r.validate(a.opts, csr, x509cr) {
 			return a.updateCSR(csr, false, r.denyMsg)
 		}
 
@@ -96,6 +107,8 @@ func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bo
 	return nil
 }
 
+type csrCheckFunc func(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
+
 type csrValidator struct {
 	name       string
 	approveMsg string
@@ -103,12 +116,12 @@ type csrValidator struct {
 
 	// recognize is a required field that returns true if this csrValidator is
 	// applicable to given CSR.
-	recognize func(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
+	recognize csrCheckFunc
 	// validate is an optional field that returns true whether CSR should be
 	// approved or denied.
 	// If validate returns false, CSR is denied immediately.
 	// If validate returns true, CSR proceeds to SubjectAccessReview check.
-	validate func(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
+	validate csrCheckFunc
 
 	permission authorization.ResourceAttributes
 }
@@ -126,6 +139,13 @@ var validators = []csrValidator{
 		recognize:  isNodeClientCert,
 		permission: authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
 		approveMsg: "Auto approving kubelet client certificate after SubjectAccessReview.",
+	},
+	{
+		name:       "kubelet server certificate SubjectAccessReview",
+		recognize:  isNodeServerCert,
+		validate:   validateNodeServerCert,
+		permission: authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "selfnodeclient"},
+		approveMsg: "Auto approving kubelet server certificate after SubjectAccessReview.",
 	},
 }
 
@@ -170,20 +190,24 @@ func hasExactUsages(csr *capi.CertificateSigningRequest, usages []capi.KeyUsage)
 	return true
 }
 
-var kubeletClientUsages = []capi.KeyUsage{
-	capi.UsageKeyEncipherment,
-	capi.UsageDigitalSignature,
-	capi.UsageClientAuth,
-}
+var (
+	kubeletClientUsages = []capi.KeyUsage{
+		capi.UsageKeyEncipherment,
+		capi.UsageDigitalSignature,
+		capi.UsageClientAuth,
+	}
+	kubeletServerUsages = []capi.KeyUsage{
+		capi.UsageKeyEncipherment,
+		capi.UsageDigitalSignature,
+		capi.UsageServerAuth,
+	}
+)
 
-func isNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isNodeCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !reflect.DeepEqual([]string{"system:nodes"}, x509cr.Subject.Organization) {
 		return false
 	}
 	if (len(x509cr.DNSNames) > 0) || (len(x509cr.EmailAddresses) > 0) || (len(x509cr.IPAddresses) > 0) {
-		return false
-	}
-	if !hasExactUsages(csr, kubeletClientUsages) {
 		return false
 	}
 	if !strings.HasPrefix(x509cr.Subject.CommonName, "system:node:") {
@@ -192,12 +216,148 @@ func isNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 	return true
 }
 
-func isSelfNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-	if !isNodeClientCert(csr, x509cr) {
+func isNodeClientCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	if !isNodeCert(opts, csr, x509cr) {
+		return false
+	}
+	if !hasExactUsages(csr, kubeletClientUsages) {
+		return false
+	}
+	return true
+}
+
+func isSelfNodeClientCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	if !isNodeClientCert(opts, csr, x509cr) {
 		return false
 	}
 	if csr.Spec.Username != x509cr.Subject.CommonName {
 		return false
 	}
 	return true
+}
+
+func isNodeServerCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	if !isNodeCert(opts, csr, x509cr) {
+		return false
+	}
+	if !hasExactUsages(csr, kubeletServerUsages) {
+		return false
+	}
+	if csr.Spec.Username != x509cr.Subject.CommonName {
+		return false
+	}
+	return true
+}
+
+func validateNodeServerCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	client := oauth2.NewClient(context.Background(), opts.tokenSource)
+
+	if err := validateNodeServerCertInner(client, opts, csr, x509cr); err != nil {
+		glog.Errorf("validating CSR %q: %v", csr.Name, err)
+		return false
+	}
+	return true
+}
+
+// Maximum number of SANs in server CSR.
+const maxServerSANs = 10
+
+// Only check that DNS name and IP in SAN match an existing VM in the project.
+// Username was already checked against CN, so this CSR is coming from
+// authenticated kubelet.
+func validateNodeServerCertInner(client *http.Client, opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) error {
+	numDNS, numIPs := len(x509cr.DNSNames), len(x509cr.IPAddresses)
+	switch {
+	case numDNS == 0 || numIPs == 0:
+		return errors.New("no SAN DNS names or IPs")
+	case numDNS+numIPs > maxServerSANs:
+		return fmt.Errorf("got %d SANs, want at most %d", numDNS+numIPs, maxServerSANs)
+	case len(x509cr.EmailAddresses) > 0 || len(x509cr.URIs) > 0:
+		return errors.New("only DNS and IP SANs allowed")
+	}
+
+	cs, err := compute.New(client)
+	if err != nil {
+		return fmt.Errorf("creating GCE API client: %v", err)
+	}
+
+	srv := compute.NewInstancesService(cs)
+outer:
+	for _, n := range x509cr.DNSNames {
+	inner:
+		for _, z := range opts.zones {
+			inst, err := srv.Get(opts.projectID, z, n).Do()
+			if err != nil {
+				continue inner
+			}
+			for _, iface := range inst.NetworkInterfaces {
+				for _, ip := range x509cr.IPAddresses {
+					if ip.String() == iface.NetworkIP {
+						continue outer
+					}
+				}
+			}
+			return fmt.Errorf("IP addresses in CSR (%q) don't match NetworkInterfaces on instance %q (%v)", x509cr.IPAddresses, n, inst.NetworkInterfaces)
+		}
+		return fmt.Errorf("DNS name %q doesn't match any VM in cluster project/zone: %v", n, err)
+	}
+	return nil
+}
+
+type approverOptions struct {
+	projectID   string
+	zones       []string
+	tokenSource oauth2.TokenSource
+}
+
+func loadApproverOptions(s *GKECertificatesController) (approverOptions, error) {
+	var a approverOptions
+
+	// Load gce.conf.
+	gceConfig := struct {
+		Global struct {
+			ProjectID string `gcfg:"project-id"`
+			TokenURL  string `gcfg:"token-url"`
+			TokenBody string `gcfg:"token-body"`
+		}
+	}{}
+	if err := gcfg.ReadFileInto(&gceConfig, s.GCEConfigPath); err != nil {
+		return a, err
+	}
+	a.projectID = gceConfig.Global.ProjectID
+	// Get the token source for GCE API.
+	a.tokenSource = gce.NewAltTokenSource(gceConfig.Global.TokenURL, gceConfig.Global.TokenBody)
+
+	// Get cluster zone from metadata server.
+	zone, err := metadata.Zone()
+	if err != nil {
+		return a, err
+	}
+	// Extract region name from zone.
+	if len(zone) < 2 {
+		return a, fmt.Errorf("invalid master zone: %q", zone)
+	}
+	region := zone[:len(zone)-2]
+	// Load all zones in the same region.
+	client := oauth2.NewClient(context.Background(), a.tokenSource)
+	cs, err := compute.New(client)
+	if err != nil {
+		return a, fmt.Errorf("creating GCE API client: %v", err)
+	}
+	allZones, err := compute.NewZonesService(cs).List(a.projectID).Do()
+	if err != nil {
+		return a, err
+	}
+	for _, z := range allZones.Items {
+		if strings.HasPrefix(z.Name, region) {
+			a.zones = append(a.zones, z.Name)
+		}
+	}
+	if len(a.zones) == 0 {
+		return a, fmt.Errorf("can't find zones for region %q", region)
+	}
+	// Put master's zone first.
+	sort.Slice(a.zones, func(i, j int) bool { return a.zones[i] == zone })
+
+	return a, nil
 }
