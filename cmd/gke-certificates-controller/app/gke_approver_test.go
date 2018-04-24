@@ -18,12 +18,17 @@ import (
 	"crypto/elliptic"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"math/rand"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
+	compute "google.golang.org/api/compute/v1"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -114,7 +119,7 @@ func TestHandle(t *testing.T) {
 		allowed       bool
 		recognized    bool
 		err           bool
-		validate      func(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
+		validate      csrCheckFunc
 		verifyActions func(*testing.T, []testclient.Action)
 	}{
 		{
@@ -155,17 +160,21 @@ func TestHandle(t *testing.T) {
 			verifyActions: verifyCreateAndUpdate,
 		},
 		{
-			desc:          "recognized, allowed and validated",
-			recognized:    true,
-			allowed:       true,
-			validate:      func(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool { return true },
+			desc:       "recognized, allowed and validated",
+			recognized: true,
+			allowed:    true,
+			validate: func(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+				return true
+			},
 			verifyActions: verifyCreateAndUpdate,
 		},
 		{
 			desc:       "recognized, allowed but not validated",
 			recognized: true,
 			allowed:    true,
-			validate:   func(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool { return false },
+			validate: func(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+				return false
+			},
 			verifyActions: func(t *testing.T, as []testclient.Action) {
 				if len(as) != 1 {
 					t.Fatalf("expected one calls but got: %#v", as)
@@ -211,7 +220,7 @@ func TestHandle(t *testing.T) {
 					{
 						approveMsg: "tester",
 						permission: authorization.ResourceAttributes{Group: "foo", Resource: "bar", Subresource: "baz"},
-						recognize: func(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+						recognize: func(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 							return c.recognized
 						},
 						validate: c.validate,
@@ -228,67 +237,150 @@ func TestHandle(t *testing.T) {
 }
 
 func TestValidators(t *testing.T) {
-	goodCases := []func(b *csrBuilder){
-		func(b *csrBuilder) {
-		},
-	}
+	t.Run("client recognize", func(t *testing.T) {
+		goodCases := []func(*csrBuilder, *approverOptions){
+			func(*csrBuilder, *approverOptions) {},
+		}
 
-	testValidator(t, goodCases, isNodeClientCert, true)
-	testValidator(t, goodCases, isSelfNodeClientCert, true)
+		testValidator(t, "isNodeClientCert good", goodCases, isNodeClientCert, true)
+		testValidator(t, "isSelfNodeClientCert good", goodCases, isSelfNodeClientCert, true)
 
-	badCases := []func(b *csrBuilder){
-		func(b *csrBuilder) {
-			b.cn = "mike"
-		},
-		func(b *csrBuilder) {
-			b.orgs = nil
-		},
-		func(b *csrBuilder) {
-			b.orgs = []string{"system:master"}
-		},
-		func(b *csrBuilder) {
-			b.usages = append(b.usages, capi.UsageServerAuth)
-		},
-	}
+		badCases := []func(*csrBuilder, *approverOptions){
+			func(b *csrBuilder, _ *approverOptions) { b.cn = "mike" },
+			func(b *csrBuilder, _ *approverOptions) { b.orgs = nil },
+			func(b *csrBuilder, _ *approverOptions) { b.orgs = []string{"system:master"} },
+			func(b *csrBuilder, _ *approverOptions) { b.usages = kubeletServerUsages },
+		}
 
-	testValidator(t, badCases, isNodeClientCert, false)
-	testValidator(t, badCases, isSelfNodeClientCert, false)
+		testValidator(t, "isNodeClientCert bad", badCases, isNodeClientCert, false)
+		testValidator(t, "isSelfNodeClientCert bad", badCases, isSelfNodeClientCert, false)
 
-	// cn different then requestor
-	differentCN := []func(b *csrBuilder){
-		func(b *csrBuilder) {
-			b.requestor = "joe"
-		},
-		func(b *csrBuilder) {
-			b.cn = "system:node:bar"
-		},
-	}
+		// cn different then requestor
+		differentCN := []func(*csrBuilder, *approverOptions){
+			func(b *csrBuilder, _ *approverOptions) { b.requestor = "joe" },
+			func(b *csrBuilder, _ *approverOptions) { b.cn = "system:node:bar" },
+		}
 
-	testValidator(t, differentCN, isNodeClientCert, true)
-	testValidator(t, differentCN, isSelfNodeClientCert, false)
+		testValidator(t, "isNodeClientCert different CN", differentCN, isNodeClientCert, true)
+		testValidator(t, "isSelfNodeClientCert different CN", differentCN, isSelfNodeClientCert, false)
+	})
+	t.Run("server recognize", func(t *testing.T) {
+		goodCases := []func(*csrBuilder, *approverOptions){
+			func(b *csrBuilder, o *approverOptions) { b.usages = kubeletServerUsages },
+		}
+		testValidator(t, "isNodeServerClient good", goodCases, isNodeServerCert, true)
+
+		badCases := []func(*csrBuilder, *approverOptions){
+			func(b *csrBuilder, o *approverOptions) {},
+			func(b *csrBuilder, _ *approverOptions) {
+				b.usages = kubeletServerUsages
+				b.cn = "mike"
+			},
+			func(b *csrBuilder, _ *approverOptions) {
+				b.usages = kubeletServerUsages
+				b.orgs = nil
+			},
+			func(b *csrBuilder, _ *approverOptions) {
+				b.usages = kubeletServerUsages
+				b.orgs = []string{"system:master"}
+			},
+			func(b *csrBuilder, _ *approverOptions) {
+				b.usages = kubeletServerUsages
+				b.requestor = "joe"
+			},
+			func(b *csrBuilder, _ *approverOptions) {
+				b.usages = kubeletServerUsages
+				b.cn = "system:node:bar"
+			},
+		}
+		testValidator(t, "isNodeServerClient bad", badCases, isNodeServerCert, false)
+	})
+	t.Run("server validate", func(t *testing.T) {
+		fn := func(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+			client, srv := fakeGCPAPI(t)
+			defer srv.Close()
+			err := validateNodeServerCertInner(client, opts, csr, x509cr)
+			if err != nil {
+				t.Logf("validateNodeServerCertInner: %v", err)
+			}
+			return err == nil
+		}
+
+		cases := []func(*csrBuilder, *approverOptions){
+			func(b *csrBuilder, o *approverOptions) {
+				o.projectID = "p0"
+				o.zones = []string{"z1", "z0"}
+				b.dns = []string{"i0", "i1"}
+				b.ips = []net.IP{net.ParseIP("1.2.3.5"), net.ParseIP("1.2.3.4")}
+			},
+		}
+		testValidator(t, "validateNodeServerCert good", cases, fn, true)
+
+		cases = []func(*csrBuilder, *approverOptions){
+			func(b *csrBuilder, o *approverOptions) {},
+			// No DNSNames.
+			func(b *csrBuilder, o *approverOptions) {
+				o.projectID = "p0"
+				o.zones = []string{"z0"}
+				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
+			},
+			// No IPAddresses.
+			func(b *csrBuilder, o *approverOptions) {
+				o.projectID = "p0"
+				o.zones = []string{"z0"}
+				b.dns = []string{"i0"}
+			},
+			// Wrong project.
+			func(b *csrBuilder, o *approverOptions) {
+				o.projectID = "p99"
+				o.zones = []string{"z0"}
+				b.dns = []string{"i0"}
+				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
+			},
+			// Wrong zone.
+			func(b *csrBuilder, o *approverOptions) {
+				o.projectID = "p0"
+				o.zones = []string{"z99"}
+				b.dns = []string{"i0"}
+				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
+			},
+			// Wrong instance name.
+			func(b *csrBuilder, o *approverOptions) {
+				o.projectID = "p0"
+				o.zones = []string{"z0"}
+				b.dns = []string{"i99"}
+				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
+			},
+			// Not matching IP.
+			func(b *csrBuilder, o *approverOptions) {
+				o.projectID = "p0"
+				o.zones = []string{"z0"}
+				b.dns = []string{"i0"}
+				b.ips = []net.IP{net.ParseIP("1.2.3.5")}
+			},
+		}
+		testValidator(t, "validateNodeServerCert bad", cases, fn, false)
+	})
 }
 
-func testValidator(t *testing.T, cases []func(b *csrBuilder), recognizeFunc func(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool, shouldRecognize bool) {
-	for _, c := range cases {
+func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, o *approverOptions), checkFunc csrCheckFunc, want bool) {
+	for i, c := range cases {
 		b := csrBuilder{
 			cn:        "system:node:foo",
 			orgs:      []string{"system:nodes"},
 			requestor: "system:node:foo",
-			usages: []capi.KeyUsage{
-				capi.UsageKeyEncipherment,
-				capi.UsageDigitalSignature,
-				capi.UsageClientAuth,
-			},
+			usages:    kubeletClientUsages,
 		}
-		c(&b)
-		t.Run(fmt.Sprintf("csr:%#v", b), func(t *testing.T) {
+		o := approverOptions{}
+		c(&b, &o)
+		t.Run(fmt.Sprintf("%s %d", desc, i), func(t *testing.T) {
 			csr := makeFancyTestCSR(b)
 			x509cr, err := certutil.ParseCSR(csr)
 			if err != nil {
 				t.Errorf("unexpected err: %v", err)
 			}
-			if recognizeFunc(csr, x509cr) != shouldRecognize {
-				t.Errorf("expected recognized to be %v", shouldRecognize)
+			if checkFunc(o, csr, x509cr) != want {
+				t.Errorf("expected recognized to be %v", want)
 			}
 		})
 	}
@@ -336,4 +428,39 @@ func makeFancyTestCSR(b csrBuilder) *capi.CertificateSigningRequest {
 			Request:  pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrb}),
 		},
 	}
+}
+
+func fakeGCPAPI(t *testing.T) (*http.Client, *httptest.Server) {
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		t.Logf("fakeGCPAPI request %q", req.URL.Path)
+		switch req.URL.Path {
+		case "/compute/v1/projects/p0/zones/z0/instances/i0":
+			json.NewEncoder(rw).Encode(compute.Instance{
+				Name:              "i0",
+				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
+			})
+		case "/compute/v1/projects/p0/zones/z0/instances/i1":
+			json.NewEncoder(rw).Encode(compute.Instance{
+				Name:              "i1",
+				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.5"}},
+			})
+		default:
+			http.Error(rw, "not found", http.StatusNotFound)
+		}
+	}))
+	cl := srv.Client()
+	cl.Transport = fakeTransport{srv.URL}
+	return cl, srv
+}
+
+type fakeTransport struct{ addr string }
+
+func (t fakeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	u, err := url.Parse(t.addr)
+	if err != nil {
+		return nil, err
+	}
+	r.URL.Scheme = u.Scheme
+	r.URL.Host = u.Host
+	return http.DefaultClient.Do(r)
 }

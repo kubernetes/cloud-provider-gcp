@@ -62,6 +62,11 @@ func Run(s *GKECertificatesController) error {
 		return err
 	}
 
+	approverOpts, err := loadApproverOptions(s)
+	if err != nil {
+		return err
+	}
+
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
@@ -72,7 +77,7 @@ func Run(s *GKECertificatesController) error {
 
 	sharedInformers := informers.NewSharedInformerFactory(client, time.Duration(12)*time.Hour)
 
-	approver := newGKEApprover(client)
+	approver := newGKEApprover(approverOpts, client)
 	approveController := certificates.NewCertificateController(
 		client,
 		sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),

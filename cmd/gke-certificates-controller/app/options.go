@@ -32,12 +32,15 @@ type GKECertificatesController struct {
 	ClusterSigningGKEKubeconfig   string
 	ClusterSigningGKERetryBackoff metav1.Duration
 	ApproveAllKubeletCSRsForGroup string
+	GCEConfigPath                 string
 }
 
-// Create a new instance of a GKECertificatesController with default parameters.
+// NewGKECertificatesController creates a new instance of a
+// GKECertificatesController with default parameters.
 func NewGKECertificatesController() *GKECertificatesController {
 	s := &GKECertificatesController{
 		ClusterSigningGKERetryBackoff: metav1.Duration{Duration: 500 * time.Millisecond},
+		GCEConfigPath:                 "/etc/gce.conf",
 	}
 	return s
 }
@@ -51,4 +54,6 @@ func (s *GKECertificatesController) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&s.ClusterSigningGKERetryBackoff.Duration, "cluster-signing-gke-retry-backoff", s.ClusterSigningGKERetryBackoff.Duration, "The initial backoff to use when retrying requests to GKE. Additional attempts will use exponential backoff.")
 
 	fs.StringVar(&s.ApproveAllKubeletCSRsForGroup, "insecure-experimental-approve-all-kubelet-csrs-for-group", s.ApproveAllKubeletCSRsForGroup, "The group for which the controller-manager will auto approve all CSRs for kubelet client certificates.")
+
+	fs.StringVar(&s.GCEConfigPath, "gce-config", s.GCEConfigPath, "Path to gce.conf.")
 }
