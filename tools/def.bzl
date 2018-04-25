@@ -17,11 +17,11 @@ def image(binary):
       files = [":" + name],
   )
   _image_registry = select({
-      "//tools:release-prod": "k8s.gcr.io",
+      "//tools:release-prod": "gcr.io",
       "//tools:release-devel": "{STABLE_DEVEL_REGISTRY}",
   })
   _image_repo = select({
-      "//tools:release-prod": "google-containers",
+      "//tools:release-prod": "k8s-image-staging",
       "//tools:release-devel": "{STABLE_DEVEL_REPO}",
   })
   container_push(
@@ -31,5 +31,5 @@ def image(binary):
       registry = _image_registry,
       repository = _image_repo + "/" + name,
       stamp = True,
-      tag = "{STABLE_GIT_COMMIT}",
+      tag = "{STABLE_CERT_CONTROLLER_VERSION}",
   )
