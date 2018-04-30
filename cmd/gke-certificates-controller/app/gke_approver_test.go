@@ -310,15 +310,15 @@ func TestValidators(t *testing.T) {
 			func(b *csrBuilder, o *approverOptions) {
 				o.projectID = "p0"
 				o.zones = []string{"z1", "z0"}
-				b.dns = []string{"i0", "i1"}
-				b.ips = []net.IP{net.ParseIP("1.2.3.5"), net.ParseIP("1.2.3.4")}
+				b.requestor = "system:node:i0"
+				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
 			},
 		}
 		testValidator(t, "validateNodeServerCert good", cases, fn, true)
 
 		cases = []func(*csrBuilder, *approverOptions){
 			func(b *csrBuilder, o *approverOptions) {},
-			// No DNSNames.
+			// No Name.
 			func(b *csrBuilder, o *approverOptions) {
 				o.projectID = "p0"
 				o.zones = []string{"z0"}
@@ -328,34 +328,34 @@ func TestValidators(t *testing.T) {
 			func(b *csrBuilder, o *approverOptions) {
 				o.projectID = "p0"
 				o.zones = []string{"z0"}
-				b.dns = []string{"i0"}
+				b.requestor = "system:node:i0"
 			},
 			// Wrong project.
 			func(b *csrBuilder, o *approverOptions) {
 				o.projectID = "p99"
 				o.zones = []string{"z0"}
-				b.dns = []string{"i0"}
+				b.requestor = "system:node:i0"
 				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
 			},
 			// Wrong zone.
 			func(b *csrBuilder, o *approverOptions) {
 				o.projectID = "p0"
 				o.zones = []string{"z99"}
-				b.dns = []string{"i0"}
+				b.requestor = "system:node:i0"
 				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
 			},
 			// Wrong instance name.
 			func(b *csrBuilder, o *approverOptions) {
 				o.projectID = "p0"
 				o.zones = []string{"z0"}
-				b.dns = []string{"i99"}
+				b.requestor = "i99"
 				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
 			},
 			// Not matching IP.
 			func(b *csrBuilder, o *approverOptions) {
 				o.projectID = "p0"
 				o.zones = []string{"z0"}
-				b.dns = []string{"i0"}
+				b.requestor = "system:node:i0"
 				b.ips = []net.IP{net.ParseIP("1.2.3.5")}
 			},
 		}
