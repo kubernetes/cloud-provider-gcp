@@ -28,6 +28,7 @@ import (
 	"golang.org/x/oauth2"
 	compute "google.golang.org/api/compute/v1"
 	gcfg "gopkg.in/gcfg.v1"
+	warnings "gopkg.in/warnings.v0"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -56,6 +57,8 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 		return nil
 	}
 
+	glog.Infof("approver got CSR %q", csr.Name)
+
 	x509cr, err := certutil.ParseCSR(csr)
 	if err != nil {
 		return fmt.Errorf("unable to parse csr %q: %v", csr.Name, err)
@@ -66,8 +69,10 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 		if !r.recognize(a.opts, csr, x509cr) {
 			continue
 		}
-		tried = append(tried, r.permission.Subresource)
+		glog.Infof("validator %q: matched CSR %q", r.name, csr.Name)
+		tried = append(tried, r.name)
 		if r.validate != nil && !r.validate(a.opts, csr, x509cr) {
+			glog.Infof("validator %q: denied CSR %q", r.name, csr.Name)
 			return a.updateCSR(csr, false, r.denyMsg)
 		}
 
@@ -76,13 +81,17 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 			return err
 		}
 		if approved {
+			glog.Infof("validator %q: SubjectAccessReview approved for CSR %q", r.name, csr.Name)
 			return a.updateCSR(csr, true, r.approveMsg)
+		} else {
+			glog.Warningf("validator %q: SubjectAccessReview denied for CSR %q", r.name, csr.Name)
 		}
 	}
 
 	if len(tried) != 0 {
 		return certificates.IgnorableError("recognized csr %q as %q but subject access review was not approved", csr.Name, tried)
 	}
+	glog.Infof("no validators matched CSR %q", csr.Name)
 	return nil
 }
 
@@ -207,7 +216,7 @@ func isNodeCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509c
 	if !reflect.DeepEqual([]string{"system:nodes"}, x509cr.Subject.Organization) {
 		return false
 	}
-	if (len(x509cr.DNSNames) > 0) || (len(x509cr.EmailAddresses) > 0) || (len(x509cr.IPAddresses) > 0) {
+	if len(x509cr.EmailAddresses) > 0 {
 		return false
 	}
 	if !strings.HasPrefix(x509cr.Subject.CommonName, "system:node:") {
@@ -218,6 +227,9 @@ func isNodeCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509c
 
 func isNodeClientCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeCert(opts, csr, x509cr) {
+		return false
+	}
+	if len(x509cr.DNSNames) > 0 || len(x509cr.IPAddresses) > 0 {
 		return false
 	}
 	if !hasExactUsages(csr, kubeletClientUsages) {
@@ -259,19 +271,13 @@ func validateNodeServerCert(opts approverOptions, csr *capi.CertificateSigningRe
 	return true
 }
 
-// Maximum number of SANs in server CSR.
-const maxServerSANs = 10
-
-// Only check that DNS name and IP in SAN match an existing VM in the project.
+// Only check that IPs in SAN match an existing VM in the project.
 // Username was already checked against CN, so this CSR is coming from
 // authenticated kubelet.
 func validateNodeServerCertInner(client *http.Client, opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) error {
-	numDNS, numIPs := len(x509cr.DNSNames), len(x509cr.IPAddresses)
 	switch {
-	case numDNS == 0 || numIPs == 0:
-		return errors.New("no SAN DNS names or IPs")
-	case numDNS+numIPs > maxServerSANs:
-		return fmt.Errorf("got %d SANs, want at most %d", numDNS+numIPs, maxServerSANs)
+	case len(x509cr.IPAddresses) == 0:
+		return errors.New("no SAN IPs")
 	case len(x509cr.EmailAddresses) > 0 || len(x509cr.URIs) > 0:
 		return errors.New("only DNS and IP SANs allowed")
 	}
@@ -282,26 +288,29 @@ func validateNodeServerCertInner(client *http.Client, opts approverOptions, csr 
 	}
 
 	srv := compute.NewInstancesService(cs)
-outer:
-	for _, n := range x509cr.DNSNames {
-	inner:
-		for _, z := range opts.zones {
-			inst, err := srv.Get(opts.projectID, z, n).Do()
-			if err != nil {
-				continue inner
-			}
+	instanceName := strings.TrimPrefix(csr.Spec.Username, "system:node:")
+	for _, z := range opts.zones {
+		inst, err := srv.Get(opts.projectID, z, instanceName).Do()
+		if err != nil {
+			continue
+		}
+	scanIPs:
+		for _, ip := range x509cr.IPAddresses {
 			for _, iface := range inst.NetworkInterfaces {
-				for _, ip := range x509cr.IPAddresses {
-					if ip.String() == iface.NetworkIP {
-						continue outer
+				if ip.String() == iface.NetworkIP {
+					continue scanIPs
+				}
+				for _, ac := range iface.AccessConfigs {
+					if ip.String() == ac.NatIP {
+						continue scanIPs
 					}
 				}
 			}
-			return fmt.Errorf("IP addresses in CSR (%q) don't match NetworkInterfaces on instance %q (%v)", x509cr.IPAddresses, n, inst.NetworkInterfaces)
+			return fmt.Errorf("IP addresses in CSR (%q) don't match NetworkInterfaces on instance %q (%+v)", x509cr.IPAddresses, instanceName, inst.NetworkInterfaces)
 		}
-		return fmt.Errorf("DNS name %q doesn't match any VM in cluster project/zone: %v", n, err)
+		return nil
 	}
-	return nil
+	return fmt.Errorf("Instance name %q doesn't match any VM in cluster project/zone: %v", instanceName, err)
 }
 
 type approverOptions struct {
@@ -321,7 +330,9 @@ func loadApproverOptions(s *GKECertificatesController) (approverOptions, error) 
 			TokenBody string `gcfg:"token-body"`
 		}
 	}{}
-	if err := gcfg.ReadFileInto(&gceConfig, s.GCEConfigPath); err != nil {
+	// ReadFileInfo will return warnings for extra fields in gce.conf we don't
+	// care about. Wrap with FatalOnly to discard those.
+	if err := warnings.FatalOnly(gcfg.ReadFileInto(&gceConfig, s.GCEConfigPath)); err != nil {
 		return a, err
 	}
 	a.projectID = gceConfig.Global.ProjectID
