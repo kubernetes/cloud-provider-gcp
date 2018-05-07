@@ -3,6 +3,7 @@ package(default_visibility = ["//visibility:public"])
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
+    "go_test",
 )
 
 go_library(
@@ -40,6 +41,24 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/util/mount:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/volume/util:go_default_library",
     ],
+)
+
+go_test(
+    name = "go_default_xtest",
+    srcs = [
+        "metrics_du_test.go",
+        "metrics_statfs_test.go",
+    ],
+    deps = [
+        ":go_default_library",
+        "//pkg/volume/testing:go_default_library",
+        "//vendor/k8s.io/client-go/util/testing:go_default_library",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 filegroup(
