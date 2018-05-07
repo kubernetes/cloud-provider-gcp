@@ -12,6 +12,7 @@ go_library(
         "trie.go",
         "weighter.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/text/internal/colltab",
     importpath = "golang.org/x/text/internal/colltab",
     visibility = ["//vendor/golang.org/x/text:__subpackages__"],
     deps = [

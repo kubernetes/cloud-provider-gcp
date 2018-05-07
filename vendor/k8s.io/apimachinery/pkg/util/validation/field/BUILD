@@ -6,6 +6,7 @@ go_library(
         "errors.go",
         "path.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/util/validation/field",
     importpath = "k8s.io/apimachinery/pkg/util/validation/field",
     visibility = ["//visibility:public"],
     deps = [

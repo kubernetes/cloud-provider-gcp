@@ -8,6 +8,7 @@ go_library(
         "types.go",
         "zz_generated.deepcopy.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/apis/networking",
     importpath = "k8s.io/kubernetes/pkg/apis/networking",
     visibility = ["//visibility:public"],
     deps = [

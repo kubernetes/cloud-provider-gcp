@@ -14,6 +14,7 @@ go_library(
         "string_flag.go",
         "tristate.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apiserver/pkg/util/flag",
     importpath = "k8s.io/apiserver/pkg/util/flag",
     visibility = ["//visibility:public"],
     deps = [

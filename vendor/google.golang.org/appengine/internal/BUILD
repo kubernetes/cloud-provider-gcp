@@ -14,6 +14,7 @@ go_library(
         "net.go",
         "transaction.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/google.golang.org/appengine/internal",
     importpath = "google.golang.org/appengine/internal",
     visibility = ["//visibility:public"],
     deps = [

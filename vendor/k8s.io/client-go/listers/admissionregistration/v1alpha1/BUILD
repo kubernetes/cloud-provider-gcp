@@ -6,6 +6,7 @@ go_library(
         "expansion_generated.go",
         "initializerconfiguration.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/listers/admissionregistration/v1alpha1",
     importpath = "k8s.io/client-go/listers/admissionregistration/v1alpha1",
     visibility = ["//visibility:public"],
     deps = [

@@ -6,6 +6,7 @@ go_library(
         "interface.go",
         "networkpolicy.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/informers/networking/v1",
     importpath = "k8s.io/client-go/informers/networking/v1",
     visibility = ["//visibility:public"],
     deps = [

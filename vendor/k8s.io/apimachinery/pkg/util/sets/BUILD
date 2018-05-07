@@ -10,6 +10,7 @@ go_library(
         "int64.go",
         "string.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/util/sets",
     importpath = "k8s.io/apimachinery/pkg/util/sets",
     visibility = ["//visibility:public"],
 )

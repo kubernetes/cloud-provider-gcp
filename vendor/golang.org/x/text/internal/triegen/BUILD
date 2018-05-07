@@ -7,6 +7,7 @@ go_library(
         "print.go",
         "triegen.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/text/internal/triegen",
     importpath = "golang.org/x/text/internal/triegen",
     visibility = ["//vendor/golang.org/x/text:__subpackages__"],
 )

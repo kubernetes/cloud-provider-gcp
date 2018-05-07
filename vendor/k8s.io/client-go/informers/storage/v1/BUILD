@@ -6,6 +6,7 @@ go_library(
         "interface.go",
         "storageclass.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/informers/storage/v1",
     importpath = "k8s.io/client-go/informers/storage/v1",
     visibility = ["//visibility:public"],
     deps = [

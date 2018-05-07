@@ -8,6 +8,7 @@ go_library(
         "token.go",
         "transport.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/oauth2/internal",
     importpath = "golang.org/x/oauth2/internal",
     visibility = ["//visibility:public"],
     deps = [

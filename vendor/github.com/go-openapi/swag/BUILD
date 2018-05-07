@@ -14,6 +14,7 @@ go_library(
         "util.go",
         "yaml.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/go-openapi/swag",
     importpath = "github.com/go-openapi/swag",
     visibility = ["//visibility:public"],
     deps = [

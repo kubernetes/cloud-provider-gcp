@@ -7,6 +7,7 @@ go_library(
         "doc.go",
         "version.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/version",
     importpath = "k8s.io/kubernetes/pkg/version",
     visibility = ["//visibility:public"],
     deps = ["//vendor/k8s.io/apimachinery/pkg/version:go_default_library"],

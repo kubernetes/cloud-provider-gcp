@@ -8,6 +8,7 @@ go_library(
         "parse_nfs.go",
         "parse_nfsd.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/prometheus/procfs/nfs",
     importpath = "github.com/prometheus/procfs/nfs",
     visibility = ["//visibility:public"],
     deps = ["//vendor/github.com/prometheus/procfs/internal/util:go_default_library"],

@@ -8,6 +8,7 @@ go_library(
         "io.go",
         "pem.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/util/cert",
     importpath = "k8s.io/client-go/util/cert",
     visibility = ["//visibility:public"],
 )

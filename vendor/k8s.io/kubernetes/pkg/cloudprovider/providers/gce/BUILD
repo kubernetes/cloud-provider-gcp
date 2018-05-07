@@ -42,6 +42,7 @@ go_library(
         "metrics.go",
         "token_source.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/cloudprovider/providers/gce",
     importpath = "k8s.io/kubernetes/pkg/cloudprovider/providers/gce",
     deps = [
         "//vendor/cloud.google.com/go/compute/metadata:go_default_library",

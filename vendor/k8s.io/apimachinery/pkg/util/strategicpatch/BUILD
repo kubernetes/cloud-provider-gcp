@@ -8,6 +8,7 @@ go_library(
         "patch.go",
         "types.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/util/strategicpatch",
     importpath = "k8s.io/apimachinery/pkg/util/strategicpatch",
     visibility = ["//visibility:public"],
     deps = [

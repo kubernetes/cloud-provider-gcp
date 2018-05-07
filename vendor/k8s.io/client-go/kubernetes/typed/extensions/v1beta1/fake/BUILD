@@ -14,6 +14,7 @@ go_library(
         "fake_scale.go",
         "fake_scale_expansion.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/kubernetes/typed/extensions/v1beta1/fake",
     importpath = "k8s.io/client-go/kubernetes/typed/extensions/v1beta1/fake",
     visibility = ["//visibility:public"],
     deps = [

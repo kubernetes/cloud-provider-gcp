@@ -8,6 +8,7 @@ go_library(
         "doc.go",
         "helper.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/conversion",
     importpath = "k8s.io/apimachinery/pkg/conversion",
     visibility = ["//visibility:public"],
     deps = ["//vendor/k8s.io/apimachinery/third_party/forked/golang/reflect:go_default_library"],

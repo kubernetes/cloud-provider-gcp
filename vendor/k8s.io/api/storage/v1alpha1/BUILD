@@ -10,6 +10,7 @@ go_library(
         "types_swagger_doc_generated.go",
         "zz_generated.deepcopy.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/api/storage/v1alpha1",
     importpath = "k8s.io/api/storage/v1alpha1",
     visibility = ["//visibility:public"],
     deps = [

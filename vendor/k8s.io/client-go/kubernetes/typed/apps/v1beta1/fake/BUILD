@@ -10,6 +10,7 @@ go_library(
         "fake_scale.go",
         "fake_statefulset.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/kubernetes/typed/apps/v1beta1/fake",
     importpath = "k8s.io/client-go/kubernetes/typed/apps/v1beta1/fake",
     visibility = ["//visibility:public"],
     deps = [

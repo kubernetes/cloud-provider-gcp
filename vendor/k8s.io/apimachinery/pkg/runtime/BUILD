@@ -22,6 +22,7 @@ go_library(
         "types_proto.go",
         "zz_generated.deepcopy.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/runtime",
     importpath = "k8s.io/apimachinery/pkg/runtime",
     visibility = ["//visibility:public"],
     deps = [

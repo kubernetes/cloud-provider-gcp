@@ -12,6 +12,7 @@ go_library(
         "doc.go",
         "plugins.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/cloudprovider",
     importpath = "k8s.io/kubernetes/pkg/cloudprovider",
     deps = [
         "//vendor/github.com/golang/glog:go_default_library",

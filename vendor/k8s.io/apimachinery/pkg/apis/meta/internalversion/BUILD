@@ -10,6 +10,7 @@ go_library(
         "zz_generated.conversion.go",
         "zz_generated.deepcopy.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/apis/meta/internalversion",
     importpath = "k8s.io/apimachinery/pkg/apis/meta/internalversion",
     visibility = ["//visibility:public"],
     deps = [

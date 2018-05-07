@@ -6,6 +6,7 @@ go_library(
         "doc.go",
         "types.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/apimachinery",
     importpath = "k8s.io/apimachinery/pkg/apimachinery",
     visibility = ["//visibility:public"],
     deps = [

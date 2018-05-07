@@ -9,6 +9,7 @@ go_library(
         "pod_update.go",
         "types.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/kubelet/types",
     importpath = "k8s.io/kubernetes/pkg/kubelet/types",
     visibility = ["//visibility:public"],
     deps = [

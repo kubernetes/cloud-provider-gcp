@@ -18,6 +18,7 @@ go_library(
         "signing_method.go",
         "token.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/dgrijalva/jwt-go",
     importpath = "github.com/dgrijalva/jwt-go",
     visibility = ["//visibility:public"],
 )

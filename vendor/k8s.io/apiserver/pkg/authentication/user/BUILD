@@ -6,6 +6,7 @@ go_library(
         "doc.go",
         "user.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apiserver/pkg/authentication/user",
     importpath = "k8s.io/apiserver/pkg/authentication/user",
     visibility = ["//visibility:public"],
 )
