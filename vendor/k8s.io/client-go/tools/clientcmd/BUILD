@@ -1,9 +1,4 @@
-package(default_visibility = ["//visibility:public"])
-
-load(
-    "@io_bazel_rules_go//go:def.bzl",
-    "go_library",
-)
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "go_default_library",
@@ -21,6 +16,7 @@ go_library(
     ],
     importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/tools/clientcmd",
     importpath = "k8s.io/client-go/tools/clientcmd",
+    visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/github.com/howeyc/gopass:go_default_library",
@@ -37,20 +33,4 @@ go_library(
         "//vendor/k8s.io/client-go/tools/clientcmd/api/latest:go_default_library",
         "//vendor/k8s.io/client-go/util/homedir:go_default_library",
     ],
-)
-
-filegroup(
-    name = "package-srcs",
-    srcs = glob(["**"]),
-    tags = ["automanaged"],
-    visibility = ["//visibility:private"],
-)
-
-filegroup(
-    name = "all-srcs",
-    srcs = [
-        ":package-srcs",
-        "//staging/src/k8s.io/client-go/tools/clientcmd/api:all-srcs",
-    ],
-    tags = ["automanaged"],
 )
