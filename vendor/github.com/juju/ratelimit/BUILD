@@ -6,6 +6,7 @@ go_library(
         "ratelimit.go",
         "reader.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/juju/ratelimit",
     importpath = "github.com/juju/ratelimit",
     visibility = ["//visibility:public"],
 )

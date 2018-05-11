@@ -11,6 +11,7 @@ go_library(
         "doc.go",
         "ports.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/master/ports",
     importpath = "k8s.io/kubernetes/pkg/master/ports",
 )
 

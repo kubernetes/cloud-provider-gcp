@@ -7,6 +7,7 @@ go_library(
         "bidirule10.0.0.go",
         "bidirule9.0.0.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/text/secure/bidirule",
     importpath = "golang.org/x/text/secure/bidirule",
     visibility = ["//visibility:public"],
     deps = [

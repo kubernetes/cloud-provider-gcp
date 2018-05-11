@@ -15,6 +15,7 @@ go_library(
         "time.go",
         "value.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/prometheus/common/model",
     importpath = "github.com/prometheus/common/model",
     visibility = ["//visibility:public"],
 )

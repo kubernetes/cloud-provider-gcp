@@ -6,6 +6,7 @@ go_library(
         "common.go",
         "doc.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kube-openapi/pkg/common",
     importpath = "k8s.io/kube-openapi/pkg/common",
     visibility = ["//visibility:public"],
     deps = [

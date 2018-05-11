@@ -7,6 +7,7 @@ go_library(
         "error.go",
         "lexer.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/mailru/easyjson/jlexer",
     importpath = "github.com/mailru/easyjson/jlexer",
     visibility = ["//visibility:public"],
 )

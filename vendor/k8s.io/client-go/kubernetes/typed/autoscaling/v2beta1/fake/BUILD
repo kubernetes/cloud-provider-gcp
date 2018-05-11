@@ -7,6 +7,7 @@ go_library(
         "fake_autoscaling_client.go",
         "fake_horizontalpodautoscaler.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/kubernetes/typed/autoscaling/v2beta1/fake",
     importpath = "k8s.io/client-go/kubernetes/typed/autoscaling/v2beta1/fake",
     visibility = ["//visibility:public"],
     deps = [
@@ -20,4 +21,18 @@ go_library(
         "//vendor/k8s.io/client-go/rest:go_default_library",
         "//vendor/k8s.io/client-go/testing:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

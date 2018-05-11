@@ -7,6 +7,7 @@ go_library(
         "serialize.go",
         "token.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/gopkg.in/gcfg.v1/token",
     importpath = "gopkg.in/gcfg.v1/token",
     visibility = ["//visibility:public"],
 )

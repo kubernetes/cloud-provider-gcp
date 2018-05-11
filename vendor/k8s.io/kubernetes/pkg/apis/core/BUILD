@@ -15,6 +15,7 @@ go_library(
         "types.go",
         "zz_generated.deepcopy.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/apis/core",
     importpath = "k8s.io/kubernetes/pkg/apis/core",
     visibility = ["//visibility:public"],
     deps = [
@@ -28,4 +29,26 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/intstr:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [
+        ":package-srcs",
+        "//pkg/apis/core/fuzzer:all-srcs",
+        "//pkg/apis/core/helper:all-srcs",
+        "//pkg/apis/core/install:all-srcs",
+        "//pkg/apis/core/pods:all-srcs",
+        "//pkg/apis/core/v1:all-srcs",
+        "//pkg/apis/core/validation:all-srcs",
+    ],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

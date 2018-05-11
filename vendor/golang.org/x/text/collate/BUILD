@@ -9,6 +9,7 @@ go_library(
         "sort.go",
         "tables.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/text/collate",
     importpath = "golang.org/x/text/collate",
     visibility = ["//visibility:public"],
     deps = [

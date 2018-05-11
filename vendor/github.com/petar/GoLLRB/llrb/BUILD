@@ -9,6 +9,7 @@ go_library(
         "llrb-stats.go",
         "util.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/petar/GoLLRB/llrb",
     importpath = "github.com/petar/GoLLRB/llrb",
     visibility = ["//visibility:public"],
 )

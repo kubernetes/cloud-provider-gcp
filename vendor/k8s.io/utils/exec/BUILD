@@ -6,6 +6,7 @@ go_library(
         "doc.go",
         "exec.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/utils/exec",
     importpath = "k8s.io/utils/exec",
     visibility = ["//visibility:public"],
 )

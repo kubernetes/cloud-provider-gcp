@@ -11,6 +11,7 @@ go_library(
         "format.go",
         "spew.go",
     ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/davecgh/go-spew/spew",
     importpath = "github.com/davecgh/go-spew/spew",
     visibility = ["//visibility:public"],
 )
