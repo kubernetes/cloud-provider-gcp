@@ -1,10 +1,4 @@
-package(default_visibility = ["//visibility:public"])
-
-load(
-    "@io_bazel_rules_go//go:def.bzl",
-    "go_library",
-    "go_test",
-)
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
@@ -16,30 +10,27 @@ go_library(
         "metrics_nil.go",
         "metrics_statfs.go",
         "plugins.go",
-        "util.go",
         "volume.go",
         "volume_linux.go",
         "volume_unsupported.go",
     ],
     importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/volume",
     importpath = "k8s.io/kubernetes/pkg/volume",
+    visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/resource:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/fields:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/validation:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/watch:go_default_library",
         "//vendor/k8s.io/client-go/kubernetes:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/cloudprovider:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/util/io:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/util/mount:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/volume/util:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/volume/util/fs:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/volume/util/recyclerclient:go_default_library",
     ],
 )
 
@@ -54,7 +45,7 @@ go_test(
         "//pkg/volume/testing:go_default_library",
         "//vendor/k8s.io/client-go/util/testing:go_default_library",
     ] + select({
-        "@io_bazel_rules_go//go/platform:linux_amd64": [
+        "@io_bazel_rules_go//go/platform:linux": [
             "//vendor/golang.org/x/sys/unix:go_default_library",
         ],
         "//conditions:default": [],
@@ -105,4 +96,5 @@ filegroup(
         "//pkg/volume/vsphere_volume:all-srcs",
     ],
     tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

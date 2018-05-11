@@ -5,8 +5,12 @@ go_library(
     srcs = [
         "appengine.go",
         "default.go",
+        "doc_go19.go",
+        "doc_not_go19.go",
+        "go19.go",
         "google.go",
         "jwt.go",
+        "not_go19.go",
         "sdk.go",
     ],
     importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/oauth2/google",

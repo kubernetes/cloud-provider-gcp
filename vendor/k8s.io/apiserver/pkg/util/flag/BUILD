@@ -1,13 +1,9 @@
-package(default_visibility = ["//visibility:public"])
-
-load(
-    "@io_bazel_rules_go//go:def.bzl",
-    "go_library",
-)
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "go_default_library",
     srcs = [
+        "ciphersuites_flag.go",
         "colon_separated_multimap_string_string.go",
         "configuration_map.go",
         "flags.go",
@@ -15,27 +11,16 @@ go_library(
         "map_string_bool.go",
         "map_string_string.go",
         "namedcertkey_flag.go",
+        "noop.go",
         "omitempty.go",
         "string_flag.go",
         "tristate.go",
     ],
     importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apiserver/pkg/util/flag",
     importpath = "k8s.io/apiserver/pkg/util/flag",
+    visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/github.com/spf13/pflag:go_default_library",
     ],
-)
-
-filegroup(
-    name = "package-srcs",
-    srcs = glob(["**"]),
-    tags = ["automanaged"],
-    visibility = ["//visibility:private"],
-)
-
-filegroup(
-    name = "all-srcs",
-    srcs = [":package-srcs"],
-    tags = ["automanaged"],
 )
