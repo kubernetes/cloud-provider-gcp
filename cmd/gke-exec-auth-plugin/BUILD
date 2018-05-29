@@ -1,4 +1,5 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+load("//tools:def.bzl", "gcs_upload")
 
 go_library(
     name = "go_default_library",
@@ -21,4 +22,11 @@ go_binary(
     name = "gke-exec-auth-plugin",
     embed = [":go_default_library"],
     visibility = ["//visibility:public"],
+)
+
+gcs_upload(
+    name = "push",
+    src = ":gke-exec-auth-plugin",
+    repo = "gs://awly-dev/gke-exec-auth-plugin",
+    version = "v0.0.1",
 )

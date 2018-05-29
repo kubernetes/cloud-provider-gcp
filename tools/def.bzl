@@ -33,3 +33,27 @@ def image(binary):
       stamp = True,
       tag = "{STABLE_CERT_CONTROLLER_VERSION}",
   )
+
+def _push_impl(ctx):
+  output = ctx.outputs.out
+  ctx.actions.run_shell(
+      outputs = [ctx.outputs.out],
+      use_default_shell_env = True,
+      execution_requirements = {"local": "1", "no-cache": "1"},
+      command="TMPDIR=/tmp gsutil cp -r %s %s/%s/ >%s" % (
+              ctx.executable.src.path,
+              ctx.attr.repo,
+              ctx.attr.version,
+              ctx.outputs.out.path,
+      ),
+  )
+
+gcs_upload = rule(
+    implementation=_push_impl,
+    attrs={
+        "src": attr.label(mandatory=True, executable=True, cfg="target"),
+        "repo": attr.string(mandatory=True),
+        "version": attr.string(mandatory=True),
+    },
+    outputs={"out": "%{name}.txt"},
+)
