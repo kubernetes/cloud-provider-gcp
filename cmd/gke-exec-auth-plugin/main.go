@@ -15,8 +15,19 @@ import (
 	clientauthv1alpha1 "k8s.io/client-go/pkg/apis/clientauthentication/v1alpha1"
 )
 
+const (
+	modeTPM  = "tpm"
+	modeVMID = "vmid"
+)
+
 var (
+	mode = flag.String("mode", modeTPM, "Plugin mode, one of ['tpm', 'vmid']")
+	// VMID token flags.
 	audience = flag.String("audience", "", "Audience field of for the VM ID token. Must be a URI.")
+	// TPM flags.
+	cacheDir      = flag.String("cache-dir", "/var/lib/kubelet/pki", "Path to directory to store key and certificate.")
+	bootstrapPath = flag.String("bootstrap-config-path", "/var/lib/kubelet/bootstrap-kubeconfig", "path to bootstrap kubeconfig")
+	tpmPath       = flag.String("tpm-path", "/dev/tpm0", "path to a TPM character device or socket")
 
 	scheme       = runtime.NewScheme()
 	codecs       = serializer.NewCodecFactory(scheme)
@@ -37,27 +48,42 @@ func main() {
 	flag.Set("logtostderr", "true")
 	flag.Parse()
 
-	if *audience == "" {
-		glog.Exit("--audience must be set")
+	var key, cert []byte
+	var token string
+	var err error
+
+	switch *mode {
+	case modeVMID:
+		if *audience == "" {
+			glog.Exit("--audience must be set")
+		}
+		token, err = metadata.Get(fmt.Sprintf("instance/service-accounts/default/identity?audience=%s&format=full", *audience))
+		if err != nil {
+			glog.Exit(err)
+		}
+		token = "vmid-" + token
+	case modeTPM:
+		key, cert, err = getKeyCert()
+		if err != nil {
+			glog.Exit(err)
+		}
+	default:
+		glog.Exitf("unrecognized --mode value %q, want one of [%q, %q]", *mode, modeVMID, modeTPM)
 	}
 
-	token, err := metadata.Get(fmt.Sprintf("instance/service-accounts/default/identity?audience=%s&format=full", *audience))
-	if err != nil {
-		glog.Exit(err)
-	}
-	token = "vmid-" + token
-
-	if err := writeResponse(token); err != nil {
+	if err := writeResponse(token, key, cert); err != nil {
 		glog.Exit(err)
 	}
 }
 
-func writeResponse(token string) error {
+func writeResponse(token string, key, cert []byte) error {
 	resp := &clientauthentication.ExecCredential{
 		Status: &clientauthentication.ExecCredentialStatus{
 			// Make Kubelet poke us every hour, we'll cache the cert for longer.
 			ExpirationTimestamp: &metav1.Time{time.Now().Add(time.Hour)},
 			Token:               token,
+			ClientCertificateData: string(cert),
+			ClientKeyData:         string(key),
 		},
 	}
 	data, err := runtime.Encode(codecs.LegacyCodec(groupVersion), resp)
