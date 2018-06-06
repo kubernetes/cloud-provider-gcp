@@ -595,6 +595,8 @@
     "tools/clientcmd/api",
     "tools/clientcmd/api/latest",
     "tools/clientcmd/api/v1",
+    "tools/leaderelection",
+    "tools/leaderelection/resourcelock",
     "tools/metrics",
     "tools/pager",
     "tools/record",
@@ -630,6 +632,7 @@
     "pkg/apis/certificates",
     "pkg/apis/certificates/install",
     "pkg/apis/certificates/v1beta1",
+    "pkg/apis/componentconfig",
     "pkg/apis/core",
     "pkg/apis/core/helper",
     "pkg/apis/core/install",
@@ -640,6 +643,7 @@
     "pkg/apis/extensions",
     "pkg/apis/networking",
     "pkg/capabilities",
+    "pkg/client/leaderelectionconfig",
     "pkg/cloudprovider",
     "pkg/cloudprovider/providers/gce",
     "pkg/cloudprovider/providers/gce/cloud",
@@ -685,6 +689,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "77e262a06015f994c651eea0459404aa173bf8397f68dcb6cbd0081bfe2a3f33"
+  inputs-digest = "d8f8a6479c9ffa38b76998ecb4bc318b9eedaf3615244d60118cbde185aef662"
   solver-name = "gps-cdcl"
   solver-version = 1

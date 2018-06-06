@@ -19,6 +19,8 @@ limitations under the License.
 package app
 
 import (
+	"fmt"
+	"os"
 	"time"
 
 	"k8s.io/api/core/v1"
@@ -27,8 +29,11 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	"k8s.io/kubernetes/pkg/controller"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 
@@ -37,6 +42,11 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
+)
+
+const (
+	leaderElectionResourceLockNamespace = "kube-system"
+	leaderElectionResourceLockName      = "gke-certificates-controller"
 )
 
 // NewGKECertificatesControllerCommand creates a new *cobra.Command with default parameters.
@@ -94,9 +104,64 @@ func Run(s *GKECertificatesController) error {
 		signer.handle,
 	)
 
-	sharedInformers.Start(nil)
-	// controller.Run calls block forever.
-	go approveController.Run(5, nil)
-	go signController.Run(5, nil)
-	select {} // block forever
+	run := func(stopCh <-chan struct{}) {
+		sharedInformers.Start(stopCh)
+		// controller.Run calls block forever.
+		go approveController.Run(5, stopCh)
+		go signController.Run(5, stopCh)
+		<-stopCh
+	}
+
+	if s.LeaderElectionConfig.LeaderElect {
+		leaderElectionClient, err := clientset.NewForConfig(restclient.AddUserAgent(kubeconfig, "leader-election"))
+		if err != nil {
+			return err
+		}
+		leaderElectionConfig, err := makeLeaderElectionConfig(s.LeaderElectionConfig, leaderElectionClient, recorder)
+		if err != nil {
+			return err
+		}
+		leaderElectionConfig.Callbacks = leaderelection.LeaderCallbacks{
+			OnStartedLeading: run,
+			OnStoppedLeading: func() {
+				glog.Fatalf("lost leader election, exiting")
+			},
+		}
+
+		leaderElector, err := leaderelection.NewLeaderElector(*leaderElectionConfig)
+		if err != nil {
+			return err
+		}
+		leaderElector.Run()
+		panic("unreachable")
+	}
+
+	run(nil)
+	return fmt.Errorf("should never reach this point")
+}
+
+func makeLeaderElectionConfig(config componentconfig.LeaderElectionConfiguration, client clientset.Interface, recorder record.EventRecorder) (*leaderelection.LeaderElectionConfig, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, fmt.Errorf("unable to get hostname: %v", err)
+	}
+
+	rl, err := resourcelock.New(
+		config.ResourceLock,
+		leaderElectionResourceLockNamespace,
+		leaderElectionResourceLockName,
+		client.CoreV1(),
+		resourcelock.ResourceLockConfig{
+			Identity:      hostname,
+			EventRecorder: recorder,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create resource lock: %v", err)
+	}
+	return &leaderelection.LeaderElectionConfig{
+		Lock:          rl,
+		LeaseDuration: config.LeaseDuration.Duration,
+		RenewDeadline: config.RenewDeadline.Duration,
+		RetryPeriod:   config.RetryPeriod.Duration,
+	}, nil
 }
