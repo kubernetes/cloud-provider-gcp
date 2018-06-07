@@ -9,6 +9,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/awly/tpmtls"
+  packages = ["tpmkey"]
+  revision = "1762e6d698862efd5f6b9aec1eb3eedf97594314"
+
+[[projects]]
+  branch = "master"
   name = "github.com/beorn7/perks"
   packages = ["quantile"]
   revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
@@ -65,6 +71,15 @@
   ]
   revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
   version = "v1.1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/google/go-tpm"
+  packages = [
+    "tpm2",
+    "tpmutil"
+  ]
+  revision = "c1c9f6aa4acef48f689c983db26d7b5066cb1c32"
 
 [[projects]]
   branch = "master"
@@ -587,6 +602,7 @@
     "transport",
     "util/buffer",
     "util/cert",
+    "util/certificate/csr",
     "util/flowcontrol",
     "util/homedir",
     "util/integer",
@@ -669,6 +685,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "e44bc0ff694d49a1e45522b91d61867f5cbc0776e9ceb5adb89628171962ca06"
+  inputs-digest = "77e262a06015f994c651eea0459404aa173bf8397f68dcb6cbd0081bfe2a3f33"
   solver-name = "gps-cdcl"
   solver-version = 1

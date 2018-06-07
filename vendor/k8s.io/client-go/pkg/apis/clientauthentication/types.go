@@ -58,6 +58,9 @@ type ExecCredentialStatus struct {
 	ExpirationTimestamp *metav1.Time
 	// Token is a bearer token used by the client for request authentication.
 	Token string
+	// PEM-encoded client TLS certificate and key.
+	ClientCertificateData string
+	ClientKeyData         string
 }
 
 // Response defines metadata about a failed request, including HTTP status code and
