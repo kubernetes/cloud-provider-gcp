@@ -25,7 +25,6 @@ go_library(
         "//vendor/k8s.io/client-go/pkg/apis/clientauthentication:go_default_library",
         "//vendor/k8s.io/client-go/pkg/apis/clientauthentication/v1alpha1:go_default_library",
         "//vendor/k8s.io/client-go/rest:go_default_library",
-        "//vendor/k8s.io/client-go/tools/clientcmd:go_default_library",
         "//vendor/k8s.io/client-go/util/cert:go_default_library",
         "//vendor/k8s.io/client-go/util/certificate/csr:go_default_library",
     ],
@@ -39,10 +38,14 @@ go_binary(
 
 go_test(
     name = "go_default_test",
-    srcs = ["tpm_test.go"],
+    srcs = [
+        "request_test.go",
+        "tpm_test.go",
+    ],
     embed = [":go_default_library"],
     deps = [
         "//vendor/github.com/google/go-tpm/tpm2:go_default_library",
         "//vendor/github.com/google/go-tpm/tpmutil:go_default_library",
+        "//vendor/k8s.io/client-go/rest:go_default_library",
     ],
 )

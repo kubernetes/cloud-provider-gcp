@@ -6,14 +6,12 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/golang/glog"
-	certificates "k8s.io/client-go/kubernetes/typed/certificates/v1beta1"
 	"k8s.io/client-go/util/cert"
 )
 
@@ -21,15 +19,33 @@ const (
 	certFileName = "kubelet-client.crt"
 	keyFileName  = "kubelet-client.key"
 
+	// Minimum age of existing certificate before triggering rotation.
+	// Assuming no rotation errors, this is cert rotation period.
 	rotationThreshold = 24 * time.Hour
+	// Caching duration for caller - will exec this plugin after this period.
+	responseExpiry = time.Hour
 )
 
 func getKeyCert() ([]byte, []byte, error) {
-	if key, cert, ok := getExistingKeyCert(*cacheDir); ok {
+	oldKey, oldCert, ok := getExistingKeyCert(*cacheDir)
+	if ok {
 		glog.Info("re-using cached key and certificate")
-		return key, cert, nil
+		return oldKey, oldCert, nil
 	}
 
+	newKey, newCert, err := getNewKeyCert(*cacheDir)
+	if err != nil {
+		if len(oldKey) == 0 || len(oldCert) == 0 {
+			return nil, nil, err
+		}
+		glog.Errorf("failed rotating client certificate: %v", err)
+		glog.Info("using existing key/cert that are still valid")
+		return oldKey, oldCert, nil
+	}
+	return newKey, newCert, nil
+}
+
+func getNewKeyCert(dir string) ([]byte, []byte, error) {
 	glog.Info("generating new private key")
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -42,20 +58,7 @@ func getKeyCert() ([]byte, []byte, error) {
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: cert.ECPrivateKeyBlockType, Bytes: keyBytes})
 
 	glog.Info("requesting new certificate")
-	bootstrapConfig, err := loadRESTClientConfig(*bootstrapPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("unable to load bootstrap kubeconfig: %v", err)
-	}
-	bootstrapClient, err := certificates.NewForConfig(bootstrapConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("unable to create certificates signing request client: %v", err)
-	}
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, nil, fmt.Errorf("unable to determine hostnamename: %v", err)
-	}
-
-	certPEM, err := requestCertificate(bootstrapClient.CertificateSigningRequests(), keyPEM, hostname)
+	certPEM, err := requestCertificate(keyPEM)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -87,15 +90,21 @@ func getExistingKeyCert(dir string) ([]byte, []byte, bool) {
 		glog.Errorf("failed parsing existing cert: %v", err)
 		return nil, nil, false
 	}
-	if diff := time.Now().Sub(parsedCert.NotAfter); diff < rotationThreshold {
-		if diff < 0 {
-			glog.Warningf("existing cert expired %v ago, requesting new one", -diff)
-		} else {
-			glog.Infof("existing cert will expire in %v, requesting new one", diff)
-		}
+	age := time.Now().Sub(parsedCert.NotBefore)
+	switch {
+	case age < 0:
+		glog.Warningf("existing cert not valid yet, requesting new one")
 		return nil, nil, false
+	case age < rotationThreshold:
+		return key, cert, true
+	case parsedCert.NotAfter.Sub(time.Now()) < responseExpiry:
+		glog.Infof("existing cert expired or will expire in <%v, requesting new one", responseExpiry)
+		return nil, nil, false
+	default:
+		// Existing key/cert can still be reused but try to rotate.
+		glog.Infof("existing cert is %v old, requesting new one", age)
+		return key, cert, false
 	}
-	return key, cert, true
 }
 
 func writeKeyCert(dir string, key, cert []byte) error {

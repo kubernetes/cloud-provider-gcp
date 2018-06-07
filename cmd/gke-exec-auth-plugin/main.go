@@ -25,9 +25,8 @@ var (
 	// VMID token flags.
 	audience = flag.String("audience", "", "Audience field of for the VM ID token. Must be a URI.")
 	// TPM flags.
-	cacheDir      = flag.String("cache-dir", "/var/lib/kubelet/pki", "Path to directory to store key and certificate.")
-	bootstrapPath = flag.String("bootstrap-config-path", "/var/lib/kubelet/bootstrap-kubeconfig", "path to bootstrap kubeconfig")
-	tpmPath       = flag.String("tpm-path", "/dev/tpm0", "path to a TPM character device or socket")
+	cacheDir = flag.String("cache-dir", "/var/lib/kubelet/pki", "Path to directory to store key and certificate.")
+	tpmPath  = flag.String("tpm-path", "/dev/tpm0", "path to a TPM character device or socket")
 
 	scheme       = runtime.NewScheme()
 	codecs       = serializer.NewCodecFactory(scheme)
@@ -80,7 +79,7 @@ func writeResponse(token string, key, cert []byte) error {
 	resp := &clientauthentication.ExecCredential{
 		Status: &clientauthentication.ExecCredentialStatus{
 			// Make Kubelet poke us every hour, we'll cache the cert for longer.
-			ExpirationTimestamp: &metav1.Time{time.Now().Add(time.Hour)},
+			ExpirationTimestamp: &metav1.Time{time.Now().Add(responseExpiry)},
 			Token:               token,
 			ClientCertificateData: string(cert),
 			ClientKeyData:         string(key),
