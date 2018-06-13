@@ -24,6 +24,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/spf13/pflag"
+	"k8s.io/kubernetes/pkg/apis/componentconfig"
+	"k8s.io/kubernetes/pkg/client/leaderelectionconfig"
 )
 
 // GKECertificatesController is the main context object for the package.
@@ -33,6 +35,8 @@ type GKECertificatesController struct {
 	ClusterSigningGKERetryBackoff metav1.Duration
 	ApproveAllKubeletCSRsForGroup string
 	GCEConfigPath                 string
+
+	LeaderElectionConfig componentconfig.LeaderElectionConfiguration
 }
 
 // NewGKECertificatesController creates a new instance of a
@@ -41,7 +45,9 @@ func NewGKECertificatesController() *GKECertificatesController {
 	s := &GKECertificatesController{
 		ClusterSigningGKERetryBackoff: metav1.Duration{Duration: 500 * time.Millisecond},
 		GCEConfigPath:                 "/etc/gce.conf",
+		LeaderElectionConfig:          leaderelectionconfig.DefaultLeaderElectionConfiguration(),
 	}
+	s.LeaderElectionConfig.LeaderElect = true
 	return s
 }
 
@@ -56,4 +62,6 @@ func (s *GKECertificatesController) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.ApproveAllKubeletCSRsForGroup, "insecure-experimental-approve-all-kubelet-csrs-for-group", s.ApproveAllKubeletCSRsForGroup, "The group for which the controller-manager will auto approve all CSRs for kubelet client certificates.")
 
 	fs.StringVar(&s.GCEConfigPath, "gce-config", s.GCEConfigPath, "Path to gce.conf.")
+
+	leaderelectionconfig.BindFlags(&s.LeaderElectionConfig, fs)
 }
