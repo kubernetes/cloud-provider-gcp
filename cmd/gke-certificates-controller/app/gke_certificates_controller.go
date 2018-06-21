@@ -83,23 +83,25 @@ func Run(s *GKECertificatesController) error {
 	recorder := eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{Component: "gke-certificates-controller"})
 
 	clientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: kubeconfig}
-	client := clientBuilder.ClientOrDie("certificate-controller")
 
-	sharedInformers := informers.NewSharedInformerFactory(client, time.Duration(12)*time.Hour)
+	informerClient := clientBuilder.ClientOrDie("certificate-controller-informer")
+	sharedInformers := informers.NewSharedInformerFactory(informerClient, time.Duration(12)*time.Hour)
 
-	approver := newGKEApprover(approverOpts, client)
+	approverClient := clientBuilder.ClientOrDie("certificate-controller-approver")
+	approver := newGKEApprover(approverOpts, approverClient)
 	approveController := certificates.NewCertificateController(
-		client,
+		approverClient,
 		sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
 		approver.handle,
 	)
 
-	signer, err := newGKESigner(s.ClusterSigningGKEKubeconfig, s.ClusterSigningGKERetryBackoff.Duration, recorder, client)
+	signerClient := clientBuilder.ClientOrDie("certificate-controller-signer")
+	signer, err := newGKESigner(s.ClusterSigningGKEKubeconfig, s.ClusterSigningGKERetryBackoff.Duration, recorder, signerClient)
 	if err != nil {
 		return err
 	}
 	signController := certificates.NewCertificateController(
-		client,
+		signerClient,
 		sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
 		signer.handle,
 	)
