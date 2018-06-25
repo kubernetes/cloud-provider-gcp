@@ -11,6 +11,7 @@ go_library(
         "constants.go",
         "doc.go",
         "labels.go",
+        "pod_status.go",
         "pod_update.go",
         "types.go",
     ],
@@ -21,7 +22,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/core:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/scheduler/api:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/scheduling:go_default_library",
     ],
 )
 

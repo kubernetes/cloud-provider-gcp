@@ -12,8 +12,6 @@ go_library(
     importpath = "k8s.io/kubernetes/pkg/client/leaderelectionconfig",
     deps = [
         "//vendor/github.com/spf13/pflag:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/client-go/tools/leaderelection/resourcelock:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/componentconfig:go_default_library",
     ],
 )

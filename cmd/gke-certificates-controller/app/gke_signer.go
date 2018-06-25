@@ -50,7 +50,7 @@ type gkeSigner struct {
 
 // newGKESigner will create a new instance of a gkeSigner.
 func newGKESigner(kubeConfigFile string, retryBackoff time.Duration, recorder record.EventRecorder, client clientset.Interface) (*gkeSigner, error) {
-	webhook, err := webhook.NewGenericWebhook(legacyscheme.Registry, legacyscheme.Codecs, kubeConfigFile, groupVersions, retryBackoff)
+	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, kubeConfigFile, groupVersions, retryBackoff)
 	if err != nil {
 		return nil, err
 	}
