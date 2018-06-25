@@ -4,7 +4,9 @@ go_library(
     name = "go_default_library",
     srcs = [
         "constants.go",
+        "context.go",
         "doc.go",
+        "errors.go",
         "gce_projects.go",
         "gen.go",
         "op.go",

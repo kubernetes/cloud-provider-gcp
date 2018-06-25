@@ -9,7 +9,6 @@ go_library(
     name = "go_default_library",
     srcs = [
         "doc.go",
-        "helpers.go",
         "register.go",
         "types.go",
         "zz_generated.deepcopy.go",
@@ -25,6 +24,7 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/apis/autoscaling:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/core:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/networking:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/policy:go_default_library",
     ],
 )
 

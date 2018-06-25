@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "fs.go",
         "fs_unsupported.go",
+        "fs_windows.go",
     ],
     importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/volume/util/fs",
     importpath = "k8s.io/kubernetes/pkg/volume/util/fs",
@@ -43,6 +44,7 @@ go_library(
             "//vendor/k8s.io/apimachinery/pkg/api/resource:go_default_library",
         ],
         "@io_bazel_rules_go//go/platform:windows": [
+            "//vendor/golang.org/x/sys/windows:go_default_library",
             "//vendor/k8s.io/apimachinery/pkg/api/resource:go_default_library",
         ],
         "//conditions:default": [],

@@ -38,24 +38,28 @@
   version = "1.0.0"
 
 [[constraint]]
-  branch = "release-1.10"
+  branch = "release-1.11"
   name = "k8s.io/api"
 
 [[constraint]]
-  branch = "release-1.10"
+  branch = "release-1.11"
   name = "k8s.io/apimachinery"
 
 [[constraint]]
-  branch = "release-1.10"
+  branch = "release-1.11"
   name = "k8s.io/apiserver"
 
 [[constraint]]
   name = "k8s.io/client-go"
-  version = "kubernetes-1.10.2"
+  version = "kubernetes-1.11.0-rc.1"
 
 [[constraint]]
-  branch = "release-1.10"
+  branch = "release-1.11"
   name = "k8s.io/kubernetes"
+
+[[override]]
+  branch = "master"
+  name = "github.com/json-iterator/go"
 
 [[override]]
   name = "github.com/docker/distribution"

@@ -95,7 +95,7 @@ func (pk *privateKey) Sign(_ io.Reader, digest []byte, _ crypto.SignerOpts) ([]b
 	pk.mu.Lock()
 	defer pk.mu.Unlock()
 
-	sig, err := tpm2.Sign(pk.rw, pk.h, pk.pass, digest)
+	sig, err := tpm2.Sign(pk.rw, pk.h, pk.pass, digest, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/spf13/pflag"
+	rl "k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	"k8s.io/kubernetes/pkg/client/leaderelectionconfig"
 )
@@ -45,9 +46,14 @@ func NewGKECertificatesController() *GKECertificatesController {
 	s := &GKECertificatesController{
 		ClusterSigningGKERetryBackoff: metav1.Duration{Duration: 500 * time.Millisecond},
 		GCEConfigPath:                 "/etc/gce.conf",
-		LeaderElectionConfig:          leaderelectionconfig.DefaultLeaderElectionConfiguration(),
+		LeaderElectionConfig: componentconfig.LeaderElectionConfiguration{
+			LeaderElect:   true,
+			LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
+			RenewDeadline: metav1.Duration{Duration: 10 * time.Second},
+			RetryPeriod:   metav1.Duration{Duration: 2 * time.Second},
+			ResourceLock:  rl.EndpointsResourceLock,
+		},
 	}
-	s.LeaderElectionConfig.LeaderElect = true
 	return s
 }
 

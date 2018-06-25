@@ -71,6 +71,7 @@ go_library(
         "syscall_linux_arm.go",
         "syscall_linux_arm64.go",
         "syscall_linux_gc.go",
+        "syscall_linux_gc_386.go",
         "syscall_linux_mips64x.go",
         "syscall_linux_mipsx.go",
         "syscall_linux_ppc64x.go",
