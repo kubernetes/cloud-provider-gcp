@@ -29,8 +29,8 @@ import (
 	"k8s.io/kubernetes/pkg/client/leaderelectionconfig"
 )
 
-// GKECertificatesController is the main context object for the package.
-type GKECertificatesController struct {
+// GCPControllerManager is the main context object for the package.
+type GCPControllerManager struct {
 	Kubeconfig                    string
 	ClusterSigningGKEKubeconfig   string
 	ClusterSigningGKERetryBackoff metav1.Duration
@@ -42,8 +42,8 @@ type GKECertificatesController struct {
 
 // NewGKECertificatesController creates a new instance of a
 // GKECertificatesController with default parameters.
-func NewGKECertificatesController() *GKECertificatesController {
-	s := &GKECertificatesController{
+func NewGKECertificatesController() *GCPControllerManager {
+	s := &GCPControllerManager{
 		ClusterSigningGKERetryBackoff: metav1.Duration{Duration: 500 * time.Millisecond},
 		GCEConfigPath:                 "/etc/gce.conf",
 		LeaderElectionConfig: componentconfig.LeaderElectionConfiguration{
@@ -59,7 +59,7 @@ func NewGKECertificatesController() *GKECertificatesController {
 
 // AddFlags adds flags for a specific GKECertificatesController to the
 // specified FlagSet.
-func (s *GKECertificatesController) AddFlags(fs *pflag.FlagSet) {
+func (s *GCPControllerManager) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
 
 	fs.StringVar(&s.ClusterSigningGKEKubeconfig, "cluster-signing-gke-kubeconfig", s.ClusterSigningGKEKubeconfig, "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")

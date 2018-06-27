@@ -7,14 +7,14 @@ load(
 go_library(
     name = "go_default_library",
     srcs = [
+        "controller.go",
         "gke_approver.go",
-        "gke_certificates_controller.go",
         "gke_signer.go",
         "options.go",
     ],
-    importpath = "k8s.io/cloud-provider-gcp/cmd/gke-certificates-controller/app",
+    importpath = "k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/app",
     visibility = [
-        "//cmd/gke-certificates-controller:__subpackages__",
+        "//cmd/gcp-controller-manager:__subpackages__",
     ],
     deps = [
         "//vendor/cloud.google.com/go/compute/metadata:go_default_library",

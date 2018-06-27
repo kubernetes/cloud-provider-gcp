@@ -49,8 +49,8 @@ const (
 	leaderElectionResourceLockName      = "gke-certificates-controller"
 )
 
-// NewGKECertificatesControllerCommand creates a new *cobra.Command with default parameters.
-func NewGKECertificatesControllerCommand() *cobra.Command {
+// NewGCPControllerManagerCommand creates a new *cobra.Command with default parameters.
+func NewGCPControllerManagerCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "gke-certificates-controller",
 		Long: `The Kubernetes GKE certificates controller is a daemon that
@@ -60,8 +60,8 @@ handles auto-approving and signing certificates for GKE clusters.`,
 	return cmd
 }
 
-// Run runs the GKECertificatesController. This should never exit.
-func Run(s *GKECertificatesController) error {
+// Run runs the G. This should never exit.
+func Run(s *GCPControllerManager) error {
 	kubeconfig, err := clientcmd.BuildConfigFromFlags("", s.Kubeconfig)
 	if err != nil {
 		return err

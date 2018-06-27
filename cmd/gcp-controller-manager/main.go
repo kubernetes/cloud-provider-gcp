@@ -24,7 +24,7 @@ import (
 	"os"
 
 	"k8s.io/apiserver/pkg/util/flag"
-	"k8s.io/cloud-provider-gcp/cmd/gke-certificates-controller/app"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/app"
 	"k8s.io/kubernetes/pkg/kubectl/util/logs"
 	"k8s.io/kubernetes/pkg/version/verflag"
 
