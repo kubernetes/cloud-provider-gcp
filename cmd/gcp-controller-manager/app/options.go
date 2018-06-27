@@ -40,9 +40,9 @@ type GCPControllerManager struct {
 	LeaderElectionConfig componentconfig.LeaderElectionConfiguration
 }
 
-// NewGKECertificatesController creates a new instance of a
+// NewGCPControllerManager creates a new instance of a
 // GKECertificatesController with default parameters.
-func NewGKECertificatesController() *GCPControllerManager {
+func NewGCPControllerManager() *GCPControllerManager {
 	s := &GCPControllerManager{
 		ClusterSigningGKERetryBackoff: metav1.Duration{Duration: 500 * time.Millisecond},
 		GCEConfigPath:                 "/etc/gce.conf",

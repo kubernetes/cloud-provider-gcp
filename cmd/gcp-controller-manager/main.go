@@ -32,7 +32,7 @@ import (
 )
 
 func main() {
-	s := app.NewGKECertificatesController()
+	s := app.NewGCPControllerManager()
 	s.AddFlags(pflag.CommandLine)
 
 	flag.InitFlags()
