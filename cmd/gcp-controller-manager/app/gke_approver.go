@@ -319,7 +319,7 @@ type approverOptions struct {
 	tokenSource oauth2.TokenSource
 }
 
-func loadApproverOptions(s *GKECertificatesController) (approverOptions, error) {
+func loadApproverOptions(s *GCPControllerManager) (approverOptions, error) {
 	var a approverOptions
 
 	// Load gce.conf.

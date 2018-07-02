@@ -7,10 +7,10 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["main.go"],
-    importpath = "k8s.io/cloud-provider-gcp/cmd/gke-certificates-controller",
+    importpath = "k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager",
     visibility = ["//visibility:private"],
     deps = [
-        "//cmd/gke-certificates-controller/app:go_default_library",
+        "//cmd/gcp-controller-manager/app:go_default_library",
         "//vendor/github.com/spf13/pflag:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/flag:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/kubectl/util/logs:go_default_library",
@@ -19,7 +19,7 @@ go_library(
 )
 
 go_binary(
-    name = "gke-certificates-controller",
+    name = "gcp-controller-manager",
     embed = [":go_default_library"],
     pure = "on",
     visibility = ["//visibility:public"],
@@ -27,4 +27,4 @@ go_binary(
 
 load("//tools:def.bzl", "image")
 
-image(binary = ":gke-certificates-controller")
+image(binary = ":gcp-controller-manager")

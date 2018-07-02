@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package app implements a server that runs a stand-alone version of the
-// certificates controller for GKE clusters.
+// GCP controller manager.
 package app
 
 import (
@@ -46,22 +46,22 @@ import (
 
 const (
 	leaderElectionResourceLockNamespace = "kube-system"
-	leaderElectionResourceLockName      = "gke-certificates-controller"
+	leaderElectionResourceLockName      = "gcp-controller-manager"
 )
 
-// NewGKECertificatesControllerCommand creates a new *cobra.Command with default parameters.
-func NewGKECertificatesControllerCommand() *cobra.Command {
+// NewGCPControllerManagerCommand creates a new *cobra.Command with default parameters.
+func NewGCPControllerManagerCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "gke-certificates-controller",
-		Long: `The Kubernetes GKE certificates controller is a daemon that
-handles auto-approving and signing certificates for GKE clusters.`,
+		Use: "gcp-controller-manager",
+		Long: `The Kubernetes GCP controller manager is a daemon that
+houses GCP specific control loops.`,
 	}
 
 	return cmd
 }
 
-// Run runs the GKECertificatesController. This should never exit.
-func Run(s *GKECertificatesController) error {
+// Run runs the GCPControllerManager. This should never exit.
+func Run(s *GCPControllerManager) error {
 	kubeconfig, err := clientcmd.BuildConfigFromFlags("", s.Kubeconfig)
 	if err != nil {
 		return err
@@ -106,11 +106,22 @@ func Run(s *GKECertificatesController) error {
 		signer.handle,
 	)
 
+	nodeAnnotaterClient := clientBuilder.ClientOrDie("node-annotater")
+	nodeAnnotateController, err := newNodeAnnotater(
+		nodeAnnotaterClient,
+		sharedInformers.Core().V1().Nodes(),
+		approverOpts.tokenSource,
+	)
+	if err != nil {
+		return err
+	}
+
 	run := func(stopCh <-chan struct{}) {
 		sharedInformers.Start(stopCh)
 		// controller.Run calls block forever.
 		go approveController.Run(5, stopCh)
 		go signController.Run(5, stopCh)
+		go nodeAnnotateController.Run(5, stopCh)
 		<-stopCh
 	}
 
