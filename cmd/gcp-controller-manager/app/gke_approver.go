@@ -14,27 +14,47 @@ limitations under the License.
 package app
 
 import (
+	"bytes"
 	"context"
+	"crypto"
+	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/http"
+	"path"
 	"reflect"
 	"sort"
 	"strings"
 
 	"cloud.google.com/go/compute/metadata"
 	"github.com/golang/glog"
+	"github.com/google/go-tpm/tpm2"
 	"golang.org/x/oauth2"
 	compute "google.golang.org/api/compute/v1"
+	container "google.golang.org/api/container/v1"
 	gcfg "gopkg.in/gcfg.v1"
 	warnings "gopkg.in/warnings.v0"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
+	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
 	"k8s.io/kubernetes/pkg/controller/certificates"
+)
+
+const (
+	legacyKubeletUsername = "kubelet"
+	tpmKubeletUsername    = "kubelet-bootstrap"
+
+	// TODO(awly): eventually this should be true. But that makes testing
+	// harder, so disabling or now.
+	validateClusterMembership = false
 )
 
 // gkeApprover handles approval/denial of CSRs based on SubjectAccessReview and
@@ -56,7 +76,6 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 	if approved, denied := certificates.GetCertApprovalCondition(&csr.Status); approved || denied {
 		return nil
 	}
-
 	glog.Infof("approver got CSR %q", csr.Name)
 
 	x509cr, err := certutil.ParseCSR(csr)
@@ -75,6 +94,7 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 			glog.Infof("validator %q: denied CSR %q", r.name, csr.Name)
 			return a.updateCSR(csr, false, r.denyMsg)
 		}
+		glog.Infof("CSR %q validation passed", csr.Name)
 
 		approved, err := a.authorizeSAR(csr, r.permission)
 		if err != nil {
@@ -138,6 +158,13 @@ type csrValidator struct {
 // More specific validators go first.
 var validators = []csrValidator{
 	{
+		name:       "kubelet client certificate with TPM attestation and SubjectAccessReview",
+		recognize:  isNodeClientCertWithAttestation,
+		validate:   validateTPMAttestation,
+		permission: authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
+		approveMsg: "Auto approving kubelet client certificate with TPM attestation after SubjectAccessReview.",
+	},
+	{
 		name:       "self kubelet client certificate SubjectAccessReview",
 		recognize:  isSelfNodeClientCert,
 		permission: authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "selfnodeclient"},
@@ -145,7 +172,7 @@ var validators = []csrValidator{
 	},
 	{
 		name:       "kubelet client certificate SubjectAccessReview",
-		recognize:  isNodeClientCert,
+		recognize:  isLegacyNodeClientCert,
 		permission: authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
 		approveMsg: "Auto approving kubelet client certificate after SubjectAccessReview.",
 	},
@@ -219,10 +246,7 @@ func isNodeCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509c
 	if len(x509cr.EmailAddresses) > 0 {
 		return false
 	}
-	if !strings.HasPrefix(x509cr.Subject.CommonName, "system:node:") {
-		return false
-	}
-	return true
+	return strings.HasPrefix(x509cr.Subject.CommonName, "system:node:")
 }
 
 func isNodeClientCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
@@ -232,20 +256,21 @@ func isNodeClientCert(opts approverOptions, csr *capi.CertificateSigningRequest,
 	if len(x509cr.DNSNames) > 0 || len(x509cr.IPAddresses) > 0 {
 		return false
 	}
-	if !hasExactUsages(csr, kubeletClientUsages) {
+	return hasExactUsages(csr, kubeletClientUsages)
+}
+
+func isLegacyNodeClientCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	if !isNodeClientCert(opts, csr, x509cr) {
 		return false
 	}
-	return true
+	return csr.Spec.Username == legacyKubeletUsername
 }
 
 func isSelfNodeClientCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeClientCert(opts, csr, x509cr) {
 		return false
 	}
-	if csr.Spec.Username != x509cr.Subject.CommonName {
-		return false
-	}
-	return true
+	return csr.Spec.Username == x509cr.Subject.CommonName
 }
 
 func isNodeServerCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
@@ -255,10 +280,7 @@ func isNodeServerCert(opts approverOptions, csr *capi.CertificateSigningRequest,
 	if !hasExactUsages(csr, kubeletServerUsages) {
 		return false
 	}
-	if csr.Spec.Username != x509cr.Subject.CommonName {
-		return false
-	}
-	return true
+	return csr.Spec.Username == x509cr.Subject.CommonName
 }
 
 func validateNodeServerCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
@@ -314,6 +336,7 @@ func validateNodeServerCertInner(client *http.Client, opts approverOptions, csr 
 }
 
 type approverOptions struct {
+	clusterName string
 	projectID   string
 	zones       []string
 	tokenSource oauth2.TokenSource
@@ -370,5 +393,188 @@ func loadApproverOptions(s *GCPControllerManager) (approverOptions, error) {
 	// Put master's zone first.
 	sort.Slice(a.zones, func(i, j int) bool { return a.zones[i] == zone })
 
+	a.clusterName, err = metadata.Get("instance/attributes/cluster-name")
+	if err != nil {
+		return a, err
+	}
+
 	return a, nil
+}
+
+var tpmAttestationBlocks = []string{
+	"CERTIFICATE REQUEST",
+	"ATTESTATION CERTIFICATE",
+	"ATTESTATION DATA",
+	"ATTESTATION SIGNATURE",
+	"VM IDENTITY",
+}
+
+func isNodeClientCertWithAttestation(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	if !isNodeClientCert(opts, csr, x509cr) {
+		return false
+	}
+	if csr.Spec.Username != tpmKubeletUsername {
+		return false
+	}
+	blocks, err := parsePEMBlocks(csr.Spec.Request)
+	if err != nil {
+		glog.Errorf("parsing csr.Spec.Request: %v", err)
+		return false
+	}
+	for _, name := range tpmAttestationBlocks {
+		if _, ok := blocks[name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func validateTPMAttestation(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	blocks, err := parsePEMBlocks(csr.Spec.Request)
+	if err != nil {
+		glog.Errorf("Parsing csr.Spec.Request: %v", err)
+		return false
+	}
+	nodeIDRaw := blocks["VM IDENTITY"].Bytes
+	attestDataRaw := blocks["ATTESTATION DATA"].Bytes
+	attestSig := blocks["ATTESTATION SIGNATURE"].Bytes
+	attestCert := blocks["ATTESTATION CERTIFICATE"].Bytes
+
+	var nodeID nodeidentity.Identity
+	if err := json.Unmarshal(nodeIDRaw, &nodeID); err != nil {
+		glog.Errorf("Unmarshaling VM identity JSON: %v", err)
+		return false
+	}
+	if fmt.Sprint(nodeID.ProjectName) != opts.projectID {
+		glog.Errorf("Received CSR for a different project Name (%d)", nodeID.ProjectName)
+		return false
+	}
+
+	client := oauth2.NewClient(context.Background(), opts.tokenSource)
+	cs, err := compute.New(client)
+	if err != nil {
+		glog.Errorf("Creating GCE API client: %v", err)
+		return false
+	}
+	srv := compute.NewInstancesService(cs)
+	inst, err := srv.Get(fmt.Sprint(nodeID.ProjectID), nodeID.Zone, nodeID.Name).Do()
+	if err != nil {
+		glog.Errorf("Fetching VM data from GCE API: %v", err)
+		return false
+	}
+	if validateClusterMembership {
+		ok, err := clusterHasInstance(client, opts.projectID, inst.Zone, opts.clusterName, inst.Id)
+		if err != nil {
+			glog.Errorf("Checking VM membership in cluster: %v", err)
+			return false
+		}
+		if !ok {
+			glog.Errorf("VM %q doesn't belong to cluster %q", inst.Name, opts.clusterName)
+			return false
+		}
+	}
+
+	// TODO(awly): get AIK public key from GCE API.
+	// TODO(awly): verify aikCert to root CA.
+	aikCert, err := x509.ParseCertificate(attestCert)
+	if err != nil {
+		glog.Errorf("Parsing ATTESTATION_CERTIFICATE: %v", err)
+		return false
+	}
+	aikPub, ok := aikCert.PublicKey.(*rsa.PublicKey)
+	if !ok {
+		glog.Errorf("Public key in ATTESTATION CERTIFICATE is %T, want *rsa.PublicKey", aikCert.PublicKey)
+		return false
+	}
+
+	attestHash := sha256.Sum256(attestDataRaw)
+	if err := rsa.VerifyPKCS1v15(aikPub, crypto.SHA256, attestHash[:], attestSig); err != nil {
+		glog.Errorf("Verifying certification signature with AIK public key: %v", err)
+		return false
+	}
+
+	// Verify that attestDataRaw matches certificate.
+	attestData, err := tpm2.DecodeAttestationData(attestDataRaw)
+	if err != nil {
+		glog.Errorf("Parsing attestation data in CSR: %v", err)
+		return false
+	}
+	pub, err := tpmattest.MakePublic(x509cr.PublicKey)
+	if err != nil {
+		glog.Errorf("Converting public key in CSR to TPM Public structure: %v", err)
+		return false
+	}
+	ok, err = attestData.AttestedCertifyInfo.Name.MatchesPublic(pub)
+	if err != nil {
+		glog.Errorf("Comparing ATTESTATION DATA to CSR public key: %v", err)
+		return false
+	}
+	if !ok {
+		glog.Errorf("ATTESTATION DATA doesn't match CSR public key")
+		return false
+	}
+	return true
+}
+
+func parsePEMBlocks(raw []byte) (map[string]*pem.Block, error) {
+	blocks := make(map[string]*pem.Block)
+	for {
+		// Just in case there are extra newlines between blocks.
+		raw = bytes.TrimSpace(raw)
+
+		var b *pem.Block
+		b, raw = pem.Decode(raw)
+		if b == nil {
+			break
+		}
+		blocks[b.Type] = b
+	}
+	if len(blocks) == 0 {
+		return nil, errors.New("no valid PEM blocks found in CSR")
+	}
+	if len(raw) != 0 {
+		return nil, errors.New("trailing non-PEM data in CSR")
+	}
+	return blocks, nil
+}
+
+func clusterHasInstance(client *http.Client, project, zone, clusterName string, instanceID uint64) (bool, error) {
+	cs, err := container.New(client)
+	if err != nil {
+		return false, err
+	}
+	cluster, err := container.NewProjectsZonesClustersService(cs).Get(project, zone, clusterName).Do()
+	if err != nil {
+		return false, err
+	}
+	for _, np := range cluster.NodePools {
+		for _, ig := range np.InstanceGroupUrls {
+			igName := path.Base(ig)
+			ok, err := groupHasInstance(client, project, zone, igName, instanceID)
+			if err != nil {
+				return false, err
+			}
+			if ok {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func groupHasInstance(client *http.Client, project, zone, groupName string, instanceID uint64) (bool, error) {
+	cs, err := compute.New(client)
+	if err != nil {
+		return false, err
+	}
+	instances, err := compute.NewInstanceGroupManagersService(cs).ListManagedInstances(project, zone, groupName).Do()
+	if err != nil {
+		return false, err
+	}
+	for _, inst := range instances.ManagedInstances {
+		if instanceID == inst.Id {
+			return true, nil
+		}
+	}
+	return false, nil
 }
