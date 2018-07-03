@@ -68,6 +68,7 @@ func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
 	if !certificates.IsCertificateRequestApproved(csr) {
 		return nil
 	}
+	glog.Infof("gkeSigner triggered for %q", csr.Name)
 	csr, err := s.sign(csr)
 	if err != nil {
 		return fmt.Errorf("error auto signing csr: %v", err)
@@ -76,6 +77,7 @@ func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
 	if err != nil {
 		return fmt.Errorf("error updating signature for csr: %v", err)
 	}
+	glog.Infof("CSR %q signed", csr.Name)
 	return nil
 }
 
