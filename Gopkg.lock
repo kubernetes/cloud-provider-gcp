@@ -9,12 +9,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/awly/tpmtls"
-  packages = ["tpmkey"]
-  revision = "ec2e87d908b1138bca4919b6a860452b9393da4b"
-
-[[projects]]
-  branch = "master"
   name = "github.com/beorn7/perks"
   packages = ["quantile"]
   revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
@@ -85,7 +79,7 @@
     "tpm2",
     "tpmutil"
   ]
-  revision = "180f7885cb387ab49323fbef6e042890f6e7d4fc"
+  revision = "18c713cd0c4c27531ff204c99f4c153ccd5a91db"
 
 [[projects]]
   branch = "master"
@@ -241,7 +235,7 @@
     "http2/hpack",
     "idna"
   ]
-  revision = "afe8f62b1d6bbd81f31868121a50b06d8188e1f9"
+  revision = "e514e69ffb8bc3c76a71ae40de0118d794855992"
 
 [[projects]]
   branch = "master"
@@ -262,7 +256,7 @@
     "unix",
     "windows"
   ]
-  revision = "63fc586f45fe72d95d5240a5d5eb95e6503907d3"
+  revision = "7138fd3d9dc8335c567ca206f4333fb75eb05d56"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -304,7 +298,7 @@
     "googleapi/internal/uritemplates",
     "tpu/v1"
   ]
-  revision = "3639d6d93f377f39a1de765fa4ef37b3c7ca8bd9"
+  revision = "082d671a2a341aa205b22b580fa69747dcc3cdc8"
 
 [[projects]]
   name = "google.golang.org/appengine"
@@ -403,7 +397,7 @@
   branch = "master"
   name = "k8s.io/apiextensions-apiserver"
   packages = ["pkg/features"]
-  revision = "109f6cf69d8d06605ee7c2ff4908e3743728f021"
+  revision = "4340dd9c24063611b7a269f847e16f9ad758bd52"
 
 [[projects]]
   branch = "release-1.11"
@@ -710,7 +704,7 @@
     "pkg/volume/util/types",
     "pkg/volume/util/volumepathhandler"
   ]
-  revision = "914210eade8f12eb9982d626487f6234cb7e4f11"
+  revision = "3efd75d061f250108ca5cb5a9cc088518fb03676"
 
 [[projects]]
   branch = "master"
@@ -721,6 +715,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7bfc862ef46329af789b361d338ddb64e6be291580e678c88058f8f34cd9d4d5"
+  inputs-digest = "1286d9b60d3d083ef8b728693dfd7bfdfca9b5f5d39748a0fe3680d4e1416f08"
   solver-name = "gps-cdcl"
   solver-version = 1
