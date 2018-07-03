@@ -7,17 +7,28 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"testing"
+	"time"
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 )
 
 const primaryHandle tpmutil.Handle = 1
+
+func init() {
+	newNodeIdentity = func() (nodeidentity.Identity, error) {
+		return nodeidentity.Identity{}, nil
+	}
+}
 
 type fakeTPM struct {
 	primary    *rsa.PrivateKey
@@ -37,9 +48,6 @@ func newFakeTPM(t *testing.T) *fakeTPM {
 	}
 }
 
-func (t *fakeTPM) createPrimary(pub tpm2.Public) (tpmutil.Handle, crypto.PublicKey, error) {
-	return primaryHandle, t.primary.Public(), nil
-}
 func (t *fakeTPM) createPrimaryRawTemplate(pub []byte) (tpmutil.Handle, crypto.PublicKey, error) {
 	return primaryHandle, t.primary.Public(), nil
 }
@@ -63,20 +71,32 @@ func (t *fakeTPM) certify(kh, aikh tpmutil.Handle) ([]byte, []byte, error) {
 	return attest, sig, nil
 }
 func (t *fakeTPM) nvRead(h tpmutil.Handle) ([]byte, error) {
-	// TODO(awly): when aikCert/Template are available, add hardcoded values.
-	return nil, errors.New("not supported")
+	switch h {
+	case aikTemplateIndex:
+		return nil, nil
+	case aikCertIndex:
+		template := &x509.Certificate{
+			SerialNumber: big.NewInt(1),
+			Subject: pkix.Name{
+				Organization: []string{"Acme Co"},
+			},
+			NotBefore:             time.Now(),
+			NotAfter:              time.Now().Add(24 * time.Hour),
+			KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+			BasicConstraintsValid: true,
+		}
+
+		return x509.CreateCertificate(rand.Reader, template, template, t.primary.Public(), t.primary)
+	default:
+		return nil, fmt.Errorf("NV handle 0x%x not found", h)
+	}
 }
 func (t *fakeTPM) loadExternal(pub tpm2.Public, priv tpm2.Private) (tpmutil.Handle, error) {
 	t.loaded[t.nextHandle] = pub
 	h := t.nextHandle
 	t.nextHandle++
 	return h, nil
-}
-func (t *fakeTPM) privateKey(h tpmutil.Handle, pub crypto.PublicKey) crypto.PrivateKey {
-	if h != primaryHandle {
-		return nil
-	}
-	return t.primary
 }
 func (t *fakeTPM) flush(h tpmutil.Handle) { delete(t.loaded, h) }
 func (t *fakeTPM) close() error           { return nil }

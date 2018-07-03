@@ -57,8 +57,18 @@ func kubeEnvToConfig(kubeEnv string) (*rest.Config, error) {
 		switch {
 		case strings.HasPrefix(l, kubeEnvCert):
 			cert = strings.TrimPrefix(l, kubeEnvCert)
+			certBytes, err := base64.StdEncoding.DecodeString(cert)
+			if err != nil {
+				return nil, fmt.Errorf("decoding %q in kube-env: %v", kubeEnvCert, err)
+			}
+			cert = string(certBytes)
 		case strings.HasPrefix(l, kubeEnvKey):
 			key = strings.TrimPrefix(l, kubeEnvKey)
+			keyBytes, err := base64.StdEncoding.DecodeString(key)
+			if err != nil {
+				return nil, fmt.Errorf("decoding %q in kube-env: %v", kubeEnvKey, err)
+			}
+			key = string(keyBytes)
 		case strings.HasPrefix(l, kubeEnvMaster):
 			master = strings.TrimPrefix(l, kubeEnvMaster)
 		}
