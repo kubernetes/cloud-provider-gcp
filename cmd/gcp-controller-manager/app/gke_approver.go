@@ -340,6 +340,7 @@ type approverOptions struct {
 	projectID   string
 	zones       []string
 	tokenSource oauth2.TokenSource
+	tpmCACache  *caCache
 }
 
 func loadApproverOptions(s *GCPControllerManager) (approverOptions, error) {
@@ -396,6 +397,13 @@ func loadApproverOptions(s *GCPControllerManager) (approverOptions, error) {
 	a.clusterName, err = metadata.Get("instance/attributes/cluster-name")
 	if err != nil {
 		return a, err
+	}
+
+	a.tpmCACache = &caCache{
+		rootCertURL: rootCertURL,
+		interPrefix: intermediateCAPrefix,
+		certs:       make(map[string]*x509.Certificate),
+		crls:        make(map[string]*cachedCRL),
 	}
 
 	return a, nil
@@ -475,10 +483,13 @@ func validateTPMAttestation(opts approverOptions, csr *capi.CertificateSigningRe
 	}
 
 	// TODO(awly): get AIK public key from GCE API.
-	// TODO(awly): verify aikCert to root CA.
 	aikCert, err := x509.ParseCertificate(attestCert)
 	if err != nil {
 		glog.Errorf("Parsing ATTESTATION_CERTIFICATE: %v", err)
+		return false
+	}
+	if err := opts.tpmCACache.verify(aikCert); err != nil {
+		glog.Errorf("Verifying EK certificate validity: %v", err)
 		return false
 	}
 	aikPub, ok := aikCert.PublicKey.(*rsa.PublicKey)
