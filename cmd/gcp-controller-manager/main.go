@@ -21,6 +21,8 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"net/http"
 	"os"
 
 	"k8s.io/apiserver/pkg/util/flag"
@@ -28,8 +30,11 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl/util/logs"
 	"k8s.io/kubernetes/pkg/version/verflag"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
 )
+
+var metricsPort = pflag.Int("metrics-port", 8089, "Port to expose Prometheus metrics on")
 
 func main() {
 	s := app.NewGCPControllerManager()
@@ -40,6 +45,11 @@ func main() {
 	defer logs.FlushLogs()
 
 	verflag.PrintAndExitIfRequested()
+
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *metricsPort), nil))
+	}()
 
 	if err := app.Run(s); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

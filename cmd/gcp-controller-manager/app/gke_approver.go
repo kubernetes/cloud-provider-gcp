@@ -29,10 +29,12 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/compute/metadata"
 	"github.com/golang/glog"
 	"github.com/google/go-tpm/tpm2"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/oauth2"
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
@@ -47,6 +49,22 @@ import (
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 )
+
+var (
+	csrApprovalStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "csr_approvals",
+		Help: "Count of approved, denied and ignored CSRs",
+	}, []string{"status"})
+	csrApprovalLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "csr_approval_latency_seconds",
+		Help: "Latency of CSR approver, in seconds",
+	}, []string{"status"})
+)
+
+func init() {
+	prometheus.MustRegister(csrApprovalStatus)
+	prometheus.MustRegister(csrApprovalLatency)
+}
 
 const (
 	legacyKubeletUsername = "kubelet"
@@ -70,6 +88,7 @@ func newGKEApprover(opts approverOptions, client clientset.Interface) *gkeApprov
 }
 
 func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
+	start := time.Now()
 	if len(csr.Status.Certificate) != 0 {
 		return nil
 	}
@@ -80,6 +99,8 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 
 	x509cr, err := certutil.ParseCSR(csr)
 	if err != nil {
+		csrApprovalStatus.WithLabelValues("parse_error").Inc()
+		csrApprovalLatency.WithLabelValues("parse_error").Observe(time.Since(start).Seconds())
 		return fmt.Errorf("unable to parse csr %q: %v", csr.Name, err)
 	}
 
@@ -92,16 +113,22 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 		tried = append(tried, r.name)
 		if r.validate != nil && !r.validate(a.opts, csr, x509cr) {
 			glog.Infof("validator %q: denied CSR %q", r.name, csr.Name)
+			csrApprovalStatus.WithLabelValues("deny").Inc()
+			csrApprovalLatency.WithLabelValues("deny").Observe(time.Since(start).Seconds())
 			return a.updateCSR(csr, false, r.denyMsg)
 		}
 		glog.Infof("CSR %q validation passed", csr.Name)
 
 		approved, err := a.authorizeSAR(csr, r.permission)
 		if err != nil {
+			csrApprovalStatus.WithLabelValues("sar_error").Inc()
+			csrApprovalLatency.WithLabelValues("sar_error").Observe(time.Since(start).Seconds())
 			return err
 		}
 		if approved {
 			glog.Infof("validator %q: SubjectAccessReview approved for CSR %q", r.name, csr.Name)
+			csrApprovalStatus.WithLabelValues("approve").Inc()
+			csrApprovalLatency.WithLabelValues("approve").Observe(time.Since(start).Seconds())
 			return a.updateCSR(csr, true, r.approveMsg)
 		} else {
 			glog.Warningf("validator %q: SubjectAccessReview denied for CSR %q", r.name, csr.Name)
@@ -109,9 +136,13 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 	}
 
 	if len(tried) != 0 {
+		csrApprovalStatus.WithLabelValues("sar_reject").Inc()
+		csrApprovalLatency.WithLabelValues("sar_reject").Observe(time.Since(start).Seconds())
 		return certificates.IgnorableError("recognized csr %q as %q but subject access review was not approved", csr.Name, tried)
 	}
 	glog.Infof("no validators matched CSR %q", csr.Name)
+	csrApprovalStatus.WithLabelValues("ignore").Inc()
+	csrApprovalLatency.WithLabelValues("ignore").Observe(time.Since(start).Seconds())
 	return nil
 }
 

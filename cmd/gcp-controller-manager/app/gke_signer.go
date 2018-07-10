@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/prometheus/client_golang/prometheus"
 
 	capi "k8s.io/api/certificates/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -36,7 +37,21 @@ import (
 
 var (
 	groupVersions = []schema.GroupVersion{capi.SchemeGroupVersion}
+
+	csrSigningStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "csr_signing",
+		Help: "Count of signed CSRs",
+	}, []string{"status"})
+	csrSigningLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "csr_signing_latency_seconds",
+		Help: "Latency of CSR signer, in seconds",
+	}, []string{"status"})
 )
+
+func init() {
+	prometheus.MustRegister(csrSigningStatus)
+	prometheus.MustRegister(csrSigningLatency)
+}
 
 // gkeSigner uses external calls to GKE in order to sign certificate signing
 // requests.
@@ -65,19 +80,26 @@ func newGKESigner(kubeConfigFile string, retryBackoff time.Duration, recorder re
 }
 
 func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
+	start := time.Now()
 	if !certificates.IsCertificateRequestApproved(csr) {
 		return nil
 	}
 	glog.Infof("gkeSigner triggered for %q", csr.Name)
 	csr, err := s.sign(csr)
 	if err != nil {
+		csrSigningStatus.WithLabelValues("sign_error").Inc()
+		csrSigningLatency.WithLabelValues("sign_error").Observe(time.Since(start).Seconds())
 		return fmt.Errorf("error auto signing csr: %v", err)
 	}
 	_, err = s.client.CertificatesV1beta1().CertificateSigningRequests().UpdateStatus(csr)
 	if err != nil {
+		csrSigningStatus.WithLabelValues("update_error").Inc()
+		csrSigningLatency.WithLabelValues("update_error").Observe(time.Since(start).Seconds())
 		return fmt.Errorf("error updating signature for csr: %v", err)
 	}
 	glog.Infof("CSR %q signed", csr.Name)
+	csrSigningStatus.WithLabelValues("signed").Inc()
+	csrSigningLatency.WithLabelValues("signed").Observe(time.Since(start).Seconds())
 	return nil
 }
 
