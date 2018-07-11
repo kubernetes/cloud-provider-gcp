@@ -107,7 +107,7 @@ func Run(s *GCPControllerManager) error {
 	)
 
 	nodeAnnotaterClient := clientBuilder.ClientOrDie("node-annotater")
-	nodeAnnotateController, err := newNodeAnnotater(
+	nodeAnnotateController, err := newNodeAnnotator(
 		nodeAnnotaterClient,
 		sharedInformers.Core().V1().Nodes(),
 		approverOpts.tokenSource,

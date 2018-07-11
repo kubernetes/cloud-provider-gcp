@@ -17,55 +17,52 @@ limitations under the License.
 package app
 
 import (
-	"errors"
 	"fmt"
 	"testing"
-
-	compute "google.golang.org/api/compute/v1"
 )
 
-func TestGetExternalID(t *testing.T) {
+func TestParseNodeURL(t *testing.T) {
 	cs := []struct {
-		nodeUrl                 string
+		nodeURL                 string
 		project, zone, instance string
+		expectErr               bool
 	}{
 		{
-			nodeUrl:  "gce://a/b/c",
+			nodeURL:  "gce://a/b/c",
 			project:  "a",
 			zone:     "b",
 			instance: "c",
 		},
 		{
-			nodeUrl: "gce://a/b/c/d",
+			nodeURL:   "gce://a/b/c/d",
+			expectErr: true,
 		},
 		{
-			nodeUrl: "aws://a/b/c",
+			nodeURL:   "aws://a/b/c",
+			expectErr: true,
 		},
 		{
-			nodeUrl: "/a/b/c",
+			nodeURL:   "/a/b/c",
+			expectErr: true,
 		},
 		{
-			nodeUrl: "a/b/c",
+			nodeURL:   "a/b/c",
+			expectErr: true,
 		},
 		{
-			nodeUrl: "gce://a/b",
+			nodeURL:   "gce://a/b",
+			expectErr: true,
 		},
 	}
 
 	for i, c := range cs {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			var project, zone, instance string
-			na := &nodeAnnotater{
-				getInstance: func(p, z, i string) (*compute.Instance, error) {
-					project = p
-					zone = z
-					instance = i
-					return nil, errors.New("err")
-				},
-			}
-			na.getExternalID(c.nodeUrl)
+			project, zone, instance, err := parseNodeURL(c.nodeURL)
 			if c.project != project || c.zone != zone || c.instance != instance {
 				t.Errorf("got:\t(%q,%q,%q)\nwant:\t(%q,%q,%q)", project, zone, instance, c.project, c.zone, c.instance)
+			}
+			if (err != nil) != c.expectErr {
+				t.Errorf("unexpected value of err: %v", err)
 			}
 		})
 	}
