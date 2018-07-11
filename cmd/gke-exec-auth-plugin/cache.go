@@ -21,7 +21,7 @@ const (
 
 	// Minimum age of existing certificate before triggering rotation.
 	// Assuming no rotation errors, this is cert rotation period.
-	rotationThreshold = 24 * time.Hour
+	rotationThreshold = 10 * 24 * time.Hour // 10 days
 	// Caching duration for caller - will exec this plugin after this period.
 	responseExpiry = time.Hour
 )
