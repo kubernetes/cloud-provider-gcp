@@ -7,6 +7,7 @@ load(
 go_library(
     name = "go_default_library",
     srcs = [
+        "ca_cache.go",
         "controller.go",
         "gke_approver.go",
         "gke_signer.go",
@@ -66,6 +67,7 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = [
+        "ca_cache_test.go",
         "gke_approver_test.go",
         "gke_signer_test.go",
         "node_annotater_test.go",
