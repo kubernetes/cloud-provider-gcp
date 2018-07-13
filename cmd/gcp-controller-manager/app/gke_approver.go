@@ -20,7 +20,6 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -445,7 +444,6 @@ var tpmAttestationBlocks = []string{
 	"ATTESTATION CERTIFICATE",
 	"ATTESTATION DATA",
 	"ATTESTATION SIGNATURE",
-	"VM IDENTITY",
 }
 
 func isNodeClientCertWithAttestation(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
@@ -474,14 +472,34 @@ func validateTPMAttestation(opts approverOptions, csr *capi.CertificateSigningRe
 		glog.Errorf("Parsing csr.Spec.Request: %v", err)
 		return false
 	}
-	nodeIDRaw := blocks["VM IDENTITY"].Bytes
 	attestDataRaw := blocks["ATTESTATION DATA"].Bytes
 	attestSig := blocks["ATTESTATION SIGNATURE"].Bytes
 	attestCert := blocks["ATTESTATION CERTIFICATE"].Bytes
 
-	var nodeID nodeidentity.Identity
-	if err := json.Unmarshal(nodeIDRaw, &nodeID); err != nil {
-		glog.Errorf("Unmarshaling VM identity JSON: %v", err)
+	// TODO(awly): get AIK public key from GCE API.
+	aikCert, err := x509.ParseCertificate(attestCert)
+	if err != nil {
+		glog.Errorf("Parsing ATTESTATION_CERTIFICATE: %v", err)
+		return false
+	}
+	if err := opts.tpmCACache.verify(aikCert); err != nil {
+		glog.Errorf("Verifying EK certificate validity: %v", err)
+		return false
+	}
+	aikPub, ok := aikCert.PublicKey.(*rsa.PublicKey)
+	if !ok {
+		glog.Errorf("Public key in ATTESTATION CERTIFICATE is %T, want *rsa.PublicKey", aikCert.PublicKey)
+		return false
+	}
+
+	nodeID, err := nodeidentity.FromAIKCert(aikCert)
+	if err != nil {
+		glog.Errorf("Failed extracting VM identity from EK certificate: %v", err)
+		return false
+	}
+	hostname := strings.TrimPrefix("system:node:", x509cr.Subject.CommonName)
+	if nodeID.Name != hostname {
+		glog.Errorf("VM name in ATTESTATION CERTIFICATE (%q) doesn't match CommonName in x509 CSR (%q)", nodeID.Name, x509cr.Subject.CommonName)
 		return false
 	}
 	if fmt.Sprint(nodeID.ProjectName) != opts.projectID {
@@ -511,22 +529,6 @@ func validateTPMAttestation(opts approverOptions, csr *capi.CertificateSigningRe
 			glog.Errorf("VM %q doesn't belong to cluster %q", inst.Name, opts.clusterName)
 			return false
 		}
-	}
-
-	// TODO(awly): get AIK public key from GCE API.
-	aikCert, err := x509.ParseCertificate(attestCert)
-	if err != nil {
-		glog.Errorf("Parsing ATTESTATION_CERTIFICATE: %v", err)
-		return false
-	}
-	if err := opts.tpmCACache.verify(aikCert); err != nil {
-		glog.Errorf("Verifying EK certificate validity: %v", err)
-		return false
-	}
-	aikPub, ok := aikCert.PublicKey.(*rsa.PublicKey)
-	if !ok {
-		glog.Errorf("Public key in ATTESTATION CERTIFICATE is %T, want *rsa.PublicKey", aikCert.PublicKey)
-		return false
 	}
 
 	attestHash := sha256.Sum256(attestDataRaw)
