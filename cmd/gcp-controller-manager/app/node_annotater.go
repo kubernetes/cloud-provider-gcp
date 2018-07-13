@@ -41,15 +41,17 @@ import (
 
 const InstanceIDAnnotationKey = "container.googleapis.com/instance_id"
 
-type nodeAnnotater struct {
-	c           clientset.Interface
-	ns          corelisters.NodeLister
-	hasSynced   func() bool
-	queue       workqueue.RateLimitingInterface
-	getInstance func(project, zone, instance string) (*compute.Instance, error)
+type nodeAnnotator struct {
+	c          clientset.Interface
+	ns         corelisters.NodeLister
+	hasSynced  func() bool
+	queue      workqueue.RateLimitingInterface
+	annotators []annotator
+	// for testing
+	getInstance func(nodeURL string) (*compute.Instance, error)
 }
 
-func newNodeAnnotater(client clientset.Interface, nodeInformer coreinformers.NodeInformer, gts oauth2.TokenSource) (*nodeAnnotater, error) {
+func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.NodeInformer, gts oauth2.TokenSource) (*nodeAnnotator, error) {
 
 	oclient := oauth2.NewClient(context.Background(), gts)
 	cs, err := compute.New(oclient)
@@ -58,29 +60,49 @@ func newNodeAnnotater(client clientset.Interface, nodeInformer coreinformers.Nod
 	}
 	gce := compute.NewInstancesService(cs)
 
-	annotater := &nodeAnnotater{
+	na := &nodeAnnotator{
 		c:         client,
 		ns:        nodeInformer.Lister(),
 		hasSynced: nodeInformer.Informer().HasSynced,
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
 			workqueue.NewItemExponentialFailureRateLimiter(200*time.Millisecond, 1000*time.Second),
-		), "node-annotater"),
-		getInstance: func(project, zone, instance string) (*compute.Instance, error) {
+		), "node-annotator"),
+		getInstance: func(nodeURL string) (*compute.Instance, error) {
+			project, zone, instance, err := parseNodeURL(nodeURL)
+			if err != nil {
+				return nil, err
+			}
 			return gce.Get(project, zone, instance).Do()
+		},
+		annotators: []annotator{
+			{
+				annotate: func(node *core.Node, instance *compute.Instance) bool {
+					eid := strconv.FormatUint(instance.Id, 10)
+					if len(node.ObjectMeta.Annotations) != 0 && eid == node.ObjectMeta.Annotations[InstanceIDAnnotationKey] {
+						// node restarted but no update of ExternalID required
+						return false
+					}
+					if node.ObjectMeta.Annotations == nil {
+						node.ObjectMeta.Annotations = make(map[string]string)
+					}
+					node.ObjectMeta.Annotations[InstanceIDAnnotationKey] = eid
+					return true
+				},
+			},
 		},
 	}
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    annotater.add,
-		UpdateFunc: annotater.update,
+		AddFunc:    na.add,
+		UpdateFunc: na.update,
 	})
-	return annotater, nil
+	return na, nil
 }
 
-func (na *nodeAnnotater) add(obj interface{}) {
+func (na *nodeAnnotator) add(obj interface{}) {
 	na.enqueue(obj)
 }
 
-func (na *nodeAnnotater) update(obj, oldObj interface{}) {
+func (na *nodeAnnotator) update(obj, oldObj interface{}) {
 	node := obj.(*core.Node)
 	oldNode := oldObj.(*core.Node)
 	if node.Status.NodeInfo.BootID != oldNode.Status.NodeInfo.BootID {
@@ -88,7 +110,7 @@ func (na *nodeAnnotater) update(obj, oldObj interface{}) {
 	}
 }
 
-func (na *nodeAnnotater) enqueue(obj interface{}) {
+func (na *nodeAnnotator) enqueue(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %+v: %v", obj, err))
@@ -97,8 +119,8 @@ func (na *nodeAnnotater) enqueue(obj interface{}) {
 	na.queue.Add(key)
 }
 
-func (na *nodeAnnotater) Run(workers int, stopCh <-chan struct{}) {
-	if !controller.WaitForCacheSync("node-annotater", stopCh, na.hasSynced) {
+func (na *nodeAnnotator) Run(workers int, stopCh <-chan struct{}) {
+	if !controller.WaitForCacheSync("node-annotator", stopCh, na.hasSynced) {
 		return
 	}
 	for i := 0; i < workers; i++ {
@@ -107,7 +129,7 @@ func (na *nodeAnnotater) Run(workers int, stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (na *nodeAnnotater) processNextWorkItem() bool {
+func (na *nodeAnnotator) processNextWorkItem() bool {
 	key, quit := na.queue.Get()
 	if quit {
 		return false
@@ -120,12 +142,12 @@ func (na *nodeAnnotater) processNextWorkItem() bool {
 	return true
 }
 
-func (na *nodeAnnotater) work() {
+func (na *nodeAnnotator) work() {
 	for na.processNextWorkItem() {
 	}
 }
 
-func (na *nodeAnnotater) sync(key string) {
+func (na *nodeAnnotator) sync(key string) {
 	node, err := na.ns.Get(key)
 	if err != nil {
 		glog.Errorf("Sync %v failed with: %v", key, err)
@@ -133,21 +155,20 @@ func (na *nodeAnnotater) sync(key string) {
 		return
 	}
 
-	eid, err := na.getExternalID(node.Spec.ProviderID)
+	instance, err := na.getInstance(node.Spec.ProviderID)
 	if err != nil {
 		glog.Errorf("Sync %v failed with: %v", key, err)
 		na.queue.Add(key)
 		return
 	}
-	if len(node.ObjectMeta.Annotations) != 0 && eid == node.ObjectMeta.Annotations[InstanceIDAnnotationKey] {
-		// node restarted but no update of ExternalID required
+
+	var update bool
+	for _, ann := range na.annotators {
+		update = update || ann.annotate(node, instance)
+	}
+	if !update {
 		return
 	}
-	if node.ObjectMeta.Annotations == nil {
-		node.ObjectMeta.Annotations = make(map[string]string)
-	}
-
-	node.ObjectMeta.Annotations[InstanceIDAnnotationKey] = eid
 
 	if _, err := na.c.Core().Nodes().Update(node); err != nil {
 		glog.Errorf("Sync %v failed with: %v", key, err)
@@ -156,29 +177,27 @@ func (na *nodeAnnotater) sync(key string) {
 	}
 }
 
-func (na *nodeAnnotater) getExternalID(nodeUrl string) (string, error) {
-	u, err := url.Parse(nodeUrl)
+type annotator struct {
+	annotate func(*core.Node, *compute.Instance) bool
+}
+
+func parseNodeURL(nodeURL string) (project, zone, instance string, err error) {
+	u, err := url.Parse(nodeURL)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse %q: %v", nodeUrl, err)
+		return "", "", "", fmt.Errorf("failed to parse %q: %v", nodeURL, err)
 	}
 	if u.Scheme != "gce" {
-		return "", fmt.Errorf("instance %q doesn't run on gce", nodeUrl)
+		return "", "", "", fmt.Errorf("instance %q doesn't run on gce", nodeURL)
 	}
-	project := u.Host
+	project = u.Host
 	parts := strings.Split(u.Path, "/")
 	if len(parts) != 3 {
-		return "", fmt.Errorf("failed to parse %q: expected a three part path")
+		return "", "", "", fmt.Errorf("failed to parse %q: expected a three part path")
 	}
 	if len(parts[0]) != 0 {
-		return "", fmt.Errorf("failed to parse %q: part one of path to have length 0")
+		return "", "", "", fmt.Errorf("failed to parse %q: part one of path to have length 0")
 	}
-	zone := parts[1]
-	vm := parts[2]
-
-	instance, err := na.getInstance(project, zone, vm)
-	if err != nil {
-		return "", fmt.Errorf("unable to query gcp apis: %v", err)
-	}
-
-	return strconv.FormatUint(instance.Id, 10), nil
+	zone = parts[1]
+	instance = parts[2]
+	return
 }
