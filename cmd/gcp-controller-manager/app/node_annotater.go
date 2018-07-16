@@ -68,6 +68,7 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 		},
 		annotators: []annotator{
 			{
+				name: "instance-id-reconciler",
 				annotate: func(node *core.Node, instance *compute.Instance) bool {
 					eid := strconv.FormatUint(instance.Id, 10)
 					if len(node.ObjectMeta.Annotations) != 0 && eid == node.ObjectMeta.Annotations[InstanceIDAnnotationKey] {
@@ -156,7 +157,11 @@ func (na *nodeAnnotator) sync(key string) {
 
 	var update bool
 	for _, ann := range na.annotators {
-		update = update || ann.annotate(node, instance)
+		modified := ann.annotate(node, instance)
+		if modified {
+			glog.Infof("%q annotater acting on %q", ann.name, node.Name)
+		}
+		update = update || modified
 	}
 	if !update {
 		return
@@ -170,6 +175,7 @@ func (na *nodeAnnotator) sync(key string) {
 }
 
 type annotator struct {
+	name     string
 	annotate func(*core.Node, *compute.Instance) bool
 }
 
