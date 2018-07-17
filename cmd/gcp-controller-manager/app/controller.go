@@ -85,6 +85,9 @@ func Run(s *GCPControllerManager) error {
 	run := func(stopCh <-chan struct{}) {
 		sharedInformers.Start(stopCh)
 		for name, loop := range loops() {
+			if !s.isEnabled(name) {
+				continue
+			}
 			name = "gcp-" + name
 			loopClient, err := clientBuilder.Client(name)
 			if err != nil {

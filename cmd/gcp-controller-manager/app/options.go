@@ -34,6 +34,7 @@ type GCPControllerManager struct {
 	Kubeconfig                  string
 	ClusterSigningGKEKubeconfig string
 	GCEConfigPath               string
+	Controllers                 []string
 
 	LeaderElectionConfig componentconfig.LeaderElectionConfiguration
 }
@@ -43,6 +44,7 @@ type GCPControllerManager struct {
 func NewGCPControllerManager() *GCPControllerManager {
 	s := &GCPControllerManager{
 		GCEConfigPath: "/etc/gce.conf",
+		Controllers:   []string{"*"},
 		LeaderElectionConfig: componentconfig.LeaderElectionConfiguration{
 			LeaderElect:   true,
 			LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
@@ -60,5 +62,22 @@ func (s *GCPControllerManager) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
 	fs.StringVar(&s.ClusterSigningGKEKubeconfig, "cluster-signing-gke-kubeconfig", s.ClusterSigningGKEKubeconfig, "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")
 	fs.StringVar(&s.GCEConfigPath, "gce-config", s.GCEConfigPath, "Path to gce.conf.")
+	fs.StringSliceVar(&s.Controllers, "controller", s.Controllers, "Controllers to enable.")
 	leaderelectionconfig.BindFlags(&s.LeaderElectionConfig, fs)
+}
+
+func (s *GCPControllerManager) isEnabled(name string) bool {
+	var star bool
+	for _, controller := range s.Controllers {
+		if controller == name {
+			return true
+		}
+		if controller == "-"+name {
+			return false
+		}
+		if controller == "*" {
+			star = true
+		}
+	}
+	return star
 }
