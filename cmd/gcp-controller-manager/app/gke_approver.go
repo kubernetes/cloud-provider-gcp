@@ -54,11 +54,11 @@ var (
 	csrApprovalStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "csr_approvals",
 		Help: "Count of approved, denied and ignored CSRs",
-	}, []string{"status"})
+	}, []string{"status", "kind"})
 	csrApprovalLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "csr_approval_latency_seconds",
 		Help: "Latency of CSR approver, in seconds",
-	}, []string{"status"})
+	}, []string{"status", "kind"})
 )
 
 func init() {
@@ -73,6 +73,8 @@ const (
 	// TODO(awly): eventually this should be true. But that makes testing
 	// harder, so disabling or now.
 	validateClusterMembership = false
+
+	authFlowLabelNone = "not_approved"
 )
 
 // gkeApprover handles approval/denial of CSRs based on SubjectAccessReview and
@@ -99,8 +101,8 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 
 	x509cr, err := certutil.ParseCSR(csr)
 	if err != nil {
-		csrApprovalStatus.WithLabelValues("parse_error").Inc()
-		csrApprovalLatency.WithLabelValues("parse_error").Observe(time.Since(start).Seconds())
+		csrApprovalStatus.WithLabelValues("parse_error", authFlowLabelNone).Inc()
+		csrApprovalLatency.WithLabelValues("parse_error", authFlowLabelNone).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("unable to parse csr %q: %v", csr.Name, err)
 	}
 
@@ -113,22 +115,22 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 		tried = append(tried, r.name)
 		if r.validate != nil && !r.validate(a.opts, csr, x509cr) {
 			glog.Infof("validator %q: denied CSR %q", r.name, csr.Name)
-			csrApprovalStatus.WithLabelValues("deny").Inc()
-			csrApprovalLatency.WithLabelValues("deny").Observe(time.Since(start).Seconds())
+			csrApprovalStatus.WithLabelValues("deny", r.authFlowLabel).Inc()
+			csrApprovalLatency.WithLabelValues("deny", r.authFlowLabel).Observe(time.Since(start).Seconds())
 			return a.updateCSR(csr, false, r.denyMsg)
 		}
 		glog.Infof("CSR %q validation passed", csr.Name)
 
 		approved, err := a.authorizeSAR(csr, r.permission)
 		if err != nil {
-			csrApprovalStatus.WithLabelValues("sar_error").Inc()
-			csrApprovalLatency.WithLabelValues("sar_error").Observe(time.Since(start).Seconds())
+			csrApprovalStatus.WithLabelValues("sar_error", r.authFlowLabel).Inc()
+			csrApprovalLatency.WithLabelValues("sar_error", r.authFlowLabel).Observe(time.Since(start).Seconds())
 			return err
 		}
 		if approved {
 			glog.Infof("validator %q: SubjectAccessReview approved for CSR %q", r.name, csr.Name)
-			csrApprovalStatus.WithLabelValues("approve").Inc()
-			csrApprovalLatency.WithLabelValues("approve").Observe(time.Since(start).Seconds())
+			csrApprovalStatus.WithLabelValues("approve", r.authFlowLabel).Inc()
+			csrApprovalLatency.WithLabelValues("approve", r.authFlowLabel).Observe(time.Since(start).Seconds())
 			return a.updateCSR(csr, true, r.approveMsg)
 		} else {
 			glog.Warningf("validator %q: SubjectAccessReview denied for CSR %q", r.name, csr.Name)
@@ -136,13 +138,13 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 	}
 
 	if len(tried) != 0 {
-		csrApprovalStatus.WithLabelValues("sar_reject").Inc()
-		csrApprovalLatency.WithLabelValues("sar_reject").Observe(time.Since(start).Seconds())
+		csrApprovalStatus.WithLabelValues("sar_reject", authFlowLabelNone).Inc()
+		csrApprovalLatency.WithLabelValues("sar_reject", authFlowLabelNone).Observe(time.Since(start).Seconds())
 		return certificates.IgnorableError("recognized csr %q as %q but subject access review was not approved", csr.Name, tried)
 	}
 	glog.Infof("no validators matched CSR %q", csr.Name)
-	csrApprovalStatus.WithLabelValues("ignore").Inc()
-	csrApprovalLatency.WithLabelValues("ignore").Observe(time.Since(start).Seconds())
+	csrApprovalStatus.WithLabelValues("ignore", authFlowLabelNone).Inc()
+	csrApprovalLatency.WithLabelValues("ignore", authFlowLabelNone).Observe(time.Since(start).Seconds())
 	return nil
 }
 
@@ -170,9 +172,10 @@ func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bo
 type csrCheckFunc func(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
 
 type csrValidator struct {
-	name       string
-	approveMsg string
-	denyMsg    string
+	name          string
+	authFlowLabel string
+	approveMsg    string
+	denyMsg       string
 
 	// recognize is a required field that returns true if this csrValidator is
 	// applicable to given CSR.
@@ -189,30 +192,34 @@ type csrValidator struct {
 // More specific validators go first.
 var validators = []csrValidator{
 	{
-		name:       "kubelet client certificate with TPM attestation and SubjectAccessReview",
-		recognize:  isNodeClientCertWithAttestation,
-		validate:   validateTPMAttestation,
-		permission: authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
-		approveMsg: "Auto approving kubelet client certificate with TPM attestation after SubjectAccessReview.",
+		name:          "kubelet client certificate with TPM attestation and SubjectAccessReview",
+		authFlowLabel: "kubelet_client_tpm",
+		recognize:     isNodeClientCertWithAttestation,
+		validate:      validateTPMAttestation,
+		permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
+		approveMsg:    "Auto approving kubelet client certificate with TPM attestation after SubjectAccessReview.",
 	},
 	{
-		name:       "self kubelet client certificate SubjectAccessReview",
-		recognize:  isSelfNodeClientCert,
-		permission: authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "selfnodeclient"},
-		approveMsg: "Auto approving self kubelet client certificate after SubjectAccessReview.",
+		name:          "self kubelet client certificate SubjectAccessReview",
+		authFlowLabel: "kubelet_client_self",
+		recognize:     isSelfNodeClientCert,
+		permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "selfnodeclient"},
+		approveMsg:    "Auto approving self kubelet client certificate after SubjectAccessReview.",
 	},
 	{
-		name:       "kubelet client certificate SubjectAccessReview",
-		recognize:  isLegacyNodeClientCert,
-		permission: authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
-		approveMsg: "Auto approving kubelet client certificate after SubjectAccessReview.",
+		name:          "kubelet client certificate SubjectAccessReview",
+		authFlowLabel: "kubelet_client_legacy",
+		recognize:     isLegacyNodeClientCert,
+		permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
+		approveMsg:    "Auto approving kubelet client certificate after SubjectAccessReview.",
 	},
 	{
-		name:       "kubelet server certificate SubjectAccessReview",
-		recognize:  isNodeServerCert,
-		validate:   validateNodeServerCert,
-		permission: authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "selfnodeclient"},
-		approveMsg: "Auto approving kubelet server certificate after SubjectAccessReview.",
+		name:          "kubelet server certificate SubjectAccessReview",
+		authFlowLabel: "kubelet_server_self",
+		recognize:     isNodeServerCert,
+		validate:      validateNodeServerCert,
+		permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "selfnodeclient"},
+		approveMsg:    "Auto approving kubelet server certificate after SubjectAccessReview.",
 	},
 }
 
