@@ -99,7 +99,7 @@ func Run(s *GCPControllerManager) error {
 		},
 		"certificate-signer": func(ctx ControllerContext) error {
 			signerClient := ctx.Client()
-			signer, err := newGKESigner(s.ClusterSigningGKEKubeconfig, s.ClusterSigningGKERetryBackoff.Duration, ctx.Recorder(), signerClient)
+			signer, err := newGKESigner(s.ClusterSigningGKEKubeconfig, ctx.Recorder(), signerClient)
 			if err != nil {
 				return err
 			}

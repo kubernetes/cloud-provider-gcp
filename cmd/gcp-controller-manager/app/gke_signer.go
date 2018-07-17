@@ -48,6 +48,8 @@ var (
 	}, []string{"status"})
 )
 
+const ClusterSigningGKERetryBackoff = 500 * time.Millisecond
+
 func init() {
 	prometheus.MustRegister(csrSigningStatus)
 	prometheus.MustRegister(csrSigningLatency)
@@ -64,8 +66,8 @@ type gkeSigner struct {
 }
 
 // newGKESigner will create a new instance of a gkeSigner.
-func newGKESigner(kubeConfigFile string, retryBackoff time.Duration, recorder record.EventRecorder, client clientset.Interface) (*gkeSigner, error) {
-	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, kubeConfigFile, groupVersions, retryBackoff)
+func newGKESigner(kubeConfigFile string, recorder record.EventRecorder, client clientset.Interface) (*gkeSigner, error) {
+	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, kubeConfigFile, groupVersions, ClusterSigningGKERetryBackoff)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +75,7 @@ func newGKESigner(kubeConfigFile string, retryBackoff time.Duration, recorder re
 	return &gkeSigner{
 		webhook:        webhook,
 		kubeConfigFile: kubeConfigFile,
-		retryBackoff:   retryBackoff,
+		retryBackoff:   ClusterSigningGKERetryBackoff,
 		recorder:       recorder,
 		client:         client,
 	}, nil

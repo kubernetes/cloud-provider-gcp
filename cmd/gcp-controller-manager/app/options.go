@@ -31,11 +31,9 @@ import (
 
 // GCPControllerManager is the main context object for the package.
 type GCPControllerManager struct {
-	Kubeconfig                    string
-	ClusterSigningGKEKubeconfig   string
-	ClusterSigningGKERetryBackoff metav1.Duration
-	ApproveAllKubeletCSRsForGroup string
-	GCEConfigPath                 string
+	Kubeconfig                  string
+	ClusterSigningGKEKubeconfig string
+	GCEConfigPath               string
 
 	LeaderElectionConfig componentconfig.LeaderElectionConfiguration
 }
@@ -44,8 +42,7 @@ type GCPControllerManager struct {
 // GKECertificatesController with default parameters.
 func NewGCPControllerManager() *GCPControllerManager {
 	s := &GCPControllerManager{
-		ClusterSigningGKERetryBackoff: metav1.Duration{Duration: 500 * time.Millisecond},
-		GCEConfigPath:                 "/etc/gce.conf",
+		GCEConfigPath: "/etc/gce.conf",
 		LeaderElectionConfig: componentconfig.LeaderElectionConfiguration{
 			LeaderElect:   true,
 			LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
@@ -61,13 +58,7 @@ func NewGCPControllerManager() *GCPControllerManager {
 // specified FlagSet.
 func (s *GCPControllerManager) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
-
 	fs.StringVar(&s.ClusterSigningGKEKubeconfig, "cluster-signing-gke-kubeconfig", s.ClusterSigningGKEKubeconfig, "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")
-	fs.DurationVar(&s.ClusterSigningGKERetryBackoff.Duration, "cluster-signing-gke-retry-backoff", s.ClusterSigningGKERetryBackoff.Duration, "The initial backoff to use when retrying requests to GKE. Additional attempts will use exponential backoff.")
-
-	fs.StringVar(&s.ApproveAllKubeletCSRsForGroup, "insecure-experimental-approve-all-kubelet-csrs-for-group", s.ApproveAllKubeletCSRsForGroup, "The group for which the controller-manager will auto approve all CSRs for kubelet client certificates.")
-
 	fs.StringVar(&s.GCEConfigPath, "gce-config", s.GCEConfigPath, "Path to gce.conf.")
-
 	leaderelectionconfig.BindFlags(&s.LeaderElectionConfig, fs)
 }
