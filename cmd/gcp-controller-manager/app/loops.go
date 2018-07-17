@@ -32,6 +32,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
+	"k8s.io/kubernetes/pkg/controller/certificates"
 )
 
 type ControllerContext interface {
@@ -39,6 +40,7 @@ type ControllerContext interface {
 	SharedInformers() informers.SharedInformerFactory
 	Recorder() record.EventRecorder
 	GCP() GCPConfig
+	Server() *GCPControllerManager
 	Done() <-chan struct{}
 }
 
@@ -47,6 +49,7 @@ type simpleCtx struct {
 	sharedInformers informers.SharedInformerFactory
 	recorder        record.EventRecorder
 	gcpCfg          GCPConfig
+	server          *GCPControllerManager
 	stopCh          <-chan struct{}
 }
 
@@ -64,6 +67,10 @@ func (sc *simpleCtx) Recorder() record.EventRecorder {
 
 func (sc *simpleCtx) GCP() GCPConfig {
 	return sc.gcpCfg
+}
+
+func (sc *simpleCtx) Server() *GCPControllerManager {
+	return sc.server
 }
 
 func (sc *simpleCtx) Done() <-chan struct{} {
@@ -142,4 +149,51 @@ func loadGCPConfig(s *GCPControllerManager) (GCPConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+// loops returns all the control loops that the GCPControllerManager can start.
+// We append GCP to all of these to disambiguate them in API server and audit
+// logs. These loops are intentionally started in a random order.
+func loops() map[string]func(ControllerContext) error {
+	return map[string]func(ControllerContext) error{
+		"certificate-approver": func(ctx ControllerContext) error {
+			approverClient := ctx.Client()
+			approver := newGKEApprover(ctx.GCP(), approverClient)
+			approveController := certificates.NewCertificateController(
+				approverClient,
+				ctx.SharedInformers().Certificates().V1beta1().CertificateSigningRequests(),
+				approver.handle,
+			)
+			go approveController.Run(5, ctx.Done())
+			return nil
+		},
+		"certificate-signer": func(ctx ControllerContext) error {
+			signerClient := ctx.Client()
+			signer, err := newGKESigner(ctx.Server().ClusterSigningGKEKubeconfig, ctx.Recorder(), signerClient)
+			if err != nil {
+				return err
+			}
+			signController := certificates.NewCertificateController(
+				signerClient,
+				ctx.SharedInformers().Certificates().V1beta1().CertificateSigningRequests(),
+				signer.handle,
+			)
+
+			go signController.Run(5, ctx.Done())
+			return nil
+		},
+		"node-annotater": func(ctx ControllerContext) error {
+			nodeAnnotaterClient := ctx.Client()
+			nodeAnnotateController, err := newNodeAnnotator(
+				nodeAnnotaterClient,
+				ctx.SharedInformers().Core().V1().Nodes(),
+				ctx.GCP().TokenSource,
+			)
+			if err != nil {
+				return err
+			}
+			go nodeAnnotateController.Run(5, ctx.Done())
+			return nil
+		},
+	}
 }
