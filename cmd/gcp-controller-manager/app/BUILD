@@ -11,6 +11,7 @@ go_library(
         "controller.go",
         "gke_approver.go",
         "gke_signer.go",
+        "loops.go",
         "node_annotater.go",
         "options.go",
     ],

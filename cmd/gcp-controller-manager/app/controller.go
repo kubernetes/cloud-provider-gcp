@@ -67,61 +67,86 @@ func Run(s *GCPControllerManager) error {
 		return err
 	}
 
-	kubeClient, err := clientset.NewForConfig(restclient.AddUserAgent(kubeconfig, "gke-certificates-controller"))
+	gcpCfg, err := loadGCPConfig(s)
 	if err != nil {
 		return err
 	}
-
-	approverOpts, err := loadApproverOptions(s)
-	if err != nil {
-		return err
-	}
-
-	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(glog.Infof)
-	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
-	recorder := eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{Component: "gke-certificates-controller"})
 
 	clientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: kubeconfig}
 
-	informerClient := clientBuilder.ClientOrDie("certificate-controller-informer")
+	informerClient := clientBuilder.ClientOrDie("gcp-controller-manager-shared-informer")
 	sharedInformers := informers.NewSharedInformerFactory(informerClient, time.Duration(12)*time.Hour)
 
-	approverClient := clientBuilder.ClientOrDie("certificate-controller-approver")
-	approver := newGKEApprover(approverOpts, approverClient)
-	approveController := certificates.NewCertificateController(
-		approverClient,
-		sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
-		approver.handle,
-	)
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(glog.Infof)
+	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
+		Interface: v1core.New(clientBuilder.ClientOrDie("gcp-controller-manager").CoreV1().RESTClient()).Events(""),
+	})
 
-	signerClient := clientBuilder.ClientOrDie("certificate-controller-signer")
-	signer, err := newGKESigner(s.ClusterSigningGKEKubeconfig, s.ClusterSigningGKERetryBackoff.Duration, recorder, signerClient)
-	if err != nil {
-		return err
-	}
-	signController := certificates.NewCertificateController(
-		signerClient,
-		sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
-		signer.handle,
-	)
+	// We append GCP to all of these to disambiguate them in API server and audit
+	// logs. These loops are intentionally started in a random order.
+	loops := map[string]func(ControllerContext) error{
+		"certificate-approver": func(ctx ControllerContext) error {
+			approverClient := ctx.Client()
+			approver := newGKEApprover(gcpCfg, approverClient)
+			approveController := certificates.NewCertificateController(
+				approverClient,
+				sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
+				approver.handle,
+			)
+			go approveController.Run(5, ctx.Done())
+			return nil
+		},
+		"certificate-signer": func(ctx ControllerContext) error {
+			signerClient := ctx.Client()
+			signer, err := newGKESigner(s.ClusterSigningGKEKubeconfig, s.ClusterSigningGKERetryBackoff.Duration, ctx.Recorder(), signerClient)
+			if err != nil {
+				return err
+			}
+			signController := certificates.NewCertificateController(
+				signerClient,
+				sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
+				signer.handle,
+			)
 
-	nodeAnnotaterClient := clientBuilder.ClientOrDie("node-annotater")
-	nodeAnnotateController, err := newNodeAnnotator(
-		nodeAnnotaterClient,
-		sharedInformers.Core().V1().Nodes(),
-		approverOpts.tokenSource,
-	)
-	if err != nil {
-		return err
+			go signController.Run(5, ctx.Done())
+			return nil
+		},
+		"node-annotater": func(ctx ControllerContext) error {
+			nodeAnnotaterClient := ctx.Client()
+			nodeAnnotateController, err := newNodeAnnotator(
+				nodeAnnotaterClient,
+				sharedInformers.Core().V1().Nodes(),
+				gcpCfg.TokenSource,
+			)
+			if err != nil {
+				return err
+			}
+			go nodeAnnotateController.Run(5, ctx.Done())
+			return nil
+		},
 	}
 
 	run := func(stopCh <-chan struct{}) {
 		sharedInformers.Start(stopCh)
-		// controller.Run calls block forever.
-		go approveController.Run(5, stopCh)
-		go signController.Run(5, stopCh)
-		go nodeAnnotateController.Run(5, stopCh)
+		for name, loop := range loops {
+			name = "gcp-" + name
+			loopClient, err := clientBuilder.Client(name)
+			if err != nil {
+				glog.Fatalf("Failed to start client for %q: %v", name, err)
+			}
+			if loop(&simpleCtx{
+				client:          loopClient,
+				sharedInformers: sharedInformers,
+				recorder: eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
+					Component: name,
+				}),
+				gcpCfg: gcpCfg,
+				stopCh: stopCh,
+			}); err != nil {
+				glog.Fatalf("Failed to start %q: %v", name, err)
+			}
+		}
 		<-stopCh
 	}
 
@@ -130,7 +155,9 @@ func Run(s *GCPControllerManager) error {
 		if err != nil {
 			return err
 		}
-		leaderElectionConfig, err := makeLeaderElectionConfig(s.LeaderElectionConfig, leaderElectionClient, recorder)
+		leaderElectionConfig, err := makeLeaderElectionConfig(s.LeaderElectionConfig, leaderElectionClient, eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
+			Component: "gcp-controller-manager-leader-election",
+		}))
 		if err != nil {
 			return err
 		}

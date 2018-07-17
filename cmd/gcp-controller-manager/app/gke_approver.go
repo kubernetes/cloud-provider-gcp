@@ -26,26 +26,21 @@ import (
 	"net/http"
 	"path"
 	"reflect"
-	"sort"
 	"strings"
 	"time"
 
-	"cloud.google.com/go/compute/metadata"
 	"github.com/golang/glog"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/oauth2"
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
-	gcfg "gopkg.in/gcfg.v1"
-	warnings "gopkg.in/warnings.v0"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
-	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 )
 
@@ -80,11 +75,11 @@ const (
 // CSR attestation data.
 type gkeApprover struct {
 	client     clientset.Interface
-	opts       approverOptions
+	opts       GCPConfig
 	validators []csrValidator
 }
 
-func newGKEApprover(opts approverOptions, client clientset.Interface) *gkeApprover {
+func newGKEApprover(opts GCPConfig, client clientset.Interface) *gkeApprover {
 	return &gkeApprover{client: client, validators: validators, opts: opts}
 }
 
@@ -168,7 +163,7 @@ func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bo
 	return nil
 }
 
-type csrCheckFunc func(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
+type csrCheckFunc func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
 
 type csrValidator struct {
 	name          string
@@ -276,7 +271,7 @@ var (
 	}
 )
 
-func isNodeCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isNodeCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !reflect.DeepEqual([]string{"system:nodes"}, x509cr.Subject.Organization) {
 		return false
 	}
@@ -286,7 +281,7 @@ func isNodeCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509c
 	return strings.HasPrefix(x509cr.Subject.CommonName, "system:node:")
 }
 
-func isNodeClientCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isNodeClientCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeCert(opts, csr, x509cr) {
 		return false
 	}
@@ -296,21 +291,21 @@ func isNodeClientCert(opts approverOptions, csr *capi.CertificateSigningRequest,
 	return hasExactUsages(csr, kubeletClientUsages)
 }
 
-func isLegacyNodeClientCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isLegacyNodeClientCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeClientCert(opts, csr, x509cr) {
 		return false
 	}
 	return csr.Spec.Username == legacyKubeletUsername
 }
 
-func isSelfNodeClientCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isSelfNodeClientCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeClientCert(opts, csr, x509cr) {
 		return false
 	}
 	return csr.Spec.Username == x509cr.Subject.CommonName
 }
 
-func isNodeServerCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeCert(opts, csr, x509cr) {
 		return false
 	}
@@ -320,8 +315,8 @@ func isNodeServerCert(opts approverOptions, csr *capi.CertificateSigningRequest,
 	return csr.Spec.Username == x509cr.Subject.CommonName
 }
 
-func validateNodeServerCert(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-	client := oauth2.NewClient(context.Background(), opts.tokenSource)
+func validateNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	client := oauth2.NewClient(context.Background(), opts.TokenSource)
 
 	if err := validateNodeServerCertInner(client, opts, csr, x509cr); err != nil {
 		glog.Errorf("validating CSR %q: %v", csr.Name, err)
@@ -333,7 +328,7 @@ func validateNodeServerCert(opts approverOptions, csr *capi.CertificateSigningRe
 // Only check that IPs in SAN match an existing VM in the project.
 // Username was already checked against CN, so this CSR is coming from
 // authenticated kubelet.
-func validateNodeServerCertInner(client *http.Client, opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) error {
+func validateNodeServerCertInner(client *http.Client, opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) error {
 	switch {
 	case len(x509cr.IPAddresses) == 0:
 		return errors.New("no SAN IPs")
@@ -348,8 +343,8 @@ func validateNodeServerCertInner(client *http.Client, opts approverOptions, csr 
 
 	srv := compute.NewInstancesService(cs)
 	instanceName := strings.TrimPrefix(csr.Spec.Username, "system:node:")
-	for _, z := range opts.zones {
-		inst, err := srv.Get(opts.projectID, z, instanceName).Do()
+	for _, z := range opts.Zones {
+		inst, err := srv.Get(opts.ProjectID, z, instanceName).Do()
 		if err != nil {
 			continue
 		}
@@ -372,80 +367,6 @@ func validateNodeServerCertInner(client *http.Client, opts approverOptions, csr 
 	return fmt.Errorf("Instance name %q doesn't match any VM in cluster project/zone: %v", instanceName, err)
 }
 
-type approverOptions struct {
-	clusterName string
-	projectID   string
-	zones       []string
-	tokenSource oauth2.TokenSource
-	tpmCACache  *caCache
-}
-
-func loadApproverOptions(s *GCPControllerManager) (approverOptions, error) {
-	var a approverOptions
-
-	// Load gce.conf.
-	gceConfig := struct {
-		Global struct {
-			ProjectID string `gcfg:"project-id"`
-			TokenURL  string `gcfg:"token-url"`
-			TokenBody string `gcfg:"token-body"`
-		}
-	}{}
-	// ReadFileInfo will return warnings for extra fields in gce.conf we don't
-	// care about. Wrap with FatalOnly to discard those.
-	if err := warnings.FatalOnly(gcfg.ReadFileInto(&gceConfig, s.GCEConfigPath)); err != nil {
-		return a, err
-	}
-	a.projectID = gceConfig.Global.ProjectID
-	// Get the token source for GCE API.
-	a.tokenSource = gce.NewAltTokenSource(gceConfig.Global.TokenURL, gceConfig.Global.TokenBody)
-
-	// Get cluster zone from metadata server.
-	zone, err := metadata.Zone()
-	if err != nil {
-		return a, err
-	}
-	// Extract region name from zone.
-	if len(zone) < 2 {
-		return a, fmt.Errorf("invalid master zone: %q", zone)
-	}
-	region := zone[:len(zone)-2]
-	// Load all zones in the same region.
-	client := oauth2.NewClient(context.Background(), a.tokenSource)
-	cs, err := compute.New(client)
-	if err != nil {
-		return a, fmt.Errorf("creating GCE API client: %v", err)
-	}
-	allZones, err := compute.NewZonesService(cs).List(a.projectID).Do()
-	if err != nil {
-		return a, err
-	}
-	for _, z := range allZones.Items {
-		if strings.HasPrefix(z.Name, region) {
-			a.zones = append(a.zones, z.Name)
-		}
-	}
-	if len(a.zones) == 0 {
-		return a, fmt.Errorf("can't find zones for region %q", region)
-	}
-	// Put master's zone first.
-	sort.Slice(a.zones, func(i, j int) bool { return a.zones[i] == zone })
-
-	a.clusterName, err = metadata.Get("instance/attributes/cluster-name")
-	if err != nil {
-		return a, err
-	}
-
-	a.tpmCACache = &caCache{
-		rootCertURL: rootCertURL,
-		interPrefix: intermediateCAPrefix,
-		certs:       make(map[string]*x509.Certificate),
-		crls:        make(map[string]*cachedCRL),
-	}
-
-	return a, nil
-}
-
 var tpmAttestationBlocks = []string{
 	"CERTIFICATE REQUEST",
 	"ATTESTATION CERTIFICATE",
@@ -453,7 +374,7 @@ var tpmAttestationBlocks = []string{
 	"ATTESTATION SIGNATURE",
 }
 
-func isNodeClientCertWithAttestation(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isNodeClientCertWithAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeClientCert(opts, csr, x509cr) {
 		return false
 	}
@@ -473,7 +394,7 @@ func isNodeClientCertWithAttestation(opts approverOptions, csr *capi.Certificate
 	return true
 }
 
-func validateTPMAttestation(opts approverOptions, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	blocks, err := parsePEMBlocks(csr.Spec.Request)
 	if err != nil {
 		glog.Errorf("Parsing csr.Spec.Request: %v", err)
@@ -509,12 +430,12 @@ func validateTPMAttestation(opts approverOptions, csr *capi.CertificateSigningRe
 		glog.Errorf("VM name in ATTESTATION CERTIFICATE (%q) doesn't match CommonName in x509 CSR (%q)", nodeID.Name, x509cr.Subject.CommonName)
 		return false
 	}
-	if fmt.Sprint(nodeID.ProjectName) != opts.projectID {
+	if fmt.Sprint(nodeID.ProjectName) != opts.ProjectID {
 		glog.Errorf("Received CSR for a different project Name (%d)", nodeID.ProjectName)
 		return false
 	}
 
-	client := oauth2.NewClient(context.Background(), opts.tokenSource)
+	client := oauth2.NewClient(context.Background(), opts.TokenSource)
 	cs, err := compute.New(client)
 	if err != nil {
 		glog.Errorf("Creating GCE API client: %v", err)
@@ -527,13 +448,13 @@ func validateTPMAttestation(opts approverOptions, csr *capi.CertificateSigningRe
 		return false
 	}
 	if validateClusterMembership {
-		ok, err := clusterHasInstance(client, opts.projectID, inst.Zone, opts.clusterName, inst.Id)
+		ok, err := clusterHasInstance(client, opts.ProjectID, inst.Zone, opts.ClusterName, inst.Id)
 		if err != nil {
 			glog.Errorf("Checking VM membership in cluster: %v", err)
 			return false
 		}
 		if !ok {
-			glog.Errorf("VM %q doesn't belong to cluster %q", inst.Name, opts.clusterName)
+			glog.Errorf("VM %q doesn't belong to cluster %q", inst.Name, opts.ClusterName)
 			return false
 		}
 	}
