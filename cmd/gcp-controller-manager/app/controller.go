@@ -83,7 +83,6 @@ func Run(s *GCPControllerManager) error {
 	})
 
 	run := func(stopCh <-chan struct{}) {
-		sharedInformers.Start(stopCh)
 		for name, loop := range loops() {
 			if !s.isEnabled(name) {
 				continue
@@ -91,21 +90,22 @@ func Run(s *GCPControllerManager) error {
 			name = "gcp-" + name
 			loopClient, err := clientBuilder.Client(name)
 			if err != nil {
-				glog.Fatalf("Failed to start client for %q: %v", name, err)
+				glog.Fatalf("failed to start client for %q: %v", name, err)
 			}
-			if loop(&simpleCtx{
+			if loop(&controllerContext{
 				client:          loopClient,
 				sharedInformers: sharedInformers,
 				recorder: eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
 					Component: name,
 				}),
 				gcpCfg: gcpCfg,
-				server: s,
-				stopCh: stopCh,
+				clusterSigningGKEKubeconfig: s.ClusterSigningGKEKubeconfig,
+				done: stopCh,
 			}); err != nil {
 				glog.Fatalf("Failed to start %q: %v", name, err)
 			}
 		}
+		sharedInformers.Start(stopCh)
 		<-stopCh
 	}
 

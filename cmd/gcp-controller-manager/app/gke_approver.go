@@ -410,7 +410,7 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 		glog.Errorf("Parsing ATTESTATION_CERTIFICATE: %v", err)
 		return false
 	}
-	if err := opts.tpmCACache.verify(aikCert); err != nil {
+	if err := opts.TPMEndorsementCACache.verify(aikCert); err != nil {
 		glog.Errorf("Verifying EK certificate validity: %v", err)
 		return false
 	}

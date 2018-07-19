@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,48 +35,14 @@ import (
 	"k8s.io/kubernetes/pkg/controller/certificates"
 )
 
-type ControllerContext interface {
-	Client() clientset.Interface
-	SharedInformers() informers.SharedInformerFactory
-	Recorder() record.EventRecorder
-	GCP() GCPConfig
-	Server() *GCPControllerManager
-	Done() <-chan struct{}
+type controllerContext struct {
+	client                      clientset.Interface
+	sharedInformers             informers.SharedInformerFactory
+	recorder                    record.EventRecorder
+	gcpCfg                      GCPConfig
+	clusterSigningGKEKubeconfig string
+	done                        <-chan struct{}
 }
-
-type simpleCtx struct {
-	client          clientset.Interface
-	sharedInformers informers.SharedInformerFactory
-	recorder        record.EventRecorder
-	gcpCfg          GCPConfig
-	server          *GCPControllerManager
-	stopCh          <-chan struct{}
-}
-
-func (sc *simpleCtx) Client() clientset.Interface {
-	return sc.client
-}
-
-func (sc *simpleCtx) SharedInformers() informers.SharedInformerFactory {
-	return sc.sharedInformers
-}
-
-func (sc *simpleCtx) Recorder() record.EventRecorder {
-	return sc.recorder
-}
-
-func (sc *simpleCtx) GCP() GCPConfig {
-	return sc.gcpCfg
-}
-
-func (sc *simpleCtx) Server() *GCPControllerManager {
-	return sc.server
-}
-
-func (sc *simpleCtx) Done() <-chan struct{} {
-	return sc.stopCh
-}
-
 type GCPConfig struct {
 	ClusterName           string
 	ProjectID             string
@@ -154,46 +120,52 @@ func loadGCPConfig(s *GCPControllerManager) (GCPConfig, error) {
 // loops returns all the control loops that the GCPControllerManager can start.
 // We append GCP to all of these to disambiguate them in API server and audit
 // logs. These loops are intentionally started in a random order.
-func loops() map[string]func(ControllerContext) error {
-	return map[string]func(ControllerContext) error{
-		"certificate-approver": func(ctx ControllerContext) error {
-			approverClient := ctx.Client()
-			approver := newGKEApprover(ctx.GCP(), approverClient)
+func loops() map[string]func(*controllerContext) error {
+	return map[string]func(*controllerContext) error{
+		"certificate-approver": func(ctx *controllerContext) error {
+			approver := newGKEApprover(ctx.gcpCfg, ctx.client)
 			approveController := certificates.NewCertificateController(
-				approverClient,
-				ctx.SharedInformers().Certificates().V1beta1().CertificateSigningRequests(),
+				ctx.client,
+				ctx.sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
 				approver.handle,
 			)
-			go approveController.Run(5, ctx.Done())
+			go approveController.Run(5, ctx.done)
 			return nil
 		},
-		"certificate-signer": func(ctx ControllerContext) error {
-			signerClient := ctx.Client()
-			signer, err := newGKESigner(ctx.Server().ClusterSigningGKEKubeconfig, ctx.Recorder(), signerClient)
+		"certificate-signer": func(ctx *controllerContext) error {
+			signer, err := newGKESigner(ctx.clusterSigningGKEKubeconfig, ctx.recorder, ctx.client)
 			if err != nil {
 				return err
 			}
 			signController := certificates.NewCertificateController(
-				signerClient,
-				ctx.SharedInformers().Certificates().V1beta1().CertificateSigningRequests(),
+				ctx.client,
+				ctx.sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
 				signer.handle,
 			)
 
-			go signController.Run(5, ctx.Done())
+			go signController.Run(5, ctx.done)
 			return nil
 		},
-		"node-annotater": func(ctx ControllerContext) error {
-			nodeAnnotaterClient := ctx.Client()
+		"node-annotator": func(ctx *controllerContext) error {
 			nodeAnnotateController, err := newNodeAnnotator(
-				nodeAnnotaterClient,
-				ctx.SharedInformers().Core().V1().Nodes(),
-				ctx.GCP().TokenSource,
+				ctx.client,
+				ctx.sharedInformers.Core().V1().Nodes(),
+				ctx.gcpCfg.TokenSource,
 			)
 			if err != nil {
 				return err
 			}
-			go nodeAnnotateController.Run(5, ctx.Done())
+			go nodeAnnotateController.Run(5, ctx.done)
 			return nil
 		},
 	}
+}
+
+func loopNames() []string {
+	names := make([]string, 0)
+	for name := range loops() {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

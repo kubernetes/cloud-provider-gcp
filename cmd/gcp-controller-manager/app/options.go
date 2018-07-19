@@ -19,6 +19,7 @@ limitations under the License.
 package app
 
 import (
+	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -62,7 +63,7 @@ func (s *GCPControllerManager) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
 	fs.StringVar(&s.ClusterSigningGKEKubeconfig, "cluster-signing-gke-kubeconfig", s.ClusterSigningGKEKubeconfig, "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")
 	fs.StringVar(&s.GCEConfigPath, "gce-config", s.GCEConfigPath, "Path to gce.conf.")
-	fs.StringSliceVar(&s.Controllers, "controller", s.Controllers, "Controllers to enable.")
+	fs.StringSliceVar(&s.Controllers, "controllers", s.Controllers, "Controllers to enable. Possible controllers are: "+strings.Join(loopNames(), ",")+".")
 	leaderelectionconfig.BindFlags(&s.LeaderElectionConfig, fs)
 }
 
