@@ -24,7 +24,9 @@ import (
 	"time"
 
 	core "k8s.io/api/core/v1"
+	unversionedvalidation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -51,6 +53,24 @@ type nodeAnnotator struct {
 
 func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.NodeInformer, cs *compute.Service) (*nodeAnnotator, error) {
 	gce := compute.NewInstancesService(cs)
+
+	// TODO(mikedanese): create a registry for the labels that GKE uses. This was
+	// lifted from node_startup.go and the naming scheme is adhoc and
+	// inconsistent.
+	ownedKubeLabels := []string{
+		"cloud.google.com/gke-nodepool",
+		"cloud.google.com/gke-local-ssd",
+		"cloud.google.com/gke-local-scsi-ssd",
+		"cloud.google.com/gke-local-nvme-ssd",
+		"cloud.google.com/gke-preemptible",
+		"cloud.google.com/gke-gpu",
+		"cloud.google.com/gke-accelerator",
+		"beta.kubernetes.io/fluentd-ds-ready",
+		"beta.kubernetes.io/kube-proxy-ds-ready",
+		"beta.kubernetes.io/masq-agent-ds-ready",
+		"projectcalico.org/ds-ready",
+		"beta.kubernetes.io/metadata-proxy-ready",
+	}
 
 	na := &nodeAnnotator{
 		c:         client,
@@ -79,6 +99,30 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 						node.ObjectMeta.Annotations = make(map[string]string)
 					}
 					node.ObjectMeta.Annotations[InstanceIDAnnotationKey] = eid
+					return true
+				},
+			},
+			{
+				name: "labels-reconciler",
+				annotate: func(node *core.Node, instance *compute.Instance) bool {
+					labels, err := extractKubeLabels(instance)
+					if err != nil {
+						glog.Errorf("Error reconciling labels: %v", err)
+						return false
+					}
+
+					if node.ObjectMeta.Labels == nil {
+						node.ObjectMeta.Labels = make(map[string]string)
+					}
+
+					for _, key := range ownedKubeLabels {
+						delete(node.ObjectMeta.Labels, key)
+					}
+
+					for key, value := range labels {
+						node.ObjectMeta.Labels[key] = value
+					}
+
 					return true
 				},
 			},
@@ -198,4 +242,41 @@ func parseNodeURL(nodeURL string) (project, zone, instance string, err error) {
 	zone = parts[1]
 	instance = parts[2]
 	return
+}
+
+// TODO: move this to instance.Labels. This is gross.
+func extractKubeLabels(instance *compute.Instance) (map[string]string, error) {
+	const labelsKey = "kube-labels"
+
+	if instance.Metadata == nil {
+		return make(map[string]string), nil
+	}
+
+	var kubeLabels *string
+	for _, item := range instance.Metadata.Items {
+		if item == nil || item.Key != labelsKey {
+			continue
+		}
+		if item.Value == nil {
+			return nil, fmt.Errorf("instance %q had nil %q", instance.SelfLink, labelsKey)
+		}
+		kubeLabels = item.Value
+	}
+	if kubeLabels == nil || len(*kubeLabels) == 0 {
+		return make(map[string]string), nil
+	}
+
+	labels := make(map[string]string)
+	for _, kv := range strings.Split(*kubeLabels, ",") {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("instance %q had malformed label pair: %q", instance.SelfLink, kv)
+		}
+		labels[parts[0]] = parts[1]
+	}
+	if err := unversionedvalidation.ValidateLabels(labels, field.NewPath("labels")); len(err) != 0 {
+		return nil, fmt.Errorf("instance %q had invalid label(s): %v", instance.SelfLink, err)
+	}
+
+	return labels, nil
 }
