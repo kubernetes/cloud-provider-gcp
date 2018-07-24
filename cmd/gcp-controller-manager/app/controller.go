@@ -35,7 +35,6 @@ import (
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	"k8s.io/kubernetes/pkg/controller"
-	"k8s.io/kubernetes/pkg/controller/certificates"
 
 	// Install GCP auth plugin.
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -67,61 +66,46 @@ func Run(s *GCPControllerManager) error {
 		return err
 	}
 
-	kubeClient, err := clientset.NewForConfig(restclient.AddUserAgent(kubeconfig, "gke-certificates-controller"))
+	gcpCfg, err := loadGCPConfig(s)
 	if err != nil {
 		return err
 	}
-
-	approverOpts, err := loadApproverOptions(s)
-	if err != nil {
-		return err
-	}
-
-	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(glog.Infof)
-	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
-	recorder := eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{Component: "gke-certificates-controller"})
 
 	clientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: kubeconfig}
 
-	informerClient := clientBuilder.ClientOrDie("certificate-controller-informer")
+	informerClient := clientBuilder.ClientOrDie("gcp-controller-manager-shared-informer")
 	sharedInformers := informers.NewSharedInformerFactory(informerClient, time.Duration(12)*time.Hour)
 
-	approverClient := clientBuilder.ClientOrDie("certificate-controller-approver")
-	approver := newGKEApprover(approverOpts, approverClient)
-	approveController := certificates.NewCertificateController(
-		approverClient,
-		sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
-		approver.handle,
-	)
-
-	signerClient := clientBuilder.ClientOrDie("certificate-controller-signer")
-	signer, err := newGKESigner(s.ClusterSigningGKEKubeconfig, s.ClusterSigningGKERetryBackoff.Duration, recorder, signerClient)
-	if err != nil {
-		return err
-	}
-	signController := certificates.NewCertificateController(
-		signerClient,
-		sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
-		signer.handle,
-	)
-
-	nodeAnnotaterClient := clientBuilder.ClientOrDie("node-annotater")
-	nodeAnnotateController, err := newNodeAnnotator(
-		nodeAnnotaterClient,
-		sharedInformers.Core().V1().Nodes(),
-		approverOpts.tokenSource,
-	)
-	if err != nil {
-		return err
-	}
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(glog.Infof)
+	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
+		Interface: v1core.New(clientBuilder.ClientOrDie("gcp-controller-manager").CoreV1().RESTClient()).Events(""),
+	})
 
 	run := func(stopCh <-chan struct{}) {
+		for name, loop := range loops() {
+			if !s.isEnabled(name) {
+				continue
+			}
+			name = "gcp-" + name
+			loopClient, err := clientBuilder.Client(name)
+			if err != nil {
+				glog.Fatalf("failed to start client for %q: %v", name, err)
+			}
+			if loop(&controllerContext{
+				client:          loopClient,
+				sharedInformers: sharedInformers,
+				recorder: eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
+					Component: name,
+				}),
+				gcpCfg: gcpCfg,
+				clusterSigningGKEKubeconfig: s.ClusterSigningGKEKubeconfig,
+				done: stopCh,
+			}); err != nil {
+				glog.Fatalf("Failed to start %q: %v", name, err)
+			}
+		}
 		sharedInformers.Start(stopCh)
-		// controller.Run calls block forever.
-		go approveController.Run(5, stopCh)
-		go signController.Run(5, stopCh)
-		go nodeAnnotateController.Run(5, stopCh)
 		<-stopCh
 	}
 
@@ -130,7 +114,9 @@ func Run(s *GCPControllerManager) error {
 		if err != nil {
 			return err
 		}
-		leaderElectionConfig, err := makeLeaderElectionConfig(s.LeaderElectionConfig, leaderElectionClient, recorder)
+		leaderElectionConfig, err := makeLeaderElectionConfig(s.LeaderElectionConfig, leaderElectionClient, eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
+			Component: "gcp-controller-manager-leader-election",
+		}))
 		if err != nil {
 			return err
 		}
