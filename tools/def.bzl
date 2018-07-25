@@ -15,21 +15,15 @@ def image(binary):
       name = "image",
       cmd = ["/" + name],
       files = [":" + name],
+      stamp = True,
   )
-  _image_registry = select({
-      "//tools:release-prod": "gcr.io",
-      "//tools:release-devel": "{STABLE_DEVEL_REGISTRY}",
-  })
-  _image_repo = select({
-      "//tools:release-prod": "k8s-image-staging",
-      "//tools:release-devel": "{STABLE_DEVEL_REPO}",
-  })
+  image_repo = "{STABLE_IMAGE_REPO}"
   container_push(
       name = "publish",
       format = "Docker",
       image = ":image",
-      registry = _image_registry,
-      repository = _image_repo + "/" + name,
+      registry = "gcr.io",
+      repository = image_repo + "/" + name,
       stamp = True,
-      tag = "{STABLE_CERT_CONTROLLER_VERSION}",
+      tag = "{STABLE_IMAGE_TAG}",
   )
