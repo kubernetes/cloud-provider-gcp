@@ -14,6 +14,7 @@ limitations under the License.
 package app
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/x509"
@@ -252,68 +253,80 @@ func TestHandle(t *testing.T) {
 }
 
 func TestValidators(t *testing.T) {
-	t.Run("client recognize", func(t *testing.T) {
-		goodCases := []func(*csrBuilder, *GCPConfig){
-			func(*csrBuilder, *GCPConfig) {},
-		}
-
-		testValidator(t, "isNodeClientCert good", goodCases, isNodeClientCert, true)
-		testValidator(t, "isSelfNodeClientCert good", goodCases, isSelfNodeClientCert, true)
+	t.Run("isLegacyNodeClientCert", func(t *testing.T) {
+		goodCase := func(b *csrBuilder, _ *GCPConfig) { b.requestor = legacyKubeletUsername }
+		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
+		testValidator(t, "good", goodCases, isLegacyNodeClientCert, true)
 
 		badCases := []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, _ *GCPConfig) { b.cn = "mike" },
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				b.cn = "mike"
+			},
+			func(b *csrBuilder, _ *GCPConfig) {},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				b.orgs = nil
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				b.orgs = []string{"system:master"}
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				b.usages = kubeletServerUsages
+			},
+		}
+		testValidator(t, "bad", badCases, isLegacyNodeClientCert, false)
+	})
+	t.Run("isSelfNodeClientCert", func(t *testing.T) {
+		goodCase := func(b *csrBuilder, _ *GCPConfig) {}
+		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
+		testValidator(t, "good", goodCases, isSelfNodeClientCert, true)
+
+		badCases := []func(*csrBuilder, *GCPConfig){
+			func(b *csrBuilder, _ *GCPConfig) { b.requestor = "mike" },
 			func(b *csrBuilder, _ *GCPConfig) { b.orgs = nil },
 			func(b *csrBuilder, _ *GCPConfig) { b.orgs = []string{"system:master"} },
 			func(b *csrBuilder, _ *GCPConfig) { b.usages = kubeletServerUsages },
-		}
-
-		testValidator(t, "isNodeClientCert bad", badCases, isNodeClientCert, false)
-		testValidator(t, "isSelfNodeClientCert bad", badCases, isSelfNodeClientCert, false)
-
-		// cn different then requestor
-		differentCN := []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, _ *GCPConfig) { b.requestor = "joe" },
 			func(b *csrBuilder, _ *GCPConfig) { b.cn = "system:node:bar" },
 		}
-
-		testValidator(t, "isNodeClientCert different CN", differentCN, isNodeClientCert, true)
-		testValidator(t, "isSelfNodeClientCert different CN", differentCN, isSelfNodeClientCert, false)
+		testValidator(t, "bad", badCases, isSelfNodeClientCert, false)
 	})
-	t.Run("server recognize", func(t *testing.T) {
-		goodCases := []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, o *GCPConfig) { b.usages = kubeletServerUsages },
-		}
-		testValidator(t, "isNodeServerClient good", goodCases, isNodeServerCert, true)
+	t.Run("isNodeServerClient", func(t *testing.T) {
+		goodCase := func(b *csrBuilder, _ *GCPConfig) { b.usages = kubeletServerUsages }
+		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
+		testValidator(t, "good", goodCases, isNodeServerCert, true)
 
 		badCases := []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, o *GCPConfig) {},
-			func(b *csrBuilder, _ *GCPConfig) {
-				b.usages = kubeletServerUsages
+			func(b *csrBuilder, c *GCPConfig) {},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
 				b.cn = "mike"
 			},
-			func(b *csrBuilder, _ *GCPConfig) {
-				b.usages = kubeletServerUsages
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
 				b.orgs = nil
 			},
-			func(b *csrBuilder, _ *GCPConfig) {
-				b.usages = kubeletServerUsages
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
 				b.orgs = []string{"system:master"}
 			},
-			func(b *csrBuilder, _ *GCPConfig) {
-				b.usages = kubeletServerUsages
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
 				b.requestor = "joe"
 			},
-			func(b *csrBuilder, _ *GCPConfig) {
-				b.usages = kubeletServerUsages
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
 				b.cn = "system:node:bar"
 			},
 		}
-		testValidator(t, "isNodeServerClient bad", badCases, isNodeServerCert, false)
+		testValidator(t, "bad", badCases, isNodeServerCert, false)
 	})
-	t.Run("server validate", func(t *testing.T) {
+	t.Run("validateNodeServerCertInner", func(t *testing.T) {
+		client, srv := fakeGCPAPI(t)
+		defer srv.Close()
 		fn := func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-			client, srv := fakeGCPAPI(t)
-			defer srv.Close()
 			cs, err := compute.New(client)
 			if err != nil {
 				t.Fatalf("creating GCE API client: %v", err)
@@ -326,70 +339,96 @@ func TestValidators(t *testing.T) {
 			return ok
 		}
 
-		cases := []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, o *GCPConfig) {
-				o.ProjectID = "p0"
-				o.Zones = []string{"z1", "z0"}
-				b.requestor = "system:node:i0"
-				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
-			},
+		goodCase := func(b *csrBuilder, c *GCPConfig) {
+			c.ProjectID = "p0"
+			c.Zones = []string{"z1", "z0"}
+			b.requestor = "system:node:i0"
+			b.ips = []net.IP{net.ParseIP("1.2.3.4")}
 		}
-		testValidator(t, "validateNodeServerCert good", cases, fn, true)
+		cases := []func(*csrBuilder, *GCPConfig){goodCase}
+		testValidator(t, "good", cases, fn, true)
 
 		cases = []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, o *GCPConfig) {},
+			func(b *csrBuilder, c *GCPConfig) {},
 			// No Name.
-			func(b *csrBuilder, o *GCPConfig) {
-				o.ProjectID = "p0"
-				o.Zones = []string{"z0"}
-				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				b.requestor = ""
 			},
 			// No IPAddresses.
-			func(b *csrBuilder, o *GCPConfig) {
-				o.ProjectID = "p0"
-				o.Zones = []string{"z0"}
-				b.requestor = "system:node:i0"
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				b.ips = nil
 			},
 			// Wrong project.
-			func(b *csrBuilder, o *GCPConfig) {
-				o.ProjectID = "p99"
-				o.Zones = []string{"z0"}
-				b.requestor = "system:node:i0"
-				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				c.ProjectID = "p99"
 			},
 			// Wrong zone.
-			func(b *csrBuilder, o *GCPConfig) {
-				o.ProjectID = "p0"
-				o.Zones = []string{"z99"}
-				b.requestor = "system:node:i0"
-				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				c.Zones = []string{"z99"}
 			},
 			// Wrong instance name.
-			func(b *csrBuilder, o *GCPConfig) {
-				o.ProjectID = "p0"
-				o.Zones = []string{"z0"}
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
 				b.requestor = "i99"
-				b.ips = []net.IP{net.ParseIP("1.2.3.4")}
 			},
 			// Not matching IP.
-			func(b *csrBuilder, o *GCPConfig) {
-				o.ProjectID = "p0"
-				o.Zones = []string{"z0"}
-				b.requestor = "system:node:i0"
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
 				b.ips = []net.IP{net.ParseIP("1.2.3.5")}
 			},
 		}
-		testValidator(t, "validateNodeServerCert bad", cases, fn, false)
+		testValidator(t, "bad", cases, fn, false)
+	})
+	t.Run("isNodeClientCertWithAttestation", func(t *testing.T) {
+		goodCase := func(b *csrBuilder, _ *GCPConfig) {
+			b.requestor = tpmKubeletUsername
+			for _, name := range tpmAttestationBlocks {
+				b.extraPEM[name] = []byte("foo")
+			}
+		}
+		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
+		testValidator(t, "good", goodCases, isNodeClientCertWithAttestation, true)
+
+		badCases := []func(*csrBuilder, *GCPConfig){
+			func(b *csrBuilder, c *GCPConfig) {},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				b.requestor = "awly"
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				delete(b.extraPEM, tpmAttestationBlocks[1])
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				b.cn = "awly"
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				b.orgs = nil
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				b.orgs = []string{"system:master"}
+			},
+		}
+		testValidator(t, "bad", badCases, isNodeClientCertWithAttestation, false)
 	})
 }
 
-func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, o *GCPConfig), checkFunc recognizeFunc, want bool) {
+func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, c *GCPConfig), checkFunc recognizeFunc, want bool) {
+	t.Helper()
 	for i, c := range cases {
 		b := csrBuilder{
 			cn:        "system:node:foo",
 			orgs:      []string{"system:nodes"},
 			requestor: "system:node:foo",
 			usages:    kubeletClientUsages,
+			extraPEM:  make(map[string][]byte),
 		}
 		o := GCPConfig{}
 		c(&b, &o)
@@ -422,6 +461,7 @@ type csrBuilder struct {
 	dns       []string
 	emails    []string
 	ips       []net.IP
+	extraPEM  map[string][]byte
 }
 
 func makeFancyTestCSR(b csrBuilder) *capi.CertificateSigningRequest {
@@ -441,11 +481,15 @@ func makeFancyTestCSR(b csrBuilder) *capi.CertificateSigningRequest {
 	if err != nil {
 		panic(err)
 	}
+	blocks := [][]byte{pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrb})}
+	for typ, data := range b.extraPEM {
+		blocks = append(blocks, pem.EncodeToMemory(&pem.Block{Type: typ, Bytes: data}))
+	}
 	return &capi.CertificateSigningRequest{
 		Spec: capi.CertificateSigningRequestSpec{
 			Username: b.requestor,
 			Usages:   b.usages,
-			Request:  pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrb}),
+			Request:  bytes.TrimSpace(bytes.Join(blocks, nil)),
 		},
 	}
 }
