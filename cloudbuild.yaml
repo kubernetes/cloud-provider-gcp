@@ -1,0 +1,8 @@
+steps:
+- name: gcr.io/cloud-builders/bazel
+  args: ['build', '--', '//...', '-//vendor/...']
+- name: gcr.io/cloud-builders/bazel
+  args: ['test', '--test_output=errors', '--', '//...', '-//vendor/...']
+timeout: 10800s
+options:
+  machineType: 'N1_HIGHCPU_8'
