@@ -17,7 +17,6 @@ limitations under the License.
 package app
 
 import (
-	"context"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -35,7 +34,6 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/golang/glog"
-	"golang.org/x/oauth2"
 	compute "google.golang.org/api/compute/v1"
 )
 
@@ -51,13 +49,7 @@ type nodeAnnotator struct {
 	getInstance func(nodeURL string) (*compute.Instance, error)
 }
 
-func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.NodeInformer, gts oauth2.TokenSource) (*nodeAnnotator, error) {
-
-	oclient := oauth2.NewClient(context.Background(), gts)
-	cs, err := compute.New(oclient)
-	if err != nil {
-		return nil, fmt.Errorf("creating GCE API client: %v", err)
-	}
+func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.NodeInformer, cs *compute.Service) (*nodeAnnotator, error) {
 	gce := compute.NewInstancesService(cs)
 
 	na := &nodeAnnotator{

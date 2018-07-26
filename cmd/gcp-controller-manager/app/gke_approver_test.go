@@ -299,7 +299,12 @@ func TestValidators(t *testing.T) {
 		fn := func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 			client, srv := fakeGCPAPI(t)
 			defer srv.Close()
-			err := validateNodeServerCertInner(client, opts, csr, x509cr)
+			cs, err := compute.New(client)
+			if err != nil {
+				t.Fatalf("creating GCE API client: %v", err)
+			}
+			opts.Compute = cs
+			err = validateNodeServerCertInner(opts, csr, x509cr)
 			if err != nil {
 				t.Logf("validateNodeServerCertInner: %v", err)
 			}
