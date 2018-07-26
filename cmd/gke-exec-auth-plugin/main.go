@@ -43,6 +43,7 @@ func init() {
 }
 
 func main() {
+	this should break the build still
 	// Override the default in glog. There's verbosity flag for suppressing output.
 	flag.Set("logtostderr", "true")
 	flag.Parse()
