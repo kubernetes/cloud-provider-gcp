@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -16,8 +17,9 @@ import (
 )
 
 const (
-	certFileName = "kubelet-client.crt"
-	keyFileName  = "kubelet-client.key"
+	certFileName   = "kubelet-client.crt"
+	keyFileName    = "kubelet-client.key"
+	tmpKeyFileName = "kubelet-client.key.tmp"
 
 	// Minimum age of existing certificate before triggering rotation.
 	// Assuming no rotation errors, this is cert rotation period.
@@ -46,16 +48,10 @@ func getKeyCert() ([]byte, []byte, error) {
 }
 
 func getNewKeyCert(dir string) ([]byte, []byte, error) {
-	glog.Info("generating new private key")
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	keyPEM, err := getTempKeyPEM(dir)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("trying to get private key: %v", err)
 	}
-	keyBytes, err := x509.MarshalECPrivateKey(key)
-	if err != nil {
-		return nil, nil, err
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: cert.ECPrivateKeyBlockType, Bytes: keyBytes})
 
 	glog.Info("requesting new certificate")
 	certPEM, err := requestCertificate(keyPEM)
@@ -64,24 +60,65 @@ func getNewKeyCert(dir string) ([]byte, []byte, error) {
 	}
 	glog.Info("CSR approved, received certificate")
 
-	if err := writeKeyCert(*cacheDir, keyPEM, certPEM); err != nil {
+	if err := writeKeyCert(dir, keyPEM, certPEM); err != nil {
 		return nil, nil, err
 	}
 	return keyPEM, certPEM, nil
 }
 
+func getTempKeyPEM(dir string) ([]byte, error) {
+	keyPEM, err := ioutil.ReadFile(filepath.Join(dir, tmpKeyFileName))
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("trying to read temp private key: %v", err)
+	}
+	if err == nil && validPEMKey(keyPEM) {
+		return keyPEM, nil
+	}
+
+	// Either temp key doesn't exist or it's invalid.
+	glog.Info("generating new private key")
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: cert.ECPrivateKeyBlockType, Bytes: keyBytes})
+	// Write private key into temporary file to reuse in case of failure.
+	if err := ioutil.WriteFile(filepath.Join(dir, tmpKeyFileName), keyPEM, 0600); err != nil {
+		return nil, fmt.Errorf("failed to store new private key to temporary file: %v", err)
+	}
+	return keyPEM, nil
+}
+
+func validPEMKey(key []byte) bool {
+	if len(key) == 0 {
+		return false
+	}
+	keyBlock, _ := pem.Decode(key)
+	if keyBlock == nil {
+		return false
+	}
+	_, err := x509.ParseECPrivateKey(keyBlock.Bytes)
+	return err == nil
+}
+
 func getExistingKeyCert(dir string) ([]byte, []byte, bool) {
 	key, err := ioutil.ReadFile(filepath.Join(dir, keyFileName))
 	if err != nil {
+		glog.Errorf("failed reading existing private key: %v", err)
 		return nil, nil, false
 	}
 	cert, err := ioutil.ReadFile(filepath.Join(dir, certFileName))
 	if err != nil {
+		glog.Errorf("failed reading existing certificate: %v", err)
 		return nil, nil, false
 	}
 	// Check cert expiration.
 	certRaw, _ := pem.Decode(cert)
-	if certRaw != nil {
+	if certRaw == nil {
 		glog.Error("failed parsing existing cert")
 		return nil, nil, false
 	}
@@ -108,7 +145,7 @@ func getExistingKeyCert(dir string) ([]byte, []byte, bool) {
 }
 
 func writeKeyCert(dir string, key, cert []byte) error {
-	if err := ioutil.WriteFile(filepath.Join(dir, keyFileName), key, os.FileMode(0600)); err != nil {
+	if err := os.Rename(filepath.Join(dir, tmpKeyFileName), filepath.Join(dir, keyFileName)); err != nil {
 		return err
 	}
 	return ioutil.WriteFile(filepath.Join(dir, certFileName), cert, os.FileMode(0644))
