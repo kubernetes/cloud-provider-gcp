@@ -13,8 +13,6 @@ import (
 var cloudComputeInstanceIdentifierOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 1, 21}
 
 // Identity uniquely identifies a GCE VM.
-//
-// Note: field order matters, this struct is used to unmarshal an asn1 object.
 type Identity struct {
 	Zone        string `json:"zone"`
 	ID          uint64 `json:"id"`
@@ -60,16 +58,35 @@ func FromMetadata() (Identity, error) {
 	return id, nil
 }
 
+// We need this separate struct because encoding/asn1 doesn't understand
+// uint64.
+type asn1Identity struct {
+	Zone        string
+	ID          int64
+	Name        string
+	ProjectID   int64
+	ProjectName string
+}
+
 // FromAIKCert extracts VM Identity from cloudComputeInstanceIdentifier
 // extension in cert.
 func FromAIKCert(cert *x509.Certificate) (Identity, error) {
-	var id Identity
+	var id asn1Identity
 	for _, ext := range cert.Extensions {
 		if !ext.Id.Equal(cloudComputeInstanceIdentifierOID) {
 			continue
 		}
 		_, err := asn1.Unmarshal(ext.Value, &id)
-		return id, err
+		if err != nil {
+			return Identity{}, err
+		}
+		return Identity{
+			Zone:        id.Zone,
+			ID:          uint64(id.ID),
+			Name:        id.Name,
+			ProjectID:   uint64(id.ProjectID),
+			ProjectName: id.ProjectName,
+		}, nil
 	}
-	return id, fmt.Errorf("certificate does not have cloudComputeInstanceIdentifier extension (OID %s)", cloudComputeInstanceIdentifierOID)
+	return Identity{}, fmt.Errorf("certificate does not have cloudComputeInstanceIdentifier extension (OID %s)", cloudComputeInstanceIdentifierOID)
 }
