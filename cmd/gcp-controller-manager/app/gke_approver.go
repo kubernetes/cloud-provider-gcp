@@ -15,7 +15,6 @@ package app
 
 import (
 	"bytes"
-	"context"
 	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -23,7 +22,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"net/http"
 	"path"
 	"reflect"
 	"strings"
@@ -32,7 +30,6 @@ import (
 	"github.com/golang/glog"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/oauth2"
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
 	authorization "k8s.io/api/authorization/v1beta1"
@@ -63,10 +60,6 @@ func init() {
 const (
 	legacyKubeletUsername = "kubelet"
 	tpmKubeletUsername    = "kubelet-bootstrap"
-
-	// TODO(awly): eventually this should be true. But that makes testing
-	// harder, so disabling or now.
-	validateClusterMembership = false
 
 	authFlowLabelNone = "not_approved"
 )
@@ -316,9 +309,7 @@ func isNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509c
 }
 
 func validateNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-	client := oauth2.NewClient(context.Background(), opts.TokenSource)
-
-	if err := validateNodeServerCertInner(client, opts, csr, x509cr); err != nil {
+	if err := validateNodeServerCertInner(opts, csr, x509cr); err != nil {
 		glog.Errorf("validating CSR %q: %v", csr.Name, err)
 		return false
 	}
@@ -328,7 +319,7 @@ func validateNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest,
 // Only check that IPs in SAN match an existing VM in the project.
 // Username was already checked against CN, so this CSR is coming from
 // authenticated kubelet.
-func validateNodeServerCertInner(client *http.Client, opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) error {
+func validateNodeServerCertInner(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) error {
 	switch {
 	case len(x509cr.IPAddresses) == 0:
 		return errors.New("no SAN IPs")
@@ -336,12 +327,7 @@ func validateNodeServerCertInner(client *http.Client, opts GCPConfig, csr *capi.
 		return errors.New("only DNS and IP SANs allowed")
 	}
 
-	cs, err := compute.New(client)
-	if err != nil {
-		return fmt.Errorf("creating GCE API client: %v", err)
-	}
-
-	srv := compute.NewInstancesService(cs)
+	srv := compute.NewInstancesService(opts.Compute)
 	instanceName := strings.TrimPrefix(csr.Spec.Username, "system:node:")
 	for _, z := range opts.Zones {
 		inst, err := srv.Get(opts.ProjectID, z, instanceName).Do()
@@ -364,7 +350,7 @@ func validateNodeServerCertInner(client *http.Client, opts GCPConfig, csr *capi.
 		}
 		return nil
 	}
-	return fmt.Errorf("Instance name %q doesn't match any VM in cluster project/zone: %v", instanceName, err)
+	return fmt.Errorf("Instance name %q doesn't match any VM in cluster project/zone", instanceName)
 }
 
 var tpmAttestationBlocks = []string{
@@ -425,7 +411,7 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 		glog.Errorf("Failed extracting VM identity from EK certificate: %v", err)
 		return false
 	}
-	hostname := strings.TrimPrefix("system:node:", x509cr.Subject.CommonName)
+	hostname := strings.TrimPrefix(x509cr.Subject.CommonName, "system:node:")
 	if nodeID.Name != hostname {
 		glog.Errorf("VM name in ATTESTATION CERTIFICATE (%q) doesn't match CommonName in x509 CSR (%q)", nodeID.Name, x509cr.Subject.CommonName)
 		return false
@@ -435,20 +421,14 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 		return false
 	}
 
-	client := oauth2.NewClient(context.Background(), opts.TokenSource)
-	cs, err := compute.New(client)
-	if err != nil {
-		glog.Errorf("Creating GCE API client: %v", err)
-		return false
-	}
-	srv := compute.NewInstancesService(cs)
+	srv := compute.NewInstancesService(opts.Compute)
 	inst, err := srv.Get(fmt.Sprint(nodeID.ProjectID), nodeID.Zone, nodeID.Name).Do()
 	if err != nil {
 		glog.Errorf("Fetching VM data from GCE API: %v", err)
 		return false
 	}
-	if validateClusterMembership {
-		ok, err := clusterHasInstance(client, opts.ProjectID, inst.Zone, opts.ClusterName, inst.Id)
+	if opts.VerifyClusterMembership {
+		ok, err = clusterHasInstance(opts, inst.Zone, inst.Id)
 		if err != nil {
 			glog.Errorf("Checking VM membership in cluster: %v", err)
 			return false
@@ -510,21 +490,22 @@ func parsePEMBlocks(raw []byte) (map[string]*pem.Block, error) {
 	return blocks, nil
 }
 
-func clusterHasInstance(client *http.Client, project, zone, clusterName string, instanceID uint64) (bool, error) {
-	cs, err := container.New(client)
+func clusterHasInstance(opts GCPConfig, zone string, instanceID uint64) (bool, error) {
+	// zone looks like
+	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
+	// Convert it to just "us-central1-c".
+	zone = path.Base(zone)
+
+	cluster, err := container.NewProjectsZonesClustersService(opts.Container).Get(opts.ProjectID, zone, opts.ClusterName).Do()
 	if err != nil {
-		return false, err
-	}
-	cluster, err := container.NewProjectsZonesClustersService(cs).Get(project, zone, clusterName).Do()
-	if err != nil {
-		return false, err
+		return false, fmt.Errorf("fetching cluster info: %v", err)
 	}
 	for _, np := range cluster.NodePools {
 		for _, ig := range np.InstanceGroupUrls {
 			igName := path.Base(ig)
-			ok, err := groupHasInstance(client, project, zone, igName, instanceID)
+			ok, err := groupHasInstance(opts, zone, igName, instanceID)
 			if err != nil {
-				return false, err
+				return false, fmt.Errorf("checking that group %q contains instance %v: %v", igName, instanceID, err)
 			}
 			if ok {
 				return true, nil
@@ -534,12 +515,8 @@ func clusterHasInstance(client *http.Client, project, zone, clusterName string, 
 	return false, nil
 }
 
-func groupHasInstance(client *http.Client, project, zone, groupName string, instanceID uint64) (bool, error) {
-	cs, err := compute.New(client)
-	if err != nil {
-		return false, err
-	}
-	instances, err := compute.NewInstanceGroupManagersService(cs).ListManagedInstances(project, zone, groupName).Do()
+func groupHasInstance(opts GCPConfig, zone, groupName string, instanceID uint64) (bool, error) {
+	instances, err := compute.NewInstanceGroupManagersService(opts.Compute).ListManagedInstances(opts.ProjectID, zone, groupName).Do()
 	if err != nil {
 		return false, err
 	}
