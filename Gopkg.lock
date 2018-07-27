@@ -77,9 +77,10 @@
   name = "github.com/google/go-tpm"
   packages = [
     "tpm2",
-    "tpmutil"
+    "tpmutil",
+    "tpmutil/tbs"
   ]
-  revision = "18c713cd0c4c27531ff204c99f4c153ccd5a91db"
+  revision = "a7190ca4cf86395ef7139541dd5f449eb41608ca"
 
 [[projects]]
   branch = "master"
