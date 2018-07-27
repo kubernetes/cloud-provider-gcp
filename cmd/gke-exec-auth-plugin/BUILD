@@ -40,6 +40,7 @@ go_binary(
 go_test(
     name = "go_default_test",
     srcs = [
+        "cache_test.go",
         "request_test.go",
         "tpm_test.go",
     ],
