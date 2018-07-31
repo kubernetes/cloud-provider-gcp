@@ -41,6 +41,8 @@ import (
 
 const InstanceIDAnnotationKey = "container.googleapis.com/instance_id"
 
+var errNoMetadata = fmt.Errorf("instance did not have 'kube-labels' metadata")
+
 type nodeAnnotator struct {
 	c          clientset.Interface
 	ns         corelisters.NodeLister
@@ -107,7 +109,9 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 				annotate: func(node *core.Node, instance *compute.Instance) bool {
 					labels, err := extractKubeLabels(instance)
 					if err != nil {
-						glog.Errorf("Error reconciling labels: %v", err)
+						if err != errNoMetadata {
+							glog.Errorf("Error reconciling labels: %v", err)
+						}
 						return false
 					}
 
@@ -249,7 +253,7 @@ func extractKubeLabels(instance *compute.Instance) (map[string]string, error) {
 	const labelsKey = "kube-labels"
 
 	if instance.Metadata == nil {
-		return make(map[string]string), nil
+		return nil, errNoMetadata
 	}
 
 	var kubeLabels *string
@@ -262,7 +266,10 @@ func extractKubeLabels(instance *compute.Instance) (map[string]string, error) {
 		}
 		kubeLabels = item.Value
 	}
-	if kubeLabels == nil || len(*kubeLabels) == 0 {
+	if kubeLabels == nil {
+		return nil, errNoMetadata
+	}
+	if len(*kubeLabels) == 0 {
 		return make(map[string]string), nil
 	}
 

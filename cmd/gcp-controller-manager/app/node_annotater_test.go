@@ -74,14 +74,15 @@ func TestParseNodeURL(t *testing.T) {
 func TestExtrackKubeLabels(t *testing.T) {
 	var something = "something"
 	cs := map[string]struct {
-		vm        *compute.Instance
-		in        string
-		out       map[string]string
-		expectErr bool
+		vm                  *compute.Instance
+		in                  string
+		out                 map[string]string
+		expectNoMetadataErr bool
+		expectErr           bool
 	}{
 		"no metadata": {
-			vm:  &compute.Instance{},
-			out: map[string]string{},
+			vm:                  &compute.Instance{},
+			expectNoMetadataErr: true,
 		},
 		"no 'kube-labels' metadata": {
 			vm: &compute.Instance{
@@ -94,7 +95,7 @@ func TestExtrackKubeLabels(t *testing.T) {
 					},
 				},
 			},
-			out: map[string]string{},
+			expectNoMetadataErr: true,
 		},
 		"no value of 'kube-labels' metadata": {
 			vm: &compute.Instance{
@@ -106,7 +107,7 @@ func TestExtrackKubeLabels(t *testing.T) {
 					},
 				},
 			},
-			out: map[string]string{},
+			expectNoMetadataErr: true,
 		},
 		"empty 'kube-labels'": {
 			in:  "",
@@ -182,7 +183,10 @@ func TestExtrackKubeLabels(t *testing.T) {
 			if got, want := out, c.out; !reflect.DeepEqual(got, want) {
 				t.Errorf("unexpected labels\n\tgot:\t%v\n\twant:\t%v", got, want)
 			}
-			if got, want := (err != nil), c.expectErr; got != want {
+			if c.expectNoMetadataErr && err != errNoMetadata {
+				t.Errorf("got %v, want errNoMetadata", err)
+			}
+			if got, want := (err != nil), c.expectErr || c.expectNoMetadataErr; got != want {
 				t.Errorf("unexpected error value: %v", err)
 			}
 		})
