@@ -22,6 +22,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/http"
 	"path"
 	"reflect"
 	"strings"
@@ -32,6 +33,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
+	"google.golang.org/api/googleapi"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -100,11 +102,17 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 		}
 		glog.Infof("validator %q: matched CSR %q", r.name, csr.Name)
 		tried = append(tried, r.name)
-		if r.validate != nil && !r.validate(a.opts, csr, x509cr) {
-			glog.Infof("validator %q: denied CSR %q", r.name, csr.Name)
-			csrApprovalStatus.WithLabelValues("deny", r.authFlowLabel).Inc()
-			csrApprovalLatency.WithLabelValues("deny", r.authFlowLabel).Observe(time.Since(start).Seconds())
-			return a.updateCSR(csr, false, r.denyMsg)
+		if r.validate != nil {
+			ok, err := r.validate(a.opts, csr, x509cr)
+			if err != nil {
+				return fmt.Errorf("validating CSR %q: %v", csr.Name, err)
+			}
+			if !ok {
+				glog.Infof("validator %q: denied CSR %q", r.name, csr.Name)
+				csrApprovalStatus.WithLabelValues("deny", r.authFlowLabel).Inc()
+				csrApprovalLatency.WithLabelValues("deny", r.authFlowLabel).Observe(time.Since(start).Seconds())
+				return a.updateCSR(csr, false, r.denyMsg)
+			}
 		}
 		glog.Infof("CSR %q validation passed", csr.Name)
 
@@ -156,7 +164,8 @@ func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bo
 	return nil
 }
 
-type csrCheckFunc func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
+type recognizeFunc func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
+type validateFunc func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error)
 
 type csrValidator struct {
 	name          string
@@ -166,12 +175,16 @@ type csrValidator struct {
 
 	// recognize is a required field that returns true if this csrValidator is
 	// applicable to given CSR.
-	recognize csrCheckFunc
+	recognize recognizeFunc
 	// validate is an optional field that returns true whether CSR should be
 	// approved or denied.
-	// If validate returns false, CSR is denied immediately.
-	// If validate returns true, CSR proceeds to SubjectAccessReview check.
-	validate csrCheckFunc
+	// If validate returns an error, CSR will be retried.
+	// If validate returns (false, nil), CSR is denied immediately.
+	// If validate returns (true, nil), CSR proceeds to SubjectAccessReview
+	// check.
+	//
+	// validate should only return errors for temporary problems.
+	validate validateFunc
 
 	permission authorization.ResourceAttributes
 }
@@ -308,23 +321,17 @@ func isNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509c
 	return csr.Spec.Username == x509cr.Subject.CommonName
 }
 
-func validateNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-	if err := validateNodeServerCertInner(opts, csr, x509cr); err != nil {
-		glog.Errorf("validating CSR %q: %v", csr.Name, err)
-		return false
-	}
-	return true
-}
-
 // Only check that IPs in SAN match an existing VM in the project.
 // Username was already checked against CN, so this CSR is coming from
 // authenticated kubelet.
-func validateNodeServerCertInner(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) error {
+func validateNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 	switch {
 	case len(x509cr.IPAddresses) == 0:
-		return errors.New("no SAN IPs")
+		glog.Infof("deny CSR %q: no SAN IPs", csr.Name)
+		return false, nil
 	case len(x509cr.EmailAddresses) > 0 || len(x509cr.URIs) > 0:
-		return errors.New("only DNS and IP SANs allowed")
+		glog.Infof("deny CSR %q: only DNS and IP SANs allowed", csr.Name)
+		return false, nil
 	}
 
 	srv := compute.NewInstancesService(opts.Compute)
@@ -332,7 +339,10 @@ func validateNodeServerCertInner(opts GCPConfig, csr *capi.CertificateSigningReq
 	for _, z := range opts.Zones {
 		inst, err := srv.Get(opts.ProjectID, z, instanceName).Do()
 		if err != nil {
-			continue
+			if isNotFound(err) {
+				continue
+			}
+			return false, err
 		}
 	scanIPs:
 		for _, ip := range x509cr.IPAddresses {
@@ -346,11 +356,13 @@ func validateNodeServerCertInner(opts GCPConfig, csr *capi.CertificateSigningReq
 					}
 				}
 			}
-			return fmt.Errorf("IP addresses in CSR (%q) don't match NetworkInterfaces on instance %q (%+v)", x509cr.IPAddresses, instanceName, inst.NetworkInterfaces)
+			glog.Infof("deny CSR %q: IP addresses in CSR (%q) don't match NetworkInterfaces on instance %q (%+v)", csr.Name, x509cr.IPAddresses, instanceName, inst.NetworkInterfaces)
+			return false, nil
 		}
-		return nil
+		return true, nil
 	}
-	return fmt.Errorf("Instance name %q doesn't match any VM in cluster project/zone", instanceName)
+	glog.Infof("deny CSR %q: instance name %q doesn't match any VM in cluster project/zone", csr.Name, instanceName)
+	return false, nil
 }
 
 var tpmAttestationBlocks = []string{
@@ -380,11 +392,11 @@ func isNodeClientCertWithAttestation(opts GCPConfig, csr *capi.CertificateSignin
 	return true
 }
 
-func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 	blocks, err := parsePEMBlocks(csr.Spec.Request)
 	if err != nil {
-		glog.Errorf("Parsing csr.Spec.Request: %v", err)
-		return false
+		glog.Infof("deny CSR %q: parsing csr.Spec.Request: %v", csr.Name, err)
+		return false, nil
 	}
 	attestDataRaw := blocks["ATTESTATION DATA"].Bytes
 	attestSig := blocks["ATTESTATION SIGNATURE"].Bytes
@@ -393,79 +405,81 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 	// TODO(awly): get AIK public key from GCE API.
 	aikCert, err := x509.ParseCertificate(attestCert)
 	if err != nil {
-		glog.Errorf("Parsing ATTESTATION_CERTIFICATE: %v", err)
-		return false
+		glog.Infof("deny CSR %q: parsing ATTESTATION_CERTIFICATE: %v", csr.Name, err)
+		return false, nil
 	}
 	if err := opts.TPMEndorsementCACache.verify(aikCert); err != nil {
-		glog.Errorf("Verifying EK certificate validity: %v", err)
-		return false
+		glog.Infof("deny CSR %q: verifying EK certificate validity: %v", csr.Name, err)
+		return false, nil
 	}
 	aikPub, ok := aikCert.PublicKey.(*rsa.PublicKey)
 	if !ok {
-		glog.Errorf("Public key in ATTESTATION CERTIFICATE is %T, want *rsa.PublicKey", aikCert.PublicKey)
-		return false
+		glog.Infof("deny CSR %q: public key in ATTESTATION CERTIFICATE is %T, want *rsa.PublicKey", csr.Name, aikCert.PublicKey)
+		return false, nil
 	}
 
 	nodeID, err := nodeidentity.FromAIKCert(aikCert)
 	if err != nil {
-		glog.Errorf("Failed extracting VM identity from EK certificate: %v", err)
-		return false
+		glog.Infof("deny CSR %q: failed extracting VM identity from EK certificate: %v", csr.Name, err)
+		return false, nil
 	}
 	hostname := strings.TrimPrefix(x509cr.Subject.CommonName, "system:node:")
 	if nodeID.Name != hostname {
-		glog.Errorf("VM name in ATTESTATION CERTIFICATE (%q) doesn't match CommonName in x509 CSR (%q)", nodeID.Name, x509cr.Subject.CommonName)
-		return false
+		glog.Infof("deny CSR %q: VM name in ATTESTATION CERTIFICATE (%q) doesn't match CommonName in x509 CSR (%q)", csr.Name, nodeID.Name, x509cr.Subject.CommonName)
+		return false, nil
 	}
 	if fmt.Sprint(nodeID.ProjectName) != opts.ProjectID {
-		glog.Errorf("Received CSR for a different project Name (%d)", nodeID.ProjectName)
-		return false
+		glog.Infof("deny CSR %q: received CSR for a different project Name (%d)", csr.Name, nodeID.ProjectName)
+		return false, nil
 	}
 
 	srv := compute.NewInstancesService(opts.Compute)
 	inst, err := srv.Get(fmt.Sprint(nodeID.ProjectID), nodeID.Zone, nodeID.Name).Do()
 	if err != nil {
-		glog.Errorf("Fetching VM data from GCE API: %v", err)
-		return false
+		if isNotFound(err) {
+			glog.Infof("deny CSR %q: VM doesn't exist in GCE API: %v", csr.Name, err)
+			return false, nil
+		}
+		return false, fmt.Errorf("fetching VM data from GCE API: %v", err)
 	}
 	if opts.VerifyClusterMembership {
 		ok, err = clusterHasInstance(opts, inst.Zone, inst.Id)
 		if err != nil {
-			glog.Errorf("Checking VM membership in cluster: %v", err)
-			return false
+			return false, fmt.Errorf("checking VM membership in cluster: %v", err)
 		}
 		if !ok {
-			glog.Errorf("VM %q doesn't belong to cluster %q", inst.Name, opts.ClusterName)
-			return false
+			glog.Infof("deny CSR %q: VM %q doesn't belong to cluster %q", csr.Name, inst.Name, opts.ClusterName)
+			return false, nil
 		}
 	}
 
 	attestHash := sha256.Sum256(attestDataRaw)
 	if err := rsa.VerifyPKCS1v15(aikPub, crypto.SHA256, attestHash[:], attestSig); err != nil {
-		glog.Errorf("Verifying certification signature with AIK public key: %v", err)
-		return false
+		glog.Infof("deny CSR %q: verifying certification signature with AIK public key: %v", csr.Name, err)
+		return false, nil
 	}
 
 	// Verify that attestDataRaw matches certificate.
 	attestData, err := tpm2.DecodeAttestationData(attestDataRaw)
 	if err != nil {
-		glog.Errorf("Parsing attestation data in CSR: %v", err)
-		return false
+		glog.Infof("deny CSR %q: parsing attestation data in CSR: %v", csr.Name, err)
+		return false, nil
 	}
 	pub, err := tpmattest.MakePublic(x509cr.PublicKey)
 	if err != nil {
-		glog.Errorf("Converting public key in CSR to TPM Public structure: %v", err)
-		return false
+		glog.Infof("deny CSR %q: converting public key in CSR to TPM Public structure: %v", csr.Name, err)
+		return false, nil
 	}
 	ok, err = attestData.AttestedCertifyInfo.Name.MatchesPublic(pub)
 	if err != nil {
-		glog.Errorf("Comparing ATTESTATION DATA to CSR public key: %v", err)
-		return false
+		glog.Infof("deny CSR %q: comparing ATTESTATION DATA to CSR public key: %v", csr.Name, err)
+		return false, nil
 	}
 	if !ok {
-		glog.Errorf("ATTESTATION DATA doesn't match CSR public key")
-		return false
+		glog.Infof("deny CSR %q: ATTESTATION DATA doesn't match CSR public key", csr.Name)
+		return false, nil
 	}
-	return true
+	return true, nil
 }
 
 func parsePEMBlocks(raw []byte) (map[string]*pem.Block, error) {
@@ -526,4 +540,9 @@ func groupHasInstance(opts GCPConfig, zone, groupName string, instanceID uint64)
 		}
 	}
 	return false, nil
+}
+
+func isNotFound(err error) bool {
+	gerr, ok := err.(*googleapi.Error)
+	return ok && gerr.Code == http.StatusNotFound
 }

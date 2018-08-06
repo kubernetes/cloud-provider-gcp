@@ -20,6 +20,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -119,7 +120,7 @@ func TestHandle(t *testing.T) {
 		allowed       bool
 		recognized    bool
 		err           bool
-		validate      csrCheckFunc
+		validate      validateFunc
 		verifyActions func(*testing.T, []testclient.Action)
 	}{
 		{
@@ -163,8 +164,8 @@ func TestHandle(t *testing.T) {
 			desc:       "recognized, allowed and validated",
 			recognized: true,
 			allowed:    true,
-			validate: func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-				return true
+			validate: func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
+				return true, nil
 			},
 			verifyActions: verifyCreateAndUpdate,
 		},
@@ -172,8 +173,8 @@ func TestHandle(t *testing.T) {
 			desc:       "recognized, allowed but not validated",
 			recognized: true,
 			allowed:    true,
-			validate: func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-				return false
+			validate: func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
+				return false, nil
 			},
 			verifyActions: func(t *testing.T, as []testclient.Action) {
 				if len(as) != 1 {
@@ -201,6 +202,20 @@ func TestHandle(t *testing.T) {
 					t.Errorf("got: %v, expected: %v", got, expected)
 				}
 			},
+		},
+		{
+			desc:       "recognized, allowed but validation failed",
+			recognized: true,
+			allowed:    true,
+			validate: func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
+				return false, errors.New("failed")
+			},
+			verifyActions: func(t *testing.T, as []testclient.Action) {
+				if len(as) != 0 {
+					t.Fatalf("expected no calls but got: %#v", as)
+				}
+			},
+			err: true,
 		},
 	}
 
@@ -304,11 +319,11 @@ func TestValidators(t *testing.T) {
 				t.Fatalf("creating GCE API client: %v", err)
 			}
 			opts.Compute = cs
-			err = validateNodeServerCertInner(opts, csr, x509cr)
+			ok, err := validateNodeServerCert(opts, csr, x509cr)
 			if err != nil {
-				t.Logf("validateNodeServerCertInner: %v", err)
+				t.Fatalf("validateNodeServerCert: %v", err)
 			}
-			return err == nil
+			return ok
 		}
 
 		cases := []func(*csrBuilder, *GCPConfig){
@@ -368,7 +383,7 @@ func TestValidators(t *testing.T) {
 	})
 }
 
-func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, o *GCPConfig), checkFunc csrCheckFunc, want bool) {
+func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, o *GCPConfig), checkFunc recognizeFunc, want bool) {
 	for i, c := range cases {
 		b := csrBuilder{
 			cn:        "system:node:foo",
