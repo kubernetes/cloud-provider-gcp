@@ -31,6 +31,7 @@ go_library(
         "//vendor/golang.org/x/oauth2:go_default_library",
         "//vendor/google.golang.org/api/compute/v1:go_default_library",
         "//vendor/google.golang.org/api/container/v1:go_default_library",
+        "//vendor/google.golang.org/api/googleapi:go_default_library",
         "//vendor/gopkg.in/gcfg.v1:go_default_library",
         "//vendor/gopkg.in/warnings.v0:go_default_library",
         "//vendor/k8s.io/api/authorization/v1beta1:go_default_library",
