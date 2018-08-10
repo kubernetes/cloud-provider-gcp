@@ -45,11 +45,11 @@ import (
 
 var (
 	csrApprovalStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "csr_approvals",
+		Name: "csr_approval_count",
 		Help: "Count of approved, denied and ignored CSRs",
 	}, []string{"status", "kind"})
 	csrApprovalLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "csr_approval_latency_seconds",
+		Name: "csr_approval_latencies",
 		Help: "Latency of CSR approver, in seconds",
 	}, []string{"status", "kind"})
 )
