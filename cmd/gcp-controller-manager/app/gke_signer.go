@@ -39,11 +39,11 @@ var (
 	groupVersions = []schema.GroupVersion{capi.SchemeGroupVersion}
 
 	csrSigningStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "csr_signing",
+		Name: "csr_signing_count",
 		Help: "Count of signed CSRs",
 	}, []string{"status"})
 	csrSigningLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "csr_signing_latency_seconds",
+		Name: "csr_signing_latencies",
 		Help: "Latency of CSR signer, in seconds",
 	}, []string{"status"})
 )
