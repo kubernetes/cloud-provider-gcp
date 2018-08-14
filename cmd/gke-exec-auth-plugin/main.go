@@ -40,11 +40,12 @@ func init() {
 	metav1.AddToGroupVersion(scheme, schema.GroupVersion{Version: "v1"})
 	clientauthv1alpha1.AddToScheme(scheme)
 	clientauthentication.AddToScheme(scheme)
+
+	// Override the default in glog. There's verbosity flag for suppressing output.
+	flag.Set("logtostderr", "true")
 }
 
 func main() {
-	// Override the default in glog. There's verbosity flag for suppressing output.
-	flag.Set("logtostderr", "true")
 	flag.Parse()
 
 	var key, cert []byte
@@ -62,7 +63,7 @@ func main() {
 		}
 		token = "vmid-" + token
 	case modeTPM:
-		key, cert, err = getKeyCert()
+		key, cert, err = getKeyCert(*cacheDir, requestCertificate)
 		if err != nil {
 			glog.Exit(err)
 		}

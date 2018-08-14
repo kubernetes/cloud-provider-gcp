@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"time"
 
 	"github.com/golang/glog"
@@ -26,16 +27,21 @@ const (
 	rotationThreshold = 10 * 24 * time.Hour // 10 days
 	// Caching duration for caller - will exec this plugin after this period.
 	responseExpiry = time.Hour
+	// validityLeeway is applied to NotBefore field of existing cert to account
+	// for clock skew.
+	validityLeeway = 5 * time.Minute
 )
 
-func getKeyCert() ([]byte, []byte, error) {
-	oldKey, oldCert, ok := getExistingKeyCert(*cacheDir)
+type requestCertFn func([]byte) ([]byte, error)
+
+func getKeyCert(dir string, requestCert requestCertFn) ([]byte, []byte, error) {
+	oldKey, oldCert, ok := getExistingKeyCert(dir)
 	if ok {
 		glog.Info("re-using cached key and certificate")
 		return oldKey, oldCert, nil
 	}
 
-	newKey, newCert, err := getNewKeyCert(*cacheDir)
+	newKey, newCert, err := getNewKeyCert(dir, requestCert)
 	if err != nil {
 		if len(oldKey) == 0 || len(oldCert) == 0 {
 			return nil, nil, err
@@ -47,14 +53,14 @@ func getKeyCert() ([]byte, []byte, error) {
 	return newKey, newCert, nil
 }
 
-func getNewKeyCert(dir string) ([]byte, []byte, error) {
+func getNewKeyCert(dir string, requestCert requestCertFn) ([]byte, []byte, error) {
 	keyPEM, err := getTempKeyPEM(dir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("trying to get private key: %v", err)
 	}
 
 	glog.Info("requesting new certificate")
-	certPEM, err := requestCertificate(keyPEM)
+	certPEM, err := requestCert(keyPEM)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -71,7 +77,7 @@ func getTempKeyPEM(dir string) ([]byte, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("trying to read temp private key: %v", err)
 	}
-	if err == nil && validPEMKey(keyPEM) {
+	if err == nil && validPEMKey(keyPEM, nil) {
 		return keyPEM, nil
 	}
 
@@ -93,7 +99,9 @@ func getTempKeyPEM(dir string) ([]byte, error) {
 	return keyPEM, nil
 }
 
-func validPEMKey(key []byte) bool {
+// validPEMKey returns true if key contains a valid PEM-encoded private key. If
+// cert is non-nil, it checks that key matches cert.
+func validPEMKey(key []byte, cert *x509.Certificate) bool {
 	if len(key) == 0 {
 		return false
 	}
@@ -101,8 +109,14 @@ func validPEMKey(key []byte) bool {
 	if keyBlock == nil {
 		return false
 	}
-	_, err := x509.ParseECPrivateKey(keyBlock.Bytes)
-	return err == nil
+	pk, err := x509.ParseECPrivateKey(keyBlock.Bytes)
+	if err != nil {
+		return false
+	}
+	if cert == nil {
+		return true
+	}
+	return reflect.DeepEqual(cert.PublicKey, pk.Public())
 }
 
 func getExistingKeyCert(dir string) ([]byte, []byte, bool) {
@@ -127,16 +141,23 @@ func getExistingKeyCert(dir string) ([]byte, []byte, bool) {
 		glog.Errorf("failed parsing existing cert: %v", err)
 		return nil, nil, false
 	}
+	if !validPEMKey(key, parsedCert) {
+		glog.Error("existing private key is invalid or doesn't match existing certificate")
+		return nil, nil, false
+	}
 	age := time.Now().Sub(parsedCert.NotBefore)
+	remaining := parsedCert.NotAfter.Sub(time.Now())
+	// Note: case order matters. Always check outside of expiry bounds first
+	// and put cases that return non-nil key/cert at the bottom.
 	switch {
-	case age < 0:
+	case remaining < responseExpiry:
+		glog.Infof("existing cert expired or will expire in <%v, requesting new one", responseExpiry)
+		return nil, nil, false
+	case age+validityLeeway < 0:
 		glog.Warningf("existing cert not valid yet, requesting new one")
 		return nil, nil, false
 	case age < rotationThreshold:
 		return key, cert, true
-	case parsedCert.NotAfter.Sub(time.Now()) < responseExpiry:
-		glog.Infof("existing cert expired or will expire in <%v, requesting new one", responseExpiry)
-		return nil, nil, false
 	default:
 		// Existing key/cert can still be reused but try to rotate.
 		glog.Infof("existing cert is %v old, requesting new one", age)
