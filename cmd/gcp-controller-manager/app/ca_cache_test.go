@@ -32,23 +32,23 @@ func TestCACacheVerify(t *testing.T) {
 	ca, c, cleanup := initFakeCACache(t)
 	defer cleanup()
 
-	t.Run("valid", func(t *testing.T) {
-		t.Parallel()
-		if err := c.verify(ca.validCert); err != nil {
-			t.Errorf("verifying valid certificate: got %v, want nil", err)
-		}
-	})
-	if err := c.verify(ca.validCert); err != nil {
-		t.Errorf("verifying valid certificate: got %v, want nil", err)
-	}
-	for desc, invalidCert := range ca.invalidCerts {
-		t.Run(desc, func(t *testing.T) {
+	// Prevent deferred cleanup from running before parallel tests finish.
+	t.Run("all", func(t *testing.T) {
+		t.Run("valid", func(t *testing.T) {
 			t.Parallel()
-			if err := c.verify(invalidCert); err == nil {
-				t.Errorf("verifying invalid certificate: got nil, want non-nil error")
+			if err := c.verify(ca.validCert); err != nil {
+				t.Errorf("verifying valid certificate: got %v, want nil", err)
 			}
 		})
-	}
+		for desc, invalidCert := range ca.invalidCerts {
+			t.Run(desc, func(t *testing.T) {
+				t.Parallel()
+				if err := c.verify(invalidCert); err == nil {
+					t.Errorf("verifying invalid certificate: got nil, want non-nil error")
+				}
+			})
+		}
+	})
 }
 
 func initFakeCACache(t *testing.T) (*fakeCA, *caCache, func()) {
@@ -101,21 +101,21 @@ func initFakeCA(t *testing.T, srvURL string) *fakeCA {
 	}
 
 	rootTmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		IsCA:         true,
+		SerialNumber:          big.NewInt(1),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		IsCA:                  true,
 		BasicConstraintsValid: true,
 	}
 	rootCertDER, rootCert, rootKey := makeCert(t, rootTmpl, rootTmpl, nil)
 	ca.rootCert = rootCertDER
 	interTmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(2),
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		IsCA:         true,
+		SerialNumber:          big.NewInt(2),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		IsCA:                  true,
 		BasicConstraintsValid: true,
 		CRLDistributionPoints: []string{srvURL + "/root.crl"},
 	}
@@ -155,11 +155,11 @@ func initFakeCA(t *testing.T, srvURL string) *fakeCA {
 	}, ca.intermediateCert, ca.intermediateCertKey)
 
 	selfSignedInterTmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(2),
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		IsCA:         true,
+		SerialNumber:          big.NewInt(2),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		IsCA:                  true,
 		BasicConstraintsValid: true,
 		CRLDistributionPoints: []string{srvURL + "/root.crl"},
 	}
