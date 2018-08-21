@@ -114,19 +114,25 @@ func tpmAttest(dev tpmDevice, privateKey crypto.PrivateKey) ([]byte, error) {
 	}
 	glog.Info("certification signature verified with AIK public key")
 
+	// Try loading AIK cert, but don't fail if it wasn't provisioned.
+	//
+	// TODO(awly): make missing AIK cert an error eventually provisioning is
+	// reliable enough.
 	aikCertRaw, aikCert, err := readAIKCert(dev, aikh, aikPub)
 	if err != nil {
-		return nil, fmt.Errorf("reading AIK cert: %v", err)
-	}
-	glog.Info("AIK cert loaded")
+		glog.Errorf("failed reading AIK cert: %v", err)
+		glog.Info("proceeding without AIK cert in CSR")
+	} else {
+		glog.Info("AIK cert loaded")
 
-	// Sanity-check that AIK cert matches AIK.
-	aikCertPub := aikCert.PublicKey.(*rsa.PublicKey)
-	if !reflect.DeepEqual(aikPub, aikCertPub) {
-		return nil, fmt.Errorf("AIK public key doesn't match certificate public key")
-	}
-	if err := rsa.VerifyPKCS1v15(aikCertPub, crypto.SHA256, attestHash[:], sig); err != nil {
-		return nil, fmt.Errorf("verifying certification signature with AIK cert: %v", err)
+		// Sanity-check that AIK cert matches AIK.
+		aikCertPub := aikCert.PublicKey.(*rsa.PublicKey)
+		if !reflect.DeepEqual(aikPub, aikCertPub) {
+			return nil, fmt.Errorf("AIK public key doesn't match certificate public key")
+		}
+		if err := rsa.VerifyPKCS1v15(aikCertPub, crypto.SHA256, attestHash[:], sig); err != nil {
+			return nil, fmt.Errorf("verifying certification signature with AIK cert: %v", err)
+		}
 	}
 
 	id, err := newNodeIdentity()
@@ -138,24 +144,27 @@ func tpmAttest(dev tpmDevice, privateKey crypto.PrivateKey) ([]byte, error) {
 		return nil, fmt.Errorf("marshaling VM identity: %v", err)
 	}
 
-	return bytes.Join([][]byte{
-		pem.EncodeToMemory(&pem.Block{
+	buf := new(bytes.Buffer)
+	// OK to ignore errors from pem.Encode below because buf.Write never fails.
+	pem.Encode(buf, &pem.Block{
+		Type:  "ATTESTATION DATA",
+		Bytes: attest,
+	})
+	pem.Encode(buf, &pem.Block{
+		Type:  "ATTESTATION SIGNATURE",
+		Bytes: sig,
+	})
+	pem.Encode(buf, &pem.Block{
+		Type:  "VM IDENTITY",
+		Bytes: idRaw,
+	})
+	if len(aikCertRaw) > 0 {
+		pem.Encode(buf, &pem.Block{
 			Type:  "ATTESTATION CERTIFICATE",
 			Bytes: aikCertRaw,
-		}),
-		pem.EncodeToMemory(&pem.Block{
-			Type:  "ATTESTATION DATA",
-			Bytes: attest,
-		}),
-		pem.EncodeToMemory(&pem.Block{
-			Type:  "ATTESTATION SIGNATURE",
-			Bytes: sig,
-		}),
-		pem.EncodeToMemory(&pem.Block{
-			Type:  "VM IDENTITY",
-			Bytes: idRaw,
-		}),
-	}, nil), nil
+		})
+	}
+	return buf.Bytes(), nil
 }
 
 func loadPrimaryKey(dev tpmDevice) (tpmutil.Handle, crypto.PublicKey, error) {

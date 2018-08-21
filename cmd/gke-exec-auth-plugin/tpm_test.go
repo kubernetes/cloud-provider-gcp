@@ -31,9 +31,10 @@ func init() {
 }
 
 type fakeTPM struct {
-	primary    *rsa.PrivateKey
-	loaded     map[tpmutil.Handle]tpm2.Public
-	nextHandle tpmutil.Handle
+	primary       *rsa.PrivateKey
+	loaded        map[tpmutil.Handle]tpm2.Public
+	nextHandle    tpmutil.Handle
+	returnAIKCert bool
 }
 
 func newFakeTPM(t *testing.T) *fakeTPM {
@@ -42,9 +43,10 @@ func newFakeTPM(t *testing.T) *fakeTPM {
 		t.Fatal(err)
 	}
 	return &fakeTPM{
-		primary:    primary,
-		loaded:     make(map[tpmutil.Handle]tpm2.Public),
-		nextHandle: primaryHandle + 1,
+		primary:       primary,
+		loaded:        make(map[tpmutil.Handle]tpm2.Public),
+		nextHandle:    primaryHandle + 1,
+		returnAIKCert: true,
 	}
 }
 
@@ -75,6 +77,9 @@ func (t *fakeTPM) nvRead(h tpmutil.Handle) ([]byte, error) {
 	case aikTemplateIndex:
 		return nil, nil
 	case aikCertIndex:
+		if !t.returnAIKCert {
+			return nil, fmt.Errorf("NV handle 0x%x not found", h)
+		}
 		template := &x509.Certificate{
 			SerialNumber: big.NewInt(1),
 			Subject: pkix.Name{
@@ -102,29 +107,38 @@ func (t *fakeTPM) flush(h tpmutil.Handle) { delete(t.loaded, h) }
 func (t *fakeTPM) close() error           { return nil }
 
 func TestTPMAttest(t *testing.T) {
-	dev := newFakeTPM(t)
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	blocksRaw, err := tpmAttest(dev, pk)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(dev.loaded) > 0 {
-		t.Errorf("%d handles not flushed in TPM", len(dev.loaded))
+	dev := newFakeTPM(t)
+	run := func(t *testing.T, wantBlocks []string) {
+		blocksRaw, err := tpmAttest(dev, pk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(dev.loaded) > 0 {
+			t.Errorf("%d handles not flushed in TPM", len(dev.loaded))
+		}
+
+		for i, want := range wantBlocks {
+			var b *pem.Block
+			b, blocksRaw = pem.Decode(blocksRaw)
+			if b == nil {
+				t.Fatalf("missing PEM blocks %q in attestation data", wantBlocks[i:])
+			}
+			if b.Type != want {
+				t.Errorf("got block %q, want %q", b.Type, want)
+			}
+		}
 	}
 
-	wantBlocks := []string{"ATTESTATION CERTIFICATE", "ATTESTATION DATA", "ATTESTATION SIGNATURE"}
-	for i, want := range wantBlocks {
-		var b *pem.Block
-		b, blocksRaw = pem.Decode(blocksRaw)
-		if b == nil {
-			t.Fatalf("missing PEM blocks %q in attestation data", wantBlocks[i:])
-		}
-		if b.Type != want {
-			t.Errorf("got block %q, want %q", b.Type, want)
-		}
-	}
+	t.Run("with AIK cert", func(t *testing.T) {
+		run(t, []string{"ATTESTATION DATA", "ATTESTATION SIGNATURE", "VM IDENTITY", "ATTESTATION CERTIFICATE"})
+	})
+	t.Run("without AIK cert", func(t *testing.T) {
+		dev.returnAIKCert = false
+		run(t, []string{"ATTESTATION DATA", "ATTESTATION SIGNATURE", "VM IDENTITY"})
+	})
 }
