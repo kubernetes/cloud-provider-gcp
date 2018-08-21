@@ -10,7 +10,8 @@ import (
 	"cloud.google.com/go/compute/metadata"
 )
 
-var cloudComputeInstanceIdentifierOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 1, 21}
+// CloudComputeInstanceIdentifierOIDis an x509 Extension OID for VM Identity info.
+var CloudComputeInstanceIdentifierOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 1, 21}
 
 // Identity uniquely identifies a GCE VM.
 type Identity struct {
@@ -73,7 +74,7 @@ type asn1Identity struct {
 func FromAIKCert(cert *x509.Certificate) (Identity, error) {
 	var id asn1Identity
 	for _, ext := range cert.Extensions {
-		if !ext.Id.Equal(cloudComputeInstanceIdentifierOID) {
+		if !ext.Id.Equal(CloudComputeInstanceIdentifierOID) {
 			continue
 		}
 		_, err := asn1.Unmarshal(ext.Value, &id)
@@ -88,5 +89,17 @@ func FromAIKCert(cert *x509.Certificate) (Identity, error) {
 			ProjectName: id.ProjectName,
 		}, nil
 	}
-	return Identity{}, fmt.Errorf("certificate does not have cloudComputeInstanceIdentifier extension (OID %s)", cloudComputeInstanceIdentifierOID)
+	return Identity{}, fmt.Errorf("certificate does not have cloudComputeInstanceIdentifier extension (OID %s)", CloudComputeInstanceIdentifierOID)
+}
+
+// ToASN1 serializes Identity to ASN1 format used in
+// CloudComputeInstanceIdentifiedOID x509 extension.
+func (id Identity) ToASN1() ([]byte, error) {
+	return asn1.Marshal(asn1Identity{
+		Zone:        id.Zone,
+		ID:          int64(id.ID),
+		Name:        id.Name,
+		ProjectID:   int64(id.ProjectID),
+		ProjectName: id.ProjectName,
+	})
 }

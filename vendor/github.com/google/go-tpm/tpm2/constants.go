@@ -78,6 +78,20 @@ const (
 	SessionTrial  SessionType = 0x03
 )
 
+// SessionAttributes represents an attribute of a session.
+type SessionAttributes byte
+
+const (
+	AttrContinueSession SessionAttributes = 1 << iota
+	AttrAuditExclusive
+	AttrAuditReset
+	_ // bit 3 reserved
+	_ // bit 4 reserved
+	AttrDecrypt
+	AttrEcrypt
+	AttrAudit
+)
+
 // KeyProp is a bitmask used in Attributes field of key templates. Individual
 // flags should be OR-ed to form a full mask.
 type KeyProp uint32
@@ -89,6 +103,7 @@ const (
 	FlagSensitiveDataOrigin KeyProp = 0x00000020
 	FlagUserWithAuth        KeyProp = 0x00000040
 	FlagAdminWithPolicy     KeyProp = 0x00000080
+	FlagNoDA                KeyProp = 0x00000400
 	FlagRestricted          KeyProp = 0x00010000
 	FlagDecrypt             KeyProp = 0x00020000
 	FlagSign                KeyProp = 0x00040000
@@ -133,12 +148,14 @@ const (
 	CapabilityAuthPolicies
 )
 
+// TPM Structure Tags. Tags are used to disambiguate structures, similar to Alg
+// values: tag value defines what kind of data lives in a nested field.
 const (
-	tagNull          tpmutil.Tag = 0x8000
-	tagNoSessions    tpmutil.Tag = 0x8001
-	tagSessions      tpmutil.Tag = 0x8002
-	tagAttestCertify tpmutil.Tag = 0x8017
-	tagHashCheck     tpmutil.Tag = 0x8024
+	TagNull          tpmutil.Tag = 0x8000
+	TagNoSessions    tpmutil.Tag = 0x8001
+	TagSessions      tpmutil.Tag = 0x8002
+	TagAttestCertify tpmutil.Tag = 0x8017
+	TagHashCheck     tpmutil.Tag = 0x8024
 )
 
 // StartupType instructs the TPM on how to handle its state during Shutdown or

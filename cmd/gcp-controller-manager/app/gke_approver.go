@@ -429,7 +429,7 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 		return false, nil
 	}
 	if fmt.Sprint(nodeID.ProjectName) != opts.ProjectID {
-		glog.Infof("deny CSR %q: received CSR for a different project Name (%d)", csr.Name, nodeID.ProjectName)
+		glog.Infof("deny CSR %q: received CSR for a different project Name (%q)", csr.Name, nodeID.ProjectName)
 		return false, nil
 	}
 
@@ -460,14 +460,14 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 	}
 
 	// Verify that attestDataRaw matches certificate.
-	attestData, err := tpm2.DecodeAttestationData(attestDataRaw)
-	if err != nil {
-		glog.Infof("deny CSR %q: parsing attestation data in CSR: %v", csr.Name, err)
-		return false, nil
-	}
 	pub, err := tpmattest.MakePublic(x509cr.PublicKey)
 	if err != nil {
 		glog.Infof("deny CSR %q: converting public key in CSR to TPM Public structure: %v", csr.Name, err)
+		return false, nil
+	}
+	attestData, err := tpm2.DecodeAttestationData(attestDataRaw)
+	if err != nil {
+		glog.Infof("deny CSR %q: parsing attestation data in CSR: %v", csr.Name, err)
 		return false, nil
 	}
 	ok, err = attestData.AttestedCertifyInfo.Name.MatchesPublic(pub)
