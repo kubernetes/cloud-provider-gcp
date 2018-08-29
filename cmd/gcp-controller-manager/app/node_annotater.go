@@ -33,15 +33,25 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/kubernetes/pkg/apis/core/helper"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/golang/glog"
 	compute "google.golang.org/api/compute/v1"
 )
 
-const InstanceIDAnnotationKey = "container.googleapis.com/instance_id"
+const (
+	InstanceIDAnnotationKey           = "container.googleapis.com/instance_id"
+	NodeTerminationTaintAnnotationKey = "cloud.google.com/impending-node-termination"
+)
 
-var errNoMetadata = fmt.Errorf("instance did not have 'kube-labels' metadata")
+var (
+	errNoMetadata        = fmt.Errorf("instance did not have 'kube-labels' metadata")
+	NodeTerminationTaint = &core.Taint{
+		Key:    NodeTerminationTaintAnnotationKey,
+		Effect: core.TaintEffectNoSchedule,
+	}
+)
 
 type nodeAnnotator struct {
 	c          clientset.Interface
@@ -81,6 +91,7 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
 			workqueue.NewItemExponentialFailureRateLimiter(200*time.Millisecond, 1000*time.Second),
 		), "node-annotator"),
+		//		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "node-annotator"),
 		getInstance: func(nodeURL string) (*compute.Instance, error) {
 			project, zone, instance, err := parseNodeURL(nodeURL)
 			if err != nil {
@@ -92,6 +103,9 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 			{
 				name: "instance-id-reconciler",
 				annotate: func(node *core.Node, instance *compute.Instance) bool {
+					if instance == nil {
+						return false
+					}
 					eid := strconv.FormatUint(instance.Id, 10)
 					if len(node.ObjectMeta.Annotations) != 0 && eid == node.ObjectMeta.Annotations[InstanceIDAnnotationKey] {
 						// node restarted but no update of ExternalID required
@@ -105,8 +119,18 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 				},
 			},
 			{
+				// Annotator that turns a specific annotation into a taint for the purposes of handling node terminations gracefully.
+				name: "node-termination-taint-reconciler",
+				annotate: func(node *core.Node, _ *compute.Instance) bool {
+					return handleNodeTerminations(node)
+				},
+			},
+			{
 				name: "labels-reconciler",
 				annotate: func(node *core.Node, instance *compute.Instance) bool {
+					if instance == nil {
+						return false
+					}
 					labels, err := extractKubeLabels(instance)
 					if err != nil {
 						if err != errNoMetadata {
@@ -132,23 +156,16 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 			},
 		},
 	}
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    na.add,
-		UpdateFunc: na.update,
-	})
+	nodeInformer.Informer().AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				na.enqueue(obj.(*core.Node))
+			},
+			UpdateFunc: func(old, new interface{}) {
+				na.enqueue(old.(*core.Node))
+			},
+		})
 	return na, nil
-}
-
-func (na *nodeAnnotator) add(obj interface{}) {
-	na.enqueue(obj)
-}
-
-func (na *nodeAnnotator) update(obj, oldObj interface{}) {
-	node := obj.(*core.Node)
-	oldNode := oldObj.(*core.Node)
-	if node.Status.NodeInfo.BootID != oldNode.Status.NodeInfo.BootID {
-		na.enqueue(obj)
-	}
 }
 
 func (na *nodeAnnotator) enqueue(obj interface{}) {
@@ -238,10 +255,10 @@ func parseNodeURL(nodeURL string) (project, zone, instance string, err error) {
 	project = u.Host
 	parts := strings.Split(u.Path, "/")
 	if len(parts) != 3 {
-		return "", "", "", fmt.Errorf("failed to parse %q: expected a three part path")
+		return "", "", "", fmt.Errorf("failed to parse %q: expected a three part path", u.Path)
 	}
 	if len(parts[0]) != 0 {
-		return "", "", "", fmt.Errorf("failed to parse %q: part one of path to have length 0")
+		return "", "", "", fmt.Errorf("failed to parse %q: part one of path to have length 0", parts[0])
 	}
 	zone = parts[1]
 	instance = parts[2]
@@ -286,4 +303,83 @@ func extractKubeLabels(instance *compute.Instance) (map[string]string, error) {
 	}
 
 	return labels, nil
+}
+
+// addOrUpdateTaint tries to add a taint to taint list. Returns a new copy of updated Node and true if something was updated
+// false otherwise.
+func addOrUpdateTaint(node *core.Node, taint *core.Taint) bool {
+	nodeTaints := node.Spec.Taints
+
+	var newTaints []core.Taint
+	updated := false
+	for i := range nodeTaints {
+		if taint.MatchTaint(&nodeTaints[i]) {
+			if helper.Semantic.DeepEqual(*taint, nodeTaints[i]) {
+				return false
+			}
+			newTaints = append(newTaints, *taint)
+			updated = true
+			continue
+		}
+
+		newTaints = append(newTaints, nodeTaints[i])
+	}
+
+	if !updated {
+		newTaints = append(newTaints, *taint)
+	}
+
+	node.Spec.Taints = newTaints
+	return true
+}
+
+func removeTaint(node *core.Node, taintToDelete *core.Taint) bool {
+	nodeTaints := node.Spec.Taints
+
+	if !taintExists(nodeTaints, taintToDelete) {
+		return false
+	}
+
+	// newTaints, _ := deleteTaint(nodeTaints, taint)
+	newTaints := []core.Taint{}
+	deleted := false
+	for _, taint := range nodeTaints {
+		if taint.MatchTaint(taintToDelete) {
+			deleted = true
+			continue
+		}
+		newTaints = append(newTaints, taint)
+	}
+
+	node.Spec.Taints = newTaints
+	return deleted
+}
+
+func taintExists(taints []core.Taint, taintToFind *core.Taint) bool {
+	for _, taint := range taints {
+		if taint.MatchTaint(taintToFind) {
+			return true
+		}
+	}
+	return false
+}
+
+func handleNodeTerminations(node *core.Node) bool {
+	glog.V(10).Infof("Checking for possible node termination annotations on node %q: %v", node.Name, node.Spec)
+	if len(node.ObjectMeta.Annotations) == 0 {
+		// node restarted but no update of ExternalID required
+		return removeTaint(node, NodeTerminationTaint)
+	}
+	value, ok := node.ObjectMeta.Annotations[NodeTerminationTaintAnnotationKey]
+	if !ok {
+		glog.Infof("Node termination annotation does not exist for node %q. Removing corresponding taint if it exists", node.Name)
+		return removeTaint(node, NodeTerminationTaint)
+	}
+	if value == "true" {
+		glog.Infof("Node termination annotation is true for node %q. Tainting the node", node.Name)
+		// Need to set node termination taint on the node.
+		return addOrUpdateTaint(node, NodeTerminationTaint)
+	}
+	glog.V(2).Infof("Node termination annotation is false for node %q. Removing corresponding taint if it exists", node.Name)
+	return removeTaint(node, NodeTerminationTaint)
 }

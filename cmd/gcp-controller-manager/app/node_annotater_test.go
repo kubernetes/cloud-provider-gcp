@@ -22,6 +22,9 @@ import (
 	"testing"
 
 	compute "google.golang.org/api/compute/v1"
+	core "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/kubernetes/pkg/apis/core/helper"
 )
 
 func TestParseNodeURL(t *testing.T) {
@@ -188,6 +191,81 @@ func TestExtrackKubeLabels(t *testing.T) {
 			}
 			if got, want := (err != nil), c.expectErr || c.expectNoMetadataErr; got != want {
 				t.Errorf("unexpected error value: %v", err)
+			}
+		})
+	}
+}
+
+func TestManageNodeTerminationTaint(t *testing.T) {
+	cs := map[string]struct {
+		annotation map[string]string
+		update     bool
+		taints     []core.Taint
+		out        []core.Taint
+	}{
+		"no annotation needs update": {
+			annotation: nil,
+			taints: []core.Taint{
+				*NodeTerminationTaint,
+			},
+			update: true,
+			out:    []core.Taint{},
+		},
+		"no annotation no update": {
+			annotation: nil,
+			taints:     []core.Taint{},
+			update:     false,
+			out:        []core.Taint{},
+		},
+		"annotation true": {
+			annotation: map[string]string{NodeTerminationTaintAnnotationKey: "true"},
+			taints:     []core.Taint{},
+			update:     true,
+			out: []core.Taint{
+				*NodeTerminationTaint,
+			},
+		},
+		"annotation true no update": {
+			annotation: map[string]string{NodeTerminationTaintAnnotationKey: "true"},
+			taints: []core.Taint{
+				*NodeTerminationTaint,
+			},
+			update: false,
+			out: []core.Taint{
+				*NodeTerminationTaint,
+			},
+		},
+		"annotation false": {
+			annotation: map[string]string{NodeTerminationTaintAnnotationKey: "false"},
+			taints: []core.Taint{
+				*NodeTerminationTaint,
+			},
+			update: true,
+			out:    []core.Taint{},
+		},
+	}
+
+	for name, c := range cs {
+		t.Run(name, func(t *testing.T) {
+			node := &core.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: c.annotation,
+				},
+				Spec: core.NodeSpec{
+					Taints: c.taints,
+				},
+			}
+
+			updated := handleNodeTerminations(node)
+			if updated != c.update {
+				t.Fatalf("Invalid result for updated - got: %v, want: %v", updated, c.update)
+			}
+			if len(node.Spec.Taints) != len(c.out) {
+				t.Fatalf("Invalid # of taints - got: %v, want: %v", node.Spec.Taints, c.out)
+			}
+
+			if len(c.out) > 0 && !helper.Semantic.DeepEqual(c.out[0], node.Spec.Taints[0]) {
+				t.Fatalf("Invalid taint - got: %v, want: %v", node.Spec.Taints[0], c.out[0])
 			}
 		})
 	}
