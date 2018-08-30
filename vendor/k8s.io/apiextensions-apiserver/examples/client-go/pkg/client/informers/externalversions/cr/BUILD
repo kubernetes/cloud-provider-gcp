@@ -1,0 +1,13 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["interface.go"],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apiextensions-apiserver/examples/client-go/pkg/client/informers/externalversions/cr",
+    importpath = "k8s.io/apiextensions-apiserver/examples/client-go/pkg/client/informers/externalversions/cr",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/k8s.io/apiextensions-apiserver/examples/client-go/pkg/client/informers/externalversions/cr/v1:go_default_library",
+        "//vendor/k8s.io/apiextensions-apiserver/examples/client-go/pkg/client/informers/externalversions/internalinterfaces:go_default_library",
+    ],
+)

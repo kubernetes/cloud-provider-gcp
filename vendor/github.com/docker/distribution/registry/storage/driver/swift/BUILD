@@ -1,0 +1,31 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["swift.go"],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/docker/distribution/registry/storage/driver/swift",
+    importpath = "github.com/docker/distribution/registry/storage/driver/swift",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/docker/distribution/context:go_default_library",
+        "//vendor/github.com/docker/distribution/registry/storage/driver:go_default_library",
+        "//vendor/github.com/docker/distribution/registry/storage/driver/base:go_default_library",
+        "//vendor/github.com/docker/distribution/registry/storage/driver/factory:go_default_library",
+        "//vendor/github.com/docker/distribution/version:go_default_library",
+        "@com_github_mitchellh_mapstructure//:go_default_library",
+        "@com_github_ncw_swift//:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["swift_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//vendor/github.com/docker/distribution/context:go_default_library",
+        "//vendor/github.com/docker/distribution/registry/storage/driver:go_default_library",
+        "//vendor/github.com/docker/distribution/registry/storage/driver/testsuites:go_default_library",
+        "@com_github_ncw_swift//swifttest:go_default_library",
+        "@in_gopkg_check_v1//:go_default_library",
+    ],
+)

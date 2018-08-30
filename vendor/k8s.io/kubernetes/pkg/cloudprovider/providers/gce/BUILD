@@ -3,6 +3,7 @@ package(default_visibility = ["//visibility:public"])
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
+    "go_test",
 )
 
 go_library(
@@ -89,6 +90,46 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/version:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/volume:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/volume/util:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "gce_address_manager_test.go",
+        "gce_annotations_test.go",
+        "gce_disks_test.go",
+        "gce_healthchecks_test.go",
+        "gce_loadbalancer_external_test.go",
+        "gce_loadbalancer_internal_test.go",
+        "gce_loadbalancer_test.go",
+        "gce_loadbalancer_utils_test.go",
+        "gce_test.go",
+        "gce_util_test.go",
+        "metrics_test.go",
+    ],
+    embed = [":go_default_library"],
+    deps = [
+        "//vendor/golang.org/x/oauth2/google:go_default_library",
+        "//vendor/google.golang.org/api/compute/v0.alpha:go_default_library",
+        "//vendor/google.golang.org/api/compute/v0.beta:go_default_library",
+        "//vendor/google.golang.org/api/compute/v1:go_default_library",
+        "//vendor/google.golang.org/api/googleapi:go_default_library",
+        "//vendor/k8s.io/api/core/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
+        "//vendor/k8s.io/client-go/tools/cache:go_default_library",
+        "//vendor/k8s.io/client-go/tools/record:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/api/v1/service:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/cloudprovider:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud/meta:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud/mock:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/apis:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/util/net/sets:go_default_library",
+        "@com_github_stretchr_testify//assert:go_default_library",
+        "@com_github_stretchr_testify//require:go_default_library",
     ],
 )
 

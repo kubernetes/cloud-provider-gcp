@@ -11,8 +11,6 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/cmd/gke-exec-auth-plugin",
     visibility = ["//visibility:private"],
     deps = [
-        "//pkg/nodeidentity:go_default_library",
-        "//pkg/tpmattest:go_default_library",
         "//vendor/cloud.google.com/go/compute/metadata:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/github.com/google/go-tpm/tpm2:go_default_library",
@@ -28,6 +26,8 @@ go_library(
         "//vendor/k8s.io/client-go/rest:go_default_library",
         "//vendor/k8s.io/client-go/util/cert:go_default_library",
         "//vendor/k8s.io/client-go/util/certificate/csr:go_default_library",
+        "//vendor/k8s.io/cloud-provider-gcp/pkg/nodeidentity:go_default_library",
+        "//vendor/k8s.io/cloud-provider-gcp/pkg/tpmattest:go_default_library",
     ],
 )
 
@@ -46,9 +46,9 @@ go_test(
     ],
     embed = [":go_default_library"],
     deps = [
-        "//pkg/nodeidentity:go_default_library",
         "//vendor/github.com/google/go-tpm/tpm2:go_default_library",
         "//vendor/github.com/google/go-tpm/tpmutil:go_default_library",
         "//vendor/k8s.io/client-go/rest:go_default_library",
+        "//vendor/k8s.io/cloud-provider-gcp/pkg/nodeidentity:go_default_library",
     ],
 )

@@ -1,0 +1,106 @@
+package(default_visibility = ["//visibility:public"])
+
+load(
+    "@io_bazel_rules_go//go:def.bzl",
+    "go_library",
+    "go_test",
+)
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "auth.go",
+        "doc.go",
+        "server.go",
+    ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/kubelet/server",
+    importpath = "k8s.io/kubernetes/pkg/kubelet/server",
+    deps = [
+        "//vendor/github.com/golang/glog:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus/promhttp:go_default_library",
+        "//vendor/k8s.io/api/core/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/proxy:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authentication/authenticator:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authentication/user:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authorization/authorizer:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/server/healthz:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/server/httplog:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/util/flushwriter:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/api/legacyscheme:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/core:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/core/v1/validation:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/container:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/prober:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/server/portforward:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/server/remotecommand:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/server/stats:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/server/streaming:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/types:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/util/configz:go_default_library",
+        "@com_github_emicklei_go_restful//:go_default_library",
+        "@com_github_google_cadvisor//info/v1:go_default_library",
+        "@com_github_google_cadvisor//metrics:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "auth_test.go",
+        "server_test.go",
+        "server_websocket_test.go",
+    ],
+    embed = [":go_default_library"],
+    deps = [
+        "//vendor/golang.org/x/net/websocket:go_default_library",
+        "//vendor/k8s.io/api/core/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/httpstream:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/httpstream/spdy:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authentication/user:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authorization/authorizer:go_default_library",
+        "//vendor/k8s.io/client-go/tools/remotecommand:go_default_library",
+        "//vendor/k8s.io/client-go/util/testing:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/core:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/core/install:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/apis/stats/v1alpha1:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/cm:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/container:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/server/portforward:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/server/remotecommand:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/server/stats:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubelet/server/streaming:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/volume:go_default_library",
+        "@com_github_google_cadvisor//info/v1:go_default_library",
+        "@com_github_stretchr_testify//assert:go_default_library",
+        "@com_github_stretchr_testify//require:go_default_library",
+    ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [
+        ":package-srcs",
+        "//pkg/kubelet/server/portforward:all-srcs",
+        "//pkg/kubelet/server/remotecommand:all-srcs",
+        "//pkg/kubelet/server/stats:all-srcs",
+        "//pkg/kubelet/server/streaming:all-srcs",
+    ],
+    tags = ["automanaged"],
+)

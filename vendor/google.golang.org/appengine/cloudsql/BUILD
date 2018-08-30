@@ -1,0 +1,12 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "cloudsql.go",
+        "cloudsql_vm.go",
+    ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/google.golang.org/appengine/cloudsql",
+    importpath = "google.golang.org/appengine/cloudsql",
+    visibility = ["//visibility:public"],
+)

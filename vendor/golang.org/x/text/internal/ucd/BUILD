@@ -1,4 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
@@ -6,4 +6,13 @@ go_library(
     importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/text/internal/ucd",
     importpath = "golang.org/x/text/internal/ucd",
     visibility = ["//vendor/golang.org/x/text:__subpackages__"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "example_test.go",
+        "ucd_test.go",
+    ],
+    embed = [":go_default_library"],
 )

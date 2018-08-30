@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "doc.go",
+        "flags.go",
+        "index.go",
+        "metrics.go",
+        "openapi.go",
+        "profiling.go",
+        "swagger.go",
+        "swaggerui.go",
+        "version.go",
+    ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apiserver/pkg/server/routes",
+    importpath = "k8s.io/apiserver/pkg/server/routes",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/golang/glog:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/version:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/responsewriters:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/metrics:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/server/mux:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/server/routes/data/swagger:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/storage/etcd/metrics:go_default_library",
+        "//vendor/k8s.io/kube-openapi/pkg/common:go_default_library",
+        "//vendor/k8s.io/kube-openapi/pkg/handler:go_default_library",
+        "@com_github_elazarl_go_bindata_assetfs//:go_default_library",
+        "@com_github_emicklei_go_restful//:go_default_library",
+        "@com_github_emicklei_go_restful_swagger12//:go_default_library",
+    ],
+)

@@ -1,0 +1,43 @@
+package(default_visibility = ["//visibility:public"])
+
+load(
+    "@io_bazel_rules_go//go:def.bzl",
+    "go_library",
+)
+
+go_library(
+    name = "go_default_library",
+    srcs = ["config.go"],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/kubeapiserver/authorizer",
+    importpath = "k8s.io/kubernetes/pkg/kubeapiserver/authorizer",
+    deps = [
+        "//vendor/k8s.io/apiserver/pkg/authorization/authorizer:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authorization/authorizerfactory:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authorization/union:go_default_library",
+        "//vendor/k8s.io/apiserver/plugin/pkg/authorizer/webhook:go_default_library",
+        "//vendor/k8s.io/client-go/informers:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/auth/authorizer/abac:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/auth/nodeidentifier:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/client/informers/informers_generated/internalversion:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubeapiserver/authorizer/modes:go_default_library",
+        "//vendor/k8s.io/kubernetes/plugin/pkg/auth/authorizer/node:go_default_library",
+        "//vendor/k8s.io/kubernetes/plugin/pkg/auth/authorizer/rbac:go_default_library",
+        "//vendor/k8s.io/kubernetes/plugin/pkg/auth/authorizer/rbac/bootstrappolicy:go_default_library",
+    ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [
+        ":package-srcs",
+        "//pkg/kubeapiserver/authorizer/modes:all-srcs",
+    ],
+    tags = ["automanaged"],
+)

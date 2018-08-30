@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "client.go",
+        "socks.go",
+    ],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/net/internal/socks",
+    importpath = "golang.org/x/net/internal/socks",
+    visibility = ["//vendor/golang.org/x/net:__subpackages__"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["dial_test.go"],
+    embed = [":go_default_library"],
+    deps = ["//vendor/golang.org/x/net/internal/sockstest:go_default_library"],
+)

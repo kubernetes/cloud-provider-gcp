@@ -1,4 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
@@ -7,6 +7,12 @@ go_library(
     importpath = "k8s.io/kubernetes/pkg/apis/core/pods",
     visibility = ["//visibility:public"],
     deps = ["//vendor/k8s.io/kubernetes/pkg/fieldpath:go_default_library"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["helpers_test.go"],
+    embed = [":go_default_library"],
 )
 
 filegroup(

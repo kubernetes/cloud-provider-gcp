@@ -3,6 +3,7 @@ package(default_visibility = ["//visibility:public"])
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
+    "go_test",
 )
 
 go_library(
@@ -13,6 +14,12 @@ go_library(
     ],
     importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/util/net/sets",
     importpath = "k8s.io/kubernetes/pkg/util/net/sets",
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["ipnet_test.go"],
+    embed = [":go_default_library"],
 )
 
 filegroup(

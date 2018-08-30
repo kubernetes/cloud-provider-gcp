@@ -3,6 +3,7 @@ package(default_visibility = ["//visibility:public"])
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
+    "go_test",
 )
 
 go_library(
@@ -20,6 +21,20 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/features:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/kubelet/types:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/util/file:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["validate_test.go"],
+    data = [
+        "testdata/profiles",
+    ],
+    embed = [":go_default_library"],
+    deps = [
+        "//vendor/k8s.io/api/core/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "@com_github_stretchr_testify//assert:go_default_library",
     ],
 )
 

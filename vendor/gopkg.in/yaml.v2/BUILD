@@ -1,4 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
@@ -20,4 +20,16 @@ go_library(
     importmap = "io_k8s_cloud_provider_gcp/vendor/gopkg.in/yaml.v2",
     importpath = "gopkg.in/yaml.v2",
     visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "decode_test.go",
+        "encode_test.go",
+        "example_embedded_test.go",
+        "suite_test.go",
+    ],
+    embed = [":go_default_library"],
+    deps = ["@in_gopkg_check_v1//:go_default_library"],
 )

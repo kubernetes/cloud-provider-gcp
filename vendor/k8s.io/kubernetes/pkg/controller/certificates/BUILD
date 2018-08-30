@@ -1,6 +1,7 @@
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
+    "go_test",
 )
 
 go_library(
@@ -48,5 +49,19 @@ filegroup(
     tags = ["automanaged"],
     visibility = [
         "//pkg/controller:__pkg__",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["certificate_controller_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//vendor/k8s.io/api/certificates/v1beta1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
+        "//vendor/k8s.io/client-go/informers:go_default_library",
+        "//vendor/k8s.io/client-go/kubernetes/fake:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/controller:go_default_library",
     ],
 )

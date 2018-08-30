@@ -1,4 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
@@ -9,4 +9,10 @@ go_library(
     importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/golang/glog",
     importpath = "github.com/golang/glog",
     visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["glog_test.go"],
+    embed = [":go_default_library"],
 )

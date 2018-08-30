@@ -1,0 +1,32 @@
+load(
+    "@io_bazel_rules_go//go:def.bzl",
+    "go_binary",
+    "go_library",
+)
+
+go_library(
+    name = "go_default_library",
+    srcs = ["main.go"],
+    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager",
+    importpath = "k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//vendor/github.com/prometheus/client_golang/prometheus/promhttp:go_default_library",
+        "//vendor/github.com/spf13/pflag:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/util/flag:go_default_library",
+        "//vendor/k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/app:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/kubectl/util/logs:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/version/verflag:go_default_library",
+    ],
+)
+
+go_binary(
+    name = "gcp-controller-manager",
+    embed = [":go_default_library"],
+    pure = "on",
+    visibility = ["//visibility:public"],
+)
+
+load("//tools:def.bzl", "image")
+
+image(binary = ":gcp-controller-manager")
