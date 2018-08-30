@@ -1,5 +1,15 @@
 # cloud-provider-gcp
 
+## Dependency management
+
+Use [dep_ensure.sh](./tools/dep_ensure.sh) script to update package dependencies. 
+
+Run the following command to update bazel build rules automatically.
+
+```shell
+bazel run //:gazelle
+```
+
 ## Publishing gcp-controller-manager image
 
 This command will build and publish
