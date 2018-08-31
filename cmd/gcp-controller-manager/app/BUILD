@@ -79,6 +79,8 @@ go_test(
     embed = [":go_default_library"],
     deps = [
         "//pkg/nodeidentity:go_default_library",
+        "//pkg/tpmattest:go_default_library",
+        "//vendor/github.com/google/go-tpm/tpm2:go_default_library",
         "//vendor/google.golang.org/api/compute/v1:go_default_library",
         "//vendor/k8s.io/api/authorization/v1beta1:go_default_library",
         "//vendor/k8s.io/api/certificates/v1beta1:go_default_library",
