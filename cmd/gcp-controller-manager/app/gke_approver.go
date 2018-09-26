@@ -19,6 +19,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -31,6 +32,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/prometheus/client_golang/prometheus"
+	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
 	"google.golang.org/api/googleapi"
@@ -367,7 +369,7 @@ func validateNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest,
 
 var tpmAttestationBlocks = []string{
 	"CERTIFICATE REQUEST",
-	"ATTESTATION CERTIFICATE",
+	"VM IDENTITY",
 	"ATTESTATION DATA",
 	"ATTESTATION SIGNATURE",
 }
@@ -400,29 +402,18 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 	}
 	attestDataRaw := blocks["ATTESTATION DATA"].Bytes
 	attestSig := blocks["ATTESTATION SIGNATURE"].Bytes
-	attestCert := blocks["ATTESTATION CERTIFICATE"].Bytes
 
-	// TODO(awly): get AIK public key from GCE API.
-	aikCert, err := x509.ParseCertificate(attestCert)
+	// TODO(awly): call ekPubAndIDFromCert instead of ekPubAndIDFromAPI when
+	// ATTESTATION CERTIFICATE is reliably present in CSRs.
+	aikPub, nodeID, err := ekPubAndIDFromAPI(opts, blocks)
 	if err != nil {
-		glog.Infof("deny CSR %q: parsing ATTESTATION_CERTIFICATE: %v", csr.Name, err)
-		return false, nil
-	}
-	if err := opts.TPMEndorsementCACache.verify(aikCert); err != nil {
-		glog.Infof("deny CSR %q: verifying EK certificate validity: %v", csr.Name, err)
-		return false, nil
-	}
-	aikPub, ok := aikCert.PublicKey.(*rsa.PublicKey)
-	if !ok {
-		glog.Infof("deny CSR %q: public key in ATTESTATION CERTIFICATE is %T, want *rsa.PublicKey", csr.Name, aikCert.PublicKey)
+		if _, ok := err.(temporaryError); ok {
+			return false, fmt.Errorf("fetching EK public key from API: %v", err)
+		}
+		glog.Infof("deny CSR %q: fetching EK public key from API: %v", csr.Name, err)
 		return false, nil
 	}
 
-	nodeID, err := nodeidentity.FromAIKCert(aikCert)
-	if err != nil {
-		glog.Infof("deny CSR %q: failed extracting VM identity from EK certificate: %v", csr.Name, err)
-		return false, nil
-	}
 	hostname := strings.TrimPrefix(x509cr.Subject.CommonName, "system:node:")
 	if nodeID.Name != hostname {
 		glog.Infof("deny CSR %q: VM name in ATTESTATION CERTIFICATE (%q) doesn't match CommonName in x509 CSR (%q)", csr.Name, nodeID.Name, x509cr.Subject.CommonName)
@@ -443,7 +434,7 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 		return false, fmt.Errorf("fetching VM data from GCE API: %v", err)
 	}
 	if opts.VerifyClusterMembership {
-		ok, err = clusterHasInstance(opts, inst.Zone, inst.Id)
+		ok, err := clusterHasInstance(opts, inst.Zone, inst.Id)
 		if err != nil {
 			return false, fmt.Errorf("checking VM membership in cluster: %v", err)
 		}
@@ -470,7 +461,7 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 		glog.Infof("deny CSR %q: parsing attestation data in CSR: %v", csr.Name, err)
 		return false, nil
 	}
-	ok, err = attestData.AttestedCertifyInfo.Name.MatchesPublic(pub)
+	ok, err := attestData.AttestedCertifyInfo.Name.MatchesPublic(pub)
 	if err != nil {
 		glog.Infof("deny CSR %q: comparing ATTESTATION DATA to CSR public key: %v", csr.Name, err)
 		return false, nil
@@ -481,6 +472,69 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 	}
 	return true, nil
 }
+
+func ekPubAndIDFromCert(opts GCPConfig, blocks map[string]*pem.Block) (*rsa.PublicKey, *nodeidentity.Identity, error) {
+	// When we switch away from ekPubAndIDFromAPI, remove this. Just a
+	// safe-guard against accidental execution.
+	panic("ekPubAndIDFromCert should not be reachable")
+
+	attestCert := blocks["ATTESTATION CERTIFICATE"].Bytes
+	aikCert, err := x509.ParseCertificate(attestCert)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parsing ATTESTATION_CERTIFICATE: %v", err)
+	}
+	if err := opts.TPMEndorsementCACache.verify(aikCert); err != nil {
+		// TODO(awly): handle temporary CA unavailability without denying CSRs.
+		return nil, nil, fmt.Errorf("verifying EK certificate validity: %v", err)
+	}
+	aikPub, ok := aikCert.PublicKey.(*rsa.PublicKey)
+	if !ok {
+		return nil, nil, fmt.Errorf("public key in ATTESTATION CERTIFICATE is %T, want *rsa.PublicKey", aikCert.PublicKey)
+	}
+	nodeID, err := nodeidentity.FromAIKCert(aikCert)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed extracting VM identity from EK certificate: %v", err)
+	}
+
+	return aikPub, &nodeID, nil
+}
+
+func ekPubAndIDFromAPI(opts GCPConfig, blocks map[string]*pem.Block) (*rsa.PublicKey, *nodeidentity.Identity, error) {
+	nodeIDRaw := blocks["VM IDENTITY"].Bytes
+	nodeID := new(nodeidentity.Identity)
+	if err := json.Unmarshal(nodeIDRaw, nodeID); err != nil {
+		return nil, nil, fmt.Errorf("failed parsing VM IDENTITY block: %v", err)
+	}
+
+	srv := betacompute.NewInstancesService(opts.BetaCompute)
+	resp, err := srv.GetShieldedVmIdentity(fmt.Sprint(nodeID.ProjectID), nodeID.Zone, nodeID.Name).Do()
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil, fmt.Errorf("fetching Shielded VM identity: %v", err)
+		}
+		return nil, nil, temporaryError(fmt.Errorf("fetching Shielded VM identity: %v", err))
+	}
+	if resp.SigningKey == nil {
+		return nil, nil, fmt.Errorf("VM %q doesn't have a signing key in ShieldedVmIdentity", nodeID.Name)
+	}
+	block, _ := pem.Decode([]byte(resp.SigningKey.EkPub))
+	if block == nil {
+		return nil, nil, fmt.Errorf("failed parsing PEM block from EkPub %q", resp.SigningKey.EkPub)
+	}
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed parsing EK public key: %v", err)
+	}
+	rsaPub, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		return nil, nil, fmt.Errorf("EK public key is %T, expected *rsa.PublickKey", pub)
+	}
+	return rsaPub, nodeID, nil
+}
+
+// temporaryError is used within validators to decide between hard-deny and
+// temporary inability to validate.
+type temporaryError error
 
 func parsePEMBlocks(raw []byte) (map[string]*pem.Block, error) {
 	blocks := make(map[string]*pem.Block)
