@@ -35,6 +35,7 @@ import (
 	"testing"
 
 	"github.com/google/go-tpm/tpm2"
+	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
@@ -331,7 +332,7 @@ func TestValidators(t *testing.T) {
 		testValidator(t, "bad", badCases, isNodeServerCert, false)
 	})
 	t.Run("validateNodeServerCertInner", func(t *testing.T) {
-		client, srv := fakeGCPAPI(t)
+		client, srv := fakeGCPAPI(t, nil)
 		defer srv.Close()
 		fn := func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 			cs, err := compute.New(client)
@@ -425,10 +426,13 @@ func TestValidators(t *testing.T) {
 		}
 		testValidator(t, "bad", badCases, isNodeClientCertWithAttestation, false)
 	})
-	t.Run("validateTPMAttestation", func(t *testing.T) {
+	t.Run("validateTPMAttestation with cert", func(t *testing.T) {
+		// TODO(awly): re-enable this when ATTESTATION CERTIFICATE is used.
+		t.Skip()
+
 		fakeCA, fakeCACache, cleanup := initFakeCACache(t)
 		defer cleanup()
-		client, srv := fakeGCPAPI(t)
+		client, srv := fakeGCPAPI(t, nil)
 		defer srv.Close()
 
 		validateFunc := func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
@@ -526,6 +530,113 @@ func TestValidators(t *testing.T) {
 		}
 		testValidator(t, "bad", badCases, validateFunc, false)
 	})
+	t.Run("validateTPMAttestation with API", func(t *testing.T) {
+		validKey, err := rsa.GenerateKey(insecureRand, 2048)
+		if err != nil {
+			t.Fatal(err)
+		}
+		client, srv := fakeGCPAPI(t, &validKey.PublicKey)
+		defer srv.Close()
+
+		validateFunc := func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+			ok, err := validateTPMAttestation(opts, csr, x509cr)
+			return ok && err == nil
+		}
+
+		goodCase := func(b *csrBuilder, c *GCPConfig) {
+			cs, err := compute.New(client)
+			if err != nil {
+				t.Fatalf("creating GCE API client: %v", err)
+			}
+			c.Compute = cs
+			bcs, err := betacompute.New(client)
+			if err != nil {
+				t.Fatalf("creating GCE Beta API client: %v", err)
+			}
+			c.BetaCompute = bcs
+
+			c.ProjectID = "p0"
+			b.requestor = tpmKubeletUsername
+			b.cn = "system:node:i0"
+
+			nodeID := nodeidentity.Identity{"z0", 1, "i0", 2, "p0"}
+			b.extraPEM["VM IDENTITY"], err = json.Marshal(nodeID)
+			if err != nil {
+				t.Fatalf("marshaling nodeID: %v", err)
+			}
+
+			attestData, attestSig := makeAttestationDataAndSignature(t, b.key, validKey)
+			b.extraPEM["ATTESTATION DATA"] = attestData
+			b.extraPEM["ATTESTATION SIGNATURE"] = attestSig
+		}
+		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
+		testValidator(t, "good", goodCases, validateFunc, true)
+
+		badCases := []func(*csrBuilder, *GCPConfig){
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// Invalid CN format.
+				b.cn = "awly"
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// CN valid but doesn't match name in ATTESTATION CERTIFICATE.
+				b.cn = "system:node:i2"
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// Invalid VM identity
+				b.extraPEM["VM IDENTITY"] = []byte("invalid")
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// ProjectID mismatch in nodeidentity
+				c.ProjectID = "p1"
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// Invalid attestation signature
+				b.extraPEM["ATTESTATION SIGNATURE"] = []byte("invalid")
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// Attestation signature using wrong key
+				key, err := rsa.GenerateKey(insecureRand, 2048)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, attestSig := makeAttestationDataAndSignature(t, b.key, key)
+				b.extraPEM["ATTESTATION SIGNATURE"] = attestSig
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// Invalid attestation data
+				b.extraPEM["ATTESTATION DATA"] = []byte("invalid")
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// Attestation data for wrong key
+				key, err := ecdsa.GenerateKey(elliptic.P224(), insecureRand)
+				if err != nil {
+					t.Fatal(err)
+				}
+				attestData, _ := makeAttestationDataAndSignature(t, key, validKey)
+				b.extraPEM["ATTESTATION DATA"] = attestData
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// VM from nodeidentity doesn't exist
+				nodeID := nodeidentity.Identity{"z0", 1, "i9", 2, "p0"}
+				b.extraPEM["VM IDENTITY"], err = json.Marshal(nodeID)
+				if err != nil {
+					t.Fatalf("marshaling nodeID: %v", err)
+				}
+			},
+
+			// TODO: verifyclustermembership
+		}
+		testValidator(t, "bad", badCases, validateFunc, false)
+	})
 }
 
 func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, c *GCPConfig), checkFunc recognizeFunc, want bool) {
@@ -608,7 +719,19 @@ func makeFancyTestCSR(b csrBuilder) *capi.CertificateSigningRequest {
 	}
 }
 
-func fakeGCPAPI(t *testing.T) (*http.Client, *httptest.Server) {
+func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Server) {
+	var ekPubPEM []byte
+	if ekPub != nil {
+		ekPubRaw, err := x509.MarshalPKIXPublicKey(ekPub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ekPubPEM = pem.EncodeToMemory(&pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: ekPubRaw,
+		})
+	}
+
 	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		t.Logf("fakeGCPAPI request %q", req.URL.Path)
 		switch req.URL.Path {
@@ -626,6 +749,12 @@ func fakeGCPAPI(t *testing.T) (*http.Client, *httptest.Server) {
 			json.NewEncoder(rw).Encode(compute.Instance{
 				Name:              "i0",
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
+			})
+		case "/compute/beta/projects/2/zones/z0/instances/i0/getShieldedVmIdentity":
+			json.NewEncoder(rw).Encode(betacompute.ShieldedVmIdentity{
+				SigningKey: &betacompute.ShieldedVmIdentityEntry{
+					EkPub: string(ekPubPEM),
+				},
 			})
 		default:
 			http.Error(rw, "not found", http.StatusNotFound)

@@ -29,6 +29,7 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"github.com/spf13/pflag"
 	"golang.org/x/oauth2"
+	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
 	gcfg "gopkg.in/gcfg.v1"
@@ -103,6 +104,7 @@ type GCPConfig struct {
 	Zones                   []string
 	TPMEndorsementCACache   *caCache
 	Compute                 *compute.Service
+	BetaCompute             *betacompute.Service
 	Container               *container.Service
 	VerifyClusterMembership bool
 }
@@ -132,6 +134,10 @@ func loadGCPConfig(s *GCPControllerManager) (GCPConfig, error) {
 	a.Compute, err = compute.New(client)
 	if err != nil {
 		return a, fmt.Errorf("creating GCE API client: %v", err)
+	}
+	a.BetaCompute, err = betacompute.New(client)
+	if err != nil {
+		return a, fmt.Errorf("creating GCE Beta API client: %v", err)
 	}
 	a.Container, err = container.New(client)
 	if err != nil {
