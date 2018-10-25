@@ -287,20 +287,6 @@ func TestValidators(t *testing.T) {
 		}
 		testValidator(t, "bad", badCases, isLegacyNodeClientCert, false)
 	})
-	t.Run("isSelfNodeClientCert", func(t *testing.T) {
-		goodCase := func(b *csrBuilder, _ *GCPConfig) {}
-		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
-		testValidator(t, "good", goodCases, isSelfNodeClientCert, true)
-
-		badCases := []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, _ *GCPConfig) { b.requestor = "mike" },
-			func(b *csrBuilder, _ *GCPConfig) { b.orgs = nil },
-			func(b *csrBuilder, _ *GCPConfig) { b.orgs = []string{"system:master"} },
-			func(b *csrBuilder, _ *GCPConfig) { b.usages = kubeletServerUsages },
-			func(b *csrBuilder, _ *GCPConfig) { b.cn = "system:node:bar" },
-		}
-		testValidator(t, "bad", badCases, isSelfNodeClientCert, false)
-	})
 	t.Run("isNodeServerClient", func(t *testing.T) {
 		goodCase := func(b *csrBuilder, _ *GCPConfig) { b.usages = kubeletServerUsages }
 		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
