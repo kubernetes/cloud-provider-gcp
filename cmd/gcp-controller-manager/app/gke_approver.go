@@ -202,13 +202,6 @@ var validators = []csrValidator{
 		approveMsg:    "Auto approving kubelet client certificate with TPM attestation after SubjectAccessReview.",
 	},
 	{
-		name:          "self kubelet client certificate SubjectAccessReview",
-		authFlowLabel: "kubelet_client_self",
-		recognize:     isSelfNodeClientCert,
-		permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "selfnodeclient"},
-		approveMsg:    "Auto approving self kubelet client certificate after SubjectAccessReview.",
-	},
-	{
 		name:          "kubelet client certificate SubjectAccessReview",
 		authFlowLabel: "kubelet_client_legacy",
 		recognize:     isLegacyNodeClientCert,
@@ -304,13 +297,6 @@ func isLegacyNodeClientCert(opts GCPConfig, csr *capi.CertificateSigningRequest,
 		return false
 	}
 	return csr.Spec.Username == legacyKubeletUsername
-}
-
-func isSelfNodeClientCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-	if !isNodeClientCert(opts, csr, x509cr) {
-		return false
-	}
-	return csr.Spec.Username == x509cr.Subject.CommonName
 }
 
 func isNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
