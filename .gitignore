@@ -1,2 +1,4 @@
 bazel-*
+build/
+server/
 MERGED_LICENSES
