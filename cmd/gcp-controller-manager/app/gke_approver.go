@@ -129,9 +129,8 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 			csrApprovalStatus.WithLabelValues("approve", r.authFlowLabel).Inc()
 			csrApprovalLatency.WithLabelValues("approve", r.authFlowLabel).Observe(time.Since(start).Seconds())
 			return a.updateCSR(csr, true, r.approveMsg)
-		} else {
-			glog.Warningf("validator %q: SubjectAccessReview denied for CSR %q", r.name, csr.Name)
 		}
+		glog.Warningf("validator %q: SubjectAccessReview denied for CSR %q", r.name, csr.Name)
 	}
 
 	if len(tried) != 0 {
