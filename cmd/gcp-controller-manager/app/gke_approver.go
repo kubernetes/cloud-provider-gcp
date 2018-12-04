@@ -38,6 +38,9 @@ import (
 	"google.golang.org/api/googleapi"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
+	"k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
@@ -124,14 +127,23 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 			csrApprovalLatency.WithLabelValues("sar_error", r.authFlowLabel).Observe(time.Since(start).Seconds())
 			return err
 		}
-		if approved {
-			glog.Infof("validator %q: SubjectAccessReview approved for CSR %q", r.name, csr.Name)
-			csrApprovalStatus.WithLabelValues("approve", r.authFlowLabel).Inc()
-			csrApprovalLatency.WithLabelValues("approve", r.authFlowLabel).Observe(time.Since(start).Seconds())
-			return a.updateCSR(csr, true, r.approveMsg)
-		} else {
+		if !approved {
 			glog.Warningf("validator %q: SubjectAccessReview denied for CSR %q", r.name, csr.Name)
+			continue
 		}
+		glog.Infof("validator %q: SubjectAccessReview approved for CSR %q", r.name, csr.Name)
+		if r.preApproveHook != nil {
+			if err := r.preApproveHook(a.opts, csr, x509cr, r.authFlowLabel, a.client); err != nil {
+				glog.Warningf("validator %q: preApproveHook failed for CSR %q: %v", r.name, csr.Name, err)
+				csrApprovalStatus.WithLabelValues("pre_approve_hook_error", r.authFlowLabel).Inc()
+				csrApprovalLatency.WithLabelValues("pre_approve_hook_error", r.authFlowLabel).Observe(time.Since(start).Seconds())
+				return err
+			}
+			glog.Infof("validator %q: preApproveHook passed for CSR %q", r.name, csr.Name)
+		}
+		csrApprovalStatus.WithLabelValues("approve", r.authFlowLabel).Inc()
+		csrApprovalLatency.WithLabelValues("approve", r.authFlowLabel).Observe(time.Since(start).Seconds())
+		return a.updateCSR(csr, true, r.approveMsg)
 	}
 
 	if len(tried) != 0 {
@@ -168,6 +180,7 @@ func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bo
 
 type recognizeFunc func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
 type validateFunc func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error)
+type preApproveHookFunc func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest, metricsLabel string, client clientset.Interface) error
 
 type csrValidator struct {
 	name          string
@@ -189,6 +202,11 @@ type csrValidator struct {
 	validate validateFunc
 
 	permission authorization.ResourceAttributes
+
+	// preApproveHook is an optional function that runs immediately before a CSR is approved (after recognize/validate/permission checks have passed).
+	// If preApproveHook returns an error, the CSR will be retried.
+	// If preApproveHook returns no error, the CSR will be approved.
+	preApproveHook preApproveHookFunc
 }
 
 // More specific validators go first.
@@ -200,6 +218,8 @@ var validators = []csrValidator{
 		validate:      validateTPMAttestation,
 		permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
 		approveMsg:    "Auto approving kubelet client certificate with TPM attestation after SubjectAccessReview.",
+
+		preApproveHook: ensureNodeMatchesMetadataOrDelete,
 	},
 	{
 		name:          "self kubelet client certificate SubjectAccessReview",
@@ -214,6 +234,8 @@ var validators = []csrValidator{
 		recognize:     isLegacyNodeClientCert,
 		permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
 		approveMsg:    "Auto approving kubelet client certificate after SubjectAccessReview.",
+
+		preApproveHook: ensureNodeMatchesMetadataOrDelete,
 	},
 	{
 		name:          "kubelet server certificate SubjectAccessReview",
@@ -599,4 +621,104 @@ func groupHasInstance(opts GCPConfig, zone, groupName string, instanceID uint64)
 func isNotFound(err error) bool {
 	gerr, ok := err.(*googleapi.Error)
 	return ok && gerr.Code == http.StatusNotFound
+}
+
+func ensureNodeMatchesMetadataOrDelete(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest, metricsLabel string, client clientset.Interface) error {
+	// TODO: short-circuit
+
+	start := time.Now()
+	if !strings.HasPrefix(x509cr.Subject.CommonName, "system:node:") {
+		return nil
+	}
+	nodeName := strings.TrimPrefix(x509cr.Subject.CommonName, "system:node:")
+	if len(nodeName) == 0 {
+		return nil
+	}
+
+	node, err := client.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		// if there is no existing Node object, return success
+		return nil
+	}
+	if err != nil {
+		// returning an error triggers a retry of this CSR.
+		// if the errors are persistent, the CSR will not be approved and the node bootstrap will hang.
+		return fmt.Errorf("error getting node %s: %v", nodeName, err)
+	}
+
+	delete, err := shouldDeleteNode(opts, node, getInstanceByName)
+	if err != nil {
+		// returning an error triggers a retry of this CSR.
+		// if the errors are persistent, the CSR will not be approved and the node bootstrap will hang.
+		return fmt.Errorf("error determining if node %s should be deleted: %v", nodeName, err)
+	}
+	if !delete {
+		// if the existing Node object does not need to be removed, return success
+		return nil
+	}
+
+	err = client.CoreV1().Nodes().Delete(nodeName, &metav1.DeleteOptions{Preconditions: metav1.NewUIDPreconditions(string(node.UID))})
+	if apierrors.IsNotFound(err) {
+		// If we wanted to delete and the node is gone, this counts as success
+		return nil
+	}
+	if err != nil {
+		// returning an error triggers a retry of this CSR.
+		// if the errors are persistent, the CSR will not be approved and the node bootstrap will hang.
+		return fmt.Errorf("error deleting node %s: %v", nodeName, err)
+	}
+	csrApprovalStatus.WithLabelValues("node_deleted", metricsLabel).Inc()
+	csrApprovalLatency.WithLabelValues("node_deleted", metricsLabel).Observe(time.Since(start).Seconds())
+	return nil
+}
+
+func shouldDeleteNode(opts GCPConfig, node *v1.Node, getInstance func(GCPConfig, string) (*compute.Instance, error)) (bool, error) {
+	// Newly created node might not have pod CIDR allocated yet.
+	if node.Spec.PodCIDR == "" {
+		glog.V(2).Infof("Node %q has empty podCIDR.", node.Name)
+		return false, nil
+	}
+	inst, err := getInstance(opts, node.Name)
+	if err != nil {
+		if err == instanceNotFound {
+			glog.Warningf("Didn't find corresponding instance for node %q, will trigger node deletion.", node.Name)
+			return true, nil
+		}
+		glog.Errorf("Error retrieving instance %q: %v", node.Name, err)
+		return false, err
+	}
+	var unmatchedRanges []string
+	for _, networkInterface := range inst.NetworkInterfaces {
+		for _, r := range networkInterface.AliasIpRanges {
+			if node.Spec.PodCIDR == r.IpCidrRange {
+				glog.V(2).Infof("Instance %q has alias range that matches node's podCIDR.", inst.Name)
+				return false, nil
+			}
+			unmatchedRanges = append(unmatchedRanges, r.IpCidrRange)
+		}
+	}
+	if len(unmatchedRanges) != 0 {
+		glog.Warningf("Instance %q has alias range(s) %v and none of them match node's podCIDR %s, will trigger node deletion.", inst.Name, unmatchedRanges, node.Spec.PodCIDR)
+		return true, nil
+	}
+	// Instance with no alias range is route based, for which node object deletion is unnecessary.
+	glog.V(2).Infof("Instance %q has no alias range.", inst.Name)
+	return false, nil
+}
+
+var instanceNotFound = errors.New("instance not found")
+
+func getInstanceByName(opts GCPConfig, instanceName string) (*compute.Instance, error) {
+	srv := compute.NewInstancesService(opts.Compute)
+	for _, z := range opts.Zones {
+		inst, err := srv.Get(opts.ProjectID, z, instanceName).Do()
+		if err != nil {
+			if isNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		return inst, nil
+	}
+	return nil, instanceNotFound
 }
