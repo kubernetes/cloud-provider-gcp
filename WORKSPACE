@@ -24,14 +24,14 @@ http_archive(
 
 http_archive(
     name = "io_bazel_rules_docker",
-    sha256 = "481ab09ce5fb40b57cfa962d211510b47accdd05a8168723da47307ca15d4725",
-    strip_prefix = "rules_docker-452878d665648ada0aaf816931611fdd9c683a97",
-    urls = ["https://github.com/bazelbuild/rules_docker/archive/452878d665648ada0aaf816931611fdd9c683a97.tar.gz"],
+    sha256 = "29d109605e0d6f9c892584f07275b8c9260803bf0c6fcb7de2623b2bedc910bd",
+    strip_prefix = "rules_docker-0.5.1",
+    urls = ["https://github.com/bazelbuild/rules_docker/archive/v0.5.1.tar.gz"],
 )
 
 load("@bazel_skylib//:lib.bzl", "versions")
 
-versions.check(minimum_bazel_version = "0.10.0")
+versions.check(minimum_bazel_version = "0.20.0")
 
 load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains", "go_download_sdk")
 
