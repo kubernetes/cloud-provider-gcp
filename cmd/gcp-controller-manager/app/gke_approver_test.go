@@ -32,8 +32,11 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	testclient "k8s.io/client-go/testing"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
@@ -116,12 +119,13 @@ func TestHandle(t *testing.T) {
 		}
 	}
 	cases := []struct {
-		desc          string
-		allowed       bool
-		recognized    bool
-		err           bool
-		validate      validateFunc
-		verifyActions func(*testing.T, []testclient.Action)
+		desc           string
+		allowed        bool
+		recognized     bool
+		err            bool
+		validate       validateFunc
+		verifyActions  func(*testing.T, []testclient.Action)
+		preApproveHook preApproveHookFunc
 	}{
 		{
 			desc:       "not recognized not allowed",
@@ -159,6 +163,30 @@ func TestHandle(t *testing.T) {
 			recognized:    true,
 			allowed:       true,
 			verifyActions: verifyCreateAndUpdate,
+		},
+		{
+			desc:          "recognized, allowed and passed preApproveHook",
+			recognized:    true,
+			allowed:       true,
+			verifyActions: verifyCreateAndUpdate,
+			preApproveHook: func(_ GCPConfig, _ *capi.CertificateSigningRequest, _ *x509.CertificateRequest, _ string, _ clientset.Interface) error {
+				return nil
+			},
+		},
+		{
+			desc:       "recognized, allowed but failed preApproveHook",
+			recognized: true,
+			allowed:    true,
+			verifyActions: func(t *testing.T, as []testclient.Action) {
+				if len(as) != 1 {
+					t.Fatalf("expected 1 call but got: %#v", as)
+				}
+				_ = as[0].(testclient.CreateActionImpl)
+			},
+			preApproveHook: func(_ GCPConfig, _ *capi.CertificateSigningRequest, _ *x509.CertificateRequest, _ string, _ clientset.Interface) error {
+				return fmt.Errorf("preApproveHook failed")
+			},
+			err: true,
 		},
 		{
 			desc:       "recognized, allowed and validated",
@@ -229,18 +257,18 @@ func TestHandle(t *testing.T) {
 					},
 				}, nil
 			})
-			approver := gkeApprover{
-				client: client,
-				validators: []csrValidator{
-					{
-						approveMsg: "tester",
-						permission: authorization.ResourceAttributes{Group: "foo", Resource: "bar", Subresource: "baz"},
-						recognize: func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-							return c.recognized
-						},
-						validate: c.validate,
-					},
+			validator := csrValidator{
+				approveMsg: "tester",
+				permission: authorization.ResourceAttributes{Group: "foo", Resource: "bar", Subresource: "baz"},
+				recognize: func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+					return c.recognized
 				},
+				validate:       c.validate,
+				preApproveHook: c.preApproveHook,
+			}
+			approver := gkeApprover{
+				client:     client,
+				validators: []csrValidator{validator},
 			}
 			csr := makeTestCSR()
 			if err := approver.handle(csr); err != nil && !c.err {
@@ -483,4 +511,142 @@ func (t fakeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	r.URL.Scheme = u.Scheme
 	r.URL.Host = u.Host
 	return http.DefaultClient.Do(r)
+}
+
+func TestShouldDeleteNode(t *testing.T) {
+	testErr := fmt.Errorf("intended error")
+	cases := []struct {
+		desc           string
+		node           *v1.Node
+		instance       *compute.Instance
+		shouldDelete   bool
+		getInstanceErr error
+		expectedErr    error
+	}{
+		{
+			desc: "instance with 1 alias range and matches podCIDR",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-test",
+				},
+				Spec: v1.NodeSpec{
+					PodCIDR: "10.0.0.1/24",
+				},
+			},
+			instance: &compute.Instance{
+				NetworkInterfaces: []*compute.NetworkInterface{
+					{
+						AliasIpRanges: []*compute.AliasIpRange{
+							{
+								IpCidrRange: "10.0.0.1/24",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "instance with 1 alias range doesn't match podCIDR",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-test",
+				},
+				Spec: v1.NodeSpec{
+					PodCIDR: "10.0.0.1/24",
+				},
+			},
+			instance: &compute.Instance{
+				NetworkInterfaces: []*compute.NetworkInterface{
+					{
+						AliasIpRanges: []*compute.AliasIpRange{
+							{
+								IpCidrRange: "10.0.0.2/24",
+							},
+						},
+					},
+				},
+			},
+			shouldDelete: true,
+		},
+		{
+			desc: "instance with 2 alias range and 1 matches podCIDR",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-test",
+				},
+				Spec: v1.NodeSpec{
+					PodCIDR: "10.0.0.1/24",
+				},
+			},
+			instance: &compute.Instance{
+				NetworkInterfaces: []*compute.NetworkInterface{
+					{
+						AliasIpRanges: []*compute.AliasIpRange{
+							{
+								IpCidrRange: "10.0.0.2/24",
+							},
+							{
+								IpCidrRange: "10.0.0.1/24",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "instance with 0 alias range",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-test",
+				},
+				Spec: v1.NodeSpec{
+					PodCIDR: "10.0.0.1/24",
+				},
+			},
+			instance: &compute.Instance{},
+		},
+		{
+			desc: "node with empty podCIDR",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-test",
+				},
+			},
+		},
+		{
+			desc: "instance not found",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-test",
+				},
+				Spec: v1.NodeSpec{
+					PodCIDR: "10.0.0.1/24",
+				},
+			},
+			shouldDelete:   true,
+			getInstanceErr: instanceNotFound,
+		},
+		{
+			desc: "error gettting instance",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-test",
+				},
+				Spec: v1.NodeSpec{
+					PodCIDR: "10.0.0.1/24",
+				},
+			},
+			getInstanceErr: testErr,
+			expectedErr:    testErr,
+		},
+	}
+	for _, c := range cases {
+		fakeGetInstance := func(_ GCPConfig, _ string) (*compute.Instance, error) {
+			return c.instance, c.getInstanceErr
+		}
+		shouldDelete, err := shouldDeleteNode(GCPConfig{}, c.node, fakeGetInstance)
+		if err != c.expectedErr || shouldDelete != c.shouldDelete {
+			t.Errorf("%s: shouldDeleteNode=(%v, %v), want (%v, %v)", c.desc, shouldDelete, err, c.shouldDelete, c.expectedErr)
+		}
+	}
 }
