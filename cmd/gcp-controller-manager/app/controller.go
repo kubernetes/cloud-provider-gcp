@@ -71,6 +71,10 @@ func Run(s *GCPControllerManager) error {
 		return err
 	}
 
+	// bump the QPS limits per controller up from defaults of 5 qps / 10 burst
+	kubeconfig.QPS = 20
+	kubeconfig.Burst = 40
+
 	clientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: kubeconfig}
 
 	informerClient := clientBuilder.ClientOrDie("gcp-controller-manager-shared-informer")
