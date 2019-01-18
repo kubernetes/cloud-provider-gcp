@@ -21,6 +21,7 @@ filegroup(
         "kube-addon-manager.yaml",
         "kube-apiserver.manifest",
         "kube-controller-manager.manifest",
+        "cloud-controller-manager.manifest",
         "kube-proxy.manifest",
         "kube-scheduler.manifest",
     ] + glob(["internal-*"]),

@@ -31,7 +31,6 @@ set -o pipefail
 
 
 KUBE_ROOT=${KUBE_ROOT:-$(dirname "${BASH_SOURCE}")/..}
-echo "KUBE_ROOT is ${KUBE_ROOT}"
 source "${KUBE_ROOT}/cluster/kube-util.sh"
 source "${KUBE_ROOT}/cluster/clientbin.sh"
 

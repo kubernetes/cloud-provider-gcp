@@ -17,6 +17,7 @@ docker_build(
             "/scheduler",
             "/usr/local/bin/kube-apiserver",
             "/usr/local/bin/kube-controller-manager",
+            "/usr/local/bin/cloud-controller-manager",
             "/usr/local/bin/kubectl",
             "/usr/local/bin/kubelet",
             "/usr/local/bin/kube-proxy",

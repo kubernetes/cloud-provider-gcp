@@ -20,6 +20,7 @@ build:
 	mkdir -p build
 	mkdir -p build/server
 	mkdir -p build/src
+	mkdir -p build/manifests
 
 _output:
 	mkdir -p _output
@@ -505,8 +506,14 @@ _output/kubernetes-server-linux-amd64.tar.gz: _output build/kubernetes-server-li
 	cd _output/server; \
 	tar cvfz ../kubernetes-server-linux-amd64.tar.gz kubernetes
 
-_output/kubernetes-manifests.tar.gz: _output build/kubernetes-manifests.tar.gz
-	cp build/kubernetes-manifests.tar.gz _output
+_output/kubernetes-manifests.tar.gz: build _output build/kubernetes-manifests.tar.gz cluster/gce/manifests/cloud-controller-manager.manifest
+	tar xvfz build/kubernetes-manifests.tar.gz -C build/manifests
+	mkdir build/manifests/kubernetes/gci-trusty/cloud-controller-manager
+	cp cluster/gce/manifests/cloud-controller-manager.manifest build/manifests/kubernetes/gci-trusty/cloud-controller-manager
+	cp cluster/addons/cloud-controller-manager/*.yaml build/manifests/kubernetes/gci-trusty/cloud-controller-manager
+	cp cluster/gce/gci/configure-helper.sh build/manifests/kubernetes/gci-trusty/gci-configure-helper.sh
+	cd build/manifests; \
+	tar cvfz ../../_output/kubernetes-manifests.tar.gz kubernetes
 
 _output/%.tar.gz.sha512: _output/%.tar.gz
 	# Do I need to remove the binary name from the sha file?
@@ -518,7 +525,7 @@ deploy-artifacts: _output/kubernetes-server-linux-amd64.tar.gz _output/kubernete
 
 clean:
 	rm -rf build _output vendor/github.com/docker/docker controller-manager
-	docker rmi -f wrf:test
-	docker rm -f ccm-build
+	docker rmi -f wrf:test | true
+	docker rm ccm-build | true
 
 .PHONY: build-artifacts deploy-artifacts clean ccm-build-image

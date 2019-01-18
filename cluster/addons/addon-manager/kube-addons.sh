@@ -206,6 +206,25 @@ function is_leader() {
      "$HOSTNAME" == "$KUBE_CONTROLLER_MANAGER_LEADER" ]]
 }
 
+function is_cloud_leader() {
+  # In multi-master setup, only one addon manager should be running. We use
+  # existing leader election in cloud-controller-manager instead of implementing
+  # a separate mechanism here.
+  if ! $ADDON_MANAGER_LEADER_ELECTION; then
+    log INFO "Leader election disabled."
+    return 0;
+  fi
+  CLOUD_CONTROLLER_MANAGER_LEADER=`${KUBECTL} -n kube-system get ep cloud-controller-manager \
+    -o go-template=$'{{index .metadata.annotations "control-plane.alpha.kubernetes.io/leader"}}' \
+    | sed 's/^.*"holderIdentity":"\([^"]*\)".*/\1/' | awk -F'_' '{print $1}'`
+  # If there was any problem with getting the leader election results, var will
+  # be empty. Since it's better to have multiple addon managers than no addon
+  # managers at all, we're going to assume that we're the leader in such case.
+  log INFO "Leader is $CLOUD_CONTROLLER_MANAGER_LEADER"
+  [[ "$CLOUD_CONTROLLER_MANAGER_LEADER" == "" ||
+     "$HOSTNAME" == "$CLOUD_CONTROLLER_MANAGER_LEADER" ]]
+}
+
 # The business logic for whether a given object should be created
 # was already enforced by salt, and /etc/kubernetes/addons is the
 # managed result is of that. Start everything below that directory.
@@ -241,7 +260,7 @@ done
 log INFO "== Entering periodical apply loop at $(date -Is) =="
 while true; do
   start_sec=$(date +"%s")
-  if is_leader; then
+  if is_leader || is_cloud_leader; then
     ensure_addons
     reconcile_addons
   else

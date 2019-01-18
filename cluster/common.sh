@@ -299,10 +299,11 @@ function set_binary_version() {
 function find-tar() {
   local -r tarball=$1
   locations=(
-    "${KUBE_ROOT}/server/${tarball}"
+    "${KUBE_ROOT}/_output/${tarball}"
     "${KUBE_ROOT}/_output/release-tars/${tarball}"
     "${KUBE_ROOT}/bazel-bin/build/release-tars/${tarball}"
   )
+  echo locations set to $locations >&2
   location=$( (ls -t "${locations[@]}" 2>/dev/null || true) | head -1 )
   if [[ ! -f "${location}" ]]; then
     echo "!!! Cannot find ${tarball} at ${location}" >&2
