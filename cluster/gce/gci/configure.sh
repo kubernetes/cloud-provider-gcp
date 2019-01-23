@@ -356,6 +356,7 @@ function load-docker-images {
   if [[ "${KUBERNETES_MASTER:-}" == "true" ]]; then
     try-load-docker-image "${img_dir}/kube-apiserver.tar"
     try-load-docker-image "${img_dir}/kube-controller-manager.tar"
+    try-load-docker-image "${img_dir}/cloud-controller-manager.tar"
     try-load-docker-image "${img_dir}/kube-scheduler.tar"
   else
     try-load-docker-image "${img_dir}/kube-proxy.tar"
@@ -392,6 +393,7 @@ function install-kube-binary-config {
     else
       cp "${src_dir}/kube-apiserver.tar" "${dst_dir}"
       cp "${src_dir}/kube-controller-manager.tar" "${dst_dir}"
+      cp "${src_dir}/cloud-controller-manager.tar" "${dst_dir}"
       cp "${src_dir}/kube-scheduler.tar" "${dst_dir}"
       cp -r "${KUBE_HOME}/kubernetes/addons" "${dst_dir}"
     fi
@@ -400,7 +402,8 @@ function install-kube-binary-config {
     mv "${src_dir}/kubectl" "${KUBE_BIN}"
 
     mv "${KUBE_HOME}/kubernetes/LICENSES" "${KUBE_HOME}"
-    mv "${KUBE_HOME}/kubernetes/kubernetes-src.tar.gz" "${KUBE_HOME}"
+    # TODO: WRF Work out if we should still be playing with kubernetes-src.tar.gz
+    # mv "${KUBE_HOME}/kubernetes/kubernetes-src.tar.gz" "${KUBE_HOME}"
   fi
 
   if [[ "${KUBERNETES_MASTER:-}" == "false" ]] && \

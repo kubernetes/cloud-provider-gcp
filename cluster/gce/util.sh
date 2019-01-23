@@ -23,7 +23,7 @@ readonly GCE_MAX_LOCAL_SSD=8
 KUBE_ROOT=$(dirname "${BASH_SOURCE}")/../..
 source "${KUBE_ROOT}/cluster/gce/${KUBE_CONFIG_FILE-"config-default.sh"}"
 source "${KUBE_ROOT}/cluster/common.sh"
-source "${KUBE_ROOT}/hack/lib/util.sh"
+source "${KUBE_ROOT}/cluster/util.sh"
 
 if [[ "${NODE_OS_DISTRIBUTION}" == "gci" || "${NODE_OS_DISTRIBUTION}" == "ubuntu" || "${NODE_OS_DISTRIBUTION}" == "custom" ]]; then
   source "${KUBE_ROOT}/cluster/gce/${NODE_OS_DISTRIBUTION}/node-helper.sh"
@@ -629,7 +629,7 @@ function construct-kubelet-flags {
   local master=$1
   local flags="${KUBELET_TEST_LOG_LEVEL:-"--v=2"} ${KUBELET_TEST_ARGS:-}"
   flags+=" --allow-privileged=true"
-  flags+=" --cloud-provider=gce"
+  # flags+=" --cloud-provider=gce"
   # Keep in sync with CONTAINERIZED_MOUNTER_HOME in configure-helper.sh
   flags+=" --experimental-mounter-path=/home/kubernetes/containerized_mounter/mounter"
   flags+=" --experimental-check-node-capabilities-before-mount=true"
@@ -652,6 +652,7 @@ function construct-kubelet-flags {
     flags+=" ${NODE_KUBELET_TEST_ARGS:-}"
     flags+=" --bootstrap-kubeconfig=/var/lib/kubelet/bootstrap-kubeconfig"
     flags+=" --kubeconfig=/var/lib/kubelet/kubeconfig"
+    flags+=" --cloud-provider=external"
   fi
   # Network plugin
   if [[ -n "${NETWORK_PROVIDER:-}" || -n "${NETWORK_POLICY_PROVIDER:-}" ]]; then

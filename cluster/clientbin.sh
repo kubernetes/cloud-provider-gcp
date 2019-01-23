@@ -84,6 +84,7 @@ function get_bin() {
   fi
   
   locations=(
+    "${KUBE_ROOT}/build/server/kubernetes/server/bin/${bin}"
     "${KUBE_ROOT}/_output/bin/${bin}"
     "${KUBE_ROOT}/_output/dockerized/bin/${host_os}/${host_arch}/${bin}"
     "${KUBE_ROOT}/_output/local/bin/${host_os}/${host_arch}/${bin}"

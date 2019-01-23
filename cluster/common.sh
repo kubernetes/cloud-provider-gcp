@@ -24,7 +24,7 @@ KUBE_ROOT=$(cd $(dirname "${BASH_SOURCE}")/.. && pwd)
 
 DEFAULT_KUBECONFIG="${HOME:-.}/.kube/config"
 
-source "${KUBE_ROOT}/hack/lib/util.sh"
+source "${KUBE_ROOT}/cluster/util.sh"
 # KUBE_RELEASE_VERSION_REGEX matches things like "v1.2.3" or "v1.2.3-alpha.4"
 #
 # NOTE This must match the version_regex in build/common.sh
@@ -299,14 +299,14 @@ function set_binary_version() {
 function find-tar() {
   local -r tarball=$1
   locations=(
-    "${KUBE_ROOT}/server/${tarball}"
+    "${KUBE_ROOT}/_output/${tarball}"
     "${KUBE_ROOT}/_output/release-tars/${tarball}"
     "${KUBE_ROOT}/bazel-bin/build/release-tars/${tarball}"
   )
   location=$( (ls -t "${locations[@]}" 2>/dev/null || true) | head -1 )
 
   if [[ ! -f "${location}" ]]; then
-    echo "!!! Cannot find ${tarball}" >&2
+    echo "!!! Cannot find ${tarball} at ${location}" >&2
     exit 1
   fi
   echo "${location}"
@@ -459,7 +459,7 @@ EOF
 # without prompting.
 function verify-kube-binaries() {
   if ! "${KUBE_ROOT}/cluster/kubectl.sh" version --client >&/dev/null; then
-    echo "!!! kubectl appears to be broken or missing"
+    echo "!!! kubectl(${KUBE_ROOT}/cluster/kubectl.sh) appears to be broken or missing"
     download-release-binaries
   fi
 }
