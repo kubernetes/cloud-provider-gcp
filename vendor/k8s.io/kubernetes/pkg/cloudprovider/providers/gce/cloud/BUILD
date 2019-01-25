@@ -28,23 +28,3 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud/meta:go_default_library",
     ],
 )
-
-filegroup(
-    name = "package-srcs",
-    srcs = glob(["**"]),
-    tags = ["automanaged"],
-    visibility = ["//visibility:private"],
-)
-
-filegroup(
-    name = "all-srcs",
-    srcs = [
-        ":package-srcs",
-        "//pkg/cloudprovider/providers/gce/cloud/filter:all-srcs",
-        "//pkg/cloudprovider/providers/gce/cloud/gen:all-srcs",
-        "//pkg/cloudprovider/providers/gce/cloud/meta:all-srcs",
-        "//pkg/cloudprovider/providers/gce/cloud/mock:all-srcs",
-    ],
-    tags = ["automanaged"],
-    visibility = ["//visibility:public"],
-)

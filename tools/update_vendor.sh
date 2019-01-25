@@ -11,5 +11,7 @@ fi
 
 # update vendor/
 go mod vendor
+# remove repo-originated BUILD files
+find vendor/ -name BUILD | xargs rm
 # restore BUILD files in vendor/
 bazel run //:gazelle
