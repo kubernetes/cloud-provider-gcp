@@ -9,9 +9,7 @@ if [ ! -d "vendor" ]; then
     exit 1
 fi
 
-# update deps
-dep ensure
+# update vendor/
+go mod vendor
 # restore BUILD files in vendor/
 bazel run //:gazelle
-# remove symlinks in vendor/
-find vendor/ -type l | xargs rm

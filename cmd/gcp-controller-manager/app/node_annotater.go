@@ -238,10 +238,10 @@ func parseNodeURL(nodeURL string) (project, zone, instance string, err error) {
 	project = u.Host
 	parts := strings.Split(u.Path, "/")
 	if len(parts) != 3 {
-		return "", "", "", fmt.Errorf("failed to parse %q: expected a three part path")
+		return "", "", "", fmt.Errorf("failed to parse %q: expected a three part path", u.Path)
 	}
 	if len(parts[0]) != 0 {
-		return "", "", "", fmt.Errorf("failed to parse %q: part one of path to have length 0")
+		return "", "", "", fmt.Errorf("failed to parse %q: part one of path to have length 0", u.Path)
 	}
 	zone = parts[1]
 	instance = parts[2]
