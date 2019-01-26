@@ -68,3 +68,18 @@ container_pull(
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
 
 gazelle_dependencies()
+
+http_archive(
+    name = "io_kubernetes_build",
+    sha256 = "21160531ea8a9a4001610223ad815622bf60671d308988c7057168a495a7e2e8",
+    strip_prefix = "repo-infra-b4bc4f1552c7fc1d4654753ca9b0e5e13883429f",
+    urls = ["https://github.com/kubernetes/repo-infra/archive/b4bc4f1552c7fc1d4654753ca9b0e5e13883429f.tar.gz"],
+)
+
+container_pull(
+    name = "official_busybox",
+    digest = "sha256:cb63aa0641a885f54de20f61d152187419e8f6b159ed11a251a09d115fdff9bd",
+    registry = "index.docker.io",
+    repository = "library/busybox",
+    tag = "latest",  # ignored, but kept here for documentation
+)
