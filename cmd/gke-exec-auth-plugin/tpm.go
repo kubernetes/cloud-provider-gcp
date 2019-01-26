@@ -13,7 +13,7 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
@@ -68,7 +68,7 @@ func (t *realTPM) loadExternal(pub tpm2.Public, priv tpm2.Private) (tpmutil.Hand
 }
 func (t *realTPM) flush(h tpmutil.Handle) {
 	if err := tpm2.FlushContext(t.rwc, h); err != nil {
-		glog.Errorf("tpm2.Flush(0x%x): %v", h, err)
+		klog.Errorf("tpm2.Flush(0x%x): %v", h, err)
 	}
 }
 func (t *realTPM) close() error { return t.rwc.Close() }
@@ -92,27 +92,27 @@ func tpmAttest(dev tpmDevice, privateKey crypto.PrivateKey) ([]byte, error) {
 		return nil, fmt.Errorf("loadPrimaryKey: %v", err)
 	}
 	defer dev.flush(aikh)
-	glog.Info("loaded AIK")
+	klog.Info("loaded AIK")
 
 	kh, err := loadTLSKey(dev, privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("loadTLSKey: %v", err)
 	}
 	defer dev.flush(kh)
-	glog.Info("loaded TLS key")
+	klog.Info("loaded TLS key")
 
 	attest, sig, err := dev.certify(kh, aikh)
 	if err != nil {
 		return nil, fmt.Errorf("certify failed: %v", err)
 	}
-	glog.Info("TLS key certified by AIK")
+	klog.Info("TLS key certified by AIK")
 
 	// Sanity-check the signature.
 	attestHash := sha256.Sum256(attest)
 	if err := rsa.VerifyPKCS1v15(aikPub.(*rsa.PublicKey), crypto.SHA256, attestHash[:], sig); err != nil {
 		return nil, fmt.Errorf("Signature verification failed: %v", err)
 	}
-	glog.Info("certification signature verified with AIK public key")
+	klog.Info("certification signature verified with AIK public key")
 
 	// Try loading AIK cert, but don't fail if it wasn't provisioned.
 	//
@@ -120,10 +120,10 @@ func tpmAttest(dev tpmDevice, privateKey crypto.PrivateKey) ([]byte, error) {
 	// reliable enough.
 	aikCertRaw, aikCert, err := readAIKCert(dev, aikh, aikPub)
 	if err != nil {
-		glog.Errorf("failed reading AIK cert: %v", err)
-		glog.Info("proceeding without AIK cert in CSR")
+		klog.Errorf("failed reading AIK cert: %v", err)
+		klog.Info("proceeding without AIK cert in CSR")
 	} else {
-		glog.Info("AIK cert loaded")
+		klog.Info("AIK cert loaded")
 
 		// Sanity-check that AIK cert matches AIK.
 		aikCertPub := aikCert.PublicKey.(*rsa.PublicKey)

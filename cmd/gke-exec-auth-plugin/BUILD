@@ -14,7 +14,6 @@ go_library(
         "//pkg/nodeidentity:go_default_library",
         "//pkg/tpmattest:go_default_library",
         "//vendor/cloud.google.com/go/compute/metadata:go_default_library",
-        "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/github.com/google/go-tpm/tpm2:go_default_library",
         "//vendor/github.com/google/go-tpm/tpmutil:go_default_library",
         "//vendor/k8s.io/api/certificates/v1beta1:go_default_library",
@@ -28,6 +27,7 @@ go_library(
         "//vendor/k8s.io/client-go/rest:go_default_library",
         "//vendor/k8s.io/client-go/util/cert:go_default_library",
         "//vendor/k8s.io/client-go/util/certificate/csr:go_default_library",
+        "//vendor/k8s.io/klog:go_default_library",
     ],
 )
 

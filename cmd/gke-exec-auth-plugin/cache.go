@@ -13,7 +13,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 	"k8s.io/client-go/util/cert"
 )
 
@@ -37,7 +37,7 @@ type requestCertFn func([]byte) ([]byte, error)
 func getKeyCert(dir string, requestCert requestCertFn) ([]byte, []byte, error) {
 	oldKey, oldCert, ok := getExistingKeyCert(dir)
 	if ok {
-		glog.Info("re-using cached key and certificate")
+		klog.Info("re-using cached key and certificate")
 		return oldKey, oldCert, nil
 	}
 
@@ -46,8 +46,8 @@ func getKeyCert(dir string, requestCert requestCertFn) ([]byte, []byte, error) {
 		if len(oldKey) == 0 || len(oldCert) == 0 {
 			return nil, nil, err
 		}
-		glog.Errorf("failed rotating client certificate: %v", err)
-		glog.Info("using existing key/cert that are still valid")
+		klog.Errorf("failed rotating client certificate: %v", err)
+		klog.Info("using existing key/cert that are still valid")
 		return oldKey, oldCert, nil
 	}
 	return newKey, newCert, nil
@@ -59,12 +59,12 @@ func getNewKeyCert(dir string, requestCert requestCertFn) ([]byte, []byte, error
 		return nil, nil, fmt.Errorf("trying to get private key: %v", err)
 	}
 
-	glog.Info("requesting new certificate")
+	klog.Info("requesting new certificate")
 	certPEM, err := requestCert(keyPEM)
 	if err != nil {
 		return nil, nil, err
 	}
-	glog.Info("CSR approved, received certificate")
+	klog.Info("CSR approved, received certificate")
 
 	if err := writeKeyCert(dir, keyPEM, certPEM); err != nil {
 		return nil, nil, err
@@ -82,7 +82,7 @@ func getTempKeyPEM(dir string) ([]byte, error) {
 	}
 
 	// Either temp key doesn't exist or it's invalid.
-	glog.Info("generating new private key")
+	klog.Info("generating new private key")
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -122,27 +122,27 @@ func validPEMKey(key []byte, cert *x509.Certificate) bool {
 func getExistingKeyCert(dir string) ([]byte, []byte, bool) {
 	key, err := ioutil.ReadFile(filepath.Join(dir, keyFileName))
 	if err != nil {
-		glog.Errorf("failed reading existing private key: %v", err)
+		klog.Errorf("failed reading existing private key: %v", err)
 		return nil, nil, false
 	}
 	cert, err := ioutil.ReadFile(filepath.Join(dir, certFileName))
 	if err != nil {
-		glog.Errorf("failed reading existing certificate: %v", err)
+		klog.Errorf("failed reading existing certificate: %v", err)
 		return nil, nil, false
 	}
 	// Check cert expiration.
 	certRaw, _ := pem.Decode(cert)
 	if certRaw == nil {
-		glog.Error("failed parsing existing cert")
+		klog.Error("failed parsing existing cert")
 		return nil, nil, false
 	}
 	parsedCert, err := x509.ParseCertificate(certRaw.Bytes)
 	if err != nil {
-		glog.Errorf("failed parsing existing cert: %v", err)
+		klog.Errorf("failed parsing existing cert: %v", err)
 		return nil, nil, false
 	}
 	if !validPEMKey(key, parsedCert) {
-		glog.Error("existing private key is invalid or doesn't match existing certificate")
+		klog.Error("existing private key is invalid or doesn't match existing certificate")
 		return nil, nil, false
 	}
 	age := time.Now().Sub(parsedCert.NotBefore)
@@ -151,16 +151,16 @@ func getExistingKeyCert(dir string) ([]byte, []byte, bool) {
 	// and put cases that return non-nil key/cert at the bottom.
 	switch {
 	case remaining < responseExpiry:
-		glog.Infof("existing cert expired or will expire in <%v, requesting new one", responseExpiry)
+		klog.Infof("existing cert expired or will expire in <%v, requesting new one", responseExpiry)
 		return nil, nil, false
 	case age+validityLeeway < 0:
-		glog.Warningf("existing cert not valid yet, requesting new one")
+		klog.Warningf("existing cert not valid yet, requesting new one")
 		return nil, nil, false
 	case age < rotationThreshold:
 		return key, cert, true
 	default:
 		// Existing key/cert can still be reused but try to rotate.
-		glog.Infof("existing cert is %v old, requesting new one", age)
+		klog.Infof("existing cert is %v old, requesting new one", age)
 		return key, cert, false
 	}
 }

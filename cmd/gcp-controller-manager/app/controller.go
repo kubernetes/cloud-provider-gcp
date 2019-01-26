@@ -19,28 +19,26 @@ limitations under the License.
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
 
+	"k8s.io/klog"
+	"github.com/spf13/cobra"
 	"k8s.io/api/core/v1"
+	apiserverconfig "k8s.io/apiserver/pkg/apis/config"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	"k8s.io/kubernetes/pkg/apis/componentconfig"
-	"k8s.io/kubernetes/pkg/controller"
-
-	// Install GCP auth plugin.
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-
-	"github.com/golang/glog"
-	"github.com/spf13/cobra"
+	"k8s.io/kubernetes/pkg/controller" // Install GCP auth plugin.
 )
 
 const (
@@ -61,6 +59,8 @@ houses GCP specific control loops.`,
 
 // Run runs the GCPControllerManager. This should never exit.
 func Run(s *GCPControllerManager) error {
+	ctx := context.Background()
+
 	kubeconfig, err := clientcmd.BuildConfigFromFlags("", s.Kubeconfig)
 	if err != nil {
 		return err
@@ -81,12 +81,12 @@ func Run(s *GCPControllerManager) error {
 	sharedInformers := informers.NewSharedInformerFactory(informerClient, time.Duration(12)*time.Hour)
 
 	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(glog.Infof)
+	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
 		Interface: v1core.New(clientBuilder.ClientOrDie("gcp-controller-manager").CoreV1().RESTClient()).Events(""),
 	})
 
-	run := func(stopCh <-chan struct{}) {
+	run := func(ctx context.Context) {
 		for name, loop := range loops() {
 			if !s.isEnabled(name) {
 				continue
@@ -94,7 +94,7 @@ func Run(s *GCPControllerManager) error {
 			name = "gcp-" + name
 			loopClient, err := clientBuilder.Client(name)
 			if err != nil {
-				glog.Fatalf("failed to start client for %q: %v", name, err)
+				klog.Fatalf("failed to start client for %q: %v", name, err)
 			}
 			if loop(&controllerContext{
 				client:          loopClient,
@@ -102,15 +102,15 @@ func Run(s *GCPControllerManager) error {
 				recorder: eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
 					Component: name,
 				}),
-				gcpCfg: gcpCfg,
+				gcpCfg:                      gcpCfg,
 				clusterSigningGKEKubeconfig: s.ClusterSigningGKEKubeconfig,
-				done: stopCh,
+				done:                        ctx.Done(),
 			}); err != nil {
-				glog.Fatalf("Failed to start %q: %v", name, err)
+				klog.Fatalf("Failed to start %q: %v", name, err)
 			}
 		}
-		sharedInformers.Start(stopCh)
-		<-stopCh
+		sharedInformers.Start(ctx.Done())
+		<-ctx.Done()
 	}
 
 	if s.LeaderElectionConfig.LeaderElect {
@@ -127,7 +127,7 @@ func Run(s *GCPControllerManager) error {
 		leaderElectionConfig.Callbacks = leaderelection.LeaderCallbacks{
 			OnStartedLeading: run,
 			OnStoppedLeading: func() {
-				glog.Fatalf("lost leader election, exiting")
+				klog.Fatalf("lost leader election, exiting")
 			},
 		}
 
@@ -135,7 +135,7 @@ func Run(s *GCPControllerManager) error {
 		if err != nil {
 			return err
 		}
-		leaderElector.Run()
+		leaderElector.Run(ctx)
 		panic("unreachable")
 	}
 
@@ -143,7 +143,7 @@ func Run(s *GCPControllerManager) error {
 	return fmt.Errorf("should never reach this point")
 }
 
-func makeLeaderElectionConfig(config componentconfig.LeaderElectionConfiguration, client clientset.Interface, recorder record.EventRecorder) (*leaderelection.LeaderElectionConfig, error) {
+func makeLeaderElectionConfig(config apiserverconfig.LeaderElectionConfiguration, client clientset.Interface, recorder record.EventRecorder) (*leaderelection.LeaderElectionConfig, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, fmt.Errorf("unable to get hostname: %v", err)

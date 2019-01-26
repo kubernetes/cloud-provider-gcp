@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/prometheus/client_golang/prometheus"
 	betacompute "google.golang.org/api/compute/v0.beta"
@@ -91,7 +91,7 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 	if approved, denied := certificates.GetCertApprovalCondition(&csr.Status); approved || denied {
 		return nil
 	}
-	glog.Infof("approver got CSR %q", csr.Name)
+	klog.Infof("approver got CSR %q", csr.Name)
 
 	x509cr, err := certutil.ParseCSR(csr)
 	if err != nil {
@@ -105,7 +105,7 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 		if !r.recognize(a.opts, csr, x509cr) {
 			continue
 		}
-		glog.Infof("validator %q: matched CSR %q", r.name, csr.Name)
+		klog.Infof("validator %q: matched CSR %q", r.name, csr.Name)
 		tried = append(tried, r.name)
 		if r.validate != nil {
 			ok, err := r.validate(a.opts, csr, x509cr)
@@ -113,13 +113,13 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 				return fmt.Errorf("validating CSR %q: %v", csr.Name, err)
 			}
 			if !ok {
-				glog.Infof("validator %q: denied CSR %q", r.name, csr.Name)
+				klog.Infof("validator %q: denied CSR %q", r.name, csr.Name)
 				csrApprovalStatus.WithLabelValues("deny", r.authFlowLabel).Inc()
 				csrApprovalLatency.WithLabelValues("deny", r.authFlowLabel).Observe(time.Since(start).Seconds())
 				return a.updateCSR(csr, false, r.denyMsg)
 			}
 		}
-		glog.Infof("CSR %q validation passed", csr.Name)
+		klog.Infof("CSR %q validation passed", csr.Name)
 
 		approved, err := a.authorizeSAR(csr, r.permission)
 		if err != nil {
@@ -128,18 +128,18 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 			return err
 		}
 		if !approved {
-			glog.Warningf("validator %q: SubjectAccessReview denied for CSR %q", r.name, csr.Name)
+			klog.Warningf("validator %q: SubjectAccessReview denied for CSR %q", r.name, csr.Name)
 			continue
 		}
-		glog.Infof("validator %q: SubjectAccessReview approved for CSR %q", r.name, csr.Name)
+		klog.Infof("validator %q: SubjectAccessReview approved for CSR %q", r.name, csr.Name)
 		if r.preApproveHook != nil {
 			if err := r.preApproveHook(a.opts, csr, x509cr, r.authFlowLabel, a.client); err != nil {
-				glog.Warningf("validator %q: preApproveHook failed for CSR %q: %v", r.name, csr.Name, err)
+				klog.Warningf("validator %q: preApproveHook failed for CSR %q: %v", r.name, csr.Name, err)
 				csrApprovalStatus.WithLabelValues("pre_approve_hook_error", r.authFlowLabel).Inc()
 				csrApprovalLatency.WithLabelValues("pre_approve_hook_error", r.authFlowLabel).Observe(time.Since(start).Seconds())
 				return err
 			}
-			glog.Infof("validator %q: preApproveHook passed for CSR %q", r.name, csr.Name)
+			klog.Infof("validator %q: preApproveHook passed for CSR %q", r.name, csr.Name)
 		}
 		csrApprovalStatus.WithLabelValues("approve", r.authFlowLabel).Inc()
 		csrApprovalLatency.WithLabelValues("approve", r.authFlowLabel).Observe(time.Since(start).Seconds())
@@ -151,7 +151,7 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 		csrApprovalLatency.WithLabelValues("sar_reject", authFlowLabelNone).Observe(time.Since(start).Seconds())
 		return certificates.IgnorableError("recognized csr %q as %q but subject access review was not approved", csr.Name, tried)
 	}
-	glog.Infof("no validators matched CSR %q", csr.Name)
+	klog.Infof("no validators matched CSR %q", csr.Name)
 	csrApprovalStatus.WithLabelValues("ignore", authFlowLabelNone).Inc()
 	csrApprovalLatency.WithLabelValues("ignore", authFlowLabelNone).Observe(time.Since(start).Seconds())
 	return nil
@@ -337,10 +337,10 @@ func isNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509c
 func validateNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 	switch {
 	case len(x509cr.IPAddresses) == 0:
-		glog.Infof("deny CSR %q: no SAN IPs", csr.Name)
+		klog.Infof("deny CSR %q: no SAN IPs", csr.Name)
 		return false, nil
 	case len(x509cr.EmailAddresses) > 0 || len(x509cr.URIs) > 0:
-		glog.Infof("deny CSR %q: only DNS and IP SANs allowed", csr.Name)
+		klog.Infof("deny CSR %q: only DNS and IP SANs allowed", csr.Name)
 		return false, nil
 	}
 
@@ -366,12 +366,12 @@ func validateNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest,
 					}
 				}
 			}
-			glog.Infof("deny CSR %q: IP addresses in CSR (%q) don't match NetworkInterfaces on instance %q (%+v)", csr.Name, x509cr.IPAddresses, instanceName, inst.NetworkInterfaces)
+			klog.Infof("deny CSR %q: IP addresses in CSR (%q) don't match NetworkInterfaces on instance %q (%+v)", csr.Name, x509cr.IPAddresses, instanceName, inst.NetworkInterfaces)
 			return false, nil
 		}
 		return true, nil
 	}
-	glog.Infof("deny CSR %q: instance name %q doesn't match any VM in cluster project/zone", csr.Name, instanceName)
+	klog.Infof("deny CSR %q: instance name %q doesn't match any VM in cluster project/zone", csr.Name, instanceName)
 	return false, nil
 }
 
@@ -391,7 +391,7 @@ func isNodeClientCertWithAttestation(opts GCPConfig, csr *capi.CertificateSignin
 	}
 	blocks, err := parsePEMBlocks(csr.Spec.Request)
 	if err != nil {
-		glog.Errorf("parsing csr.Spec.Request: %v", err)
+		klog.Errorf("parsing csr.Spec.Request: %v", err)
 		return false
 	}
 	for _, name := range tpmAttestationBlocks {
@@ -405,7 +405,7 @@ func isNodeClientCertWithAttestation(opts GCPConfig, csr *capi.CertificateSignin
 func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 	blocks, err := parsePEMBlocks(csr.Spec.Request)
 	if err != nil {
-		glog.Infof("deny CSR %q: parsing csr.Spec.Request: %v", csr.Name, err)
+		klog.Infof("deny CSR %q: parsing csr.Spec.Request: %v", csr.Name, err)
 		return false, nil
 	}
 	attestDataRaw := blocks["ATTESTATION DATA"].Bytes
@@ -418,17 +418,17 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 		if _, ok := err.(temporaryError); ok {
 			return false, fmt.Errorf("fetching EK public key from API: %v", err)
 		}
-		glog.Infof("deny CSR %q: fetching EK public key from API: %v", csr.Name, err)
+		klog.Infof("deny CSR %q: fetching EK public key from API: %v", csr.Name, err)
 		return false, nil
 	}
 
 	hostname := strings.TrimPrefix(x509cr.Subject.CommonName, "system:node:")
 	if nodeID.Name != hostname {
-		glog.Infof("deny CSR %q: VM name in ATTESTATION CERTIFICATE (%q) doesn't match CommonName in x509 CSR (%q)", csr.Name, nodeID.Name, x509cr.Subject.CommonName)
+		klog.Infof("deny CSR %q: VM name in ATTESTATION CERTIFICATE (%q) doesn't match CommonName in x509 CSR (%q)", csr.Name, nodeID.Name, x509cr.Subject.CommonName)
 		return false, nil
 	}
 	if fmt.Sprint(nodeID.ProjectName) != opts.ProjectID {
-		glog.Infof("deny CSR %q: received CSR for a different project Name (%q)", csr.Name, nodeID.ProjectName)
+		klog.Infof("deny CSR %q: received CSR for a different project Name (%q)", csr.Name, nodeID.ProjectName)
 		return false, nil
 	}
 
@@ -436,7 +436,7 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 	inst, err := srv.Get(fmt.Sprint(nodeID.ProjectID), nodeID.Zone, nodeID.Name).Do()
 	if err != nil {
 		if isNotFound(err) {
-			glog.Infof("deny CSR %q: VM doesn't exist in GCE API: %v", csr.Name, err)
+			klog.Infof("deny CSR %q: VM doesn't exist in GCE API: %v", csr.Name, err)
 			return false, nil
 		}
 		return false, fmt.Errorf("fetching VM data from GCE API: %v", err)
@@ -447,35 +447,35 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 			return false, fmt.Errorf("checking VM membership in cluster: %v", err)
 		}
 		if !ok {
-			glog.Infof("deny CSR %q: VM %q doesn't belong to cluster %q", csr.Name, inst.Name, opts.ClusterName)
+			klog.Infof("deny CSR %q: VM %q doesn't belong to cluster %q", csr.Name, inst.Name, opts.ClusterName)
 			return false, nil
 		}
 	}
 
 	attestHash := sha256.Sum256(attestDataRaw)
 	if err := rsa.VerifyPKCS1v15(aikPub, crypto.SHA256, attestHash[:], attestSig); err != nil {
-		glog.Infof("deny CSR %q: verifying certification signature with AIK public key: %v", csr.Name, err)
+		klog.Infof("deny CSR %q: verifying certification signature with AIK public key: %v", csr.Name, err)
 		return false, nil
 	}
 
 	// Verify that attestDataRaw matches certificate.
 	pub, err := tpmattest.MakePublic(x509cr.PublicKey)
 	if err != nil {
-		glog.Infof("deny CSR %q: converting public key in CSR to TPM Public structure: %v", csr.Name, err)
+		klog.Infof("deny CSR %q: converting public key in CSR to TPM Public structure: %v", csr.Name, err)
 		return false, nil
 	}
 	attestData, err := tpm2.DecodeAttestationData(attestDataRaw)
 	if err != nil {
-		glog.Infof("deny CSR %q: parsing attestation data in CSR: %v", csr.Name, err)
+		klog.Infof("deny CSR %q: parsing attestation data in CSR: %v", csr.Name, err)
 		return false, nil
 	}
 	ok, err := attestData.AttestedCertifyInfo.Name.MatchesPublic(pub)
 	if err != nil {
-		glog.Infof("deny CSR %q: comparing ATTESTATION DATA to CSR public key: %v", csr.Name, err)
+		klog.Infof("deny CSR %q: comparing ATTESTATION DATA to CSR public key: %v", csr.Name, err)
 		return false, nil
 	}
 	if !ok {
-		glog.Infof("deny CSR %q: ATTESTATION DATA doesn't match CSR public key", csr.Name)
+		klog.Infof("deny CSR %q: ATTESTATION DATA doesn't match CSR public key", csr.Name)
 		return false, nil
 	}
 	return true, nil
@@ -661,34 +661,34 @@ func ensureNodeMatchesMetadataOrDelete(opts GCPConfig, csr *capi.CertificateSign
 func shouldDeleteNode(opts GCPConfig, node *v1.Node, getInstance func(GCPConfig, string) (*compute.Instance, error)) (bool, error) {
 	// Newly created node might not have pod CIDR allocated yet.
 	if node.Spec.PodCIDR == "" {
-		glog.V(2).Infof("Node %q has empty podCIDR.", node.Name)
+		klog.V(2).Infof("Node %q has empty podCIDR.", node.Name)
 		return false, nil
 	}
 	inst, err := getInstance(opts, node.Name)
 	if err != nil {
 		if err == instanceNotFound {
-			glog.Warningf("Didn't find corresponding instance for node %q, will trigger node deletion.", node.Name)
+			klog.Warningf("Didn't find corresponding instance for node %q, will trigger node deletion.", node.Name)
 			return true, nil
 		}
-		glog.Errorf("Error retrieving instance %q: %v", node.Name, err)
+		klog.Errorf("Error retrieving instance %q: %v", node.Name, err)
 		return false, err
 	}
 	var unmatchedRanges []string
 	for _, networkInterface := range inst.NetworkInterfaces {
 		for _, r := range networkInterface.AliasIpRanges {
 			if node.Spec.PodCIDR == r.IpCidrRange {
-				glog.V(2).Infof("Instance %q has alias range that matches node's podCIDR.", inst.Name)
+				klog.V(2).Infof("Instance %q has alias range that matches node's podCIDR.", inst.Name)
 				return false, nil
 			}
 			unmatchedRanges = append(unmatchedRanges, r.IpCidrRange)
 		}
 	}
 	if len(unmatchedRanges) != 0 {
-		glog.Warningf("Instance %q has alias range(s) %v and none of them match node's podCIDR %s, will trigger node deletion.", inst.Name, unmatchedRanges, node.Spec.PodCIDR)
+		klog.Warningf("Instance %q has alias range(s) %v and none of them match node's podCIDR %s, will trigger node deletion.", inst.Name, unmatchedRanges, node.Spec.PodCIDR)
 		return true, nil
 	}
 	// Instance with no alias range is route based, for which node object deletion is unnecessary.
-	glog.V(2).Infof("Instance %q has no alias range.", inst.Name)
+	klog.V(2).Infof("Instance %q has no alias range.", inst.Name)
 	return false, nil
 }
 
