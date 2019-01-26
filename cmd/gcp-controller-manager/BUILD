@@ -8,7 +8,6 @@ go_library(
     name = "go_default_library",
     srcs = ["main.go"],
     importpath = "k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager",
-    visibility = ["//visibility:private"],
     deps = [
         "//cmd/gcp-controller-manager/app:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus/promhttp:go_default_library",
