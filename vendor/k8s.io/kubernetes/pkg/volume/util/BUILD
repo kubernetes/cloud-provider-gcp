@@ -44,25 +44,3 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/volume/util/volumepathhandler:go_default_library",
     ],
 )
-
-filegroup(
-    name = "package-srcs",
-    srcs = glob(["**"]),
-    tags = ["automanaged"],
-    visibility = ["//visibility:private"],
-)
-
-filegroup(
-    name = "all-srcs",
-    srcs = [
-        ":package-srcs",
-        "//pkg/volume/util/fs:all-srcs",
-        "//pkg/volume/util/nestedpendingoperations:all-srcs",
-        "//pkg/volume/util/operationexecutor:all-srcs",
-        "//pkg/volume/util/recyclerclient:all-srcs",
-        "//pkg/volume/util/types:all-srcs",
-        "//pkg/volume/util/volumepathhandler:all-srcs",
-    ],
-    tags = ["automanaged"],
-    visibility = ["//visibility:public"],
-)
