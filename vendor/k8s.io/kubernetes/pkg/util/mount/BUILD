@@ -19,7 +19,7 @@ go_library(
     importpath = "k8s.io/kubernetes/pkg/util/mount",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/glog:go_default_library",
+        "//vendor/k8s.io/klog:go_default_library",
         "//vendor/k8s.io/utils/exec:go_default_library",
     ] + select({
         "@io_bazel_rules_go//go/platform:android": [

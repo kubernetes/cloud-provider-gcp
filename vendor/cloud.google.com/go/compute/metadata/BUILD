@@ -6,8 +6,4 @@ go_library(
     importmap = "io_k8s_cloud_provider_gcp/vendor/cloud.google.com/go/compute/metadata",
     importpath = "cloud.google.com/go/compute/metadata",
     visibility = ["//visibility:public"],
-    deps = [
-        "//vendor/golang.org/x/net/context:go_default_library",
-        "//vendor/golang.org/x/net/context/ctxhttp:go_default_library",
-    ],
 )

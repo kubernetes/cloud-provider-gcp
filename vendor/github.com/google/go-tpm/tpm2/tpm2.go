@@ -87,7 +87,12 @@ func decodeTPMLPCRSelection(buf *bytes.Buffer) (PCRSelection, error) {
 	if err := tpmutil.UnpackBuf(buf, &count); err != nil {
 		return sel, err
 	}
-	if count != 1 {
+	switch count {
+	case 0:
+		sel.Hash = AlgUnknown
+		return sel, nil
+	case 1: // We only support decoding of a single PCRSelection.
+	default:
 		return sel, fmt.Errorf("decoding TPML_PCR_SELECTION list longer than 1 is not supported (got length %d)", count)
 	}
 
@@ -183,57 +188,88 @@ func ReadClock(rw io.ReadWriter) (uint64, uint64, error) {
 	return decodeReadClock(resp)
 }
 
-func decodeGetCapability(in []byte) (Capability, []tpmutil.Handle, error) {
+func decodeGetCapability(in []byte) ([]interface{}, bool, error) {
 	var moreData byte
 	var capReported Capability
 
 	buf := bytes.NewBuffer(in)
 	if err := tpmutil.UnpackBuf(buf, &moreData, &capReported); err != nil {
-		return 0, nil, err
-	}
-	// Only TPM_CAP_HANDLES handled.
-	if capReported != CapabilityHandles {
-		return 0, nil, fmt.Errorf("Only TPM_CAP_HANDLES supported, got %v", capReported)
+		return nil, false, err
 	}
 
-	var numHandles uint32
-	if err := tpmutil.UnpackBuf(buf, &numHandles); err != nil {
-		return 0, nil, err
-	}
-
-	var handles []tpmutil.Handle
-	for i := 0; i < int(numHandles); i++ {
-		var handle tpmutil.Handle
-		if err := tpmutil.UnpackBuf(buf, &handle); err != nil {
-			return 0, nil, err
+	switch capReported {
+	case CapabilityHandles:
+		var numHandles uint32
+		if err := tpmutil.UnpackBuf(buf, &numHandles); err != nil {
+			return nil, false, fmt.Errorf("could not unpack handle count: %v", err)
 		}
-		handles = append(handles, handle)
-	}
 
-	return capReported, handles, nil
+		var handles []interface{}
+		for i := 0; i < int(numHandles); i++ {
+			var handle tpmutil.Handle
+			if err := tpmutil.UnpackBuf(buf, &handle); err != nil {
+				return nil, false, fmt.Errorf("could not unpack handle: %v", err)
+			}
+			handles = append(handles, handle)
+		}
+		return handles, moreData > 0, nil
+	case CapabilityAlgs:
+		var numAlgs uint32
+		if err := tpmutil.UnpackBuf(buf, &numAlgs); err != nil {
+			return nil, false, fmt.Errorf("could not unpack algorithm count: %v", err)
+		}
+
+		var algs []interface{}
+		for i := 0; i < int(numAlgs); i++ {
+			var alg AlgorithmDescription
+			if err := tpmutil.UnpackBuf(buf, &alg); err != nil {
+				return nil, false, fmt.Errorf("could not unpack algorithm description: %v", err)
+			}
+			algs = append(algs, alg)
+		}
+		return algs, moreData > 0, nil
+	case CapabilityTPMProperties:
+		var numProps uint32
+		if err := tpmutil.UnpackBuf(buf, &numProps); err != nil {
+			return nil, false, fmt.Errorf("could not unpack fixed properties count: %v", err)
+		}
+
+		var props []interface{}
+		for i := 0; i < int(numProps); i++ {
+			var prop TaggedProperty
+			if err := tpmutil.UnpackBuf(buf, &prop); err != nil {
+				return nil, false, fmt.Errorf("could not unpack tagged property: %v", err)
+			}
+			props = append(props, prop)
+		}
+		return props, moreData > 0, nil
+
+	default:
+		return nil, false, fmt.Errorf("unsupported capability %v", capReported)
+	}
 }
 
 // GetCapability returns various information about the TPM state.
 //
-// Currently only CapabilityHandles is supported (list active handles).
-func GetCapability(rw io.ReadWriter, cap Capability, count uint32, property uint32) ([]tpmutil.Handle, error) {
-	resp, err := runCommand(rw, TagNoSessions, cmdGetCapability, cap, property, count)
+// Currently only CapabilityHandles (list active handles) and CapabilityAlgs
+// (list supported algorithms) are supported. CapabilityHandles will return
+// a []tpmutil.Handle for vals, CapabilityAlgs will return
+// []AlgorithmDescription.
+//
+// moreData is true if the TPM indicated that more data is available. Follow
+// the spec for the capability in question on how to query for more data.
+func GetCapability(rw io.ReadWriter, capa Capability, count, property uint32) (vals []interface{}, moreData bool, err error) {
+	resp, err := runCommand(rw, TagNoSessions, cmdGetCapability, capa, property, count)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	_, handles, err := decodeGetCapability(resp)
-	if err != nil {
-		return nil, err
-	}
-	return handles, nil
+	return decodeGetCapability(resp)
 }
 
-func encodeAuthArea(sessionHandle tpmutil.Handle, passwords ...string) ([]byte, error) {
+func encodeAuthArea(sections ...AuthCommand) ([]byte, error) {
 	var res []byte
-	for _, p := range passwords {
-		// Empty nonce.
-		var nonce []byte
-		buf, err := tpmutil.Pack(sessionHandle, nonce, AttrContinueSession, []byte(p))
+	for _, s := range sections {
+		buf, err := tpmutil.Pack(s)
 		if err != nil {
 			return nil, err
 		}
@@ -253,7 +289,7 @@ func encodePCREvent(pcr tpmutil.Handle, eventData []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	auth, err := encodeAuthArea(HandlePasswordSession, "")
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: EmptyAuth})
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +334,7 @@ func encodeCreateRawTemplate(owner tpmutil.Handle, sel PCRSelection, parentPassw
 	if err != nil {
 		return nil, err
 	}
-	auth, err := encodeAuthArea(HandlePasswordSession, parentPassword)
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(parentPassword)})
 	if err != nil {
 		return nil, err
 	}
@@ -331,25 +367,47 @@ func encodeCreateRawTemplate(owner tpmutil.Handle, sel PCRSelection, parentPassw
 	)
 }
 
-func decodeCreatePrimary(in []byte) (tpmutil.Handle, crypto.PublicKey, error) {
-	var handle tpmutil.Handle
+func decodeCreatePrimary(in []byte) (handle tpmutil.Handle, public, creationData, creationHash []byte, ticket *Ticket, creationName []byte, err error) {
 	var paramSize uint32
 
 	buf := bytes.NewBuffer(in)
 	// Handle and auth data.
 	if err := tpmutil.UnpackBuf(buf, &handle, &paramSize); err != nil {
-		return 0, nil, err
+		return 0, nil, nil, nil, nil, nil, fmt.Errorf("decoding handle, paramSize: %v", err)
 	}
 
-	var public []byte
-	if err := tpmutil.UnpackBuf(buf, &public); err != nil {
-		return 0, nil, fmt.Errorf("decoding TPM2B_PUBLIC: %v", err)
+	if err := tpmutil.UnpackBuf(buf, &public, &creationData, &creationHash); err != nil {
+		return 0, nil, nil, nil, nil, nil, fmt.Errorf("decoding public, creationData, creationHash: %v", err)
 	}
 
-	pub, err := decodePublic(bytes.NewBuffer(public))
+	ticket, err = decodeTicket(buf)
+	if err != nil {
+		return 0, nil, nil, nil, nil, nil, fmt.Errorf("decoding ticket: %v", err)
+	}
+
+	if err := tpmutil.UnpackBuf(buf, &creationName); err != nil {
+		return 0, nil, nil, nil, nil, nil, fmt.Errorf("decoding creationName: %v", err)
+	}
+
+	if _, err := DecodeCreationData(creationData); err != nil {
+		return 0, nil, nil, nil, nil, nil, fmt.Errorf("parsing CreationData: %v", err)
+	}
+	return handle, public, creationData, creationHash, ticket, creationName, err
+}
+
+// CreatePrimary initializes the primary key in a given hierarchy.
+// The second return value is the public part of the generated key.
+func CreatePrimary(rw io.ReadWriter, owner tpmutil.Handle, sel PCRSelection, parentPassword, ownerPassword string, p Public) (tpmutil.Handle, crypto.PublicKey, error) {
+	hnd, public, _, _, _, _, err := CreatePrimaryEx(rw, owner, sel, parentPassword, ownerPassword, p)
 	if err != nil {
 		return 0, nil, err
 	}
+
+	pub, err := DecodePublic(public)
+	if err != nil {
+		return 0, nil, fmt.Errorf("parsing public: %v", err)
+	}
+
 	var pubKey crypto.PublicKey
 	switch pub.Type {
 	case AlgRSA:
@@ -369,19 +427,21 @@ func decodeCreatePrimary(in []byte) (tpmutil.Handle, crypto.PublicKey, error) {
 	default:
 		return 0, nil, fmt.Errorf("unsupported primary key type 0x%x", pub.Type)
 	}
-	return handle, pubKey, nil
+
+	return hnd, pubKey, err
 }
 
-// CreatePrimary initializes the primary key in a given hierarchy.
-// Second return value is the public part of the generated key.
-func CreatePrimary(rw io.ReadWriter, owner tpmutil.Handle, sel PCRSelection, parentPassword, ownerPassword string, pub Public) (tpmutil.Handle, crypto.PublicKey, error) {
+// CreatePrimaryEx initializes the primary key in a given hierarchy.
+// This function differs from CreatePrimary in that all response elements
+// are returned, and they are returned in relatively raw form.
+func CreatePrimaryEx(rw io.ReadWriter, owner tpmutil.Handle, sel PCRSelection, parentPassword, ownerPassword string, pub Public) (keyHandle tpmutil.Handle, public, creationData, creationHash []byte, ticket *Ticket, creationName []byte, err error) {
 	cmd, err := encodeCreate(owner, sel, parentPassword, ownerPassword, nil /*inSensitive*/, pub)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, nil, nil, nil, nil, err
 	}
 	resp, err := runCommand(rw, TagSessions, cmdCreatePrimary, tpmutil.RawBytes(cmd))
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, nil, nil, nil, nil, err
 	}
 
 	return decodeCreatePrimary(resp)
@@ -400,7 +460,8 @@ func CreatePrimaryRawTemplate(rw io.ReadWriter, owner tpmutil.Handle, sel PCRSel
 		return 0, nil, err
 	}
 
-	return decodeCreatePrimary(resp)
+	hnd, pub, _, _, _, _, err := decodeCreatePrimary(resp)
+	return hnd, pub, err
 }
 
 func decodeReadPublic(in []byte) (Public, []byte, []byte, error) {
@@ -412,7 +473,7 @@ func decodeReadPublic(in []byte) (Public, []byte, []byte, error) {
 	if _, err := tpmutil.Unpack(in, &resp); err != nil {
 		return Public{}, nil, nil, err
 	}
-	pub, err := decodePublic(bytes.NewBuffer(resp.Public))
+	pub, err := DecodePublic(resp.Public)
 	if err != nil {
 		return Public{}, nil, nil, err
 	}
@@ -430,28 +491,31 @@ func ReadPublic(rw io.ReadWriter, handle tpmutil.Handle) (Public, []byte, []byte
 	return decodeReadPublic(resp)
 }
 
-func decodeCreate(in []byte) ([]byte, []byte, error) {
-	var resp struct {
-		Handle  tpmutil.Handle
-		Private []byte
-		Public  []byte
-	}
+func decodeCreate(in []byte) (handle tpmutil.Handle, private, public, creationData, creationHash []byte, creationTicket Ticket, err error) {
+	buf := bytes.NewBuffer(in)
 
-	if _, err := tpmutil.Unpack(in, &resp); err != nil {
-		return nil, nil, err
+	if err := tpmutil.UnpackBuf(buf, &handle, &private, &public, &creationData, &creationHash); err != nil {
+		return 0, nil, nil, nil, nil, Ticket{}, fmt.Errorf("decoding Handle, Private, Public, CreationData, CreationHash: %v", err)
 	}
-	return resp.Private, resp.Public, nil
+	cr, err := decodeTicket(buf)
+	if err != nil {
+		return 0, nil, nil, nil, nil, Ticket{}, fmt.Errorf("decoding CreationTicket: %v", err)
+	}
+	creationTicket = *cr
+	if _, err := DecodeCreationData(creationData); err != nil {
+		return 0, nil, nil, nil, nil, Ticket{}, fmt.Errorf("decoding CreationData: %v", err)
+	}
+	return handle, private, public, creationData, creationHash, creationTicket, nil
 }
 
-// Returns private key and public key blobs.
-func create(rw io.ReadWriter, parentHandle tpmutil.Handle, parentPassword, objectPassword string, sensitiveData []byte, pub Public, pcrSelection PCRSelection) ([]byte, []byte, error) {
+func create(rw io.ReadWriter, parentHandle tpmutil.Handle, parentPassword, objectPassword string, sensitiveData []byte, pub Public, pcrSelection PCRSelection) (handle tpmutil.Handle, private, public, creationData, creationHash []byte, creationTicket Ticket, err error) {
 	cmd, err := encodeCreate(parentHandle, pcrSelection, parentPassword, objectPassword, sensitiveData, pub)
 	if err != nil {
-		return nil, nil, err
+		return 0, nil, nil, nil, nil, Ticket{}, err
 	}
 	resp, err := runCommand(rw, TagSessions, cmdCreate, tpmutil.RawBytes(cmd))
 	if err != nil {
-		return nil, nil, err
+		return 0, nil, nil, nil, nil, Ticket{}, err
 	}
 	return decodeCreate(resp)
 }
@@ -459,7 +523,11 @@ func create(rw io.ReadWriter, parentHandle tpmutil.Handle, parentPassword, objec
 // CreateKey creates a new key pair under the owner handle.
 // Returns private key and public key blobs.
 func CreateKey(rw io.ReadWriter, owner tpmutil.Handle, sel PCRSelection, parentPassword, ownerPassword string, pub Public) ([]byte, []byte, error) {
-	return create(rw, owner, parentPassword, ownerPassword, nil /*inSensitive*/, pub, sel)
+	_, private, public, _, _, _, err := create(rw, owner, parentPassword, ownerPassword, nil /*inSensitive*/, pub, sel)
+	if err != nil {
+		return nil, nil, err
+	}
+	return private, public, nil
 }
 
 // Seal creates a data blob object that seals the sensitive data under a parent and with a
@@ -472,7 +540,11 @@ func Seal(rw io.ReadWriter, parentHandle tpmutil.Handle, parentPassword, objectP
 		Attributes: FlagFixedTPM | FlagFixedParent,
 		AuthPolicy: objectAuthPolicy,
 	}
-	return create(rw, parentHandle, parentPassword, objectPassword, sensitiveData, inPublic, PCRSelection{})
+	_, private, public, _, _, _, err := create(rw, parentHandle, parentPassword, objectPassword, sensitiveData, inPublic, PCRSelection{})
+	if err != nil {
+		return nil, nil, err
+	}
+	return private, public, nil
 }
 
 func encodeLoad(parentHandle tpmutil.Handle, parentAuth string, publicBlob, privateBlob []byte) ([]byte, error) {
@@ -480,7 +552,7 @@ func encodeLoad(parentHandle tpmutil.Handle, parentAuth string, publicBlob, priv
 	if err != nil {
 		return nil, err
 	}
-	auth, err := encodeAuthArea(HandlePasswordSession, parentAuth)
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(parentAuth)})
 	if err != nil {
 		return nil, err
 	}
@@ -563,6 +635,45 @@ func PolicyPassword(rw io.ReadWriter, handle tpmutil.Handle) error {
 	return err
 }
 
+func encodePolicySecret(entityHandle tpmutil.Handle, entityAuth AuthCommand, policyHandle tpmutil.Handle, policyNonce, cpHash, policyRef []byte, expiry int32) ([]byte, error) {
+	auth, err := encodeAuthArea(entityAuth)
+	if err != nil {
+		return nil, err
+	}
+	handles, err := tpmutil.Pack(entityHandle, policyHandle)
+	if err != nil {
+		return nil, err
+	}
+	params, err := tpmutil.Pack(policyNonce, cpHash, policyRef, expiry)
+	if err != nil {
+		return nil, err
+	}
+	return concat(handles, auth, params)
+}
+
+// PolicySecret sets a secret authorization requirement on the provided entity.
+// If expiry is non-zero, the authorization is valid for expiry seconds.
+func PolicySecret(rw io.ReadWriter, entityHandle tpmutil.Handle, entityAuth AuthCommand, policyHandle tpmutil.Handle, policyNonce, cpHash, policyRef []byte, expiry int32) (*Ticket, error) {
+	cmd, err := encodePolicySecret(entityHandle, entityAuth, policyHandle, policyNonce, cpHash, policyRef, expiry)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := runCommand(rw, TagSessions, CmdPolicySecret, tpmutil.RawBytes(cmd))
+	if err != nil {
+		return nil, err
+	}
+
+	// Tickets are only provided if expiry is set.
+	if expiry != 0 {
+		tk, err := decodeTicket(bytes.NewBuffer(resp))
+		if err != nil {
+			return nil, fmt.Errorf("decoding ticket: %v", err)
+		}
+		return tk, nil
+	}
+	return nil, nil
+}
+
 func encodePolicyPCR(session tpmutil.Handle, expectedDigest []byte, sel PCRSelection) ([]byte, error) {
 	params, err := tpmutil.Pack(session, expectedDigest)
 	if err != nil {
@@ -637,7 +748,7 @@ func encodeUnseal(sessionHandle, itemHandle tpmutil.Handle, password string) ([]
 	if err != nil {
 		return nil, err
 	}
-	auth, err := encodeAuthArea(sessionHandle, password)
+	auth, err := encodeAuthArea(AuthCommand{Session: sessionHandle, Attributes: AttrContinueSession, Auth: []byte(password)})
 	if err != nil {
 		return nil, err
 	}
@@ -677,7 +788,7 @@ func encodeQuote(signingHandle tpmutil.Handle, parentPassword, ownerPassword str
 	if err != nil {
 		return nil, err
 	}
-	auth, err := encodeAuthArea(HandlePasswordSession, parentPassword)
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(parentPassword)})
 	if err != nil {
 		return nil, err
 	}
@@ -721,12 +832,12 @@ func Quote(rw io.ReadWriter, signingHandle tpmutil.Handle, parentPassword, owner
 	return decodeQuote(resp)
 }
 
-func encodeActivateCredential(activeHandle tpmutil.Handle, keyHandle tpmutil.Handle, activePassword, protectorPassword string, credBlob, secret []byte) ([]byte, error) {
+func encodeActivateCredential(auth []AuthCommand, activeHandle tpmutil.Handle, keyHandle tpmutil.Handle, credBlob, secret []byte) ([]byte, error) {
 	ha, err := tpmutil.Pack(activeHandle, keyHandle)
 	if err != nil {
 		return nil, err
 	}
-	auth, err := encodeAuthArea(HandlePasswordSession, activePassword, protectorPassword)
+	a, err := encodeAuthArea(auth...)
 	if err != nil {
 		return nil, err
 	}
@@ -734,7 +845,7 @@ func encodeActivateCredential(activeHandle tpmutil.Handle, keyHandle tpmutil.Han
 	if err != nil {
 		return nil, err
 	}
-	return concat(ha, auth, params)
+	return concat(ha, a, params)
 }
 
 func decodeActivateCredential(in []byte) ([]byte, error) {
@@ -750,7 +861,21 @@ func decodeActivateCredential(in []byte) ([]byte, error) {
 // ActivateCredential associates an object with a credential.
 // Returns decrypted certificate information.
 func ActivateCredential(rw io.ReadWriter, activeHandle, keyHandle tpmutil.Handle, activePassword, protectorPassword string, credBlob, secret []byte) ([]byte, error) {
-	cmd, err := encodeActivateCredential(activeHandle, keyHandle, activePassword, protectorPassword, credBlob, secret)
+	return ActivateCredentialUsingAuth(rw, []AuthCommand{
+		{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(activePassword)},
+		{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(protectorPassword)},
+	}, activeHandle, keyHandle, credBlob, secret)
+}
+
+// ActivateCredentialUsingAuth associates an object with a credential, using the
+// given set of authorizations. Two authorization must be provided.
+// Returns decrypted certificate information.
+func ActivateCredentialUsingAuth(rw io.ReadWriter, auth []AuthCommand, activeHandle, keyHandle tpmutil.Handle, credBlob, secret []byte) ([]byte, error) {
+	if len(auth) != 2 {
+		return nil, fmt.Errorf("len(auth) = %d, want 2", len(auth))
+	}
+
+	cmd, err := encodeActivateCredential(auth, activeHandle, keyHandle, credBlob, secret)
 	if err != nil {
 		return nil, err
 	}
@@ -802,7 +927,7 @@ func encodeEvictControl(ownerAuth string, owner, objectHandle, persistentHandle 
 	if err != nil {
 		return nil, err
 	}
-	auth, err := encodeAuthArea(HandlePasswordSession, ownerAuth)
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(ownerAuth)})
 	if err != nil {
 		return nil, err
 	}
@@ -842,7 +967,7 @@ func ContextLoad(rw io.ReadWriter, saveArea []byte) (tpmutil.Handle, error) {
 }
 
 func encodeIncrementNV(handle tpmutil.Handle, authString string) ([]byte, error) {
-	auth, err := encodeAuthArea(HandlePasswordSession, authString)
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(authString)})
 	if err != nil {
 		return nil, err
 	}
@@ -864,7 +989,7 @@ func NVIncrement(rw io.ReadWriter, handle tpmutil.Handle, authString string) err
 }
 
 func encodeUndefineSpace(ownerAuth string, owner, index tpmutil.Handle) ([]byte, error) {
-	auth, err := encodeAuthArea(HandlePasswordSession, ownerAuth)
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(ownerAuth)})
 	if err != nil {
 		return nil, err
 	}
@@ -885,12 +1010,12 @@ func NVUndefineSpace(rw io.ReadWriter, ownerAuth string, owner, index tpmutil.Ha
 	return err
 }
 
-func encodeDefineSpace(owner, handle tpmutil.Handle, ownerAuth, authVal string, attributes uint32, policy []byte, dataSize uint16) ([]byte, error) {
+func encodeDefineSpace(owner, handle tpmutil.Handle, ownerAuth, authVal string, attributes NVAttr, policy []byte, dataSize uint16) ([]byte, error) {
 	ha, err := tpmutil.Pack(owner)
 	if err != nil {
 		return nil, err
 	}
-	auth, err := encodeAuthArea(HandlePasswordSession, ownerAuth)
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(ownerAuth)})
 	if err != nil {
 		return nil, err
 	}
@@ -906,12 +1031,38 @@ func encodeDefineSpace(owner, handle tpmutil.Handle, ownerAuth, authVal string, 
 }
 
 // NVDefineSpace creates an index in TPM's NV storage.
-func NVDefineSpace(rw io.ReadWriter, owner, handle tpmutil.Handle, ownerAuth, authString string, policy []byte, attributes uint32, dataSize uint16) error {
+func NVDefineSpace(rw io.ReadWriter, owner, handle tpmutil.Handle, ownerAuth, authString string, policy []byte, attributes NVAttr, dataSize uint16) error {
 	cmd, err := encodeDefineSpace(owner, handle, ownerAuth, authString, attributes, policy, dataSize)
 	if err != nil {
 		return err
 	}
 	_, err = runCommand(rw, TagSessions, cmdDefineSpace, tpmutil.RawBytes(cmd))
+	return err
+}
+
+func encodeWriteNV(owner, handle tpmutil.Handle, authString string, data []byte, offset uint16) ([]byte, error) {
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(authString)})
+	if err != nil {
+		return nil, err
+	}
+	out, err := tpmutil.Pack(owner, handle)
+	if err != nil {
+		return nil, err
+	}
+	buf, err := tpmutil.Pack(data, offset)
+	if err != nil {
+		return nil, err
+	}
+	return concat(out, auth, buf)
+}
+
+// NVWrite writes data into the TPM's NV storage.
+func NVWrite(rw io.ReadWriter, owner, handle tpmutil.Handle, authString string, data []byte, offset uint16) error {
+	cmd, err := encodeWriteNV(owner, handle, authString, data, offset)
+	if err != nil {
+		return err
+	}
+	_, err = runCommand(rw, TagSessions, cmdWriteNV, tpmutil.RawBytes(cmd))
 	return err
 }
 
@@ -925,6 +1076,16 @@ func decodeNVReadPublic(in []byte) (NVPublic, error) {
 	return pub, err
 }
 
+// NVReadPublic reads the public data of an NV index.
+func NVReadPublic(rw io.ReadWriter, index tpmutil.Handle) (NVPublic, error) {
+	// Read public area to determine data size.
+	resp, err := runCommand(rw, TagNoSessions, cmdReadPublicNV, index)
+	if err != nil {
+		return NVPublic{}, err
+	}
+	return decodeNVReadPublic(resp)
+}
+
 func decodeNVRead(in []byte) ([]byte, error) {
 	var sessionAttributes uint32
 	var data []byte
@@ -934,44 +1095,79 @@ func decodeNVRead(in []byte) ([]byte, error) {
 	return data, nil
 }
 
-func encodeNVRead(handle tpmutil.Handle, authString string, offset, dataSize uint16) ([]byte, error) {
-	ha, err := tpmutil.Pack(handle, handle)
+func encodeNVRead(nvIndex, authHandle tpmutil.Handle, password string, offset, dataSize uint16) ([]byte, error) {
+	handles, err := tpmutil.Pack(authHandle, nvIndex)
 	if err != nil {
 		return nil, err
 	}
-	auth, err := encodeAuthArea(HandlePasswordSession, authString)
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(password)})
 	if err != nil {
 		return nil, err
 	}
+
 	params, err := tpmutil.Pack(dataSize, offset)
 	if err != nil {
 		return nil, err
 	}
-	return concat(ha, auth, params)
+
+	return concat(handles, auth, params)
 }
 
-// NVRead reads a full data blob from an NV index.
+// NVRead reads a full data blob from an NV index. This function is
+// deprecated; use NVReadEx instead.
 func NVRead(rw io.ReadWriter, index tpmutil.Handle) ([]byte, error) {
-	// Read public area to determine data size.
-	resp, err := runCommand(rw, TagNoSessions, cmdReadPublicNV, index)
-	if err != nil {
-		return nil, fmt.Errorf("running NV_ReadPublic command: %v", err)
+	return NVReadEx(rw, index, index, "", 0)
+}
+
+// NVReadEx reads a full data blob from an NV index, using the given
+// authorization handle. NVRead commands are done in blocks of blockSize.
+// If blockSize is 0, the TPM is queried for TPM_PT_NV_BUFFER_MAX, and that
+// value is used.
+func NVReadEx(rw io.ReadWriter, index, authHandle tpmutil.Handle, password string, blockSize int) ([]byte, error) {
+	if blockSize == 0 {
+		readBuff, _, err := GetCapability(rw, CapabilityTPMProperties, 1, uint32(NVMaxBufferSize))
+		if err != nil {
+			return nil, fmt.Errorf("GetCapability for TPM_PT_NV_BUFFER_MAX failed: %v", err)
+		}
+		if len(readBuff) != 1 {
+			return nil, fmt.Errorf("could not determine NVRAM read/write buffer size")
+		}
+		rb, ok := readBuff[0].(TaggedProperty)
+		if !ok {
+			return nil, fmt.Errorf("GetCapability returned unexpected type: %T, expected TaggedProperty", readBuff[0])
+		}
+		blockSize = int(rb.Value)
 	}
-	pub, err := decodeNVReadPublic(resp)
+
+	// Read public area to determine data size.
+	pub, err := NVReadPublic(rw, index)
 	if err != nil {
 		return nil, fmt.Errorf("decoding NV_ReadPublic response: %v", err)
 	}
 
-	// Read pub.DataSize of actual data.
-	cmd, err := encodeNVRead(index, "", 0, pub.DataSize)
-	if err != nil {
-		return nil, fmt.Errorf("building NV_Read command: %v", err)
+	// Read the NVRAM area in blocks.
+	outBuff := make([]byte, 0, int(pub.DataSize))
+	for len(outBuff) < int(pub.DataSize) {
+		readSize := blockSize
+		if readSize > (int(pub.DataSize) - len(outBuff)) {
+			readSize = int(pub.DataSize) - len(outBuff)
+		}
+
+		cmd, err := encodeNVRead(index, authHandle, password, uint16(len(outBuff)), uint16(readSize))
+		if err != nil {
+			return nil, fmt.Errorf("building NV_Read command: %v", err)
+		}
+		resp, err := runCommand(rw, TagSessions, cmdReadNV, tpmutil.RawBytes(cmd))
+		if err != nil {
+			return nil, fmt.Errorf("running NV_Read command (cursor=%d,size=%d): %v", len(outBuff), readSize, err)
+		}
+		data, err := decodeNVRead(resp)
+		if err != nil {
+			return nil, fmt.Errorf("decoding NV_Read command: %v", err)
+		}
+		outBuff = append(outBuff, data...)
 	}
-	resp, err = runCommand(rw, TagSessions, cmdReadNV, tpmutil.RawBytes(cmd))
-	if err != nil {
-		return nil, fmt.Errorf("running NV_Read command: %v", err)
-	}
-	return decodeNVRead(resp)
+	return outBuff, nil
 }
 
 // Hash computes a hash of data in buf using the TPM.
@@ -1005,7 +1201,7 @@ func encodeSign(key tpmutil.Handle, password string, digest []byte, sigScheme *S
 	if err != nil {
 		return nil, err
 	}
-	auth, err := encodeAuthArea(HandlePasswordSession, password)
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(password)})
 	if err != nil {
 		return nil, err
 	}
@@ -1058,7 +1254,7 @@ func encodeCertify(parentAuth, ownerAuth string, object, signer tpmutil.Handle, 
 		return nil, err
 	}
 
-	auth, err := encodeAuthArea(HandlePasswordSession, parentAuth, ownerAuth)
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(parentAuth)}, AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(ownerAuth)})
 	if err != nil {
 		return nil, err
 	}
@@ -1097,6 +1293,40 @@ func Certify(rw io.ReadWriter, parentAuth, ownerAuth string, object, signer tpmu
 	return decodeCertify(resp)
 }
 
+func encodeCertifyCreation(objectAuth string, object, signer tpmutil.Handle, qualifyingData, creationHash []byte, scheme SigScheme, ticket *Ticket) ([]byte, error) {
+	handles, err := tpmutil.Pack(signer, object)
+	if err != nil {
+		return nil, err
+	}
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(objectAuth)})
+	if err != nil {
+		return nil, err
+	}
+	s, err := scheme.encode()
+	if err != nil {
+		return nil, err
+	}
+	params, err := tpmutil.Pack(qualifyingData, creationHash, tpmutil.RawBytes(s), ticket)
+	if err != nil {
+		return nil, err
+	}
+	return concat(handles, auth, params)
+}
+
+// CertifyCreation generates a signature of a newly-created &
+// loaded TPM object, using signer as the signing key.
+func CertifyCreation(rw io.ReadWriter, objectAuth string, object, signer tpmutil.Handle, qualifyingData, creationHash []byte, sigScheme SigScheme, creationTicket *Ticket) (attestation, signature []byte, err error) {
+	cmd, err := encodeCertifyCreation(objectAuth, object, signer, qualifyingData, creationHash, sigScheme, creationTicket)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := runCommand(rw, TagSessions, cmdCertifyCreation, tpmutil.RawBytes(cmd))
+	if err != nil {
+		return nil, nil, err
+	}
+	return decodeCertify(resp)
+}
+
 func runCommand(rw io.ReadWriter, tag tpmutil.Tag, cmd tpmutil.Command, in ...interface{}) ([]byte, error) {
 	resp, code, err := tpmutil.RunCommand(rw, tag, cmd, in...)
 	if err != nil {
@@ -1113,6 +1343,33 @@ func runCommand(rw io.ReadWriter, tag tpmutil.Tag, cmd tpmutil.Command, in ...in
 // simply return concat(a, b, c).
 func concat(chunks ...[]byte) ([]byte, error) {
 	return bytes.Join(chunks, nil), nil
+}
+
+func encodePCRExtend(pcr tpmutil.Handle, hashAlg Algorithm, hash tpmutil.RawBytes, password string) ([]byte, error) {
+	ha, err := tpmutil.Pack(pcr)
+	if err != nil {
+		return nil, err
+	}
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession, Attributes: AttrContinueSession, Auth: []byte(password)})
+	if err != nil {
+		return nil, err
+	}
+	pcrCount := uint32(1)
+	extend, err := tpmutil.Pack(pcrCount, hashAlg, hash)
+	if err != nil {
+		return nil, err
+	}
+	return concat(ha, auth, extend)
+}
+
+// PCRExtend extends a value into the selected PCR
+func PCRExtend(rw io.ReadWriter, pcr tpmutil.Handle, hashAlg Algorithm, hash []byte, password string) error {
+	cmd, err := encodePCRExtend(pcr, hashAlg, hash, password)
+	if err != nil {
+		return err
+	}
+	_, err = runCommand(rw, TagSessions, cmdPCRExtend, tpmutil.RawBytes(cmd))
+	return err
 }
 
 // ReadPCR reads the value of the given PCR.
