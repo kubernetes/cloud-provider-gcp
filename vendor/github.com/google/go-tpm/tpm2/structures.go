@@ -90,7 +90,10 @@ func (p Public) Encode() ([]byte, error) {
 	return concat(head, params)
 }
 
-func decodePublic(in *bytes.Buffer) (Public, error) {
+// DecodePublic decodes a TPMT_PUBLIC message. No error is returned if
+// the input has extra trailing data.
+func DecodePublic(buf []byte) (Public, error) {
+	in := bytes.NewBuffer(buf)
 	var pub Public
 	var err error
 	if err = tpmutil.UnpackBuf(in, &pub.Type, &pub.NameAlg, &pub.Attributes, &pub.AuthPolicy); err != nil {
@@ -116,12 +119,18 @@ func decodePublic(in *bytes.Buffer) (Public, error) {
 // precedence. ModulusRaw is used for key templates where the field named
 // "unique" must be a byte array of all zeroes.
 type RSAParams struct {
-	Symmetric  *SymScheme
-	Sign       *SigScheme
-	KeyBits    uint16
-	Exponent   uint32
-	ModulusRaw []byte
-	Modulus    *big.Int
+	Symmetric *SymScheme
+	Sign      *SigScheme
+	KeyBits   uint16
+	// The default Exponent (65537) has two representations; the
+	// 0 value, and the value 65537.
+	// If encodeDefaultExponentAsZero is set, an exponent of 65537
+	// will be encoded as zero. This is necessary to produce an identical
+	// encoded bitstream, so Name digest calculations will be correct.
+	encodeDefaultExponentAsZero bool
+	Exponent                    uint32
+	ModulusRaw                  []byte
+	Modulus                     *big.Int
 }
 
 func (p *RSAParams) encode() ([]byte, error) {
@@ -136,7 +145,11 @@ func (p *RSAParams) encode() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encoding Sign: %v", err)
 	}
-	rest, err := tpmutil.Pack(p.KeyBits, p.Exponent)
+	exp := p.Exponent
+	if p.encodeDefaultExponentAsZero && exp == defaultRSAExponent {
+		exp = 0
+	}
+	rest, err := tpmutil.Pack(p.KeyBits, exp)
 	if err != nil {
 		return nil, fmt.Errorf("encoding KeyBits, Exponent: %v", err)
 	}
@@ -174,6 +187,7 @@ func decodeRSAParams(in *bytes.Buffer) (*RSAParams, error) {
 		return nil, fmt.Errorf("decoding KeyBits, Exponent, Modulus: %v", err)
 	}
 	if params.Exponent == 0 {
+		params.encodeDefaultExponentAsZero = true
 		params.Exponent = defaultRSAExponent
 	}
 	params.Modulus = new(big.Int).SetBytes(modBytes)
@@ -196,6 +210,20 @@ type ECPoint struct {
 	X, Y *big.Int
 }
 
+func (p *ECPoint) x() *big.Int {
+	if p == nil || p.X == nil {
+		return big.NewInt(0)
+	}
+	return p.X
+}
+
+func (p *ECPoint) y() *big.Int {
+	if p == nil || p.Y == nil {
+		return big.NewInt(0)
+	}
+	return p.Y
+}
+
 func (p *ECCParams) encode() ([]byte, error) {
 	if p == nil {
 		return nil, nil
@@ -216,7 +244,7 @@ func (p *ECCParams) encode() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encoding KDF: %v", err)
 	}
-	point, err := tpmutil.Pack(p.Point.X.Bytes(), p.Point.Y.Bytes())
+	point, err := tpmutil.Pack(p.Point.x().Bytes(), p.Point.y().Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("encoding Point: %v", err)
 	}
@@ -408,13 +436,15 @@ type tpmtSigScheme struct {
 
 // AttestationData contains data attested by TPM commands (like Certify).
 type AttestationData struct {
-	Magic               uint32
-	Type                tpmutil.Tag
-	QualifiedSigner     Name
-	ExtraData           []byte
-	ClockInfo           ClockInfo
-	FirmwareVersion     uint64
-	AttestedCertifyInfo *CertifyInfo
+	Magic                uint32
+	Type                 tpmutil.Tag
+	QualifiedSigner      Name
+	ExtraData            []byte
+	ClockInfo            ClockInfo
+	FirmwareVersion      uint64
+	AttestedCertifyInfo  *CertifyInfo
+	AttestedQuoteInfo    *QuoteInfo
+	AttestedCreationInfo *CreationInfo
 }
 
 // DecodeAttestationData decode a TPMS_ATTEST message. No error is returned if
@@ -436,22 +466,30 @@ func DecodeAttestationData(in []byte) (*AttestationData, error) {
 	}
 
 	// The spec specifies several other types of attestation data. We only need
-	// parsing of Certify attestation data for now. If you need support for
-	// other attestation types, add them here.
-	if ad.Type != TagAttestCertify {
-		return nil, fmt.Errorf("only Certify attestation structure is supported, got type 0x%x", ad.Type)
+	// parsing of Certify & Creation attestation data for now. If you need
+	// support for other attestation types, add them here.
+	switch ad.Type {
+	case TagAttestCertify:
+		if ad.AttestedCertifyInfo, err = decodeCertifyInfo(buf); err != nil {
+			return nil, fmt.Errorf("decoding AttestedCertifyInfo: %v", err)
+		}
+	case TagAttestCreation:
+		if ad.AttestedCreationInfo, err = decodeCreationInfo(buf); err != nil {
+			return nil, fmt.Errorf("decoding AttestedCreationInfo: %v", err)
+		}
+	case TagAttestQuote:
+		if ad.AttestedQuoteInfo, err = decodeQuoteInfo(buf); err != nil {
+			return nil, fmt.Errorf("decoding AttestedQuoteInfo: %v", err)
+		}
+	default:
+		return nil, fmt.Errorf("only Certify & Creation attestation structures are supported, got type 0x%x", ad.Type)
 	}
-	if ad.AttestedCertifyInfo, err = decodeCertifyInfo(buf); err != nil {
-		return nil, fmt.Errorf("decoding AttestedCertifyInfo: %v", err)
-	}
+
 	return &ad, nil
 }
 
 // Encode serializes an AttestationData structure in TPM wire format.
 func (ad AttestationData) Encode() ([]byte, error) {
-	if ad.Type != TagAttestCertify {
-		return nil, fmt.Errorf("only Certify attestation structure is supported, got type 0x%x", ad.Type)
-	}
 	head, err := tpmutil.Pack(ad.Magic, ad.Type)
 	if err != nil {
 		return nil, fmt.Errorf("encoding Magic, Type: %v", err)
@@ -464,11 +502,61 @@ func (ad AttestationData) Encode() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encoding ExtraData, ClockInfo, FirmwareVersion: %v", err)
 	}
-	info, err := ad.AttestedCertifyInfo.encode()
-	if err != nil {
-		return nil, fmt.Errorf("encoding AttestedCertifyInfo: %v", err)
+
+	var info []byte
+	switch ad.Type {
+	case TagAttestCertify:
+		if info, err = ad.AttestedCertifyInfo.encode(); err != nil {
+			return nil, fmt.Errorf("encoding AttestedCertifyInfo: %v", err)
+		}
+	case TagAttestCreation:
+		if info, err = ad.AttestedCreationInfo.encode(); err != nil {
+			return nil, fmt.Errorf("encoding AttestedCreationInfo: %v", err)
+		}
+	default:
+		return nil, fmt.Errorf("only Certify & Creation attestation structures are supported, got type 0x%x", ad.Type)
 	}
+
 	return concat(head, signer, tail, info)
+}
+
+// CreationInfo contains Creation-specific data for TPMS_ATTEST.
+type CreationInfo struct {
+	Name Name
+	// Most TPM2B_Digest structures contain a TPMU_HA structure
+	// and get parsed to HashValue. This is never the case for the
+	// digest in TPMS_CREATION_INFO.
+	OpaqueDigest []byte
+}
+
+func decodeCreationInfo(in *bytes.Buffer) (*CreationInfo, error) {
+	var ci CreationInfo
+
+	n, err := decodeName(in)
+	if err != nil {
+		return nil, fmt.Errorf("decoding Name: %v", err)
+	}
+	ci.Name = *n
+
+	if err := tpmutil.UnpackBuf(in, &ci.OpaqueDigest); err != nil {
+		return nil, fmt.Errorf("decoding Digest: %v", err)
+	}
+
+	return &ci, nil
+}
+
+func (ci CreationInfo) encode() ([]byte, error) {
+	n, err := ci.Name.encode()
+	if err != nil {
+		return nil, fmt.Errorf("encoding Name: %v", err)
+	}
+
+	d, err := tpmutil.Pack(ci.OpaqueDigest)
+	if err != nil {
+		return nil, fmt.Errorf("encoding Digest: %v", err)
+	}
+
+	return concat(n, d)
 }
 
 // CertifyInfo contains Certify-specific data for TPMS_ATTEST.
@@ -505,6 +593,112 @@ func (ci CertifyInfo) encode() ([]byte, error) {
 		return nil, fmt.Errorf("encoding QualifiedName: %v", err)
 	}
 	return concat(n, qn)
+}
+
+// QuoteInfo represents a TPMS_QUOTE_INFO structure.
+type QuoteInfo struct {
+	PCRSelection PCRSelection
+	PCRDigest    []byte
+}
+
+func decodeQuoteInfo(in *bytes.Buffer) (*QuoteInfo, error) {
+	var out QuoteInfo
+	sel, err := decodeTPMLPCRSelection(in)
+	if err != nil {
+		return nil, fmt.Errorf("decoding PCRSelection: %v", err)
+	}
+	out.PCRSelection = sel
+	if err := tpmutil.UnpackBuf(in, &out.PCRDigest); err != nil {
+		return nil, fmt.Errorf("decoding PCRDigest: %v", err)
+	}
+	return &out, nil
+}
+
+// IDObject represents an encrypted credential bound to a TPM object.
+type IDObject struct {
+	IntegrityHMAC []byte
+	EncIdentity   []byte
+}
+
+// Encode packs the IDObject into a byte stream representing
+// a TPM2B_ID_OBJECT.
+func (o *IDObject) Encode() ([]byte, error) {
+	// encIdentity is packed raw, as the bytes representing the size
+	// of the credential value are present within the encrypted blob.
+	d, err := tpmutil.Pack(o.IntegrityHMAC, tpmutil.RawBytes(o.EncIdentity))
+	if err != nil {
+		return nil, fmt.Errorf("encoding IntegrityHMAC, EncIdentity: %v", err)
+	}
+	return tpmutil.Pack(d)
+}
+
+// CreationData describes the attributes and environment for an object created
+// on the TPM. This structure encodes/decodes to/from TPMS_CREATION_DATA.
+type CreationData struct {
+	PCRSelection        PCRSelection
+	PCRDigest           []byte
+	Locality            byte
+	ParentNameAlg       Algorithm
+	ParentName          Name
+	ParentQualifiedName Name
+	OutsideInfo         []byte
+}
+
+func (cd *CreationData) encode() ([]byte, error) {
+	sel, err := encodeTPMLPCRSelection(cd.PCRSelection)
+	if err != nil {
+		return nil, fmt.Errorf("encoding PCRSelection: %v", err)
+	}
+	d, err := tpmutil.Pack(cd.PCRDigest, cd.Locality, cd.ParentNameAlg)
+	if err != nil {
+		return nil, fmt.Errorf("encoding PCRDigest, Locality, ParentNameAlg: %v", err)
+	}
+	pn, err := cd.ParentName.encode()
+	if err != nil {
+		return nil, fmt.Errorf("encoding ParentName: %v", err)
+	}
+	pqn, err := cd.ParentQualifiedName.encode()
+	if err != nil {
+		return nil, fmt.Errorf("encoding ParentQualifiedName: %v", err)
+	}
+	o, err := tpmutil.Pack(cd.OutsideInfo)
+	if err != nil {
+		return nil, fmt.Errorf("encoding OutsideInfo: %v", err)
+	}
+	return concat(sel, d, pn, pqn, o)
+}
+
+// DecodeCreationData decodes a TPMS_CREATION_DATA message. No error is
+// returned if the input has extra trailing data.
+func DecodeCreationData(buf []byte) (*CreationData, error) {
+	in := bytes.NewBuffer(buf)
+	var out CreationData
+
+	sel, err := decodeTPMLPCRSelection(in)
+	if err != nil {
+		return nil, fmt.Errorf("decoding PCRSelection: %v", err)
+	}
+	out.PCRSelection = sel
+
+	if err := tpmutil.UnpackBuf(in, &out.PCRDigest, &out.Locality, &out.ParentNameAlg); err != nil {
+		return nil, fmt.Errorf("decoding PCRDigest, Locality, ParentNameAlg: %v", err)
+	}
+
+	n, err := decodeName(in)
+	if err != nil {
+		return nil, fmt.Errorf("decoding ParentName: %v", err)
+	}
+	out.ParentName = *n
+	if n, err = decodeName(in); err != nil {
+		return nil, fmt.Errorf("decoding ParentQualifiedName: %v", err)
+	}
+	out.ParentQualifiedName = *n
+
+	if err := tpmutil.UnpackBuf(in, &out.OutsideInfo); err != nil {
+		return nil, fmt.Errorf("decoding OutsideInfo: %v", err)
+	}
+
+	return &out, nil
 }
 
 // Name contains a name for TPM entities. Only one of Handle/Digest should be
@@ -548,7 +742,7 @@ func (n Name) encode() ([]byte, error) {
 			return nil, fmt.Errorf("encoding Handle: %v", err)
 		}
 	case n.Digest != nil:
-		if buf, err = n.Digest.encode(); err != nil {
+		if buf, err = n.Digest.Encode(); err != nil {
 			return nil, fmt.Errorf("encoding Digest: %v", err)
 		}
 	default:
@@ -601,7 +795,8 @@ func decodeHashValue(in *bytes.Buffer) (*HashValue, error) {
 	return &hv, nil
 }
 
-func (hv HashValue) encode() ([]byte, error) {
+// Encode represents the given hash value as a TPMT_HA structure.
+func (hv HashValue) Encode() ([]byte, error) {
 	return tpmutil.Pack(hv.Alg, tpmutil.RawBytes(hv.Value))
 }
 
@@ -611,4 +806,47 @@ type ClockInfo struct {
 	ResetCount   uint32
 	RestartCount uint32
 	Safe         byte
+}
+
+// AlgorithmAttributes represents a TPMA_ALGORITHM value.
+type AlgorithmAttributes uint32
+
+// AlgorithmDescription represents a TPMS_ALGORITHM_DESCRIPTION structure.
+type AlgorithmDescription struct {
+	ID         Algorithm
+	Attributes AlgorithmAttributes
+}
+
+// PropertyTag represents a TPM_PT value.
+type PropertyTag uint32
+
+// TaggedProperty represents a TPMS_TAGGED_PROPERTY structure.
+type TaggedProperty struct {
+	Tag   PropertyTag
+	Value uint32
+}
+
+// Ticket represents evidence the TPM previously processed
+// information.
+type Ticket struct {
+	Type      tpmutil.Tag
+	Hierarchy uint32
+	Digest    []byte
+}
+
+func decodeTicket(in *bytes.Buffer) (*Ticket, error) {
+	var t Ticket
+	if err := tpmutil.UnpackBuf(in, &t.Type, &t.Hierarchy, &t.Digest); err != nil {
+		return nil, fmt.Errorf("decoding Type, Hierarchy, Digest: %v", err)
+	}
+	return &t, nil
+}
+
+// AuthCommand represents a TPMS_AUTH_COMMAND. This structure encapsulates parameters
+// which authorize the use of a given handle or parameter.
+type AuthCommand struct {
+	Session    tpmutil.Handle
+	Nonce      []byte
+	Attributes SessionAttributes
+	Auth       []byte
 }

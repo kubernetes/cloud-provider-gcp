@@ -11,8 +11,5 @@ go_library(
     importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/oauth2/internal",
     importpath = "golang.org/x/oauth2/internal",
     visibility = ["//visibility:public"],
-    deps = [
-        "//vendor/golang.org/x/net/context:go_default_library",
-        "//vendor/golang.org/x/net/context/ctxhttp:go_default_library",
-    ],
+    deps = ["//vendor/golang.org/x/net/context/ctxhttp:go_default_library"],
 )

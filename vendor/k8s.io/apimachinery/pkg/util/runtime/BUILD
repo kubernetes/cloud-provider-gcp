@@ -6,5 +6,5 @@ go_library(
     importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/util/runtime",
     importpath = "k8s.io/apimachinery/pkg/util/runtime",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/github.com/golang/glog:go_default_library"],
+    deps = ["//vendor/k8s.io/klog:go_default_library"],
 )

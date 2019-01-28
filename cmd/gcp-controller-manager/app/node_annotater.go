@@ -35,7 +35,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 	compute "google.golang.org/api/compute/v1"
 )
 
@@ -110,7 +110,7 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 					labels, err := extractKubeLabels(instance)
 					if err != nil {
 						if err != errNoMetadata {
-							glog.Errorf("Error reconciling labels: %v", err)
+							klog.Errorf("Error reconciling labels: %v", err)
 						}
 						return false
 					}
@@ -191,14 +191,14 @@ func (na *nodeAnnotator) work() {
 func (na *nodeAnnotator) sync(key string) {
 	node, err := na.ns.Get(key)
 	if err != nil {
-		glog.Errorf("Sync %v failed with: %v", key, err)
+		klog.Errorf("Sync %v failed with: %v", key, err)
 		na.queue.Add(key)
 		return
 	}
 
 	instance, err := na.getInstance(node.Spec.ProviderID)
 	if err != nil {
-		glog.Errorf("Sync %v failed with: %v", key, err)
+		klog.Errorf("Sync %v failed with: %v", key, err)
 		na.queue.Add(key)
 		return
 	}
@@ -207,7 +207,7 @@ func (na *nodeAnnotator) sync(key string) {
 	for _, ann := range na.annotators {
 		modified := ann.annotate(node, instance)
 		if modified {
-			glog.Infof("%q annotater acting on %q", ann.name, node.Name)
+			klog.Infof("%q annotater acting on %q", ann.name, node.Name)
 		}
 		update = update || modified
 	}
@@ -216,7 +216,7 @@ func (na *nodeAnnotator) sync(key string) {
 	}
 
 	if _, err := na.c.Core().Nodes().Update(node); err != nil {
-		glog.Errorf("Sync %v failed with: %v", key, err)
+		klog.Errorf("Sync %v failed with: %v", key, err)
 		na.queue.Add(key)
 		return
 	}

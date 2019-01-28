@@ -35,8 +35,8 @@ import (
 	gcfg "gopkg.in/gcfg.v1"
 	warnings "gopkg.in/warnings.v0"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apiserverconfig "k8s.io/apiserver/pkg/apis/config"
 	rl "k8s.io/client-go/tools/leaderelection/resourcelock"
-	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	"k8s.io/kubernetes/pkg/client/leaderelectionconfig"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
 )
@@ -49,7 +49,7 @@ type GCPControllerManager struct {
 	Controllers                        []string
 	CSRApproverVerifyClusterMembership bool
 
-	LeaderElectionConfig componentconfig.LeaderElectionConfiguration
+	LeaderElectionConfig apiserverconfig.LeaderElectionConfiguration
 }
 
 // NewGCPControllerManager creates a new instance of a
@@ -59,7 +59,7 @@ func NewGCPControllerManager() *GCPControllerManager {
 		GCEConfigPath:                      "/etc/gce.conf",
 		Controllers:                        []string{"*"},
 		CSRApproverVerifyClusterMembership: true,
-		LeaderElectionConfig: componentconfig.LeaderElectionConfiguration{
+		LeaderElectionConfig: apiserverconfig.LeaderElectionConfiguration{
 			LeaderElect:   true,
 			LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
 			RenewDeadline: metav1.Duration{Duration: 10 * time.Second},

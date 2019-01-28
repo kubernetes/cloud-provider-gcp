@@ -6,5 +6,5 @@ go_library(
     importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud/filter",
     importpath = "k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud/filter",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/github.com/golang/glog:go_default_library"],
+    deps = ["//vendor/k8s.io/klog:go_default_library"],
 )

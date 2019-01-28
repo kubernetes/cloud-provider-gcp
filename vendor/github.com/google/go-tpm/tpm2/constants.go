@@ -19,6 +19,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
+	"fmt"
 	"hash"
 
 	"github.com/google/go-tpm/tpmutil"
@@ -39,6 +40,17 @@ func (a Algorithm) IsNull() bool {
 // UsesCount returns true if a signature algorithm uses count value.
 func (a Algorithm) UsesCount() bool {
 	return a == AlgECDAA
+}
+
+// HashConstructor returns a function that can be used to make a
+// hash.Hash using the specified algorithm. An error is returned
+// if the algorithm is not a hash algorithm.
+func (a Algorithm) HashConstructor() (func() hash.Hash, error) {
+	c, ok := hashConstructors[a]
+	if !ok {
+		return nil, fmt.Errorf("algorithm not supported: 0x%x", a)
+	}
+	return c, nil
 }
 
 // Supported Algorithms.
@@ -92,6 +104,9 @@ const (
 	AttrAudit
 )
 
+// EmptyAuth represents the empty authorization value.
+var EmptyAuth []byte
+
 // KeyProp is a bitmask used in Attributes field of key templates. Individual
 // flags should be OR-ed to form a full mask.
 type KeyProp uint32
@@ -115,6 +130,14 @@ const (
 		FlagFixedParent | FlagSensitiveDataOrigin | FlagUserWithAuth
 )
 
+// TPMProp represents the index of a TPM property in a call to GetCapability().
+type TPMProp uint32
+
+// TPM Capability Properties.
+const (
+	NVMaxBufferSize TPMProp = 0x100 + 44
+)
+
 // Reserved Handles.
 const (
 	HandleOwner tpmutil.Handle = 0x40000001 + iota
@@ -134,7 +157,7 @@ const (
 // Capability identifies some TPM property or state type.
 type Capability uint32
 
-// TPM Capabilies.
+// TPM Capabilities.
 const (
 	CapabilityAlgs Capability = iota
 	CapabilityHandles
@@ -151,11 +174,13 @@ const (
 // TPM Structure Tags. Tags are used to disambiguate structures, similar to Alg
 // values: tag value defines what kind of data lives in a nested field.
 const (
-	TagNull          tpmutil.Tag = 0x8000
-	TagNoSessions    tpmutil.Tag = 0x8001
-	TagSessions      tpmutil.Tag = 0x8002
-	TagAttestCertify tpmutil.Tag = 0x8017
-	TagHashCheck     tpmutil.Tag = 0x8024
+	TagNull           tpmutil.Tag = 0x8000
+	TagNoSessions     tpmutil.Tag = 0x8001
+	TagSessions       tpmutil.Tag = 0x8002
+	TagAttestCertify  tpmutil.Tag = 0x8017
+	TagAttestQuote    tpmutil.Tag = 0x8018
+	TagAttestCreation tpmutil.Tag = 0x801a
+	TagHashCheck      tpmutil.Tag = 0x8024
 )
 
 // StartupType instructs the TPM on how to handle its state during Shutdown or
@@ -208,29 +233,33 @@ const (
 	cmdStirRandom         tpmutil.Command = 0x00000146
 	cmdActivateCredential tpmutil.Command = 0x00000147
 	cmdCertify            tpmutil.Command = 0x00000148
+	cmdCertifyCreation    tpmutil.Command = 0x0000014A
 	cmdReadNV             tpmutil.Command = 0x0000014E
-	cmdCreate             tpmutil.Command = 0x00000153
-	cmdLoad               tpmutil.Command = 0x00000157
-	cmdQuote              tpmutil.Command = 0x00000158
-	cmdSign               tpmutil.Command = 0x0000015D
-	cmdUnseal             tpmutil.Command = 0x0000015E
-	cmdContextLoad        tpmutil.Command = 0x00000161
-	cmdContextSave        tpmutil.Command = 0x00000162
-	cmdFlushContext       tpmutil.Command = 0x00000165
-	cmdLoadExternal       tpmutil.Command = 0x00000167
-	cmdMakeCredential     tpmutil.Command = 0x00000168
-	cmdReadPublicNV       tpmutil.Command = 0x00000169
-	cmdReadPublic         tpmutil.Command = 0x00000173
-	cmdStartAuthSession   tpmutil.Command = 0x00000176
-	cmdGetCapability      tpmutil.Command = 0x0000017A
-	cmdGetRandom          tpmutil.Command = 0x0000017B
-	cmdHash               tpmutil.Command = 0x0000017D
-	cmdPCRRead            tpmutil.Command = 0x0000017E
-	cmdPolicyPCR          tpmutil.Command = 0x0000017F
-	cmdReadClock          tpmutil.Command = 0x00000181
-	cmdPCRExtend          tpmutil.Command = 0x00000182
-	cmdPolicyGetDigest    tpmutil.Command = 0x00000189
-	cmdPolicyPassword     tpmutil.Command = 0x0000018C
+	// CmdPolicySecret is a command code for TPM2_PolicySecret.
+	// It's exported for computing of default AuthPolicy value.
+	CmdPolicySecret     tpmutil.Command = 0x00000151
+	cmdCreate           tpmutil.Command = 0x00000153
+	cmdLoad             tpmutil.Command = 0x00000157
+	cmdQuote            tpmutil.Command = 0x00000158
+	cmdSign             tpmutil.Command = 0x0000015D
+	cmdUnseal           tpmutil.Command = 0x0000015E
+	cmdContextLoad      tpmutil.Command = 0x00000161
+	cmdContextSave      tpmutil.Command = 0x00000162
+	cmdFlushContext     tpmutil.Command = 0x00000165
+	cmdLoadExternal     tpmutil.Command = 0x00000167
+	cmdMakeCredential   tpmutil.Command = 0x00000168
+	cmdReadPublicNV     tpmutil.Command = 0x00000169
+	cmdReadPublic       tpmutil.Command = 0x00000173
+	cmdStartAuthSession tpmutil.Command = 0x00000176
+	cmdGetCapability    tpmutil.Command = 0x0000017A
+	cmdGetRandom        tpmutil.Command = 0x0000017B
+	cmdHash             tpmutil.Command = 0x0000017D
+	cmdPCRRead          tpmutil.Command = 0x0000017E
+	cmdPolicyPCR        tpmutil.Command = 0x0000017F
+	cmdReadClock        tpmutil.Command = 0x00000181
+	cmdPCRExtend        tpmutil.Command = 0x00000182
+	cmdPolicyGetDigest  tpmutil.Command = 0x00000189
+	cmdPolicyPassword   tpmutil.Command = 0x0000018C
 )
 
 // Regular TPM 2.0 devices use 24-bit mask (3 bytes) for PCR selection.
@@ -259,3 +288,32 @@ var hashConstructors = map[Algorithm]func() hash.Hash{
 	AlgSHA384: sha512.New384,
 	AlgSHA512: sha512.New,
 }
+
+// NVAttr is a bitmask used in Attributes field of NV indexes. Individual
+// flags should be OR-ed to form a full mask.
+type NVAttr uint32
+
+// NV Attributes
+const (
+	AttrPPWrite        NVAttr = 0x00000001
+	AttrOwnerWrite     NVAttr = 0x00000002
+	AttrAuthWrite      NVAttr = 0x00000004
+	AttrPolicyWrite    NVAttr = 0x00000008
+	AttrPolicyDelete   NVAttr = 0x00000400
+	AttrWriteLocked    NVAttr = 0x00000800
+	AttrWriteAll       NVAttr = 0x00001000
+	AttrWriteDefine    NVAttr = 0x00002000
+	AttrWriteSTClear   NVAttr = 0x00004000
+	AttrGlobalLock     NVAttr = 0x00008000
+	AttrPPRead         NVAttr = 0x00010000
+	AttrOwnerRead      NVAttr = 0x00020000
+	AttrAuthRead       NVAttr = 0x00040000
+	AttrPolicyRead     NVAttr = 0x00080000
+	AttrNoDA           NVAttr = 0x02000000
+	AttrOrderly        NVAttr = 0x04000000
+	AttrClearSTClear   NVAttr = 0x08000000
+	AttrReadLocked     NVAttr = 0x10000000
+	AttrWritten        NVAttr = 0x20000000
+	AttrPlatformCreate NVAttr = 0x40000000
+	AttrReadSTClear    NVAttr = 0x80000000
+)

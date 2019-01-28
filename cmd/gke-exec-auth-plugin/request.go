@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
-	"github.com/golang/glog"
+	"k8s.io/klog"
 	apicertificates "k8s.io/api/certificates/v1beta1"
 	certificates "k8s.io/client-go/kubernetes/typed/certificates/v1beta1"
 	"k8s.io/client-go/rest"
@@ -107,7 +107,7 @@ func processCSR(client certificates.CertificateSigningRequestInterface, privateK
 	if err != nil {
 		return nil, fmt.Errorf("unable to generate certificate request: %v", err)
 	}
-	glog.Info("CSR generated")
+	klog.Info("CSR generated")
 
 	tpm, err := openTPM(*tpmPath)
 	if err != nil {
@@ -119,7 +119,7 @@ func processCSR(client certificates.CertificateSigningRequestInterface, privateK
 		return nil, fmt.Errorf("unable to add TPM attestation: %v", err)
 	}
 	csrData = append(csrData, attestData...)
-	glog.Info("added TPM attestation")
+	klog.Info("added TPM attestation")
 
 	usages := []apicertificates.KeyUsage{
 		apicertificates.UsageDigitalSignature,

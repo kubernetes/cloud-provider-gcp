@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
-	"github.com/golang/glog"
+	"k8s.io/klog"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -41,7 +41,7 @@ func init() {
 	clientauthv1alpha1.AddToScheme(scheme)
 	clientauthentication.AddToScheme(scheme)
 
-	// Override the default in glog. There's verbosity flag for suppressing output.
+	// Override the default in klog. There's verbosity flag for suppressing output.
 	flag.Set("logtostderr", "true")
 }
 
@@ -55,24 +55,24 @@ func main() {
 	switch *mode {
 	case modeVMID:
 		if *audience == "" {
-			glog.Exit("--audience must be set")
+			klog.Exit("--audience must be set")
 		}
 		token, err = metadata.Get(fmt.Sprintf("instance/service-accounts/default/identity?audience=%s&format=full", *audience))
 		if err != nil {
-			glog.Exit(err)
+			klog.Exit(err)
 		}
 		token = "vmid-" + token
 	case modeTPM:
 		key, cert, err = getKeyCert(*cacheDir, requestCertificate)
 		if err != nil {
-			glog.Exit(err)
+			klog.Exit(err)
 		}
 	default:
-		glog.Exitf("unrecognized --mode value %q, want one of [%q, %q]", *mode, modeVMID, modeTPM)
+		klog.Exitf("unrecognized --mode value %q, want one of [%q, %q]", *mode, modeVMID, modeTPM)
 	}
 
 	if err := writeResponse(token, key, cert); err != nil {
-		glog.Exit(err)
+		klog.Exit(err)
 	}
 }
 

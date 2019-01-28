@@ -12,7 +12,6 @@ go_library(
         "podsecuritypolicy.go",
         "replicaset.go",
         "replicaset_expansion.go",
-        "scale.go",
     ],
     importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/listers/extensions/v1beta1",
     importpath = "k8s.io/client-go/listers/extensions/v1beta1",

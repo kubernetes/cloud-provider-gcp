@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 	"github.com/prometheus/client_golang/prometheus"
 
 	capi "k8s.io/api/certificates/v1beta1"
@@ -86,7 +86,7 @@ func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
 	if !certificates.IsCertificateRequestApproved(csr) {
 		return nil
 	}
-	glog.Infof("gkeSigner triggered for %q", csr.Name)
+	klog.Infof("gkeSigner triggered for %q", csr.Name)
 	csr, err := s.sign(csr)
 	if err != nil {
 		csrSigningStatus.WithLabelValues("sign_error").Inc()
@@ -99,7 +99,7 @@ func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
 		csrSigningLatency.WithLabelValues("update_error").Observe(time.Since(start).Seconds())
 		return fmt.Errorf("error updating signature for csr: %v", err)
 	}
-	glog.Infof("CSR %q signed", csr.Name)
+	klog.Infof("CSR %q signed", csr.Name)
 	csrSigningStatus.WithLabelValues("signed").Inc()
 	csrSigningLatency.WithLabelValues("signed").Observe(time.Since(start).Seconds())
 	return nil
@@ -137,7 +137,7 @@ func (s *gkeSigner) sign(csr *capi.CertificateSigningRequest) (*capi.Certificate
 }
 
 func (s *gkeSigner) webhookError(csr *capi.CertificateSigningRequest, err error) error {
-	glog.V(2).Infof("error contacting webhook backend: %s", err)
+	klog.V(2).Infof("error contacting webhook backend: %s", err)
 	s.recorder.Eventf(csr, "Warning", "SigningError", "error while calling GKE: %v", err)
 	return err
 }
