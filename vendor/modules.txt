@@ -1,10 +1,5 @@
 # cloud.google.com/go v0.35.1
 cloud.google.com/go/compute/metadata
-# github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78
-github.com/Azure/go-ansiterm/winterm
-github.com/Azure/go-ansiterm
-# github.com/Sirupsen/logrus v1.0.6
-github.com/Sirupsen/logrus
 # github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973
 github.com/beorn7/perks/quantile
 # github.com/davecgh/go-spew v1.1.1
@@ -12,9 +7,6 @@ github.com/davecgh/go-spew/spew
 # github.com/docker/distribution v2.7.1+incompatible
 github.com/docker/distribution/reference
 github.com/docker/distribution/digestset
-# github.com/docker/docker v1.13.1
-github.com/docker/docker/pkg/term
-github.com/docker/docker/pkg/term/windows
 # github.com/evanphx/json-patch v4.1.0+incompatible
 github.com/evanphx/json-patch
 # github.com/gogo/protobuf v1.2.0
@@ -190,7 +182,6 @@ k8s.io/apimachinery/pkg/util/validation/field
 k8s.io/apimachinery/pkg/util/wait
 k8s.io/apimachinery/pkg/runtime
 k8s.io/apimachinery/pkg/runtime/serializer
-k8s.io/apimachinery/pkg/util/sets
 k8s.io/apimachinery/pkg/api/resource
 k8s.io/apimachinery/pkg/types
 k8s.io/apimachinery/pkg/util/intstr
@@ -199,6 +190,7 @@ k8s.io/apimachinery/pkg/fields
 k8s.io/apimachinery/pkg/labels
 k8s.io/apimachinery/pkg/selection
 k8s.io/apimachinery/pkg/watch
+k8s.io/apimachinery/pkg/util/sets
 k8s.io/apimachinery/pkg/util/validation
 k8s.io/apimachinery/pkg/util/errors
 k8s.io/apimachinery/pkg/util/net
@@ -229,7 +221,6 @@ k8s.io/apimachinery/pkg/api/validation
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/util/framer
 # k8s.io/apiserver v0.0.0-20181204001702-9caa0299108f
-k8s.io/apiserver/pkg/util/flag
 k8s.io/apiserver/pkg/apis/config
 k8s.io/apiserver/pkg/util/webhook
 k8s.io/apiserver/pkg/util/feature

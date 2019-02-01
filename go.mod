@@ -2,8 +2,6 @@ module k8s.io/cloud-provider-gcp
 
 require (
 	cloud.google.com/go v0.35.1
-	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
-	github.com/Sirupsen/logrus v1.0.6 // indirect
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/coreos/bbolt v1.3.0 // indirect
 	github.com/coreos/etcd v3.3.11+incompatible // indirect
@@ -11,7 +9,6 @@ require (
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/docker/distribution v2.7.1+incompatible // indirect
-	github.com/docker/docker v1.13.1 // indirect
 	github.com/evanphx/json-patch v4.1.0+incompatible // indirect
 	github.com/gogo/protobuf v1.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20181024230925-c65c006176ff // indirect
@@ -52,9 +49,7 @@ require (
 	golang.org/x/oauth2 v0.0.0-20190115181402-5dab4167f31c
 	golang.org/x/sys v0.0.0-20190124100055-b90733256f2e // indirect
 	google.golang.org/api v0.1.0
-	gopkg.in/airbrake/gobrake.v2 v2.0.9 // indirect
 	gopkg.in/gcfg.v1 v1.2.3
-	gopkg.in/gemnasium/logrus-airbrake-hook.v2 v2.1.2 // indirect
 	gopkg.in/square/go-jose.v2 v2.2.2 // indirect
 	gopkg.in/warnings.v0 v0.1.2
 	k8s.io/api v0.0.0-20181204000039-89a74a8d264d
