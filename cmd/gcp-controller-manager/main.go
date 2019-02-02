@@ -20,12 +20,12 @@ limitations under the License.
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 
-	"k8s.io/apiserver/pkg/util/flag"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/app"
 	"k8s.io/kubernetes/pkg/kubectl/util/logs"
 	"k8s.io/kubernetes/pkg/version/verflag"
@@ -40,7 +40,8 @@ func main() {
 	s := app.NewGCPControllerManager()
 	s.AddFlags(pflag.CommandLine)
 
-	flag.InitFlags()
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
 	logs.InitLogs()
 	defer logs.FlushLogs()
 
