@@ -57,6 +57,14 @@ load(
 
 container_repositories()
 
+container_pull(
+    name = "distroless",
+    digest = "sha256:de63da39d0477a9994276cb1de6cec710d9e293ca667ef01ef189b6c87b554e9",
+    registry = "gcr.io",
+    repository = "distroless/static",
+    # tag = "latest",
+)
+
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
 
 gazelle_dependencies()

@@ -25,6 +25,6 @@ go_binary(
     visibility = ["//visibility:public"],
 )
 
-load("//tools:def.bzl", "image")
+load("//defs:container.bzl", "image")
 
 image(binary = ":gcp-controller-manager")
