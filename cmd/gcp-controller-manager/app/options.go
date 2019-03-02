@@ -109,6 +109,14 @@ type GCPConfig struct {
 	VerifyClusterMembership bool
 }
 
+func getRegionFromZone(zone string) (string, error) {
+	if strings.Count(zone, "-") != 2 {
+		return "", fmt.Errorf("invalid gcp zone %s", zone)
+	}
+
+	return zone[:strings.LastIndex(zone, "-")], nil
+}
+
 func loadGCPConfig(s *GCPControllerManager) (GCPConfig, error) {
 	a := GCPConfig{VerifyClusterMembership: s.CSRApproverVerifyClusterMembership}
 
@@ -163,10 +171,11 @@ func loadGCPConfig(s *GCPControllerManager) (GCPConfig, error) {
 		return a, err
 	}
 	// Extract region name from zone.
-	if len(zone) < 2 {
-		return a, fmt.Errorf("invalid master zone: %q", zone)
+	region, err := getRegionFromZone(zone)
+	if err != nil {
+		return a, err
 	}
-	region := zone[:len(zone)-2]
+
 	// Load all zones in the same region.
 	allZones, err := compute.NewZonesService(a.Compute).List(a.ProjectID).Do()
 	if err != nil {

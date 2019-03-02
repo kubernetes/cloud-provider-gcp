@@ -24,7 +24,6 @@ import (
 	"os"
 	"time"
 
-	"k8s.io/klog"
 	"github.com/spf13/cobra"
 	"k8s.io/api/core/v1"
 	apiserverconfig "k8s.io/apiserver/pkg/apis/config"
@@ -37,6 +36,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/controller" // Install GCP auth plugin.
 )

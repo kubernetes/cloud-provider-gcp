@@ -35,8 +35,8 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
-	"k8s.io/klog"
 	compute "google.golang.org/api/compute/v1"
+	"k8s.io/klog"
 )
 
 const InstanceIDAnnotationKey = "container.googleapis.com/instance_id"
