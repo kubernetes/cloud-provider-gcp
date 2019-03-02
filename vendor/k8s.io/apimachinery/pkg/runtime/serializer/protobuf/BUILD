@@ -6,7 +6,7 @@ go_library(
         "doc.go",
         "protobuf.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/runtime/serializer/protobuf",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apimachinery/pkg/runtime/serializer/protobuf",
     importpath = "k8s.io/apimachinery/pkg/runtime/serializer/protobuf",
     visibility = ["//visibility:public"],
     deps = [

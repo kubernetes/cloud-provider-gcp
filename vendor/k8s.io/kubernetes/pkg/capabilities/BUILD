@@ -6,7 +6,7 @@ go_library(
         "capabilities.go",
         "doc.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/capabilities",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/capabilities",
     importpath = "k8s.io/kubernetes/pkg/capabilities",
     visibility = ["//visibility:public"],
 )

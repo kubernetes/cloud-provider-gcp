@@ -15,7 +15,7 @@ go_library(
         "nsenter_mount.go",
         "nsenter_mount_unsupported.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/util/mount",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/util/mount",
     importpath = "k8s.io/kubernetes/pkg/util/mount",
     visibility = ["//visibility:public"],
     deps = [

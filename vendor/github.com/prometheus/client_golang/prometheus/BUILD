@@ -25,16 +25,16 @@ go_library(
         "vec.go",
         "wrap.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/prometheus/client_golang/prometheus",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/prometheus/client_golang/prometheus",
     importpath = "github.com/prometheus/client_golang/prometheus",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/beorn7/perks/quantile:go_default_library",
-        "//vendor/github.com/golang/protobuf/proto:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus/internal:go_default_library",
         "//vendor/github.com/prometheus/client_model/go:go_default_library",
         "//vendor/github.com/prometheus/common/expfmt:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
         "//vendor/github.com/prometheus/procfs:go_default_library",
+        "@com_github_golang_protobuf//proto:go_default_library",
     ],
 )

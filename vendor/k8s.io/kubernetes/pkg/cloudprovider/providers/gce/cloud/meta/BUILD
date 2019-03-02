@@ -9,7 +9,7 @@ go_library(
         "method.go",
         "service.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud/meta",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud/meta",
     importpath = "k8s.io/kubernetes/pkg/cloudprovider/providers/gce/cloud/meta",
     visibility = ["//visibility:public"],
     deps = [

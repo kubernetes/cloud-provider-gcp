@@ -14,7 +14,7 @@ go_library(
         "overrides.go",
         "validation.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/tools/clientcmd",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/tools/clientcmd",
     importpath = "k8s.io/client-go/tools/clientcmd",
     visibility = ["//visibility:public"],
     deps = [

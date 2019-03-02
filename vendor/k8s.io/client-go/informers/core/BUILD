@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["interface.go"],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/informers/core",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/informers/core",
     importpath = "k8s.io/client-go/informers/core",
     visibility = ["//visibility:public"],
     deps = [

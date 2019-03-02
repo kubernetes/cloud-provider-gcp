@@ -7,7 +7,7 @@ go_library(
         "negotiated_codec.go",
         "protobuf_extension.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/runtime/serializer",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apimachinery/pkg/runtime/serializer",
     importpath = "k8s.io/apimachinery/pkg/runtime/serializer",
     visibility = ["//visibility:public"],
     deps = [

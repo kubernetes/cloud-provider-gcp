@@ -9,7 +9,7 @@ go_library(
         "port_split.go",
         "util.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/util/net",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apimachinery/pkg/util/net",
     importpath = "k8s.io/apimachinery/pkg/util/net",
     visibility = ["//visibility:public"],
     deps = [

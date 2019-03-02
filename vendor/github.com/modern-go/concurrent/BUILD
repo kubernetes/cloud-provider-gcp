@@ -9,7 +9,7 @@ go_library(
         "log.go",
         "unbounded_executor.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/modern-go/concurrent",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/modern-go/concurrent",
     importpath = "github.com/modern-go/concurrent",
     visibility = ["//visibility:public"],
 )

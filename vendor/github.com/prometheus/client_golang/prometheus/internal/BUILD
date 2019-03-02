@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["metric.go"],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/prometheus/client_golang/prometheus/internal",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/prometheus/client_golang/prometheus/internal",
     importpath = "github.com/prometheus/client_golang/prometheus/internal",
     visibility = ["//visibility:public"],
     deps = ["//vendor/github.com/prometheus/client_model/go:go_default_library"],

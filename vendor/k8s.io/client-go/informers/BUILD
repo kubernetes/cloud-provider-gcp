@@ -6,7 +6,7 @@ go_library(
         "factory.go",
         "generic.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/informers",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/informers",
     importpath = "k8s.io/client-go/informers",
     visibility = ["//visibility:public"],
     deps = [

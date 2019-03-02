@@ -8,7 +8,7 @@ go_library(
         "reference.go",
         "regexp.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/docker/distribution/reference",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/docker/distribution/reference",
     importpath = "github.com/docker/distribution/reference",
     visibility = ["//visibility:public"],
     deps = [

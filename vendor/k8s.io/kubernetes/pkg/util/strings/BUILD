@@ -7,7 +7,7 @@ go_library(
         "line_delimiter.go",
         "strings.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/util/strings",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/util/strings",
     importpath = "k8s.io/kubernetes/pkg/util/strings",
     visibility = ["//visibility:public"],
 )

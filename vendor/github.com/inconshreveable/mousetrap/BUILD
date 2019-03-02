@@ -7,7 +7,7 @@ go_library(
         "trap_windows.go",
         "trap_windows_1.4.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/inconshreveable/mousetrap",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/inconshreveable/mousetrap",
     importpath = "github.com/inconshreveable/mousetrap",
     visibility = ["//visibility:public"],
 )

@@ -7,7 +7,7 @@ go_library(
         "well_known_annotations_windows.go",
         "well_known_labels.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/kubelet/apis",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/kubelet/apis",
     importpath = "k8s.io/kubernetes/pkg/kubelet/apis",
     visibility = ["//visibility:public"],
     deps = [

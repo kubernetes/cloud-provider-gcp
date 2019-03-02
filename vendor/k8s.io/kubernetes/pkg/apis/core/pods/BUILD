@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["helpers.go"],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/apis/core/pods",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/apis/core/pods",
     importpath = "k8s.io/kubernetes/pkg/apis/core/pods",
     visibility = ["//visibility:public"],
     deps = ["//vendor/k8s.io/kubernetes/pkg/fieldpath:go_default_library"],

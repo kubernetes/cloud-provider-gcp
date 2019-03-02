@@ -11,7 +11,7 @@ go_library(
         "tables9.0.0.go",
         "trieval.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/text/unicode/bidi",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/text/unicode/bidi",
     importpath = "golang.org/x/text/unicode/bidi",
     visibility = ["//visibility:public"],
 )

@@ -23,7 +23,7 @@ go_library(
         "thread_safe_store.go",
         "undelta_store.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/tools/cache",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/tools/cache",
     importpath = "k8s.io/client-go/tools/cache",
     visibility = ["//visibility:public"],
     deps = [

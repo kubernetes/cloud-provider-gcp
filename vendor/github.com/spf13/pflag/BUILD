@@ -35,7 +35,7 @@ go_library(
         "uint8.go",
         "uint_slice.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/spf13/pflag",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/spf13/pflag",
     importpath = "github.com/spf13/pflag",
     visibility = ["//visibility:public"],
 )

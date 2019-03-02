@@ -7,7 +7,7 @@ go_library(
         "fs_unsupported.go",
         "fs_windows.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/volume/util/fs",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/volume/util/fs",
     importpath = "k8s.io/kubernetes/pkg/volume/util/fs",
     visibility = ["//visibility:public"],
     deps = select({

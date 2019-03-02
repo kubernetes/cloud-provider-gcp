@@ -22,7 +22,7 @@ go_library(
         "writesched_priority.go",
         "writesched_random.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/net/http2",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/net/http2",
     importpath = "golang.org/x/net/http2",
     visibility = ["//visibility:public"],
     deps = [

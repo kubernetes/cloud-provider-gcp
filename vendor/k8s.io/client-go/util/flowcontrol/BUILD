@@ -6,7 +6,7 @@ go_library(
         "backoff.go",
         "throttle.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/util/flowcontrol",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/util/flowcontrol",
     importpath = "k8s.io/client-go/util/flowcontrol",
     visibility = ["//visibility:public"],
     deps = [

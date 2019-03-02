@@ -11,7 +11,7 @@ go_library(
         "zz_generated.deepcopy.go",
         "zz_generated.defaults.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/pkg/apis/clientauthentication/v1beta1",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/pkg/apis/clientauthentication/v1beta1",
     importpath = "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1",
     visibility = ["//visibility:public"],
     deps = [

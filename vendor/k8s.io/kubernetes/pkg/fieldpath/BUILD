@@ -6,7 +6,7 @@ go_library(
         "doc.go",
         "fieldpath.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/fieldpath",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/fieldpath",
     importpath = "k8s.io/kubernetes/pkg/fieldpath",
     visibility = ["//visibility:public"],
     deps = [

@@ -9,7 +9,7 @@ go_library(
         "trie.go",
         "trieval.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/net/idna",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/net/idna",
     importpath = "golang.org/x/net/idna",
     visibility = ["//visibility:public"],
     deps = [

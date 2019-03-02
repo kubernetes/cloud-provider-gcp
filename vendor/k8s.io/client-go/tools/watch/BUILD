@@ -6,7 +6,7 @@ go_library(
         "informerwatcher.go",
         "until.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/tools/watch",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/tools/watch",
     importpath = "k8s.io/client-go/tools/watch",
     visibility = ["//visibility:public"],
     deps = [

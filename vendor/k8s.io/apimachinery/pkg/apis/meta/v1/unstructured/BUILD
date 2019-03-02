@@ -8,7 +8,7 @@ go_library(
         "unstructured_list.go",
         "zz_generated.deepcopy.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/apis/meta/v1/unstructured",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apimachinery/pkg/apis/meta/v1/unstructured",
     importpath = "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured",
     visibility = ["//visibility:public"],
     deps = [

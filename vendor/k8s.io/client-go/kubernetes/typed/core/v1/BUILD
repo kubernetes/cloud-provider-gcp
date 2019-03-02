@@ -29,7 +29,7 @@ go_library(
         "serviceaccount.go",
         "serviceaccount_expansion.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/kubernetes/typed/core/v1",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/core/v1",
     importpath = "k8s.io/client-go/kubernetes/typed/core/v1",
     visibility = ["//visibility:public"],
     deps = [

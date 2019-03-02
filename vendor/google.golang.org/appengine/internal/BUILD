@@ -15,15 +15,15 @@ go_library(
         "net.go",
         "transaction.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/google.golang.org/appengine/internal",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/appengine/internal",
     importpath = "google.golang.org/appengine/internal",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/protobuf/proto:go_default_library",
         "//vendor/golang.org/x/net/context:go_default_library",
         "//vendor/google.golang.org/appengine/internal/base:go_default_library",
         "//vendor/google.golang.org/appengine/internal/datastore:go_default_library",
         "//vendor/google.golang.org/appengine/internal/log:go_default_library",
         "//vendor/google.golang.org/appengine/internal/remote_api:go_default_library",
+        "@com_github_golang_protobuf//proto:go_default_library",
     ],
 )

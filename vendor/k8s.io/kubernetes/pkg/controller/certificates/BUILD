@@ -6,7 +6,7 @@ go_library(
         "certificate_controller.go",
         "certificate_controller_utils.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/controller/certificates",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/controller/certificates",
     importpath = "k8s.io/kubernetes/pkg/controller/certificates",
     visibility = ["//visibility:public"],
     deps = [

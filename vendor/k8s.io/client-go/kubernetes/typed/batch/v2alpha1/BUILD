@@ -8,7 +8,7 @@ go_library(
         "doc.go",
         "generated_expansion.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/kubernetes/typed/batch/v2alpha1",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/batch/v2alpha1",
     importpath = "k8s.io/client-go/kubernetes/typed/batch/v2alpha1",
     visibility = ["//visibility:public"],
     deps = [

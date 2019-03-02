@@ -11,7 +11,7 @@ go_library(
         "util_solaris.go",
         "util_windows.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/crypto/ssh/terminal",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/crypto/ssh/terminal",
     importpath = "golang.org/x/crypto/ssh/terminal",
     visibility = ["//visibility:public"],
     deps = select({

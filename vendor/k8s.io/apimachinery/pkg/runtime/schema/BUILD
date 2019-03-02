@@ -7,7 +7,7 @@ go_library(
         "group_version.go",
         "interfaces.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/runtime/schema",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apimachinery/pkg/runtime/schema",
     importpath = "k8s.io/apimachinery/pkg/runtime/schema",
     visibility = ["//visibility:public"],
     deps = ["//vendor/github.com/gogo/protobuf/proto:go_default_library"],
