@@ -9,7 +9,7 @@ go_library(
         "run_windows.go",
         "structures.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/google/go-tpm/tpmutil",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/google/go-tpm/tpmutil",
     importpath = "github.com/google/go-tpm/tpmutil",
     visibility = ["//visibility:public"],
     deps = select({

@@ -6,7 +6,7 @@ go_library(
         "doc.go",
         "errors.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/util/errors",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apimachinery/pkg/util/errors",
     importpath = "k8s.io/apimachinery/pkg/util/errors",
     visibility = ["//visibility:public"],
 )

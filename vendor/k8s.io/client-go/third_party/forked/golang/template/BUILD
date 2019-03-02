@@ -6,7 +6,7 @@ go_library(
         "exec.go",
         "funcs.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/third_party/forked/golang/template",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/third_party/forked/golang/template",
     importpath = "k8s.io/client-go/third_party/forked/golang/template",
     visibility = ["//visibility:public"],
 )

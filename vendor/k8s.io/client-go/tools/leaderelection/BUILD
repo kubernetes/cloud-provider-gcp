@@ -6,7 +6,7 @@ go_library(
         "healthzadaptor.go",
         "leaderelection.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/tools/leaderelection",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/tools/leaderelection",
     importpath = "k8s.io/client-go/tools/leaderelection",
     visibility = ["//visibility:public"],
     deps = [

@@ -7,7 +7,7 @@ go_library(
         "volume_path_handler_linux.go",
         "volume_path_handler_unsupported.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/volume/util/volumepathhandler",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/volume/util/volumepathhandler",
     importpath = "k8s.io/kubernetes/pkg/volume/util/volumepathhandler",
     visibility = ["//visibility:public"],
     deps = [

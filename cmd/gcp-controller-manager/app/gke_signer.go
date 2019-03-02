@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/klog"
 	"github.com/prometheus/client_golang/prometheus"
+	"k8s.io/klog"
 
 	capi "k8s.io/api/certificates/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime/schema"

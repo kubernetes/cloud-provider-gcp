@@ -6,7 +6,7 @@ go_library(
         "merge.go",
         "patch.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/evanphx/json-patch",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/evanphx/json-patch",
     importpath = "github.com/evanphx/json-patch",
     visibility = ["//visibility:public"],
 )

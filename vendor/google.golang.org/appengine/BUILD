@@ -10,14 +10,14 @@ go_library(
         "namespace.go",
         "timeout.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/google.golang.org/appengine",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/appengine",
     importpath = "google.golang.org/appengine",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/protobuf/proto:go_default_library",
         "//vendor/golang.org/x/net/context:go_default_library",
         "//vendor/google.golang.org/appengine/internal:go_default_library",
         "//vendor/google.golang.org/appengine/internal/app_identity:go_default_library",
         "//vendor/google.golang.org/appengine/internal/modules:go_default_library",
+        "@com_github_golang_protobuf//proto:go_default_library",
     ],
 )

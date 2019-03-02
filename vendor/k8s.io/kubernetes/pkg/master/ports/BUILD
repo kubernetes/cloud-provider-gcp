@@ -6,7 +6,7 @@ go_library(
         "doc.go",
         "ports.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/master/ports",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/master/ports",
     importpath = "k8s.io/kubernetes/pkg/master/ports",
     visibility = ["//visibility:public"],
 )

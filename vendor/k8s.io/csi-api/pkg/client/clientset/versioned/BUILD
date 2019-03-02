@@ -6,7 +6,7 @@ go_library(
         "clientset.go",
         "doc.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/csi-api/pkg/client/clientset/versioned",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/csi-api/pkg/client/clientset/versioned",
     importpath = "k8s.io/csi-api/pkg/client/clientset/versioned",
     visibility = ["//visibility:public"],
     deps = [

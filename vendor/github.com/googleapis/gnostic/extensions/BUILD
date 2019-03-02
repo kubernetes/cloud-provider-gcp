@@ -6,12 +6,12 @@ go_library(
         "extension.pb.go",
         "extensions.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/googleapis/gnostic/extensions",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/googleapis/gnostic/extensions",
     importpath = "github.com/googleapis/gnostic/extensions",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/protobuf/proto:go_default_library",
-        "//vendor/github.com/golang/protobuf/ptypes:go_default_library",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@com_github_golang_protobuf//ptypes:go_default_library_gen",
         "@io_bazel_rules_go//proto/wkt:any_go_proto",
     ],
 )

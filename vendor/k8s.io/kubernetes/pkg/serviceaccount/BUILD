@@ -8,7 +8,7 @@ go_library(
         "legacy.go",
         "util.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/serviceaccount",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/serviceaccount",
     importpath = "k8s.io/kubernetes/pkg/serviceaccount",
     visibility = ["//visibility:public"],
     deps = [

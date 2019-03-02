@@ -29,7 +29,6 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/klog"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/prometheus/client_golang/prometheus"
 	betacompute "google.golang.org/api/compute/v0.beta"
@@ -44,6 +43,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
+	"k8s.io/klog"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 )

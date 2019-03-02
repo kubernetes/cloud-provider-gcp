@@ -77,6 +77,7 @@ go_test(
         "gke_approver_test.go",
         "gke_signer_test.go",
         "node_annotater_test.go",
+        "options_test.go",
     ],
     embed = [":go_default_library"],
     deps = [

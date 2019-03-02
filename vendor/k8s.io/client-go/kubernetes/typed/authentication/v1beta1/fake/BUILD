@@ -8,7 +8,7 @@ go_library(
         "fake_tokenreview.go",
         "fake_tokenreview_expansion.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/kubernetes/typed/authentication/v1beta1/fake",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/authentication/v1beta1/fake",
     importpath = "k8s.io/client-go/kubernetes/typed/authentication/v1beta1/fake",
     visibility = ["//visibility:public"],
     deps = [

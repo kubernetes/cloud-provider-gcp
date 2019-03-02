@@ -7,7 +7,7 @@ go_library(
         "fake_admissionregistration_client.go",
         "fake_initializerconfiguration.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/kubernetes/typed/admissionregistration/v1alpha1/fake",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/admissionregistration/v1alpha1/fake",
     importpath = "k8s.io/client-go/kubernetes/typed/admissionregistration/v1alpha1/fake",
     visibility = ["//visibility:public"],
     deps = [

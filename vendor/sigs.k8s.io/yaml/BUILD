@@ -7,7 +7,7 @@ go_library(
         "yaml.go",
         "yaml_go110.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/sigs.k8s.io/yaml",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/sigs.k8s.io/yaml",
     importpath = "sigs.k8s.io/yaml",
     visibility = ["//visibility:public"],
     deps = ["//vendor/gopkg.in/yaml.v2:go_default_library"],

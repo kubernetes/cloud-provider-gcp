@@ -11,7 +11,7 @@ go_library(
         "jwt.go",
         "sdk.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/oauth2/google",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/oauth2/google",
     importpath = "golang.org/x/oauth2/google",
     visibility = ["//visibility:public"],
     deps = [

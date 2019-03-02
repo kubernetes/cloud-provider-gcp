@@ -6,7 +6,7 @@ go_library(
         "resizefs_linux.go",
         "resizefs_unsupported.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/util/resizefs",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/util/resizefs",
     importpath = "k8s.io/kubernetes/pkg/util/resizefs",
     visibility = ["//visibility:public"],
     deps = select({

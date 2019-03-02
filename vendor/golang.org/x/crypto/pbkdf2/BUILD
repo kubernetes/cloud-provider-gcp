@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["pbkdf2.go"],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/crypto/pbkdf2",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/crypto/pbkdf2",
     importpath = "golang.org/x/crypto/pbkdf2",
     visibility = ["//visibility:public"],
 )

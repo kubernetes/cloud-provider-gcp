@@ -52,6 +52,7 @@ go_library(
         "openbsd_pledge.go",
         "openbsd_unveil.go",
         "pagesize_unix.go",
+        "race.go",
         "race0.go",
         "sockcmsg_linux.go",
         "sockcmsg_unix.go",
@@ -217,7 +218,7 @@ go_library(
         "ztypes_solaris_amd64.go",
     ],
     cgo = True,
-    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/sys/unix",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/sys/unix",
     importpath = "golang.org/x/sys/unix",
     visibility = ["//visibility:public"],
 )

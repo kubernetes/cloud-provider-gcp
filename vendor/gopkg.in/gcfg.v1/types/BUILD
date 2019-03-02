@@ -9,7 +9,7 @@ go_library(
         "int.go",
         "scan.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/gopkg.in/gcfg.v1/types",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/gopkg.in/gcfg.v1/types",
     importpath = "gopkg.in/gcfg.v1/types",
     visibility = ["//visibility:public"],
 )

@@ -13,7 +13,7 @@ go_library(
         "urlbackoff.go",
         "zz_generated.deepcopy.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/rest",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/rest",
     importpath = "k8s.io/client-go/rest",
     visibility = ["//visibility:public"],
     deps = [

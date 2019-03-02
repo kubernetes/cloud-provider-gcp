@@ -8,7 +8,7 @@ go_library(
         "round_trippers.go",
         "transport.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/transport",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/transport",
     importpath = "k8s.io/client-go/transport",
     visibility = ["//visibility:public"],
     deps = [

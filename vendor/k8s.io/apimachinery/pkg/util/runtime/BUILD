@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["runtime.go"],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/apimachinery/pkg/util/runtime",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apimachinery/pkg/util/runtime",
     importpath = "k8s.io/apimachinery/pkg/util/runtime",
     visibility = ["//visibility:public"],
     deps = ["//vendor/k8s.io/klog:go_default_library"],

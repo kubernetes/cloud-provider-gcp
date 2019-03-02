@@ -8,7 +8,7 @@ go_library(
         "nsenter.go",
         "nsenter_unsupported.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/util/nsenter",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/util/nsenter",
     importpath = "k8s.io/kubernetes/pkg/util/nsenter",
     visibility = ["//visibility:public"],
     deps = select({

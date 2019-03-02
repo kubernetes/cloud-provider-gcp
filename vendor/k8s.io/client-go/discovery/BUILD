@@ -9,11 +9,10 @@ go_library(
         "helper.go",
         "round_tripper.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/discovery",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/discovery",
     importpath = "k8s.io/client-go/discovery",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/protobuf/proto:go_default_library",
         "//vendor/github.com/googleapis/gnostic/OpenAPIv2:go_default_library",
         "//vendor/github.com/gregjones/httpcache:go_default_library",
         "//vendor/github.com/gregjones/httpcache/diskcache:go_default_library",
@@ -29,5 +28,6 @@ go_library(
         "//vendor/k8s.io/client-go/kubernetes/scheme:go_default_library",
         "//vendor/k8s.io/client-go/rest:go_default_library",
         "//vendor/k8s.io/klog:go_default_library",
+        "@com_github_golang_protobuf//proto:go_default_library",
     ],
 )

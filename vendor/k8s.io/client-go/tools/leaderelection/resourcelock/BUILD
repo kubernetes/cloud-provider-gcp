@@ -7,7 +7,7 @@ go_library(
         "endpointslock.go",
         "interface.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/tools/leaderelection/resourcelock",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/tools/leaderelection/resourcelock",
     importpath = "k8s.io/client-go/tools/leaderelection/resourcelock",
     visibility = ["//visibility:public"],
     deps = [

@@ -8,7 +8,7 @@ go_library(
         "doc.go",
         "lru.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/github.com/hashicorp/golang-lru",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/hashicorp/golang-lru",
     importpath = "github.com/hashicorp/golang-lru",
     visibility = ["//visibility:public"],
     deps = ["//vendor/github.com/hashicorp/golang-lru/simplelru:go_default_library"],

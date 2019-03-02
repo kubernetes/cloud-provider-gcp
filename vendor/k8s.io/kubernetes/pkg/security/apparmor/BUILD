@@ -7,7 +7,7 @@ go_library(
         "validate.go",
         "validate_disabled.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/kubernetes/pkg/security/apparmor",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/security/apparmor",
     importpath = "k8s.io/kubernetes/pkg/security/apparmor",
     visibility = ["//visibility:public"],
     deps = [

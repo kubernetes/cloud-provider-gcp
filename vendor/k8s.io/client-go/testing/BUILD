@@ -7,7 +7,7 @@ go_library(
         "fake.go",
         "fixture.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/testing",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/testing",
     importpath = "k8s.io/client-go/testing",
     visibility = ["//visibility:public"],
     deps = [

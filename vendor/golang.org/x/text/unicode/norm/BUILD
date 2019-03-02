@@ -14,7 +14,7 @@ go_library(
         "transform.go",
         "trie.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/golang.org/x/text/unicode/norm",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/text/unicode/norm",
     importpath = "golang.org/x/text/unicode/norm",
     visibility = ["//visibility:public"],
     deps = ["//vendor/golang.org/x/text/transform:go_default_library"],

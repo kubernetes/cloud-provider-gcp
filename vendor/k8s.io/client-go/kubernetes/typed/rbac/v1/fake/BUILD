@@ -10,7 +10,7 @@ go_library(
         "fake_role.go",
         "fake_rolebinding.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/kubernetes/typed/rbac/v1/fake",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/rbac/v1/fake",
     importpath = "k8s.io/client-go/kubernetes/typed/rbac/v1/fake",
     visibility = ["//visibility:public"],
     deps = [

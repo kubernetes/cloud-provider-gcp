@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["compute-gen.go"],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/google.golang.org/api/compute/v0.alpha",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/api/compute/v0.alpha",
     importpath = "google.golang.org/api/compute/v0.alpha",
     visibility = ["//visibility:public"],
     deps = [

@@ -6,7 +6,7 @@ go_library(
         "expansion_generated.go",
         "priorityclass.go",
     ],
-    importmap = "io_k8s_cloud_provider_gcp/vendor/k8s.io/client-go/listers/scheduling/v1alpha1",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/listers/scheduling/v1alpha1",
     importpath = "k8s.io/client-go/listers/scheduling/v1alpha1",
     visibility = ["//visibility:public"],
     deps = [
