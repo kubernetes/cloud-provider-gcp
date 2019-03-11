@@ -31,7 +31,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	_ "k8s.io/kubernetes/pkg/apis/certificates/install"
+	_ "k8s.io/kubernetes/pkg/apis/certificates/install" // Install certificates API group.
 	"k8s.io/kubernetes/pkg/controller/certificates"
 )
 
@@ -48,6 +48,7 @@ var (
 	}, []string{"status"})
 )
 
+// ClusterSigningGKERetryBackoff is the backoff between GKE cluster signing retries.
 const ClusterSigningGKERetryBackoff = 500 * time.Millisecond
 
 func init() {
@@ -125,14 +126,14 @@ func (s *gkeSigner) sign(csr *capi.CertificateSigningRequest) (*capi.Certificate
 		return nil, s.webhookError(csr, fmt.Errorf("received unsuccessful response code from webhook: %d", statusCode))
 	}
 
-	result_csr := &capi.CertificateSigningRequest{}
+	resultCSR := &capi.CertificateSigningRequest{}
 
-	if err := result.Into(result_csr); err != nil {
-		return nil, s.webhookError(result_csr, err)
+	if err := result.Into(resultCSR); err != nil {
+		return nil, s.webhookError(resultCSR, err)
 	}
 
 	// Keep the original CSR intact, and only update fields we expect to change.
-	csr.Status.Certificate = result_csr.Status.Certificate
+	csr.Status.Certificate = resultCSR.Status.Certificate
 	return csr, nil
 }
 
