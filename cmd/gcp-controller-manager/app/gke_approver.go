@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/google/go-tpm/tpm2"
-	"github.com/prometheus/client_golang/prometheus"
 	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
@@ -47,22 +46,6 @@ import (
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 )
-
-var (
-	csrApprovalStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "csr_approval_count",
-		Help: "Count of approved, denied and ignored CSRs",
-	}, []string{"status", "kind"})
-	csrApprovalLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "csr_approval_latencies",
-		Help: "Latency of CSR approver, in seconds",
-	}, []string{"status", "kind"})
-)
-
-func init() {
-	prometheus.MustRegister(csrApprovalStatus)
-	prometheus.MustRegister(csrApprovalLatency)
-}
 
 const (
 	legacyKubeletUsername = "kubelet"
@@ -658,6 +641,8 @@ func ensureNodeMatchesMetadataOrDelete(opts GCPConfig, csr *capi.CertificateSign
 	return nil
 }
 
+var errInstanceNotFound = errors.New("instance not found")
+
 func shouldDeleteNode(opts GCPConfig, node *v1.Node, getInstance func(GCPConfig, string) (*compute.Instance, error)) (bool, error) {
 	// Newly created node might not have pod CIDR allocated yet.
 	if node.Spec.PodCIDR == "" {
@@ -666,7 +651,7 @@ func shouldDeleteNode(opts GCPConfig, node *v1.Node, getInstance func(GCPConfig,
 	}
 	inst, err := getInstance(opts, node.Name)
 	if err != nil {
-		if err == instanceNotFound {
+		if err == errInstanceNotFound {
 			klog.Warningf("Didn't find corresponding instance for node %q, will trigger node deletion.", node.Name)
 			return true, nil
 		}
@@ -692,8 +677,6 @@ func shouldDeleteNode(opts GCPConfig, node *v1.Node, getInstance func(GCPConfig,
 	return false, nil
 }
 
-var instanceNotFound = errors.New("instance not found")
-
 func getInstanceByName(opts GCPConfig, instanceName string) (*compute.Instance, error) {
 	srv := compute.NewInstancesService(opts.Compute)
 	for _, z := range opts.Zones {
@@ -706,5 +689,5 @@ func getInstanceByName(opts GCPConfig, instanceName string) (*compute.Instance, 
 		}
 		return inst, nil
 	}
-	return nil, instanceNotFound
+	return nil, errInstanceNotFound
 }

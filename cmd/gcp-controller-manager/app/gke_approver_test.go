@@ -39,7 +39,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -936,7 +936,7 @@ func TestShouldDeleteNode(t *testing.T) {
 				},
 			},
 			shouldDelete:   true,
-			getInstanceErr: instanceNotFound,
+			getInstanceErr: errInstanceNotFound,
 		},
 		{
 			desc: "error gettting instance",

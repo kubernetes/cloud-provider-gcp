@@ -39,6 +39,7 @@ import (
 	"k8s.io/klog"
 )
 
+// InstanceIDAnnotationKey is the node annotation key where the external ID is written.
 const InstanceIDAnnotationKey = "container.googleapis.com/instance_id"
 
 var errNoMetadata = fmt.Errorf("instance did not have 'kube-labels' metadata")
