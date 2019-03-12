@@ -102,6 +102,7 @@ func (s *GCPControllerManager) isEnabled(name string) bool {
 type GCPConfig struct {
 	ClusterName             string
 	ProjectID               string
+	Location                string
 	Zones                   []string
 	TPMEndorsementCACache   *caCache
 	Compute                 *compute.Service
@@ -167,12 +168,12 @@ func loadGCPConfig(s *GCPControllerManager) (GCPConfig, error) {
 	}
 
 	// Get cluster zone from metadata server.
-	zone, err := metadata.Zone()
+	a.Location, err = metadata.Get("instance/attributes/cluster-location")
 	if err != nil {
 		return a, err
 	}
 	// Extract region name from zone.
-	region, err := getRegionFromZone(zone)
+	region, err := getRegionFromZone(a.Location)
 	if err != nil {
 		return a, err
 	}
@@ -191,7 +192,7 @@ func loadGCPConfig(s *GCPControllerManager) (GCPConfig, error) {
 		return a, fmt.Errorf("can't find zones for region %q", region)
 	}
 	// Put master's zone first.
-	sort.Slice(a.Zones, func(i, j int) bool { return a.Zones[i] == zone })
+	sort.Slice(a.Zones, func(i, j int) bool { return a.Zones[i] == a.Location })
 
 	a.ClusterName, err = metadata.Get("instance/attributes/cluster-name")
 	if err != nil {

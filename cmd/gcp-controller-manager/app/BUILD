@@ -86,6 +86,7 @@ go_test(
         "//vendor/github.com/google/go-tpm/tpm2:go_default_library",
         "//vendor/google.golang.org/api/compute/v0.beta:go_default_library",
         "//vendor/google.golang.org/api/compute/v1:go_default_library",
+        "//vendor/google.golang.org/api/container/v1:go_default_library",
         "//vendor/k8s.io/api/authorization/v1beta1:go_default_library",
         "//vendor/k8s.io/api/certificates/v1beta1:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
@@ -96,6 +97,7 @@ go_test(
         "//vendor/k8s.io/client-go/kubernetes/fake:go_default_library",
         "//vendor/k8s.io/client-go/testing:go_default_library",
         "//vendor/k8s.io/client-go/tools/record:go_default_library",
+        "//vendor/k8s.io/klog:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1beta1:go_default_library",
     ],
 )
