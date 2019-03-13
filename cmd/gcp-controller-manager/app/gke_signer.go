@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/klog"
 
 	capi "k8s.io/api/certificates/v1beta1"
@@ -30,6 +29,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/app/csrmetrics"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	_ "k8s.io/kubernetes/pkg/apis/certificates/install" // Install certificates API group.
 	"k8s.io/kubernetes/pkg/controller/certificates"
@@ -37,24 +37,10 @@ import (
 
 var (
 	groupVersions = []schema.GroupVersion{capi.SchemeGroupVersion}
-
-	csrSigningStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "csr_signing_count",
-		Help: "Count of signed CSRs",
-	}, []string{"status"})
-	csrSigningLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "csr_signing_latencies",
-		Help: "Latency of CSR signer, in seconds",
-	}, []string{"status"})
 )
 
 // ClusterSigningGKERetryBackoff is the backoff between GKE cluster signing retries.
 const ClusterSigningGKERetryBackoff = 500 * time.Millisecond
-
-func init() {
-	prometheus.MustRegister(csrSigningStatus)
-	prometheus.MustRegister(csrSigningLatency)
-}
 
 // gkeSigner uses external calls to GKE in order to sign certificate signing
 // requests.
@@ -83,26 +69,23 @@ func newGKESigner(kubeConfigFile string, recorder record.EventRecorder, client c
 }
 
 func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
-	start := time.Now()
+	recordMetric := csrmetrics.SigningStartRecorder()
 	if !certificates.IsCertificateRequestApproved(csr) {
 		return nil
 	}
 	klog.Infof("gkeSigner triggered for %q", csr.Name)
 	csr, err := s.sign(csr)
 	if err != nil {
-		csrSigningStatus.WithLabelValues("sign_error").Inc()
-		csrSigningLatency.WithLabelValues("sign_error").Observe(time.Since(start).Seconds())
+		recordMetric(csrmetrics.SigningStatusSignError)
 		return fmt.Errorf("error auto signing csr: %v", err)
 	}
 	_, err = s.client.CertificatesV1beta1().CertificateSigningRequests().UpdateStatus(csr)
 	if err != nil {
-		csrSigningStatus.WithLabelValues("update_error").Inc()
-		csrSigningLatency.WithLabelValues("update_error").Observe(time.Since(start).Seconds())
+		recordMetric(csrmetrics.SigningStatusUpdateError)
 		return fmt.Errorf("error updating signature for csr: %v", err)
 	}
 	klog.Infof("CSR %q signed", csr.Name)
-	csrSigningStatus.WithLabelValues("signed").Inc()
-	csrSigningLatency.WithLabelValues("signed").Observe(time.Since(start).Seconds())
+	recordMetric(csrmetrics.SigningStatusSigned)
 	return nil
 }
 
@@ -110,19 +93,34 @@ func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
 // *capi.CertificateSigningRequest, using the gkeSigner's
 // kubeConfigFile.
 func (s *gkeSigner) sign(csr *capi.CertificateSigningRequest) (*capi.CertificateSigningRequest, error) {
-	result := s.webhook.WithExponentialBackoff(func() rest.Result {
-		return s.webhook.RestClient.Post().Body(csr).Do()
+	var statusCode int
+	var result rest.Result
+	webhook.WithExponentialBackoff(ClusterSigningGKERetryBackoff, func() error {
+		recordMetric := csrmetrics.OutboundRPCStartRecorder("container.webhook.Sign")
+		result = s.webhook.RestClient.Post().Body(csr).Do()
+		if result.Error() != nil {
+			recordMetric(csrmetrics.OutboundRPCStatusError)
+			return result.Error()
+		}
+		if result.StatusCode(&statusCode); statusCode < 200 && statusCode >= 300 {
+			recordMetric(csrmetrics.OutboundRPCStatusError)
+		} else {
+			recordMetric(csrmetrics.OutboundRPCStatusOK)
+		}
+		return nil
 	})
 
 	if err := result.Error(); err != nil {
+		var webhookError error
 		if bodyErr := s.resultBodyError(result); bodyErr != nil {
-			return nil, s.webhookError(csr, bodyErr)
+			webhookError = s.webhookError(csr, bodyErr)
+		} else {
+			webhookError = s.webhookError(csr, err)
 		}
-		return nil, s.webhookError(csr, err)
+		return nil, webhookError
 	}
 
-	var statusCode int
-	if result.StatusCode(&statusCode); statusCode < 200 || statusCode >= 300 {
+	if statusCode < 200 || statusCode >= 300 {
 		return nil, s.webhookError(csr, fmt.Errorf("received unsuccessful response code from webhook: %d", statusCode))
 	}
 
