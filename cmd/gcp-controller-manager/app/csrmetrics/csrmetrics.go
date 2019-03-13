@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package csrmetrics contains metric definitions to be recorded by the
+// certificates controller.
 package csrmetrics
 
 import (
@@ -22,38 +24,29 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// CSRSigningStatus is a status string of the CSR Signing metric.
-type CSRSigningStatus string
+// SigningStatus is a status string of the CSR signing metric.
+type SigningStatus string
 
-// CSRApprovalStatus is a status string of the CSR Approval metric.
-type CSRApprovalStatus string
+// ApprovalStatus is a status string of the CSR approval metric.
+type ApprovalStatus string
 
-// OutboundRPCStatus is a status string of the Outbound RPC metric.
+// OutboundRPCStatus is a status string of the outbound RPC metric.
 type OutboundRPCStatus string
-
-// CSRSigningRecord is a function to record the CSR Signing metric with a status.
-type CSRSigningRecord func(status CSRSigningStatus)
-
-// CSRApprovalRecord is a function to record the CSR Approval metric with a status.
-type CSRApprovalRecord func(status CSRApprovalStatus)
-
-// OutboundRPCRecord is a function to record the Outbound RPC metric with a status.
-type OutboundRPCRecord func(status OutboundRPCStatus)
 
 // Status constants for metrics.
 const (
-	CSRSigningStatusSignError   CSRSigningStatus = "sign_error"
-	CSRSigningStatusUpdateError CSRSigningStatus = "update_error"
-	CSRSigningStatusSigned      CSRSigningStatus = "signed"
+	SigningStatusSignError   SigningStatus = "sign_error"
+	SigningStatusUpdateError SigningStatus = "update_error"
+	SigningStatusSigned      SigningStatus = "signed"
 
-	CSRApprovalStatusNodeDeleted         CSRApprovalStatus = "node_deleted"
-	CSRApprovalStatusParseError          CSRApprovalStatus = "parse_error"
-	CSRApprovalStatusSARError            CSRApprovalStatus = "sar_error"
-	CSRApprovalStatusSARReject           CSRApprovalStatus = "sar_reject"
-	CSRApprovalStatusPreApproveHookError CSRApprovalStatus = "pre_approve_hook_error"
-	CSRApprovalStatusDeny                CSRApprovalStatus = "deny"
-	CSRApprovalStatusApprove             CSRApprovalStatus = "approve"
-	CSRApprovalStatusIgnore              CSRApprovalStatus = "ignore"
+	ApprovalStatusNodeDeleted         ApprovalStatus = "node_deleted"
+	ApprovalStatusParseError          ApprovalStatus = "parse_error"
+	ApprovalStatusSARError            ApprovalStatus = "sar_error"
+	ApprovalStatusSARReject           ApprovalStatus = "sar_reject"
+	ApprovalStatusPreApproveHookError ApprovalStatus = "pre_approve_hook_error"
+	ApprovalStatusDeny                ApprovalStatus = "deny"
+	ApprovalStatusApprove             ApprovalStatus = "approve"
+	ApprovalStatusIgnore              ApprovalStatus = "ignore"
 
 	OutboundRPCStatusNotFound OutboundRPCStatus = "not_found"
 	OutboundRPCStatusError    OutboundRPCStatus = "error"
@@ -61,21 +54,25 @@ const (
 )
 
 var (
-	csrSigningCount = prometheus.NewCounterVec(prometheus.CounterOpts{
+	signingCount = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "csr_signing_count",
 		Help: "Count of signed CSRs",
 	}, []string{"status"})
-	csrSigningLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	signingLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "csr_signing_latencies",
 		Help: "Latency of CSR signer, in seconds",
 	}, []string{"status"})
-	csrApprovalCount = prometheus.NewCounterVec(prometheus.CounterOpts{
+	approvalCount = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "csr_approval_count",
 		Help: "Count of approved, denied and ignored CSRs",
 	}, []string{"status", "kind"})
-	csrApprovalLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	approvalLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "csr_approval_latencies",
 		Help: "Latency of CSR approver, in seconds",
+	}, []string{"status", "kind"})
+	outboundRPCCount = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "outbound_rpc_count",
+		Help: "Count of outbound RPCs to GCE and GKE.",
 	}, []string{"status", "kind"})
 	outboundRPCLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "outbound_rpc_latency",
@@ -84,38 +81,45 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(csrSigningCount)
-	prometheus.MustRegister(csrSigningLatency)
-	prometheus.MustRegister(csrApprovalCount)
-	prometheus.MustRegister(csrApprovalLatency)
-	prometheus.MustRegister(outboundRPCLatency)
+	prometheus.MustRegister(
+		signingCount,
+		signingLatency,
+		approvalCount,
+		approvalLatency,
+		outboundRPCCount,
+		outboundRPCLatency,
+	)
 }
 
-// CSRSigningStartRecorder starts a timer for kind and returns a
-// CSR Singing status record function.
-func CSRSigningStartRecorder() CSRSigningRecord {
+// SigningStartRecorder marks the start of a CSR signing operation. Caller is
+// responsible for calling the returned function, which records Prometheus
+// metrics for this operation.
+func SigningStartRecorder() func(status SigningStatus) {
 	start := time.Now()
-	return func(status CSRSigningStatus) {
-		csrSigningCount.WithLabelValues(string(status)).Inc()
-		csrSigningLatency.WithLabelValues(string(status)).Observe(time.Since(start).Seconds())
+	return func(status SigningStatus) {
+		signingCount.WithLabelValues(string(status)).Inc()
+		signingLatency.WithLabelValues(string(status)).Observe(time.Since(start).Seconds())
 	}
 }
 
-// CSRApprovalStartRecorder starts a timer for kind and returns a
-// CSR Approval status record function.
-func CSRApprovalStartRecorder(kind string) CSRApprovalRecord {
+// ApprovalStartRecorder marks the start of a CSR approval operation. Caller is
+// responsible for calling the returned function, which records Prometheus
+// metrics for this operation.
+func ApprovalStartRecorder(kind string) func(status ApprovalStatus) {
 	start := time.Now()
-	return func(status CSRApprovalStatus) {
-		csrApprovalCount.WithLabelValues(string(status), kind).Inc()
-		csrApprovalLatency.WithLabelValues(string(status), kind).Observe(time.Since(start).Seconds())
+	return func(status ApprovalStatus) {
+		approvalCount.WithLabelValues(string(status), kind).Inc()
+		approvalLatency.WithLabelValues(string(status), kind).Observe(time.Since(start).Seconds())
 	}
 }
 
-// OutboundRPCStartRecorder starts a timer for kind and returns a
-// Outbound RPC status record function.
-func OutboundRPCStartRecorder(kind string) OutboundRPCRecord {
+// OutboundRPCStartRecorder marks the start of a outbound RPC operation. Caller is
+// responsible for calling the returned function, which records Prometheus
+// metrics for this operation.
+func OutboundRPCStartRecorder(kind string) func(status OutboundRPCStatus) {
 	start := time.Now()
 	return func(status OutboundRPCStatus) {
+		outboundRPCCount.WithLabelValues(string(status), kind).Inc()
 		outboundRPCLatency.WithLabelValues(string(status), kind).Observe(time.Since(start).Seconds())
 	}
 }

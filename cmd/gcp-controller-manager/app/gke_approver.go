@@ -67,7 +67,7 @@ func newGKEApprover(opts GCPConfig, client clientset.Interface) *gkeApprover {
 }
 
 func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
-	metricRecord := csrmetrics.CSRApprovalStartRecorder(authFlowLabelNone)
+	recordMetric := csrmetrics.ApprovalStartRecorder(authFlowLabelNone)
 	if len(csr.Status.Certificate) != 0 {
 		return nil
 	}
@@ -78,13 +78,13 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 
 	x509cr, err := certutil.ParseCSR(csr)
 	if err != nil {
-		metricRecord(csrmetrics.CSRApprovalStatusParseError)
+		recordMetric(csrmetrics.ApprovalStatusParseError)
 		return fmt.Errorf("unable to parse csr %q: %v", csr.Name, err)
 	}
 
 	var tried []string
 	for _, r := range a.validators {
-		validatorMetricRecord := csrmetrics.CSRApprovalStartRecorder(r.authFlowLabel)
+		recordValidatorMetric := csrmetrics.ApprovalStartRecorder(r.authFlowLabel)
 		if !r.recognize(a.opts, csr, x509cr) {
 			continue
 		}
@@ -97,7 +97,7 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 			}
 			if !ok {
 				klog.Infof("validator %q: denied CSR %q", r.name, csr.Name)
-				validatorMetricRecord(csrmetrics.CSRApprovalStatusDeny)
+				recordValidatorMetric(csrmetrics.ApprovalStatusDeny)
 				return a.updateCSR(csr, false, r.denyMsg)
 			}
 		}
@@ -105,7 +105,7 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 
 		approved, err := a.authorizeSAR(csr, r.permission)
 		if err != nil {
-			validatorMetricRecord(csrmetrics.CSRApprovalStatusSARError)
+			recordValidatorMetric(csrmetrics.ApprovalStatusSARError)
 			return err
 		}
 		if !approved {
@@ -116,21 +116,21 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 		if r.preApproveHook != nil {
 			if err := r.preApproveHook(a.opts, csr, x509cr, r.authFlowLabel, a.client); err != nil {
 				klog.Warningf("validator %q: preApproveHook failed for CSR %q: %v", r.name, csr.Name, err)
-				validatorMetricRecord(csrmetrics.CSRApprovalStatusPreApproveHookError)
+				recordValidatorMetric(csrmetrics.ApprovalStatusPreApproveHookError)
 				return err
 			}
 			klog.Infof("validator %q: preApproveHook passed for CSR %q", r.name, csr.Name)
 		}
-		validatorMetricRecord(csrmetrics.CSRApprovalStatusApprove)
+		recordValidatorMetric(csrmetrics.ApprovalStatusApprove)
 		return a.updateCSR(csr, true, r.approveMsg)
 	}
 
 	if len(tried) != 0 {
-		metricRecord(csrmetrics.CSRApprovalStatusSARReject)
+		recordMetric(csrmetrics.ApprovalStatusSARReject)
 		return certificates.IgnorableError("recognized csr %q as %q but subject access review was not approved", csr.Name, tried)
 	}
 	klog.Infof("no validators matched CSR %q", csr.Name)
-	metricRecord(csrmetrics.CSRApprovalStatusIgnore)
+	recordMetric(csrmetrics.ApprovalStatusIgnore)
 	return nil
 }
 
@@ -409,19 +409,19 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 		return false, nil
 	}
 
-	metricRecord := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.Get")
+	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.Get")
 	srv := compute.NewInstancesService(opts.Compute)
 	inst, err := srv.Get(fmt.Sprint(nodeID.ProjectID), nodeID.Zone, nodeID.Name).Do()
 	if err != nil {
 		if isNotFound(err) {
 			klog.Infof("deny CSR %q: VM doesn't exist in GCE API: %v", csr.Name, err)
-			metricRecord(csrmetrics.OutboundRPCStatusNotFound)
+			recordMetric(csrmetrics.OutboundRPCStatusNotFound)
 			return false, nil
 		}
-		metricRecord(csrmetrics.OutboundRPCStatusError)
+		recordMetric(csrmetrics.OutboundRPCStatusError)
 		return false, fmt.Errorf("fetching VM data from GCE API: %v", err)
 	}
-	metricRecord(csrmetrics.OutboundRPCStatusOK)
+	recordMetric(csrmetrics.OutboundRPCStatusOK)
 	if opts.VerifyClusterMembership {
 		ok, err := clusterHasInstance(opts, inst.Zone, inst.Id)
 		if err != nil {
@@ -495,18 +495,18 @@ func ekPubAndIDFromAPI(opts GCPConfig, blocks map[string]*pem.Block) (*rsa.Publi
 		return nil, nil, fmt.Errorf("failed parsing VM IDENTITY block: %v", err)
 	}
 
-	metricRecord := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.GetShieldedVmIdentity")
+	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.GetShieldedVmIdentity")
 	srv := betacompute.NewInstancesService(opts.BetaCompute)
 	resp, err := srv.GetShieldedVmIdentity(fmt.Sprint(nodeID.ProjectID), nodeID.Zone, nodeID.Name).Do()
 	if err != nil {
 		if isNotFound(err) {
-			metricRecord(csrmetrics.OutboundRPCStatusNotFound)
+			recordMetric(csrmetrics.OutboundRPCStatusNotFound)
 			return nil, nil, fmt.Errorf("fetching Shielded VM identity: %v", err)
 		}
-		metricRecord(csrmetrics.OutboundRPCStatusError)
+		recordMetric(csrmetrics.OutboundRPCStatusError)
 		return nil, nil, temporaryError(fmt.Errorf("fetching Shielded VM identity: %v", err))
 	}
-	metricRecord(csrmetrics.OutboundRPCStatusOK)
+	recordMetric(csrmetrics.OutboundRPCStatusOK)
 	if resp.SigningKey == nil {
 		return nil, nil, fmt.Errorf("VM %q doesn't have a signing key in ShieldedVmIdentity", nodeID.Name)
 	}
@@ -556,13 +556,13 @@ func clusterHasInstance(opts GCPConfig, zone string, instanceID uint64) (bool, e
 	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
 	// Convert it to just "us-central1-c".
 	zone = path.Base(zone)
-	metricRecord := csrmetrics.OutboundRPCStartRecorder("container.ProjectsZonesClustersService.Get")
+	recordMetric := csrmetrics.OutboundRPCStartRecorder("container.ProjectsZonesClustersService.Get")
 	cluster, err := container.NewProjectsZonesClustersService(opts.Container).Get(opts.ProjectID, zone, opts.ClusterName).Do()
 	if err != nil {
-		metricRecord(csrmetrics.OutboundRPCStatusError)
+		recordMetric(csrmetrics.OutboundRPCStatusError)
 		return false, fmt.Errorf("fetching cluster info: %v", err)
 	}
-	metricRecord(csrmetrics.OutboundRPCStatusOK)
+	recordMetric(csrmetrics.OutboundRPCStatusOK)
 	for _, np := range cluster.NodePools {
 		for _, ig := range np.InstanceGroupUrls {
 			igName := path.Base(ig)
@@ -579,13 +579,13 @@ func clusterHasInstance(opts GCPConfig, zone string, instanceID uint64) (bool, e
 }
 
 func groupHasInstance(opts GCPConfig, zone, groupName string, instanceID uint64) (bool, error) {
-	metricRecord := csrmetrics.OutboundRPCStartRecorder("compute.InstanceGroupManagersService.ListManagedInstances")
+	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstanceGroupManagersService.ListManagedInstances")
 	instances, err := compute.NewInstanceGroupManagersService(opts.Compute).ListManagedInstances(opts.ProjectID, zone, groupName).Do()
 	if err != nil {
-		metricRecord(csrmetrics.OutboundRPCStatusError)
+		recordMetric(csrmetrics.OutboundRPCStatusError)
 		return false, err
 	}
-	metricRecord(csrmetrics.OutboundRPCStatusOK)
+	recordMetric(csrmetrics.OutboundRPCStatusOK)
 	for _, inst := range instances.ManagedInstances {
 		if instanceID == inst.Id {
 			return true, nil
@@ -601,7 +601,7 @@ func isNotFound(err error) bool {
 
 func ensureNodeMatchesMetadataOrDelete(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest, metricsLabel string, client clientset.Interface) error {
 	// TODO: short-circuit
-	metricRecord := csrmetrics.CSRApprovalStartRecorder(metricsLabel)
+	recordMetric := csrmetrics.ApprovalStartRecorder(metricsLabel)
 	if !strings.HasPrefix(x509cr.Subject.CommonName, "system:node:") {
 		return nil
 	}
@@ -642,7 +642,7 @@ func ensureNodeMatchesMetadataOrDelete(opts GCPConfig, csr *capi.CertificateSign
 		// if the errors are persistent, the CSR will not be approved and the node bootstrap will hang.
 		return fmt.Errorf("error deleting node %s: %v", nodeName, err)
 	}
-	metricRecord(csrmetrics.CSRApprovalStatusNodeDeleted)
+	recordMetric(csrmetrics.ApprovalStatusNodeDeleted)
 	return nil
 }
 
@@ -683,19 +683,19 @@ func shouldDeleteNode(opts GCPConfig, node *v1.Node, getInstance func(GCPConfig,
 }
 
 func getInstanceByName(opts GCPConfig, instanceName string) (*compute.Instance, error) {
-	metricRecord := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.Get")
 	srv := compute.NewInstancesService(opts.Compute)
 	for _, z := range opts.Zones {
+		recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.Get")
 		inst, err := srv.Get(opts.ProjectID, z, instanceName).Do()
 		if err != nil {
 			if isNotFound(err) {
-				metricRecord(csrmetrics.OutboundRPCStatusNotFound)
+				recordMetric(csrmetrics.OutboundRPCStatusNotFound)
 				continue
 			}
-			metricRecord(csrmetrics.OutboundRPCStatusError)
+			recordMetric(csrmetrics.OutboundRPCStatusError)
 			return nil, err
 		}
-		metricRecord(csrmetrics.OutboundRPCStatusOK)
+		recordMetric(csrmetrics.OutboundRPCStatusOK)
 		return inst, nil
 	}
 	return nil, errInstanceNotFound

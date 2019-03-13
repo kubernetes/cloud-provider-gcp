@@ -69,23 +69,23 @@ func newGKESigner(kubeConfigFile string, recorder record.EventRecorder, client c
 }
 
 func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
-	metricRecord := csrmetrics.CSRSigningStartRecorder()
+	recordMetric := csrmetrics.SigningStartRecorder()
 	if !certificates.IsCertificateRequestApproved(csr) {
 		return nil
 	}
 	klog.Infof("gkeSigner triggered for %q", csr.Name)
 	csr, err := s.sign(csr)
 	if err != nil {
-		metricRecord(csrmetrics.CSRSigningStatusSignError)
+		recordMetric(csrmetrics.SigningStatusSignError)
 		return fmt.Errorf("error auto signing csr: %v", err)
 	}
 	_, err = s.client.CertificatesV1beta1().CertificateSigningRequests().UpdateStatus(csr)
 	if err != nil {
-		metricRecord(csrmetrics.CSRSigningStatusUpdateError)
+		recordMetric(csrmetrics.SigningStatusUpdateError)
 		return fmt.Errorf("error updating signature for csr: %v", err)
 	}
 	klog.Infof("CSR %q signed", csr.Name)
-	metricRecord(csrmetrics.CSRSigningStatusSigned)
+	recordMetric(csrmetrics.SigningStatusSigned)
 	return nil
 }
 
@@ -93,9 +93,21 @@ func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
 // *capi.CertificateSigningRequest, using the gkeSigner's
 // kubeConfigFile.
 func (s *gkeSigner) sign(csr *capi.CertificateSigningRequest) (*capi.CertificateSigningRequest, error) {
-	metricRecord := csrmetrics.OutboundRPCStartRecorder("container.webhook.Sign")
-	result := s.webhook.WithExponentialBackoff(func() rest.Result {
-		return s.webhook.RestClient.Post().Body(csr).Do()
+	var statusCode int
+	var result rest.Result
+	webhook.WithExponentialBackoff(ClusterSigningGKERetryBackoff, func() error {
+		recordMetric := csrmetrics.OutboundRPCStartRecorder("container.webhook.Sign")
+		result = s.webhook.RestClient.Post().Body(csr).Do()
+		if result.Error() != nil {
+			recordMetric(csrmetrics.OutboundRPCStatusError)
+			return result.Error()
+		}
+		if result.StatusCode(&statusCode); statusCode < 200 && statusCode >= 300 {
+			recordMetric(csrmetrics.OutboundRPCStatusError)
+		} else {
+			recordMetric(csrmetrics.OutboundRPCStatusOK)
+		}
+		return nil
 	})
 
 	if err := result.Error(); err != nil {
@@ -105,26 +117,21 @@ func (s *gkeSigner) sign(csr *capi.CertificateSigningRequest) (*capi.Certificate
 		} else {
 			webhookError = s.webhookError(csr, err)
 		}
-		metricRecord(csrmetrics.OutboundRPCStatusError)
 		return nil, webhookError
 	}
 
-	var statusCode int
-	if result.StatusCode(&statusCode); statusCode < 200 || statusCode >= 300 {
-		metricRecord(csrmetrics.OutboundRPCStatusError)
+	if statusCode < 200 || statusCode >= 300 {
 		return nil, s.webhookError(csr, fmt.Errorf("received unsuccessful response code from webhook: %d", statusCode))
 	}
 
 	resultCSR := &capi.CertificateSigningRequest{}
 
 	if err := result.Into(resultCSR); err != nil {
-		metricRecord(csrmetrics.OutboundRPCStatusError)
 		return nil, s.webhookError(resultCSR, err)
 	}
 
 	// Keep the original CSR intact, and only update fields we expect to change.
 	csr.Status.Certificate = resultCSR.Status.Certificate
-	metricRecord(csrmetrics.OutboundRPCStatusOK)
 	return csr, nil
 }
 
