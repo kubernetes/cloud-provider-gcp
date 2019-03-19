@@ -8,6 +8,6 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/spf13/pflag:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/apis/config:go_default_library",
+        "//vendor/k8s.io/component-base/config:go_default_library",
     ],
 )
