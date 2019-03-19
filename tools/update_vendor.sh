@@ -12,6 +12,10 @@ fi
 # update vendor/
 go mod vendor
 # remove repo-originated BUILD files
-find vendor/ -name BUILD | xargs rm
+find vendor -type f \( \
+    -name BUILD \
+    -o -name BUILD.bazel \
+    -o -name '*.bzl' \
+  \) -delete
 # restore BUILD files in vendor/
 bazel run //:gazelle
