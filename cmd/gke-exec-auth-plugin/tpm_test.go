@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 )
 

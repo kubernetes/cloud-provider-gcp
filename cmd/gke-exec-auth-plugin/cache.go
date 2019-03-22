@@ -13,8 +13,8 @@ import (
 	"reflect"
 	"time"
 
+	"k8s.io/client-go/util/keyutil"
 	"k8s.io/klog"
-	"k8s.io/client-go/util/cert"
 )
 
 const (
@@ -91,7 +91,7 @@ func getTempKeyPEM(dir string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	keyPEM = pem.EncodeToMemory(&pem.Block{Type: cert.ECPrivateKeyBlockType, Bytes: keyBytes})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: keyutil.ECPrivateKeyBlockType, Bytes: keyBytes})
 	// Write private key into temporary file to reuse in case of failure.
 	if err := ioutil.WriteFile(filepath.Join(dir, tmpKeyFileName), keyPEM, 0600); err != nil {
 		return nil, fmt.Errorf("failed to store new private key to temporary file: %v", err)

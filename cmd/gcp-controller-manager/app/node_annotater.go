@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	compute "google.golang.org/api/compute/v1"
+
 	core "k8s.io/api/core/v1"
 	unversionedvalidation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -33,10 +35,8 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/kubernetes/pkg/controller"
-
-	compute "google.golang.org/api/compute/v1"
 	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/controller"
 )
 
 // InstanceIDAnnotationKey is the node annotation key where the external ID is written.
@@ -216,7 +216,7 @@ func (na *nodeAnnotator) sync(key string) {
 		return
 	}
 
-	if _, err := na.c.Core().Nodes().Update(node); err != nil {
+	if _, err := na.c.CoreV1().Nodes().Update(node); err != nil {
 		klog.Errorf("Sync %v failed with: %v", key, err)
 		na.queue.Add(key)
 		return
