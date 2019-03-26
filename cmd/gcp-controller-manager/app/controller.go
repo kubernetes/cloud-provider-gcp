@@ -25,8 +25,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
 	v1 "k8s.io/api/core/v1"
-	apiserverconfig "k8s.io/apiserver/pkg/apis/config"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
+	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/controller" // Install GCP auth plugin.
@@ -143,7 +144,7 @@ func Run(s *GCPControllerManager) error {
 	return fmt.Errorf("should never reach this point")
 }
 
-func makeLeaderElectionConfig(config apiserverconfig.LeaderElectionConfiguration, client clientset.Interface, recorder record.EventRecorder) (*leaderelection.LeaderElectionConfig, error) {
+func makeLeaderElectionConfig(config componentbaseconfig.LeaderElectionConfiguration, client clientset.Interface, recorder record.EventRecorder) (*leaderelection.LeaderElectionConfig, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, fmt.Errorf("unable to get hostname: %v", err)
@@ -154,6 +155,7 @@ func makeLeaderElectionConfig(config apiserverconfig.LeaderElectionConfiguration
 		leaderElectionResourceLockNamespace,
 		leaderElectionResourceLockName,
 		client.CoreV1(),
+		client.CoordinationV1(),
 		resourcelock.ResourceLockConfig{
 			Identity:      hostname,
 			EventRecorder: recorder,

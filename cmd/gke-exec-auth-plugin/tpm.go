@@ -13,11 +13,12 @@ import (
 	"io"
 	"reflect"
 
-	"k8s.io/klog"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
+	"k8s.io/klog"
 )
 
 const (

@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
-	"k8s.io/klog"
+
 	apicertificates "k8s.io/api/certificates/v1beta1"
 	certificates "k8s.io/client-go/kubernetes/typed/certificates/v1beta1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/cert"
 	"k8s.io/client-go/util/certificate/csr"
+	"k8s.io/client-go/util/keyutil"
+	"k8s.io/klog"
 )
 
 const (
@@ -99,7 +101,7 @@ func processCSR(client certificates.CertificateSigningRequestInterface, privateK
 		CommonName:   "system:node:" + hostname,
 	}
 
-	privateKey, err := cert.ParsePrivateKeyPEM(privateKeyData)
+	privateKey, err := keyutil.ParsePrivateKeyPEM(privateKeyData)
 	if err != nil {
 		return nil, fmt.Errorf("invalid private key for certificate request: %v", err)
 	}

@@ -68,3 +68,28 @@ container_pull(
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
 
 gazelle_dependencies()
+
+git_repository(
+    name = "bazel_skylib",
+    remote = "https://github.com/bazelbuild/bazel-skylib.git",
+    tag = "0.6.0",
+)
+
+git_repository(
+    name = "io_k8s_repo_infra",
+    commit = "9ddd2bf9f38fdcb24709aaa84561de19f0a75cab",
+    remote = "https://github.com/kubernetes/repo-infra.git",
+)
+
+load("//defs:repo_rules.bzl", "fetch_kube_release")
+
+fetch_kube_release(
+    name = "io_k8s_release",
+    archives = {
+        "kubernetes-server-linux-amd64.tar.gz": "fdc13919936ca9c698c96038b033ff9e14a9724871e08300386d52a397e0f432",
+        "kubernetes-manifests.tar.gz": "b1ada46f36337b378f080ff076cc20ec2eb8fd9cc5d2f444d7e6e14583ec2429",
+        # we do not currently make modifications to these release tars below
+        "kubernetes-node-linux-amd64.tar.gz": "0672c41e66af76225f3cf5cd12b3e63ff26ea42bcb617d1a94e1a3a528face5a",
+    },
+    version = "v1.14.0-beta.2",
+)

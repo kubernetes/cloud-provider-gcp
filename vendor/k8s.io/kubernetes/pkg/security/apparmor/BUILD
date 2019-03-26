@@ -15,6 +15,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/features:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/kubelet/types:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/util/file:go_default_library",
+        "//vendor/k8s.io/utils/path:go_default_library",
     ],
 )

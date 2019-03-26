@@ -8,6 +8,6 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/kubernetes/pkg/apis/core:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/util/net/sets:go_default_library",
+        "//vendor/k8s.io/utils/net:go_default_library",
     ],
 )

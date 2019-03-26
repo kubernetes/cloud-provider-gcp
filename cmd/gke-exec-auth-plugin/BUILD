@@ -10,7 +10,6 @@ go_library(
         "tpm.go",
     ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/gke-exec-auth-plugin",
-    visibility = ["//visibility:private"],
     deps = [
         "//pkg/nodeidentity:go_default_library",
         "//pkg/tpmattest:go_default_library",
@@ -31,6 +30,7 @@ go_library(
         "//vendor/k8s.io/client-go/rest:go_default_library",
         "//vendor/k8s.io/client-go/util/cert:go_default_library",
         "//vendor/k8s.io/client-go/util/certificate/csr:go_default_library",
+        "//vendor/k8s.io/client-go/util/keyutil:go_default_library",
         "//vendor/k8s.io/klog:go_default_library",
     ],
 )

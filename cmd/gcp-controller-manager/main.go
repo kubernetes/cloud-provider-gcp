@@ -26,12 +26,12 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/spf13/pflag"
+
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/app"
 	"k8s.io/kubernetes/pkg/kubectl/util/logs"
 	"k8s.io/kubernetes/pkg/version/verflag"
-
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/spf13/pflag"
 )
 
 var metricsPort = pflag.Int("metrics-port", 8089, "Port to expose Prometheus metrics on")
