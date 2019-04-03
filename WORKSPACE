@@ -77,7 +77,7 @@ git_repository(
 
 git_repository(
     name = "io_k8s_repo_infra",
-    commit = "9ddd2bf9f38fdcb24709aaa84561de19f0a75cab",
+    commit = "df02ded38f9506e5bbcbf21702034b4fef815f2f",
     remote = "https://github.com/kubernetes/repo-infra.git",
 )
 
