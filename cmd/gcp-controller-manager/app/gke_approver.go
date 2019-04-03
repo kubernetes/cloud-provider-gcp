@@ -552,13 +552,14 @@ func parsePEMBlocks(raw []byte) (map[string]*pem.Block, error) {
 	return blocks, nil
 }
 
-func clusterHasInstance(opts GCPConfig, zone string, instanceID uint64) (bool, error) {
-	// zone looks like
+func clusterHasInstance(opts GCPConfig, instanceZone string, instanceID uint64) (bool, error) {
+	// instanceZone looks like
 	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
 	// Convert it to just "us-central1-c".
-	zone = path.Base(zone)
+	instanceZone = path.Base(instanceZone)
+
 	recordMetric := csrmetrics.OutboundRPCStartRecorder("container.ProjectsZonesClustersService.Get")
-	cluster, err := container.NewProjectsZonesClustersService(opts.Container).Get(opts.ProjectID, zone, opts.ClusterName).Do()
+	cluster, err := container.NewProjectsZonesClustersService(opts.Container).Get(opts.ProjectID, opts.Location, opts.ClusterName).Do()
 	if err != nil {
 		recordMetric(csrmetrics.OutboundRPCStatusError)
 		return false, fmt.Errorf("fetching cluster info: %v", err)
@@ -566,8 +567,20 @@ func clusterHasInstance(opts GCPConfig, zone string, instanceID uint64) (bool, e
 	recordMetric(csrmetrics.OutboundRPCStatusOK)
 	for _, np := range cluster.NodePools {
 		for _, ig := range np.InstanceGroupUrls {
-			igName := path.Base(ig)
-			ok, err := groupHasInstance(opts, zone, igName, instanceID)
+			igName, igLocation, err := parseInstanceGroupURL(ig)
+			if err != nil {
+				return false, err
+			}
+			// InstanceGroups can be regional, igLocation can be either region
+			// or a zone. Match them to instanceZone by prefix to cover both.
+			if !strings.HasPrefix(instanceZone, igLocation) {
+				klog.V(2).Infof("instance group %q is in zone/region %q, node sending the CSR is in %q; skipping instance group", ig, igLocation, instanceZone)
+				continue
+			}
+
+			// Note: use igLocation here instead of instanceZone.
+			// InstanceGroups can be regional, instances are always zonal.
+			ok, err := groupHasInstance(opts, igLocation, igName, instanceID)
 			if err != nil {
 				return false, fmt.Errorf("checking that group %q contains instance %v: %v", igName, instanceID, err)
 			}
@@ -579,9 +592,9 @@ func clusterHasInstance(opts GCPConfig, zone string, instanceID uint64) (bool, e
 	return false, nil
 }
 
-func groupHasInstance(opts GCPConfig, zone, groupName string, instanceID uint64) (bool, error) {
+func groupHasInstance(opts GCPConfig, groupLocation, groupName string, instanceID uint64) (bool, error) {
 	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstanceGroupManagersService.ListManagedInstances")
-	instances, err := compute.NewInstanceGroupManagersService(opts.Compute).ListManagedInstances(opts.ProjectID, zone, groupName).Do()
+	instances, err := compute.NewInstanceGroupManagersService(opts.Compute).ListManagedInstances(opts.ProjectID, groupLocation, groupName).Do()
 	if err != nil {
 		recordMetric(csrmetrics.OutboundRPCStatusError)
 		return false, err
@@ -593,6 +606,16 @@ func groupHasInstance(opts GCPConfig, zone, groupName string, instanceID uint64)
 		}
 	}
 	return false, nil
+}
+
+func parseInstanceGroupURL(ig string) (name, location string, err error) {
+	igParts := strings.Split(ig, "/")
+	if len(igParts) < 4 {
+		return "", "", fmt.Errorf("instance group URL is invalid %q; expect a URL with zone and instance group names", ig)
+	}
+	name = igParts[len(igParts)-1]
+	location = igParts[len(igParts)-3]
+	return name, location, nil
 }
 
 func isNotFound(err error) bool {

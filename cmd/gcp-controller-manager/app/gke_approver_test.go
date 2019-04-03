@@ -32,12 +32,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/google/go-tpm/tpm2"
 	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
-
+	container "google.golang.org/api/container/v1"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
 	v1 "k8s.io/api/core/v1"
@@ -49,8 +50,14 @@ import (
 	testclient "k8s.io/client-go/testing"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
+	"k8s.io/klog"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
 )
+
+func init() {
+	// Make sure we get all useful output in stderr.
+	klog.SetOutput(os.Stderr)
+}
 
 func TestHasKubeletUsages(t *testing.T) {
 	cases := []struct {
@@ -452,6 +459,9 @@ func TestValidators(t *testing.T) {
 
 		validateFunc := func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 			ok, err := validateTPMAttestation(opts, csr, x509cr)
+			if err != nil {
+				t.Logf("validateTPMAttestation failed with %q", err)
+			}
 			return ok && err == nil
 		}
 
@@ -550,27 +560,41 @@ func TestValidators(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		client, srv := fakeGCPAPI(t, &validKey.PublicKey)
-		defer srv.Close()
+		gceClient, gceSrv := fakeGCPAPI(t, &validKey.PublicKey)
+		defer gceSrv.Close()
+		gkeClient, gkeSrv := fakeGKEAPI(t)
+		defer gkeSrv.Close()
 
 		validateFunc := func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 			ok, err := validateTPMAttestation(opts, csr, x509cr)
+			if err != nil {
+				t.Logf("validateTPMAttestation failed with %q", err)
+			}
 			return ok && err == nil
 		}
 
 		goodCase := func(b *csrBuilder, c *GCPConfig) {
-			cs, err := compute.New(client)
+			c.VerifyClusterMembership = true
+
+			cs, err := compute.New(gceClient)
 			if err != nil {
 				t.Fatalf("creating GCE API client: %v", err)
 			}
 			c.Compute = cs
-			bcs, err := betacompute.New(client)
+			bcs, err := betacompute.New(gceClient)
 			if err != nil {
 				t.Fatalf("creating GCE Beta API client: %v", err)
 			}
 			c.BetaCompute = bcs
+			ks, err := container.New(gkeClient)
+			if err != nil {
+				t.Fatalf("creating GKE API client: %v", err)
+			}
+			c.Container = ks
 
+			c.ClusterName = "c0"
 			c.ProjectID = "p0"
+			c.Location = "z0"
 			b.requestor = tpmKubeletUsername
 			b.cn = "system:node:i0"
 
@@ -584,7 +608,20 @@ func TestValidators(t *testing.T) {
 			b.extraPEM["ATTESTATION DATA"] = attestData
 			b.extraPEM["ATTESTATION SIGNATURE"] = attestSig
 		}
-		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
+		goodCases := []func(*csrBuilder, *GCPConfig){
+			goodCase,
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// Instance is in a regional InstanceGroup, different zone from
+				// cluster.
+				b.cn = "system:node:i1"
+				nodeID := nodeidentity.Identity{"r0-a", 1, "i1", 2, "p0"}
+				b.extraPEM["VM IDENTITY"], err = json.Marshal(nodeID)
+				if err != nil {
+					t.Fatalf("marshaling nodeID: %v", err)
+				}
+			},
+		}
 		testValidator(t, "good", goodCases, validateFunc, true)
 
 		badCases := []func(*csrBuilder, *GCPConfig){
@@ -647,8 +684,26 @@ func TestValidators(t *testing.T) {
 					t.Fatalf("marshaling nodeID: %v", err)
 				}
 			},
-
-			// TODO: verifyclustermembership
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// Cluster fetch fails due to cluster name.
+				c.ClusterName = "unknown"
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// Cluster fetch fails due to cluster location.
+				c.Location = "unknown"
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// VM doesn't belong to cluster NodePool.
+				c.ClusterName = "c1"
+			},
+			func(b *csrBuilder, c *GCPConfig) {
+				goodCase(b, c)
+				// Cluster contains a non-existent NodePool.
+				c.ClusterName = "c2"
+			},
 		}
 		testValidator(t, "bad", badCases, validateFunc, false)
 	})
@@ -673,12 +728,13 @@ func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, c *GCP
 		c(&b, &o)
 		t.Run(fmt.Sprintf("%s %d", desc, i), func(t *testing.T) {
 			csr := makeFancyTestCSR(b)
+			csr.Name = t.Name()
 			x509cr, err := certutil.ParseCSR(csr)
 			if err != nil {
 				t.Errorf("unexpected err: %v", err)
 			}
-			if checkFunc(o, csr, x509cr) != want {
-				t.Errorf("expected recognized to be %v", want)
+			if got := checkFunc(o, csr, x509cr); got != want {
+				t.Errorf("got %v, want %v", got, want)
 			}
 		})
 	}
@@ -752,23 +808,95 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 		switch req.URL.Path {
 		case "/compute/v1/projects/p0/zones/z0/instances/i0":
 			json.NewEncoder(rw).Encode(compute.Instance{
+				Id:                1,
 				Name:              "i0",
+				Zone:              "z0",
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
 			})
 		case "/compute/v1/projects/p0/zones/z0/instances/i1":
 			json.NewEncoder(rw).Encode(compute.Instance{
+				Id:                2,
 				Name:              "i1",
+				Zone:              "z0",
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.5"}},
 			})
 		case "/compute/v1/projects/2/zones/z0/instances/i0":
 			json.NewEncoder(rw).Encode(compute.Instance{
+				Id:                3,
 				Name:              "i0",
+				Zone:              "z0",
+				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
+			})
+		case "/compute/v1/projects/2/zones/r0-a/instances/i1":
+			json.NewEncoder(rw).Encode(compute.Instance{
+				Id:                4,
+				Name:              "i0",
+				Zone:              "r0-a",
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
 			})
 		case "/compute/beta/projects/2/zones/z0/instances/i0/getShieldedVmIdentity":
 			json.NewEncoder(rw).Encode(betacompute.ShieldedVmIdentity{
 				SigningKey: &betacompute.ShieldedVmIdentityEntry{
 					EkPub: string(ekPubPEM),
+				},
+			})
+		case "/compute/beta/projects/2/zones/r0-a/instances/i1/getShieldedVmIdentity":
+			json.NewEncoder(rw).Encode(betacompute.ShieldedVmIdentity{
+				SigningKey: &betacompute.ShieldedVmIdentityEntry{
+					EkPub: string(ekPubPEM),
+				},
+			})
+		case "/compute/v1/projects/p0/zones/z0/instanceGroupManagers/ig0/listManagedInstances":
+			json.NewEncoder(rw).Encode(compute.InstanceGroupManagersListManagedInstancesResponse{
+				ManagedInstances: []*compute.ManagedInstance{{
+					Id: 3,
+				}},
+			})
+		case "/compute/v1/projects/p0/zones/z0/instanceGroupManagers/ig1/listManagedInstances":
+			json.NewEncoder(rw).Encode(compute.InstanceGroupManagersListManagedInstancesResponse{
+				ManagedInstances: []*compute.ManagedInstance{{
+					Id: 4,
+				}},
+			})
+		case "/compute/v1/projects/p0/zones/r0/instanceGroupManagers/ig0/listManagedInstances":
+			json.NewEncoder(rw).Encode(compute.InstanceGroupManagersListManagedInstancesResponse{
+				ManagedInstances: []*compute.ManagedInstance{{
+					Id: 4,
+				}},
+			})
+		default:
+			http.Error(rw, "not found", http.StatusNotFound)
+		}
+	}))
+	cl := srv.Client()
+	cl.Transport = fakeTransport{srv.URL}
+	return cl, srv
+}
+
+func fakeGKEAPI(t *testing.T) (*http.Client, *httptest.Server) {
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		t.Logf("fakeGKEAPI request %q", req.URL.Path)
+		switch req.URL.Path {
+		case "/v1/projects/p0/zones/z0/clusters/c0":
+			json.NewEncoder(rw).Encode(container.Cluster{
+				Name: "c0",
+				NodePools: []*container.NodePool{
+					{InstanceGroupUrls: []string{"https://www.googleapis.com/compute/v1/projects/2/zones/r0/instanceGroupManagers/ig0"}},
+					{InstanceGroupUrls: []string{"https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroupManagers/ig0"}},
+				},
+			})
+		case "/v1/projects/p0/zones/z0/clusters/c1":
+			json.NewEncoder(rw).Encode(container.Cluster{
+				Name: "c1",
+				NodePools: []*container.NodePool{
+					{InstanceGroupUrls: []string{"https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroupManagers/ig1"}},
+				},
+			})
+		case "/v1/projects/p0/zones/z0/clusters/c2":
+			json.NewEncoder(rw).Encode(container.Cluster{
+				Name: "c2",
+				NodePools: []*container.NodePool{
+					{InstanceGroupUrls: []string{"https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroupManagers/unknown"}},
 				},
 			})
 		default:
