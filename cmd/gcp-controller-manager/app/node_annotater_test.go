@@ -22,6 +22,14 @@ import (
 	"testing"
 
 	compute "google.golang.org/api/compute/v1"
+	core "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes/fake"
+	v1lister "k8s.io/client-go/listers/core/v1"
+	ktesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/util/workqueue"
 )
 
 func TestParseNodeURL(t *testing.T) {
@@ -188,6 +196,99 @@ func TestExtrackKubeLabels(t *testing.T) {
 			}
 			if got, want := (err != nil), c.expectErr || c.expectNoMetadataErr; got != want {
 				t.Errorf("unexpected error value: %v", err)
+			}
+		})
+	}
+}
+
+type fakeNodeLister struct {
+	v1lister.NodeLister
+	node *core.Node
+	err  error
+}
+
+func (f fakeNodeLister) Get(name string) (*core.Node, error) { return f.node, f.err }
+
+func TestNodeAnnotatorSync(t *testing.T) {
+	node := &core.Node{
+		TypeMeta: v1.TypeMeta{
+			Kind:       "Node",
+			APIVersion: "v1",
+		},
+		ObjectMeta: v1.ObjectMeta{
+			Name: "test-node",
+		},
+	}
+	annUpdate := annotator{
+		name:     "foo",
+		annotate: func(*core.Node, *compute.Instance) bool { return true },
+	}
+	annNoUpdate := annotator{
+		name:     "bar",
+		annotate: func(*core.Node, *compute.Instance) bool { return false },
+	}
+	tests := []struct {
+		desc        string
+		node        *core.Node
+		getErr      error
+		annotators  []annotator
+		wantActions []ktesting.Action
+		wantRequeue bool
+	}{
+		{
+			desc:       "success and update",
+			node:       node,
+			annotators: []annotator{annUpdate},
+			wantActions: []ktesting.Action{
+				ktesting.NewUpdateAction(schema.GroupVersionResource{Version: "v1", Resource: "nodes"}, "", node),
+			},
+		},
+		{
+			desc:        "success and no update",
+			node:        node,
+			annotators:  []annotator{annNoUpdate},
+			wantActions: []ktesting.Action{},
+		},
+		{
+			desc:       "success and mixed annotators",
+			node:       node,
+			annotators: []annotator{annUpdate, annNoUpdate},
+			wantActions: []ktesting.Action{
+				ktesting.NewUpdateAction(schema.GroupVersionResource{Version: "v1", Resource: "nodes"}, "", node),
+			},
+		},
+		{
+			desc:        "get node error, requeue",
+			node:        node,
+			getErr:      errors.NewInternalError(fmt.Errorf("foo")),
+			wantActions: []ktesting.Action{},
+			wantRequeue: true,
+		},
+		{
+			desc:        "node not found, don't requeue",
+			node:        node,
+			getErr:      errors.NewNotFound(schema.GroupResource{Resource: "nodes"}, node.Name),
+			wantActions: []ktesting.Action{},
+			wantRequeue: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			c := fake.NewSimpleClientset(tt.node)
+			na := &nodeAnnotator{
+				c:           c,
+				ns:          fakeNodeLister{node: tt.node, err: tt.getErr},
+				getInstance: func(nodeURL string) (*compute.Instance, error) { return nil, nil },
+				annotators:  tt.annotators,
+				queue:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+			}
+			na.sync("test-node")
+
+			if !reflect.DeepEqual(tt.wantActions, c.Actions()) {
+				t.Errorf("got actions:\n%+v\nwant actions\n%+v", c.Actions(), tt.wantActions)
+			}
+			if gotRequeue := na.queue.Len() > 0; gotRequeue != tt.wantRequeue {
+				t.Errorf("node requeued: %v, want: %v", gotRequeue, tt.wantRequeue)
 			}
 		})
 	}

@@ -26,6 +26,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 
 	core "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	unversionedvalidation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -193,6 +194,10 @@ func (na *nodeAnnotator) sync(key string) {
 	node, err := na.ns.Get(key)
 	if err != nil {
 		klog.Errorf("Sync %v failed with: %v", key, err)
+		if errors.IsNotFound(err) {
+			klog.Infof("Node %v doesn't exist, dropping from the queue", key)
+			return
+		}
 		na.queue.Add(key)
 		return
 	}
