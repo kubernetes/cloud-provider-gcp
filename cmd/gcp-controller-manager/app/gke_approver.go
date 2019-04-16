@@ -558,8 +558,9 @@ func clusterHasInstance(opts GCPConfig, instanceZone string, instanceID uint64) 
 	// Convert it to just "us-central1-c".
 	instanceZone = path.Base(instanceZone)
 
-	recordMetric := csrmetrics.OutboundRPCStartRecorder("container.ProjectsZonesClustersService.Get")
-	cluster, err := container.NewProjectsZonesClustersService(opts.Container).Get(opts.ProjectID, opts.Location, opts.ClusterName).Do()
+	clusterName := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", opts.ProjectID, opts.Location, opts.ClusterName)
+	recordMetric := csrmetrics.OutboundRPCStartRecorder("container.ProjectsLocationsClustersService.Get")
+	cluster, err := container.NewProjectsLocationsClustersService(opts.Container).Get(clusterName).Do()
 	if err != nil {
 		recordMetric(csrmetrics.OutboundRPCStatusError)
 		return false, fmt.Errorf("fetching cluster info: %v", err)

@@ -111,12 +111,15 @@ type GCPConfig struct {
 	VerifyClusterMembership bool
 }
 
-func getRegionFromZone(zone string) (string, error) {
-	if strings.Count(zone, "-") != 2 {
-		return "", fmt.Errorf("invalid gcp zone %s", zone)
+func getRegionFromLocation(loc string) (string, error) {
+	switch strings.Count(loc, "-") {
+	case 1: // e.g. us-central1
+		return loc, nil
+	case 2: // e.g. us-central1-c
+		return loc[:strings.LastIndex(loc, "-")], nil
+	default:
+		return "", fmt.Errorf("invalid gcp location %q", loc)
 	}
-
-	return zone[:strings.LastIndex(zone, "-")], nil
 }
 
 func loadGCPConfig(s *GCPControllerManager) (GCPConfig, error) {
@@ -172,8 +175,8 @@ func loadGCPConfig(s *GCPControllerManager) (GCPConfig, error) {
 	if err != nil {
 		return a, err
 	}
-	// Extract region name from zone.
-	region, err := getRegionFromZone(a.Location)
+	// Extract region name from location.
+	region, err := getRegionFromLocation(a.Location)
 	if err != nil {
 		return a, err
 	}
@@ -191,7 +194,7 @@ func loadGCPConfig(s *GCPControllerManager) (GCPConfig, error) {
 	if len(a.Zones) == 0 {
 		return a, fmt.Errorf("can't find zones for region %q", region)
 	}
-	// Put master's zone first.
+	// Put master's zone first. If master is regional, this is a no-op.
 	sort.Slice(a.Zones, func(i, j int) bool { return a.Zones[i] == a.Location })
 
 	a.ClusterName, err = metadata.Get("instance/attributes/cluster-name")

@@ -22,37 +22,44 @@ import (
 	"testing"
 )
 
-func TestGetRegionFromZone(t *testing.T) {
-	var testcases = []struct {
-		zone         string
+func TestGetRegionFromLocation(t *testing.T) {
+	testCases := []struct {
+		location     string
 		expectRegion string
 		shouldError  bool
 	}{
 		{
-			zone:         "us-central1-f",
+			location:     "us-central1-f",
 			expectRegion: "us-central1",
 		},
 		{
-			zone:         "us-central1-foobar",
+			location:     "us-central1-foobar",
 			expectRegion: "us-central1",
 		},
 		{
-			zone:        "invalid-input",
+			location:     "us-central1",
+			expectRegion: "us-central1",
+		},
+		{
+			location:    "invalid input",
+			shouldError: true,
+		},
+		{
+			location:    "",
 			shouldError: true,
 		},
 	}
 
-	for _, tc := range testcases {
-		region, err := getRegionFromZone(tc.zone)
+	for _, tc := range testCases {
+		region, err := getRegionFromLocation(tc.location)
 
 		hasError := err != nil
 		if hasError != tc.shouldError {
-			t.Errorf("Zone %s: expect error %v, got error %v", tc.zone, tc.shouldError, err)
-			continue
+			t.Errorf("getRegionFromLocation(%q): expect error %v, got error %q", tc.location, tc.shouldError, err)
 		}
 
-		if err == nil && tc.expectRegion != region {
-			t.Errorf("Zone %s: expect to get region %s, got region %s", tc.zone, tc.expectRegion, region)
+		if tc.expectRegion != region {
+			t.Errorf("getRegionFromLocation(%q): expect to get region %q, got region %q", tc.location, tc.expectRegion, region)
 		}
 	}
 }

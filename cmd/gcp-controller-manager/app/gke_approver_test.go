@@ -877,7 +877,7 @@ func fakeGKEAPI(t *testing.T) (*http.Client, *httptest.Server) {
 	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		t.Logf("fakeGKEAPI request %q", req.URL.Path)
 		switch req.URL.Path {
-		case "/v1/projects/p0/zones/z0/clusters/c0":
+		case "/v1/projects/p0/locations/z0/clusters/c0":
 			json.NewEncoder(rw).Encode(container.Cluster{
 				Name: "c0",
 				NodePools: []*container.NodePool{
@@ -885,14 +885,14 @@ func fakeGKEAPI(t *testing.T) (*http.Client, *httptest.Server) {
 					{InstanceGroupUrls: []string{"https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroupManagers/ig0"}},
 				},
 			})
-		case "/v1/projects/p0/zones/z0/clusters/c1":
+		case "/v1/projects/p0/locations/z0/clusters/c1":
 			json.NewEncoder(rw).Encode(container.Cluster{
 				Name: "c1",
 				NodePools: []*container.NodePool{
 					{InstanceGroupUrls: []string{"https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroupManagers/ig1"}},
 				},
 			})
-		case "/v1/projects/p0/zones/z0/clusters/c2":
+		case "/v1/projects/p0/locations/z0/clusters/c2":
 			json.NewEncoder(rw).Encode(container.Cluster{
 				Name: "c2",
 				NodePools: []*container.NodePool{
