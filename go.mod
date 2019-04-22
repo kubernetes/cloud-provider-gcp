@@ -9,7 +9,7 @@ require (
 	github.com/Sirupsen/logrus v1.0.6 // indirect
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/coreos/bbolt v1.3.0 // indirect
-	github.com/coreos/etcd v3.3.11+incompatible // indirect
+	github.com/coreos/etcd v3.3.12+incompatible // indirect
 	github.com/coreos/go-semver v0.2.0 // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
@@ -66,13 +66,13 @@ require (
 	k8s.io/apiextensions-apiserver v0.0.0-20190312122106-cdf8f99e8934 // indirect
 	k8s.io/apimachinery v0.0.0-20190311155416-52b84f9b7247
 	k8s.io/apiserver v0.0.0-20190312120644-8bbd9f58a986
-	k8s.io/client-go v2.0.0-alpha.0.0.20190313115909-48376054912d+incompatible
+	k8s.io/client-go v11.0.0+incompatible
 	k8s.io/cloud-provider v0.0.0-20190313124351-c76aa0a348b5
 	k8s.io/component-base v0.0.0-20190311160731-923e373b2c7e
 	k8s.io/klog v0.1.0
 	k8s.io/kube-controller-manager v0.0.0-20190313124056-d2b16a081e75
 	k8s.io/kube-openapi v0.0.0-20181109181836-c59034cc13d5 // indirect
-	k8s.io/kubernetes v1.14.0-beta.2
+	k8s.io/kubernetes v1.14.1
 	k8s.io/utils v0.0.0-20190125223540-2b1ea019a370 // indirect
 	sigs.k8s.io/structured-merge-diff v0.0.0-20190302045857-e85c7b244fd2 // indirect
 	sigs.k8s.io/yaml v1.1.0 // indirect
