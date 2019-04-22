@@ -22,7 +22,7 @@ IMAGE_REPO=my-repo IMAGE_TAG=v1 bazel run //cmd/gcp-controller-manager:publish
 
 # Dependency management
 
-Dependencies are managed using Go modules (`go mod` subcommands).
+Dependencies are managed using [Go modules](https://github.com/golang/go/wiki/Modules) (`go mod` subcommands).
 
 Note that builds are done with Bazel and not the Go tool. Don't follow public
 Go module docs, instead use instructions in this readme.
@@ -32,7 +32,7 @@ Go module docs, instead use instructions in this readme.
 If you work within `GOPATH`, `go mod` will error out unless you do one of:
 
 - move repo outside of GOPATH (it should "just work")
-- set env var `GO111VENDOR=on`
+- set env var `GO111MODULE=on`
 
 ## Add a new dependency
 
