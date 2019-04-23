@@ -75,8 +75,7 @@ func main() {
 		// Lock around certificate reading and CSRs. Prevents parallel
 		// invocations creating duplicate CSRs if there is no cert yet.
 		fileLock := flock.New(filepath.Join(os.TempDir(), flockName))
-		err = fileLock.Lock()
-		if err != nil {
+		if err = fileLock.Lock(); err != nil {
 			klog.Exit(err)
 		}
 		defer fileLock.Unlock()
