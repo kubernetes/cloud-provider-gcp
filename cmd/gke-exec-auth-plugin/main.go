@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
-
 	"github.com/gofrs/flock"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,6 +23,7 @@ const (
 	modeTPM      = "tpm"
 	modeVMID     = "vmid"
 	modeAltToken = "alt-token"
+	flockName    = "gke-exec-auth-plugin.lock"
 )
 
 var (
@@ -34,8 +36,6 @@ var (
 
 	altTokenURL  = flag.String("alt-token-url", "", "URL to token endpoint.")
 	altTokenBody = flag.String("alt-token-body", "", "Body of token request.")
-
-	flockPath = flag.String("flock-path", "/tmp/gke-exec-auth-plugin.lock", "Path to filesystem lock file.")
 
 	scheme       = runtime.NewScheme()
 	codecs       = serializer.NewCodecFactory(scheme)
@@ -61,15 +61,6 @@ func main() {
 	var token string
 	var err error
 
-	// Lock the process, this prevents parallel gke-exec-auth-plugin
-	// invocations from making redundant CSR requests.
-	fileLock := flock.New(*flockPath)
-	err = fileLock.Lock()
-	if err != nil {
-		klog.Exit(err)
-	}
-	defer fileLock.Unlock()
-
 	switch *mode {
 	case modeVMID:
 		if *audience == "" {
@@ -81,6 +72,15 @@ func main() {
 		}
 		token = "vmid-" + token
 	case modeTPM:
+		// Lock around certificate reading and CSRs. Prevents parallel
+		// invocations creating duplicate CSRs if there is no cert yet.
+		fileLock := flock.New(filepath.Join(os.TempDir(), flockName))
+		err = fileLock.Lock()
+		if err != nil {
+			klog.Exit(err)
+		}
+		defer fileLock.Unlock()
+
 		key, cert, err = getKeyCert(*cacheDir, requestCertificate)
 		if err != nil {
 			klog.Exit(err)
