@@ -3,9 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
+	"github.com/gofrs/flock"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -20,6 +23,7 @@ const (
 	modeTPM      = "tpm"
 	modeVMID     = "vmid"
 	modeAltToken = "alt-token"
+	flockName    = "gke-exec-auth-plugin.lock"
 )
 
 var (
@@ -68,6 +72,14 @@ func main() {
 		}
 		token = "vmid-" + token
 	case modeTPM:
+		// Lock around certificate reading and CSRs. Prevents parallel
+		// invocations creating duplicate CSRs if there is no cert yet.
+		fileLock := flock.New(filepath.Join(os.TempDir(), flockName))
+		if err = fileLock.Lock(); err != nil {
+			klog.Exit(err)
+		}
+		defer fileLock.Unlock()
+
 		key, cert, err = getKeyCert(*cacheDir, requestCertificate)
 		if err != nil {
 			klog.Exit(err)
