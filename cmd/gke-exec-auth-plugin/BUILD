@@ -15,6 +15,7 @@ go_library(
         "//pkg/nodeidentity:go_default_library",
         "//pkg/tpmattest:go_default_library",
         "//vendor/cloud.google.com/go/compute/metadata:go_default_library",
+        "//vendor/github.com/gofrs/flock:go_default_library",
         "//vendor/github.com/google/go-tpm/tpm2:go_default_library",
         "//vendor/github.com/google/go-tpm/tpmutil:go_default_library",
         "//vendor/golang.org/x/oauth2:go_default_library",

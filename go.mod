@@ -18,6 +18,7 @@ require (
 	github.com/emicklei/go-restful v2.9.0+incompatible // indirect
 	github.com/evanphx/json-patch v4.1.1-0.20190203023257-5858425f7550+incompatible // indirect
 	github.com/go-openapi/spec v0.18.0 // indirect
+	github.com/gofrs/flock v0.7.1
 	github.com/gogo/protobuf v1.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20181024230925-c65c006176ff // indirect
 	github.com/google/go-tpm v0.1.0

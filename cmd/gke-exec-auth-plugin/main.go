@@ -7,6 +7,8 @@ import (
 
 	"cloud.google.com/go/compute/metadata"
 
+	"github.com/gofrs/flock"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -33,6 +35,9 @@ var (
 	altTokenURL  = flag.String("alt-token-url", "", "URL to token endpoint.")
 	altTokenBody = flag.String("alt-token-body", "", "Body of token request.")
 
+	// File lock flags
+	flockPath = flag.String("flock-path", "/tmp/gke-exec-auth-plugin.lock", "Path to filesystem lock file.")
+
 	scheme       = runtime.NewScheme()
 	codecs       = serializer.NewCodecFactory(scheme)
 	groupVersion = schema.GroupVersion{
@@ -56,6 +61,15 @@ func main() {
 	var key, cert []byte
 	var token string
 	var err error
+
+	// Lock the process, this prevents parallel gke-exec-auth-plugin
+	// invocations from making redundant CSR requests.
+	fileLock := flock.New(*flockPath)
+	err = fileLock.Lock()
+	if err != nil {
+		klog.Exit(err)
+	}
+	defer fileLock.Unlock()
 
 	switch *mode {
 	case modeVMID:
