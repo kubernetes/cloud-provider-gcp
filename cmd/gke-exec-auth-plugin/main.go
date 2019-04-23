@@ -22,7 +22,7 @@ const (
 	modeTPM      = "tpm"
 	modeVMID     = "vmid"
 	modeAltToken = "alt-token"
-	flockName    = "gke-exec-auth-plugin.lock"
+	flockName    = "kubelet-client.lock"
 )
 
 var (
