@@ -35,7 +35,6 @@ var (
 	altTokenURL  = flag.String("alt-token-url", "", "URL to token endpoint.")
 	altTokenBody = flag.String("alt-token-body", "", "Body of token request.")
 
-	// File lock flags
 	flockPath = flag.String("flock-path", "/tmp/gke-exec-auth-plugin.lock", "Path to filesystem lock file.")
 
 	scheme       = runtime.NewScheme()
