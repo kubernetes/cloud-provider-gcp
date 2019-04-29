@@ -27,6 +27,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/app/csrmetrics"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
@@ -57,6 +58,10 @@ func newGKESigner(kubeConfigFile string, recorder record.EventRecorder, client c
 	if err != nil {
 		return nil, err
 	}
+	// Override default QPS limits to increase CSR throughput.
+	// This is useful for very large clusters and generally speeds up startup
+	// of Nodes.
+	webhook.RestClient.Throttle = flowcontrol.NewTokenBucketRateLimiter(100, 200)
 
 	return &gkeSigner{
 		webhook:        webhook,

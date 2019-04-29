@@ -73,8 +73,8 @@ func Run(s *GCPControllerManager) error {
 	}
 
 	// bump the QPS limits per controller up from defaults of 5 qps / 10 burst
-	kubeconfig.QPS = 20
-	kubeconfig.Burst = 40
+	kubeconfig.QPS = 100
+	kubeconfig.Burst = 200
 
 	clientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: kubeconfig}
 
