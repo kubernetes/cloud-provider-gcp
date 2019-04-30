@@ -49,6 +49,7 @@ type GCPControllerManager struct {
 	GCEConfigPath                      string
 	Controllers                        []string
 	CSRApproverVerifyClusterMembership bool
+	CSRApproverAllowLegacyKubelet      bool
 
 	LeaderElectionConfig componentbaseconfig.LeaderElectionConfiguration
 }
@@ -60,6 +61,7 @@ func NewGCPControllerManager() *GCPControllerManager {
 		GCEConfigPath:                      "/etc/gce.conf",
 		Controllers:                        []string{"*"},
 		CSRApproverVerifyClusterMembership: true,
+		CSRApproverAllowLegacyKubelet:      true,
 		LeaderElectionConfig: componentbaseconfig.LeaderElectionConfiguration{
 			LeaderElect:   true,
 			LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
@@ -79,6 +81,7 @@ func (s *GCPControllerManager) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.GCEConfigPath, "gce-config", s.GCEConfigPath, "Path to gce.conf.")
 	fs.StringSliceVar(&s.Controllers, "controllers", s.Controllers, "Controllers to enable. Possible controllers are: "+strings.Join(loopNames(), ",")+".")
 	fs.BoolVar(&s.CSRApproverVerifyClusterMembership, "csr-validate-cluster-membership", s.CSRApproverVerifyClusterMembership, "Validate that VMs requesting CSRs belong to current GKE cluster.")
+	fs.BoolVar(&s.CSRApproverAllowLegacyKubelet, "csr-allow-legacy-kubelet", s.CSRApproverAllowLegacyKubelet, "Allow legacy kubelet bootstrap flow.")
 	leaderelectionconfig.BindFlags(&s.LeaderElectionConfig, fs)
 }
 
