@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"cloud.google.com/go/compute/metadata"
 	"github.com/gofrs/flock"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,15 +19,12 @@ import (
 
 const (
 	modeTPM      = "tpm"
-	modeVMID     = "vmid"
 	modeAltToken = "alt-token"
 	flockName    = "kubelet-client.lock"
 )
 
 var (
-	mode = flag.String("mode", modeTPM, "Plugin mode, one of ['tpm', 'vmid', 'alt-token'].")
-	// VMID token flags.
-	audience = flag.String("audience", "", "Audience field of for the VM ID token. Must be a URI.")
+	mode = flag.String("mode", modeTPM, "Plugin mode, one of ['tpm', 'alt-token'].")
 	// TPM flags.
 	cacheDir = flag.String("cache-dir", "/var/lib/kubelet/pki", "Path to directory to store key and certificate.")
 	tpmPath  = flag.String("tpm-path", "/dev/tpm0", "path to a TPM character device or socket.")
@@ -61,15 +57,6 @@ func main() {
 	var err error
 
 	switch *mode {
-	case modeVMID:
-		if *audience == "" {
-			klog.Exit("--audience must be set")
-		}
-		token, err = metadata.Get(fmt.Sprintf("instance/service-accounts/default/identity?audience=%s&format=full", *audience))
-		if err != nil {
-			klog.Exit(err)
-		}
-		token = "vmid-" + token
 	case modeTPM:
 		// Lock around certificate reading and CSRs. Prevents parallel
 		// invocations creating duplicate CSRs if there is no cert yet.
@@ -96,7 +83,7 @@ func main() {
 		}
 		token = tok.AccessToken
 	default:
-		klog.Exitf("unrecognized --mode value %q, want one of [%q, %q]", *mode, modeVMID, modeTPM)
+		klog.Exitf("unrecognized --mode value %q, want one of [%q, %q]", *mode, modeAltToken, modeTPM)
 	}
 
 	if err := writeResponse(token, key, cert); err != nil {
