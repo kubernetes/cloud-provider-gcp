@@ -47,7 +47,7 @@ func loops() map[string]func(*controllerContext) error {
 				ctx.sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
 				approver.handle,
 			)
-			go approveController.Run(5, ctx.done)
+			go approveController.Run(20, ctx.done)
 			return nil
 		},
 		"certificate-signer": func(ctx *controllerContext) error {
@@ -61,7 +61,7 @@ func loops() map[string]func(*controllerContext) error {
 				signer.handle,
 			)
 
-			go signController.Run(5, ctx.done)
+			go signController.Run(20, ctx.done)
 			return nil
 		},
 		"node-annotator": func(ctx *controllerContext) error {

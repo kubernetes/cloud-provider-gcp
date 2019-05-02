@@ -22,18 +22,14 @@ require (
 	github.com/gogo/protobuf v1.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20181024230925-c65c006176ff // indirect
 	github.com/google/go-tpm v0.1.0
-	github.com/google/gofuzz v0.0.0-20170612174753-24818f796faf // indirect
 	github.com/googleapis/gnostic v0.2.0 // indirect
 	github.com/gorilla/websocket v1.4.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
-	github.com/hashicorp/golang-lru v0.5.0 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/json-iterator/go v1.1.5 // indirect
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d // indirect
 	github.com/onsi/ginkgo v1.7.0 // indirect
 	github.com/onsi/gomega v1.4.3 // indirect
@@ -53,9 +49,7 @@ require (
 	go.uber.org/multierr v1.1.0 // indirect
 	go.uber.org/zap v1.9.1 // indirect
 	golang.org/x/crypto v0.0.0-20190123085648-057139ce5d2b // indirect
-	golang.org/x/net v0.0.0-20190125091013-d26f9f9a57f3 // indirect
-	golang.org/x/oauth2 v0.0.0-20190115181402-5dab4167f31c
-	golang.org/x/sys v0.0.0-20190124100055-b90733256f2e // indirect
+	golang.org/x/oauth2 v0.0.0-20190402181905-9f3314589c9a
 	google.golang.org/api v0.1.0
 	gopkg.in/airbrake/gobrake.v2 v2.0.9 // indirect
 	gopkg.in/gcfg.v1 v1.2.3
@@ -63,18 +57,15 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.2.2 // indirect
 	gopkg.in/warnings.v0 v0.1.2
-	k8s.io/api v0.0.0-20190311155627-aed3e58a5946
+	k8s.io/api v0.0.0-20190425012535-181e1f9c52c1
 	k8s.io/apiextensions-apiserver v0.0.0-20190312122106-cdf8f99e8934 // indirect
-	k8s.io/apimachinery v0.0.0-20190311155416-52b84f9b7247
+	k8s.io/apimachinery v0.0.0-20190425132440-17f84483f500
 	k8s.io/apiserver v0.0.0-20190312120644-8bbd9f58a986
-	k8s.io/client-go v11.0.0+incompatible
+	k8s.io/client-go v0.0.0-20190425172711-65184652c889
 	k8s.io/cloud-provider v0.0.0-20190313124351-c76aa0a348b5
 	k8s.io/component-base v0.0.0-20190311160731-923e373b2c7e
-	k8s.io/klog v0.1.0
+	k8s.io/klog v0.3.0
 	k8s.io/kube-controller-manager v0.0.0-20190313124056-d2b16a081e75
-	k8s.io/kube-openapi v0.0.0-20181109181836-c59034cc13d5 // indirect
 	k8s.io/kubernetes v1.14.1
-	k8s.io/utils v0.0.0-20190125223540-2b1ea019a370 // indirect
 	sigs.k8s.io/structured-merge-diff v0.0.0-20190302045857-e85c7b244fd2 // indirect
-	sigs.k8s.io/yaml v1.1.0 // indirect
 )
