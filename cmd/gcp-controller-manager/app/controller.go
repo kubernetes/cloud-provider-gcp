@@ -103,9 +103,10 @@ func Run(s *GCPControllerManager) error {
 				recorder: eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
 					Component: name,
 				}),
-				gcpCfg:                      gcpCfg,
-				clusterSigningGKEKubeconfig: s.ClusterSigningGKEKubeconfig,
-				done:                        ctx.Done(),
+				gcpCfg:                             gcpCfg,
+				clusterSigningGKEKubeconfig:        s.ClusterSigningGKEKubeconfig,
+				csrApproverVerifyClusterMembership: s.CSRApproverVerifyClusterMembership,
+				done:                               ctx.Done(),
 			}); err != nil {
 				klog.Fatalf("Failed to start %q: %v", name, err)
 			}

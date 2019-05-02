@@ -63,7 +63,39 @@ type gkeApprover struct {
 	validators []csrValidator
 }
 
-func newGKEApprover(opts GCPConfig, client clientset.Interface) *gkeApprover {
+func newGKEApprover(opts GCPConfig, client clientset.Interface, allowLegacy bool) *gkeApprover {
+	// More specific validators go first.
+	validators := []csrValidator{
+		{
+			name:          "kubelet client certificate with TPM attestation and SubjectAccessReview",
+			authFlowLabel: "kubelet_client_tpm",
+			recognize:     isNodeClientCertWithAttestation,
+			validate:      validateTPMAttestation,
+			permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
+			approveMsg:    "Auto approving kubelet client certificate with TPM attestation after SubjectAccessReview.",
+
+			preApproveHook: ensureNodeMatchesMetadataOrDelete,
+		},
+		{
+			name:          "kubelet server certificate SubjectAccessReview",
+			authFlowLabel: "kubelet_server_self",
+			recognize:     isNodeServerCert,
+			validate:      validateNodeServerCert,
+			permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "selfnodeclient"},
+			approveMsg:    "Auto approving kubelet server certificate after SubjectAccessReview.",
+		},
+	}
+	if allowLegacy {
+		validators = append(validators, csrValidator{
+			name:          "kubelet client certificate SubjectAccessReview",
+			authFlowLabel: "kubelet_client_legacy",
+			recognize:     isLegacyNodeClientCert,
+			permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
+			approveMsg:    "Auto approving kubelet client certificate after SubjectAccessReview.",
+
+			preApproveHook: ensureNodeMatchesMetadataOrDelete,
+		})
+	}
 	return &gkeApprover{client: client, validators: validators, opts: opts}
 }
 
@@ -185,37 +217,6 @@ type csrValidator struct {
 	// If preApproveHook returns an error, the CSR will be retried.
 	// If preApproveHook returns no error, the CSR will be approved.
 	preApproveHook preApproveHookFunc
-}
-
-// More specific validators go first.
-var validators = []csrValidator{
-	{
-		name:          "kubelet client certificate with TPM attestation and SubjectAccessReview",
-		authFlowLabel: "kubelet_client_tpm",
-		recognize:     isNodeClientCertWithAttestation,
-		validate:      validateTPMAttestation,
-		permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
-		approveMsg:    "Auto approving kubelet client certificate with TPM attestation after SubjectAccessReview.",
-
-		preApproveHook: ensureNodeMatchesMetadataOrDelete,
-	},
-	{
-		name:          "kubelet client certificate SubjectAccessReview",
-		authFlowLabel: "kubelet_client_legacy",
-		recognize:     isLegacyNodeClientCert,
-		permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
-		approveMsg:    "Auto approving kubelet client certificate after SubjectAccessReview.",
-
-		preApproveHook: ensureNodeMatchesMetadataOrDelete,
-	},
-	{
-		name:          "kubelet server certificate SubjectAccessReview",
-		authFlowLabel: "kubelet_server_self",
-		recognize:     isNodeServerCert,
-		validate:      validateNodeServerCert,
-		permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "selfnodeclient"},
-		approveMsg:    "Auto approving kubelet server certificate after SubjectAccessReview.",
-	},
 }
 
 func (a *gkeApprover) authorizeSAR(csr *capi.CertificateSigningRequest, rattrs authorization.ResourceAttributes) (bool, error) {

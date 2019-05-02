@@ -26,12 +26,13 @@ import (
 )
 
 type controllerContext struct {
-	client                      clientset.Interface
-	sharedInformers             informers.SharedInformerFactory
-	recorder                    record.EventRecorder
-	gcpCfg                      GCPConfig
-	clusterSigningGKEKubeconfig string
-	done                        <-chan struct{}
+	client                             clientset.Interface
+	sharedInformers                    informers.SharedInformerFactory
+	recorder                           record.EventRecorder
+	gcpCfg                             GCPConfig
+	clusterSigningGKEKubeconfig        string
+	csrApproverVerifyClusterMembership bool
+	done                               <-chan struct{}
 }
 
 // loops returns all the control loops that the GCPControllerManager can start.
@@ -40,7 +41,7 @@ type controllerContext struct {
 func loops() map[string]func(*controllerContext) error {
 	return map[string]func(*controllerContext) error{
 		"certificate-approver": func(ctx *controllerContext) error {
-			approver := newGKEApprover(ctx.gcpCfg, ctx.client)
+			approver := newGKEApprover(ctx.gcpCfg, ctx.client, ctx.csrApproverVerifyClusterMembership)
 			approveController := certificates.NewCertificateController(
 				ctx.client,
 				ctx.sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
