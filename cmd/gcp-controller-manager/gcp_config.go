@@ -24,10 +24,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"cloud.google.com/go/compute/metadata"
-	"github.com/spf13/pflag"
 	"golang.org/x/oauth2"
 	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
@@ -35,70 +33,8 @@ import (
 	gcfg "gopkg.in/gcfg.v1"
 	warnings "gopkg.in/warnings.v0"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	rl "k8s.io/client-go/tools/leaderelection/resourcelock"
-	componentbaseconfig "k8s.io/component-base/config"
-	"k8s.io/kubernetes/pkg/client/leaderelectionconfig"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
 )
-
-// controllerManager is the main context object for the package.
-type controllerManager struct {
-	Kubeconfig                         string
-	ClusterSigningGKEKubeconfig        string
-	GCEConfigPath                      string
-	Controllers                        []string
-	CSRApproverVerifyClusterMembership bool
-	CSRApproverAllowLegacyKubelet      bool
-
-	LeaderElectionConfig componentbaseconfig.LeaderElectionConfiguration
-}
-
-// newControllerManager creates a new instance of a controllerManager with
-// default parameters.
-func newControllerManager() *controllerManager {
-	return &controllerManager{
-		GCEConfigPath:                      "/etc/gce.conf",
-		Controllers:                        []string{"*"},
-		CSRApproverVerifyClusterMembership: true,
-		CSRApproverAllowLegacyKubelet:      true,
-		LeaderElectionConfig: componentbaseconfig.LeaderElectionConfiguration{
-			LeaderElect:   true,
-			LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
-			RenewDeadline: metav1.Duration{Duration: 10 * time.Second},
-			RetryPeriod:   metav1.Duration{Duration: 2 * time.Second},
-			ResourceLock:  rl.EndpointsResourceLock,
-		},
-	}
-}
-
-// AddFlags adds flags for a specific controllerManager to the specified
-// FlagSet.
-func (s *controllerManager) addFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
-	fs.StringVar(&s.ClusterSigningGKEKubeconfig, "cluster-signing-gke-kubeconfig", s.ClusterSigningGKEKubeconfig, "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")
-	fs.StringVar(&s.GCEConfigPath, "gce-config", s.GCEConfigPath, "Path to gce.conf.")
-	fs.StringSliceVar(&s.Controllers, "controllers", s.Controllers, "Controllers to enable. Possible controllers are: "+strings.Join(loopNames(), ",")+".")
-	fs.BoolVar(&s.CSRApproverVerifyClusterMembership, "csr-validate-cluster-membership", s.CSRApproverVerifyClusterMembership, "Validate that VMs requesting CSRs belong to current GKE cluster.")
-	fs.BoolVar(&s.CSRApproverAllowLegacyKubelet, "csr-allow-legacy-kubelet", s.CSRApproverAllowLegacyKubelet, "Allow legacy kubelet bootstrap flow.")
-	leaderelectionconfig.BindFlags(&s.LeaderElectionConfig, fs)
-}
-
-func (s *controllerManager) isEnabled(name string) bool {
-	var star bool
-	for _, controller := range s.Controllers {
-		if controller == name {
-			return true
-		}
-		if controller == "-"+name {
-			return false
-		}
-		if controller == "*" {
-			star = true
-		}
-	}
-	return star
-}
 
 // GCPConfig groups GCP-specific configuration for all controllers.
 type GCPConfig struct {

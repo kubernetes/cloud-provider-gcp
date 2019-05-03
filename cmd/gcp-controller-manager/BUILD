@@ -20,13 +20,12 @@ go_library(
     name = "go_default_library",
     srcs = [
         "ca_cache.go",
-        "controller.go",
+        "gcp_config.go",
         "gke_approver.go",
         "gke_signer.go",
         "loops.go",
         "main.go",
         "node_annotater.go",
-        "options.go",
     ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager",
     visibility = [
@@ -90,10 +89,10 @@ go_test(
     name = "go_default_test",
     srcs = [
         "ca_cache_test.go",
+        "gcp_config_test.go",
         "gke_approver_test.go",
         "gke_signer_test.go",
         "node_annotater_test.go",
-        "options_test.go",
     ],
     embed = [":go_default_library"],
     deps = [
