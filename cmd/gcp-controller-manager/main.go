@@ -36,8 +36,8 @@ import (
 var metricsPort = pflag.Int("metrics-port", 8089, "Port to expose Prometheus metrics on")
 
 func main() {
-	s := NewGCPControllerManager()
-	s.AddFlags(pflag.CommandLine)
+	s := newControllerManager()
+	s.addFlags(pflag.CommandLine)
 
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
@@ -51,7 +51,7 @@ func main() {
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *metricsPort), nil))
 	}()
 
-	if err := Run(s); err != nil {
+	if err := run(s); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}

@@ -22,8 +22,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
@@ -45,19 +43,8 @@ const (
 	leaderElectionResourceLockName      = "gcp-controller-manager"
 )
 
-// NewGCPControllerManagerCommand creates a new *cobra.Command with default parameters.
-func NewGCPControllerManagerCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use: "gcp-controller-manager",
-		Long: `The Kubernetes GCP controller manager is a daemon that
-houses GCP specific control loops.`,
-	}
-
-	return cmd
-}
-
-// Run runs the GCPControllerManager. This should never exit.
-func Run(s *GCPControllerManager) error {
+// run runs the controllerManager. This should never exit.
+func run(s *controllerManager) error {
 	ctx := context.Background()
 
 	kubeconfig, err := clientcmd.BuildConfigFromFlags("", s.Kubeconfig)

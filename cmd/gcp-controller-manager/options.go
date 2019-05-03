@@ -42,8 +42,8 @@ import (
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
 )
 
-// GCPControllerManager is the main context object for the package.
-type GCPControllerManager struct {
+// controllerManager is the main context object for the package.
+type controllerManager struct {
 	Kubeconfig                         string
 	ClusterSigningGKEKubeconfig        string
 	GCEConfigPath                      string
@@ -54,10 +54,10 @@ type GCPControllerManager struct {
 	LeaderElectionConfig componentbaseconfig.LeaderElectionConfiguration
 }
 
-// NewGCPControllerManager creates a new instance of a
-// GKECertificatesController with default parameters.
-func NewGCPControllerManager() *GCPControllerManager {
-	s := &GCPControllerManager{
+// newControllerManager creates a new instance of a controllerManager with
+// default parameters.
+func newControllerManager() *controllerManager {
+	return &controllerManager{
 		GCEConfigPath:                      "/etc/gce.conf",
 		Controllers:                        []string{"*"},
 		CSRApproverVerifyClusterMembership: true,
@@ -70,12 +70,11 @@ func NewGCPControllerManager() *GCPControllerManager {
 			ResourceLock:  rl.EndpointsResourceLock,
 		},
 	}
-	return s
 }
 
-// AddFlags adds flags for a specific GKECertificatesController to the
-// specified FlagSet.
-func (s *GCPControllerManager) AddFlags(fs *pflag.FlagSet) {
+// AddFlags adds flags for a specific controllerManager to the specified
+// FlagSet.
+func (s *controllerManager) addFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
 	fs.StringVar(&s.ClusterSigningGKEKubeconfig, "cluster-signing-gke-kubeconfig", s.ClusterSigningGKEKubeconfig, "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")
 	fs.StringVar(&s.GCEConfigPath, "gce-config", s.GCEConfigPath, "Path to gce.conf.")
@@ -85,7 +84,7 @@ func (s *GCPControllerManager) AddFlags(fs *pflag.FlagSet) {
 	leaderelectionconfig.BindFlags(&s.LeaderElectionConfig, fs)
 }
 
-func (s *GCPControllerManager) isEnabled(name string) bool {
+func (s *controllerManager) isEnabled(name string) bool {
 	var star bool
 	for _, controller := range s.Controllers {
 		if controller == name {
@@ -125,7 +124,7 @@ func getRegionFromLocation(loc string) (string, error) {
 	}
 }
 
-func loadGCPConfig(s *GCPControllerManager) (GCPConfig, error) {
+func loadGCPConfig(s *controllerManager) (GCPConfig, error) {
 	a := GCPConfig{VerifyClusterMembership: s.CSRApproverVerifyClusterMembership}
 
 	// Load gce.conf.
