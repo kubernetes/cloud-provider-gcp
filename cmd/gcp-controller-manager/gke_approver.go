@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package app
+package main
 
 import (
 	"bytes"
@@ -40,7 +40,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/app/csrmetrics"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/csrmetrics"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
 	"k8s.io/klog"

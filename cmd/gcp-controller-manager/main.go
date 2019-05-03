@@ -29,7 +29,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
 
-	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/app"
 	"k8s.io/kubernetes/pkg/kubectl/util/logs"
 	"k8s.io/kubernetes/pkg/version/verflag"
 )
@@ -37,7 +36,7 @@ import (
 var metricsPort = pflag.Int("metrics-port", 8089, "Port to expose Prometheus metrics on")
 
 func main() {
-	s := app.NewGCPControllerManager()
+	s := NewGCPControllerManager()
 	s.AddFlags(pflag.CommandLine)
 
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
@@ -52,7 +51,7 @@ func main() {
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *metricsPort), nil))
 	}()
 
-	if err := app.Run(s); err != nil {
+	if err := Run(s); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}

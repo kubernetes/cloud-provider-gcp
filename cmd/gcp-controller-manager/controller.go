@@ -14,9 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package app implements a server that runs a stand-alone version of the
-// GCP controller manager.
-package app
+package main
 
 import (
 	"context"

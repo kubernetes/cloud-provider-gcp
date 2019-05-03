@@ -16,7 +16,7 @@ limitations under the License.
 
 // Package app implements a server that runs a stand-alone version of the
 // certificates controller.
-package app
+package main
 
 import (
 	"context"
