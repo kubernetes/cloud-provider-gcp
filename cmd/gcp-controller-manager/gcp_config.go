@@ -36,8 +36,8 @@ import (
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
 )
 
-// GCPConfig groups GCP-specific configuration for all controllers.
-type GCPConfig struct {
+// gcpConfig groups GCP-specific configuration for all controllers.
+type gcpConfig struct {
 	ClusterName             string
 	ProjectID               string
 	Location                string
@@ -60,8 +60,8 @@ func getRegionFromLocation(loc string) (string, error) {
 	}
 }
 
-func loadGCPConfig(s *controllerManager) (GCPConfig, error) {
-	a := GCPConfig{VerifyClusterMembership: s.csrApproverVerifyClusterMembership}
+func loadGCPConfig(s *controllerManager) (gcpConfig, error) {
+	a := gcpConfig{VerifyClusterMembership: s.csrApproverVerifyClusterMembership}
 
 	// Load gce.conf.
 	gceConfig := struct {

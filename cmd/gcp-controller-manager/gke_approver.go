@@ -59,11 +59,11 @@ const (
 // CSR attestation data.
 type gkeApprover struct {
 	client     clientset.Interface
-	opts       GCPConfig
+	opts       gcpConfig
 	validators []csrValidator
 }
 
-func newGKEApprover(opts GCPConfig, client clientset.Interface, allowLegacy bool) *gkeApprover {
+func newGKEApprover(opts gcpConfig, client clientset.Interface, allowLegacy bool) *gkeApprover {
 	// More specific validators go first.
 	validators := []csrValidator{
 		{
@@ -188,9 +188,9 @@ func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bo
 	return nil
 }
 
-type recognizeFunc func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
-type validateFunc func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error)
-type preApproveHookFunc func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest, metricsLabel string, client clientset.Interface) error
+type recognizeFunc func(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
+type validateFunc func(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error)
+type preApproveHookFunc func(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest, metricsLabel string, client clientset.Interface) error
 
 type csrValidator struct {
 	name          string
@@ -273,7 +273,7 @@ var (
 	}
 )
 
-func isNodeCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isNodeCert(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !reflect.DeepEqual([]string{"system:nodes"}, x509cr.Subject.Organization) {
 		return false
 	}
@@ -283,7 +283,7 @@ func isNodeCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x50
 	return strings.HasPrefix(x509cr.Subject.CommonName, "system:node:")
 }
 
-func isNodeClientCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isNodeClientCert(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeCert(opts, csr, x509cr) {
 		return false
 	}
@@ -293,14 +293,14 @@ func isNodeClientCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509c
 	return hasExactUsages(csr, kubeletClientUsages)
 }
 
-func isLegacyNodeClientCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isLegacyNodeClientCert(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeClientCert(opts, csr, x509cr) {
 		return false
 	}
 	return csr.Spec.Username == legacyKubeletUsername
 }
 
-func isNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isNodeServerCert(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeCert(opts, csr, x509cr) {
 		return false
 	}
@@ -313,7 +313,7 @@ func isNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509c
 // Only check that IPs in SAN match an existing VM in the project.
 // Username was already checked against CN, so this CSR is coming from
 // authenticated kubelet.
-func validateNodeServerCert(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
+func validateNodeServerCert(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 	switch {
 	case len(x509cr.IPAddresses) == 0:
 		klog.Infof("deny CSR %q: no SAN IPs", csr.Name)
@@ -361,7 +361,7 @@ var tpmAttestationBlocks = []string{
 	"ATTESTATION SIGNATURE",
 }
 
-func isNodeClientCertWithAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isNodeClientCertWithAttestation(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeClientCert(opts, csr, x509cr) {
 		return false
 	}
@@ -381,7 +381,7 @@ func isNodeClientCertWithAttestation(opts GCPConfig, csr *capi.CertificateSignin
 	return true
 }
 
-func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
+func validateTPMAttestation(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 	blocks, err := parsePEMBlocks(csr.Spec.Request)
 	if err != nil {
 		klog.Infof("deny CSR %q: parsing csr.Spec.Request: %v", csr.Name, err)
@@ -464,7 +464,7 @@ func validateTPMAttestation(opts GCPConfig, csr *capi.CertificateSigningRequest,
 	return true, nil
 }
 
-func ekPubAndIDFromCert(opts GCPConfig, blocks map[string]*pem.Block) (*rsa.PublicKey, *nodeidentity.Identity, error) {
+func ekPubAndIDFromCert(opts gcpConfig, blocks map[string]*pem.Block) (*rsa.PublicKey, *nodeidentity.Identity, error) {
 	// When we switch away from ekPubAndIDFromAPI, remove this. Just a
 	// safe-guard against accidental execution.
 	panic("ekPubAndIDFromCert should not be reachable")
@@ -490,7 +490,7 @@ func ekPubAndIDFromCert(opts GCPConfig, blocks map[string]*pem.Block) (*rsa.Publ
 	return aikPub, &nodeID, nil
 }
 
-func ekPubAndIDFromAPI(opts GCPConfig, blocks map[string]*pem.Block) (*rsa.PublicKey, *nodeidentity.Identity, error) {
+func ekPubAndIDFromAPI(opts gcpConfig, blocks map[string]*pem.Block) (*rsa.PublicKey, *nodeidentity.Identity, error) {
 	nodeIDRaw := blocks["VM IDENTITY"].Bytes
 	nodeID := new(nodeidentity.Identity)
 	if err := json.Unmarshal(nodeIDRaw, nodeID); err != nil {
@@ -553,7 +553,7 @@ func parsePEMBlocks(raw []byte) (map[string]*pem.Block, error) {
 	return blocks, nil
 }
 
-func clusterHasInstance(opts GCPConfig, instanceZone string, instanceID uint64) (bool, error) {
+func clusterHasInstance(opts gcpConfig, instanceZone string, instanceID uint64) (bool, error) {
 	// instanceZone looks like
 	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
 	// Convert it to just "us-central1-c".
@@ -594,7 +594,7 @@ func clusterHasInstance(opts GCPConfig, instanceZone string, instanceID uint64) 
 	return false, nil
 }
 
-func groupHasInstance(opts GCPConfig, groupLocation, groupName string, instanceID uint64) (bool, error) {
+func groupHasInstance(opts gcpConfig, groupLocation, groupName string, instanceID uint64) (bool, error) {
 	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstanceGroupManagersService.ListManagedInstances")
 	instances, err := compute.NewInstanceGroupManagersService(opts.Compute).ListManagedInstances(opts.ProjectID, groupLocation, groupName).Do()
 	if err != nil {
@@ -625,7 +625,7 @@ func isNotFound(err error) bool {
 	return ok && gerr.Code == http.StatusNotFound
 }
 
-func ensureNodeMatchesMetadataOrDelete(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest, metricsLabel string, client clientset.Interface) error {
+func ensureNodeMatchesMetadataOrDelete(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest, metricsLabel string, client clientset.Interface) error {
 	// TODO: short-circuit
 	recordMetric := csrmetrics.ApprovalStartRecorder(metricsLabel)
 	if !strings.HasPrefix(x509cr.Subject.CommonName, "system:node:") {
@@ -674,7 +674,7 @@ func ensureNodeMatchesMetadataOrDelete(opts GCPConfig, csr *capi.CertificateSign
 
 var errInstanceNotFound = errors.New("instance not found")
 
-func shouldDeleteNode(opts GCPConfig, node *v1.Node, getInstance func(GCPConfig, string) (*compute.Instance, error)) (bool, error) {
+func shouldDeleteNode(opts gcpConfig, node *v1.Node, getInstance func(gcpConfig, string) (*compute.Instance, error)) (bool, error) {
 	// Newly created node might not have pod CIDR allocated yet.
 	if node.Spec.PodCIDR == "" {
 		klog.V(2).Infof("Node %q has empty podCIDR.", node.Name)
@@ -708,7 +708,7 @@ func shouldDeleteNode(opts GCPConfig, node *v1.Node, getInstance func(GCPConfig,
 	return false, nil
 }
 
-func getInstanceByName(opts GCPConfig, instanceName string) (*compute.Instance, error) {
+func getInstanceByName(opts gcpConfig, instanceName string) (*compute.Instance, error) {
 	srv := compute.NewInstancesService(opts.Compute)
 	for _, z := range opts.Zones {
 		recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.Get")

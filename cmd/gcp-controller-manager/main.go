@@ -85,13 +85,25 @@ func main() {
 	defer logs.FlushLogs()
 
 	s := &controllerManager{
-		kubeconfig:                         *kubeconfig,
 		clusterSigningGKEKubeconfig:        *clusterSigningGKEKubeconfig,
 		gceConfigPath:                      *gceConfigPath,
 		controllers:                        *controllers,
 		csrApproverVerifyClusterMembership: *csrApproverVerifyClusterMembership,
 		csrApproverAllowLegacyKubelet:      *csrApproverAllowLegacyKubelet,
 		leaderElectionConfig:               *leConfig,
+	}
+	var err error
+	s.kubeconfig, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		klog.Exitf("failed loading kubeconfig: %v", err)
+	}
+	// bump the QPS limits per controller up from defaults of 5 qps / 10 burst
+	s.kubeconfig.QPS = 100
+	s.kubeconfig.Burst = 200
+
+	s.gcpConfig, err = loadGCPConfig(s)
+	if err != nil {
+		klog.Exitf("failed loading GCP config: %v", err)
 	}
 
 	go func() {
@@ -107,13 +119,17 @@ func main() {
 
 // controllerManager is the main context object for the package.
 type controllerManager struct {
-	kubeconfig                         string
+	// Fields initialized from flags.
 	clusterSigningGKEKubeconfig        string
 	gceConfigPath                      string
 	controllers                        []string
 	csrApproverVerifyClusterMembership bool
 	csrApproverAllowLegacyKubelet      bool
 	leaderElectionConfig               componentbaseconfig.LeaderElectionConfiguration
+
+	// Fields initialized from other sources.
+	gcpConfig  gcpConfig
+	kubeconfig *restclient.Config
 }
 
 func (s *controllerManager) isEnabled(name string) bool {
@@ -136,21 +152,7 @@ func (s *controllerManager) isEnabled(name string) bool {
 func run(s *controllerManager) error {
 	ctx := context.Background()
 
-	kubeconfig, err := clientcmd.BuildConfigFromFlags("", s.kubeconfig)
-	if err != nil {
-		return err
-	}
-
-	gcpCfg, err := loadGCPConfig(s)
-	if err != nil {
-		return err
-	}
-
-	// bump the QPS limits per controller up from defaults of 5 qps / 10 burst
-	kubeconfig.QPS = 100
-	kubeconfig.Burst = 200
-
-	clientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: kubeconfig}
+	clientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: s.kubeconfig}
 
 	informerClient := clientBuilder.ClientOrDie("gcp-controller-manager-shared-informer")
 	sharedInformers := informers.NewSharedInformerFactory(informerClient, time.Duration(12)*time.Hour)
@@ -177,7 +179,7 @@ func run(s *controllerManager) error {
 				recorder: eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
 					Component: name,
 				}),
-				gcpCfg:                             gcpCfg,
+				gcpCfg:                             s.gcpConfig,
 				clusterSigningGKEKubeconfig:        s.clusterSigningGKEKubeconfig,
 				csrApproverVerifyClusterMembership: s.csrApproverVerifyClusterMembership,
 				done:                               ctx.Done(),
@@ -190,7 +192,7 @@ func run(s *controllerManager) error {
 	}
 
 	if s.leaderElectionConfig.LeaderElect {
-		leaderElectionClient, err := clientset.NewForConfig(restclient.AddUserAgent(kubeconfig, "leader-election"))
+		leaderElectionClient, err := clientset.NewForConfig(restclient.AddUserAgent(s.kubeconfig, "leader-election"))
 		if err != nil {
 			return err
 		}

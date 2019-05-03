@@ -186,7 +186,7 @@ func TestHandle(t *testing.T) {
 			recognized:    true,
 			allowed:       true,
 			verifyActions: verifyCreateAndUpdate,
-			preApproveHook: func(_ GCPConfig, _ *capi.CertificateSigningRequest, _ *x509.CertificateRequest, _ string, _ clientset.Interface) error {
+			preApproveHook: func(_ gcpConfig, _ *capi.CertificateSigningRequest, _ *x509.CertificateRequest, _ string, _ clientset.Interface) error {
 				return nil
 			},
 		},
@@ -200,7 +200,7 @@ func TestHandle(t *testing.T) {
 				}
 				_ = as[0].(testclient.CreateActionImpl)
 			},
-			preApproveHook: func(_ GCPConfig, _ *capi.CertificateSigningRequest, _ *x509.CertificateRequest, _ string, _ clientset.Interface) error {
+			preApproveHook: func(_ gcpConfig, _ *capi.CertificateSigningRequest, _ *x509.CertificateRequest, _ string, _ clientset.Interface) error {
 				return fmt.Errorf("preApproveHook failed")
 			},
 			err: true,
@@ -209,7 +209,7 @@ func TestHandle(t *testing.T) {
 			desc:       "recognized, allowed and validated",
 			recognized: true,
 			allowed:    true,
-			validate: func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
+			validate: func(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 				return true, nil
 			},
 			verifyActions: verifyCreateAndUpdate,
@@ -218,7 +218,7 @@ func TestHandle(t *testing.T) {
 			desc:       "recognized, allowed but not validated",
 			recognized: true,
 			allowed:    true,
-			validate: func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
+			validate: func(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 				return false, nil
 			},
 			verifyActions: func(t *testing.T, as []testclient.Action) {
@@ -252,7 +252,7 @@ func TestHandle(t *testing.T) {
 			desc:       "recognized, allowed but validation failed",
 			recognized: true,
 			allowed:    true,
-			validate: func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
+			validate: func(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 				return false, errors.New("failed")
 			},
 			verifyActions: func(t *testing.T, as []testclient.Action) {
@@ -277,7 +277,7 @@ func TestHandle(t *testing.T) {
 			validator := csrValidator{
 				approveMsg: "tester",
 				permission: authorization.ResourceAttributes{Group: "foo", Resource: "bar", Subresource: "baz"},
-				recognize: func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+				recognize: func(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 					return c.recognized
 				},
 				validate:       c.validate,
@@ -298,25 +298,25 @@ func TestHandle(t *testing.T) {
 
 func TestValidators(t *testing.T) {
 	t.Run("isLegacyNodeClientCert", func(t *testing.T) {
-		goodCase := func(b *csrBuilder, _ *GCPConfig) { b.requestor = legacyKubeletUsername }
-		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
+		goodCase := func(b *csrBuilder, _ *gcpConfig) { b.requestor = legacyKubeletUsername }
+		goodCases := []func(*csrBuilder, *gcpConfig){goodCase}
 		testValidator(t, "good", goodCases, isLegacyNodeClientCert, true)
 
-		badCases := []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, c *GCPConfig) {
+		badCases := []func(*csrBuilder, *gcpConfig){
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.cn = "mike"
 			},
-			func(b *csrBuilder, _ *GCPConfig) {},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, _ *gcpConfig) {},
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.orgs = nil
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.orgs = []string{"system:master"}
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.usages = kubeletServerUsages
 			},
@@ -324,29 +324,29 @@ func TestValidators(t *testing.T) {
 		testValidator(t, "bad", badCases, isLegacyNodeClientCert, false)
 	})
 	t.Run("isNodeServerClient", func(t *testing.T) {
-		goodCase := func(b *csrBuilder, _ *GCPConfig) { b.usages = kubeletServerUsages }
-		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
+		goodCase := func(b *csrBuilder, _ *gcpConfig) { b.usages = kubeletServerUsages }
+		goodCases := []func(*csrBuilder, *gcpConfig){goodCase}
 		testValidator(t, "good", goodCases, isNodeServerCert, true)
 
-		badCases := []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, c *GCPConfig) {},
-			func(b *csrBuilder, c *GCPConfig) {
+		badCases := []func(*csrBuilder, *gcpConfig){
+			func(b *csrBuilder, c *gcpConfig) {},
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.cn = "mike"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.orgs = nil
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.orgs = []string{"system:master"}
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.requestor = "joe"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.cn = "system:node:bar"
 			},
@@ -356,7 +356,7 @@ func TestValidators(t *testing.T) {
 	t.Run("validateNodeServerCertInner", func(t *testing.T) {
 		client, srv := fakeGCPAPI(t, nil)
 		defer srv.Close()
-		fn := func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+		fn := func(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 			cs, err := compute.New(client)
 			if err != nil {
 				t.Fatalf("creating GCE API client: %v", err)
@@ -369,44 +369,44 @@ func TestValidators(t *testing.T) {
 			return ok
 		}
 
-		goodCase := func(b *csrBuilder, c *GCPConfig) {
+		goodCase := func(b *csrBuilder, c *gcpConfig) {
 			c.ProjectID = "p0"
 			c.Zones = []string{"z1", "z0"}
 			b.requestor = "system:node:i0"
 			b.ips = []net.IP{net.ParseIP("1.2.3.4")}
 		}
-		cases := []func(*csrBuilder, *GCPConfig){goodCase}
+		cases := []func(*csrBuilder, *gcpConfig){goodCase}
 		testValidator(t, "good", cases, fn, true)
 
-		cases = []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, c *GCPConfig) {},
+		cases = []func(*csrBuilder, *gcpConfig){
+			func(b *csrBuilder, c *gcpConfig) {},
 			// No Name.
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.requestor = ""
 			},
 			// No IPAddresses.
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.ips = nil
 			},
 			// Wrong project.
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				c.ProjectID = "p99"
 			},
 			// Wrong zone.
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				c.Zones = []string{"z99"}
 			},
 			// Wrong instance name.
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.requestor = "i99"
 			},
 			// Not matching IP.
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.ips = []net.IP{net.ParseIP("1.2.3.5")}
 			},
@@ -414,34 +414,34 @@ func TestValidators(t *testing.T) {
 		testValidator(t, "bad", cases, fn, false)
 	})
 	t.Run("isNodeClientCertWithAttestation", func(t *testing.T) {
-		goodCase := func(b *csrBuilder, _ *GCPConfig) {
+		goodCase := func(b *csrBuilder, _ *gcpConfig) {
 			b.requestor = tpmKubeletUsername
 			for _, name := range tpmAttestationBlocks {
 				b.extraPEM[name] = []byte("foo")
 			}
 		}
-		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
+		goodCases := []func(*csrBuilder, *gcpConfig){goodCase}
 		testValidator(t, "good", goodCases, isNodeClientCertWithAttestation, true)
 
-		badCases := []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, c *GCPConfig) {},
-			func(b *csrBuilder, c *GCPConfig) {
+		badCases := []func(*csrBuilder, *gcpConfig){
+			func(b *csrBuilder, c *gcpConfig) {},
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.requestor = "awly"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				delete(b.extraPEM, tpmAttestationBlocks[1])
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.cn = "awly"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.orgs = nil
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				b.orgs = []string{"system:master"}
 			},
@@ -457,7 +457,7 @@ func TestValidators(t *testing.T) {
 		client, srv := fakeGCPAPI(t, nil)
 		defer srv.Close()
 
-		validateFunc := func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+		validateFunc := func(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 			ok, err := validateTPMAttestation(opts, csr, x509cr)
 			if err != nil {
 				t.Logf("validateTPMAttestation failed with %q", err)
@@ -465,7 +465,7 @@ func TestValidators(t *testing.T) {
 			return ok && err == nil
 		}
 
-		goodCase := func(b *csrBuilder, c *GCPConfig) {
+		goodCase := func(b *csrBuilder, c *gcpConfig) {
 			cs, err := compute.New(client)
 			if err != nil {
 				t.Fatalf("creating GCE API client: %v", err)
@@ -482,26 +482,26 @@ func TestValidators(t *testing.T) {
 			b.extraPEM["ATTESTATION DATA"] = attestData
 			b.extraPEM["ATTESTATION SIGNATURE"] = attestSig
 		}
-		goodCases := []func(*csrBuilder, *GCPConfig){goodCase}
+		goodCases := []func(*csrBuilder, *gcpConfig){goodCase}
 		testValidator(t, "good", goodCases, validateFunc, true)
 
-		badCases := []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, c *GCPConfig) {
+		badCases := []func(*csrBuilder, *gcpConfig){
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Invalid CN format.
 				b.cn = "awly"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// CN valid but doesn't match name in ATTESTATION CERTIFICATE.
 				b.cn = "system:node:i2"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Invalid AIK certificate
 				b.extraPEM["ATTESTATION CERTIFICATE"] = []byte("invalid")
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// AIK certificate verification fails
 				for _, cert := range fakeCA.invalidCerts {
@@ -509,17 +509,17 @@ func TestValidators(t *testing.T) {
 					break
 				}
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// ProjectID mismatch in nodeidentity
 				c.ProjectID = "p1"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Invalid attestation signature
 				b.extraPEM["ATTESTATION SIGNATURE"] = []byte("invalid")
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Attestation signature using wrong key
 				key, err := rsa.GenerateKey(insecureRand, 2048)
@@ -529,12 +529,12 @@ func TestValidators(t *testing.T) {
 				_, attestSig := makeAttestationDataAndSignature(t, b.key, key)
 				b.extraPEM["ATTESTATION SIGNATURE"] = attestSig
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Invalid attestation data
 				b.extraPEM["ATTESTATION DATA"] = []byte("invalid")
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Attestation data for wrong key
 				key, err := ecdsa.GenerateKey(elliptic.P224(), insecureRand)
@@ -544,7 +544,7 @@ func TestValidators(t *testing.T) {
 				attestData, _ := makeAttestationDataAndSignature(t, key, fakeCA.validCertKey)
 				b.extraPEM["ATTESTATION DATA"] = attestData
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				// VM from nodeidentity doesn't exist
 				fakeCA.regenerateValidCert(t, nodeidentity.Identity{"z0", 1, "i9", 2, "p0"})
 				defer fakeCA.regenerateValidCert(t, nodeidentity.Identity{"z0", 1, "i0", 2, "p0"})
@@ -565,7 +565,7 @@ func TestValidators(t *testing.T) {
 		gkeClient, gkeSrv := fakeGKEAPI(t)
 		defer gkeSrv.Close()
 
-		validateFunc := func(opts GCPConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+		validateFunc := func(opts gcpConfig, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 			ok, err := validateTPMAttestation(opts, csr, x509cr)
 			if err != nil {
 				t.Logf("validateTPMAttestation failed with %q", err)
@@ -573,7 +573,7 @@ func TestValidators(t *testing.T) {
 			return ok && err == nil
 		}
 
-		goodCase := func(b *csrBuilder, c *GCPConfig) {
+		goodCase := func(b *csrBuilder, c *gcpConfig) {
 			c.VerifyClusterMembership = true
 
 			cs, err := compute.New(gceClient)
@@ -608,9 +608,9 @@ func TestValidators(t *testing.T) {
 			b.extraPEM["ATTESTATION DATA"] = attestData
 			b.extraPEM["ATTESTATION SIGNATURE"] = attestSig
 		}
-		goodCases := []func(*csrBuilder, *GCPConfig){
+		goodCases := []func(*csrBuilder, *gcpConfig){
 			goodCase,
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Instance is in a regional InstanceGroup, different zone from
 				// cluster.
@@ -624,33 +624,33 @@ func TestValidators(t *testing.T) {
 		}
 		testValidator(t, "good", goodCases, validateFunc, true)
 
-		badCases := []func(*csrBuilder, *GCPConfig){
-			func(b *csrBuilder, c *GCPConfig) {
+		badCases := []func(*csrBuilder, *gcpConfig){
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Invalid CN format.
 				b.cn = "awly"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// CN valid but doesn't match name in ATTESTATION CERTIFICATE.
 				b.cn = "system:node:i2"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Invalid VM identity
 				b.extraPEM["VM IDENTITY"] = []byte("invalid")
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// ProjectID mismatch in nodeidentity
 				c.ProjectID = "p1"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Invalid attestation signature
 				b.extraPEM["ATTESTATION SIGNATURE"] = []byte("invalid")
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Attestation signature using wrong key
 				key, err := rsa.GenerateKey(insecureRand, 2048)
@@ -660,12 +660,12 @@ func TestValidators(t *testing.T) {
 				_, attestSig := makeAttestationDataAndSignature(t, b.key, key)
 				b.extraPEM["ATTESTATION SIGNATURE"] = attestSig
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Invalid attestation data
 				b.extraPEM["ATTESTATION DATA"] = []byte("invalid")
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Attestation data for wrong key
 				key, err := ecdsa.GenerateKey(elliptic.P224(), insecureRand)
@@ -675,7 +675,7 @@ func TestValidators(t *testing.T) {
 				attestData, _ := makeAttestationDataAndSignature(t, key, validKey)
 				b.extraPEM["ATTESTATION DATA"] = attestData
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// VM from nodeidentity doesn't exist
 				nodeID := nodeidentity.Identity{"z0", 1, "i9", 2, "p0"}
@@ -684,22 +684,22 @@ func TestValidators(t *testing.T) {
 					t.Fatalf("marshaling nodeID: %v", err)
 				}
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Cluster fetch fails due to cluster name.
 				c.ClusterName = "unknown"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Cluster fetch fails due to cluster location.
 				c.Location = "unknown"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// VM doesn't belong to cluster NodePool.
 				c.ClusterName = "c1"
 			},
-			func(b *csrBuilder, c *GCPConfig) {
+			func(b *csrBuilder, c *gcpConfig) {
 				goodCase(b, c)
 				// Cluster contains a non-existent NodePool.
 				c.ClusterName = "c2"
@@ -709,7 +709,7 @@ func TestValidators(t *testing.T) {
 	})
 }
 
-func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, c *GCPConfig), checkFunc recognizeFunc, want bool) {
+func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, c *gcpConfig), checkFunc recognizeFunc, want bool) {
 	t.Helper()
 	for i, c := range cases {
 		pk, err := ecdsa.GenerateKey(elliptic.P224(), insecureRand)
@@ -724,7 +724,7 @@ func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, c *GCP
 			extraPEM:  make(map[string][]byte),
 			key:       pk,
 		}
-		o := GCPConfig{}
+		o := gcpConfig{}
 		c(&b, &o)
 		t.Run(fmt.Sprintf("%s %d", desc, i), func(t *testing.T) {
 			csr := makeFancyTestCSR(b)
@@ -1082,10 +1082,10 @@ func TestShouldDeleteNode(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		fakeGetInstance := func(_ GCPConfig, _ string) (*compute.Instance, error) {
+		fakeGetInstance := func(_ gcpConfig, _ string) (*compute.Instance, error) {
 			return c.instance, c.getInstanceErr
 		}
-		shouldDelete, err := shouldDeleteNode(GCPConfig{}, c.node, fakeGetInstance)
+		shouldDelete, err := shouldDeleteNode(gcpConfig{}, c.node, fakeGetInstance)
 		if err != c.expectedErr || shouldDelete != c.shouldDelete {
 			t.Errorf("%s: shouldDeleteNode=(%v, %v), want (%v, %v)", c.desc, shouldDelete, err, c.shouldDelete, c.expectedErr)
 		}

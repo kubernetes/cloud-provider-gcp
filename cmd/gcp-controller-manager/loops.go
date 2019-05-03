@@ -29,7 +29,7 @@ type controllerContext struct {
 	client                             clientset.Interface
 	sharedInformers                    informers.SharedInformerFactory
 	recorder                           record.EventRecorder
-	gcpCfg                             GCPConfig
+	gcpCfg                             gcpConfig
 	clusterSigningGKEKubeconfig        string
 	csrApproverVerifyClusterMembership bool
 	done                               <-chan struct{}
