@@ -47,7 +47,7 @@ import (
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/client/leaderelectionconfig"
-	"k8s.io/kubernetes/pkg/controller" // Install GCP auth plugin.
+	"k8s.io/kubernetes/pkg/controller"
 	"k8s.io/kubernetes/pkg/kubectl/util/logs"
 	"k8s.io/kubernetes/pkg/version/verflag"
 )
@@ -57,18 +57,42 @@ const (
 	leaderElectionResourceLockName      = "gcp-controller-manager"
 )
 
-var metricsPort = pflag.Int("metrics-port", 8089, "Port to expose Prometheus metrics on")
+var (
+	metricsPort                        = pflag.Int("metrics-port", 8089, "Port to expose Prometheus metrics on")
+	kubeconfig                         = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information.")
+	clusterSigningGKEKubeconfig        = pflag.String("cluster-signing-gke-kubeconfig", "", "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")
+	gceConfigPath                      = pflag.String("gce-config", "/etc/gce.conf", "Path to gce.conf.")
+	controllers                        = pflag.StringSlice("controllers", []string{"*"}, "Controllers to enable. Possible controllers are: "+strings.Join(loopNames(), ",")+".")
+	csrApproverVerifyClusterMembership = pflag.Bool("csr-validate-cluster-membership", true, "Validate that VMs requesting CSRs belong to current GKE cluster.")
+	csrApproverAllowLegacyKubelet      = pflag.Bool("csr-allow-legacy-kubelet", true, "Allow legacy kubelet bootstrap flow.")
+)
 
 func main() {
-	s := newControllerManager()
-	s.addFlags(pflag.CommandLine)
-
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	leConfig := &componentbaseconfig.LeaderElectionConfiguration{
+		LeaderElect:   true,
+		LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
+		RenewDeadline: metav1.Duration{Duration: 10 * time.Second},
+		RetryPeriod:   metav1.Duration{Duration: 2 * time.Second},
+		ResourceLock:  rl.EndpointsResourceLock,
+	}
+	leaderelectionconfig.BindFlags(leConfig, pflag.CommandLine)
+
 	pflag.Parse()
+	verflag.PrintAndExitIfRequested()
+
 	logs.InitLogs()
 	defer logs.FlushLogs()
 
-	verflag.PrintAndExitIfRequested()
+	s := &controllerManager{
+		kubeconfig:                         *kubeconfig,
+		clusterSigningGKEKubeconfig:        *clusterSigningGKEKubeconfig,
+		gceConfigPath:                      *gceConfigPath,
+		controllers:                        *controllers,
+		csrApproverVerifyClusterMembership: *csrApproverVerifyClusterMembership,
+		csrApproverAllowLegacyKubelet:      *csrApproverAllowLegacyKubelet,
+		leaderElectionConfig:               *leConfig,
+	}
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
@@ -83,49 +107,18 @@ func main() {
 
 // controllerManager is the main context object for the package.
 type controllerManager struct {
-	Kubeconfig                         string
-	ClusterSigningGKEKubeconfig        string
-	GCEConfigPath                      string
-	Controllers                        []string
-	CSRApproverVerifyClusterMembership bool
-	CSRApproverAllowLegacyKubelet      bool
-
-	LeaderElectionConfig componentbaseconfig.LeaderElectionConfiguration
-}
-
-// newControllerManager creates a new instance of a controllerManager with
-// default parameters.
-func newControllerManager() *controllerManager {
-	return &controllerManager{
-		GCEConfigPath:                      "/etc/gce.conf",
-		Controllers:                        []string{"*"},
-		CSRApproverVerifyClusterMembership: true,
-		CSRApproverAllowLegacyKubelet:      true,
-		LeaderElectionConfig: componentbaseconfig.LeaderElectionConfiguration{
-			LeaderElect:   true,
-			LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
-			RenewDeadline: metav1.Duration{Duration: 10 * time.Second},
-			RetryPeriod:   metav1.Duration{Duration: 2 * time.Second},
-			ResourceLock:  rl.EndpointsResourceLock,
-		},
-	}
-}
-
-// AddFlags adds flags for a specific controllerManager to the specified
-// FlagSet.
-func (s *controllerManager) addFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
-	fs.StringVar(&s.ClusterSigningGKEKubeconfig, "cluster-signing-gke-kubeconfig", s.ClusterSigningGKEKubeconfig, "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")
-	fs.StringVar(&s.GCEConfigPath, "gce-config", s.GCEConfigPath, "Path to gce.conf.")
-	fs.StringSliceVar(&s.Controllers, "controllers", s.Controllers, "Controllers to enable. Possible controllers are: "+strings.Join(loopNames(), ",")+".")
-	fs.BoolVar(&s.CSRApproverVerifyClusterMembership, "csr-validate-cluster-membership", s.CSRApproverVerifyClusterMembership, "Validate that VMs requesting CSRs belong to current GKE cluster.")
-	fs.BoolVar(&s.CSRApproverAllowLegacyKubelet, "csr-allow-legacy-kubelet", s.CSRApproverAllowLegacyKubelet, "Allow legacy kubelet bootstrap flow.")
-	leaderelectionconfig.BindFlags(&s.LeaderElectionConfig, fs)
+	kubeconfig                         string
+	clusterSigningGKEKubeconfig        string
+	gceConfigPath                      string
+	controllers                        []string
+	csrApproverVerifyClusterMembership bool
+	csrApproverAllowLegacyKubelet      bool
+	leaderElectionConfig               componentbaseconfig.LeaderElectionConfiguration
 }
 
 func (s *controllerManager) isEnabled(name string) bool {
 	var star bool
-	for _, controller := range s.Controllers {
+	for _, controller := range s.controllers {
 		if controller == name {
 			return true
 		}
@@ -143,7 +136,7 @@ func (s *controllerManager) isEnabled(name string) bool {
 func run(s *controllerManager) error {
 	ctx := context.Background()
 
-	kubeconfig, err := clientcmd.BuildConfigFromFlags("", s.Kubeconfig)
+	kubeconfig, err := clientcmd.BuildConfigFromFlags("", s.kubeconfig)
 	if err != nil {
 		return err
 	}
@@ -185,8 +178,8 @@ func run(s *controllerManager) error {
 					Component: name,
 				}),
 				gcpCfg:                             gcpCfg,
-				clusterSigningGKEKubeconfig:        s.ClusterSigningGKEKubeconfig,
-				csrApproverVerifyClusterMembership: s.CSRApproverVerifyClusterMembership,
+				clusterSigningGKEKubeconfig:        s.clusterSigningGKEKubeconfig,
+				csrApproverVerifyClusterMembership: s.csrApproverVerifyClusterMembership,
 				done:                               ctx.Done(),
 			}); err != nil {
 				klog.Fatalf("Failed to start %q: %v", name, err)
@@ -196,12 +189,12 @@ func run(s *controllerManager) error {
 		<-ctx.Done()
 	}
 
-	if s.LeaderElectionConfig.LeaderElect {
+	if s.leaderElectionConfig.LeaderElect {
 		leaderElectionClient, err := clientset.NewForConfig(restclient.AddUserAgent(kubeconfig, "leader-election"))
 		if err != nil {
 			return err
 		}
-		leaderElectionConfig, err := makeLeaderElectionConfig(s.LeaderElectionConfig, leaderElectionClient, eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
+		leaderElectionConfig, err := makeLeaderElectionConfig(s.leaderElectionConfig, leaderElectionClient, eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
 			Component: "gcp-controller-manager-leader-election",
 		}))
 		if err != nil {
