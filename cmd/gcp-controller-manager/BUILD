@@ -80,7 +80,6 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/cloudprovider/providers/gce:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/certificates:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/kubectl/util/logs:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/version/verflag:go_default_library",
     ],
 )

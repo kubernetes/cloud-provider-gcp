@@ -23,7 +23,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -48,7 +47,6 @@ import (
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/client/leaderelectionconfig"
 	"k8s.io/kubernetes/pkg/controller"
-	"k8s.io/kubernetes/pkg/kubectl/util/logs"
 	"k8s.io/kubernetes/pkg/version/verflag"
 )
 
@@ -69,6 +67,9 @@ var (
 
 func main() {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	klog.InitFlags(flag.CommandLine)
+	defer klog.Flush()
+
 	leConfig := &componentbaseconfig.LeaderElectionConfiguration{
 		LeaderElect:   true,
 		LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
@@ -80,9 +81,6 @@ func main() {
 
 	pflag.Parse()
 	verflag.PrintAndExitIfRequested()
-
-	logs.InitLogs()
-	defer logs.FlushLogs()
 
 	s := &controllerManager{
 		clusterSigningGKEKubeconfig:        *clusterSigningGKEKubeconfig,
@@ -108,7 +106,7 @@ func main() {
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *metricsPort), nil))
+		klog.Exit(http.ListenAndServe(fmt.Sprintf(":%d", *metricsPort), nil))
 	}()
 
 	if err := run(s); err != nil {
