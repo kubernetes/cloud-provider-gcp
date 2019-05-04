@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package app
+package main
 
 import (
 	"sort"
@@ -29,7 +29,7 @@ type controllerContext struct {
 	client                             clientset.Interface
 	sharedInformers                    informers.SharedInformerFactory
 	recorder                           record.EventRecorder
-	gcpCfg                             GCPConfig
+	gcpCfg                             gcpConfig
 	clusterSigningGKEKubeconfig        string
 	csrApproverVerifyClusterMembership bool
 	done                               <-chan struct{}
