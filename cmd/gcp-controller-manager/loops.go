@@ -32,6 +32,7 @@ type controllerContext struct {
 	gcpCfg                             gcpConfig
 	clusterSigningGKEKubeconfig        string
 	csrApproverVerifyClusterMembership bool
+	csrApproverAllowLegacyKubelet      bool
 	done                               <-chan struct{}
 }
 
@@ -41,7 +42,7 @@ type controllerContext struct {
 func loops() map[string]func(*controllerContext) error {
 	return map[string]func(*controllerContext) error{
 		"certificate-approver": func(ctx *controllerContext) error {
-			approver := newGKEApprover(ctx.gcpCfg, ctx.client, ctx.csrApproverVerifyClusterMembership)
+			approver := newGKEApprover(ctx)
 			approveController := certificates.NewCertificateController(
 				ctx.client,
 				ctx.sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
