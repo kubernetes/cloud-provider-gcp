@@ -20,9 +20,9 @@ go_library(
     name = "go_default_library",
     srcs = [
         "ca_cache.go",
+        "csr_approver.go",
+        "csr_signer.go",
         "gcp_config.go",
-        "gke_approver.go",
-        "gke_signer.go",
         "loops.go",
         "main.go",
         "node_annotator.go",
@@ -88,9 +88,9 @@ go_test(
     name = "go_default_test",
     srcs = [
         "ca_cache_test.go",
+        "csr_approver_test.go",
+        "csr_signer_test.go",
         "gcp_config_test.go",
-        "gke_approver_test.go",
-        "gke_signer_test.go",
         "node_annotator_test.go",
     ],
     embed = [":go_default_library"],
