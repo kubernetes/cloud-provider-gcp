@@ -38,15 +38,14 @@ import (
 
 // gcpConfig groups GCP-specific configuration for all controllers.
 type gcpConfig struct {
-	ClusterName             string
-	ProjectID               string
-	Location                string
-	Zones                   []string
-	TPMEndorsementCACache   *caCache
-	Compute                 *compute.Service
-	BetaCompute             *betacompute.Service
-	Container               *container.Service
-	VerifyClusterMembership bool
+	ClusterName           string
+	ProjectID             string
+	Location              string
+	Zones                 []string
+	TPMEndorsementCACache *caCache
+	Compute               *compute.Service
+	BetaCompute           *betacompute.Service
+	Container             *container.Service
 }
 
 func getRegionFromLocation(loc string) (string, error) {
@@ -60,8 +59,8 @@ func getRegionFromLocation(loc string) (string, error) {
 	}
 }
 
-func loadGCPConfig(s *controllerManager) (gcpConfig, error) {
-	a := gcpConfig{VerifyClusterMembership: s.csrApproverVerifyClusterMembership}
+func loadGCPConfig(gceConfigPath string) (gcpConfig, error) {
+	a := gcpConfig{}
 
 	// Load gce.conf.
 	gceConfig := struct {
@@ -73,7 +72,7 @@ func loadGCPConfig(s *controllerManager) (gcpConfig, error) {
 	}{}
 	// ReadFileInfo will return warnings for extra fields in gce.conf we don't
 	// care about. Wrap with FatalOnly to discard those.
-	if err := warnings.FatalOnly(gcfg.ReadFileInto(&gceConfig, s.gceConfigPath)); err != nil {
+	if err := warnings.FatalOnly(gcfg.ReadFileInto(&gceConfig, gceConfigPath)); err != nil {
 		return a, err
 	}
 	a.ProjectID = gceConfig.Global.ProjectID

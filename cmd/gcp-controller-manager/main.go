@@ -99,7 +99,7 @@ func main() {
 	s.kubeconfig.QPS = 100
 	s.kubeconfig.Burst = 200
 
-	s.gcpConfig, err = loadGCPConfig(s)
+	s.gcpConfig, err = loadGCPConfig(s.gceConfigPath)
 	if err != nil {
 		klog.Exitf("failed loading GCP config: %v", err)
 	}
@@ -180,6 +180,7 @@ func run(s *controllerManager) error {
 				gcpCfg:                             s.gcpConfig,
 				clusterSigningGKEKubeconfig:        s.clusterSigningGKEKubeconfig,
 				csrApproverVerifyClusterMembership: s.csrApproverVerifyClusterMembership,
+				csrApproverAllowLegacyKubelet:      s.csrApproverAllowLegacyKubelet,
 				done:                               ctx.Done(),
 			}); err != nil {
 				klog.Fatalf("Failed to start %q: %v", name, err)
