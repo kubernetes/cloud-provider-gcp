@@ -39,6 +39,7 @@ go_library(
 
 go_binary(
     name = "gke-exec-auth-plugin",
+    pure = "on",
     embed = [":go_default_library"],
     visibility = ["//visibility:public"],
 )
