@@ -4,8 +4,10 @@ go_library(
     name = "go_default_library",
     srcs = [
         "encoding.go",
+        "poll_other.go",
+        "poll_unix.go",
         "run.go",
-        "run_linux.go",
+        "run_other.go",
         "run_windows.go",
         "structures.go",
     ],
