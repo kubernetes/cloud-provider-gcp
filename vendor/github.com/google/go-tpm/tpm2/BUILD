@@ -4,6 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "constants.go",
+        "error.go",
         "kdf.go",
         "structures.go",
         "tpm2.go",

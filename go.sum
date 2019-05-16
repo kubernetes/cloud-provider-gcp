@@ -98,6 +98,9 @@ github.com/google/go-github v17.0.0+incompatible/go.mod h1:zLgOLi98H3fifZn+44m+u
 github.com/google/go-querystring v1.0.0/go.mod h1:odCYkC5MyYFN7vkCjXpyrEuKhc/BUO6wN/zVPAxq5ck=
 github.com/google/go-tpm v0.1.0 h1:fJdlawx1sgeNE2eMX31RFAO/ALa0f3pWEYJvqS/9XZg=
 github.com/google/go-tpm v0.1.0/go.mod h1:OGEdc1XfzTyNEQyahgeXVq+E0lMq3Vu/Y3bT9EfpRnE=
+github.com/google/go-tpm v0.1.1 h1:Qwvy1ZQsQElHIb/7PCqE4OpiBwDRMMHpu2a2q16S2hI=
+github.com/google/go-tpm v0.1.2-0.20190516201648-75451e878c09 h1:8Vop+qF1ui/bW9Bk3m5/yZauw7D8QjcDBqbaC9/6teE=
+github.com/google/go-tpm v0.1.2-0.20190516201648-75451e878c09/go.mod h1:H9HbmUG2YgV/PHITkO7p6wxEEj/v5nlsVWIwumwH2NI=
 github.com/google/gofuzz v0.0.0-20170612174753-24818f796faf h1:+RRA9JqSOZFfKrOeqr2z77+8R2RKyh8PG66dcu1V0ck=
 github.com/google/gofuzz v0.0.0-20170612174753-24818f796faf/go.mod h1:HP5RmnzzSNb993RKQDq4+1A4ia9nllfqcQFTQJedwGI=
 github.com/google/martian v2.1.0+incompatible/go.mod h1:9I4somxYTbIHy5NJKHRl3wXiIaQGbYVAs8BPL6v8lEs=
