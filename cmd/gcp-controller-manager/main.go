@@ -63,6 +63,7 @@ var (
 	controllers                        = pflag.StringSlice("controllers", []string{"*"}, "Controllers to enable. Possible controllers are: "+strings.Join(loopNames(), ",")+".")
 	csrApproverVerifyClusterMembership = pflag.Bool("csr-validate-cluster-membership", true, "Validate that VMs requesting CSRs belong to current GKE cluster.")
 	csrApproverAllowLegacyKubelet      = pflag.Bool("csr-allow-legacy-kubelet", true, "Allow legacy kubelet bootstrap flow.")
+	gceAPIEndpointOverride             = pflag.String("gce-api-endpoint-override", "", "If set, talks to a different GCE API Endpoint. By default it talks to https://www.googleapis.com/compute/v1/projects/")
 )
 
 func main() {
@@ -85,6 +86,7 @@ func main() {
 	s := &controllerManager{
 		clusterSigningGKEKubeconfig:        *clusterSigningGKEKubeconfig,
 		gceConfigPath:                      *gceConfigPath,
+		gceAPIEndpointOverride:             *gceAPIEndpointOverride,
 		controllers:                        *controllers,
 		csrApproverVerifyClusterMembership: *csrApproverVerifyClusterMembership,
 		csrApproverAllowLegacyKubelet:      *csrApproverAllowLegacyKubelet,
@@ -99,7 +101,7 @@ func main() {
 	s.kubeconfig.QPS = 100
 	s.kubeconfig.Burst = 200
 
-	s.gcpConfig, err = loadGCPConfig(s.gceConfigPath)
+	s.gcpConfig, err = loadGCPConfig(s.gceConfigPath, s.gceAPIEndpointOverride)
 	if err != nil {
 		klog.Exitf("failed loading GCP config: %v", err)
 	}
@@ -120,6 +122,7 @@ type controllerManager struct {
 	// Fields initialized from flags.
 	clusterSigningGKEKubeconfig        string
 	gceConfigPath                      string
+	gceAPIEndpointOverride             string
 	controllers                        []string
 	csrApproverVerifyClusterMembership bool
 	csrApproverAllowLegacyKubelet      bool
