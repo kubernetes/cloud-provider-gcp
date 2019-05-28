@@ -59,7 +59,7 @@ func getRegionFromLocation(loc string) (string, error) {
 	}
 }
 
-func loadGCPConfig(gceConfigPath string) (gcpConfig, error) {
+func loadGCPConfig(gceConfigPath, gceAPIEndpointOverride string) (gcpConfig, error) {
 	a := gcpConfig{}
 
 	// Load gce.conf.
@@ -85,9 +85,15 @@ func loadGCPConfig(gceConfigPath string) (gcpConfig, error) {
 	if err != nil {
 		return a, fmt.Errorf("creating GCE API client: %v", err)
 	}
+	if gceAPIEndpointOverride != "" {
+		a.Compute.BasePath = gceAPIEndpointOverride
+	}
 	a.BetaCompute, err = betacompute.New(client)
 	if err != nil {
 		return a, fmt.Errorf("creating GCE Beta API client: %v", err)
+	}
+	if gceAPIEndpointOverride != "" {
+		a.BetaCompute.BasePath = strings.Replace(gceAPIEndpointOverride, "v1", "beta", -1)
 	}
 	a.Container, err = container.New(client)
 	if err != nil {
