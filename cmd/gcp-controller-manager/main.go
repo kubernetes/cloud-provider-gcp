@@ -67,9 +67,9 @@ var (
 )
 
 func main() {
-	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	klog.InitFlags(flag.CommandLine)
 	defer klog.Flush()
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 
 	leConfig := &componentbaseconfig.LeaderElectionConfiguration{
 		LeaderElect:   true,
