@@ -28,7 +28,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
-	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/csrmetrics"
+	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	_ "k8s.io/kubernetes/pkg/apis/certificates/install" // Install certificates API group.

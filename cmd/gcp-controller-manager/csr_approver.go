@@ -39,7 +39,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/csrmetrics"
+	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
 	"k8s.io/klog"
