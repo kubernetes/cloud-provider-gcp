@@ -31,7 +31,7 @@ http_archive(
     urls = ["https://github.com/bazelbuild/rules_docker/archive/v0.7.0.tar.gz"],
 )
 
-load("@bazel_skylib//:lib.bzl", "versions")
+load("@bazel_skylib//lib:versions.bzl", "versions")
 
 versions.check(minimum_bazel_version = "0.20.0")
 
