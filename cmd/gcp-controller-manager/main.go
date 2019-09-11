@@ -184,6 +184,7 @@ func run(s *controllerManager) error {
 				clusterSigningGKEKubeconfig:        s.clusterSigningGKEKubeconfig,
 				csrApproverVerifyClusterMembership: s.csrApproverVerifyClusterMembership,
 				csrApproverAllowLegacyKubelet:      s.csrApproverAllowLegacyKubelet,
+				verifiedSAs:                        newSAMap(),
 				done:                               ctx.Done(),
 			}); err != nil {
 				klog.Fatalf("Failed to start %q: %v", name, err)

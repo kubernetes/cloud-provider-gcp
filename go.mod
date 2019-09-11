@@ -21,6 +21,7 @@ require (
 	github.com/gofrs/flock v0.7.1
 	github.com/gogo/protobuf v1.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20181024230925-c65c006176ff // indirect
+	github.com/google/go-cmp v0.3.1
 	github.com/google/go-tpm v0.1.2-0.20190516201648-75451e878c09
 	github.com/googleapis/gnostic v0.2.0 // indirect
 	github.com/gorilla/websocket v1.4.0 // indirect

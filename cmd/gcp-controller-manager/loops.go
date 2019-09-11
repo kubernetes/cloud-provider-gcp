@@ -33,6 +33,7 @@ type controllerContext struct {
 	clusterSigningGKEKubeconfig        string
 	csrApproverVerifyClusterMembership bool
 	csrApproverAllowLegacyKubelet      bool
+	verifiedSAs                        *saMap
 	done                               <-chan struct{}
 }
 
@@ -77,6 +78,22 @@ func loops() map[string]func(*controllerContext) error {
 			go nodeAnnotateController.Run(5, ctx.done)
 			return nil
 		},
+		saVerifierControlLoopName: func(ctx *controllerContext) error {
+			serviceAccountVerifier, err := newServiceAccountVerifier(
+				ctx.client,
+				ctx.sharedInformers.Core().V1().ServiceAccounts(),
+				ctx.sharedInformers.Core().V1().ConfigMaps(),
+				ctx.gcpCfg.Compute,
+				ctx.verifiedSAs,
+			)
+			if err != nil {
+				return err
+			}
+			go serviceAccountVerifier.Run(1, ctx.done)
+			return nil
+		},
+		// TODO(danielywong): add new controller "node-syncer" which needs read accesses to
+		// ctx.verifiedSAs.
 	}
 }
 
