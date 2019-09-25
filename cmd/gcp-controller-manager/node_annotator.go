@@ -74,7 +74,6 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 		"beta.kubernetes.io/masq-agent-ds-ready",
 		"projectcalico.org/ds-ready",
 		"beta.kubernetes.io/metadata-proxy-ready",
-		"addon.gke.io/node-local-dns-ds-ready",
 	}
 
 	na := &nodeAnnotator{
