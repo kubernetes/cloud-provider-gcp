@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 )
@@ -27,6 +28,14 @@ type gsaEmail string
 // serviceAccount identifies a K8s service account object by its namespace and name.
 type serviceAccount struct {
 	namespace, name string
+}
+
+// MarshalText implements encoding.TextMarshaler interface.  It returns sa in JSON encoded format.
+func (sa serviceAccount) MarshalText() ([]byte, error) {
+	// The purpose of converting sa to a "different" type is to avoid json.Marshal from recursing
+	// back to this method.
+	type serviceAcct serviceAccount
+	return json.Marshal(serviceAcct(sa))
 }
 
 // String returns sa in string in the format of "<namespace>/<name>".
@@ -42,8 +51,9 @@ type saMap struct {
 }
 
 func newSAMap() *saMap {
+	t := make(map[serviceAccount]gsaEmail)
 	return &saMap{
-		ma: make(map[serviceAccount]gsaEmail),
+		ma: t,
 	}
 }
 
@@ -77,20 +87,16 @@ func (m *saMap) get(sa serviceAccount) (gsaEmail, bool) {
 	return gsa, ok
 }
 
-// Stringmap returns all entries in m as a string map.
-func (m *saMap) stringMap() map[string]string {
-	m.RLock()
-	defer m.RUnlock()
-	n := make(map[string]string, len(m.ma))
-	for sa, gsa := range m.ma {
-		n[sa.String()] = string(gsa)
-	}
-	return n
-}
-
 // Len returns the number of entries in m.
 func (m *saMap) len() int {
 	m.RLock()
 	defer m.RUnlock()
 	return len(m.ma)
+}
+
+// Serialize returns m in its JSON encoded format or error if serialization had failed.
+func (m *saMap) serialize() ([]byte, error) {
+	m.RLock()
+	defer m.RUnlock()
+	return json.Marshal(m.ma)
 }

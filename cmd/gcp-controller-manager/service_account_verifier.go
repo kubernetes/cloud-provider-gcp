@@ -17,12 +17,12 @@ limitations under the License.
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
 	compute "google.golang.org/api/compute/v1"
 
-	"github.com/google/go-cmp/cmp"
 	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,6 +61,10 @@ const (
 	// uses to persist the verified SA pairs.
 	verifiedSAConfigMapName = "verified-ksa-to-gsa"
 
+	// verifiedSAConfigMapKey specifies the key to the ConfigMap's BinaryData map where the verified
+	// KSA/GSA pairs are persisted in serialized form.
+	verifiedSAConfigMapKey = "permitted-ksa-to-gsa-pairs"
+
 	// serviceAccountAnnotationGsaEmail is the key to GCP Service Account annotation in
 	// ServiceAccount objects.
 	serviceAccountAnnotationGsaEmail = "iam.gke.io/gcp-service-account"
@@ -72,6 +76,10 @@ const (
 	//
 	// TODO(danielywong): make this a cmdline flag.
 	serviceAccountResyncPeriod = 30 * time.Minute
+
+	// configMapResyncPeriod defines the resync interval for the CM Informer.  This retry is mainly
+	// an additional trigger in case of workqueue level retry exhaustion on write error.
+	configMapResyncPeriod = 30 * time.Minute
 )
 
 // serviceAccountVerifier implements a custom control loop responsible for verifying authorization
@@ -111,11 +119,11 @@ func newServiceAccountVerifier(client clientset.Interface, saInformer coreinform
 		UpdateFunc: sav.onSAUpdate,
 		DeleteFunc: sav.onSADelete,
 	}, serviceAccountResyncPeriod)
-	cmInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	cmInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sav.onCMAdd,
 		UpdateFunc: sav.onCMUpdate,
 		DeleteFunc: sav.onCMDelete,
-	})
+	}, configMapResyncPeriod)
 	return sav, nil
 }
 
@@ -143,7 +151,7 @@ func (sav *serviceAccountVerifier) enqueueSA(obj interface{}) {
 		utilruntime.HandleError(fmt.Errorf("internal error. Couldn't get key for ServiceAccount %+v: %v", obj, err))
 		return
 	}
-	sav.saQueue.Add(key)
+	sav.saQueue.AddRateLimited(key)
 }
 
 func (sav *serviceAccountVerifier) onCMAdd(obj interface{}) {
@@ -173,7 +181,7 @@ func (sav *serviceAccountVerifier) enqueueCM(obj interface{}) {
 		utilruntime.HandleError(fmt.Errorf("internal error. Couldn't get key for ConfigMap %+v: %v", obj, err))
 		return
 	}
-	sav.cmQueue.Add(key)
+	sav.cmQueue.AddRateLimited(key)
 }
 
 // Run starts saWorkers number of ServiceAccount workers plus 1 ConfigMap worker to process this
@@ -214,7 +222,7 @@ func (sav *serviceAccountVerifier) processNextSA() bool {
 			return true
 		}
 		klog.Warningf("Requeuing SA %q due to %v", key, err)
-		sav.cmQueue.AddRateLimited(key)
+		sav.saQueue.AddRateLimited(key)
 		return true
 	}
 	if resyncCM {
@@ -301,6 +309,7 @@ func (sav *serviceAccountVerifier) processNextCM() bool {
 	if err := sav.persist(key.(string)); err != nil {
 		if sav.cmQueue.NumRequeues(key) > saVerifiedCMQueueRetryLimit {
 			klog.Errorf("Stop retrying %q in CM queue; last error: %v", key, err)
+
 			return true
 		}
 		klog.Warningf("Requeuing CM %q due to %v", key, err)
@@ -330,8 +339,11 @@ func (sav *serviceAccountVerifier) persist(key string) error {
 			return fmt.Errorf("unknown error in getting ConfigMap %s/%s: %v", namespace, name, err)
 		}
 		klog.Warningf("ConfigMap %s/%s not found; creating.", namespace, name)
-		cm = newEmptyVerifiedSAConfigMap()
-		cm.Data = sav.verifiedSAs.stringMap()
+		text, err := sav.verifiedSAs.serialize()
+		if err != nil {
+			return fmt.Errorf("internal error during serialization: %v", err)
+		}
+		cm = newVerifiedSAConfigMap(text)
 		klog.V(5).Infof("Creating ConfigMap: %+v", cm.Data)
 		_, err = sav.c.CoreV1().ConfigMaps(verifiedSAConfigMapNamespace).Create(cm)
 		if err != nil {
@@ -340,25 +352,43 @@ func (sav *serviceAccountVerifier) persist(key string) error {
 		return nil
 	}
 
-	sm := sav.verifiedSAs.stringMap()
-	if cmp.Equal(sm, cm.Data) {
-		klog.V(5).Infof("ConfigMap in sync; no update necessary: %+v", cm.Data)
+	text, err := sav.verifiedSAs.serialize()
+	if err != nil {
+		return fmt.Errorf("internal error during serialization: %v", err)
+	}
+	if bytes.Equal(text, cm.BinaryData[verifiedSAConfigMapKey]) {
+		klog.V(5).Infof("ConfigMap in sync; no update necessary: %+v", cm.BinaryData)
 		return nil
 	}
-	cm.Data = sm
+	cm.BinaryData[verifiedSAConfigMapKey] = text
 	klog.V(5).Infof("Updating ConfigMap: %+v", cm.Data)
 	_, err = sav.c.CoreV1().ConfigMaps(verifiedSAConfigMapNamespace).Update(cm)
 	if err != nil {
-		return fmt.Errorf("failed to update ConfigMap: %v", err)
+		// Fail-close by deleting the ConfigMap assuming update failure was due to invalid content.
+		// Retries are triggered at workqueue level (subject to verfiiedCMQueueRetryLimit), any CM
+		// or SA update, and CM Informer level periodic resync.
+		//
+		// TODO(danielywong): catch TooLong error returned from validation.ValidateConfigMap for
+		// alerting.
+		rmErr := sav.c.CoreV1().ConfigMaps(verifiedSAConfigMapNamespace).Delete(key, metav1.NewDeleteOptions(0))
+		if rmErr != nil {
+			return fmt.Errorf("failed to update ConfigMap (%v) and reset also failed (%v)", err, rmErr)
+		}
+		return fmt.Errorf("reset ConfigMap due to update error: %v", err)
 	}
 	return nil
 }
 
 func newEmptyVerifiedSAConfigMap() *core.ConfigMap {
+	return newVerifiedSAConfigMap(nil)
+}
+
+func newVerifiedSAConfigMap(v []byte) *core.ConfigMap {
 	return &core.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: verifiedSAConfigMapNamespace,
 			Name:      verifiedSAConfigMapName,
 		},
+		BinaryData: map[string][]byte{verifiedSAConfigMapKey: v},
 	}
 }
