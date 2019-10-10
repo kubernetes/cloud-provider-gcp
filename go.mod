@@ -69,3 +69,5 @@ require (
 	k8s.io/kubernetes v1.14.1
 	sigs.k8s.io/structured-merge-diff v0.0.0-20190302045857-e85c7b244fd2 // indirect
 )
+
+go 1.13
