@@ -27,6 +27,7 @@ import (
 	"path"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/google/go-tpm/tpm2"
 	betacompute "google.golang.org/api/compute/v0.beta"
@@ -52,6 +53,19 @@ const (
 	tpmKubeletUsername    = "kubelet-bootstrap"
 
 	authFlowLabelNone = "not_approved"
+)
+
+var (
+	// For the first startupErrorsThreshold after startupTime, label SAR errors
+	// differently.
+	// When kube-apiserver starts up (around the same time), it takes some time
+	// to setup RBAC rules for these SAR checks. This special labeling of
+	// errors lets us filter out the (expected) error noise at master startup.
+	//
+	// Note: this ignores leader election. We only want to give kube-apiserver
+	// some time after cluster startup to initialize RBAC rules.
+	startupTime            = time.Now()
+	startupErrorsThreshold = 5 * time.Minute
 )
 
 // gkeApprover handles approval/denial of CSRs based on SubjectAccessReview and
@@ -113,14 +127,12 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 		return fmt.Errorf("unable to parse csr %q: %v", csr.Name, err)
 	}
 
-	var tried []string
 	for _, r := range a.validators {
 		recordValidatorMetric := csrmetrics.ApprovalStartRecorder(r.authFlowLabel)
 		if !r.recognize(a.ctx, csr, x509cr) {
 			continue
 		}
 		klog.Infof("validator %q: matched CSR %q", r.name, csr.Name)
-		tried = append(tried, r.name)
 		if r.validate != nil {
 			ok, err := r.validate(a.ctx, csr, x509cr)
 			if err != nil {
@@ -136,12 +148,20 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 
 		approved, err := a.authorizeSAR(csr, r.permission)
 		if err != nil {
-			recordValidatorMetric(csrmetrics.ApprovalStatusSARError)
+			if time.Since(startupTime) < startupErrorsThreshold {
+				recordValidatorMetric(csrmetrics.ApprovalStatusSARErrorAtStartup)
+			} else {
+				recordValidatorMetric(csrmetrics.ApprovalStatusSARError)
+			}
 			return err
 		}
 		if !approved {
-			klog.Warningf("validator %q: SubjectAccessReview denied for CSR %q", r.name, csr.Name)
-			continue
+			if time.Since(startupTime) < startupErrorsThreshold {
+				recordMetric(csrmetrics.ApprovalStatusSARRejectAtStartup)
+			} else {
+				recordMetric(csrmetrics.ApprovalStatusSARReject)
+			}
+			return certificates.IgnorableError("recognized csr %q as %q but subject access review was not approved", csr.Name, r.name)
 		}
 		klog.Infof("validator %q: SubjectAccessReview approved for CSR %q", r.name, csr.Name)
 		if r.preApproveHook != nil {
@@ -156,10 +176,6 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 		return a.updateCSR(csr, true, r.approveMsg)
 	}
 
-	if len(tried) != 0 {
-		recordMetric(csrmetrics.ApprovalStatusSARReject)
-		return certificates.IgnorableError("recognized csr %q as %q but subject access review was not approved", csr.Name, tried)
-	}
 	klog.Infof("no validators matched CSR %q", csr.Name)
 	recordMetric(csrmetrics.ApprovalStatusIgnore)
 	return nil

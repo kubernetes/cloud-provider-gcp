@@ -53,6 +53,10 @@ import (
 const (
 	leaderElectionResourceLockNamespace = "kube-system"
 	leaderElectionResourceLockName      = "gcp-controller-manager"
+
+	kubeconfigQPS     = 100
+	kubeconfigBurst   = 200
+	kubeconfigTimeout = 30 * time.Second
 )
 
 var (
@@ -98,8 +102,9 @@ func main() {
 		klog.Exitf("failed loading kubeconfig: %v", err)
 	}
 	// bump the QPS limits per controller up from defaults of 5 qps / 10 burst
-	s.kubeconfig.QPS = 100
-	s.kubeconfig.Burst = 200
+	s.kubeconfig.QPS = kubeconfigQPS
+	s.kubeconfig.Burst = kubeconfigBurst
+	s.kubeconfig.Timeout = kubeconfigTimeout
 
 	s.gcpConfig, err = loadGCPConfig(s.gceConfigPath, s.gceAPIEndpointOverride)
 	if err != nil {
