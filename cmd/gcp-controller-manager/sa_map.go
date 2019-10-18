@@ -39,7 +39,7 @@ func (sa serviceAccount) MarshalText() ([]byte, error) {
 }
 
 // String returns sa in string in the format of "<namespace>/<name>".
-func (sa *serviceAccount) String() string {
+func (sa serviceAccount) String() string {
 	return fmt.Sprintf("%s/%s", sa.namespace, sa.name)
 }
 

@@ -98,9 +98,14 @@ type serviceAccountVerifier struct {
 	saQueue     workqueue.RateLimitingInterface
 	cmQueue     workqueue.RateLimitingInterface
 	verifiedSAs *saMap
+	hms         *hmsClient
 }
 
-func newServiceAccountVerifier(client clientset.Interface, saInformer coreinformers.ServiceAccountInformer, cmInformer coreinformers.ConfigMapInformer, cs *compute.Service, sm *saMap) (*serviceAccountVerifier, error) {
+func newServiceAccountVerifier(client clientset.Interface, saInformer coreinformers.ServiceAccountInformer, cmInformer coreinformers.ConfigMapInformer, cs *compute.Service, sm *saMap, hmsAuthzURL string) (*serviceAccountVerifier, error) {
+	hms, err := newHMSClient(hmsAuthzURL)
+	if err != nil {
+		return nil, err
+	}
 	sav := &serviceAccountVerifier{
 		c:           client,
 		sals:        saInformer.Lister(),
@@ -113,6 +118,7 @@ func newServiceAccountVerifier(client clientset.Interface, saInformer coreinform
 			workqueue.NewItemExponentialFailureRateLimiter(200*time.Millisecond, 1000*time.Second),
 		), saVerifierCMQueueName),
 		verifiedSAs: sm,
+		hms:         hms,
 	}
 	saInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sav.onSAAdd,
@@ -253,35 +259,37 @@ func (sav *serviceAccountVerifier) verify(key string) (bool, error) {
 		return false, nil
 	}
 	gsa := gsaEmail(ann)
-	ksa := sa.ObjectMeta.Name
-	kns := sa.ObjectMeta.Namespace
-	klog.V(5).Infof("authorizing %s/%s:%s", kns, ksa, gsa)
-
-	// Authorize the (SA,GSA) pair and update verifiedSAs accordingly.
-	permitted := true // TODO(danielywong): call hms::AuthorizeSAMapping to validate permission.
+	ksa := serviceAccount{
+		namespace: sa.ObjectMeta.Namespace,
+		name:      sa.ObjectMeta.Name,
+	}
+	permitted, err := sav.hms.authorize(ksa, gsa)
+	if err != nil {
+		return false, fmt.Errorf("failed to authorize %s:%s; err: %v", ksa, gsa, err)
+	}
 
 	if !permitted {
-		klog.V(5).Infof("not permitted %s/%s:%s", kns, ksa, gsa)
-		if removedGSA, found := sav.verifiedSAs.remove(serviceAccount{kns, ksa}); found {
+		if removedGSA, found := sav.verifiedSAs.remove(ksa); found {
 			if removedGSA == gsa {
-				klog.V(5).Infof("removed %s/%s:%s which is no longer permitted", kns, ksa, gsa)
+				klog.Infof("Removed permission %q:%q; no longer valid", ksa, gsa)
 			} else {
-				klog.V(5).Infof("removed %s/%s:%s due to new annotation %s which is not permitted", kns, ksa, removedGSA, gsa)
+				klog.Infof("Removed permission %q:%q; current annotation :%q is denied", ksa, removedGSA, gsa)
 			}
 			// Trigger CM update if SA was found (ie, previously permitted)
 			return true, nil
 		}
+		klog.Infof("Permission denied %q:%q", ksa, gsa)
 		return false, nil
 	}
-	klog.V(5).Infof("permitted %s/%s:%s", kns, ksa, gsa)
-	previousGSA, found := sav.verifiedSAs.add(serviceAccount{kns, ksa}, gsa)
+	previousGSA, found := sav.verifiedSAs.add(ksa, gsa)
 	if !found {
-		klog.V(5).Infof("added %s/%s:%s", kns, ksa, gsa)
+		klog.Infof("Permission verified %q:%q", ksa, gsa)
 		return true, nil
 	} else if previousGSA != gsa {
-		klog.V(5).Infof("updated %s/%s:%s from :%s", kns, ksa, gsa, previousGSA)
+		klog.Infof("Permission changed to %q:%q from :%q", ksa, gsa, previousGSA)
 		return true, nil
 	}
+	klog.Infof("Permission re-verified %q:%q", ksa, gsa)
 	return false, nil
 }
 

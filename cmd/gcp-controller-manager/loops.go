@@ -35,6 +35,8 @@ type controllerContext struct {
 	csrApproverAllowLegacyKubelet      bool
 	verifiedSAs                        *saMap
 	done                               <-chan struct{}
+	hmsAuthorizeSAMappingURL           string
+	hmsSyncNodeURL                     string
 }
 
 // loops returns all the control loops that the GCPControllerManager can start.
@@ -85,6 +87,7 @@ func loops() map[string]func(*controllerContext) error {
 				ctx.sharedInformers.Core().V1().ConfigMaps(),
 				ctx.gcpCfg.Compute,
 				ctx.verifiedSAs,
+				ctx.hmsAuthorizeSAMappingURL,
 			)
 			if err != nil {
 				return err
