@@ -5,5 +5,5 @@ go_library(
     srcs = ["internal.go"],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/internal",
     importpath = "google.golang.org/grpc/internal",
-    visibility = ["//visibility:public"],
+    visibility = ["//vendor/google.golang.org/grpc:__subpackages__"],
 )

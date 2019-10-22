@@ -17,9 +17,7 @@ go_library(
 
 go_test(
     name = "go_default_test",
-    srcs = [
-        "csrapproval_test.go",
-    ],
+    srcs = ["csrapproval_test.go"],
     embed = [":go_default_library"],
     deps = [
         "//vendor/k8s.io/api/authorization/v1beta1:go_default_library",
