@@ -64,8 +64,10 @@ const (
 	AlgUnknown   Algorithm = 0x0000
 	AlgRSA       Algorithm = 0x0001
 	AlgSHA1      Algorithm = 0x0004
+	AlgHMAC      Algorithm = 0x0005
 	AlgAES       Algorithm = 0x0006
 	AlgKeyedHash Algorithm = 0x0008
+	AlgXOR       Algorithm = 0x000A
 	AlgSHA256    Algorithm = 0x000B
 	AlgSHA384    Algorithm = 0x000C
 	AlgSHA512    Algorithm = 0x000D
@@ -157,9 +159,57 @@ const (
 // TPMProp represents the index of a TPM property in a call to GetCapability().
 type TPMProp uint32
 
-// TPM Capability Properties.
+// TPM Capability Properties, see TPM 2.0 Spec, Rev 1.38, Table 23
 const (
-	NVMaxBufferSize    TPMProp = 0x100 + 44
+	// Fixed TPM Properties (PT_FIXED)
+	FamilyIndicator TPMProp = 0x100 + iota
+	SpecLevel
+	SpecRevision
+	SpecDayOfYear
+	SpecYear
+	Manufacturer
+	VendorString1
+	VendorString2
+	VendorString3
+	VendorString4
+	VendorTPMType
+	FirmwareVersion1
+	FirmwareVersion2
+	InputMaxBufferSize
+	TransientObjectsMin
+	PersistentObjectsMin
+	LoadedObjectsMin
+	ActiveSessionsMax
+	PCRCount
+	PCRSelectMin
+	ContextGapMax
+	_ // (PT_FIXED + 21) is skipped
+	NVCountersMax
+	NVIndexMax
+	MemoryMethod
+	ClockUpdate
+	ContextHash
+	ContextSym
+	ContextSymSize
+	OrderlyCount
+	CommandMaxSize
+	ResponseMaxSize
+	DigestMaxSize
+	ObjectContextMaxSize
+	SessionContextMaxSize
+	PSFamilyIndicator
+	PSSpecLevel
+	PSSpecRevision
+	PSSpecDayOfYear
+	PSSpecYear
+	SplitSigningMax
+	TotalCommands
+	LibraryCommands
+	VendorCommands
+	NVMaxBufferSize
+	TPMModes
+	CapabilityMaxBufferSize
+
 	PCRFirst           TPMProp = 0x00000000
 	HMACSessionFirst   TPMProp = 0x02000000
 	LoadedSessionFirst TPMProp = 0x02000000
@@ -258,16 +308,13 @@ var toGoCurve = map[EllipticCurve]elliptic.Curve{
 const (
 	cmdEvictControl       tpmutil.Command = 0x00000120
 	cmdUndefineSpace      tpmutil.Command = 0x00000122
-	cmdClockSet           tpmutil.Command = 0x00000128
 	cmdDefineSpace        tpmutil.Command = 0x0000012A
-	cmdPCRAllocate        tpmutil.Command = 0x0000012B
 	cmdCreatePrimary      tpmutil.Command = 0x00000131
 	cmdIncrementNVCounter tpmutil.Command = 0x00000134
 	cmdWriteNV            tpmutil.Command = 0x00000137
 	cmdPCREvent           tpmutil.Command = 0x0000013C
 	cmdStartup            tpmutil.Command = 0x00000144
 	cmdShutdown           tpmutil.Command = 0x00000145
-	cmdStirRandom         tpmutil.Command = 0x00000146
 	cmdActivateCredential tpmutil.Command = 0x00000147
 	cmdCertify            tpmutil.Command = 0x00000148
 	cmdCertifyCreation    tpmutil.Command = 0x0000014A

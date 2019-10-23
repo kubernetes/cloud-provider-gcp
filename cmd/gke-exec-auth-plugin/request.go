@@ -111,7 +111,7 @@ func processCSR(client certificates.CertificateSigningRequestInterface, privateK
 	}
 	klog.Info("CSR generated")
 
-	tpm, err := openTPM(*tpmPath)
+	tpm, err := openTPM()
 	if err != nil {
 		return nil, fmt.Errorf("failed opening TPM device: %v", err)
 	}

@@ -13,7 +13,7 @@ go_library(
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager/internal",
     importpath = "k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager/internal",
-    visibility = ["//visibility:public"],
+    visibility = ["//vendor/k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager:__subpackages__"],
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/meta:go_default_library",
