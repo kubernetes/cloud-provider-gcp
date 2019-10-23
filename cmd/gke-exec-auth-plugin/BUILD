@@ -6,6 +6,8 @@ go_library(
         "alt_token_source.go",
         "cache.go",
         "main.go",
+        "open_tpm_linux.go",
+        "open_tpm_windows.go",
         "request.go",
         "tpm.go",
     ],

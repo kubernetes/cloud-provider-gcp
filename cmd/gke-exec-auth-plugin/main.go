@@ -27,7 +27,7 @@ var (
 	mode = flag.String("mode", modeTPM, "Plugin mode, one of ['tpm', 'alt-token'].")
 	// TPM flags.
 	cacheDir = flag.String("cache-dir", "/var/lib/kubelet/pki", "Path to directory to store key and certificate.")
-	tpmPath  = flag.String("tpm-path", "/dev/tpm0", "path to a TPM character device or socket.")
+	tpmPath  = flag.String("tpm-path", "/dev/tpm0", "path to a TPM character device or socket. Ignored on Windows.")
 
 	altTokenURL  = flag.String("alt-token-url", "", "URL to token endpoint.")
 	altTokenBody = flag.String("alt-token-body", "", "Body of token request.")
