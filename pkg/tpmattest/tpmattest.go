@@ -46,8 +46,8 @@ func MakePublic(pub crypto.PublicKey) (tpm2.Public, error) {
 				Hash: tpm2.AlgSHA256,
 			},
 			Point: tpm2.ECPoint{
-				X: ecKey.X,
-				Y: ecKey.Y,
+				XRaw: ecKey.X.Bytes(),
+				YRaw: ecKey.Y.Bytes(),
 			},
 		},
 	}, nil
