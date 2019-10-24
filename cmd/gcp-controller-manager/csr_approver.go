@@ -52,7 +52,7 @@ const (
 	legacyKubeletUsername = "kubelet"
 	tpmKubeletUsername    = "kubelet-bootstrap"
 
-	authFlowLabelNone = "not_approved"
+	authFlowLabelNone = "unknown"
 )
 
 var (
@@ -76,6 +76,13 @@ type gkeApprover struct {
 }
 
 func newGKEApprover(ctx *controllerContext) *gkeApprover {
+	return &gkeApprover{
+		ctx:        ctx,
+		validators: csrValidators(ctx),
+	}
+}
+
+func csrValidators(ctx *controllerContext) []csrValidator {
 	// More specific validators go first.
 	validators := []csrValidator{
 		{
@@ -108,7 +115,7 @@ func newGKEApprover(ctx *controllerContext) *gkeApprover {
 			preApproveHook: ensureNodeMatchesMetadataOrDelete,
 		})
 	}
-	return &gkeApprover{ctx: ctx, validators: validators}
+	return validators
 }
 
 func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
@@ -129,7 +136,7 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 
 	for _, r := range a.validators {
 		recordValidatorMetric := csrmetrics.ApprovalStartRecorder(r.authFlowLabel)
-		if !r.recognize(a.ctx, csr, x509cr) {
+		if !r.recognize(csr, x509cr) {
 			continue
 		}
 		klog.Infof("validator %q: matched CSR %q", r.name, csr.Name)
@@ -157,15 +164,15 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 		}
 		if !approved {
 			if time.Since(startupTime) < startupErrorsThreshold {
-				recordMetric(csrmetrics.ApprovalStatusSARRejectAtStartup)
+				recordValidatorMetric(csrmetrics.ApprovalStatusSARRejectAtStartup)
 			} else {
-				recordMetric(csrmetrics.ApprovalStatusSARReject)
+				recordValidatorMetric(csrmetrics.ApprovalStatusSARReject)
 			}
 			return certificates.IgnorableError("recognized csr %q as %q but subject access review was not approved", csr.Name, r.name)
 		}
 		klog.Infof("validator %q: SubjectAccessReview approved for CSR %q", r.name, csr.Name)
 		if r.preApproveHook != nil {
-			if err := r.preApproveHook(a.ctx, csr, x509cr, r.authFlowLabel); err != nil {
+			if err := r.preApproveHook(a.ctx, csr, x509cr); err != nil {
 				klog.Warningf("validator %q: preApproveHook failed for CSR %q: %v", r.name, csr.Name, err)
 				recordValidatorMetric(csrmetrics.ApprovalStatusPreApproveHookError)
 				return err
@@ -195,16 +202,19 @@ func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bo
 			Message: msg,
 		})
 	}
+	updateRecordMetric := csrmetrics.OutboundRPCStartRecorder("k8s.CertificateSigningRequests.updateApproval")
 	_, err := a.ctx.client.CertificatesV1beta1().CertificateSigningRequests().UpdateApproval(csr)
 	if err != nil {
+		updateRecordMetric(csrmetrics.OutboundRPCStatusError)
 		return fmt.Errorf("error updating approval status for csr: %v", err)
 	}
+	updateRecordMetric(csrmetrics.OutboundRPCStatusOK)
 	return nil
 }
 
-type recognizeFunc func(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
+type recognizeFunc func(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool
 type validateFunc func(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error)
-type preApproveHookFunc func(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest, metricsLabel string) error
+type preApproveHookFunc func(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) error
 
 type csrValidator struct {
 	name          string
@@ -287,7 +297,7 @@ var (
 	}
 )
 
-func isNodeCert(_ *controllerContext, _ *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+func isNodeCert(_ *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !reflect.DeepEqual([]string{"system:nodes"}, x509cr.Subject.Organization) {
 		return false
 	}
@@ -297,8 +307,8 @@ func isNodeCert(_ *controllerContext, _ *capi.CertificateSigningRequest, x509cr 
 	return strings.HasPrefix(x509cr.Subject.CommonName, "system:node:")
 }
 
-func isNodeClientCert(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-	if !isNodeCert(ctx, csr, x509cr) {
+func isNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	if !isNodeCert(csr, x509cr) {
 		return false
 	}
 	if len(x509cr.DNSNames) > 0 || len(x509cr.IPAddresses) > 0 {
@@ -307,15 +317,15 @@ func isNodeClientCert(ctx *controllerContext, csr *capi.CertificateSigningReques
 	return hasExactUsages(csr, kubeletClientUsages)
 }
 
-func isLegacyNodeClientCert(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-	if !isNodeClientCert(ctx, csr, x509cr) {
+func isLegacyNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	if !isNodeClientCert(csr, x509cr) {
 		return false
 	}
 	return csr.Spec.Username == legacyKubeletUsername
 }
 
-func isNodeServerCert(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-	if !isNodeCert(ctx, csr, x509cr) {
+func isNodeServerCert(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	if !isNodeCert(csr, x509cr) {
 		return false
 	}
 	if !hasExactUsages(csr, kubeletServerUsages) {
@@ -375,8 +385,8 @@ var tpmAttestationBlocks = []string{
 	"ATTESTATION SIGNATURE",
 }
 
-func isNodeClientCertWithAttestation(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-	if !isNodeClientCert(ctx, csr, x509cr) {
+func isNodeClientCertWithAttestation(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+	if !isNodeClientCert(csr, x509cr) {
 		return false
 	}
 	if csr.Spec.Username != tpmKubeletUsername {
@@ -639,9 +649,8 @@ func isNotFound(err error) bool {
 	return ok && gerr.Code == http.StatusNotFound
 }
 
-func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest, metricsLabel string) error {
+func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) error {
 	// TODO: short-circuit
-	recordMetric := csrmetrics.ApprovalStartRecorder(metricsLabel)
 	if !strings.HasPrefix(x509cr.Subject.CommonName, "system:node:") {
 		return nil
 	}
@@ -650,16 +659,20 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 		return nil
 	}
 
+	recordMetric := csrmetrics.OutboundRPCStartRecorder("k8s.Nodes.get")
 	node, err := ctx.client.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
+		recordMetric(csrmetrics.OutboundRPCStatusNotFound)
 		// if there is no existing Node object, return success
 		return nil
 	}
 	if err != nil {
+		recordMetric(csrmetrics.OutboundRPCStatusError)
 		// returning an error triggers a retry of this CSR.
 		// if the errors are persistent, the CSR will not be approved and the node bootstrap will hang.
 		return fmt.Errorf("error getting node %s: %v", nodeName, err)
 	}
+	recordMetric(csrmetrics.OutboundRPCStatusOK)
 
 	delete, err := shouldDeleteNode(ctx, node, getInstanceByName)
 	if err != nil {
@@ -672,17 +685,20 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 		return nil
 	}
 
+	recordMetric = csrmetrics.OutboundRPCStartRecorder("k8s.Nodes.delete")
 	err = ctx.client.CoreV1().Nodes().Delete(nodeName, &metav1.DeleteOptions{Preconditions: metav1.NewUIDPreconditions(string(node.UID))})
 	if apierrors.IsNotFound(err) {
+		recordMetric(csrmetrics.OutboundRPCStatusNotFound)
 		// If we wanted to delete and the node is gone, this counts as success
 		return nil
 	}
 	if err != nil {
+		recordMetric(csrmetrics.OutboundRPCStatusError)
 		// returning an error triggers a retry of this CSR.
 		// if the errors are persistent, the CSR will not be approved and the node bootstrap will hang.
 		return fmt.Errorf("error deleting node %s: %v", nodeName, err)
 	}
-	recordMetric(csrmetrics.ApprovalStatusNodeDeleted)
+	recordMetric(csrmetrics.OutboundRPCStatusOK)
 	return nil
 }
 

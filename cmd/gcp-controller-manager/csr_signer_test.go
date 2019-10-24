@@ -103,7 +103,11 @@ func TestGKESigner(t *testing.T) {
 			t.Fatalf("error closing kubeconfig template: %v", err)
 		}
 
-		signer, err := newGKESigner(kubeConfig.Name(), record.NewFakeRecorder(10), nil)
+		ctlCtx := &controllerContext{
+			clusterSigningGKEKubeconfig: kubeConfig.Name(),
+			recorder:                    record.NewFakeRecorder(10),
+		}
+		signer, err := newGKESigner(ctlCtx)
 		if err != nil {
 			t.Fatalf("error creating GKESigner: %v", err)
 		}
