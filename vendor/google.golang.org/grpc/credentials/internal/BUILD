@@ -5,5 +5,5 @@ go_library(
     srcs = ["syscallconn.go"],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/credentials/internal",
     importpath = "google.golang.org/grpc/credentials/internal",
-    visibility = ["//visibility:public"],
+    visibility = ["//vendor/google.golang.org/grpc/credentials:__subpackages__"],
 )

@@ -19,7 +19,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -933,13 +932,14 @@ func makeAttestationDataAndSignature(t *testing.T, csrKey *ecdsa.PrivateKey, aik
 	if err != nil {
 		t.Fatal(err)
 	}
-	tpmPubDigest := sha1.Sum(tpmPubRaw)
+	// Hash algorithm here must match tpmPub.NameAlg.
+	tpmPubDigest := sha256.Sum256(tpmPubRaw)
 	attestData, err := tpm2.AttestationData{
 		Type: tpm2.TagAttestCertify,
 		AttestedCertifyInfo: &tpm2.CertifyInfo{
 			Name: tpm2.Name{
 				Digest: &tpm2.HashValue{
-					Alg:   tpm2.AlgSHA1,
+					Alg:   tpm2.AlgSHA256,
 					Value: tpmPubDigest[:],
 				},
 			},
