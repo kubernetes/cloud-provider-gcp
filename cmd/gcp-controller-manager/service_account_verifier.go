@@ -32,6 +32,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/controller"
@@ -102,7 +103,7 @@ type serviceAccountVerifier struct {
 }
 
 func newServiceAccountVerifier(client clientset.Interface, saInformer coreinformers.ServiceAccountInformer, cmInformer coreinformers.ConfigMapInformer, cs *compute.Service, sm *saMap, hmsAuthzURL string) (*serviceAccountVerifier, error) {
-	hms, err := newHMSClient(hmsAuthzURL)
+	hms, err := newHMSClient(hmsAuthzURL, &clientcmdapi.AuthProviderConfig{Name: "gcp"})
 	if err != nil {
 		return nil, err
 	}
@@ -251,18 +252,22 @@ func (sav *serviceAccountVerifier) verify(key string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to get ServiceAccount %q: %v", key, err)
 	}
-	ann, found := sa.ObjectMeta.Annotations[serviceAccountAnnotationGsaEmail]
-	if !found {
-		// Annotation added later (by admin) will not be picked up until the SA's next periodic
-		// resync.
-		klog.V(5).Infof("SA %v does not have a GsaEmail annotation.", sa)
-		return false, nil
-	}
-	gsa := gsaEmail(ann)
 	ksa := serviceAccount{
 		namespace: sa.ObjectMeta.Namespace,
 		name:      sa.ObjectMeta.Name,
 	}
+
+	ann, found := sa.ObjectMeta.Annotations[serviceAccountAnnotationGsaEmail]
+	if !found || ann == "" {
+		// Annotation added (by admin) will not take effect until the SA's next periodic resync.
+		klog.V(5).Infof("SA %v does not have a GsaEmail annotation.", sa)
+		if removedGSA, found := sav.verifiedSAs.remove(ksa); found {
+			klog.Infof("Removed permission %q:%q; annotation removed", ksa, removedGSA)
+			return true, nil
+		}
+		return false, nil
+	}
+	gsa := gsaEmail(ann)
 	permitted, err := sav.hms.authorize(ksa, gsa)
 	if err != nil {
 		return false, fmt.Errorf("failed to authorize %s:%s; err: %v", ksa, gsa, err)

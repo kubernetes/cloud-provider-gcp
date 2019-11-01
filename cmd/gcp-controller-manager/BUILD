@@ -98,6 +98,7 @@ go_test(
         "csr_signer_test.go",
         "gcp_config_test.go",
         "node_annotator_test.go",
+        "service_account_verifier_test.go",
     ],
     embed = [":go_default_library"],
     deps = [
