@@ -301,7 +301,7 @@ func isNodeCert(_ *capi.CertificateSigningRequest, x509cr *x509.CertificateReque
 	if !reflect.DeepEqual([]string{"system:nodes"}, x509cr.Subject.Organization) {
 		return false
 	}
-	if len(x509cr.EmailAddresses) > 0 {
+	if len(x509cr.EmailAddresses) > 0 || len(x509cr.URIs) > 0 {
 		return false
 	}
 	return strings.HasPrefix(x509cr.Subject.CommonName, "system:node:")
