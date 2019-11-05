@@ -22,12 +22,14 @@ import (
 )
 
 const (
-	kubeEnvMetadata = "instance/attributes/kube-env"
-	kubeEnvCert     = "TPM_BOOTSTRAP_CERT: "
-	kubeEnvKey      = "TPM_BOOTSTRAP_KEY: "
-	kubeEnvMaster   = "KUBERNETES_MASTER_NAME: "
+	kubeEnvMetadata   = "instance/attributes/kube-env"
+	kubeEnvCert       = "TPM_BOOTSTRAP_CERT: "
+	kubeEnvKey        = "TPM_BOOTSTRAP_KEY: "
+	kubeEnvMaster     = "KUBERNETES_MASTER_NAME: "
+	kubeEnvCAFilePath = "CA_FILE_PATH: "
 
-	caFilePath = "/etc/srv/kubernetes/pki/ca-certificates.crt"
+	// Used if CA_FILE_PATH not specified in kube-env.
+	defaultCAFilePath = "/etc/srv/kubernetes/pki/ca-certificates.crt"
 )
 
 func requestCertificate(privateKey []byte) ([]byte, error) {
@@ -52,6 +54,7 @@ func requestCertificate(privateKey []byte) ([]byte, error) {
 }
 
 func kubeEnvToConfig(kubeEnv string) (*rest.Config, error) {
+	caFilePath := defaultCAFilePath
 	// Scan each line looking at prefixes, extract the ones we care about.
 	lines := strings.Split(kubeEnv, "\n")
 	var key, cert, master string
@@ -73,6 +76,9 @@ func kubeEnvToConfig(kubeEnv string) (*rest.Config, error) {
 			key = string(keyBytes)
 		case strings.HasPrefix(l, kubeEnvMaster):
 			master = strings.TrimPrefix(l, kubeEnvMaster)
+		case strings.HasPrefix(l, kubeEnvCAFilePath):
+			caFilePath = strings.TrimPrefix(l, kubeEnvCAFilePath)
+			klog.Infof("Using CA file path from kube-env: %q", caFilePath)
 		}
 	}
 	if key == "" || cert == "" || master == "" {
