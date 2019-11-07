@@ -27,7 +27,7 @@ type gsaEmail string
 
 // serviceAccount identifies a K8s service account object by its namespace and name.
 type serviceAccount struct {
-	namespace, name string
+	Namespace, Name string
 }
 
 // MarshalText implements encoding.TextMarshaler interface.  It returns sa in JSON encoded format.
@@ -40,7 +40,7 @@ func (sa serviceAccount) MarshalText() ([]byte, error) {
 
 // String returns sa in string in the format of "<namespace>/<name>".
 func (sa serviceAccount) String() string {
-	return fmt.Sprintf("%s/%s", sa.namespace, sa.name)
+	return fmt.Sprintf("%s/%s", sa.Namespace, sa.Name)
 }
 
 // saMap is a Mutax protected map of gsaEmail keyed by serviceAccount.  It contains fields to

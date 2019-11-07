@@ -253,8 +253,8 @@ func (sav *serviceAccountVerifier) verify(key string) (bool, error) {
 		return false, fmt.Errorf("failed to get ServiceAccount %q: %v", key, err)
 	}
 	ksa := serviceAccount{
-		namespace: sa.ObjectMeta.Namespace,
-		name:      sa.ObjectMeta.Name,
+		Namespace: sa.ObjectMeta.Namespace,
+		Name:      sa.ObjectMeta.Name,
 	}
 
 	ann, found := sa.ObjectMeta.Annotations[serviceAccountAnnotationGsaEmail]
@@ -369,7 +369,10 @@ func (sav *serviceAccountVerifier) persist(key string) error {
 	if err != nil {
 		return fmt.Errorf("internal error during serialization: %v", err)
 	}
-	if bytes.Equal(text, cm.BinaryData[verifiedSAConfigMapKey]) {
+	if cm.BinaryData == nil {
+		cm.BinaryData = make(map[string][]byte)
+	}
+	if b, found := cm.BinaryData[verifiedSAConfigMapKey]; found && bytes.Equal(text, b) {
 		klog.V(5).Infof("ConfigMap in sync; no update necessary: %+v", cm.BinaryData)
 		return nil
 	}
@@ -398,6 +401,10 @@ func newEmptyVerifiedSAConfigMap() *core.ConfigMap {
 
 func newVerifiedSAConfigMap(v []byte) *core.ConfigMap {
 	return &core.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: verifiedSAConfigMapNamespace,
 			Name:      verifiedSAConfigMapName,

@@ -23,9 +23,13 @@ import (
 	"testing"
 
 	core "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 	lister "k8s.io/client-go/listers/core/v1"
+	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"net/http"
 	"net/http/httptest"
@@ -52,8 +56,8 @@ func newKSA(sa serviceAccount, gsa gsaEmail) *core.ServiceAccount {
 			APIVersion: "v1",
 		},
 		ObjectMeta: meta.ObjectMeta{
-			Name:        sa.name,
-			Namespace:   sa.namespace,
+			Name:        sa.Name,
+			Namespace:   sa.Namespace,
 			Annotations: make(map[string]string),
 		},
 	}
@@ -90,8 +94,8 @@ func TestServiceAccountVerify(t *testing.T) {
 	testGSA := gsaEmail("bar@testproject.iam.gserviceaccount.com")
 	testKSA := newKSA(testSA, testGSA)
 	testHMSSAMap := serviceAccountMapping{
-		KNSName:  testSA.namespace,
-		KSAName:  testSA.name,
+		KNSName:  testSA.Namespace,
+		KSAName:  testSA.Name,
 		GSAEmail: string(testGSA),
 	}
 	testHMSRespPermitted := &authorizeSAMappingResponse{
@@ -211,8 +215,8 @@ func TestServiceAccountVerify(t *testing.T) {
 			hmsResp: &authorizeSAMappingResponse{
 				DeniedMappings: []serviceAccountMapping{
 					{
-						KNSName:  testSA.namespace,
-						KSAName:  testSA.name,
+						KNSName:  testSA.Namespace,
+						KSAName:  testSA.Name,
 						GSAEmail: "denied_gsa",
 					},
 				},
@@ -228,8 +232,8 @@ func TestServiceAccountVerify(t *testing.T) {
 			hmsResp: &authorizeSAMappingResponse{
 				PermittedMappings: []serviceAccountMapping{
 					{
-						KNSName:  testSA.namespace,
-						KSAName:  testSA.name,
+						KNSName:  testSA.Namespace,
+						KSAName:  testSA.Name,
 						GSAEmail: "new_permitted_gsa",
 					},
 				},
@@ -283,6 +287,184 @@ func TestServiceAccountVerify(t *testing.T) {
 			}
 			if sync != tc.wantSync {
 				t.Errorf("got sync: %v\nwant sync: %v", sync, tc.wantSync)
+			}
+		})
+	}
+}
+
+type fakeCMLister struct {
+	lister.ConfigMapLister
+	cm  *core.ConfigMap
+	err error
+}
+
+func (f fakeCMLister) ConfigMaps(namespace string) lister.ConfigMapNamespaceLister {
+	return &f
+}
+
+func (f fakeCMLister) Get(name string) (*core.ConfigMap, error) {
+	return f.cm, f.err
+}
+
+func newCM(t *testing.T, saMap *map[serviceAccount]gsaEmail) *core.ConfigMap {
+	cm := &core.ConfigMap{
+		TypeMeta: meta.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
+		ObjectMeta: meta.ObjectMeta{
+			Name:      verifiedSAConfigMapName,
+			Namespace: verifiedSAConfigMapNamespace,
+		},
+		BinaryData: make(map[string][]byte),
+	}
+	if saMap != nil {
+		text, err := json.Marshal(saMap)
+		if err != nil {
+			t.Fatalf("Failed to encode %v: %v", saMap, err)
+		}
+		cm.BinaryData[verifiedSAConfigMapKey] = text
+	}
+	return cm
+}
+
+func TestConfigMapPersist(t *testing.T) {
+	testSA := serviceAccount{"foo", "bar"}
+	testGSA := gsaEmail("bar@testproject.iam.gserviceaccount.com")
+	otherSA := serviceAccount{"otherNamespace", "otherName"}
+	otherGSA := gsaEmail("othergsa@testproject.iam.gserviceaccount.com")
+	mapWithBothSA := map[serviceAccount]gsaEmail{
+		testSA:  testGSA,
+		otherSA: otherGSA,
+	}
+	mapHasOnlyTestSA := map[serviceAccount]gsaEmail{
+		testSA: testGSA,
+	}
+	mapHasOnlyOtherSA := map[serviceAccount]gsaEmail{
+		otherSA: otherGSA,
+	}
+	mapHasZeroSA := map[serviceAccount]gsaEmail{}
+
+	cmRes := schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
+	wantCMKey := fmt.Sprintf("%s/%s", verifiedSAConfigMapNamespace, verifiedSAConfigMapName)
+
+	tests := []struct {
+		desc        string
+		listerCM    *core.ConfigMap
+		listerErr   error
+		keyOverride string
+		testSAMap   map[serviceAccount]gsaEmail
+		failUpdate  bool
+		wantActions []ktesting.Action
+		wantErr     bool
+	}{
+		{
+			desc:      "update to add SA",
+			listerCM:  newCM(t, &mapHasOnlyOtherSA),
+			testSAMap: mapWithBothSA,
+			wantActions: []ktesting.Action{
+				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapWithBothSA)),
+			},
+		},
+		{
+			desc:        "create",
+			listerErr:   errors.NewNotFound(schema.GroupResource{}, "configmap"),
+			keyOverride: wantCMKey,
+			testSAMap:   mapWithBothSA,
+			wantActions: []ktesting.Action{
+				ktesting.NewCreateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapWithBothSA)),
+			},
+		},
+		{
+			desc:        "no update necessary",
+			listerCM:    newCM(t, &mapWithBothSA),
+			testSAMap:   mapWithBothSA,
+			wantActions: []ktesting.Action{},
+		},
+		{
+			desc:      "update to removing one SA",
+			listerCM:  newCM(t, &mapWithBothSA),
+			testSAMap: mapHasOnlyTestSA,
+			wantActions: []ktesting.Action{
+				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapHasOnlyTestSA)),
+			},
+		},
+		{
+			desc:      "update to remove the last SA",
+			listerCM:  newCM(t, &mapHasOnlyTestSA),
+			testSAMap: mapHasZeroSA,
+			wantActions: []ktesting.Action{
+				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapHasZeroSA)),
+			},
+		},
+		{
+			desc:        "ignore invalid configmap key",
+			keyOverride: "invalid key",
+			wantActions: []ktesting.Action{},
+		},
+		{
+			desc:        "ignore other configmap key",
+			keyOverride: "something/else",
+			wantActions: []ktesting.Action{},
+		},
+		{
+			desc:       "delete after api failure",
+			listerCM:   newCM(t, &mapHasOnlyOtherSA),
+			failUpdate: true,
+			testSAMap:  mapWithBothSA,
+			wantErr:    true,
+			wantActions: []ktesting.Action{
+				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapWithBothSA)),
+				ktesting.NewDeleteAction(cmRes, verifiedSAConfigMapNamespace, wantCMKey),
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			c := fake.NewSimpleClientset()
+			if tc.listerCM != nil {
+				c.Tracker().Add(tc.listerCM)
+			}
+			if tc.failUpdate {
+				c.PrependReactor("update", "configmaps", func(action ktesting.Action) (bool, runtime.Object, error) {
+					return true, nil, errors.NewInternalError(fmt.Errorf("fake internal error"))
+				})
+			}
+
+			m := newSAMap()
+			for sa, gsa := range tc.testSAMap {
+				m.add(sa, gsa)
+			}
+			sav := &serviceAccountVerifier{
+				c:           c,
+				cmls:        fakeCMLister{cm: tc.listerCM, err: tc.listerErr},
+				verifiedSAs: m,
+			}
+
+			var key string
+			if tc.keyOverride != "" {
+				key = tc.keyOverride
+			} else {
+				if tc.listerCM == nil {
+					t.Fatalf("testcase error: keyOverride must be set if listerCM is nil")
+				}
+				var err error
+				key, err = cache.MetaNamespaceKeyFunc(tc.listerCM)
+				if err != nil {
+					t.Fatalf("error getting key for CM %+v: %v", tc.listerCM, err)
+				}
+			}
+
+			err := sav.persist(key)
+
+			if tc.wantErr && err == nil {
+				t.Error("expecting but did not get an error")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("not expecting error but got %v", err)
+			}
+			if !reflect.DeepEqual(tc.wantActions, c.Actions()) {
+				t.Errorf("got actions:\n%+v\nwant actions\n%+v", c.Actions(), tc.wantActions)
 			}
 		})
 	}

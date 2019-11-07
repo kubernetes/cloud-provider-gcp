@@ -64,8 +64,8 @@ func isSuccessfulHTTPStatus(statusCode int) bool {
 // permission to get certificates as gsa.
 func (h *hmsClient) authorize(ksa serviceAccount, gsa gsaEmail) (bool, error) {
 	reqMapping := serviceAccountMapping{
-		KNSName:  ksa.namespace,
-		KSAName:  ksa.name,
+		KNSName:  ksa.Namespace,
+		KSAName:  ksa.Name,
 		GSAEmail: string(gsa),
 	}
 	req := authorizeSAMappingRequest{
