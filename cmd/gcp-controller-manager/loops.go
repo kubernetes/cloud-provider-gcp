@@ -43,7 +43,7 @@ type controllerContext struct {
 // We append GCP to all of these to disambiguate them in API server and audit
 // logs. These loops are intentionally started in a random order.
 func loops() map[string]func(*controllerContext) error {
-	return map[string]func(*controllerContext) error{
+	ll := map[string]func(*controllerContext) error{
 		"certificate-approver": func(ctx *controllerContext) error {
 			approver := newGKEApprover(ctx)
 			approveController := certificates.NewCertificateController(
@@ -80,7 +80,9 @@ func loops() map[string]func(*controllerContext) error {
 			go nodeAnnotateController.Run(5, ctx.done)
 			return nil
 		},
-		saVerifierControlLoopName: func(ctx *controllerContext) error {
+	}
+	if *directPath {
+		ll[saVerifierControlLoopName] = func(ctx *controllerContext) error {
 			serviceAccountVerifier, err := newServiceAccountVerifier(
 				ctx.client,
 				ctx.sharedInformers.Core().V1().ServiceAccounts(),
@@ -94,10 +96,9 @@ func loops() map[string]func(*controllerContext) error {
 			}
 			go serviceAccountVerifier.Run(1, ctx.done)
 			return nil
-		},
-		// TODO(danielywong): add new controller "node-syncer" which needs read accesses to
-		// ctx.verifiedSAs.
+		}
 	}
+	return ll
 }
 
 func loopNames() []string {
