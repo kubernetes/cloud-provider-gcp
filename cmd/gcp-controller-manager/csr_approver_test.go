@@ -19,7 +19,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -185,7 +184,7 @@ func TestHandle(t *testing.T) {
 			recognized:    true,
 			allowed:       true,
 			verifyActions: verifyCreateAndUpdate,
-			preApproveHook: func(_ *controllerContext, _ *capi.CertificateSigningRequest, _ *x509.CertificateRequest, _ string) error {
+			preApproveHook: func(_ *controllerContext, _ *capi.CertificateSigningRequest, _ *x509.CertificateRequest) error {
 				return nil
 			},
 		},
@@ -199,7 +198,7 @@ func TestHandle(t *testing.T) {
 				}
 				_ = as[0].(testclient.CreateActionImpl)
 			},
-			preApproveHook: func(_ *controllerContext, _ *capi.CertificateSigningRequest, _ *x509.CertificateRequest, _ string) error {
+			preApproveHook: func(_ *controllerContext, _ *capi.CertificateSigningRequest, _ *x509.CertificateRequest) error {
 				return fmt.Errorf("preApproveHook failed")
 			},
 			err: true,
@@ -276,7 +275,7 @@ func TestHandle(t *testing.T) {
 			validator := csrValidator{
 				approveMsg: "tester",
 				permission: authorization.ResourceAttributes{Group: "foo", Resource: "bar", Subresource: "baz"},
-				recognize: func(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+				recognize: func(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 					return c.recognized
 				},
 				validate:       c.validate,
@@ -299,7 +298,7 @@ func TestValidators(t *testing.T) {
 	t.Run("isLegacyNodeClientCert", func(t *testing.T) {
 		goodCase := func(b *csrBuilder, _ *controllerContext) { b.requestor = legacyKubeletUsername }
 		goodCases := []func(*csrBuilder, *controllerContext){goodCase}
-		testValidator(t, "good", goodCases, isLegacyNodeClientCert, true)
+		testRecognizer(t, "good", goodCases, isLegacyNodeClientCert, true)
 
 		badCases := []func(*csrBuilder, *controllerContext){
 			func(b *csrBuilder, c *controllerContext) {
@@ -320,12 +319,12 @@ func TestValidators(t *testing.T) {
 				b.usages = kubeletServerUsages
 			},
 		}
-		testValidator(t, "bad", badCases, isLegacyNodeClientCert, false)
+		testRecognizer(t, "bad", badCases, isLegacyNodeClientCert, false)
 	})
 	t.Run("isNodeServerClient", func(t *testing.T) {
 		goodCase := func(b *csrBuilder, _ *controllerContext) { b.usages = kubeletServerUsages }
 		goodCases := []func(*csrBuilder, *controllerContext){goodCase}
-		testValidator(t, "good", goodCases, isNodeServerCert, true)
+		testRecognizer(t, "good", goodCases, isNodeServerCert, true)
 
 		badCases := []func(*csrBuilder, *controllerContext){
 			func(b *csrBuilder, c *controllerContext) {},
@@ -350,22 +349,18 @@ func TestValidators(t *testing.T) {
 				b.cn = "system:node:bar"
 			},
 		}
-		testValidator(t, "bad", badCases, isNodeServerCert, false)
+		testRecognizer(t, "bad", badCases, isNodeServerCert, false)
 	})
 	t.Run("validateNodeServerCertInner", func(t *testing.T) {
 		client, srv := fakeGCPAPI(t, nil)
 		defer srv.Close()
-		fn := func(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
+		fn := func(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 			cs, err := compute.New(client)
 			if err != nil {
 				t.Fatalf("creating GCE API client: %v", err)
 			}
 			ctx.gcpCfg.Compute = cs
-			ok, err := validateNodeServerCert(ctx, csr, x509cr)
-			if err != nil {
-				t.Fatalf("validateNodeServerCert: %v", err)
-			}
-			return ok
+			return validateNodeServerCert(ctx, csr, x509cr)
 		}
 
 		goodCase := func(b *csrBuilder, c *controllerContext) {
@@ -375,7 +370,7 @@ func TestValidators(t *testing.T) {
 			b.ips = []net.IP{net.ParseIP("1.2.3.4")}
 		}
 		cases := []func(*csrBuilder, *controllerContext){goodCase}
-		testValidator(t, "good", cases, fn, true)
+		testValidator(t, "good", cases, fn, true, false)
 
 		cases = []func(*csrBuilder, *controllerContext){
 			func(b *csrBuilder, c *controllerContext) {},
@@ -410,7 +405,7 @@ func TestValidators(t *testing.T) {
 				b.ips = []net.IP{net.ParseIP("1.2.3.5")}
 			},
 		}
-		testValidator(t, "bad", cases, fn, false)
+		testValidator(t, "bad", cases, fn, false, false)
 	})
 	t.Run("isNodeClientCertWithAttestation", func(t *testing.T) {
 		goodCase := func(b *csrBuilder, _ *controllerContext) {
@@ -420,7 +415,7 @@ func TestValidators(t *testing.T) {
 			}
 		}
 		goodCases := []func(*csrBuilder, *controllerContext){goodCase}
-		testValidator(t, "good", goodCases, isNodeClientCertWithAttestation, true)
+		testRecognizer(t, "good", goodCases, isNodeClientCertWithAttestation, true)
 
 		badCases := []func(*csrBuilder, *controllerContext){
 			func(b *csrBuilder, c *controllerContext) {},
@@ -445,7 +440,7 @@ func TestValidators(t *testing.T) {
 				b.orgs = []string{"system:master"}
 			},
 		}
-		testValidator(t, "bad", badCases, isNodeClientCertWithAttestation, false)
+		testRecognizer(t, "bad", badCases, isNodeClientCertWithAttestation, false)
 	})
 	t.Run("validateTPMAttestation with cert", func(t *testing.T) {
 		// TODO(awly): re-enable this when ATTESTATION CERTIFICATE is used.
@@ -455,14 +450,6 @@ func TestValidators(t *testing.T) {
 		defer cleanup()
 		client, srv := fakeGCPAPI(t, nil)
 		defer srv.Close()
-
-		validateFunc := func(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-			ok, err := validateTPMAttestation(ctx, csr, x509cr)
-			if err != nil {
-				t.Logf("validateTPMAttestation failed with %q", err)
-			}
-			return ok && err == nil
-		}
 
 		goodCase := func(b *csrBuilder, c *controllerContext) {
 			cs, err := compute.New(client)
@@ -482,7 +469,7 @@ func TestValidators(t *testing.T) {
 			b.extraPEM["ATTESTATION SIGNATURE"] = attestSig
 		}
 		goodCases := []func(*csrBuilder, *controllerContext){goodCase}
-		testValidator(t, "good", goodCases, validateFunc, true)
+		testValidator(t, "good", goodCases, validateTPMAttestation, true, false)
 
 		badCases := []func(*csrBuilder, *controllerContext){
 			func(b *csrBuilder, c *controllerContext) {
@@ -552,7 +539,7 @@ func TestValidators(t *testing.T) {
 
 			// TODO: verifyclustermembership
 		}
-		testValidator(t, "bad", badCases, validateFunc, false)
+		testValidator(t, "bad", badCases, validateTPMAttestation, false, true)
 	})
 	t.Run("validateTPMAttestation with API", func(t *testing.T) {
 		validKey, err := rsa.GenerateKey(insecureRand, 2048)
@@ -563,14 +550,6 @@ func TestValidators(t *testing.T) {
 		defer gceSrv.Close()
 		gkeClient, gkeSrv := fakeGKEAPI(t)
 		defer gkeSrv.Close()
-
-		validateFunc := func(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-			ok, err := validateTPMAttestation(ctx, csr, x509cr)
-			if err != nil {
-				t.Logf("validateTPMAttestation failed with %q", err)
-			}
-			return ok && err == nil
-		}
 
 		goodCase := func(b *csrBuilder, c *controllerContext) {
 			c.csrApproverVerifyClusterMembership = true
@@ -621,7 +600,7 @@ func TestValidators(t *testing.T) {
 				}
 			},
 		}
-		testValidator(t, "good", goodCases, validateFunc, true)
+		testValidator(t, "good", goodCases, validateTPMAttestation, true, false)
 
 		badCases := []func(*csrBuilder, *controllerContext){
 			func(b *csrBuilder, c *controllerContext) {
@@ -633,11 +612,6 @@ func TestValidators(t *testing.T) {
 				goodCase(b, c)
 				// CN valid but doesn't match name in ATTESTATION CERTIFICATE.
 				b.cn = "system:node:i2"
-			},
-			func(b *csrBuilder, c *controllerContext) {
-				goodCase(b, c)
-				// Invalid VM identity
-				b.extraPEM["VM IDENTITY"] = []byte("invalid")
 			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
@@ -676,6 +650,20 @@ func TestValidators(t *testing.T) {
 			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
+				// VM doesn't belong to cluster NodePool.
+				c.gcpCfg.ClusterName = "c1"
+			},
+		}
+		testValidator(t, "bad", badCases, validateTPMAttestation, false, false)
+
+		errorCases := []func(*csrBuilder, *controllerContext){
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// Invalid VM identity
+				b.extraPEM["VM IDENTITY"] = []byte("invalid")
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
 				// VM from nodeidentity doesn't exist
 				nodeID := nodeidentity.Identity{"z0", 1, "i9", 2, "p0"}
 				b.extraPEM["VM IDENTITY"], err = json.Marshal(nodeID)
@@ -695,20 +683,38 @@ func TestValidators(t *testing.T) {
 			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
-				// VM doesn't belong to cluster NodePool.
-				c.gcpCfg.ClusterName = "c1"
-			},
-			func(b *csrBuilder, c *controllerContext) {
-				goodCase(b, c)
 				// Cluster contains a non-existent NodePool.
 				c.gcpCfg.ClusterName = "c2"
 			},
 		}
-		testValidator(t, "bad", badCases, validateFunc, false)
+		testValidator(t, "error", errorCases, validateTPMAttestation, false, true)
 	})
 }
 
-func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, c *controllerContext), checkFunc recognizeFunc, want bool) {
+func testRecognizer(t *testing.T, desc string, cases []func(b *csrBuilder, c *controllerContext), recognize recognizeFunc, want bool) {
+	forAllCases(t, desc, cases, func(t *testing.T, _ *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) {
+		got := recognize(csr, x509cr)
+		if got != want {
+			t.Errorf("got: %v, want: %v", got, want)
+		}
+	})
+}
+
+func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, c *controllerContext), validate validateFunc, wantOK, wantErr bool) {
+	forAllCases(t, desc, cases, func(t *testing.T, ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) {
+		gotOK, gotErr := validate(ctx, csr, x509cr)
+		if (gotErr != nil) != wantErr {
+			t.Fatalf("got error: %v, want error: %v", gotErr, wantErr)
+		}
+		if gotOK != wantOK {
+			t.Errorf("got: %v, want: %v", gotOK, wantOK)
+		}
+	})
+}
+
+type checkFunc func(t *testing.T, ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest)
+
+func forAllCases(t *testing.T, desc string, cases []func(b *csrBuilder, c *controllerContext), check checkFunc) {
 	t.Helper()
 	for i, c := range cases {
 		pk, err := ecdsa.GenerateKey(elliptic.P224(), insecureRand)
@@ -732,9 +738,7 @@ func testValidator(t *testing.T, desc string, cases []func(b *csrBuilder, c *con
 			if err != nil {
 				t.Errorf("unexpected err: %v", err)
 			}
-			if got := checkFunc(o, csr, x509cr); got != want {
-				t.Errorf("got %v, want %v", got, want)
-			}
+			check(t, o, csr, x509cr)
 		})
 	}
 }
@@ -928,13 +932,14 @@ func makeAttestationDataAndSignature(t *testing.T, csrKey *ecdsa.PrivateKey, aik
 	if err != nil {
 		t.Fatal(err)
 	}
-	tpmPubDigest := sha1.Sum(tpmPubRaw)
+	// Hash algorithm here must match tpmPub.NameAlg.
+	tpmPubDigest := sha256.Sum256(tpmPubRaw)
 	attestData, err := tpm2.AttestationData{
 		Type: tpm2.TagAttestCertify,
 		AttestedCertifyInfo: &tpm2.CertifyInfo{
 			Name: tpm2.Name{
 				Digest: &tpm2.HashValue{
-					Alg:   tpm2.AlgSHA1,
+					Alg:   tpm2.AlgSHA256,
 					Value: tpmPubDigest[:],
 				},
 			},

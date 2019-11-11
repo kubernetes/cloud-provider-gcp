@@ -55,7 +55,7 @@ func loops() map[string]func(*controllerContext) error {
 			return nil
 		},
 		"certificate-signer": func(ctx *controllerContext) error {
-			signer, err := newGKESigner(ctx.clusterSigningGKEKubeconfig, ctx.recorder, ctx.client)
+			signer, err := newGKESigner(ctx)
 			if err != nil {
 				return err
 			}

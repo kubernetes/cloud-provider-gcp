@@ -46,14 +46,6 @@ type realTPM struct {
 	rwc io.ReadWriteCloser
 }
 
-func openTPM(path string) (*realTPM, error) {
-	rw, err := tpm2.OpenTPM(path)
-	if err != nil {
-		return nil, fmt.Errorf("tpm2.OpenTPM(%q): %v", path, err)
-	}
-	return &realTPM{rw}, nil
-}
-
 func (t *realTPM) createPrimaryRawTemplate(pub []byte) (tpmutil.Handle, crypto.PublicKey, error) {
 	return tpm2.CreatePrimaryRawTemplate(t.rwc, tpm2.HandleEndorsement, tpm2.PCRSelection{}, "", "", pub)
 }

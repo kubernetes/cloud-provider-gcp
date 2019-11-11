@@ -6,11 +6,20 @@ go_library(
         "constants.go",
         "error.go",
         "kdf.go",
+        "open_other.go",
+        "open_windows.go",
         "structures.go",
         "tpm2.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/google/go-tpm/tpm2",
     importpath = "github.com/google/go-tpm/tpm2",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/github.com/google/go-tpm/tpmutil:go_default_library"],
+    deps = [
+        "//vendor/github.com/google/go-tpm/tpmutil:go_default_library",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:windows": [
+            "//vendor/github.com/google/go-tpm/tpmutil/tbs:go_default_library",
+        ],
+        "//conditions:default": [],
+    }),
 )

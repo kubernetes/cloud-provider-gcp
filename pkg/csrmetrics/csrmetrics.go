@@ -36,13 +36,16 @@ type OutboundRPCStatus string
 // Status constants for metrics.
 const (
 	SigningStatusSignError   SigningStatus = "sign_error"
+	SigningStatusParseError  SigningStatus = "parse_error"
 	SigningStatusUpdateError SigningStatus = "update_error"
 	SigningStatusSigned      SigningStatus = "signed"
 
 	ApprovalStatusNodeDeleted         ApprovalStatus = "node_deleted"
 	ApprovalStatusParseError          ApprovalStatus = "parse_error"
 	ApprovalStatusSARError            ApprovalStatus = "sar_error"
+	ApprovalStatusSARErrorAtStartup   ApprovalStatus = "sar_error_at_startup"
 	ApprovalStatusSARReject           ApprovalStatus = "sar_reject"
+	ApprovalStatusSARRejectAtStartup  ApprovalStatus = "sar_reject_at_startup"
 	ApprovalStatusPreApproveHookError ApprovalStatus = "pre_approve_hook_error"
 	ApprovalStatusDeny                ApprovalStatus = "deny"
 	ApprovalStatusApprove             ApprovalStatus = "approve"
@@ -57,11 +60,11 @@ var (
 	signingCount = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "csr_signing_count",
 		Help: "Count of signed CSRs",
-	}, []string{"status"})
+	}, []string{"status", "kind"})
 	signingLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "csr_signing_latencies",
 		Help: "Latency of CSR signer, in seconds",
-	}, []string{"status"})
+	}, []string{"status", "kind"})
 	approvalCount = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "csr_approval_count",
 		Help: "Count of approved, denied and ignored CSRs",
@@ -94,11 +97,11 @@ func init() {
 // SigningStartRecorder marks the start of a CSR signing operation. Caller is
 // responsible for calling the returned function, which records Prometheus
 // metrics for this operation.
-func SigningStartRecorder() func(status SigningStatus) {
+func SigningStartRecorder(kind string) func(status SigningStatus) {
 	start := time.Now()
 	return func(status SigningStatus) {
-		signingCount.WithLabelValues(string(status)).Inc()
-		signingLatency.WithLabelValues(string(status)).Observe(time.Since(start).Seconds())
+		signingCount.WithLabelValues(string(status), kind).Inc()
+		signingLatency.WithLabelValues(string(status), kind).Observe(time.Since(start).Seconds())
 	}
 }
 
