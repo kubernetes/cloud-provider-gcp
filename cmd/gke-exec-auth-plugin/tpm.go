@@ -103,7 +103,7 @@ func tpmAttest(dev tpmDevice, privateKey crypto.PrivateKey) ([]byte, error) {
 	// Sanity-check the signature.
 	attestHash := sha256.Sum256(attest)
 	if err := rsa.VerifyPKCS1v15(aikPub.(*rsa.PublicKey), crypto.SHA256, attestHash[:], sig); err != nil {
-		return nil, fmt.Errorf("Signature verification failed: %v", err)
+		return nil, fmt.Errorf("signature verification failed: %v", err)
 	}
 	klog.Info("certification signature verified with AIK public key")
 

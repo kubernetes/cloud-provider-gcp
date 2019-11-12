@@ -145,8 +145,8 @@ func getExistingKeyCert(dir string) ([]byte, []byte, bool) {
 		klog.Error("existing private key is invalid or doesn't match existing certificate")
 		return nil, nil, false
 	}
-	age := time.Now().Sub(parsedCert.NotBefore)
-	remaining := parsedCert.NotAfter.Sub(time.Now())
+	age := time.Since(parsedCert.NotBefore)
+	remaining := time.Until(parsedCert.NotAfter)
 	// Note: case order matters. Always check outside of expiry bounds first
 	// and put cases that return non-nil key/cert at the bottom.
 	switch {

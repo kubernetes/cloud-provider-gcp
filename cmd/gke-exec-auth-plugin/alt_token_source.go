@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -64,7 +65,7 @@ func (a *altTokenSource) Token() (*oauth2.Token, error) {
 // newAltTokenSource constructs a new alternate token source for generating tokens.
 func newAltTokenSource(tokenURL, tokenBody string) oauth2.TokenSource {
 	return &altTokenSource{
-		oauthClient: oauth2.NewClient(oauth2.NoContext, google.ComputeTokenSource("")),
+		oauthClient: oauth2.NewClient(context.Background(), google.ComputeTokenSource("")),
 		tokenURL:    tokenURL,
 		tokenBody:   tokenBody,
 	}

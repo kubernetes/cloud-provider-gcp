@@ -169,7 +169,7 @@ func run(s *controllerManager) error {
 		Interface: v1core.New(clientBuilder.ClientOrDie("gcp-controller-manager").CoreV1().RESTClient()).Events(""),
 	})
 
-	run := func(ctx context.Context) {
+	startControllers := func(ctx context.Context) {
 		for name, loop := range loops() {
 			if !s.isEnabled(name) {
 				continue
@@ -210,7 +210,7 @@ func run(s *controllerManager) error {
 			return err
 		}
 		leaderElectionConfig.Callbacks = leaderelection.LeaderCallbacks{
-			OnStartedLeading: run,
+			OnStartedLeading: startControllers,
 			OnStoppedLeading: func() {
 				klog.Fatalf("lost leader election, exiting")
 			},
@@ -224,7 +224,7 @@ func run(s *controllerManager) error {
 		panic("unreachable")
 	}
 
-	run(nil)
+	startControllers(ctx)
 	return fmt.Errorf("should never reach this point")
 }
 
