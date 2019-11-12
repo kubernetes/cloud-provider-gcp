@@ -68,6 +68,9 @@ var (
 	csrApproverVerifyClusterMembership = pflag.Bool("csr-validate-cluster-membership", true, "Validate that VMs requesting CSRs belong to current GKE cluster.")
 	csrApproverAllowLegacyKubelet      = pflag.Bool("csr-allow-legacy-kubelet", true, "Allow legacy kubelet bootstrap flow.")
 	gceAPIEndpointOverride             = pflag.String("gce-api-endpoint-override", "", "If set, talks to a different GCE API Endpoint. By default it talks to https://www.googleapis.com/compute/v1/projects/")
+	directPath                         = pflag.Bool("direct-path", false, "Enable Direct Path.")
+	hmsAuthorizeSAMappingURL           = pflag.String("hms-authorize-sa-mapping-url", "", "URL for reaching the Hosted Master Service AuthorizeSAMapping API.")
+	hmsSyncNodeURL                     = pflag.String("hms-sync-node-url", "", "URL for reaching the Hosted Master Service SyncNode API.")
 )
 
 func main() {
@@ -95,6 +98,8 @@ func main() {
 		csrApproverVerifyClusterMembership: *csrApproverVerifyClusterMembership,
 		csrApproverAllowLegacyKubelet:      *csrApproverAllowLegacyKubelet,
 		leaderElectionConfig:               *leConfig,
+		hmsAuthorizeSAMappingURL:           *hmsAuthorizeSAMappingURL,
+		hmsSyncNodeURL:                     *hmsSyncNodeURL,
 	}
 	var err error
 	s.kubeconfig, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
@@ -132,6 +137,8 @@ type controllerManager struct {
 	csrApproverVerifyClusterMembership bool
 	csrApproverAllowLegacyKubelet      bool
 	leaderElectionConfig               componentbaseconfig.LeaderElectionConfiguration
+	hmsAuthorizeSAMappingURL           string
+	hmsSyncNodeURL                     string
 
 	// Fields initialized from other sources.
 	gcpConfig  gcpConfig
@@ -189,7 +196,10 @@ func run(s *controllerManager) error {
 				clusterSigningGKEKubeconfig:        s.clusterSigningGKEKubeconfig,
 				csrApproverVerifyClusterMembership: s.csrApproverVerifyClusterMembership,
 				csrApproverAllowLegacyKubelet:      s.csrApproverAllowLegacyKubelet,
+				verifiedSAs:                        newSAMap(),
 				done:                               ctx.Done(),
+				hmsAuthorizeSAMappingURL:           s.hmsAuthorizeSAMappingURL,
+				hmsSyncNodeURL:                     s.hmsSyncNodeURL,
 			}); err != nil {
 				klog.Fatalf("Failed to start %q: %v", name, err)
 			}

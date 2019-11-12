@@ -33,14 +33,17 @@ type controllerContext struct {
 	clusterSigningGKEKubeconfig        string
 	csrApproverVerifyClusterMembership bool
 	csrApproverAllowLegacyKubelet      bool
+	verifiedSAs                        *saMap
 	done                               <-chan struct{}
+	hmsAuthorizeSAMappingURL           string
+	hmsSyncNodeURL                     string
 }
 
 // loops returns all the control loops that the GCPControllerManager can start.
 // We append GCP to all of these to disambiguate them in API server and audit
 // logs. These loops are intentionally started in a random order.
 func loops() map[string]func(*controllerContext) error {
-	return map[string]func(*controllerContext) error{
+	ll := map[string]func(*controllerContext) error{
 		"certificate-approver": func(ctx *controllerContext) error {
 			approver := newGKEApprover(ctx)
 			approveController := certificates.NewCertificateController(
@@ -78,6 +81,24 @@ func loops() map[string]func(*controllerContext) error {
 			return nil
 		},
 	}
+	if *directPath {
+		ll[saVerifierControlLoopName] = func(ctx *controllerContext) error {
+			serviceAccountVerifier, err := newServiceAccountVerifier(
+				ctx.client,
+				ctx.sharedInformers.Core().V1().ServiceAccounts(),
+				ctx.sharedInformers.Core().V1().ConfigMaps(),
+				ctx.gcpCfg.Compute,
+				ctx.verifiedSAs,
+				ctx.hmsAuthorizeSAMappingURL,
+			)
+			if err != nil {
+				return err
+			}
+			go serviceAccountVerifier.Run(1, ctx.done)
+			return nil
+		}
+	}
+	return ll
 }
 
 func loopNames() []string {
