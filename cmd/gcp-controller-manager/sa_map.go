@@ -62,9 +62,7 @@ func (m *saMap) add(sa serviceAccount, gsa gsaEmail) (gsaEmail, bool) {
 	m.Lock()
 	defer m.Unlock()
 	lastGSA, found := m.ma[sa]
-	if !found || lastGSA != gsa {
-		m.ma[sa] = gsa
-	}
+	m.ma[sa] = gsa
 	return lastGSA, found
 }
 
@@ -85,13 +83,6 @@ func (m *saMap) get(sa serviceAccount) (gsaEmail, bool) {
 	defer m.RUnlock()
 	gsa, ok := m.ma[sa]
 	return gsa, ok
-}
-
-// Len returns the number of entries in m.
-func (m *saMap) len() int {
-	m.RLock()
-	defer m.RUnlock()
-	return len(m.ma)
 }
 
 // Serialize returns m in its JSON encoded format or error if serialization had failed.

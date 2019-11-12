@@ -55,8 +55,8 @@ func newHMSClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*h
 	}, nil
 }
 
-// isSuccessful returns true if statusCode is in the range of 200 to 299 inclusive.
-func isSuccessfulHTTPStatus(statusCode int) bool {
+// isErrorHTTPStatus returns true if statusCode is not in the range of 200 to 299 inclusive.
+func isErrorHTTPStatus(statusCode int) bool {
 	return statusCode < 200 || statusCode >= 300
 }
 
@@ -87,7 +87,7 @@ func (h *hmsClient) authorize(ksa serviceAccount, gsa gsaEmail) (bool, error) {
 	// result.StatusCode is set only if result.Error is nil.
 	var status int
 	result.StatusCode(&status)
-	if isSuccessfulHTTPStatus(status) {
+	if isErrorHTTPStatus(status) {
 		return false, fmt.Errorf("unsuccessful status code resulted from request %v: %d", req, status)
 	}
 
@@ -108,8 +108,6 @@ func (h *hmsClient) authorize(ksa serviceAccount, gsa gsaEmail) (bool, error) {
 	return false, fmt.Errorf("internal error: requested mapping %v not found in response %+v", reqMapping, rsp)
 }
 
-// Hosted Master Service request/response message definitions.
-//
 // authorizeSAMappingRequest is the request message for the authorizeSAMapping RPC.
 type authorizeSAMappingRequest struct {
 	// List of KSA to GSA mappings to be authorized.
@@ -138,15 +136,4 @@ type serviceAccountMapping struct {
 	// Email address of a GCP Service Account; that is,
 	// <gsa_name>@<project_name>.iam.gserviceaccount.com.
 	GSAEmail string `json:"gsaEmail"`
-}
-
-// Request for SyncNode RPC.
-type syncNodeRequest struct {
-	// Name of the Kubernetes Node to be synchronized.
-	NodeName string `json:"nodeName"`
-	// List of GCP Service Accounts for the Node in Email address format; that is,
-	// <gsa_name>@<project_name>.iam.gserviceaccount.com.
-	GSAEmails []string `json:"gsaEmails"`
-	// Name of the zone for the node being synchronized.
-	NodeZone string `json:"nodeZone"`
 }

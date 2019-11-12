@@ -26,7 +26,6 @@ import (
 	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -66,9 +65,9 @@ const (
 	// KSA/GSA pairs are persisted in serialized form.
 	verifiedSAConfigMapKey = "permitted-ksa-to-gsa-pairs"
 
-	// serviceAccountAnnotationGsaEmail is the key to GCP Service Account annotation in
+	// serviceAccountAnnotationGSAEmail is the key to GCP Service Account annotation in
 	// ServiceAccount objects.
-	serviceAccountAnnotationGsaEmail = "iam.gke.io/gcp-service-account"
+	serviceAccountAnnotationGSAEmail = "iam.gke.io/gcp-service-account"
 
 	// serviceAccountResyncPeriod defines the resync interval for the SA Informer.  This control
 	// loop depends on this resync to pickup authorization configuration changes made in the GCP
@@ -86,8 +85,6 @@ const (
 // serviceAccountVerifier implements a custom control loop responsible for verifying authorization
 // for Kubernetes Service Accounts (KSA) in the cluster to impersonate specific GCP Service Accounts
 // (GSA) and persisting the authorized pairs in a ConfigMap entry.
-//
-// See go/gke-direct-path-controller-dd for details.
 //
 // verifiedSAs is a thread-safe map of all authorized {KSA: GSA} pairs.  This control loop also
 // maintains these pairs in ConfigMap "verifiedSAConfigMapNamespace/verifiedSAConfigMapName".
@@ -155,7 +152,7 @@ func (sav *serviceAccountVerifier) onSADelete(obj interface{}) {
 func (sav *serviceAccountVerifier) enqueueSA(obj interface{}) {
 	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("internal error. Couldn't get key for ServiceAccount %+v: %v", obj, err))
+		klog.Errorf("internal error. Couldn't get key for ServiceAccount %+v: %v", obj, err)
 		return
 	}
 	sav.saQueue.AddRateLimited(key)
@@ -185,7 +182,7 @@ func (sav *serviceAccountVerifier) enqueueCM(obj interface{}) {
 	}
 	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("internal error. Couldn't get key for ConfigMap %+v: %v", obj, err))
+		klog.Errorf("internal error. Couldn't get key for ConfigMap %+v: %v", obj, err)
 		return
 	}
 	sav.cmQueue.AddRateLimited(key)
@@ -257,7 +254,7 @@ func (sav *serviceAccountVerifier) verify(key string) (bool, error) {
 		Name:      sa.ObjectMeta.Name,
 	}
 
-	ann, found := sa.ObjectMeta.Annotations[serviceAccountAnnotationGsaEmail]
+	ann, found := sa.ObjectMeta.Annotations[serviceAccountAnnotationGSAEmail]
 	if !found || ann == "" {
 		// Annotation added (by admin) will not take effect until the SA's next periodic resync.
 		klog.V(5).Infof("SA %v does not have a GsaEmail annotation.", sa)
