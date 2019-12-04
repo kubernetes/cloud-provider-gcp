@@ -19,7 +19,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"reflect"
+	"sync"
 	"testing"
 
 	core "k8s.io/api/core/v1"
@@ -69,6 +71,8 @@ func newKSA(sa serviceAccount, gsa gsaEmail) *core.ServiceAccount {
 
 type testHMS struct {
 	server *httptest.Server
+	m      sync.Mutex
+	req    []byte
 	resp   interface{}
 	ok     bool
 }
@@ -79,10 +83,24 @@ func newTestHMS(resp interface{}, ok bool) *testHMS {
 	return hms
 }
 
+func (hms *testHMS) getLastRequest() []byte {
+	hms.m.Lock()
+	defer hms.m.Unlock()
+	return hms.req
+}
+
 // ServeHTTP implements the http.Handler interface.
 func (hms *testHMS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	hms.m.Lock()
+	defer hms.m.Unlock()
 	if !hms.ok {
 		http.Error(w, "random error message", http.StatusInternalServerError)
+		return
+	}
+	var err error
+	hms.req, err = ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "error reading request", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -97,6 +115,9 @@ func TestServiceAccountVerify(t *testing.T) {
 		KNSName:  testSA.Namespace,
 		KSAName:  testSA.Name,
 		GSAEmail: string(testGSA),
+	}
+	wantHMSReq := &authorizeSAMappingRequest{
+		RequestedMappings: []serviceAccountMapping{testHMSSAMap},
 	}
 	testHMSRespPermitted := &authorizeSAMappingResponse{
 		PermittedMappings: []serviceAccountMapping{testHMSSAMap},
@@ -126,6 +147,7 @@ func TestServiceAccountVerify(t *testing.T) {
 		initMap        map[serviceAccount]gsaEmail
 		hmsResp        interface{}
 		hmsOK          bool
+		wantReq        *authorizeSAMappingRequest
 		wantSync       bool
 		wantErr        bool
 		wantMap        map[serviceAccount]gsaEmail
@@ -136,6 +158,7 @@ func TestServiceAccountVerify(t *testing.T) {
 			hmsResp:  testHMSRespPermitted,
 			hmsOK:    true,
 			initMap:  mapHasOnlyOtherSA,
+			wantReq:  wantHMSReq,
 			wantMap:  mapWithBothSA,
 			wantSync: true,
 		},
@@ -145,6 +168,7 @@ func TestServiceAccountVerify(t *testing.T) {
 			hmsResp: testHMSRespPermitted,
 			hmsOK:   true,
 			initMap: mapWithBothSA,
+			wantReq: wantHMSReq,
 			wantMap: mapWithBothSA,
 		},
 		{
@@ -153,6 +177,7 @@ func TestServiceAccountVerify(t *testing.T) {
 			hmsResp: testHMSRespDenied,
 			hmsOK:   true,
 			initMap: mapHasOnlyOtherSA,
+			wantReq: wantHMSReq,
 			wantMap: mapHasOnlyOtherSA,
 		},
 		{
@@ -161,6 +186,7 @@ func TestServiceAccountVerify(t *testing.T) {
 			hmsResp:  testHMSRespDenied,
 			hmsOK:    true,
 			initMap:  mapWithBothSA,
+			wantReq:  wantHMSReq,
 			wantMap:  mapHasOnlyOtherSA,
 			wantSync: true,
 		},
@@ -193,6 +219,7 @@ func TestServiceAccountVerify(t *testing.T) {
 			hmsResp: "a very bad response",
 			hmsOK:   true,
 			initMap: mapHasOnlyOtherSA,
+			wantReq: wantHMSReq,
 			wantMap: mapHasOnlyOtherSA,
 			wantErr: true,
 		},
@@ -221,8 +248,17 @@ func TestServiceAccountVerify(t *testing.T) {
 					},
 				},
 			},
-			hmsOK:    true,
-			initMap:  mapWithBothSA,
+			hmsOK:   true,
+			initMap: mapWithBothSA,
+			wantReq: &authorizeSAMappingRequest{
+				RequestedMappings: []serviceAccountMapping{
+					{
+						KNSName:  testSA.Namespace,
+						KSAName:  testSA.Name,
+						GSAEmail: "denied_gsa",
+					},
+				},
+			},
 			wantMap:  mapHasOnlyOtherSA,
 			wantSync: true,
 		},
@@ -240,6 +276,15 @@ func TestServiceAccountVerify(t *testing.T) {
 			},
 			hmsOK:   true,
 			initMap: mapHasOnlyTestSA,
+			wantReq: &authorizeSAMappingRequest{
+				RequestedMappings: []serviceAccountMapping{
+					{
+						KNSName:  testSA.Namespace,
+						KSAName:  testSA.Name,
+						GSAEmail: "new_permitted_gsa",
+					},
+				},
+			},
 			wantMap: map[serviceAccount]gsaEmail{
 				testSA: gsaEmail("new_permitted_gsa"),
 			},
@@ -287,6 +332,23 @@ func TestServiceAccountVerify(t *testing.T) {
 			}
 			if sync != tc.wantSync {
 				t.Errorf("got sync: %v\nwant sync: %v", sync, tc.wantSync)
+			}
+			gotRaw := hmsServer.getLastRequest()
+			if gotRaw == nil && tc.wantReq != nil {
+				t.Errorf("expecting HMS request %v but it was not made", tc.wantReq)
+			}
+			if gotRaw != nil {
+				if tc.wantReq == nil {
+					t.Errorf("got HMS request %v but one was not expected", gotRaw)
+				} else {
+					var gotReq authorizeSAMappingRequest
+					if err := json.Unmarshal(gotRaw, &gotReq); err != nil {
+						t.Errorf("got invalid HMS request %v: %v", gotRaw, err)
+					}
+					if !reflect.DeepEqual(gotReq, *tc.wantReq) {
+						t.Errorf("got request %v; want %v", gotReq, tc.wantReq)
+					}
+				}
 			}
 		})
 	}
