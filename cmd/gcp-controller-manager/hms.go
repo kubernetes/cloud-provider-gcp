@@ -60,6 +60,18 @@ func isErrorHTTPStatus(statusCode int) bool {
 	return statusCode < 200 || statusCode >= 300
 }
 
+func (h *hmsClient) sync(node, zone string, gsaList []gsaEmail) error {
+	req := syncNodeRequest{
+		NodeName:  node,
+		NodeZone:  zone,
+		GSAEmails: make([]string, 0, len(gsaList)),
+	}
+	for _, gsa := range gsaList {
+		req.GSAEmails = append(req.GSAEmails, string(gsa))
+	}
+	return h.call(req, nil)
+}
+
 // Authorize implements the saMappingAuthorizer interface.  It calls HMS to verify if ksa has
 // permission to get certificates as gsa.
 func (h *hmsClient) authorize(ksa serviceAccount, gsa gsaEmail) (bool, error) {
@@ -71,34 +83,12 @@ func (h *hmsClient) authorize(ksa serviceAccount, gsa gsaEmail) (bool, error) {
 	req := authorizeSAMappingRequest{
 		RequestedMappings: []serviceAccountMapping{reqMapping},
 	}
-	enc, err := json.Marshal(req)
-	if err != nil {
-		return false, fmt.Errorf("failed to encode %v: %v", req, err)
-	}
 
-	result := h.webhook.WithExponentialBackoff(func() rest.Result {
-		return h.webhook.RestClient.Post().Body(enc).Do()
-	})
-
-	if err = result.Error(); err != nil {
-		return false, fmt.Errorf("error resulted from request %v: %v", req, err)
-	}
-
-	// result.StatusCode is set only if result.Error is nil.
-	var status int
-	result.StatusCode(&status)
-	if isErrorHTTPStatus(status) {
-		return false, fmt.Errorf("unsuccessful status code resulted from request %v: %d", req, status)
-	}
-
-	raw, err := result.Raw()
-	if err != nil {
-		return false, fmt.Errorf("request succeeed but failed to read response: %v", err)
-	}
 	var rsp authorizeSAMappingResponse
-	if err = json.Unmarshal(raw, &rsp); err != nil {
-		return false, fmt.Errorf("request succeeed but got error %v parsing response: %q", err, raw)
+	if err := h.call(req, &rsp); err != nil {
+		return false, err
 	}
+
 	if permitted := rsp.PermittedMappings; len(permitted) > 0 && permitted[0] == reqMapping {
 		return true, nil
 	}
@@ -106,6 +96,40 @@ func (h *hmsClient) authorize(ksa serviceAccount, gsa gsaEmail) (bool, error) {
 		return false, nil
 	}
 	return false, fmt.Errorf("internal error: requested mapping %v not found in response %+v", reqMapping, rsp)
+}
+
+func (h *hmsClient) call(req, rsp interface{}) error {
+	enc, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to encode %v: %v", req, err)
+	}
+
+	result := h.webhook.WithExponentialBackoff(func() rest.Result {
+		return h.webhook.RestClient.Post().Body(enc).Do()
+	})
+
+	if err = result.Error(); err != nil {
+		return fmt.Errorf("error resulted from request %v: %v", req, err)
+	}
+
+	// result.StatusCode is set only if result.Error is nil.
+	var status int
+	result.StatusCode(&status)
+	if isErrorHTTPStatus(status) {
+		return fmt.Errorf("unsuccessful status code resulted from request %v: %d", req, status)
+	}
+
+	if rsp == nil {
+		return nil
+	}
+	raw, err := result.Raw()
+	if err != nil {
+		return fmt.Errorf("request succeeed but failed to read response: %v", err)
+	}
+	if err = json.Unmarshal(raw, rsp); err != nil {
+		return fmt.Errorf("request succeeed but got error %v parsing response: %q", err, raw)
+	}
+	return nil
 }
 
 // authorizeSAMappingRequest is the request message for the authorizeSAMapping RPC.
@@ -136,4 +160,15 @@ type serviceAccountMapping struct {
 	// Email address of a GCP Service Account; that is,
 	// <gsa_name>@<project_name>.iam.gserviceaccount.com.
 	GSAEmail string `json:"gsaEmail"`
+}
+
+// Request for SyncNode RPC.
+type syncNodeRequest struct {
+	// Name of the Kubernetes Node to be synchronized.
+	NodeName string `json:"nodeName"`
+	// List of GCP Service Accounts for the Node in Email address format; that is,
+	// <gsa_name>@<project_name>.iam.gserviceaccount.com.
+	GSAEmails []string `json:"gsaEmails"`
+	// Name of the zone for the node being synchronized.
+	NodeZone string `json:"nodeZone"`
 }

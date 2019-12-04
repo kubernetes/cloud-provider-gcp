@@ -94,7 +94,20 @@ func loops() map[string]func(*controllerContext) error {
 			if err != nil {
 				return err
 			}
-			go serviceAccountVerifier.Run(1, ctx.done)
+			go serviceAccountVerifier.Run(3, ctx.done)
+			return nil
+		}
+		ll[nodeSyncerControlLoopName] = func(ctx *controllerContext) error {
+			nodeSyncer, err := newNodeSyncer(
+				ctx.sharedInformers.Core().V1().Pods(),
+				ctx.verifiedSAs,
+				ctx.hmsSyncNodeURL,
+				ctx.gcpCfg.Location,
+			)
+			if err != nil {
+				return err
+			}
+			go nodeSyncer.Run(10, ctx.done)
 			return nil
 		}
 	}
