@@ -102,14 +102,18 @@ func main() {
 		hmsSyncNodeURL:                     *hmsSyncNodeURL,
 	}
 	var err error
-	s.kubeconfig, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	s.informerKubeconfig, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	if err != nil {
 		klog.Exitf("failed loading kubeconfig: %v", err)
 	}
 	// bump the QPS limits per controller up from defaults of 5 qps / 10 burst
-	s.kubeconfig.QPS = kubeconfigQPS
-	s.kubeconfig.Burst = kubeconfigBurst
-	s.kubeconfig.Timeout = kubeconfigTimeout
+	s.informerKubeconfig.QPS = kubeconfigQPS
+	s.informerKubeconfig.Burst = kubeconfigBurst
+	// kubeconfig for controllers is the same, plus it has a client timeout for
+	// API requests. Informers shouldn't have a timeout because that breaks
+	// watch requests.
+	s.controllerKubeconfig = restclient.CopyConfig(s.informerKubeconfig)
+	s.controllerKubeconfig.Timeout = kubeconfigTimeout
 
 	s.gcpConfig, err = loadGCPConfig(s.gceConfigPath, s.gceAPIEndpointOverride)
 	if err != nil {
@@ -141,8 +145,9 @@ type controllerManager struct {
 	hmsSyncNodeURL                     string
 
 	// Fields initialized from other sources.
-	gcpConfig  gcpConfig
-	kubeconfig *restclient.Config
+	gcpConfig            gcpConfig
+	informerKubeconfig   *restclient.Config
+	controllerKubeconfig *restclient.Config
 }
 
 func (s *controllerManager) isEnabled(name string) bool {
@@ -165,15 +170,16 @@ func (s *controllerManager) isEnabled(name string) bool {
 func run(s *controllerManager) error {
 	ctx := context.Background()
 
-	clientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: s.kubeconfig}
-
-	informerClient := clientBuilder.ClientOrDie("gcp-controller-manager-shared-informer")
+	informerClientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: s.informerKubeconfig}
+	informerClient := informerClientBuilder.ClientOrDie("gcp-controller-manager-shared-informer")
 	sharedInformers := informers.NewSharedInformerFactory(informerClient, time.Duration(12)*time.Hour)
+
+	controllerClientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: s.controllerKubeconfig}
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
-		Interface: v1core.New(clientBuilder.ClientOrDie("gcp-controller-manager").CoreV1().RESTClient()).Events(""),
+		Interface: v1core.New(controllerClientBuilder.ClientOrDie("gcp-controller-manager").CoreV1().RESTClient()).Events(""),
 	})
 
 	startControllers := func(ctx context.Context) {
@@ -182,7 +188,7 @@ func run(s *controllerManager) error {
 				continue
 			}
 			name = "gcp-" + name
-			loopClient, err := clientBuilder.Client(name)
+			loopClient, err := controllerClientBuilder.Client(name)
 			if err != nil {
 				klog.Fatalf("failed to start client for %q: %v", name, err)
 			}
@@ -209,7 +215,7 @@ func run(s *controllerManager) error {
 	}
 
 	if s.leaderElectionConfig.LeaderElect {
-		leaderElectionClient, err := clientset.NewForConfig(restclient.AddUserAgent(s.kubeconfig, "leader-election"))
+		leaderElectionClient, err := clientset.NewForConfig(restclient.AddUserAgent(s.informerKubeconfig, "leader-election"))
 		if err != nil {
 			return err
 		}
