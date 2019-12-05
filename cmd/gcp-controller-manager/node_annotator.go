@@ -157,7 +157,7 @@ func (na *nodeAnnotator) update(obj, oldObj interface{}) {
 func (na *nodeAnnotator) enqueue(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %+v: %v", obj, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
 		return
 	}
 	na.queue.Add(key)
