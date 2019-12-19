@@ -69,10 +69,10 @@ container_deps()
 
 container_pull(
     name = "distroless",
-    digest = "sha256:de63da39d0477a9994276cb1de6cec710d9e293ca667ef01ef189b6c87b554e9",
+    digest = "sha256:c6d5981545ce1406d33e61434c61e9452dad93ecd8397c41e89036ef977a88f4",
     registry = "gcr.io",
     repository = "distroless/static",
-    # tag = "latest",
+    tag = "b54513ef989c81d68cb27d9c7958697e2fedd2c4",
 )
 
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
