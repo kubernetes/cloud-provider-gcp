@@ -24,12 +24,10 @@ import (
 	compute "google.golang.org/api/compute/v1"
 
 	core "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/workqueue"
@@ -90,8 +88,8 @@ const (
 // maintains these pairs in ConfigMap "verifiedSAConfigMapNamespace/verifiedSAConfigMapName".
 type serviceAccountVerifier struct {
 	c           clientset.Interface
-	sals        corelisters.ServiceAccountLister
-	cmls        corelisters.ConfigMapLister
+	saIndexer   cache.Indexer
+	cmIndexer   cache.Indexer
 	saHasSynced func() bool
 	saQueue     workqueue.RateLimitingInterface
 	cmQueue     workqueue.RateLimitingInterface
@@ -106,8 +104,8 @@ func newServiceAccountVerifier(client clientset.Interface, saInformer coreinform
 	}
 	sav := &serviceAccountVerifier{
 		c:           client,
-		sals:        saInformer.Lister(),
-		cmls:        cmInformer.Lister(),
+		saIndexer:   saInformer.Informer().GetIndexer(),
+		cmIndexer:   cmInformer.Informer().GetIndexer(),
 		saHasSynced: saInformer.Informer().HasSynced,
 		saQueue: workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
 			workqueue.NewItemExponentialFailureRateLimiter(200*time.Millisecond, 1000*time.Second),
@@ -240,19 +238,30 @@ func (sav *serviceAccountVerifier) processNextSA() bool {
 // GSA as annotated.  Verify returns a bool to indicate if ConfigMap sync is required and an error
 // if key needs to be requeued.
 func (sav *serviceAccountVerifier) verify(key string) (bool, error) {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		klog.Errorf("Dropping invalid key %q in SA queue: %v", key, err)
-		return false, nil
-	}
-	sa, err := sav.sals.ServiceAccounts(namespace).Get(name)
+	o, exists, err := sav.saIndexer.GetByKey(key)
 	if err != nil {
 		return false, fmt.Errorf("failed to get ServiceAccount %q: %v", key, err)
 	}
-	ksa := serviceAccount{
-		Namespace: sa.ObjectMeta.Namespace,
-		Name:      sa.ObjectMeta.Name,
+	if !exists {
+		// Remove the ksa entry from verifiedSAs in case it was previosly authorized.
+		namespace, name, err := cache.SplitMetaNamespaceKey(key)
+		if err != nil {
+			klog.Errorf("Dropping invalid key %q in SA queue: %v", key, err)
+			return false, nil
+		}
+		ksa := serviceAccount{namespace, name}
+		if removedGSA, found := sav.verifiedSAs.remove(ksa); found {
+			klog.Infof("Removed permission %q:%q; KSA removed", ksa, removedGSA)
+			return true, nil
+		}
+		return false, nil
 	}
+	sa, ok := o.(*core.ServiceAccount)
+	if !ok {
+		klog.Errorf("Dropping invalid object from SA queue with key %q: %#v", key, o)
+		return false, nil
+	}
+	ksa := serviceAccount{sa.ObjectMeta.Namespace, sa.ObjectMeta.Name}
 
 	ann, found := sa.ObjectMeta.Annotations[serviceAccountAnnotationGSAEmail]
 	if !found || ann == "" {
@@ -343,17 +352,17 @@ func (sav *serviceAccountVerifier) persist(key string) error {
 		return nil
 	}
 
-	cm, err := sav.cmls.ConfigMaps(namespace).Get(name)
+	o, exists, err := sav.cmIndexer.GetByKey(key)
 	if err != nil {
-		if !errors.IsNotFound(err) {
-			return fmt.Errorf("unknown error in getting ConfigMap %s/%s: %v", namespace, name, err)
-		}
-		klog.Warningf("ConfigMap %s/%s not found; creating.", namespace, name)
+		return fmt.Errorf("failed to get ConfigMap %q: %v", key, err)
+	}
+	if !exists {
+		klog.Warningf("ConfigMap %s/%s does not exist; creating.", namespace, name)
 		text, err := sav.verifiedSAs.serialize()
 		if err != nil {
 			return fmt.Errorf("internal error during serialization: %v", err)
 		}
-		cm = newVerifiedSAConfigMap(text)
+		cm := newVerifiedSAConfigMap(text)
 		klog.V(5).Infof("Creating ConfigMap: %+v", cm.Data)
 		_, err = sav.c.CoreV1().ConfigMaps(verifiedSAConfigMapNamespace).Create(cm)
 		if err != nil {
@@ -362,6 +371,11 @@ func (sav *serviceAccountVerifier) persist(key string) error {
 		return nil
 	}
 
+	cm, ok := o.(*core.ConfigMap)
+	if !ok {
+		klog.Errorf("Dropping invalid object from ConfigMap queue with key %q: %#v", key, o)
+		return nil
+	}
 	text, err := sav.verifiedSAs.serialize()
 	if err != nil {
 		return fmt.Errorf("internal error during serialization: %v", err)

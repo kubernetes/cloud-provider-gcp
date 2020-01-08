@@ -162,7 +162,7 @@ func (ns *nodeSyncer) process(key string) error {
 	if !exists {
 		node, gsa, found := ns.nodes.remove(key)
 		if !found {
-			return nil // Pod's ServiceAccount doesn't have a verified GSA
+			return nil
 		}
 		klog.Infof("Pod %q and its GSA %q is removed from Node %q", key, gsa, node)
 		return ns.sync(node)
@@ -178,7 +178,7 @@ func (ns *nodeSyncer) process(key string) error {
 	}
 	gsa, found := ns.verifiedSAs.get(ksa)
 	if !found {
-		klog.Infof("ServiceAccount %q is not authorized to act as any GSA.", ksa)
+		klog.V(5).Infof("ServiceAccount %q is not authorized to act as any GSA.", ksa)
 		return nil
 	}
 	node := pod.Spec.NodeName
