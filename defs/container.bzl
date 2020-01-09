@@ -23,13 +23,14 @@ def image(binary, visibility = ["//visibility:public"]):
         base = "@distroless//image",
         visibility = visibility,
     )
+    image_registry = "{STABLE_IMAGE_REGISTRY}"
     image_repo = "{STABLE_IMAGE_REPO}"
     repository = image_repo + "/" + name
     container_push(
         name = "publish",
         format = "Docker",
         image = ":image",
-        registry = "gcr.io",
+        registry = image_registry,
         repository = repository,
         stamp = True,
         tag = "{STABLE_IMAGE_TAG}",
@@ -37,7 +38,7 @@ def image(binary, visibility = ["//visibility:public"]):
     container_bundle(
         name = "bundle",
         images = {
-            "gcr.io/" + repository + ":{STABLE_IMAGE_TAG}": ":image",
+            image_registry + "/" + repository + ":{STABLE_IMAGE_TAG}": ":image",
         },
         stamp = True,
         visibility = visibility,

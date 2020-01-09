@@ -9,15 +9,15 @@ This command will build and publish
 bazel run //cmd/gcp-controller-manager:publish
 ```
 
-Environment variables `IMAGE_REPO` and `IMAGE_TAG` can be used to override
-destination GCR repository and tag.
+Environment variables `IMAGE_REGISTRY`, `IMAGE_REPO` and `IMAGE_TAG` can be
+used to override destination GCR repository and tag.
 
 This command will build and publish
-`gcr.io/my-repo/gcp-controller-manager:v1`:
+`example.com/my-repo/gcp-controller-manager:v1`:
 
 
 ```
-IMAGE_REPO=my-repo IMAGE_TAG=v1 bazel run //cmd/gcp-controller-manager:publish
+IMAGE_REGISTRY=example.com IMAGE_REPO=my-repo IMAGE_TAG=v1 bazel run //cmd/gcp-controller-manager:publish
 ```
 
 # Dependency management

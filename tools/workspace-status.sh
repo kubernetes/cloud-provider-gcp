@@ -27,6 +27,7 @@ set -o pipefail
 # IMPORTANT: the camelCase vars should match the lists in hack/lib/version.sh
 # and pkg/version/def.bzl.
 cat <<EOF
+STABLE_IMAGE_REGISTRY ${IMAGE_REGISTRY:-gcr.io}
 STABLE_IMAGE_REPO ${IMAGE_REPO:-k8s-image-staging}
 STABLE_IMAGE_TAG ${IMAGE_TAG:-latest}
 EOF
