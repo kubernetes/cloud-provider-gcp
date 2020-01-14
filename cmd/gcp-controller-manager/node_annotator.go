@@ -235,19 +235,15 @@ type annotator struct {
 
 func parseNodeURL(nodeURL string) (project, zone, instance string, err error) {
 	// We only expect to handle strings that look like:
-	// gce://project/zone/instance. Splitting by "/", the parts should look
-	// like: ["gce:", "", "project", "zone", "instance"]
-	parts := strings.Split(nodeURL, "/")
-	if len(parts) != 5 {
-		return "", "", "", fmt.Errorf("failed to parse %q: expected a three part path", nodeURL)
-	}
-	if parts[0] != "gce:" {
+	// gce://project/zone/instance
+	if !strings.HasPrefix(nodeURL, "gce://") {
 		return "", "", "", fmt.Errorf("instance %q doesn't run on gce", nodeURL)
 	}
-	if len(parts[1]) != 0 {
-		return "", "", "", fmt.Errorf("failed to parse %q: part one of path to have length 0", nodeURL)
+	parts := strings.Split(strings.TrimPrefix(nodeURL, "gce://"), "/")
+	if len(parts) != 3 {
+		return "", "", "", fmt.Errorf("failed to parse %q: expected a three part path", nodeURL)
 	}
-	return parts[2], parts[3], parts[4], nil
+	return parts[0], parts[1], parts[2], nil
 }
 
 // TODO: move this to instance.Labels. This is gross.
