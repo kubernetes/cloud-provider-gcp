@@ -45,6 +45,12 @@ func TestParseNodeURL(t *testing.T) {
 			instance: "c",
 		},
 		{
+			nodeURL:  "gce://example.com:legacy-project/b/c",
+			project:  "example.com:legacy-project",
+			zone:     "b",
+			instance: "c",
+		},
+		{
 			nodeURL:   "gce://a/b/c/d",
 			expectErr: true,
 		},
