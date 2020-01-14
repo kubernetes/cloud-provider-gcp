@@ -18,7 +18,7 @@ package main
 
 import (
 	"fmt"
-	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -234,25 +234,14 @@ type annotator struct {
 	annotate func(*core.Node, *compute.Instance) bool
 }
 
+var nodeURLRegexp = regexp.MustCompile("^gce://([^/]+)/([^/]+)/([^/]+)$")
+
 func parseNodeURL(nodeURL string) (project, zone, instance string, err error) {
-	u, err := url.Parse(nodeURL)
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to parse %q: %v", nodeURL, err)
+	parts := nodeURLRegexp.FindStringSubmatch(nodeURL)
+	if len(parts) != 4 {
+		return "", "", "", fmt.Errorf("failed to parse %q: must match %q", nodeURL, nodeURLRegexp)
 	}
-	if u.Scheme != "gce" {
-		return "", "", "", fmt.Errorf("instance %q doesn't run on gce", nodeURL)
-	}
-	project = u.Host
-	parts := strings.Split(u.Path, "/")
-	if len(parts) != 3 {
-		return "", "", "", fmt.Errorf("failed to parse %q: expected a three part path", u.Path)
-	}
-	if len(parts[0]) != 0 {
-		return "", "", "", fmt.Errorf("failed to parse %q: part one of path to have length 0", u.Path)
-	}
-	zone = parts[1]
-	instance = parts[2]
-	return
+	return parts[1], parts[2], parts[3], nil
 }
 
 // TODO: move this to instance.Labels. This is gross.

@@ -64,6 +64,12 @@ func TestParseNodeURL(t *testing.T) {
 			nodeURL:   "gce://a/b",
 			expectErr: true,
 		},
+		{
+			nodeURL:  "gce://foo.com:a-c12/us-moon3-a/c-c-1",
+			project:  "foo.com:a-c12",
+			zone:     "us-moon3-a",
+			instance: "c-c-1",
+		},
 	}
 
 	for i, c := range cs {
