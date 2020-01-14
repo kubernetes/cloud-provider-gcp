@@ -18,7 +18,6 @@ package main
 
 import (
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -235,24 +234,20 @@ type annotator struct {
 }
 
 func parseNodeURL(nodeURL string) (project, zone, instance string, err error) {
-	u, err := url.Parse(nodeURL)
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to parse %q: %v", nodeURL, err)
+	// We only expect to handle strings that look like:
+	// gce://project/zone/instance. Splitting by "/", the parts should look
+	// like: ["gce:", "", "project", "zone", "instance"]
+	parts := strings.Split(nodeURL, "/")
+	if len(parts) != 5 {
+		return "", "", "", fmt.Errorf("failed to parse %q: expected a three part path", nodeURL)
 	}
-	if u.Scheme != "gce" {
+	if parts[0] != "gce:" {
 		return "", "", "", fmt.Errorf("instance %q doesn't run on gce", nodeURL)
 	}
-	project = u.Host
-	parts := strings.Split(u.Path, "/")
-	if len(parts) != 3 {
-		return "", "", "", fmt.Errorf("failed to parse %q: expected a three part path", u.Path)
+	if len(parts[1]) != 0 {
+		return "", "", "", fmt.Errorf("failed to parse %q: part one of path to have length 0", nodeURL)
 	}
-	if len(parts[0]) != 0 {
-		return "", "", "", fmt.Errorf("failed to parse %q: part one of path to have length 0", u.Path)
-	}
-	zone = parts[1]
-	instance = parts[2]
-	return
+	return parts[2], parts[3], parts[4], nil
 }
 
 // TODO: move this to instance.Labels. This is gross.
