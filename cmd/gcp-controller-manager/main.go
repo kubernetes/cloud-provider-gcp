@@ -182,6 +182,8 @@ func run(s *controllerManager) error {
 		Interface: v1core.New(controllerClientBuilder.ClientOrDie("gcp-controller-manager").CoreV1().RESTClient()).Events(""),
 	})
 
+	verifiedSAs := newSAMap()
+
 	startControllers := func(ctx context.Context) {
 		for name, loop := range loops() {
 			if !s.isEnabled(name) {
@@ -202,7 +204,7 @@ func run(s *controllerManager) error {
 				clusterSigningGKEKubeconfig:        s.clusterSigningGKEKubeconfig,
 				csrApproverVerifyClusterMembership: s.csrApproverVerifyClusterMembership,
 				csrApproverAllowLegacyKubelet:      s.csrApproverAllowLegacyKubelet,
-				verifiedSAs:                        newSAMap(),
+				verifiedSAs:                        verifiedSAs,
 				done:                               ctx.Done(),
 				hmsAuthorizeSAMappingURL:           s.hmsAuthorizeSAMappingURL,
 				hmsSyncNodeURL:                     s.hmsSyncNodeURL,

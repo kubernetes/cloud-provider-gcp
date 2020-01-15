@@ -30,26 +30,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
-	lister "k8s.io/client-go/listers/core/v1"
 	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"net/http"
 	"net/http/httptest"
 )
-
-type fakeSALister struct {
-	lister.ServiceAccountLister
-	ksa *core.ServiceAccount
-	err error
-}
-
-func (f fakeSALister) ServiceAccounts(namespace string) lister.ServiceAccountNamespaceLister {
-	return &f
-}
-
-func (f fakeSALister) Get(name string) (*core.ServiceAccount, error) {
-	return f.ksa, f.err
-}
 
 func newKSA(sa serviceAccount, gsa gsaEmail) *core.ServiceAccount {
 	ksa := &core.ServiceAccount{
@@ -109,6 +94,7 @@ func (hms *testHMS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func TestServiceAccountVerify(t *testing.T) {
 	testSA := serviceAccount{"foo", "bar"}
+	testSAKey := "foo/bar"
 	testGSA := gsaEmail("bar@testproject.iam.gserviceaccount.com")
 	testKSA := newKSA(testSA, testGSA)
 	testHMSSAMap := serviceAccountMapping{
@@ -141,7 +127,7 @@ func TestServiceAccountVerify(t *testing.T) {
 
 	tests := []struct {
 		desc           string
-		ksa            *core.ServiceAccount
+		ksa            interface{}
 		ksaErr         error
 		ksaKeyOverride string
 		initMap        map[serviceAccount]gsaEmail
@@ -191,9 +177,9 @@ func TestServiceAccountVerify(t *testing.T) {
 			wantSync: true,
 		},
 		{
-			desc:    "ksa not found",
+			desc:    "sa indexer get error",
 			ksa:     testKSA,
-			ksaErr:  fmt.Errorf("not found"),
+			ksaErr:  fmt.Errorf("indexer error on get"),
 			initMap: mapHasOnlyOtherSA,
 			wantMap: mapHasOnlyOtherSA,
 			wantErr: true,
@@ -205,6 +191,13 @@ func TestServiceAccountVerify(t *testing.T) {
 			initMap:        mapHasOnlyOtherSA,
 			wantMap:        mapHasOnlyOtherSA,
 			wantErr:        true,
+		},
+		{
+			desc:           "verified ksa got removed",
+			ksaKeyOverride: testSAKey,
+			initMap:        mapWithBothSA,
+			wantMap:        mapHasOnlyOtherSA,
+			wantSync:       true,
 		},
 		{
 			desc:    "hms returned http error",
@@ -293,7 +286,6 @@ func TestServiceAccountVerify(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-			c := fake.NewSimpleClientset(tc.ksa)
 			hmsServer := newTestHMS(tc.hmsResp, tc.hmsOK)
 			hmsClient, err := newHMSClient(hmsServer.server.URL, nil)
 			if err != nil {
@@ -304,8 +296,7 @@ func TestServiceAccountVerify(t *testing.T) {
 				m.add(sa, gsa)
 			}
 			sav := &serviceAccountVerifier{
-				c:           c,
-				sals:        fakeSALister{ksa: tc.ksa, err: tc.ksaErr},
+				saIndexer:   fakeIndexer{obj: tc.ksa, err: tc.ksaErr},
 				hms:         hmsClient,
 				verifiedSAs: m,
 			}
@@ -354,20 +345,6 @@ func TestServiceAccountVerify(t *testing.T) {
 	}
 }
 
-type fakeCMLister struct {
-	lister.ConfigMapLister
-	cm  *core.ConfigMap
-	err error
-}
-
-func (f fakeCMLister) ConfigMaps(namespace string) lister.ConfigMapNamespaceLister {
-	return &f
-}
-
-func (f fakeCMLister) Get(name string) (*core.ConfigMap, error) {
-	return f.cm, f.err
-}
-
 func newCM(t *testing.T, saMap *map[serviceAccount]gsaEmail) *core.ConfigMap {
 	cm := &core.ConfigMap{
 		TypeMeta: meta.TypeMeta{
@@ -412,8 +389,8 @@ func TestConfigMapPersist(t *testing.T) {
 
 	tests := []struct {
 		desc        string
-		listerCM    *core.ConfigMap
-		listerErr   error
+		indexerObj  interface{}
+		indexerErr  error
 		keyOverride string
 		testSAMap   map[serviceAccount]gsaEmail
 		failUpdate  bool
@@ -421,16 +398,15 @@ func TestConfigMapPersist(t *testing.T) {
 		wantErr     bool
 	}{
 		{
-			desc:      "update to add SA",
-			listerCM:  newCM(t, &mapHasOnlyOtherSA),
-			testSAMap: mapWithBothSA,
+			desc:       "update to add SA",
+			indexerObj: newCM(t, &mapHasOnlyOtherSA),
+			testSAMap:  mapWithBothSA,
 			wantActions: []ktesting.Action{
 				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapWithBothSA)),
 			},
 		},
 		{
 			desc:        "create",
-			listerErr:   errors.NewNotFound(schema.GroupResource{}, "configmap"),
 			keyOverride: wantCMKey,
 			testSAMap:   mapWithBothSA,
 			wantActions: []ktesting.Action{
@@ -439,22 +415,22 @@ func TestConfigMapPersist(t *testing.T) {
 		},
 		{
 			desc:        "no update necessary",
-			listerCM:    newCM(t, &mapWithBothSA),
+			indexerObj:  newCM(t, &mapWithBothSA),
 			testSAMap:   mapWithBothSA,
 			wantActions: []ktesting.Action{},
 		},
 		{
-			desc:      "update to removing one SA",
-			listerCM:  newCM(t, &mapWithBothSA),
-			testSAMap: mapHasOnlyTestSA,
+			desc:       "update to removing one SA",
+			indexerObj: newCM(t, &mapWithBothSA),
+			testSAMap:  mapHasOnlyTestSA,
 			wantActions: []ktesting.Action{
 				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapHasOnlyTestSA)),
 			},
 		},
 		{
-			desc:      "update to remove the last SA",
-			listerCM:  newCM(t, &mapHasOnlyTestSA),
-			testSAMap: mapHasZeroSA,
+			desc:       "update to remove the last SA",
+			indexerObj: newCM(t, &mapHasOnlyTestSA),
+			testSAMap:  mapHasZeroSA,
 			wantActions: []ktesting.Action{
 				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapHasZeroSA)),
 			},
@@ -470,8 +446,14 @@ func TestConfigMapPersist(t *testing.T) {
 			wantActions: []ktesting.Action{},
 		},
 		{
+			desc:        "retry on indexer error",
+			keyOverride: "dont/care",
+			indexerErr:  fmt.Errorf("indexer get failure"),
+			wantActions: []ktesting.Action{},
+		},
+		{
 			desc:       "delete after api failure",
-			listerCM:   newCM(t, &mapHasOnlyOtherSA),
+			indexerObj: newCM(t, &mapHasOnlyOtherSA),
 			failUpdate: true,
 			testSAMap:  mapWithBothSA,
 			wantErr:    true,
@@ -484,8 +466,8 @@ func TestConfigMapPersist(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
 			c := fake.NewSimpleClientset()
-			if tc.listerCM != nil {
-				c.Tracker().Add(tc.listerCM)
+			if tc.indexerObj != nil {
+				c.Tracker().Add(tc.indexerObj.(*core.ConfigMap))
 			}
 			if tc.failUpdate {
 				c.PrependReactor("update", "configmaps", func(action ktesting.Action) (bool, runtime.Object, error) {
@@ -499,7 +481,7 @@ func TestConfigMapPersist(t *testing.T) {
 			}
 			sav := &serviceAccountVerifier{
 				c:           c,
-				cmls:        fakeCMLister{cm: tc.listerCM, err: tc.listerErr},
+				cmIndexer:   fakeIndexer{obj: tc.indexerObj, err: tc.indexerErr},
 				verifiedSAs: m,
 			}
 
@@ -507,13 +489,13 @@ func TestConfigMapPersist(t *testing.T) {
 			if tc.keyOverride != "" {
 				key = tc.keyOverride
 			} else {
-				if tc.listerCM == nil {
-					t.Fatalf("testcase error: keyOverride must be set if listerCM is nil")
+				if tc.indexerObj == nil {
+					t.Fatalf("testcase error: keyOverride must be set if indexerObj is nil")
 				}
 				var err error
-				key, err = cache.MetaNamespaceKeyFunc(tc.listerCM)
+				key, err = cache.MetaNamespaceKeyFunc(tc.indexerObj)
 				if err != nil {
-					t.Fatalf("error getting key for CM %+v: %v", tc.listerCM, err)
+					t.Fatalf("error getting key for CM %+v: %v", tc.indexerObj, err)
 				}
 			}
 
