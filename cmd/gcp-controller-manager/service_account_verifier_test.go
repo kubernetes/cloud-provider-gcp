@@ -345,8 +345,8 @@ func TestServiceAccountVerify(t *testing.T) {
 	}
 }
 
-func newCM(t *testing.T, saMap *map[serviceAccount]gsaEmail) *core.ConfigMap {
-	cm := &core.ConfigMap{
+func newCM() *core.ConfigMap {
+	return &core.ConfigMap{
 		TypeMeta: meta.TypeMeta{
 			Kind:       "ConfigMap",
 			APIVersion: "v1",
@@ -357,6 +357,10 @@ func newCM(t *testing.T, saMap *map[serviceAccount]gsaEmail) *core.ConfigMap {
 		},
 		BinaryData: make(map[string][]byte),
 	}
+}
+
+func newCMFromSAMap(t *testing.T, saMap *map[serviceAccount]gsaEmail) *core.ConfigMap {
+	cm := newCM()
 	if saMap != nil {
 		text, err := json.Marshal(saMap)
 		if err != nil {
@@ -367,11 +371,17 @@ func newCM(t *testing.T, saMap *map[serviceAccount]gsaEmail) *core.ConfigMap {
 	return cm
 }
 
+func newCMFromData(data []byte) *core.ConfigMap {
+	cm := newCM()
+	cm.BinaryData[verifiedSAConfigMapKey] = data
+	return cm
+}
+
 func TestConfigMapPersist(t *testing.T) {
 	testSA := serviceAccount{"foo", "bar"}
-	testGSA := gsaEmail("bar@testproject.iam.gserviceaccount.com")
+	testGSA := gsaEmail("bar@testproject.com")
 	otherSA := serviceAccount{"otherNamespace", "otherName"}
-	otherGSA := gsaEmail("othergsa@testproject.iam.gserviceaccount.com")
+	otherGSA := gsaEmail("othergsa@testproject.com")
 	mapWithBothSA := map[serviceAccount]gsaEmail{
 		testSA:  testGSA,
 		otherSA: otherGSA,
@@ -399,10 +409,10 @@ func TestConfigMapPersist(t *testing.T) {
 	}{
 		{
 			desc:       "update to add SA",
-			indexerObj: newCM(t, &mapHasOnlyOtherSA),
+			indexerObj: newCMFromSAMap(t, &mapHasOnlyOtherSA),
 			testSAMap:  mapWithBothSA,
 			wantActions: []ktesting.Action{
-				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapWithBothSA)),
+				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCMFromSAMap(t, &mapWithBothSA)),
 			},
 		},
 		{
@@ -410,29 +420,29 @@ func TestConfigMapPersist(t *testing.T) {
 			keyOverride: wantCMKey,
 			testSAMap:   mapWithBothSA,
 			wantActions: []ktesting.Action{
-				ktesting.NewCreateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapWithBothSA)),
+				ktesting.NewCreateAction(cmRes, verifiedSAConfigMapNamespace, newCMFromSAMap(t, &mapWithBothSA)),
 			},
 		},
 		{
 			desc:        "no update necessary",
-			indexerObj:  newCM(t, &mapWithBothSA),
+			indexerObj:  newCMFromSAMap(t, &mapWithBothSA),
 			testSAMap:   mapWithBothSA,
 			wantActions: []ktesting.Action{},
 		},
 		{
 			desc:       "update to removing one SA",
-			indexerObj: newCM(t, &mapWithBothSA),
+			indexerObj: newCMFromSAMap(t, &mapWithBothSA),
 			testSAMap:  mapHasOnlyTestSA,
 			wantActions: []ktesting.Action{
-				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapHasOnlyTestSA)),
+				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCMFromSAMap(t, &mapHasOnlyTestSA)),
 			},
 		},
 		{
 			desc:       "update to remove the last SA",
-			indexerObj: newCM(t, &mapHasOnlyTestSA),
+			indexerObj: newCMFromSAMap(t, &mapHasOnlyTestSA),
 			testSAMap:  mapHasZeroSA,
 			wantActions: []ktesting.Action{
-				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapHasZeroSA)),
+				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCMFromSAMap(t, &mapHasZeroSA)),
 			},
 		},
 		{
@@ -453,13 +463,35 @@ func TestConfigMapPersist(t *testing.T) {
 		},
 		{
 			desc:       "delete after api failure",
-			indexerObj: newCM(t, &mapHasOnlyOtherSA),
+			indexerObj: newCMFromSAMap(t, &mapHasOnlyOtherSA),
 			failUpdate: true,
 			testSAMap:  mapWithBothSA,
 			wantErr:    true,
 			wantActions: []ktesting.Action{
-				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCM(t, &mapWithBothSA)),
+				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCMFromSAMap(t, &mapWithBothSA)),
 				ktesting.NewDeleteAction(cmRes, verifiedSAConfigMapNamespace, wantCMKey),
+			},
+		},
+		{
+			desc:        "correct serialization",
+			keyOverride: wantCMKey,
+			testSAMap: map[serviceAccount]gsaEmail{
+				testSA: testGSA,
+			},
+			wantActions: []ktesting.Action{
+				ktesting.NewCreateAction(cmRes, verifiedSAConfigMapNamespace,
+					newCMFromData([]byte(`{"foo/bar":"bar@testproject.com"}`))),
+			},
+		},
+		{
+			desc:        "correct serialization for empty namespace",
+			keyOverride: wantCMKey,
+			testSAMap: map[serviceAccount]gsaEmail{
+				serviceAccount{"", "namespaceLess"}: gsaEmail("yetanothergsa@random.com"),
+			},
+			wantActions: []ktesting.Action{
+				ktesting.NewCreateAction(cmRes, verifiedSAConfigMapNamespace,
+					newCMFromData([]byte(`{"default/namespaceLess":"yetanothergsa@random.com"}`))),
 			},
 		},
 	}
