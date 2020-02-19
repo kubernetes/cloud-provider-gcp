@@ -85,7 +85,7 @@ func TestParseNodeURL(t *testing.T) {
 	}
 }
 
-func TestExtrackKubeLabels(t *testing.T) {
+func TestExtractKubeLabels(t *testing.T) {
 	var something = "something"
 	cs := map[string]struct {
 		vm                  *compute.Instance
@@ -201,6 +201,79 @@ func TestExtrackKubeLabels(t *testing.T) {
 				t.Errorf("got %v, want errNoMetadata", err)
 			}
 			if got, want := (err != nil), c.expectErr || c.expectNoMetadataErr; got != want {
+				t.Errorf("unexpected error value: %v", err)
+			}
+		})
+	}
+}
+
+func TestMergeManagedLabels(t *testing.T) {
+	cs := map[string]struct {
+		lastAppliedLabels map[string]string
+		liveLabels        map[string]string
+		desiredLabels     map[string]string
+		outLabels         map[string]string
+		outAnnotation     map[string]string
+		expectErr         bool
+	}{
+		"empty last applied label": {
+			liveLabels:    map[string]string{},
+			desiredLabels: map[string]string{"a": "1"},
+			outLabels:     map[string]string{"a": "1"},
+			outAnnotation: map[string]string{lastAppliedLabelsKey: "a=1"},
+		},
+		"empty desired label": {
+			liveLabels:    map[string]string{"a": "1"},
+			desiredLabels: map[string]string{},
+			outLabels:     map[string]string{"a": "1"},
+			outAnnotation: map[string]string{lastAppliedLabelsKey: ""},
+		},
+		"valid merge, same managed label set": {
+			lastAppliedLabels: map[string]string{lastAppliedLabelsKey: "a=1,b=2"},
+			liveLabels:        map[string]string{"a": "1", "b": "2", "c": "3"},
+			desiredLabels:     map[string]string{"a": "3", "b": "4"},
+			outLabels:         map[string]string{"a": "3", "b": "4", "c": "3"},
+			outAnnotation:     map[string]string{lastAppliedLabelsKey: "a=3,b=4"},
+		},
+		"valid merge, remove managed label": {
+			lastAppliedLabels: map[string]string{lastAppliedLabelsKey: "a=1,b=2"},
+			liveLabels:        map[string]string{"a": "1", "b": "2", "c": "3"},
+			desiredLabels:     map[string]string{"a": "3"},
+			outLabels:         map[string]string{"a": "3", "c": "3"},
+			outAnnotation:     map[string]string{lastAppliedLabelsKey: "a=3"},
+		},
+		"valid merge, add managed label": {
+			lastAppliedLabels: map[string]string{lastAppliedLabelsKey: "a=1,b=2"},
+			liveLabels:        map[string]string{"a": "1", "b": "2", "c": "3"},
+			desiredLabels:     map[string]string{"a": "3", "aa": "3"},
+			outLabels:         map[string]string{"a": "3", "c": "3", "aa": "3"},
+			outAnnotation:     map[string]string{lastAppliedLabelsKey: "a=3,aa=3"},
+		},
+		"invalid last applied label": {
+			lastAppliedLabels: map[string]string{lastAppliedLabelsKey: "a=1,b"},
+			liveLabels:        map[string]string{"a": "1", "b": "2", "c": "3"},
+			desiredLabels:     map[string]string{"a": "3", "aa": "3"},
+			outLabels:         map[string]string{"a": "3", "b": "2", "c": "3", "aa": "3"},
+			outAnnotation:     map[string]string{lastAppliedLabelsKey: "a=3,aa=3"},
+		},
+	}
+
+	for name, c := range cs {
+		t.Run(name, func(t *testing.T) {
+			node := &core.Node{
+				ObjectMeta: v1.ObjectMeta{
+					Labels:      c.liveLabels,
+					Annotations: c.lastAppliedLabels,
+				},
+			}
+			err := mergeManagedLabels(node, c.desiredLabels)
+			if got, want := node.ObjectMeta.Labels, c.outLabels; !reflect.DeepEqual(got, want) {
+				t.Errorf("unexpected labels\n\tgot:\t%v\n\twant:\t%v", got, want)
+			}
+			if got, want := node.ObjectMeta.Annotations, c.outAnnotation; !reflect.DeepEqual(got, want) {
+				t.Errorf("unexpected annotations\n\tgot:\t%v\n\twant:\t%v", got, want)
+			}
+			if got, want := (err != nil), c.expectErr; got != want {
 				t.Errorf("unexpected error value: %v", err)
 			}
 		})

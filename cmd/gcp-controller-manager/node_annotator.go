@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,8 @@ import (
 
 // InstanceIDAnnotationKey is the node annotation key where the external ID is written.
 const InstanceIDAnnotationKey = "container.googleapis.com/instance_id"
+
+const lastAppliedLabelsKey = "node.gke.io/last-applied-node-labels"
 
 var errNoMetadata = fmt.Errorf("instance did not have 'kube-labels' metadata")
 
@@ -109,7 +112,8 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 			{
 				name: "labels-reconciler",
 				annotate: func(node *core.Node, instance *compute.Instance) bool {
-					labels, err := extractKubeLabels(instance)
+					klog.Errorf("Triggering label reconcilation")
+					desiredLabels, err := extractKubeLabels(instance)
 					if err != nil {
 						if err != errNoMetadata {
 							klog.Errorf("Error reconciling labels: %v", err)
@@ -125,8 +129,10 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 						delete(node.ObjectMeta.Labels, key)
 					}
 
-					for key, value := range labels {
-						node.ObjectMeta.Labels[key] = value
+					err = mergeManagedLabels(node, desiredLabels)
+					if err != nil {
+						klog.Errorf("Error merging labels: %v", err)
+						return false
 					}
 
 					return true
@@ -271,17 +277,67 @@ func extractKubeLabels(instance *compute.Instance) (map[string]string, error) {
 		return make(map[string]string), nil
 	}
 
+	parsedLabels, err := parseLabels(*kubeLabels)
+	if err != nil {
+		return nil, fmt.Errorf("instance %q had %s", instance.SelfLink, err.Error())
+	}
+	return parsedLabels, nil
+}
+
+func extractLastAppliedLabels(node *core.Node) map[string]string {
+	lastLabels, ok := node.ObjectMeta.Annotations[lastAppliedLabelsKey]
+	if !ok || len(lastLabels) == 0 {
+		return nil
+	}
+
+	parsedLabels, err := parseLabels(lastLabels)
+	if err != nil {
+		klog.Errorf("Failed to parse last applied labels annotation: %q, treat it as not set, err: %v", lastLabels, err)
+		return nil
+	}
+	return parsedLabels
+}
+
+func mergeManagedLabels(node *core.Node, desiredLabels map[string]string) error {
+	if node.ObjectMeta.Annotations == nil {
+		node.ObjectMeta.Annotations = make(map[string]string)
+	}
+	lastAppliedLabels := extractLastAppliedLabels(node)
+	// Merge GCE managed labels by:
+	// 1. delete managed labels to be removed, which is present in last-applied-labels
+	// 2. add/update labels from GCE label source to node
+	// 3. update last-applied-labels in annotation
+	for key := range lastAppliedLabels {
+		delete(node.ObjectMeta.Labels, key)
+	}
+	for key, value := range desiredLabels {
+		node.ObjectMeta.Labels[key] = value
+	}
+	node.ObjectMeta.Annotations[lastAppliedLabelsKey] = serializeLabels(desiredLabels)
+	return nil
+}
+
+func parseLabels(labelString string) (map[string]string, error) {
 	labels := make(map[string]string)
-	for _, kv := range strings.Split(*kubeLabels, ",") {
+	for _, kv := range strings.Split(labelString, ",") {
 		parts := strings.SplitN(kv, "=", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("instance %q had malformed label pair: %q", instance.SelfLink, kv)
+			return nil, fmt.Errorf("malformed label pair: %q", kv)
 		}
 		labels[parts[0]] = parts[1]
 	}
 	if err := unversionedvalidation.ValidateLabels(labels, field.NewPath("labels")); len(err) != 0 {
-		return nil, fmt.Errorf("instance %q had invalid label(s): %v", instance.SelfLink, err)
+		return nil, fmt.Errorf("invalid label(s): %v", err)
 	}
-
 	return labels, nil
+}
+
+func serializeLabels(labels map[string]string) string {
+	labelElements := make([]string, 0, len(labels))
+	for key, value := range labels {
+		labelElements = append(labelElements, fmt.Sprintf("%s=%s", key, value))
+	}
+	// Sort labels to avoid test flakes.
+	sort.Strings(labelElements)
+	return strings.Join(labelElements, ",")
 }
