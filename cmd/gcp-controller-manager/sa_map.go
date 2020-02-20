@@ -25,26 +25,27 @@ import (
 // gsaEmail identifies a GCP service account in email format.
 type gsaEmail string
 
-// serviceAccount identifies a K8s service account object by its namespace and name.
+// serviceAccount identifies a K8s service account object by its namespace and name.  Empty
+// Namespace indicates the corresponding Kubernetes object was created in the "default" namespace.
 type serviceAccount struct {
 	Namespace, Name string
 }
 
-// MarshalText implements encoding.TextMarshaler interface.  It returns sa in JSON encoded format.
+// MarshalText implements the encoding.TextMarshaler interface.
 func (sa serviceAccount) MarshalText() ([]byte, error) {
-	// The purpose of converting sa to a "different" type is to avoid json.Marshal from recursing
-	// back to this method.
-	type serviceAcct serviceAccount
-	return json.Marshal(serviceAcct(sa))
+	return []byte(sa.String()), nil
 }
 
-// String returns sa in string in the format of "<namespace>/<name>".
+// String returns sa in a string as "<namespace>/<name>" or "default/<name>" if sa.Namespace is
+// empty.
 func (sa serviceAccount) String() string {
+	if sa.Namespace == "" {
+		return fmt.Sprintf("default/%s", sa.Name)
+	}
 	return fmt.Sprintf("%s/%s", sa.Namespace, sa.Name)
 }
 
-// saMap is a Mutax protected map of gsaEmail keyed by serviceAccount.  It contains fields to
-// support (lazy) encoding of the map to a serialized form:
+// saMap is a Mutax protected map of gsaEmail keyed by serviceAccount.
 type saMap struct {
 	sync.RWMutex
 	ma map[serviceAccount]gsaEmail
