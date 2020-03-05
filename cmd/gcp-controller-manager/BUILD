@@ -36,6 +36,7 @@ go_library(
         "//cmd/gcp-controller-manager:__subpackages__",
     ],
     deps = [
+        "//cmd/gcp-controller-manager/healthz:go_default_library",
         "//pkg/csrmetrics:go_default_library",
         "//pkg/nodeidentity:go_default_library",
         "//pkg/tpmattest:go_default_library",
