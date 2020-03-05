@@ -48,6 +48,14 @@ func TestHandler(t *testing.T) {
 			},
 		},
 		{
+			desc:       "multiple failing checks",
+			wantStatus: http.StatusInternalServerError,
+			checks: map[string]Check{
+				"failing 1": failingCheck,
+				"failing 2": failingCheck,
+			},
+		},
+		{
 			desc:       "passing and failing checks",
 			wantStatus: http.StatusInternalServerError,
 			checks: map[string]Check{

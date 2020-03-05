@@ -61,8 +61,8 @@ const (
 )
 
 var (
-	metricsPort                        = pflag.Int("metrics-port", 8089, "Port to expose Prometheus metrics on")
-	healthzPort                        = pflag.Int("healthz-port", 8089, "Port to expose /healthz endpoint on. Can be the same as --metrics-port.")
+	port                               = pflag.Int("port", 8089, "Port to serve status endpoints on (such as /healthz and /metrics).")
+	metricsPort                        = pflag.Int("metrics-port", 8089, "Deprecated. Port to expose Prometheus metrics on. If not set, uses the value of --port.")
 	kubeconfig                         = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information.")
 	clusterSigningGKEKubeconfig        = pflag.String("cluster-signing-gke-kubeconfig", "", "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")
 	gceConfigPath                      = pflag.String("gce-config", "/etc/gce.conf", "Path to gce.conf.")
@@ -123,25 +123,20 @@ func main() {
 		klog.Exitf("failed loading GCP config: %v", err)
 	}
 
-	metricsMux := http.NewServeMux()
-	metricsMux.Handle("/metrics", promhttp.Handler())
-
-	healthzMux := http.NewServeMux()
-	// Allow healthz and metrics to serve from same port - share the
-	// multiplexor.
-	if *metricsPort == *healthzPort {
-		healthzMux = metricsMux
-	}
-	healthzMux.Handle("/healthz", s.healthz)
-
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/healthz", s.healthz)
 	go func() {
-		klog.Exit(http.ListenAndServe(fmt.Sprintf(":%d", *metricsPort), metricsMux))
+		klog.Exit(http.ListenAndServe(fmt.Sprintf(":%d", *port), mux))
 	}()
-	// Allow healthz and metrics to serve from different ports - start a second
-	// server for healthz.
-	if *healthzPort != *metricsPort {
+
+	// If user explicitly requested a separate metrics port, start a new
+	// server.
+	if pflag.Lookup("metrics-port").Changed && *metricsPort != *port {
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("/metrics", promhttp.Handler())
 		go func() {
-			klog.Exit(http.ListenAndServe(fmt.Sprintf(":%d", *healthzPort), healthzMux))
+			klog.Exit(http.ListenAndServe(fmt.Sprintf(":%d", *metricsPort), metricsMux))
 		}()
 	}
 
