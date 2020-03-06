@@ -42,6 +42,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	rl "k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/healthz"
 	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
@@ -60,7 +61,8 @@ const (
 )
 
 var (
-	metricsPort                        = pflag.Int("metrics-port", 8089, "Port to expose Prometheus metrics on")
+	port                               = pflag.Int("port", 8089, "Port to serve status endpoints on (such as /healthz and /metrics).")
+	metricsPort                        = pflag.Int("metrics-port", 8089, "Deprecated. Port to expose Prometheus metrics on. If not set, uses the value of --port.")
 	kubeconfig                         = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information.")
 	clusterSigningGKEKubeconfig        = pflag.String("cluster-signing-gke-kubeconfig", "", "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")
 	gceConfigPath                      = pflag.String("gce-config", "/etc/gce.conf", "Path to gce.conf.")
@@ -100,6 +102,7 @@ func main() {
 		leaderElectionConfig:               *leConfig,
 		hmsAuthorizeSAMappingURL:           *hmsAuthorizeSAMappingURL,
 		hmsSyncNodeURL:                     *hmsSyncNodeURL,
+		healthz:                            healthz.NewHandler(),
 	}
 	var err error
 	s.informerKubeconfig, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
@@ -120,10 +123,22 @@ func main() {
 		klog.Exitf("failed loading GCP config: %v", err)
 	}
 
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/healthz", s.healthz)
 	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		klog.Exit(http.ListenAndServe(fmt.Sprintf(":%d", *metricsPort), nil))
+		klog.Exit(http.ListenAndServe(fmt.Sprintf(":%d", *port), mux))
 	}()
+
+	// If user explicitly requested a separate metrics port, start a new
+	// server.
+	if pflag.Lookup("metrics-port").Changed && *metricsPort != *port {
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("/metrics", promhttp.Handler())
+		go func() {
+			klog.Exit(http.ListenAndServe(fmt.Sprintf(":%d", *metricsPort), metricsMux))
+		}()
+	}
 
 	if err := run(s); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -148,6 +163,7 @@ type controllerManager struct {
 	gcpConfig            gcpConfig
 	informerKubeconfig   *restclient.Config
 	controllerKubeconfig *restclient.Config
+	healthz              *healthz.Handler
 }
 
 func (s *controllerManager) isEnabled(name string) bool {
@@ -173,6 +189,7 @@ func run(s *controllerManager) error {
 	informerClientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: s.informerKubeconfig}
 	informerClient := informerClientBuilder.ClientOrDie("gcp-controller-manager-shared-informer")
 	sharedInformers := informers.NewSharedInformerFactory(informerClient, time.Duration(12)*time.Hour)
+	s.healthz.Checks["shared informers"] = informersCheck(sharedInformers)
 
 	controllerClientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: s.controllerKubeconfig}
 
@@ -194,7 +211,7 @@ func run(s *controllerManager) error {
 			if err != nil {
 				klog.Fatalf("failed to start client for %q: %v", name, err)
 			}
-			if loop(&controllerContext{
+			if err := loop(&controllerContext{
 				client:          loopClient,
 				sharedInformers: sharedInformers,
 				recorder: eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
@@ -238,8 +255,9 @@ func run(s *controllerManager) error {
 		if err != nil {
 			return err
 		}
+		s.healthz.Checks["leader election"] = leaderElectorCheck(leaderElector)
 		leaderElector.Run(ctx)
-		panic("unreachable")
+		return fmt.Errorf("should never reach this point")
 	}
 
 	startControllers(ctx)
@@ -271,4 +289,30 @@ func makeLeaderElectionConfig(config componentbaseconfig.LeaderElectionConfigura
 		RenewDeadline: config.RenewDeadline.Duration,
 		RetryPeriod:   config.RetryPeriod.Duration,
 	}, nil
+}
+
+func informersCheck(s informers.SharedInformerFactory) healthz.Check {
+	return func(ctx context.Context) error {
+		res := s.WaitForCacheSync(ctx.Done())
+		var notSynced []string
+		for t, ok := range res {
+			if !ok {
+				notSynced = append(notSynced, t.String())
+			}
+		}
+		if len(notSynced) > 0 {
+			return fmt.Errorf("cache not synced for watchers: %q", notSynced)
+		}
+		return nil
+	}
+}
+
+func leaderElectorCheck(le *leaderelection.LeaderElector) healthz.Check {
+	return func(_ context.Context) error {
+		// 10s is lease expiry threshold, not a timeout for le.Check.
+		if err := le.Check(10 * time.Second); err != nil {
+			return fmt.Errorf("leader election unhealthy: %v", err)
+		}
+		return nil
+	}
 }
