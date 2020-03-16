@@ -10,7 +10,7 @@ go_library(
         "sink.go",
         "util.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/internal/binarylog",
+    importmap = "k8s.io/kubernetes/vendor/google.golang.org/grpc/internal/binarylog",
     importpath = "google.golang.org/grpc/internal/binarylog",
     visibility = ["//vendor/google.golang.org/grpc:__subpackages__"],
     deps = [
@@ -21,4 +21,18 @@ go_library(
         "//vendor/google.golang.org/grpc/metadata:go_default_library",
         "//vendor/google.golang.org/grpc/status:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

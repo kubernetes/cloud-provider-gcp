@@ -5,9 +5,10 @@ go_library(
     srcs = [
         "doc.go",
         "fake_event.go",
+        "fake_event_expansion.go",
         "fake_events_client.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/events/v1beta1/fake",
+    importmap = "k8s.io/kubernetes/vendor/k8s.io/client-go/kubernetes/typed/events/v1beta1/fake",
     importpath = "k8s.io/client-go/kubernetes/typed/events/v1beta1/fake",
     visibility = ["//visibility:public"],
     deps = [
@@ -21,4 +22,18 @@ go_library(
         "//vendor/k8s.io/client-go/rest:go_default_library",
         "//vendor/k8s.io/client-go/testing:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

@@ -47,6 +47,7 @@ func loops() map[string]func(*controllerContext) error {
 		"certificate-approver": func(ctx *controllerContext) error {
 			approver := newGKEApprover(ctx)
 			approveController := certificates.NewCertificateController(
+				"csrapproving",
 				ctx.client,
 				ctx.sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
 				approver.handle,
@@ -60,6 +61,7 @@ func loops() map[string]func(*controllerContext) error {
 				return err
 			}
 			signController := certificates.NewCertificateController(
+				"csrsigning",
 				ctx.client,
 				ctx.sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
 				signer.handle,

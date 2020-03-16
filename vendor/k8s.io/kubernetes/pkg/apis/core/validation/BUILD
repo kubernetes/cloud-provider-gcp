@@ -1,4 +1,8 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load(
+    "@io_bazel_rules_go//go:def.bzl",
+    "go_library",
+    "go_test",
+)
 
 go_library(
     name = "go_default_library",
@@ -8,10 +12,20 @@ go_library(
         "events.go",
         "validation.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/apis/core/validation",
     importpath = "k8s.io/kubernetes/pkg/apis/core/validation",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/kubernetes/pkg/api/service:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/core:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/core/helper:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/core/pods:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/core/v1:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/core/v1/helper:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/capabilities:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/features:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/fieldpath:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/master/ports:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/security/apparmor:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/equality:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/resource:go_default_library",
@@ -27,16 +41,46 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
         "//vendor/k8s.io/klog:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/api/service:go_default_library",
+        "//vendor/k8s.io/utils/net:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "conditional_validation_test.go",
+        "events_test.go",
+        "validation_test.go",
+    ],
+    embed = [":go_default_library"],
+    deps = [
+        "//vendor/k8s.io/kubernetes/pkg/api/testapi:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/core:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/apis/core/helper:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/apis/core/pods:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/apis/core/v1:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/apis/core/v1/helper:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/capabilities:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/features:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/fieldpath:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/master/ports:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/security/apparmor:go_default_library",
+        "//vendor/k8s.io/api/core/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/api/resource:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/diff:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/intstr:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/validation:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/validation/field:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
+        "//vendor/k8s.io/component-base/featuregate/testing:go_default_library",
+        "//vendor/k8s.io/utils/pointer:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

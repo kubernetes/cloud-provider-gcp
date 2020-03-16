@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
@@ -26,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
@@ -57,10 +57,7 @@ func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Override default QPS limits to increase CSR throughput.
-	// This is useful for very large clusters and generally speeds up startup
-	// of Nodes.
-	webhook.RestClient.Throttle = flowcontrol.NewTokenBucketRateLimiter(100, 200)
+	// The NewGenericWebhook disables client-side rate limiting and leaves it to the server.
 
 	return &gkeSigner{
 		webhook:      webhook,
@@ -116,7 +113,7 @@ func (s *gkeSigner) metricLabel(csr *capi.CertificateSigningRequest, x509cr *x50
 func (s *gkeSigner) sign(csr *capi.CertificateSigningRequest) (*capi.CertificateSigningRequest, error) {
 	var statusCode int
 	var result rest.Result
-	webhook.WithExponentialBackoff(ClusterSigningGKERetryBackoff, func() error {
+	webhook.WithExponentialBackoff(context.Background(), ClusterSigningGKERetryBackoff, func() error {
 		recordMetric := csrmetrics.OutboundRPCStartRecorder("container.webhook.Sign")
 		result = s.webhook.RestClient.Post().Body(csr).Do()
 		if result.Error() != nil {
@@ -129,7 +126,7 @@ func (s *gkeSigner) sign(csr *capi.CertificateSigningRequest) (*capi.Certificate
 			recordMetric(csrmetrics.OutboundRPCStatusOK)
 		}
 		return nil
-	})
+	}, webhook.DefaultShouldRetry)
 
 	if err := result.Error(); err != nil {
 		var webhookError error

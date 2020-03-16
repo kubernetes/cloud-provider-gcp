@@ -6,7 +6,7 @@ go_library(
         "balancer.go",
         "base.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/balancer/base",
+    importmap = "k8s.io/kubernetes/vendor/google.golang.org/grpc/balancer/base",
     importpath = "google.golang.org/grpc/balancer/base",
     visibility = ["//visibility:public"],
     deps = [
@@ -15,4 +15,18 @@ go_library(
         "//vendor/google.golang.org/grpc/grpclog:go_default_library",
         "//vendor/google.golang.org/grpc/resolver:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

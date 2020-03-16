@@ -1,4 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
@@ -11,6 +11,7 @@ go_library(
         "coreapi.go",
         "deprecated_insecure_serving.go",
         "doc.go",
+        "egress_selector.go",
         "etcd.go",
         "events.go",
         "feature.go",
@@ -20,13 +21,10 @@ go_library(
         "serving_with_loopback.go",
         "webhook.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/server/options",
+    importmap = "k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/server/options",
     importpath = "k8s.io/apiserver/pkg/server/options",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/pborman/uuid:go_default_library",
-        "//vendor/github.com/spf13/pflag:go_default_library",
-        "//vendor/gopkg.in/natefinch/lumberjack.v2:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
@@ -43,6 +41,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/admission/plugin/webhook/mutating:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/admission/plugin/webhook/validating:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/apis/apiserver/v1:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver/v1alpha1:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/apis/audit:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/apis/audit/v1:go_default_library",
@@ -51,6 +50,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/audit:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/audit/policy:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authentication/authenticatorfactory:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authentication/request/headerrequest:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizer:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizerfactory:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authorization/path:go_default_library",
@@ -59,7 +59,10 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/registry/generic:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/registry/generic/registry:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/server:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/server/dynamiccertificates:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/server/egressselector:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/server/healthz:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/server/options/encryptionconfig:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/server/resourceconfig:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/server/storage:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/storagebackend:go_default_library",
@@ -80,7 +83,72 @@ go_library(
         "//vendor/k8s.io/client-go/util/cert:go_default_library",
         "//vendor/k8s.io/client-go/util/keyutil:go_default_library",
         "//vendor/k8s.io/component-base/cli/flag:go_default_library",
+        "//vendor/k8s.io/component-base/featuregate:go_default_library",
+        "//vendor/github.com/google/uuid:go_default_library",
+        "//vendor/github.com/spf13/pflag:go_default_library",
+        "//vendor/gopkg.in/natefinch/lumberjack.v2:go_default_library",
         "//vendor/k8s.io/klog:go_default_library",
         "//vendor/k8s.io/kube-openapi/pkg/common:go_default_library",
+        "//vendor/k8s.io/utils/path:go_default_library",
     ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "admission_test.go",
+        "api_enablement_test.go",
+        "audit_test.go",
+        "authentication_test.go",
+        "etcd_test.go",
+        "server_run_options_test.go",
+        "serving_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    embed = [":go_default_library"],
+    deps = [
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/version:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/admission:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/apis/audit/v1:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authentication/authenticatorfactory:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authentication/request/headerrequest:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/features:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/server:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/storage/storagebackend:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
+        "//vendor/k8s.io/client-go/discovery:go_default_library",
+        "//vendor/k8s.io/client-go/informers:go_default_library",
+        "//vendor/k8s.io/client-go/kubernetes/fake:go_default_library",
+        "//vendor/k8s.io/client-go/rest:go_default_library",
+        "//vendor/k8s.io/client-go/tools/clientcmd/api/v1:go_default_library",
+        "//vendor/k8s.io/component-base/cli/flag:go_default_library",
+        "//vendor/k8s.io/component-base/featuregate/testing:go_default_library",
+        "//vendor/github.com/spf13/pflag:go_default_library",
+        "//vendor/github.com/stretchr/testify/assert:go_default_library",
+        "//vendor/github.com/stretchr/testify/require:go_default_library",
+        "//vendor/k8s.io/kube-openapi/pkg/common:go_default_library",
+    ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [
+        ":package-srcs",
+        "//vendor/k8s.io/apiserver/pkg/server/options/encryptionconfig:all-srcs",
+    ],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

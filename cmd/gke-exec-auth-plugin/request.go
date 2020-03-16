@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha512"
 	"crypto/x509/pkix"
 	"encoding/base64"
@@ -139,7 +140,9 @@ func processCSR(client certificates.CertificateSigningRequestInterface, privateK
 	if err != nil {
 		return nil, err
 	}
-	return csr.WaitForCertificate(client, req, 3600*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3600*time.Second)
+	defer cancel()
+	return csr.WaitForCertificate(ctx, client, req)
 }
 
 // digestedName should include all the relevant pieces of the CSR we care about.

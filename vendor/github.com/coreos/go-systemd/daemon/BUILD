@@ -6,7 +6,21 @@ go_library(
         "sdnotify.go",
         "watchdog.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/coreos/go-systemd/daemon",
+    importmap = "k8s.io/kubernetes/vendor/github.com/coreos/go-systemd/daemon",
     importpath = "github.com/coreos/go-systemd/daemon",
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
     visibility = ["//visibility:public"],
 )

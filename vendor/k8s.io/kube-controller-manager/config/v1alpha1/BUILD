@@ -8,7 +8,7 @@ go_library(
         "types.go",
         "zz_generated.deepcopy.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kube-controller-manager/config/v1alpha1",
+    importmap = "k8s.io/kubernetes/vendor/k8s.io/kube-controller-manager/config/v1alpha1",
     importpath = "k8s.io/kube-controller-manager/config/v1alpha1",
     visibility = ["//visibility:public"],
     deps = [
@@ -17,4 +17,18 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
         "//vendor/k8s.io/component-base/config/v1alpha1:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

@@ -14,7 +14,7 @@ go_library(
         "log.go",
         "transport.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/internal/transport",
+    importmap = "k8s.io/kubernetes/vendor/google.golang.org/grpc/internal/transport",
     importpath = "google.golang.org/grpc/internal/transport",
     visibility = ["//vendor/google.golang.org/grpc:__subpackages__"],
     deps = [
@@ -25,6 +25,7 @@ go_library(
         "//vendor/google.golang.org/grpc/codes:go_default_library",
         "//vendor/google.golang.org/grpc/credentials:go_default_library",
         "//vendor/google.golang.org/grpc/grpclog:go_default_library",
+        "//vendor/google.golang.org/grpc/internal:go_default_library",
         "//vendor/google.golang.org/grpc/internal/channelz:go_default_library",
         "//vendor/google.golang.org/grpc/internal/grpcrand:go_default_library",
         "//vendor/google.golang.org/grpc/internal/syscall:go_default_library",
@@ -35,4 +36,18 @@ go_library(
         "//vendor/google.golang.org/grpc/status:go_default_library",
         "//vendor/google.golang.org/grpc/tap:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

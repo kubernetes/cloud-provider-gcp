@@ -8,7 +8,7 @@ go_library(
         "doc.go",
         "generated_expansion.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/auditregistration/v1alpha1",
+    importmap = "k8s.io/kubernetes/vendor/k8s.io/client-go/kubernetes/typed/auditregistration/v1alpha1",
     importpath = "k8s.io/client-go/kubernetes/typed/auditregistration/v1alpha1",
     visibility = ["//visibility:public"],
     deps = [
@@ -19,4 +19,21 @@ go_library(
         "//vendor/k8s.io/client-go/kubernetes/scheme:go_default_library",
         "//vendor/k8s.io/client-go/rest:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [
+        ":package-srcs",
+        "//vendor/k8s.io/client-go/kubernetes/typed/auditregistration/v1alpha1/fake:all-srcs",
+    ],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

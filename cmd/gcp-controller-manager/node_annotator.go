@@ -163,7 +163,7 @@ func (na *nodeAnnotator) enqueue(obj interface{}) {
 }
 
 func (na *nodeAnnotator) Run(workers int, stopCh <-chan struct{}) {
-	if !controller.WaitForCacheSync("node-annotator", stopCh, na.hasSynced) {
+	if !cache.WaitForNamedCacheSync("node-annotator", stopCh, na.hasSynced) {
 		return
 	}
 	for i := 0; i < workers; i++ {

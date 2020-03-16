@@ -33,7 +33,7 @@ import (
 	gcfg "gopkg.in/gcfg.v1"
 	warnings "gopkg.in/warnings.v0"
 
-	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
+	"k8s.io/legacy-cloud-providers/gce"
 )
 
 // gcpConfig groups GCP-specific configuration for all controllers.

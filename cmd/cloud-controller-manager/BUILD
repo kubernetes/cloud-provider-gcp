@@ -6,11 +6,12 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager",
     visibility = ["//visibility:private"],
     deps = [
+        "//cmd/cloud-controller-manager/app:go_default_library",
         "//cmd/cloud-controller-manager/app/cloudprovider:go_default_library",
+        #"//vendor/k8s.io/kubernetes/pkg/cloudprovider/providers:go_default_library",
         "//vendor/k8s.io/component-base/logs:go_default_library",
-        "//vendor/k8s.io/kubernetes/cmd/cloud-controller-manager/app:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/util/prometheusclientgo:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/version/prometheus:go_default_library",
+        "//vendor/k8s.io/component-base/metrics/prometheus/clientgo:go_default_library",
+        "//vendor/k8s.io/component-base/metrics/prometheus/version:go_default_library",
     ],
 )
 

@@ -75,6 +75,14 @@ container_pull(
     tag = "b54513ef989c81d68cb27d9c7958697e2fedd2c4",
 )
 
+container_pull(
+    name = "distroless_base",
+    digest = "sha256:7fa7445dfbebae4f4b7ab0e6ef99276e96075ae42584af6286ba080750d6dfe5",
+    registry = "gcr.io",
+    repository = "distroless/base",
+    tag = "latest",  # ignored when digest provided, but kept here for documentation.
+)
+
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
 
 gazelle_dependencies()
@@ -96,10 +104,16 @@ load("//defs:repo_rules.bzl", "fetch_kube_release")
 fetch_kube_release(
     name = "io_k8s_release",
     archives = {
-        "kubernetes-server-linux-amd64.tar.gz": "fdc13919936ca9c698c96038b033ff9e14a9724871e08300386d52a397e0f432",
-        "kubernetes-manifests.tar.gz": "b1ada46f36337b378f080ff076cc20ec2eb8fd9cc5d2f444d7e6e14583ec2429",
+        "kubernetes-server-linux-amd64.tar.gz": "cf80eb0af6fad80f9c92c1897c8900ded8e8b31795460465fefcdbe047dfccfb",
+        "kubernetes-manifests.tar.gz": "231a14db0febd4be23edde3460d1563c242093eca8fb6c7cdfb3553c6626f068",
         # we do not currently make modifications to these release tars below
-        "kubernetes-node-linux-amd64.tar.gz": "0672c41e66af76225f3cf5cd12b3e63ff26ea42bcb617d1a94e1a3a528face5a",
+        "kubernetes-node-linux-amd64.tar.gz": "5f30a4b307c859461436ec288a324f529603f17092c871a38c49b1c23da13224",
     },
-    version = "v1.14.0-beta.2",
+    version = "v1.17.3",
+)
+
+git_repository(
+    name = "io_k8s_src",
+    remote = "https://github.com/kubernetes/kubernetes.git",
+    tag = "v1.17.3",
 )

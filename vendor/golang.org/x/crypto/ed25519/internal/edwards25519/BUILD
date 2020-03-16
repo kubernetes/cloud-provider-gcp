@@ -6,7 +6,21 @@ go_library(
         "const.go",
         "edwards25519.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/crypto/ed25519/internal/edwards25519",
+    importmap = "k8s.io/kubernetes/vendor/golang.org/x/crypto/ed25519/internal/edwards25519",
     importpath = "golang.org/x/crypto/ed25519/internal/edwards25519",
     visibility = ["//vendor/golang.org/x/crypto/ed25519:__subpackages__"],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

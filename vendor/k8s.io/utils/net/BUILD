@@ -6,7 +6,21 @@ go_library(
         "ipnet.go",
         "net.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/utils/net",
+    importmap = "k8s.io/kubernetes/vendor/k8s.io/utils/net",
     importpath = "k8s.io/utils/net",
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
     visibility = ["//visibility:public"],
 )

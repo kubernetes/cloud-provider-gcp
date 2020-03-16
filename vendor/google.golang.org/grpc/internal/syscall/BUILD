@@ -6,7 +6,7 @@ go_library(
         "syscall_linux.go",
         "syscall_nonlinux.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/internal/syscall",
+    importmap = "k8s.io/kubernetes/vendor/google.golang.org/grpc/internal/syscall",
     importpath = "google.golang.org/grpc/internal/syscall",
     visibility = ["//vendor/google.golang.org/grpc:__subpackages__"],
     deps = select({
@@ -50,4 +50,18 @@ go_library(
         ],
         "//conditions:default": [],
     }),
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

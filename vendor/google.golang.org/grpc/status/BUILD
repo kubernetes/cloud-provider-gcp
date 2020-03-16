@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["status.go"],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/status",
+    importmap = "k8s.io/kubernetes/vendor/google.golang.org/grpc/status",
     importpath = "google.golang.org/grpc/status",
     visibility = ["//visibility:public"],
     deps = [
@@ -11,5 +11,20 @@ go_library(
         "//vendor/github.com/golang/protobuf/ptypes:go_default_library",
         "//vendor/google.golang.org/genproto/googleapis/rpc/status:go_default_library",
         "//vendor/google.golang.org/grpc/codes:go_default_library",
+        "//vendor/google.golang.org/grpc/internal:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

@@ -9,15 +9,29 @@ go_library(
         "kubecloudshared.go",
         "servicecontroller.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/cmd/controller-manager/app/options",
     importpath = "k8s.io/kubernetes/cmd/controller-manager/app/options",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/spf13/pflag:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/client/leaderelectionconfig:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/controller/apis/config:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/controller/service/config:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
         "//vendor/k8s.io/component-base/cli/flag:go_default_library",
         "//vendor/k8s.io/component-base/config:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/client/leaderelectionconfig:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/controller/apis/config:go_default_library",
+        "//vendor/github.com/spf13/pflag:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

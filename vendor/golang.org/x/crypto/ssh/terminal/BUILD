@@ -11,7 +11,7 @@ go_library(
         "util_solaris.go",
         "util_windows.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/crypto/ssh/terminal",
+    importmap = "k8s.io/kubernetes/vendor/golang.org/x/crypto/ssh/terminal",
     importpath = "golang.org/x/crypto/ssh/terminal",
     visibility = ["//visibility:public"],
     deps = select({
@@ -47,4 +47,18 @@ go_library(
         ],
         "//conditions:default": [],
     }),
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

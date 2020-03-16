@@ -28,7 +28,6 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/controller"
 )
 
 const (
@@ -99,7 +98,7 @@ func (ns *nodeSyncer) enqueue(obj interface{}) {
 
 func (ns *nodeSyncer) Run(workers int, stopCh <-chan struct{}) {
 	// TODO(danielywong): block on ServiceAccount HasSync to give time for verifiedSAs being populated.
-	if !controller.WaitForCacheSync(nodeSyncerControlLoopName, stopCh, ns.hasSynced) {
+	if !cache.WaitForNamedCacheSync(nodeSyncerControlLoopName, stopCh, ns.hasSynced) {
 		return
 	}
 	for i := 0; i < workers; i++ {

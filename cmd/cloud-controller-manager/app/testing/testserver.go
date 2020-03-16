@@ -28,9 +28,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
-	"k8s.io/kubernetes/cmd/cloud-controller-manager/app"
-	cloudcontrollerconfig "k8s.io/kubernetes/cmd/cloud-controller-manager/app/config"
-	"k8s.io/kubernetes/cmd/cloud-controller-manager/app/options"
+	"k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/app"
+	cloudcontrollerconfig "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/app/config"
+	"k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/app/options"
 )
 
 // TearDownFunc is to be called to tear down a test server.

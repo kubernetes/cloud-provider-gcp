@@ -7,7 +7,7 @@ go_library(
         "openapi.go",
         "util.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kube-openapi/pkg/builder",
+    importmap = "k8s.io/kubernetes/vendor/k8s.io/kube-openapi/pkg/builder",
     importpath = "k8s.io/kube-openapi/pkg/builder",
     visibility = ["//visibility:public"],
     deps = [
@@ -16,4 +16,18 @@ go_library(
         "//vendor/k8s.io/kube-openapi/pkg/common:go_default_library",
         "//vendor/k8s.io/kube-openapi/pkg/util:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

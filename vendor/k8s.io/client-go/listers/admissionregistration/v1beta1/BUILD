@@ -7,7 +7,7 @@ go_library(
         "mutatingwebhookconfiguration.go",
         "validatingwebhookconfiguration.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/listers/admissionregistration/v1beta1",
+    importmap = "k8s.io/kubernetes/vendor/k8s.io/client-go/listers/admissionregistration/v1beta1",
     importpath = "k8s.io/client-go/listers/admissionregistration/v1beta1",
     visibility = ["//visibility:public"],
     deps = [
@@ -16,4 +16,18 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
         "//vendor/k8s.io/client-go/tools/cache:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

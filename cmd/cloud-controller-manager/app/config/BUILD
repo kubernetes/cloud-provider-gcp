@@ -11,7 +11,7 @@ go_library(
         "//vendor/k8s.io/client-go/kubernetes:go_default_library",
         "//vendor/k8s.io/client-go/rest:go_default_library",
         "//vendor/k8s.io/client-go/tools/record:go_default_library",
-        "//vendor/k8s.io/kubernetes/cmd/cloud-controller-manager/app/apis/config:go_default_library",
+        "//cmd/cloud-controller-manager/app/apis/config:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller:go_default_library",
     ],
 )

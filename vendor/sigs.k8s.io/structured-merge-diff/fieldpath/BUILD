@@ -8,10 +8,30 @@ go_library(
         "fromvalue.go",
         "managers.go",
         "path.go",
+        "pathelementmap.go",
+        "serialize.go",
+        "serialize-pe.go",
         "set.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/sigs.k8s.io/structured-merge-diff/fieldpath",
+    importmap = "k8s.io/kubernetes/vendor/sigs.k8s.io/structured-merge-diff/fieldpath",
     importpath = "sigs.k8s.io/structured-merge-diff/fieldpath",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/sigs.k8s.io/structured-merge-diff/value:go_default_library"],
+    deps = [
+        "//vendor/github.com/json-iterator/go:go_default_library",
+        "//vendor/sigs.k8s.io/structured-merge-diff/value:go_default_library",
+    ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

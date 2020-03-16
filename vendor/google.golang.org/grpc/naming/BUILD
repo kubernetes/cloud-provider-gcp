@@ -6,8 +6,22 @@ go_library(
         "dns_resolver.go",
         "naming.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/naming",
+    importmap = "k8s.io/kubernetes/vendor/google.golang.org/grpc/naming",
     importpath = "google.golang.org/grpc/naming",
     visibility = ["//visibility:public"],
     deps = ["//vendor/google.golang.org/grpc/grpclog:go_default_library"],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

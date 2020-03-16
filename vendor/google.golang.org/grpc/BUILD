@@ -15,6 +15,7 @@ go_library(
         "interceptor.go",
         "picker_wrapper.go",
         "pickfirst.go",
+        "preloader.go",
         "proxy.go",
         "resolver_conn_wrapper.go",
         "rpc_util.go",
@@ -24,7 +25,7 @@ go_library(
         "trace.go",
         "version.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc",
+    importmap = "k8s.io/kubernetes/vendor/google.golang.org/grpc",
     importpath = "google.golang.org/grpc",
     visibility = ["//visibility:public"],
     deps = [
@@ -39,6 +40,7 @@ go_library(
         "//vendor/google.golang.org/grpc/grpclog:go_default_library",
         "//vendor/google.golang.org/grpc/internal:go_default_library",
         "//vendor/google.golang.org/grpc/internal/backoff:go_default_library",
+        "//vendor/google.golang.org/grpc/internal/balancerload:go_default_library",
         "//vendor/google.golang.org/grpc/internal/binarylog:go_default_library",
         "//vendor/google.golang.org/grpc/internal/channelz:go_default_library",
         "//vendor/google.golang.org/grpc/internal/envconfig:go_default_library",
@@ -52,8 +54,43 @@ go_library(
         "//vendor/google.golang.org/grpc/resolver:go_default_library",
         "//vendor/google.golang.org/grpc/resolver/dns:go_default_library",
         "//vendor/google.golang.org/grpc/resolver/passthrough:go_default_library",
+        "//vendor/google.golang.org/grpc/serviceconfig:go_default_library",
         "//vendor/google.golang.org/grpc/stats:go_default_library",
         "//vendor/google.golang.org/grpc/status:go_default_library",
         "//vendor/google.golang.org/grpc/tap:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [
+        ":package-srcs",
+        "//vendor/google.golang.org/grpc/balancer:all-srcs",
+        "//vendor/google.golang.org/grpc/binarylog/grpc_binarylog_v1:all-srcs",
+        "//vendor/google.golang.org/grpc/codes:all-srcs",
+        "//vendor/google.golang.org/grpc/connectivity:all-srcs",
+        "//vendor/google.golang.org/grpc/credentials:all-srcs",
+        "//vendor/google.golang.org/grpc/encoding:all-srcs",
+        "//vendor/google.golang.org/grpc/grpclog:all-srcs",
+        "//vendor/google.golang.org/grpc/health:all-srcs",
+        "//vendor/google.golang.org/grpc/internal:all-srcs",
+        "//vendor/google.golang.org/grpc/keepalive:all-srcs",
+        "//vendor/google.golang.org/grpc/metadata:all-srcs",
+        "//vendor/google.golang.org/grpc/naming:all-srcs",
+        "//vendor/google.golang.org/grpc/peer:all-srcs",
+        "//vendor/google.golang.org/grpc/resolver:all-srcs",
+        "//vendor/google.golang.org/grpc/serviceconfig:all-srcs",
+        "//vendor/google.golang.org/grpc/stats:all-srcs",
+        "//vendor/google.golang.org/grpc/status:all-srcs",
+        "//vendor/google.golang.org/grpc/tap:all-srcs",
+    ],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )
