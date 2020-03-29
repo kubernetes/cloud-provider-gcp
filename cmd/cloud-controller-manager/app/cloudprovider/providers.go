@@ -16,4 +16,4 @@ limitations under the License.
 
 package cloudprovider
 
-import _ "k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
+import _ "k8s.io/legacy-cloud-providers/gce"
