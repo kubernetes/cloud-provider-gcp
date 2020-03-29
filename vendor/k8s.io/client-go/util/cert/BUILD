@@ -7,6 +7,7 @@ go_library(
         "csr.go",
         "io.go",
         "pem.go",
+        "server_inspection.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/util/cert",
     importpath = "k8s.io/client-go/util/cert",

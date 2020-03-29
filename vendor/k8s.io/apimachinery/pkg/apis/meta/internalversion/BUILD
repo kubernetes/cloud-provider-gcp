@@ -3,7 +3,6 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = [
-        "conversion.go",
         "doc.go",
         "register.go",
         "types.go",
@@ -21,6 +20,5 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer:go_default_library",
     ],
 )

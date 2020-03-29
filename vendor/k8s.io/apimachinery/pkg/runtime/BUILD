@@ -14,6 +14,8 @@ go_library(
         "generated.pb.go",
         "helper.go",
         "interfaces.go",
+        "mapper.go",
+        "negotiate.go",
         "register.go",
         "scheme.go",
         "scheme_builder.go",
@@ -36,5 +38,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
         "//vendor/k8s.io/klog:go_default_library",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v3/value:go_default_library",
     ],
 )

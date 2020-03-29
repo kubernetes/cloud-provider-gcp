@@ -5,5 +5,5 @@ go_library(
     srcs = ["providers.go"],
     importpath = "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/app/cloudprovider",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/k8s.io/kubernetes/pkg/cloudprovider/providers/gce:go_default_library"],
+    deps = ["//vendor/k8s.io/legacy-cloud-providers/gce:go_default_library"],
 )

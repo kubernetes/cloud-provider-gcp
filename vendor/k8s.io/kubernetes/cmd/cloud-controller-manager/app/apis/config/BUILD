@@ -16,5 +16,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/apis/config:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/controller/service/config:go_default_library",
     ],
 )

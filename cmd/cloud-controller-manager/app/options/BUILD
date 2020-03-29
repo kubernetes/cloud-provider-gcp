@@ -43,5 +43,6 @@ go_test(
         "//vendor/k8s.io/component-base/config:go_default_library",
         "//vendor/k8s.io/kubernetes/cmd/controller-manager/app/options:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/apis/config:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/controller/service/config:go_default_library",
     ],
 )
