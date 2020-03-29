@@ -15,8 +15,10 @@ limitations under the License.
 package csrapproval
 
 import (
+	"context"
 	"crypto/x509"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 	"strings"
 
@@ -223,7 +225,7 @@ func (vc *Context) updateCSR(csr *capi.CertificateSigningRequest, approved bool,
 			Message: msg,
 		})
 	}
-	_, err := vc.Client.CertificatesV1beta1().CertificateSigningRequests().UpdateApproval(csr)
+	_, err := vc.Client.CertificatesV1beta1().CertificateSigningRequests().UpdateApproval(context.TODO(), csr, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("error updating approval status for csr: %v", err)
 	}
@@ -245,7 +247,7 @@ func (vc *Context) subjectAccessReview(csr *capi.CertificateSigningRequest, ratt
 			ResourceAttributes: &rattrs,
 		},
 	}
-	sar, err := vc.Client.AuthorizationV1beta1().SubjectAccessReviews().Create(sar)
+	sar, err := vc.Client.AuthorizationV1beta1().SubjectAccessReviews().Create(context.TODO(), sar, metav1.CreateOptions{})
 	if err != nil {
 		return false, err
 	}

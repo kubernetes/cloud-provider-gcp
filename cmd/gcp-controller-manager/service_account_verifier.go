@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"time"
 
@@ -364,7 +365,7 @@ func (sav *serviceAccountVerifier) persist(key string) error {
 		}
 		cm := newVerifiedSAConfigMap(text)
 		klog.V(5).Infof("Creating ConfigMap: %+v", cm.Data)
-		_, err = sav.c.CoreV1().ConfigMaps(verifiedSAConfigMapNamespace).Create(cm)
+		_, err = sav.c.CoreV1().ConfigMaps(verifiedSAConfigMapNamespace).Create(context.TODO(), cm, metav1.CreateOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to create ConfigMap: %v", err)
 		}
@@ -389,7 +390,7 @@ func (sav *serviceAccountVerifier) persist(key string) error {
 	}
 	cm.BinaryData[verifiedSAConfigMapKey] = text
 	klog.V(5).Infof("Updating ConfigMap: %+v", cm.Data)
-	_, err = sav.c.CoreV1().ConfigMaps(verifiedSAConfigMapNamespace).Update(cm)
+	_, err = sav.c.CoreV1().ConfigMaps(verifiedSAConfigMapNamespace).Update(context.TODO(), cm, metav1.UpdateOptions{})
 	if err != nil {
 		// Fail-close by deleting the ConfigMap assuming update failure was due to invalid content.
 		// Retries are triggered at workqueue level (subject to verfiiedCMQueueRetryLimit), any CM
@@ -397,7 +398,7 @@ func (sav *serviceAccountVerifier) persist(key string) error {
 		//
 		// TODO(danielywong): catch TooLong error returned from validation.ValidateConfigMap for
 		// alerting.
-		rmErr := sav.c.CoreV1().ConfigMaps(verifiedSAConfigMapNamespace).Delete(key, metav1.NewDeleteOptions(0))
+		rmErr := sav.c.CoreV1().ConfigMaps(verifiedSAConfigMapNamespace).Delete(context.TODO(), key, *metav1.NewDeleteOptions(0))
 		if rmErr != nil {
 			return fmt.Errorf("failed to update ConfigMap (%v) and reset also failed (%v)", err, rmErr)
 		}

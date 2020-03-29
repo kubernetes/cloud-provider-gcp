@@ -17,7 +17,9 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sort"
 	"strconv"
 	"strings"
@@ -227,7 +229,7 @@ func (na *nodeAnnotator) sync(key string) {
 		return
 	}
 
-	if _, err := na.c.CoreV1().Nodes().Update(node); err != nil {
+	if _, err := na.c.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{}); err != nil {
 		klog.Errorf("Sync %v failed with: %v", key, err)
 		na.queue.Add(key)
 		return

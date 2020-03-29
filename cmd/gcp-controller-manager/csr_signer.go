@@ -17,9 +17,11 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"time"
 
 	capi "k8s.io/api/certificates/v1beta1"
@@ -89,7 +91,7 @@ func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
 		return fmt.Errorf("error auto signing csr: %v", err)
 	}
 	updateRecordMetric := csrmetrics.OutboundRPCStartRecorder("k8s.CertificateSigningRequests.updateStatus")
-	_, err = s.ctx.client.CertificatesV1beta1().CertificateSigningRequests().UpdateStatus(csr)
+	_, err = s.ctx.client.CertificatesV1beta1().CertificateSigningRequests().UpdateStatus(context.TODO(), csr, metav1.UpdateOptions{})
 	if err != nil {
 		updateRecordMetric(csrmetrics.OutboundRPCStatusError)
 		recordMetric(csrmetrics.SigningStatusUpdateError)
@@ -118,7 +120,7 @@ func (s *gkeSigner) sign(csr *capi.CertificateSigningRequest) (*capi.Certificate
 	var result rest.Result
 	webhook.WithExponentialBackoff(ClusterSigningGKERetryBackoff, func() error {
 		recordMetric := csrmetrics.OutboundRPCStartRecorder("container.webhook.Sign")
-		result = s.webhook.RestClient.Post().Body(csr).Do()
+		result = s.webhook.RestClient.Post().Body(csr).Do(context.TODO())
 		if result.Error() != nil {
 			recordMetric(csrmetrics.OutboundRPCStatusError)
 			return result.Error()

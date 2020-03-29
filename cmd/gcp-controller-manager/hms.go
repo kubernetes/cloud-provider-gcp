@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -105,7 +106,7 @@ func (h *hmsClient) call(req, rsp interface{}) error {
 	}
 
 	result := h.webhook.WithExponentialBackoff(func() rest.Result {
-		return h.webhook.RestClient.Post().Body(enc).Do()
+		return h.webhook.RestClient.Post().Body(enc).Do(context.TODO())
 	})
 
 	if err = result.Error(); err != nil {
