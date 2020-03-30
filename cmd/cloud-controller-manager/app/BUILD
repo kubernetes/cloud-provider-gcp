@@ -21,6 +21,8 @@ go_library(
         "//vendor/k8s.io/cloud-provider:go_default_library",
         "//vendor/k8s.io/component-base/cli/flag:go_default_library",
         "//vendor/k8s.io/component-base/cli/globalflag:go_default_library",
+        "//vendor/k8s.io/component-base/version:go_default_library",
+        "//vendor/k8s.io/component-base/version/verflag:go_default_library",
         "//vendor/k8s.io/klog:go_default_library",
         "//vendor/k8s.io/kubernetes/cmd/cloud-controller-manager/app/config:go_default_library",
         "//vendor/k8s.io/kubernetes/cmd/cloud-controller-manager/app/options:go_default_library",
@@ -30,7 +32,5 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/controller/service:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/util/configz:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/util/flag:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/version:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/version/verflag:go_default_library",
     ],
 )

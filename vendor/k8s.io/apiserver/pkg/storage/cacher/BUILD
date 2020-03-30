@@ -4,6 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "cacher.go",
+        "caching_object.go",
         "time_budget.go",
         "util.go",
         "watch_cache.go",
@@ -12,7 +13,6 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/storage/cacher",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/meta:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
@@ -20,6 +20,8 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/fields:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/clock:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
@@ -28,6 +30,8 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/storage:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
         "//vendor/k8s.io/client-go/tools/cache:go_default_library",
+        "//vendor/k8s.io/component-base/metrics:go_default_library",
+        "//vendor/k8s.io/component-base/metrics/legacyregistry:go_default_library",
         "//vendor/k8s.io/klog:go_default_library",
         "//vendor/k8s.io/utils/trace:go_default_library",
     ],

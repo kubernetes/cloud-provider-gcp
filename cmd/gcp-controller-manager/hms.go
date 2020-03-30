@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -51,7 +52,7 @@ func newHMSClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*h
 		return nil, fmt.Errorf("failed to create REST client for HMS from config %v: %v", config, err)
 	}
 	return &hmsClient{
-		webhook: &webhook.GenericWebhook{client, hmsRetryBackoff},
+		webhook: &webhook.GenericWebhook{client, hmsRetryBackoff, webhook.DefaultShouldRetry},
 	}, nil
 }
 
@@ -104,8 +105,8 @@ func (h *hmsClient) call(req, rsp interface{}) error {
 		return fmt.Errorf("failed to encode %v: %v", req, err)
 	}
 
-	result := h.webhook.WithExponentialBackoff(func() rest.Result {
-		return h.webhook.RestClient.Post().Body(enc).Do()
+	result := h.webhook.WithExponentialBackoff(context.TODO(), func() rest.Result {
+		return h.webhook.RestClient.Post().Body(enc).Do(context.TODO())
 	})
 
 	if err = result.Error(); err != nil {

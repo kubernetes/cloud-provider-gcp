@@ -15,6 +15,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -128,7 +129,7 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 	}
 	klog.Infof("approver got CSR %q", csr.Name)
 
-	x509cr, err := certutil.ParseCSR(csr)
+	x509cr, err := certutil.ParseCSR(csr.Spec.Request)
 	if err != nil {
 		recordMetric(csrmetrics.ApprovalStatusParseError)
 		return fmt.Errorf("unable to parse csr %q: %v", csr.Name, err)
@@ -203,7 +204,7 @@ func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bo
 		})
 	}
 	updateRecordMetric := csrmetrics.OutboundRPCStartRecorder("k8s.CertificateSigningRequests.updateApproval")
-	_, err := a.ctx.client.CertificatesV1beta1().CertificateSigningRequests().UpdateApproval(csr)
+	_, err := a.ctx.client.CertificatesV1beta1().CertificateSigningRequests().UpdateApproval(context.TODO(), csr, metav1.UpdateOptions{})
 	if err != nil {
 		updateRecordMetric(csrmetrics.OutboundRPCStatusError)
 		return fmt.Errorf("error updating approval status for csr: %v", err)
@@ -258,7 +259,7 @@ func (a *gkeApprover) authorizeSAR(csr *capi.CertificateSigningRequest, rattrs a
 			ResourceAttributes: &rattrs,
 		},
 	}
-	sar, err := a.ctx.client.AuthorizationV1beta1().SubjectAccessReviews().Create(sar)
+	sar, err := a.ctx.client.AuthorizationV1beta1().SubjectAccessReviews().Create(context.TODO(), sar, metav1.CreateOptions{})
 	if err != nil {
 		return false, err
 	}
@@ -660,7 +661,7 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 	}
 
 	recordMetric := csrmetrics.OutboundRPCStartRecorder("k8s.Nodes.get")
-	node, err := ctx.client.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+	node, err := ctx.client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		recordMetric(csrmetrics.OutboundRPCStatusNotFound)
 		// if there is no existing Node object, return success
@@ -686,7 +687,7 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 	}
 
 	recordMetric = csrmetrics.OutboundRPCStartRecorder("k8s.Nodes.delete")
-	err = ctx.client.CoreV1().Nodes().Delete(nodeName, &metav1.DeleteOptions{Preconditions: metav1.NewUIDPreconditions(string(node.UID))})
+	err = ctx.client.CoreV1().Nodes().Delete(context.TODO(), nodeName, metav1.DeleteOptions{Preconditions: metav1.NewUIDPreconditions(string(node.UID))})
 	if apierrors.IsNotFound(err) {
 		recordMetric(csrmetrics.OutboundRPCStatusNotFound)
 		// If we wanted to delete and the node is gone, this counts as success

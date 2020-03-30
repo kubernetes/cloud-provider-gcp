@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha512"
 	"crypto/x509/pkix"
 	"encoding/base64"
@@ -135,11 +136,13 @@ func processCSR(client certificates.CertificateSigningRequestInterface, privateK
 		apicertificates.UsageClientAuth,
 	}
 	name := digestedName(privateKeyData, subject, usages)
-	req, err := csr.RequestCertificate(client, csrData, name, usages, privateKey)
+	req, err := csr.RequestCertificate(client, csrData, name, apicertificates.KubeAPIServerClientKubeletSignerName, usages, privateKey)
 	if err != nil {
 		return nil, err
 	}
-	return csr.WaitForCertificate(client, req, 3600*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), 3600*time.Second)
+	defer cancel()
+	return csr.WaitForCertificate(ctx, client, req)
 }
 
 // digestedName should include all the relevant pieces of the CSR we care about.

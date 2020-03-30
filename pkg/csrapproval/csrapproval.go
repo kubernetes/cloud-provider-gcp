@@ -15,10 +15,13 @@ limitations under the License.
 package csrapproval
 
 import (
+	"context"
 	"crypto/x509"
 	"fmt"
 	"reflect"
 	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
@@ -148,7 +151,7 @@ func (vc *Context) HandleCSR(csr *capi.CertificateSigningRequest) error {
 	}
 	klog.Infof("approver got CSR %q", csr.Name)
 
-	x509cr, err := certutil.ParseCSR(csr)
+	x509cr, err := certutil.ParseCSR(csr.Spec.Request)
 	if err != nil {
 		recordMetric(csrmetrics.ApprovalStatusParseError)
 		return fmt.Errorf("unable to parse csr %q: %v", csr.Name, err)
@@ -223,7 +226,7 @@ func (vc *Context) updateCSR(csr *capi.CertificateSigningRequest, approved bool,
 			Message: msg,
 		})
 	}
-	_, err := vc.Client.CertificatesV1beta1().CertificateSigningRequests().UpdateApproval(csr)
+	_, err := vc.Client.CertificatesV1beta1().CertificateSigningRequests().UpdateApproval(context.TODO(), csr, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("error updating approval status for csr: %v", err)
 	}
@@ -245,7 +248,7 @@ func (vc *Context) subjectAccessReview(csr *capi.CertificateSigningRequest, ratt
 			ResourceAttributes: &rattrs,
 		},
 	}
-	sar, err := vc.Client.AuthorizationV1beta1().SubjectAccessReviews().Create(sar)
+	sar, err := vc.Client.AuthorizationV1beta1().SubjectAccessReviews().Create(context.TODO(), sar, metav1.CreateOptions{})
 	if err != nil {
 		return false, err
 	}

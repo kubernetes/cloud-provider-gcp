@@ -8,10 +8,12 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/net:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/apis/audit:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/apis/audit/install:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/audit:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/webhook:go_default_library",
         "//vendor/k8s.io/client-go/rest:go_default_library",
+        "//vendor/k8s.io/utils/trace:go_default_library",
     ],
 )

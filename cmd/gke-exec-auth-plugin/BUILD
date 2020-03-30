@@ -8,7 +8,7 @@ go_library(
         "main.go",
         "request.go",
         "tpm.go",
-        "tpm_linux.go",
+        "tpm_other.go",
         "tpm_windows.go",
     ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/gke-exec-auth-plugin",

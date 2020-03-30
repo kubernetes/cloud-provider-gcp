@@ -9,5 +9,10 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/storage/value",
     importpath = "k8s.io/apiserver/pkg/storage/value",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/github.com/prometheus/client_golang/prometheus:go_default_library"],
+    deps = [
+        "//vendor/google.golang.org/grpc/status:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
+        "//vendor/k8s.io/component-base/metrics:go_default_library",
+        "//vendor/k8s.io/component-base/metrics/legacyregistry:go_default_library",
+    ],
 )

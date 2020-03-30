@@ -17,11 +17,14 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	compute "google.golang.org/api/compute/v1"
 
@@ -169,7 +172,7 @@ func (na *nodeAnnotator) enqueue(obj interface{}) {
 }
 
 func (na *nodeAnnotator) Run(workers int, stopCh <-chan struct{}) {
-	if !controller.WaitForCacheSync("node-annotator", stopCh, na.hasSynced) {
+	if !cache.WaitForNamedCacheSync("node-annotator", stopCh, na.hasSynced) {
 		return
 	}
 	for i := 0; i < workers; i++ {
@@ -227,7 +230,7 @@ func (na *nodeAnnotator) sync(key string) {
 		return
 	}
 
-	if _, err := na.c.CoreV1().Nodes().Update(node); err != nil {
+	if _, err := na.c.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{}); err != nil {
 		klog.Errorf("Sync %v failed with: %v", key, err)
 		na.queue.Add(key)
 		return

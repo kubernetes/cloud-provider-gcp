@@ -6,5 +6,9 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/features",
     importpath = "k8s.io/apiserver/pkg/features",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library"],
+    deps = [
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
+        "//vendor/k8s.io/component-base/featuregate:go_default_library",
+    ],
 )
