@@ -21,14 +21,14 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	capi "k8s.io/api/certificates/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
@@ -55,15 +55,10 @@ type gkeSigner struct {
 
 // newGKESigner will create a new instance of a gkeSigner.
 func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
-	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, ctx.clusterSigningGKEKubeconfig, groupVersions, ClusterSigningGKERetryBackoff)
+	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, ctx.clusterSigningGKEKubeconfig, groupVersions, ClusterSigningGKERetryBackoff, nil)
 	if err != nil {
 		return nil, err
 	}
-	// Override default QPS limits to increase CSR throughput.
-	// This is useful for very large clusters and generally speeds up startup
-	// of Nodes.
-	webhook.RestClient.Throttle = flowcontrol.NewTokenBucketRateLimiter(100, 200)
-
 	return &gkeSigner{
 		webhook:      webhook,
 		ctx:          ctx,
@@ -79,7 +74,7 @@ func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
 	klog.Infof("gkeSigner triggered for %q", csr.Name)
 
 	recordMetric := csrmetrics.SigningStartRecorder(authFlowLabelNone)
-	x509cr, err := certutil.ParseCSR(csr)
+	x509cr, err := certutil.ParseCSR(csr.Spec.Request)
 	if err != nil {
 		recordMetric(csrmetrics.SigningStatusParseError)
 		return fmt.Errorf("unable to parse csr %q: %v", csr.Name, err)
@@ -118,7 +113,7 @@ func (s *gkeSigner) metricLabel(csr *capi.CertificateSigningRequest, x509cr *x50
 func (s *gkeSigner) sign(csr *capi.CertificateSigningRequest) (*capi.CertificateSigningRequest, error) {
 	var statusCode int
 	var result rest.Result
-	webhook.WithExponentialBackoff(ClusterSigningGKERetryBackoff, func() error {
+	webhook.WithExponentialBackoff(context.TODO(), ClusterSigningGKERetryBackoff, func() error {
 		recordMetric := csrmetrics.OutboundRPCStartRecorder("container.webhook.Sign")
 		result = s.webhook.RestClient.Post().Body(csr).Do(context.TODO())
 		if result.Error() != nil {
@@ -131,7 +126,7 @@ func (s *gkeSigner) sign(csr *capi.CertificateSigningRequest) (*capi.Certificate
 			recordMetric(csrmetrics.OutboundRPCStatusOK)
 		}
 		return nil
-	})
+	}, webhook.DefaultShouldRetry)
 
 	if err := result.Error(); err != nil {
 		var webhookError error

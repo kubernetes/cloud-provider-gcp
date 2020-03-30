@@ -35,12 +35,15 @@ import (
 
 func startCloudNodeController(ctx *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface, stopCh <-chan struct{}) (http.Handler, bool, error) {
 	// Start the CloudNodeController
-	nodeController := cloudcontrollers.NewCloudNodeController(
+	nodeController, err := cloudcontrollers.NewCloudNodeController(
 		ctx.SharedInformers.Core().V1().Nodes(),
 		// cloud node controller uses existing cluster role from node-controller
 		ctx.ClientBuilder.ClientOrDie("node-controller"),
 		cloud,
 		ctx.ComponentConfig.NodeStatusUpdateFrequency.Duration)
+	if err != nil {
+		return nil, false, err
+	}
 
 	go nodeController.Run(stopCh)
 
@@ -98,12 +101,13 @@ func startRouteController(ctx *cloudcontrollerconfig.CompletedConfig, cloud clou
 		klog.Warning("configure-cloud-routes is set, but cloud provider does not support routes. Will not configure cloud provider routes.")
 		return nil, false, nil
 	}
-	var clusterCIDR *net.IPNet
-	var err error
+	var clusterCIDRs []*net.IPNet
 	if len(strings.TrimSpace(ctx.ComponentConfig.KubeCloudShared.ClusterCIDR)) != 0 {
-		_, clusterCIDR, err = net.ParseCIDR(ctx.ComponentConfig.KubeCloudShared.ClusterCIDR)
+		_, clusterCIDR, err := net.ParseCIDR(ctx.ComponentConfig.KubeCloudShared.ClusterCIDR)
 		if err != nil {
 			klog.Warningf("Unsuccessful parsing of cluster CIDR %v: %v", ctx.ComponentConfig.KubeCloudShared.ClusterCIDR, err)
+		} else {
+			clusterCIDRs = []*net.IPNet{clusterCIDR}
 		}
 	}
 
@@ -112,7 +116,7 @@ func startRouteController(ctx *cloudcontrollerconfig.CompletedConfig, cloud clou
 		ctx.ClientBuilder.ClientOrDie("route-controller"),
 		ctx.SharedInformers.Core().V1().Nodes(),
 		ctx.ComponentConfig.KubeCloudShared.ClusterName,
-		clusterCIDR,
+		clusterCIDRs,
 	)
 	go routeController.Run(stopCh, ctx.ComponentConfig.KubeCloudShared.RouteReconciliationPeriod.Duration)
 

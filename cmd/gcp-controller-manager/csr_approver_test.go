@@ -734,7 +734,7 @@ func forAllCases(t *testing.T, desc string, cases []func(b *csrBuilder, c *contr
 		t.Run(fmt.Sprintf("%s %d", desc, i), func(t *testing.T) {
 			csr := makeFancyTestCSR(b)
 			csr.Name = t.Name()
-			x509cr, err := certutil.ParseCSR(csr)
+			x509cr, err := certutil.ParseCSR(csr.Spec.Request)
 			if err != nil {
 				t.Errorf("unexpected err: %v", err)
 			}

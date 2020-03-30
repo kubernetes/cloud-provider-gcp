@@ -33,7 +33,6 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/controller"
 )
 
 const (
@@ -197,7 +196,7 @@ func (sav *serviceAccountVerifier) Run(saWorkers int, stopCh <-chan struct{}) {
 	for i := 0; i < saWorkers; i++ {
 		go wait.Until(sav.workSAQueue, time.Second, stopCh)
 	}
-	if !controller.WaitForCacheSync(saVerifierControlLoopName, stopCh, sav.saHasSynced) {
+	if !cache.WaitForNamedCacheSync(saVerifierControlLoopName, stopCh, sav.saHasSynced) {
 		return
 	}
 	klog.V(5).Infof("%s starts CM processing ...", saVerifierControlLoopName)

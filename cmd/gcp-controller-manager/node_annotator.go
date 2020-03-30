@@ -19,11 +19,12 @@ package main
 import (
 	"context"
 	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	compute "google.golang.org/api/compute/v1"
 
@@ -171,7 +172,7 @@ func (na *nodeAnnotator) enqueue(obj interface{}) {
 }
 
 func (na *nodeAnnotator) Run(workers int, stopCh <-chan struct{}) {
-	if !controller.WaitForCacheSync("node-annotator", stopCh, na.hasSynced) {
+	if !cache.WaitForNamedCacheSync("node-annotator", stopCh, na.hasSynced) {
 		return
 	}
 	for i := 0; i < workers; i++ {

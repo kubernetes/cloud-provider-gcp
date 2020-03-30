@@ -129,7 +129,7 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 	}
 	klog.Infof("approver got CSR %q", csr.Name)
 
-	x509cr, err := certutil.ParseCSR(csr)
+	x509cr, err := certutil.ParseCSR(csr.Spec.Request)
 	if err != nil {
 		recordMetric(csrmetrics.ApprovalStatusParseError)
 		return fmt.Errorf("unable to parse csr %q: %v", csr.Name, err)
