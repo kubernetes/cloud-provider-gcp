@@ -6,8 +6,24 @@ go_library(
         "base.go",
         "version.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/component-base/version",
+    importmap = "k8s.io/kubernetes/vendor/k8s.io/component-base/version",
     importpath = "k8s.io/component-base/version",
     visibility = ["//visibility:public"],
     deps = ["//vendor/k8s.io/apimachinery/pkg/version:go_default_library"],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [
+        ":package-srcs",
+    ],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )

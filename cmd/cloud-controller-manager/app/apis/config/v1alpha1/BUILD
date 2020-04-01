@@ -11,17 +11,17 @@ go_library(
         "zz_generated.deepcopy.go",
         "zz_generated.defaults.go",
     ],
-    importpath = "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/app/apis/config/v1alpha1",
+    importpath = "k8s.io/kubernetes/cmd/cloud-controller-manager/app/apis/config/v1alpha1",
     visibility = ["//visibility:public"],
     deps = [
+        "//cmd/cloud-controller-manager/app/apis/config:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/controller/apis/config/v1alpha1:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/controller/service/config/v1alpha1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/conversion:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
         "//vendor/k8s.io/kube-controller-manager/config/v1alpha1:go_default_library",
-        "//vendor/k8s.io/kubernetes/cmd/cloud-controller-manager/app/apis/config:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/controller/apis/config/v1alpha1:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/controller/service/config/v1alpha1:go_default_library",
     ],
 )
 
@@ -34,4 +34,18 @@ go_test(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )
