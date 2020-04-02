@@ -6,12 +6,12 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/app/testing",
     visibility = ["//visibility:public"],
     deps = [
+        "//cmd/cloud-controller-manager/app:go_default_library",
+        "//cmd/cloud-controller-manager/app/config:go_default_library",
+        "//cmd/cloud-controller-manager/app/options:go_default_library",
         "//vendor/github.com/spf13/pflag:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
         "//vendor/k8s.io/client-go/kubernetes:go_default_library",
         "//vendor/k8s.io/client-go/rest:go_default_library",
-        "//vendor/k8s.io/kubernetes/cmd/cloud-controller-manager/app:go_default_library",
-        "//vendor/k8s.io/kubernetes/cmd/cloud-controller-manager/app/config:go_default_library",
-        "//vendor/k8s.io/kubernetes/cmd/cloud-controller-manager/app/options:go_default_library",
     ],
 )
