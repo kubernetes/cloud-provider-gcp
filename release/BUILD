@@ -11,17 +11,26 @@ pkg_tar(
     srcs = [
         "//cmd/cloud-controller-manager",
         "//cmd/cloud-controller-manager:cloud-controller-manager.docker_tag",
-        "//cmd/cloud-controller-manager:image.tar",
+        ":rename_ccm_image",
     ],
     extension = "tar.gz",
     remap_paths = {
-        "/cloud-controller-manager-image.tar": "kubernetes/server/bin/cloud-controller-manager.tar",
+        "/cmd/cloud-controller-manager/cloud-controller-manager.tar": "kubernetes/server/bin/cloud-controller-manager.tar",
         "/cloud-controller-manager.docker_tag": "kubernetes/server/bin/cloud-controller-manager.docker_tag",
         "/cloud-controller-manager": "kubernetes/server/bin/cloud-controller-manager",
     },
     deps = [
         "@io_k8s_release//:kubernetes-server-linux-amd64",
+        ":rename_ccm_image",
     ],
+)
+
+genrule(
+    name = "rename_ccm_image",
+    srcs = ["//cmd/cloud-controller-manager:image.tar"],
+    outs = ["cmd/cloud-controller-manager/cloud-controller-manager.tar"],
+    output_to_bindir = 1,
+    cmd = "mv $< $@",
 )
 
 pkg_tar(
