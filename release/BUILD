@@ -39,6 +39,7 @@ pkg_tar(
     deps = [
         "//deploy:addon",
         "//deploy:manifest",
+        "//cluster:manifests",
         "@io_k8s_release//:kubernetes-manifests",
     ],
 )
