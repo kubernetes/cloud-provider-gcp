@@ -240,9 +240,9 @@ function copy-to-staging() {
   fi
 
   #echo "${hash}" > "${tar}.sha1"
-  gsutil -m -q -h "Cache-Control:private, max-age=0" cp "${tar}" "${tar}.sha1" "${staging_path}"
+  gsutil -m -q -h "Cache-Control:private, max-age=0" cp "${tar}" "${tar}.sha512" "${staging_path}"
   gsutil -m acl ch -g all:R "${gs_url}" "${gs_url}.sha1" >/dev/null 2>&1
-  echo "+++ ${basename_tar} uploaded (sha1 = ${hash})"
+  echo "+++ ${basename_tar} uploaded (sha512 = ${hash})"
 }
 
 
@@ -315,13 +315,13 @@ function upload-tars() {
     DOCKER_REGISTRY_MIRROR_URL="https://mirror.gcr.io"
   fi
 
-  SERVER_BINARY_TAR_HASH=$(sha1sum-file "${SERVER_BINARY_TAR}")
+  SERVER_BINARY_TAR_HASH=$(sha512sum-file "${SERVER_BINARY_TAR}")
 
   if [[ -n "${NODE_BINARY_TAR:-}" ]]; then
     NODE_BINARY_TAR_HASH=$(sha1sum-file "${NODE_BINARY_TAR}")
   fi
   if [[ -n "${KUBE_MANIFESTS_TAR:-}" ]]; then
-    KUBE_MANIFESTS_TAR_HASH=$(sha1sum-file "${KUBE_MANIFESTS_TAR}")
+    KUBE_MANIFESTS_TAR_HASH=$(sha512sum-file "${KUBE_MANIFESTS_TAR}")
   fi
 
   local server_binary_tar_urls=()
@@ -531,8 +531,8 @@ function tars_from_version() {
     echo "Version doesn't match regexp" >&2
     exit 1
   fi
-  if ! SERVER_BINARY_TAR_HASH=$(curl -Ss --fail "${SERVER_BINARY_TAR_URL}.sha1"); then
-    echo "Failure trying to curl release .sha1"
+  if ! SERVER_BINARY_TAR_HASH=$(curl -Ss --fail "${SERVER_BINARY_TAR_URL}.sha512"); then
+    echo "Failure trying to curl release .sha512"
   fi
 
   if ! curl -Ss --head "${SERVER_BINARY_TAR_URL}" >&/dev/null; then
@@ -1560,6 +1560,10 @@ function sha1sum-file() {
   else
     shasum -a1 "$1" | awk '{ print $1 }'
   fi
+}
+
+function sha512sum-file() {
+  shasum -a512 "$1" | awk '{ print $1 }'
 }
 
 # Create certificate pairs for the cluster.

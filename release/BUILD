@@ -33,6 +33,30 @@ genrule(
     cmd = "mv $< $@",
 )
 
+genrule(
+    name = "gen_server_shasum",
+    srcs = [
+        ":kubernetes-server-linux-amd64.tar.gz",
+    ],
+    outs = [
+        ":kubernetes-server-linux-amd64.tar.gz.sha512",
+    ],
+    output_to_bindir = 1,
+    cmd = "shasum -a512 $< > $<.sha512",
+)
+
+genrule(
+    name = "gen_manifest_shasum",
+    srcs = [
+        ":kubernetes-manifests.tar.gz",
+    ],
+    outs = [
+        ":kubernetes-manifests.tar.gz.sha512",
+    ],
+    output_to_bindir = 1,
+    cmd = "shasum -a512 $< > $<.sha512",
+)
+
 pkg_tar(
     name = "kubernetes-manifests",
     extension = "tar.gz",
@@ -47,8 +71,8 @@ pkg_tar(
 release_filegroup(
     name = "release-tars",
     srcs = [
-        ":kubernetes-manifests.tar.gz",
-        ":kubernetes-server-linux-amd64.tar.gz",
+        ":kubernetes-manifests.tar.gz.sha512",
+        ":kubernetes-server-linux-amd64.tar.gz.sha512",
         "@io_k8s_release//:kubernetes-node-linux-amd64",
     ],
 )
