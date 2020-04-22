@@ -126,11 +126,27 @@ function validate-hash {
   local -r file="$1"
   local -r expected="$2"
 
-  actual=$(shasum -a512 ${file} | awk '{ print $1 }') || true
-  if [[ "${actual}" != "${expected}" ]]; then
-    echo "== ${file} corrupted, sha512 ${actual} doesn't match expected ${expected} =="
-    return 1
+  if [[ ${#expected} == 40 ]]; then
+    actual=$(sha1sum ${file} | awk '{ print $1 }') || true
+    if [[ "${actual}" != "${expected}" ]]; then
+      echo "== ${file} corrupted, sha1 ${actual} doesn't match expected ${expected} =="
+      return 1
+    fi
+    echo Success for ${file} and sha1 ${expected}.
+    return 0
   fi
+  if [[ ${#expected} == 128 ]]; then
+    actual=$(sha512sum ${file} | awk '{ print $1 }') || true
+    if [[ "${actual}" != "${expected}" ]]; then
+      echo "== ${file} corrupted, sha512 ${actual} doesn't match expected ${expected} =="
+      return 1
+    fi
+    echo Success for ${file} and sha512 ${expected}.
+    return 0
+   fi
+
+  echo "== ${file} cannot be checked, unrecognized hash form ${expected} =="
+  return 1
 }
 
 # Get default service account credentials of the VM.
