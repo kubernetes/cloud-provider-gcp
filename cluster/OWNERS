@@ -4,20 +4,22 @@ reviewers:
   - bowei
   - cjcullen
   - gmarek
-  - vishh
-  - mwielgus
-  - MaciekPytel
   - jingax10
-  - yujuhong
+  - MaciekPytel
   - mtaufen
+  - mwielgus
+  - vishh
+  - yujuhong
 approvers:
+  - amwat
+  - BenTheElder
   - bowei
   - cheftako
   - cjcullen
   - gmarek
-  - vishh
-  - mwielgus
-  - MaciekPytel
   - jingax10
-  - yujuhong
+  - MaciekPytel
   - mtaufen
+  - mwielgus
+  - vishh
+  - yujuhong
