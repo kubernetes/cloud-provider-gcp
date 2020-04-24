@@ -24,6 +24,12 @@ test(){
 	kubectl get all --all-namespaces
 }
 
+dumplogs(){
+        mkdir -p "${ARTIFACTS}"/cluster-logs
+        kubectl cluster-info dump > "${ARTIFACTS}"/cluster-logs/cluster-info.log
+        KUBE_GCE_INSTANCE_PREFIX="${KUBE_GCE_INSTANCE_PREFIX:-kubernetes}" "${REPO_ROOT}"/cluster/log-dump/log-dump.sh "${ARTIFACTS}"/cluster-logs
+}
+
 down() {
 	"${REPO_ROOT}"/cluster/kube-down.sh
 }
@@ -31,8 +37,9 @@ down() {
 cleanup(){
 	STATUS=$?
 	if [[ "${STATUS}" -ne 0 ]]; then
-		echo "ERROR: kube-up exited with ${STATUS}"
+          echo "ERROR: "${FUNCNAME[1]}"() exited with ${STATUS}"
 	fi
+        dumplogs || true
 	down
 	cleanup_boskos
 	exit "${STATUS}"
