@@ -43,10 +43,11 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 )
 
-// InstanceIDAnnotationKey is the node annotation key where the external ID is written.
-const InstanceIDAnnotationKey = "container.googleapis.com/instance_id"
-
-const lastAppliedLabelsKey = "node.gke.io/last-applied-node-labels"
+const (
+	// InstanceIDAnnotationKey is the node annotation key where the external ID is written.
+	InstanceIDAnnotationKey = "container.googleapis.com/instance_id"
+	lastAppliedLabelsKey    = "node.gke.io/last-applied-node-labels"
+)
 
 var errNoMetadata = fmt.Errorf("instance did not have 'kube-labels' metadata")
 
@@ -188,9 +189,14 @@ func (na *nodeAnnotator) processNextWorkItem() bool {
 	}
 	defer na.queue.Done(key)
 
-	na.sync(key.(string))
+	err := na.sync(key.(string))
+	if err != nil {
+		klog.Warningf("Requeue %v (%v times) due to err: %v", key, na.queue.NumRequeues(key), err)
+		na.queue.AddRateLimited(key)
+		return true
+	}
+	// Item successfully proceeded, remove from rate limiter.
 	na.queue.Forget(key)
-
 	return true
 }
 
@@ -199,23 +205,19 @@ func (na *nodeAnnotator) work() {
 	}
 }
 
-func (na *nodeAnnotator) sync(key string) {
+func (na *nodeAnnotator) sync(key string) error {
 	node, err := na.ns.Get(key)
 	if err != nil {
-		klog.Errorf("Sync %v failed with: %v", key, err)
 		if errors.IsNotFound(err) {
 			klog.Infof("Node %v doesn't exist, dropping from the queue", key)
-			return
+			return nil
 		}
-		na.queue.Add(key)
-		return
+		return err
 	}
 
 	instance, err := na.getInstance(node.Spec.ProviderID)
 	if err != nil {
-		klog.Errorf("Sync %v failed with: %v", key, err)
-		na.queue.Add(key)
-		return
+		return err
 	}
 
 	var update bool
@@ -227,14 +229,11 @@ func (na *nodeAnnotator) sync(key string) {
 		update = update || modified
 	}
 	if !update {
-		return
+		return nil
 	}
 
-	if _, err := na.c.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{}); err != nil {
-		klog.Errorf("Sync %v failed with: %v", key, err)
-		na.queue.Add(key)
-		return
-	}
+	_, err = na.c.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
+	return err
 }
 
 type annotator struct {

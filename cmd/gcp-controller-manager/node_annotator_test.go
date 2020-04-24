@@ -312,7 +312,7 @@ func TestNodeAnnotatorSync(t *testing.T) {
 		getErr      error
 		annotators  []annotator
 		wantActions []ktesting.Action
-		wantRequeue bool
+		wantErr     bool
 	}{
 		{
 			desc:       "success and update",
@@ -341,14 +341,14 @@ func TestNodeAnnotatorSync(t *testing.T) {
 			node:        node,
 			getErr:      errors.NewInternalError(fmt.Errorf("foo")),
 			wantActions: []ktesting.Action{},
-			wantRequeue: true,
+			wantErr:     true,
 		},
 		{
 			desc:        "node not found, don't requeue",
 			node:        node,
 			getErr:      errors.NewNotFound(schema.GroupResource{Resource: "nodes"}, node.Name),
 			wantActions: []ktesting.Action{},
-			wantRequeue: false,
+			wantErr:     false,
 		},
 	}
 	for _, tt := range tests {
@@ -361,13 +361,13 @@ func TestNodeAnnotatorSync(t *testing.T) {
 				annotators:  tt.annotators,
 				queue:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 			}
-			na.sync("test-node")
+			err := na.sync("test-node")
 
 			if !reflect.DeepEqual(tt.wantActions, c.Actions()) {
 				t.Errorf("got actions:\n%+v\nwant actions\n%+v", c.Actions(), tt.wantActions)
 			}
-			if gotRequeue := na.queue.Len() > 0; gotRequeue != tt.wantRequeue {
-				t.Errorf("node requeued: %v, want: %v", gotRequeue, tt.wantRequeue)
+			if gotErr := err != nil; gotErr != tt.wantErr {
+				t.Errorf("node sync got err: %v, want: %v", gotErr, tt.wantErr)
 			}
 		})
 	}

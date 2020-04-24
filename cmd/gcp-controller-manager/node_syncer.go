@@ -33,7 +33,6 @@ import (
 const (
 	nodeSyncerControlLoopName = "node-syncer"
 	nodeSyncerQueueName       = "node-syncer-queue"
-	nodeSyncerQueueRetryLimit = 5
 	nodeSyncerResyncPeriod    = 30 * time.Minute
 )
 
@@ -121,10 +120,6 @@ func (ns *nodeSyncer) processNext() bool {
 
 	err := ns.process(key.(string))
 	if err != nil {
-		if ns.queue.NumRequeues(key) > nodeSyncerQueueRetryLimit {
-			klog.Errorf("Stop retrying %q in queue; last error: %v", key, err)
-			return true
-		}
 		klog.Warningf("Requeuing %q due to %v", key, err)
 		ns.queue.AddRateLimited(key)
 		return true
