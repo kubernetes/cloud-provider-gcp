@@ -37,15 +37,14 @@ else
   readonly use_custom_instance_list=
 fi
 
-readonly master_ssh_supported_providers="gce aws"
-readonly node_ssh_supported_providers="gce gke aws"
+readonly master_ssh_supported_providers="gce"
+readonly node_ssh_supported_providers="gce gke"
 readonly gcloud_supported_providers="gce gke"
 
 readonly master_logfiles="kube-apiserver.log kube-apiserver-audit.log kube-scheduler.log kube-controller-manager.log etcd.log etcd-events.log glbc.log cluster-autoscaler.log kube-addon-manager.log konnectivity-server.log fluentd.log kubelet.cov"
 readonly node_logfiles="kube-proxy.log fluentd.log node-problem-detector.log kubelet.cov"
 readonly node_systemd_services="node-problem-detector"
 readonly hollow_node_logfiles="kubelet-hollow-node-*.log kubeproxy-hollow-node-*.log npd-hollow-node-*.log"
-readonly aws_logfiles="cloud-init-output.log"
 readonly gce_logfiles="startupscript.log"
 readonly kern_logfile="kern.log"
 readonly initd_logfiles="docker/log"
@@ -120,9 +119,6 @@ function copy-logs-from-node() {
       # get-serial-port-output lets you ask for ports 1-4, but currently (11/21/2016) only port 1 contains useful information
       gcloud compute instances get-serial-port-output --project "${PROJECT}" --zone "${ZONE}" --port 1 "${node}" > "${dir}/serial-1.log" || true
       gcloud compute scp --recurse --project "${PROJECT}" --zone "${ZONE}" "${node}:${scp_files}" "${dir}" > /dev/null || true
-    elif  [[ "${KUBERNETES_PROVIDER}" == "aws" ]]; then
-      local ip=$(get_ssh_hostname "${node}")
-      scp -oLogLevel=quiet -oConnectTimeout=30 -oStrictHostKeyChecking=no -i "${AWS_SSH_KEY}" "${SSH_USER}@${ip}:${scp_files}" "${dir}" > /dev/null || true
     elif  [[ -n "${use_custom_instance_list}" ]]; then
       scp -oLogLevel=quiet -oConnectTimeout=30 -oStrictHostKeyChecking=no -i "${LOG_DUMP_SSH_KEY}" "${LOG_DUMP_SSH_USER}@${node}:${scp_files}" "${dir}" > /dev/null || true
     else
@@ -151,9 +147,6 @@ function save-logs() {
       case "${KUBERNETES_PROVIDER}" in
         gce|gke)
           files="${files} ${gce_logfiles}"
-          ;;
-        aws)
-          files="${files} ${aws_logfiles}"
           ;;
       esac
     fi
