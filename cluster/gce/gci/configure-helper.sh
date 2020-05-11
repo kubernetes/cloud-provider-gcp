@@ -32,6 +32,24 @@ function setup-os-params {
   echo "/core.%e.%p.%t" > /proc/sys/kernel/core_pattern
 }
 
+function convert-manifest-params {
+  # A helper function to convert the manifest args from a string to a list of
+  # flag arguments.
+  # Old format:
+  #   command=["/bin/sh", "-c", "exec KUBE_EXEC_BINARY --param1=val1 --param2-val2"].
+  # New format:
+  #   command=["KUBE_EXEC_BINARY"]  # No shell dependencies.
+  #   args=["--param1=val1", "--param2-val2"]
+  IFS=' ' read -ra FLAGS <<< "$1"
+  params=""
+  for flag in "${FLAGS[@]}"; do
+    params+="\n\"$flag\","
+  done
+  if [ ! -z $params ]; then
+    echo "${params::-1}"  #  drop trailing comma
+  fi
+}
+
 # secure_random generates a secure random string of bytes. This function accepts
 # a number of secure bytes desired and returns a base64 encoded string with at
 # least the requested entropy. Rather than directly reading from /dev/urandom,
@@ -1780,6 +1798,7 @@ function start-kube-controller-manager {
   local params="${CONTROLLER_MANAGER_TEST_LOG_LEVEL:-"--v=2"} ${CONTROLLER_MANAGER_TEST_ARGS:-} ${CLOUD_CONFIG_OPT}"
   params+=" --use-service-account-credentials"
   params+=" --cloud-provider=external"
+  params+=" --external-cloud-volume-plugin=gce"
   params+=" --kubeconfig=/etc/srv/kubernetes/kube-controller-manager/kubeconfig"
   params+=" --root-ca-file=${CA_CERT_BUNDLE_PATH}"
   params+=" --service-account-private-key-file=${SERVICEACCOUNT_KEY_PATH}"
@@ -1878,7 +1897,8 @@ function start-cloud-controller-manager {
   create-kubeconfig "cloud-controller-manager" ${CLOUD_CONTROLLER_MANAGER_TOKEN}
   prepare-log-file /var/log/cloud-controller-manager.log
   # Calculate variables and assemble the command line.
-  local params="${CONTROLLER_MANAGER_TEST_LOG_LEVEL:-"--v=2"} ${CONTROLLER_MANAGER_TEST_ARGS:-} ${CLOUD_CONFIG_OPT}"
+  local params="${CONTROLLER_MANAGER_TEST_LOG_LEVEL:-"--v=4"} ${CONTROLLER_MANAGER_TEST_ARGS:-} ${CLOUD_CONFIG_OPT}"
+  params+=" --port=10253"
   params+=" --use-service-account-credentials"
   params+=" --cloud-provider=gce"
   params+=" --kubeconfig=/etc/srv/kubernetes/cloud-controller-manager/kubeconfig"
@@ -1919,7 +1939,9 @@ function start-cloud-controller-manager {
     params+=" --controllers=${RUN_CONTROLLERS}"
   fi
 
-  local -r kube_rc_docker_tag=$(cat /home/kubernetes/kube-docker-files/cloud-controller-manager.docker_tag)
+  params="$(convert-manifest-params "${params}")"
+  local kube_rc_docker_tag=$(cat /home/kubernetes/kube-docker-files/cloud-controller-manager.docker_tag)
+  kube_rc_docker_tag=$(echo ${kube_rc_docker_tag} | sed 's/+/-/g')
   local container_env=""
   if [[ -n "${ENABLE_CACHE_MUTATION_DETECTOR:-}" ]]; then
     container_env="\"env\":[{\"name\": \"KUBE_CACHE_MUTATION_DETECTOR\", \"value\": \"${ENABLE_CACHE_MUTATION_DETECTOR}\"}],"

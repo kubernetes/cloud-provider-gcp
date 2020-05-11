@@ -30,7 +30,23 @@ genrule(
     srcs = ["//cmd/cloud-controller-manager:image.tar"],
     outs = ["cmd/cloud-controller-manager/cloud-controller-manager.tar"],
     output_to_bindir = 1,
-    cmd = "mv $< $@",
+    stamp = 1,
+    cmd = '''
+    {
+      mkdir archive
+      cd archive
+      tar tf ../$< > contents
+      tar xf ../$<
+      image_tag=`awk '/STABLE_IMAGE_TAG/ {print $$2}' ../bazel-out/stable-status.txt`
+      # Fix the image tag to not contain '+'
+      image_tag=`echo $$image_tag | sed 's/+/-/g'`
+      sed -i "s@:image\"@:$${image_tag}\"@g" manifest.json
+      sed -i "s@\"image\"@\"$${image_tag}\"@g" repositories
+      sed -i "s@k8s.gcr.io/cmd/cloud-controller-manager:@k8s.gcr.io/cloud-controller-manager:@g" manifest.json
+      sed -i "s@k8s.gcr.io/cmd/cloud-controller-manager@k8s.gcr.io/cloud-controller-manager@g" repositories
+      tar -c -T contents -f ../$@
+      cd ..
+    }''',
 )
 
 genrule(

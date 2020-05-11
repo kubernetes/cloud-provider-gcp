@@ -20,11 +20,17 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
+
+source "${KUBE_ROOT}/tools/version.sh"
+get_version_vars
+IMAGE_TAG=${KUBE_GIT_VERSION:-latest}
+
 # Prefix with STABLE_ so that these values are saved to stable-status.txt
 # instead of volatile-status.txt.
 # Stamped rules will be retriggered by changes to stable-status.txt, but not by
 # changes to volatile-status.txt.
-# IMPORTANT: the camelCase vars should match the lists in hack/lib/version.sh
+# IMPORTANT: the camelCase vars should match the lists in version.sh
 # and pkg/version/def.bzl.
 cat <<EOF
 STABLE_IMAGE_REGISTRY ${IMAGE_REGISTRY:-gcr.io}
