@@ -7,11 +7,27 @@ metadata:
 rules:
 - apiGroups:
   - ""
+  - events.k8s.io
   resources:
   - events
   verbs:
   - create
   - patch
+  - update
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+- apiGroups:
+  - coordination.k8s.io
+  resourceNames:
+  - cloud-controller-manager
+  resources:
+  - leases
+  verbs:
+  - get
   - update
 - apiGroups:
   - ""

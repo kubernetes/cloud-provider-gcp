@@ -24,11 +24,12 @@
         "cpu": "{{cpurequest}}"
       }
     },
-    "command": [
-                 "/bin/sh",
-                 "-c",
-                 "exec /usr/local/bin/cloud-controller-manager {{params}} 1>>/var/log/cloud-controller-manager.log 2>&1"
-               ],
+    "command": ["/cloud-controller-manager"],
+    "args": [
+      "--log-file=/var/log/cloud-controller-manager.log",
+      "--logtostderr=false",
+      {{params}}
+    ],
     {{container_env}}
     "livenessProbe": {
       "httpGet": {
