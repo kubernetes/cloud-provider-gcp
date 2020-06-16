@@ -338,7 +338,7 @@ function upload-tars() {
     # Ensure the buckets are created
     if ! gsutil ls "${staging_bucket}" >/dev/null; then
       echo "Creating ${staging_bucket}"
-      gsutil mb -l "${region}" "${staging_bucket}"
+      gsutil mb -l "${region}" -p "${PROJECT}" "${staging_bucket}"
     fi
 
     local staging_path="${staging_bucket}/${INSTANCE_PREFIX}-devel"
