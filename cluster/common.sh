@@ -515,7 +515,7 @@ function verify-kube-binaries() {
   # TODO: @cheftako Remove the hack to get a local kubectl from existing tars.
   # Need to get something which matches the local machine type.
   mkdir -p ${KUBE_ROOT}/cluster/bin
-  tar -xf bazel-bin/external/io_k8s_release/kubernetes-server-linux-amd64.tar ./kubernetes/server/bin/kubectl --to-stdout > ${KUBE_ROOT}/cluster/bin/kubectl
+  tar -xf ${KUBE_ROOT}/bazel-bin/external/io_k8s_release/kubernetes-server-linux-amd64.tar ./kubernetes/server/bin/kubectl --to-stdout > ${KUBE_ROOT}/cluster/bin/kubectl
   chmod +x ${KUBE_ROOT}/cluster/bin/kubectl
   if ! "${KUBE_ROOT}/cluster/kubectl.sh" version --client >&/dev/null; then
     echo "!!! kubectl(${KUBE_ROOT}/cluster/kubectl.sh) appears to be broken or missing"
