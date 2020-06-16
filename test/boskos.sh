@@ -14,8 +14,8 @@ acquire_project() {
 
     if project=$(echo "${boskos_response}" | jq -r '.name'); then
         echo "Using GCP project: ${project}"
-        CLOUDSDK_CORE_PROJECT="${project}"
-        export CLOUDSDK_CORE_PROJECT
+        PROJECT="${project}"
+        export PROJECT
         heartbeat_project_forever &
         BOSKOS_HEARTBEAT_PID=$!
         export BOSKOS_HEARTBEAT_PID
@@ -27,12 +27,12 @@ acquire_project() {
 
 # release the project back to boskos
 release_project() {
-    curl -X POST "http://boskos/release?name=${CLOUDSDK_CORE_PROJECT}&owner=${JOB_NAME}&dest=dirty"
+    curl -X POST "http://boskos/release?name=${PROJECT}&owner=${JOB_NAME}&dest=dirty"
 }
 
 # send a heartbeat to boskos for the project
 heartbeat_project() {
-    curl -X POST "http://boskos/update?name=${CLOUDSDK_CORE_PROJECT}&state=busy&owner=${JOB_NAME}" > /dev/null 2>&1
+    curl -X POST "http://boskos/update?name=${PROJECT}&state=busy&owner=${JOB_NAME}" > /dev/null 2>&1
 }
 
 # heartbeat_project in an infinite loop
