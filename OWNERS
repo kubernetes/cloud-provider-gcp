@@ -8,6 +8,7 @@ approvers:
 - freehan
 - nicksardo
 - mrhohn
-- dnardo
 - mikedanese
 - calebamiles
+emeritus_approvers:
+- dnardo
