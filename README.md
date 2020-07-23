@@ -2,6 +2,7 @@
 
 ## Publishing gcp-controller-manager image
 
+
 This command will build and publish
 `gcr.io/k8s-image-staging/gcp-controller-manager:latest`:
 
