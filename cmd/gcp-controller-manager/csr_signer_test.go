@@ -18,14 +18,20 @@ package main
 
 import (
 	"bytes"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"text/template"
 
-	certificates "k8s.io/api/certificates/v1beta1"
+	capi "k8s.io/api/certificates/v1beta1"
+	certsv1b1 "k8s.io/api/certificates/v1beta1"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 )
 
@@ -40,9 +46,37 @@ users:
     password: mypass
 `
 
+var (
+	statusApproved = capi.CertificateSigningRequestStatus{
+		Conditions: []capi.CertificateSigningRequestCondition{
+			capi.CertificateSigningRequestCondition{Type: capi.CertificateApproved},
+		},
+	}
+)
+
+func generateCSR() []byte {
+	// noncryptographic for faster testing
+	// DO NOT COPY THIS CODE
+	insecureRand := rand.New(rand.NewSource(0))
+
+	keyBytes, err := rsa.GenerateKey(insecureRand, 1024)
+	if err != nil {
+		panic("error generating key")
+	}
+
+	csrTemplate := &x509.CertificateRequest{}
+
+	csrBytes, err := x509.CreateCertificateRequest(insecureRand, csrTemplate, keyBytes)
+	if err != nil {
+		panic("error creating CSR")
+	}
+
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrBytes})
+}
+
 func TestGKESigner(t *testing.T) {
-	goodResponse := &certificates.CertificateSigningRequest{
-		Status: certificates.CertificateSigningRequestStatus{
+	goodResponse := &certsv1b1.CertificateSigningRequest{
+		Status: certsv1b1.CertificateSigningRequestStatus{
 			Certificate: []byte("fake certificate"),
 		},
 	}
@@ -50,83 +84,186 @@ func TestGKESigner(t *testing.T) {
 	invalidResponse := "{ \"status\": \"Not a properly formatted CSR response\" }"
 
 	cases := []struct {
-		mockResponse interface{}
-		expected     []byte
-		failCalls    int
-		wantErr      bool
+		name          string
+		csr           *capi.CertificateSigningRequest
+		mockResponse  interface{}
+		expected      []byte
+		failCalls     int
+		wantProcessed bool
+		wantErr       bool
 	}{
 		{
-			mockResponse: goodResponse,
-			expected:     goodResponse.Status.Certificate,
-			wantErr:      false,
+			name: "Signs approved certs with nil signer name",
+			csr: &certsv1b1.CertificateSigningRequest{
+				Spec: capi.CertificateSigningRequestSpec{
+					SignerName: nil,
+					Request:    generateCSR(),
+				},
+				Status: statusApproved,
+			},
+			mockResponse:  goodResponse,
+			expected:      goodResponse.Status.Certificate,
+			wantProcessed: true,
+			wantErr:       false,
 		},
 		{
-			mockResponse: goodResponse,
-			expected:     goodResponse.Status.Certificate,
-			failCalls:    3,
-			wantErr:      false,
+			name: "Signs Approved API client certificates",
+			csr: &certsv1b1.CertificateSigningRequest{
+				Spec: capi.CertificateSigningRequestSpec{
+					SignerName: stringPointer(certsv1b1.KubeAPIServerClientSignerName),
+					Request:    generateCSR(),
+				},
+				Status: statusApproved,
+			},
+			mockResponse:  goodResponse,
+			expected:      goodResponse.Status.Certificate,
+			wantProcessed: true,
+			wantErr:       false,
 		},
 		{
-			mockResponse: goodResponse,
-			failCalls:    20,
-			wantErr:      true,
+			name: "Signs kubelet client certificates",
+			csr: &certsv1b1.CertificateSigningRequest{
+				Spec: capi.CertificateSigningRequestSpec{
+					SignerName: stringPointer(certsv1b1.KubeAPIServerClientKubeletSignerName),
+					Request:    generateCSR(),
+				},
+				Status: statusApproved,
+			},
+			mockResponse:  goodResponse,
+			expected:      goodResponse.Status.Certificate,
+			wantProcessed: true,
+			wantErr:       false,
 		},
 		{
-			mockResponse: invalidResponse,
-			wantErr:      true,
+			name: "Signs kubelet serving certificates",
+			csr: &certsv1b1.CertificateSigningRequest{
+				Spec: capi.CertificateSigningRequestSpec{
+					SignerName: stringPointer(certsv1b1.KubeletServingSignerName),
+					Request:    generateCSR(),
+				},
+				Status: statusApproved,
+			},
+			mockResponse:  goodResponse,
+			expected:      goodResponse.Status.Certificate,
+			wantProcessed: true,
+			wantErr:       false,
+		},
+		{
+			name: "Signs legacy-unknown certificates",
+			csr: &certsv1b1.CertificateSigningRequest{
+				Spec: capi.CertificateSigningRequestSpec{
+					SignerName: stringPointer(certsv1b1.LegacyUnknownSignerName),
+					Request:    generateCSR(),
+				},
+				Status: statusApproved,
+			},
+			mockResponse:  goodResponse,
+			expected:      goodResponse.Status.Certificate,
+			wantProcessed: true,
+			wantErr:       false,
+		},
+		{
+			name: "Signs API client certificates with a few failed calls",
+			csr: &certsv1b1.CertificateSigningRequest{
+				Spec: capi.CertificateSigningRequestSpec{
+					SignerName: stringPointer(certsv1b1.KubeAPIServerClientSignerName),
+					Request:    generateCSR(),
+				},
+				Status: statusApproved,
+			},
+			mockResponse:  goodResponse,
+			expected:      goodResponse.Status.Certificate,
+			failCalls:     3,
+			wantProcessed: true,
+			wantErr:       false,
+		},
+		{
+			name:         "Returns error after many failed calls",
+			mockResponse: goodResponse,
+			csr: &certsv1b1.CertificateSigningRequest{
+				Spec: capi.CertificateSigningRequestSpec{
+					SignerName: stringPointer(certsv1b1.KubeAPIServerClientSignerName),
+					Request:    generateCSR(),
+				},
+				Status: statusApproved,
+			},
+			failCalls:     20,
+			wantProcessed: true,
+			wantErr:       true,
+		},
+		{
+			name: "Returns error after invalid response",
+			csr: &certsv1b1.CertificateSigningRequest{
+				Spec: capi.CertificateSigningRequestSpec{
+					SignerName: stringPointer(certsv1b1.KubeAPIServerClientSignerName),
+					Request:    generateCSR(),
+				},
+				Status: statusApproved,
+			},
+			mockResponse:  invalidResponse,
+			wantProcessed: true,
+			wantErr:       true,
 		},
 	}
 
 	for _, c := range cases {
-		server, err := newTestServer(c.mockResponse, c.failCalls)
-		if err != nil {
-			t.Fatalf("error creating test server")
-		}
-
-		kubeConfig, err := ioutil.TempFile("", "kubeconfig")
-		if err != nil {
-			t.Fatalf("error creating kubeconfig tempfile: %v", err)
-		}
-
-		tmpl, err := template.New("kubeconfig").Parse(kubeConfigTmpl)
-		if err != nil {
-			t.Fatalf("error creating kubeconfig template: %v", err)
-		}
-
-		data := struct{ Server string }{server.httpserver.URL}
-
-		if err := tmpl.Execute(kubeConfig, data); err != nil {
-			t.Fatalf("error executing kubeconfig template: %v", err)
-		}
-
-		if err := kubeConfig.Close(); err != nil {
-			t.Fatalf("error closing kubeconfig template: %v", err)
-		}
-
-		ctlCtx := &controllerContext{
-			clusterSigningGKEKubeconfig: kubeConfig.Name(),
-			recorder:                    record.NewFakeRecorder(10),
-		}
-		signer, err := newGKESigner(ctlCtx)
-		if err != nil {
-			t.Fatalf("error creating GKESigner: %v", err)
-		}
-
-		cert, err := signer.sign(&certificates.CertificateSigningRequest{})
-
-		if c.wantErr {
-			if err == nil {
-				t.Errorf("wanted error during GKE.Sign() call, got not none")
-			}
-		} else {
+		t.Run(c.name, func(t *testing.T) {
+			server, err := newTestServer(c.mockResponse, c.failCalls)
 			if err != nil {
-				t.Errorf("error while signing: %v", err)
+				t.Fatalf("error creating test server")
 			}
 
-			if !bytes.Equal(cert.Status.Certificate, c.expected) {
-				t.Errorf("response certificate didn't match expected %v: %v", c.expected, cert)
+			kubeConfig, err := ioutil.TempFile("", "kubeconfig")
+			if err != nil {
+				t.Fatalf("error creating kubeconfig tempfile: %v", err)
 			}
-		}
+
+			tmpl, err := template.New("kubeconfig").Parse(kubeConfigTmpl)
+			if err != nil {
+				t.Fatalf("error creating kubeconfig template: %v", err)
+			}
+
+			data := struct{ Server string }{server.httpserver.URL}
+
+			if err := tmpl.Execute(kubeConfig, data); err != nil {
+				t.Fatalf("error executing kubeconfig template: %v", err)
+			}
+
+			if err := kubeConfig.Close(); err != nil {
+				t.Fatalf("error closing kubeconfig template: %v", err)
+			}
+
+			ctlCtx := &controllerContext{
+				client:                      fake.NewSimpleClientset(c.csr),
+				clusterSigningGKEKubeconfig: kubeConfig.Name(),
+				recorder:                    record.NewFakeRecorder(10),
+			}
+			signer, err := newGKESigner(ctlCtx)
+			if err != nil {
+				t.Fatalf("error creating GKESigner: %v", err)
+			}
+
+			processed, csrOut, err := signer.handleInternal(c.csr)
+
+			if c.wantErr {
+				if err == nil {
+					t.Fatalf("wanted error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("wanted nil error, got %q", err)
+			}
+
+			if c.wantProcessed != processed {
+				t.Fatalf("got processed=%v, want %v", processed, c.wantProcessed)
+			}
+
+			if !bytes.Equal(csrOut.Status.Certificate, c.expected) {
+				t.Fatalf("response certificate didn't match expected %v: %v", c.expected, csrOut)
+			}
+		})
 	}
 }
 

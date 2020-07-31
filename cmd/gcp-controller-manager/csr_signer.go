@@ -23,9 +23,9 @@ import (
 	"fmt"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	capi "k8s.io/api/certificates/v1beta1"
+	certsv1b1 "k8s.io/api/certificates/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/client-go/rest"
@@ -67,35 +67,52 @@ func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
 	}, nil
 }
 
+// handle is called by the generic Kubernetes certificate controller.
 func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
+	_, _, err := s.handleInternal(csr)
+	return err
+}
+
+func (s *gkeSigner) handleInternal(csr *capi.CertificateSigningRequest) (processed bool, out *capi.CertificateSigningRequest, err error) {
 	if !certificates.IsCertificateRequestApproved(csr) {
-		return nil
+		return false, nil, nil
 	}
+
+	// Ignore CSRs that are not addressed to the default signer.
+	if csr.Spec.SignerName != nil &&
+		*csr.Spec.SignerName != certsv1b1.KubeAPIServerClientSignerName &&
+		*csr.Spec.SignerName != certsv1b1.KubeAPIServerClientKubeletSignerName &&
+		*csr.Spec.SignerName != certsv1b1.KubeletServingSignerName &&
+		*csr.Spec.SignerName != certsv1b1.LegacyUnknownSignerName {
+		return false, nil, nil
+	}
+
 	klog.Infof("gkeSigner triggered for %q", csr.Name)
 
 	recordMetric := csrmetrics.SigningStartRecorder(authFlowLabelNone)
 	x509cr, err := certutil.ParseCSR(csr.Spec.Request)
 	if err != nil {
 		recordMetric(csrmetrics.SigningStatusParseError)
-		return fmt.Errorf("unable to parse csr %q: %v", csr.Name, err)
+		return true, nil, fmt.Errorf("unable to parse csr %q: %v", csr.Name, err)
 	}
 	recordMetric = csrmetrics.SigningStartRecorder(s.metricLabel(csr, x509cr))
 	csr, err = s.sign(csr)
 	if err != nil {
 		recordMetric(csrmetrics.SigningStatusSignError)
-		return fmt.Errorf("error auto signing csr: %v", err)
+		return true, nil, fmt.Errorf("error auto signing csr: %v", err)
 	}
 	updateRecordMetric := csrmetrics.OutboundRPCStartRecorder("k8s.CertificateSigningRequests.updateStatus")
-	_, err = s.ctx.client.CertificatesV1beta1().CertificateSigningRequests().UpdateStatus(context.TODO(), csr, metav1.UpdateOptions{})
+	csr, err = s.ctx.client.CertificatesV1beta1().CertificateSigningRequests().UpdateStatus(context.TODO(), csr, metav1.UpdateOptions{})
 	if err != nil {
 		updateRecordMetric(csrmetrics.OutboundRPCStatusError)
 		recordMetric(csrmetrics.SigningStatusUpdateError)
-		return fmt.Errorf("error updating signature for csr: %v", err)
+		return true, nil, fmt.Errorf("error updating signature for csr: %v", err)
 	}
+
 	updateRecordMetric(csrmetrics.OutboundRPCStatusOK)
 	klog.Infof("CSR %q signed", csr.Name)
 	recordMetric(csrmetrics.SigningStatusSigned)
-	return nil
+	return true, csr, nil
 }
 
 func (s *gkeSigner) metricLabel(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) string {
