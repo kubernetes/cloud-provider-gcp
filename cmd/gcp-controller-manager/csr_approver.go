@@ -38,6 +38,7 @@ import (
 
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
+	certsv1b1 "k8s.io/api/certificates/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -312,6 +313,9 @@ func isNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 	if !isNodeCert(csr, x509cr) {
 		return false
 	}
+	if csr.Spec.SignerName == nil || *csr.Spec.SignerName != certsv1b1.KubeAPIServerClientKubeletSignerName {
+		return false
+	}
 	if len(x509cr.DNSNames) > 0 || len(x509cr.IPAddresses) > 0 {
 		return false
 	}
@@ -327,6 +331,9 @@ func isLegacyNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.Ce
 
 func isNodeServerCert(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
 	if !isNodeCert(csr, x509cr) {
+		return false
+	}
+	if csr.Spec.SignerName == nil || *csr.Spec.SignerName != certsv1b1.KubeletServingSignerName {
 		return false
 	}
 	if !hasExactUsages(csr, kubeletServerUsages) {

@@ -40,6 +40,7 @@ import (
 	container "google.golang.org/api/container/v1"
 	authorization "k8s.io/api/authorization/v1beta1"
 	capi "k8s.io/api/certificates/v1beta1"
+	certsv1b1 "k8s.io/api/certificates/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -294,13 +295,29 @@ func TestHandle(t *testing.T) {
 	}
 }
 
+// stringPointer copies a constant string and returns a pointer to the copy.
+func stringPointer(str string) *string {
+	return &str
+}
+
 func TestValidators(t *testing.T) {
 	t.Run("isLegacyNodeClientCert", func(t *testing.T) {
-		goodCase := func(b *csrBuilder, _ *controllerContext) { b.requestor = legacyKubeletUsername }
+		goodCase := func(b *csrBuilder, _ *controllerContext) {
+			b.requestor = legacyKubeletUsername
+			b.signerName = stringPointer(certsv1b1.KubeAPIServerClientKubeletSignerName)
+		}
 		goodCases := []func(*csrBuilder, *controllerContext){goodCase}
 		testRecognizer(t, "good", goodCases, isLegacyNodeClientCert, true)
 
 		badCases := []func(*csrBuilder, *controllerContext){
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				b.signerName = nil // Should not recognize nil signer name
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				b.signerName = stringPointer(certsv1b1.KubeletServingSignerName) // Should not recognize other signer name
+			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
 				b.cn = "mike"
@@ -321,13 +338,24 @@ func TestValidators(t *testing.T) {
 		}
 		testRecognizer(t, "bad", badCases, isLegacyNodeClientCert, false)
 	})
-	t.Run("isNodeServerClient", func(t *testing.T) {
-		goodCase := func(b *csrBuilder, _ *controllerContext) { b.usages = kubeletServerUsages }
+	t.Run("isNodeServerCert", func(t *testing.T) {
+		goodCase := func(b *csrBuilder, _ *controllerContext) {
+			b.usages = kubeletServerUsages
+			b.signerName = stringPointer(certsv1b1.KubeletServingSignerName)
+		}
 		goodCases := []func(*csrBuilder, *controllerContext){goodCase}
 		testRecognizer(t, "good", goodCases, isNodeServerCert, true)
 
 		badCases := []func(*csrBuilder, *controllerContext){
 			func(b *csrBuilder, c *controllerContext) {},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				b.signerName = nil // Should not recognize nil signer name
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				b.signerName = stringPointer(certsv1b1.KubeAPIServerClientKubeletSignerName) // Should not recognize other signer name
+			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
 				b.cn = "mike"
@@ -413,12 +441,21 @@ func TestValidators(t *testing.T) {
 			for _, name := range tpmAttestationBlocks {
 				b.extraPEM[name] = []byte("foo")
 			}
+			b.signerName = stringPointer(certsv1b1.KubeAPIServerClientKubeletSignerName)
 		}
 		goodCases := []func(*csrBuilder, *controllerContext){goodCase}
 		testRecognizer(t, "good", goodCases, isNodeClientCertWithAttestation, true)
 
 		badCases := []func(*csrBuilder, *controllerContext){
 			func(b *csrBuilder, c *controllerContext) {},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				b.signerName = nil
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				b.signerName = stringPointer(certsv1b1.KubeletServingSignerName)
+			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
 				b.requestor = "awly"
@@ -756,15 +793,16 @@ func makeTestCSR(t *testing.T) *capi.CertificateSigningRequest {
 }
 
 type csrBuilder struct {
-	cn        string
-	orgs      []string
-	requestor string
-	usages    []capi.KeyUsage
-	dns       []string
-	emails    []string
-	ips       []net.IP
-	extraPEM  map[string][]byte
-	key       *ecdsa.PrivateKey
+	cn         string
+	orgs       []string
+	requestor  string
+	signerName *string
+	usages     []capi.KeyUsage
+	dns        []string
+	emails     []string
+	ips        []net.IP
+	extraPEM   map[string][]byte
+	key        *ecdsa.PrivateKey
 }
 
 func makeFancyTestCSR(b csrBuilder) *capi.CertificateSigningRequest {
@@ -786,9 +824,10 @@ func makeFancyTestCSR(b csrBuilder) *capi.CertificateSigningRequest {
 	}
 	return &capi.CertificateSigningRequest{
 		Spec: capi.CertificateSigningRequestSpec{
-			Username: b.requestor,
-			Usages:   b.usages,
-			Request:  bytes.TrimSpace(bytes.Join(blocks, nil)),
+			Username:   b.requestor,
+			Usages:     b.usages,
+			Request:    bytes.TrimSpace(bytes.Join(blocks, nil)),
+			SignerName: b.signerName,
 		},
 	}
 }
