@@ -9,12 +9,14 @@ load("@io_k8s_repo_infra//defs:pkg.bzl", "pkg_tar")
 pkg_tar(
     name = "kubernetes-server-linux-amd64",
     srcs = [
+        "//cmd/auth-provider-gcp",
         "//cmd/cloud-controller-manager",
         "//cmd/cloud-controller-manager:cloud-controller-manager.docker_tag",
         ":rename_ccm_image",
     ],
     extension = "tar.gz",
     remap_paths = {
+        "/auth-provider-gcp": "kubernetes/server/bin/auth-provider-gcp",
         "/cmd/cloud-controller-manager/cloud-controller-manager.tar": "kubernetes/server/bin/cloud-controller-manager.tar",
         "/cloud-controller-manager.docker_tag": "kubernetes/server/bin/cloud-controller-manager.docker_tag",
         "/cloud-controller-manager": "kubernetes/server/bin/cloud-controller-manager",

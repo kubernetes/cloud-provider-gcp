@@ -576,6 +576,7 @@ function install-kube-binary-config {
     load-docker-images
     mv "${src_dir}/kubelet" "${KUBE_BIN}"
     mv "${src_dir}/kubectl" "${KUBE_BIN}"
+    mv "${src_dir}/auth-provider-gcp" "${KUBE_BIN}"
 
     mv "${KUBE_HOME}/kubernetes/LICENSES" "${KUBE_HOME}"
     mv "${KUBE_HOME}/kubernetes/kubernetes-src.tar.gz" "${KUBE_HOME}"
