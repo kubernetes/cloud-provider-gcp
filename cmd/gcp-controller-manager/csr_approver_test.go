@@ -39,8 +39,8 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
 	authorization "k8s.io/api/authorization/v1beta1"
-	capi "k8s.io/api/certificates/v1beta1"
-	certsv1b1 "k8s.io/api/certificates/v1beta1"
+	capi "k8s.io/api/certificates/v1"
+	certsv1 "k8s.io/api/certificates/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -50,7 +50,7 @@ import (
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
 	"k8s.io/klog"
-	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
+	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
 )
 
 func init() {
@@ -116,7 +116,7 @@ func TestHandle(t *testing.T) {
 		if got, expected := a.Verb, "update"; got != expected {
 			t.Errorf("got: %v, expected: %v", got, expected)
 		}
-		if got, expected := a.Resource, (schema.GroupVersionResource{Group: "certificates.k8s.io", Version: "v1beta1", Resource: "certificatesigningrequests"}); got != expected {
+		if got, expected := a.Resource, (schema.GroupVersionResource{Group: "certificates.k8s.io", Version: "v1", Resource: "certificatesigningrequests"}); got != expected {
 			t.Errorf("got: %v, expected: %v", got, expected)
 		}
 		if got, expected := a.Subresource, "approval"; got != expected {
@@ -228,7 +228,7 @@ func TestHandle(t *testing.T) {
 				if got, expected := a.Verb, "update"; got != expected {
 					t.Errorf("got: %v, expected: %v", got, expected)
 				}
-				if got, expected := a.Resource, (schema.GroupVersionResource{Group: "certificates.k8s.io", Version: "v1beta1", Resource: "certificatesigningrequests"}); got != expected {
+				if got, expected := a.Resource, (schema.GroupVersionResource{Group: "certificates.k8s.io", Version: "v1", Resource: "certificatesigningrequests"}); got != expected {
 					t.Errorf("got: %v, expected: %v", got, expected)
 				}
 				if got, expected := a.Subresource, "approval"; got != expected {
@@ -304,7 +304,7 @@ func TestValidators(t *testing.T) {
 	t.Run("isLegacyNodeClientCert", func(t *testing.T) {
 		goodCase := func(b *csrBuilder, _ *controllerContext) {
 			b.requestor = legacyKubeletUsername
-			b.signerName = stringPointer(certsv1b1.KubeAPIServerClientKubeletSignerName)
+			b.signerName = certsv1.KubeAPIServerClientKubeletSignerName
 		}
 		goodCases := []func(*csrBuilder, *controllerContext){goodCase}
 		testRecognizer(t, "good", goodCases, isLegacyNodeClientCert, true)
@@ -312,11 +312,11 @@ func TestValidators(t *testing.T) {
 		badCases := []func(*csrBuilder, *controllerContext){
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
-				b.signerName = nil // Should not recognize nil signer name
+				b.signerName = "" // Should not recognize "" signer name
 			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
-				b.signerName = stringPointer(certsv1b1.KubeletServingSignerName) // Should not recognize other signer name
+				b.signerName = certsv1.KubeletServingSignerName // Should not recognize other signer name
 			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
@@ -341,7 +341,7 @@ func TestValidators(t *testing.T) {
 	t.Run("isNodeServerCert", func(t *testing.T) {
 		goodCase := func(b *csrBuilder, _ *controllerContext) {
 			b.usages = kubeletServerUsages
-			b.signerName = stringPointer(certsv1b1.KubeletServingSignerName)
+			b.signerName = certsv1.KubeletServingSignerName
 		}
 		goodCases := []func(*csrBuilder, *controllerContext){goodCase}
 		testRecognizer(t, "good", goodCases, isNodeServerCert, true)
@@ -350,11 +350,11 @@ func TestValidators(t *testing.T) {
 			func(b *csrBuilder, c *controllerContext) {},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
-				b.signerName = nil // Should not recognize nil signer name
+				b.signerName = "" // Should not recognize "" signer name
 			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
-				b.signerName = stringPointer(certsv1b1.KubeAPIServerClientKubeletSignerName) // Should not recognize other signer name
+				b.signerName = certsv1.KubeAPIServerClientKubeletSignerName // Should not recognize other signer name
 			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
@@ -441,7 +441,7 @@ func TestValidators(t *testing.T) {
 			for _, name := range tpmAttestationBlocks {
 				b.extraPEM[name] = []byte("foo")
 			}
-			b.signerName = stringPointer(certsv1b1.KubeAPIServerClientKubeletSignerName)
+			b.signerName = certsv1.KubeAPIServerClientKubeletSignerName
 		}
 		goodCases := []func(*csrBuilder, *controllerContext){goodCase}
 		testRecognizer(t, "good", goodCases, isNodeClientCertWithAttestation, true)
@@ -450,11 +450,11 @@ func TestValidators(t *testing.T) {
 			func(b *csrBuilder, c *controllerContext) {},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
-				b.signerName = nil
+				b.signerName = ""
 			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
-				b.signerName = stringPointer(certsv1b1.KubeletServingSignerName)
+				b.signerName = certsv1.KubeletServingSignerName
 			},
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
@@ -796,7 +796,7 @@ type csrBuilder struct {
 	cn         string
 	orgs       []string
 	requestor  string
-	signerName *string
+	signerName string
 	usages     []capi.KeyUsage
 	dns        []string
 	emails     []string

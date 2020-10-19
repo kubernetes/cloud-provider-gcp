@@ -20,11 +20,11 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/server/routes:go_default_library",
         "//vendor/k8s.io/client-go/kubernetes:go_default_library",
         "//vendor/k8s.io/component-base/config:go_default_library",
+        "//vendor/k8s.io/component-base/configz:go_default_library",
         "//vendor/k8s.io/component-base/metrics/legacyregistry:go_default_library",
         "//vendor/k8s.io/component-base/metrics/prometheus/workqueue:go_default_library",
         "//vendor/k8s.io/klog:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/api/legacyscheme:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/util/configz:go_default_library",
     ],
 )
 

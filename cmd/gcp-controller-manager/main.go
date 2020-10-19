@@ -44,10 +44,10 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/healthz"
 	componentbaseconfig "k8s.io/component-base/config"
+	"k8s.io/component-base/config/options"
 	"k8s.io/component-base/version/verflag"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	"k8s.io/kubernetes/pkg/client/leaderelectionconfig"
 	"k8s.io/kubernetes/pkg/controller"
 )
 
@@ -87,7 +87,7 @@ func main() {
 		RetryPeriod:   metav1.Duration{Duration: 2 * time.Second},
 		ResourceLock:  rl.EndpointsResourceLock,
 	}
-	leaderelectionconfig.BindFlags(leConfig, pflag.CommandLine)
+	options.BindLeaderElectionFlags(leConfig, pflag.CommandLine)
 
 	pflag.Parse()
 	verflag.PrintAndExitIfRequested()
