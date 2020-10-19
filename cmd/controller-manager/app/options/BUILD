@@ -16,7 +16,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
         "//vendor/k8s.io/component-base/cli/flag:go_default_library",
         "//vendor/k8s.io/component-base/config:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/client/leaderelectionconfig:go_default_library",
+        "//vendor/k8s.io/component-base/config/options:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/apis/config:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/service/config:go_default_library",
     ],

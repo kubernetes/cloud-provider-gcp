@@ -11,6 +11,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/api/legacyscheme:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1beta1:go_default_library",
     ],
 )

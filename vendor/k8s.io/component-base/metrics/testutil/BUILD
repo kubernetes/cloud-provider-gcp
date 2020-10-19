@@ -4,6 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "metrics.go",
+        "promlint.go",
         "testutil.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/component-base/metrics/testutil",
@@ -11,6 +12,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/prometheus/client_golang/prometheus/testutil:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus/testutil/promlint:go_default_library",
         "//vendor/github.com/prometheus/client_model/go:go_default_library",
         "//vendor/github.com/prometheus/common/expfmt:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",

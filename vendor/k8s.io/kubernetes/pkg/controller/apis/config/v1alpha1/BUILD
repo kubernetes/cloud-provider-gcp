@@ -27,6 +27,7 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/controller/deployment/config/v1alpha1:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/endpoint/config/v1alpha1:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/endpointslice/config/v1alpha1:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/controller/endpointslicemirroring/config/v1alpha1:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/garbagecollector/config/v1alpha1:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/job/config/v1alpha1:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/namespace/config/v1alpha1:go_default_library",
