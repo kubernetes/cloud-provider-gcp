@@ -23,8 +23,8 @@ import (
 	"fmt"
 	"time"
 
-	capi "k8s.io/api/certificates/v1beta1"
-	certsv1b1 "k8s.io/api/certificates/v1beta1"
+	capi "k8s.io/api/certificates/v1"
+	certsv1 "k8s.io/api/certificates/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/util/webhook"
@@ -33,7 +33,7 @@ import (
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	_ "k8s.io/kubernetes/pkg/apis/certificates/install" // Install certificates API group.
-	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
+	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 )
 
@@ -79,11 +79,9 @@ func (s *gkeSigner) handleInternal(csr *capi.CertificateSigningRequest) (process
 	}
 
 	// Ignore CSRs that are not addressed to the default signer.
-	if csr.Spec.SignerName != nil &&
-		*csr.Spec.SignerName != certsv1b1.KubeAPIServerClientSignerName &&
-		*csr.Spec.SignerName != certsv1b1.KubeAPIServerClientKubeletSignerName &&
-		*csr.Spec.SignerName != certsv1b1.KubeletServingSignerName &&
-		*csr.Spec.SignerName != certsv1b1.LegacyUnknownSignerName {
+	if csr.Spec.SignerName != certsv1.KubeAPIServerClientSignerName &&
+		csr.Spec.SignerName != certsv1.KubeAPIServerClientKubeletSignerName &&
+		csr.Spec.SignerName != certsv1.KubeletServingSignerName {
 		return false, nil, nil
 	}
 
@@ -102,7 +100,7 @@ func (s *gkeSigner) handleInternal(csr *capi.CertificateSigningRequest) (process
 		return true, nil, fmt.Errorf("error auto signing csr: %v", err)
 	}
 	updateRecordMetric := csrmetrics.OutboundRPCStartRecorder("k8s.CertificateSigningRequests.updateStatus")
-	csr, err = s.ctx.client.CertificatesV1beta1().CertificateSigningRequests().UpdateStatus(context.TODO(), csr, metav1.UpdateOptions{})
+	csr, err = s.ctx.client.CertificatesV1().CertificateSigningRequests().UpdateStatus(context.TODO(), csr, metav1.UpdateOptions{})
 	if err != nil {
 		updateRecordMetric(csrmetrics.OutboundRPCStatusError)
 		recordMetric(csrmetrics.SigningStatusUpdateError)

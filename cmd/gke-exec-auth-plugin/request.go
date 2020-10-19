@@ -13,8 +13,8 @@ import (
 
 	"cloud.google.com/go/compute/metadata"
 
-	apicertificates "k8s.io/api/certificates/v1beta1"
-	certificates "k8s.io/client-go/kubernetes/typed/certificates/v1beta1"
+	apicertificates "k8s.io/api/certificates/v1"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/cert"
 	"k8s.io/client-go/util/certificate/csr"
@@ -42,7 +42,7 @@ func requestCertificate(privateKey []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to build REST config from kube-env: %v", err)
 	}
-	client, err := certificates.NewForConfig(conf)
+	client, err := clientset.NewForConfig(conf)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create certificates signing request client: %v", err)
 	}
@@ -51,7 +51,7 @@ func requestCertificate(privateKey []byte) ([]byte, error) {
 		return nil, fmt.Errorf("unable to determine hostnamename: %v", err)
 	}
 
-	return processCSR(client.CertificateSigningRequests(), privateKey, hostname)
+	return processCSR(client, privateKey, hostname)
 }
 
 func kubeEnvToConfig(kubeEnv string) (*rest.Config, error) {
@@ -102,7 +102,7 @@ func kubeEnvToConfig(kubeEnv string) (*rest.Config, error) {
 // status, once approved by API server, it will return the API server's issued
 // certificate (pem-encoded). If there is any errors, or the watch timeouts, it
 // will return an error.
-func processCSR(client certificates.CertificateSigningRequestInterface, privateKeyData []byte, hostname string) ([]byte, error) {
+func processCSR(client clientset.Interface, privateKeyData []byte, hostname string) ([]byte, error) {
 	subject := &pkix.Name{
 		Organization: []string{"system:nodes"},
 		CommonName:   "system:node:" + hostname,
@@ -136,13 +136,13 @@ func processCSR(client certificates.CertificateSigningRequestInterface, privateK
 		apicertificates.UsageClientAuth,
 	}
 	name := digestedName(privateKeyData, subject, usages)
-	req, err := csr.RequestCertificate(client, csrData, name, apicertificates.KubeAPIServerClientKubeletSignerName, usages, privateKey)
+	reqName, reqUID, err := csr.RequestCertificate(client, csrData, name, apicertificates.KubeAPIServerClientKubeletSignerName, usages, privateKey)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.TODO(), 3600*time.Second)
 	defer cancel()
-	return csr.WaitForCertificate(ctx, client, req)
+	return csr.WaitForCertificate(ctx, client, reqName, reqUID)
 }
 
 // digestedName should include all the relevant pieces of the CSR we care about.

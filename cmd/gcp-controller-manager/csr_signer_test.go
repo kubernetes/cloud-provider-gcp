@@ -29,8 +29,8 @@ import (
 	"testing"
 	"text/template"
 
-	capi "k8s.io/api/certificates/v1beta1"
-	certsv1b1 "k8s.io/api/certificates/v1beta1"
+	capi "k8s.io/api/certificates/v1"
+	certsv1 "k8s.io/api/certificates/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 )
@@ -75,8 +75,8 @@ func generateCSR() []byte {
 }
 
 func TestGKESigner(t *testing.T) {
-	goodResponse := &certsv1b1.CertificateSigningRequest{
-		Status: certsv1b1.CertificateSigningRequestStatus{
+	goodResponse := &certsv1.CertificateSigningRequest{
+		Status: certsv1.CertificateSigningRequestStatus{
 			Certificate: []byte("fake certificate"),
 		},
 	}
@@ -94,9 +94,9 @@ func TestGKESigner(t *testing.T) {
 	}{
 		{
 			name: "Signs approved certs with nil signer name",
-			csr: &certsv1b1.CertificateSigningRequest{
+			csr: &certsv1.CertificateSigningRequest{
 				Spec: capi.CertificateSigningRequestSpec{
-					SignerName: nil,
+					SignerName: "",
 					Request:    generateCSR(),
 				},
 				Status: statusApproved,
@@ -108,9 +108,9 @@ func TestGKESigner(t *testing.T) {
 		},
 		{
 			name: "Signs Approved API client certificates",
-			csr: &certsv1b1.CertificateSigningRequest{
+			csr: &certsv1.CertificateSigningRequest{
 				Spec: capi.CertificateSigningRequestSpec{
-					SignerName: stringPointer(certsv1b1.KubeAPIServerClientSignerName),
+					SignerName: certsv1.KubeAPIServerClientSignerName,
 					Request:    generateCSR(),
 				},
 				Status: statusApproved,
@@ -122,9 +122,9 @@ func TestGKESigner(t *testing.T) {
 		},
 		{
 			name: "Signs kubelet client certificates",
-			csr: &certsv1b1.CertificateSigningRequest{
+			csr: &certsv1.CertificateSigningRequest{
 				Spec: capi.CertificateSigningRequestSpec{
-					SignerName: stringPointer(certsv1b1.KubeAPIServerClientKubeletSignerName),
+					SignerName: certsv1.KubeAPIServerClientKubeletSignerName,
 					Request:    generateCSR(),
 				},
 				Status: statusApproved,
@@ -136,23 +136,9 @@ func TestGKESigner(t *testing.T) {
 		},
 		{
 			name: "Signs kubelet serving certificates",
-			csr: &certsv1b1.CertificateSigningRequest{
+			csr: &certsv1.CertificateSigningRequest{
 				Spec: capi.CertificateSigningRequestSpec{
-					SignerName: stringPointer(certsv1b1.KubeletServingSignerName),
-					Request:    generateCSR(),
-				},
-				Status: statusApproved,
-			},
-			mockResponse:  goodResponse,
-			expected:      goodResponse.Status.Certificate,
-			wantProcessed: true,
-			wantErr:       false,
-		},
-		{
-			name: "Signs legacy-unknown certificates",
-			csr: &certsv1b1.CertificateSigningRequest{
-				Spec: capi.CertificateSigningRequestSpec{
-					SignerName: stringPointer(certsv1b1.LegacyUnknownSignerName),
+					SignerName: certsv1.KubeletServingSignerName,
 					Request:    generateCSR(),
 				},
 				Status: statusApproved,
@@ -164,9 +150,9 @@ func TestGKESigner(t *testing.T) {
 		},
 		{
 			name: "Signs API client certificates with a few failed calls",
-			csr: &certsv1b1.CertificateSigningRequest{
+			csr: &certsv1.CertificateSigningRequest{
 				Spec: capi.CertificateSigningRequestSpec{
-					SignerName: stringPointer(certsv1b1.KubeAPIServerClientSignerName),
+					SignerName: certsv1.KubeAPIServerClientSignerName,
 					Request:    generateCSR(),
 				},
 				Status: statusApproved,
@@ -180,9 +166,9 @@ func TestGKESigner(t *testing.T) {
 		{
 			name:         "Returns error after many failed calls",
 			mockResponse: goodResponse,
-			csr: &certsv1b1.CertificateSigningRequest{
+			csr: &certsv1.CertificateSigningRequest{
 				Spec: capi.CertificateSigningRequestSpec{
-					SignerName: stringPointer(certsv1b1.KubeAPIServerClientSignerName),
+					SignerName: certsv1.KubeAPIServerClientSignerName,
 					Request:    generateCSR(),
 				},
 				Status: statusApproved,
@@ -193,9 +179,9 @@ func TestGKESigner(t *testing.T) {
 		},
 		{
 			name: "Returns error after invalid response",
-			csr: &certsv1b1.CertificateSigningRequest{
+			csr: &certsv1.CertificateSigningRequest{
 				Spec: capi.CertificateSigningRequestSpec{
-					SignerName: stringPointer(certsv1b1.KubeAPIServerClientSignerName),
+					SignerName: certsv1.KubeAPIServerClientSignerName,
 					Request:    generateCSR(),
 				},
 				Status: statusApproved,

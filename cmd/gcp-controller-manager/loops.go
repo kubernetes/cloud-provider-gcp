@@ -49,7 +49,7 @@ func loops() map[string]func(*controllerContext) error {
 			approveController := certificates.NewCertificateController(
 				"approver",
 				ctx.client,
-				ctx.sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
+				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
 				approver.handle,
 			)
 			go approveController.Run(20, ctx.done)
@@ -63,7 +63,7 @@ func loops() map[string]func(*controllerContext) error {
 			signController := certificates.NewCertificateController(
 				"signer",
 				ctx.client,
-				ctx.sharedInformers.Certificates().V1beta1().CertificateSigningRequests(),
+				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
 				signer.handle,
 			)
 

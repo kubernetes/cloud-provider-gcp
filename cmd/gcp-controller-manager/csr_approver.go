@@ -37,8 +37,8 @@ import (
 	"google.golang.org/api/googleapi"
 
 	authorization "k8s.io/api/authorization/v1beta1"
-	capi "k8s.io/api/certificates/v1beta1"
-	certsv1b1 "k8s.io/api/certificates/v1beta1"
+	capi "k8s.io/api/certificates/v1"
+	certsv1 "k8s.io/api/certificates/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,7 +46,7 @@ import (
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
 	"k8s.io/klog"
-	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
+	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 )
 
@@ -205,7 +205,7 @@ func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bo
 		})
 	}
 	updateRecordMetric := csrmetrics.OutboundRPCStartRecorder("k8s.CertificateSigningRequests.updateApproval")
-	_, err := a.ctx.client.CertificatesV1beta1().CertificateSigningRequests().UpdateApproval(context.TODO(), csr, metav1.UpdateOptions{})
+	_, err := a.ctx.client.CertificatesV1().CertificateSigningRequests().UpdateApproval(context.TODO(), csr.Name, csr, metav1.UpdateOptions{})
 	if err != nil {
 		updateRecordMetric(csrmetrics.OutboundRPCStatusError)
 		return fmt.Errorf("error updating approval status for csr: %v", err)
@@ -313,7 +313,7 @@ func isNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 	if !isNodeCert(csr, x509cr) {
 		return false
 	}
-	if csr.Spec.SignerName == nil || *csr.Spec.SignerName != certsv1b1.KubeAPIServerClientKubeletSignerName {
+	if csr.Spec.SignerName != certsv1.KubeAPIServerClientKubeletSignerName {
 		return false
 	}
 	if len(x509cr.DNSNames) > 0 || len(x509cr.IPAddresses) > 0 {
@@ -333,7 +333,7 @@ func isNodeServerCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 	if !isNodeCert(csr, x509cr) {
 		return false
 	}
-	if csr.Spec.SignerName == nil || *csr.Spec.SignerName != certsv1b1.KubeletServingSignerName {
+	if csr.Spec.SignerName != certsv1.KubeletServingSignerName {
 		return false
 	}
 	if !hasExactUsages(csr, kubeletServerUsages) {
