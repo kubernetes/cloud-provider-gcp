@@ -4,7 +4,6 @@ go_library(
     name = "go_default_library",
     srcs = [
         "checker.go",
-        "dynamic.go",
         "enforce.go",
         "reader.go",
         "util.go",
@@ -13,7 +12,6 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/audit/policy",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/api/auditregistration/v1alpha1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/apis/audit:go_default_library",
@@ -23,6 +21,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/apis/audit/validation:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/audit:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizer:go_default_library",
-        "//vendor/k8s.io/klog:go_default_library",
+        "//vendor/k8s.io/klog/v2:go_default_library",
     ],
 )
