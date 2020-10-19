@@ -25,6 +25,7 @@ import (
 
 	capi "k8s.io/api/certificates/v1"
 	certsv1 "k8s.io/api/certificates/v1"
+	certsv1b1 "k8s.io/api/certificates/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/util/webhook"
@@ -79,9 +80,11 @@ func (s *gkeSigner) handleInternal(csr *capi.CertificateSigningRequest) (process
 	}
 
 	// Ignore CSRs that are not addressed to the default signer.
-	if csr.Spec.SignerName != certsv1.KubeAPIServerClientSignerName &&
+	if csr.Spec.SignerName != "" &&
+		csr.Spec.SignerName != certsv1.KubeAPIServerClientSignerName &&
 		csr.Spec.SignerName != certsv1.KubeAPIServerClientKubeletSignerName &&
-		csr.Spec.SignerName != certsv1.KubeletServingSignerName {
+		csr.Spec.SignerName != certsv1.KubeletServingSignerName &&
+		csr.Spec.SignerName != certsv1b1.LegacyUnknownSignerName {
 		return false, nil, nil
 	}
 

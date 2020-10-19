@@ -31,6 +31,7 @@ import (
 
 	capi "k8s.io/api/certificates/v1"
 	certsv1 "k8s.io/api/certificates/v1"
+	certsv1b1 "k8s.io/api/certificates/v1beta1"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 )
@@ -139,6 +140,20 @@ func TestGKESigner(t *testing.T) {
 			csr: &certsv1.CertificateSigningRequest{
 				Spec: capi.CertificateSigningRequestSpec{
 					SignerName: certsv1.KubeletServingSignerName,
+					Request:    generateCSR(),
+				},
+				Status: statusApproved,
+			},
+			mockResponse:  goodResponse,
+			expected:      goodResponse.Status.Certificate,
+			wantProcessed: true,
+			wantErr:       false,
+		},
+		{
+			name: "Signs legacy-unknown certificates",
+			csr: &certsv1.CertificateSigningRequest{
+				Spec: capi.CertificateSigningRequestSpec{
+					SignerName: certsv1b1.LegacyUnknownSignerName,
 					Request:    generateCSR(),
 				},
 				Status: statusApproved,
