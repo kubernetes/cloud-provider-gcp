@@ -100,10 +100,13 @@ load("//defs:repo_rules.bzl", "fetch_kube_release")
 fetch_kube_release(
     name = "io_k8s_release",
     archives = {
-        "kubernetes-server-linux-amd64.tar.gz": "a112a642a0fd0275883f746ca5e9bb6dd7ef20ee078203638739407ca7bad1be",
-        "kubernetes-manifests.tar.gz": "d32e568a78230ee25de25ca5ba0d9fc9b5b783d0e41fadb983f318b338a70357",
+        #"kubernetes-server-linux-amd64.tar.gz": "a112a642a0fd0275883f746ca5e9bb6dd7ef20ee078203638739407ca7bad1be",
+        "kubernetes-server-linux-amd64.tar.gz": "853904a632b3adbabcbc61e5d563447ed75b8408c0297515f65c6a3d2b46be42",
+        #"kubernetes-manifests.tar.gz": "d32e568a78230ee25de25ca5ba0d9fc9b5b783d0e41fadb983f318b338a70357",
+        "kubernetes-manifests.tar.gz": "38946246fb192d6e877d0d04a7b0645980b983b8b81ca2a259c50a035ced815b",
         # we do not currently make modifications to these release tars below
-        "kubernetes-node-linux-amd64.tar.gz": "d32e568a78230ee25de25ca5ba0d9fc9b5b783d0e41fadb983f318b338a70357",
+        #"kubernetes-node-linux-amd64.tar.gz": "d32e568a78230ee25de25ca5ba0d9fc9b5b783d0e41fadb983f318b338a70357",
+        "kubernetes-node-linux-amd64.tar.gz": "7128a3c647c93181b7b52b668eb3030b8beee025b8b4614f14f159874e47dc34",
     },
-    version = "v1.18.0",
+    version = "v1.19.0",
 )

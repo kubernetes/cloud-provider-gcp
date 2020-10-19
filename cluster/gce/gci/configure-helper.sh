@@ -25,13 +25,6 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-function setup-os-params {
-  # Reset core_pattern. On GCI, the default core_pattern pipes the core dumps to
-  # /sbin/crash_reporter which is more restrictive in saving crash dumps. So for
-  # now, set a generic core_pattern that users can work with.
-  echo "/core.%e.%p.%t" > /proc/sys/kernel/core_pattern
-}
-
 function convert-manifest-params {
   # A helper function to convert the manifest args from a string to a list of
   # flag arguments.
@@ -48,6 +41,13 @@ function convert-manifest-params {
   if [ ! -z $params ]; then
     echo "${params::-1}"  #  drop trailing comma
   fi
+}
+
+function setup-os-params {
+  # Reset core_pattern. On GCI, the default core_pattern pipes the core dumps to
+  # /sbin/crash_reporter which is more restrictive in saving crash dumps. So for
+  # now, set a generic core_pattern that users can work with.
+  echo "/core.%e.%p.%t" > /proc/sys/kernel/core_pattern
 }
 
 # secure_random generates a secure random string of bytes. This function accepts
@@ -1862,6 +1862,7 @@ function start-kube-controller-manager {
     container_env="\"env\":[{\"name\": \"KUBE_CACHE_MUTATION_DETECTOR\", \"value\": \"${ENABLE_CACHE_MUTATION_DETECTOR}\"}],"
   fi
 
+  params="$(convert-manifest-params "${params}")"
   local -r src_file="${KUBE_HOME}/kube-manifests/kubernetes/gci-trusty/kube-controller-manager.manifest"
   # Evaluate variables.
   sed -i -e "s@{{pillar\['kube_docker_registry'\]}}@${DOCKER_REGISTRY}@g" "${src_file}"
@@ -1991,6 +1992,8 @@ function start-kube-scheduler {
     params+=" --use-legacy-policy-config"
     params+=" --policy-config-file=/etc/srv/kubernetes/kube-scheduler/policy-config"
   fi
+
+  params="$(convert-manifest-params "${params}")"
   local -r kube_scheduler_docker_tag=$(cat "${KUBE_HOME}/kube-docker-files/kube-scheduler.docker_tag")
 
   # Remove salt comments and replace variables with values.
