@@ -24,8 +24,8 @@ import (
 	"os"
 	"time"
 
-	"k8s.io/component-base/logs"
 	"k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/app"
+	"k8s.io/component-base/logs"
 
 	_ "k8s.io/component-base/metrics/prometheus/version" // for version metric registration
 	// NOTE: Importing all in-tree cloud-providers is not required when
