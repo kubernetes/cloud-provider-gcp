@@ -20,6 +20,4 @@ go_library(
     ],
 )
 
-load("//defs:container.bzl", "image")
-
 image(binary = ":auth-provider-gcp")
