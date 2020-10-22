@@ -44,12 +44,12 @@ func init() {
 	metav1.AddToGroupVersion(scheme, schema.GroupVersion{Version: "v1"})
 	clientauthv1alpha1.AddToScheme(scheme)
 	clientauthentication.AddToScheme(scheme)
-
-	// Override the default in klog. There's verbosity flag for suppressing output.
-	flag.Set("logtostderr", "true")
 }
 
 func main() {
+	klog.InitFlags(nil)
+	defer klog.Flush()
+	flag.Set("logtostderr", "true")
 	flag.Parse()
 
 	var key, cert []byte
