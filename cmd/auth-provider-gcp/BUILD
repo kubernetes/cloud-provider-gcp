@@ -19,5 +19,3 @@ go_library(
     deps = [
     ],
 )
-
-image(binary = ":auth-provider-gcp")
