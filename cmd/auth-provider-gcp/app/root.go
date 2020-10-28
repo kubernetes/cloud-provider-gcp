@@ -14,24 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package app
 
 import (
-	"fmt"
-	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/app"
+	"github.com/spf13/cobra"
 )
 
-// Command-line argument names that can be used to configure base URLs. The
-// keys correspond to the constants in credentialprovider/gcp/metadata.go.
-const (
-	metadataUrlArg              = "metadataURL"
-	storageScopePrefixArg       = "storageScopePrefix"
-	cloudPlatformScopePrefixArg = "cloudPlatformScope"
-)
-
-func main() {
-	cmd := app.NewAuthProviderCommand()
-	if err := cmd.Execute(); err != nil {
-		fmt.Println(err.Error())
+func NewAuthProviderCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "auth-provider-gcp",
+		Short: "GCP CRI authentication plugin",
 	}
+	cmd.AddCommand(NewGetCredentialsCommand())
+	return cmd
 }

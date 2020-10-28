@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package plugin
 
 import (
 	"fmt"
@@ -30,22 +30,10 @@ type pluginResponse struct {
 
 // Empty type with a single function GetAuthPluginResponse. Required by the
 // CRI auth plugin framework.
-type gcrPlugin struct {
+type GCRPlugin struct {
 }
 
-func (g *gcrPlugin) GetAuthPluginResponse(image string, extraArgs map[string]string) (*pluginResponse, error) {
-	metadataURL, ok := extraArgs[metadataUrlArg]
-	if !ok {
-		return nil, fmt.Errorf("metadata URL not provided (%s option)", metadataUrlArg)
-	}
-	storageScopePrefix, ok := extraArgs[storageScopePrefixArg]
-	if !ok {
-		return nil, fmt.Errorf("storage scope prefix not provided (%s option)", storageScopePrefixArg)
-	}
-	cloudScope, ok := extraArgs[cloudPlatformScopePrefixArg]
-	if !ok {
-		return nil, fmt.Errorf("cloud platfom scope not provided (%s option)", cloudPlatformScopePrefixArg)
-	}
+func (g *GCRPlugin) GetAuthPluginResponse(image string, metadataURL string, storageScopePrefix string, cloudScope string) (*pluginResponse, error) {
 	fmt.Printf("metadataURL: %s\n", metadataURL)
 	fmt.Printf("storageScopePrefix: %s\n", storageScopePrefix)
 	fmt.Printf("cloudPlatformScope: %s\n", cloudScope)

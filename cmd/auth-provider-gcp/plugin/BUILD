@@ -7,16 +7,10 @@ load(
 )
 load("//defs:version.bzl", "version_x_defs")
 
-go_binary(
-    name = "auth-provider-gcp",
-    embed = [":go_default_library"],
-)
-
 go_library(
     name = "go_default_library",
-    srcs = ["main.go"],
-    importpath = "k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp",
+    srcs = ["plugin.go"],
+    importpath = "k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/plugin",
     deps = [
-        "//cmd/auth-provider-gcp/app:go_default_library",
     ],
 )
