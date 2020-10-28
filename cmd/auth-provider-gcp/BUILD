@@ -14,7 +14,7 @@ go_binary(
 
 go_library(
     name = "go_default_library",
-    srcs = ["main.go"],
+    srcs = ["main.go", "plugin.go"],
     importpath = "k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp",
     deps = [
     ],
