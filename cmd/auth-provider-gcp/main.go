@@ -22,14 +22,6 @@ import (
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/app"
 )
 
-// Command-line argument names that can be used to configure base URLs. The
-// keys correspond to the constants in credentialprovider/gcp/metadata.go.
-const (
-	metadataUrlArg              = "metadataURL"
-	storageScopePrefixArg       = "storageScopePrefix"
-	cloudPlatformScopePrefixArg = "cloudPlatformScope"
-)
-
 func main() {
 	cmd, err := app.NewAuthProviderCommand()
 	if err != nil {
