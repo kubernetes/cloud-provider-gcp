@@ -23,12 +23,13 @@ import (
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/plugin"
 )
 
-func NewGetCredentialsCommand() *cobra.Command {
-	var (
-		metadataUrl        string
-		storageScopePrefix string
-		cloudPlatformScope string
-	)
+var (
+	metadataUrl        string
+	storageScopePrefix string
+	cloudPlatformScope string
+)
+
+func NewGetCredentialsCommand() (*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:   "get-credentials",
 		Short: "Get credentials for a container image",
@@ -48,11 +49,23 @@ func NewGetCredentialsCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&metadataUrl, "metadataUrl", "", "", "metadata URL (required)")
-	cmd.MarkFlagRequired("metadataUrl")
-	cmd.Flags().StringVarP(&storageScopePrefix, "storageScopePrefix", "", "", "storage scope prefix (required)")
-	cmd.MarkFlagRequired("storageScopePrefix")
-	cmd.Flags().StringVarP(&cloudPlatformScope, "cloudPlatformScope", "", "", "cloud platform scope (required)")
-	cmd.MarkFlagRequired("cloudPlatformScope")
-	return cmd
+	defineFlags(cmd)
+	if err := validateFlags(cmd); err != nil {
+		return nil, err
+	}	
+	return cmd, nil
+}
+
+func defineFlags(credCmd *cobra.Command) {
+	credCmd.Flags().StringVarP(&metadataUrl, "metadataUrl", "", "", "metadata URL (required)")
+	credCmd.MarkFlagRequired("metadataUrl")
+	credCmd.Flags().StringVarP(&storageScopePrefix, "storageScopePrefix", "", "", "storage scope prefix (required)")
+	credCmd.MarkFlagRequired("storageScopePrefix")
+	credCmd.Flags().StringVarP(&cloudPlatformScope, "cloudPlatformScope", "", "", "cloud platform scope (required)")
+	credCmd.MarkFlagRequired("cloudPlatformScope")
+}
+
+func validateFlags(credCmd *cobra.Command) error {
+	// TODO (DangerOnTheRanger): add appropriate flag validation
+	return nil
 }

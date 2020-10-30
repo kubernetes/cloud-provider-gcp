@@ -20,11 +20,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewAuthProviderCommand() *cobra.Command {
-	cmd := &cobra.Command{
+func NewAuthProviderCommand() (*cobra.Command, error) {
+	rootCmd := &cobra.Command{
 		Use:   "auth-provider-gcp",
 		Short: "GCP CRI authentication plugin",
 	}
-	cmd.AddCommand(NewGetCredentialsCommand())
-	return cmd
+	credCmd, err := NewGetCredentialsCommand()
+	if err != nil {
+		return nil, err
+	}
+	rootCmd.AddCommand(credCmd)
+	return rootCmd, nil
 }

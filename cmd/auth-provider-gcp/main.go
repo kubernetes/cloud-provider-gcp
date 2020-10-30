@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/app"
 )
 
@@ -30,8 +31,13 @@ const (
 )
 
 func main() {
-	cmd := app.NewAuthProviderCommand()
+	cmd, err := app.NewAuthProviderCommand()
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
 	if err := cmd.Execute(); err != nil {
 		fmt.Println(err.Error())
+		os.Exit(1)
 	}
 }
