@@ -19,16 +19,22 @@ package main
 import (
 	"fmt"
 	"os"
+	"github.com/spf13/cobra"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/app"
 )
 
 func main() {
-	cmd, err := app.NewAuthProviderCommand()
+	rootCmd := &cobra.Command{
+		Use:   "auth-provider-gcp",
+		Short: "GCP CRI authentication plugin",
+	}
+	credCmd, err := app.NewGetCredentialsCommand()
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
-	if err := cmd.Execute(); err != nil {
+	rootCmd.AddCommand(credCmd)
+	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}

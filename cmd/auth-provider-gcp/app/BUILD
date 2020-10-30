@@ -9,7 +9,7 @@ load("//defs:version.bzl", "version_x_defs")
 
 go_library(
     name = "go_default_library",
-    srcs = ["root.go", "getcredentials.go"],
+    srcs = ["getcredentials.go"],
     importpath = "k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/app",
     deps = [
         "//cmd/auth-provider-gcp/plugin:go_default_library",
