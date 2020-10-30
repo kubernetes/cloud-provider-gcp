@@ -51,7 +51,7 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 	defineFlags(cmd)
 	if err := validateFlags(cmd); err != nil {
 		return nil, err
-	}	
+	}
 	return cmd, nil
 }
 

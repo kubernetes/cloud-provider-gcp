@@ -18,9 +18,9 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"github.com/spf13/cobra"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/app"
+	"os"
 )
 
 func main() {
