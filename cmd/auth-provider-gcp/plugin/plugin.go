@@ -28,12 +28,7 @@ type Response struct {
 	Password string `json:"password"`
 }
 
-// Empty type with a single function GetAuthPluginResponse. Required by the
-// CRI auth plugin framework.
-type GCRPlugin struct {
-}
-
-func (g *GCRPlugin) GetAuthPluginResponse(image string, metadataURL string, storageScopePrefix string, cloudScope string) (*Response, error) {
+func GetResponse(image string, metadataURL string, storageScopePrefix string, cloudScope string) (*Response, error) {
 	fmt.Printf("metadataURL: %s\n", metadataURL)
 	fmt.Printf("storageScopePrefix: %s\n", storageScopePrefix)
 	fmt.Printf("cloudPlatformScope: %s\n", cloudScope)

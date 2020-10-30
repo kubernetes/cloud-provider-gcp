@@ -36,8 +36,7 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// TODO(DangerOnTheRanger): don't use hardcoded image name
 			image := "hello-world"
-			gcrPlugin := &plugin.GCRPlugin{}
-			authCredentials, err := gcrPlugin.GetAuthPluginResponse(image, metadataUrl, storageScopePrefix, cloudPlatformScope)
+			authCredentials, err := plugin.GetResponse(image, metadataUrl, storageScopePrefix, cloudPlatformScope)
 			if err != nil {
 				return err
 			}
