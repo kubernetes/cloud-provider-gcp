@@ -23,7 +23,7 @@ import (
 // TODO(DangerOnTheRanger): temporary structure until credentialprovider
 // is built with cloud-provider-gcp; GetAuthPluginResponse should return
 // CRIAuthPluginResponse instead, but this should be nearly a drop-in replacement
-type pluginResponse struct {
+type Response struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
@@ -33,9 +33,9 @@ type pluginResponse struct {
 type GCRPlugin struct {
 }
 
-func (g *GCRPlugin) GetAuthPluginResponse(image string, metadataURL string, storageScopePrefix string, cloudScope string) (*pluginResponse, error) {
+func (g *GCRPlugin) GetAuthPluginResponse(image string, metadataURL string, storageScopePrefix string, cloudScope string) (*Response, error) {
 	fmt.Printf("metadataURL: %s\n", metadataURL)
 	fmt.Printf("storageScopePrefix: %s\n", storageScopePrefix)
 	fmt.Printf("cloudPlatformScope: %s\n", cloudScope)
-	return &pluginResponse{Username: "testuser", Password: "testpass"}, nil
+	return &Response{Username: "testuser", Password: "testpass"}, nil
 }
