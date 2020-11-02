@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/plugin"
+	klog "k8s.io/klog/v2"
 )
 
 var (
@@ -36,6 +37,7 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// TODO(DangerOnTheRanger): don't use hardcoded image name
 			image := "hello-world"
+			klog.Infof("get-credentials %s", image)
 			authCredentials, err := plugin.GetResponse(image, metadataUrl, storageScopePrefix, cloudPlatformScope)
 			if err != nil {
 				return err

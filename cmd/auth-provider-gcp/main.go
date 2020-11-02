@@ -17,25 +17,29 @@ limitations under the License.
 package main
 
 import (
-	"fmt"
 	"github.com/spf13/cobra"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/app"
+	klog "k8s.io/klog/v2"
 	"os"
 )
 
 func main() {
+	klog.InitFlags(nil)
+	defer klog.Flush()
 	rootCmd := &cobra.Command{
 		Use:   "auth-provider-gcp",
 		Short: "GCP CRI authentication plugin",
 	}
+	var verbosity int
+	rootCmd.PersistentFlags().IntVarP(&verbosity, "verbose", "v", 2, "verbosity level")
 	credCmd, err := app.NewGetCredentialsCommand()
 	if err != nil {
-		fmt.Println(err.Error())
+		klog.Errorf(err.Error())
 		os.Exit(1)
 	}
 	rootCmd.AddCommand(credCmd)
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err.Error())
+		klog.Errorf(err.Error())
 		os.Exit(1)
 	}
 }
