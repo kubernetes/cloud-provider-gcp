@@ -495,3 +495,13 @@ export GCE_PRIVATE_CLUSTER_PORTS_PER_VM="${KUBE_GCE_PRIVATE_CLUSTER_PORTS_PER_VM
 
 # Optional: Create apiserver konnectivity server and agent.
 export ENABLE_EGRESS_VIA_KONNECTIVITY_SERVICE="${KUBE_ENABLE_EGRESS_VIA_KONNECTIVITY_SERVICE:-false}"
+
+# Optional: Enable credential sidecar.
+export ENABLE_CREDENTIAL_SIDECAR="${KUBE_ENABLE_CREDENTIAL_SIDECAR:-false}"
+if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
+   if [[ -z "${FEATURE_GATES:-}" ]]; then
+        FEATURE_GATES="CRIAuthPlugins=true"
+    else
+        FEATURE_GATES="${FEATURE_GATES},DevicePlugins=true"
+    fi
+fi

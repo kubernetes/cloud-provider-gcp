@@ -2820,6 +2820,22 @@ EOF
   systemctl restart containerd
 }
 
+function create-sidecar-config {
+  echo "TODO (DangerOnTheRanger): swap imageMatchUrls with matchImages"
+  cat >> "/etc/srv/kubernetes/cri_auth_config.yaml" << EOF
+kind: CRIAuthPluginConfig
+apiVersion: criauth.k8s.io/v1alpha1
+plugins:
+  - name: auth-provider-gcp
+    imageMatchUrls:
+    - "container.cloud.google.com"
+    - "gcr.io"
+    - "*.gcr.io"
+    - "*.pkg.dev"
+    defaultCacheDuration: 1m
+EOF
+}
+
 ########### Main Function ###########
 function main() {
   echo "Start to configure instance for kubernetes"
@@ -2932,6 +2948,10 @@ function main() {
         exit 1
       fi
     fi
+  fi
+
+  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
+    create-sidecar-config
   fi
 
   override-kubectl
