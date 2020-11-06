@@ -1410,6 +1410,10 @@ ExecStart=${kubelet_bin} \$KUBELET_OPTS
 WantedBy=multi-user.target
 EOF
 
+  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
+    create-sidecar-config
+  fi
+
   systemctl daemon-reload
   systemctl start kubelet.service
 }
@@ -2948,10 +2952,6 @@ function main() {
         exit 1
       fi
     fi
-  fi
-
-  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
-    create-sidecar-config
   fi
 
   override-kubectl
