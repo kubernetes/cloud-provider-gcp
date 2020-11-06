@@ -824,7 +824,7 @@ function construct-linux-kubelet-flags {
     flags+=" --container-runtime-endpoint=${CONTAINER_RUNTIME_ENDPOINT}"
   fi
 
-  if [[ -n "${ENABLE_CREDENTIAL_SIDECAR:-}" ]]; then
+  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
     flags+=" --cri-auth-plugin-file=/etc/srv/kubernetes/cri_auth_config.yaml --cri-auth-plugin-bin-dir=/home/kubernetes/bin"
   fi
 
@@ -1326,7 +1326,7 @@ ${var_name}: ${var_value}
 EOF
     done
   fi
-  if [ -n "${ENABLE_CREDENTIAL_SIDECAR:-}" ]; then
+  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
     cat >>$file <<EOF
 ENABLE_CREDENTIAL_SIDECAR: $(yaml-quote ${ENABLE_CREDENTIAL_SIDECAR})
 EOF
