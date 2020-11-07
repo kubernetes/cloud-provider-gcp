@@ -628,13 +628,18 @@ func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID 
 
 func groupHasInstance(ctx *controllerContext, groupLocation, groupName string, instanceID uint64) (bool, error) {
 	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstanceGroupManagersService.ListManagedInstances")
-	instances, err := compute.NewInstanceGroupManagersService(ctx.gcpCfg.Compute).ListManagedInstances(ctx.gcpCfg.ProjectID, groupLocation, groupName).Do()
+	managedInstances := []*compute.ManagedInstance{}
+	accumulator := func(response *compute.InstanceGroupManagersListManagedInstancesResponse) error {
+		managedInstances = append(managedInstances, response.ManagedInstances...)
+		return nil
+	}
+	err := compute.NewInstanceGroupManagersService(ctx.gcpCfg.Compute).ListManagedInstances(ctx.gcpCfg.ProjectID, groupLocation, groupName).Pages(context.TODO(), accumulator)
 	if err != nil {
 		recordMetric(csrmetrics.OutboundRPCStatusError)
 		return false, err
 	}
 	recordMetric(csrmetrics.OutboundRPCStatusOK)
-	for _, inst := range instances.ManagedInstances {
+	for _, inst := range managedInstances {
 		if instanceID == inst.Id {
 			return true, nil
 		}
