@@ -39,7 +39,7 @@ replace (
 )
 
 require (
-	cloud.google.com/go v0.51.0
+	cloud.google.com/go v0.65.0
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/Sirupsen/logrus v1.0.6 // indirect
 	github.com/blang/semver v3.5.0+incompatible
@@ -55,9 +55,10 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.4.0
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200819165624-17cef6e3e9d5
-	golang.org/x/oauth2 v0.0.0-20191202225959-858c2ad4c8b6
-	google.golang.org/api v0.15.1
-	google.golang.org/grpc v1.27.0
+	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
+	golang.org/x/tools v0.0.0-20201105220310-78b158585360 // indirect
+	google.golang.org/api v0.35.0
+	google.golang.org/grpc v1.31.1
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/warnings.v0 v0.1.2
 	k8s.io/apiextensions-apiserver v0.19.0 // indirect

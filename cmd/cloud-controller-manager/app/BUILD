@@ -34,7 +34,6 @@ go_library(
         "//vendor/k8s.io/component-base/version/verflag:go_default_library",
         "//vendor/k8s.io/klog:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/features:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/util/flag:go_default_library",
         "//vendor/k8s.io/utils/net:go_default_library",
     ],
 )
