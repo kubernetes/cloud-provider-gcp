@@ -2,7 +2,6 @@ package(default_visibility = ["//visibility:public"])
 
 load(
     "@io_bazel_rules_go//go:def.bzl",
-    "go_binary",
     "go_library",
 )
 load("//defs:version.bzl", "version_x_defs")

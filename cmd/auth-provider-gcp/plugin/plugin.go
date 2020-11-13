@@ -17,7 +17,10 @@ limitations under the License.
 package plugin
 
 import (
+	"net/http"
 	"fmt"
+	utilnet "k8s.io/apimachinery/pkg/util/net"
+	"time"
 )
 
 // TODO(DangerOnTheRanger): temporary structure until credentialprovider
@@ -32,5 +35,17 @@ func GetResponse(image string, metadataURL string, storageScopePrefix string, cl
 	fmt.Printf("metadataURL: %s\n", metadataURL)
 	fmt.Printf("storageScopePrefix: %s\n", storageScopePrefix)
 	fmt.Printf("cloudPlatformScope: %s\n", cloudScope)
-	return &Response{Username: "testuser", Password: "testpass"}, nil
+	tr := utilnet.SetTransportDefaults(&http.Transport{})
+	metadataHTTPClientTimeout := time.Second * 10
+	httpClient := &http.Client{
+		Transport: tr,
+		Timeout:   metadataHTTPClientTimeout,
+	}
+	provider := &containerRegistryProvider{
+		metadataProvider{Client: httpClient},
+	}
+	cfg := provider.Provide(image)
+	username := cfg["gcr.io"].Username
+	password := cfg["gcr.io"].Password
+	return &Response{Username: username, Password: password}, nil
 }

@@ -36,7 +36,7 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 		Short: "Get credentials for a container image",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// TODO(DangerOnTheRanger): don't use hardcoded image name
-			image := "hello-world"
+			image := "k8s.gcr.io/pause"
 			klog.Infof("get-credentials %s", image)
 			authCredentials, err := plugin.GetResponse(image, metadataUrl, storageScopePrefix, cloudPlatformScope)
 			if err != nil {
