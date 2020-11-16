@@ -17,9 +17,10 @@ limitations under the License.
 package plugin
 
 import (
-	"net/http"
 	"fmt"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
+	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/gcpcredential"
+	"net/http"
 	"time"
 )
 
@@ -41,8 +42,8 @@ func GetResponse(image string, metadataURL string, storageScopePrefix string, cl
 		Transport: tr,
 		Timeout:   metadataHTTPClientTimeout,
 	}
-	provider := &containerRegistryProvider{
-		metadataProvider{Client: httpClient},
+	provider := &gcpcredential.ContainerRegistryProvider{
+		gcpcredential.MetadataProvider{Client: httpClient},
 	}
 	cfg := provider.Provide(image)
 	username := cfg["gcr.io"].Username
