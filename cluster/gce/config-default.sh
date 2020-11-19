@@ -502,6 +502,6 @@ if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
    if [[ -z "${FEATURE_GATES:-}" ]]; then
         FEATURE_GATES="KubeletCredentialProviders=true"
     else
-        FEATURE_GATES="${FEATURE_GATES},DevicePlugins=true"
+        FEATURE_GATES="${FEATURE_GATES},KubeletCredentialProviders=true"
     fi
 fi
