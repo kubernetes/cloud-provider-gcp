@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/plugin"
-	klog "k8s.io/klog/v2"
+	//klog "k8s.io/klog/v2"
 )
 
 var (
@@ -33,12 +33,11 @@ var (
 func NewGetCredentialsCommand() (*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:   "get-credentials",
-		Short: "Get credentials for a container image",
+		Short: "Get authentication credentials",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO(DangerOnTheRanger): don't use hardcoded image name
-			image := "k8s.gcr.io/pause"
-			klog.Infof("get-credentials %s", image)
-			authCredentials, err := plugin.GetResponse(image, metadataUrl, storageScopePrefix, cloudPlatformScope)
+			// TODO (DangerOnTheRanger): remove log statements once they are no longer logged to stdout (interferes with the plugin response which also goes to stdout)
+			//klog.Infof("get-credentials", image)
+			authCredentials, err := plugin.GetResponse(metadataUrl, storageScopePrefix, cloudPlatformScope)
 			if err != nil {
 				return err
 			}
@@ -59,11 +58,11 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 
 func defineFlags(credCmd *cobra.Command) {
 	credCmd.Flags().StringVarP(&metadataUrl, "metadataUrl", "", "", "metadata URL (required)")
-	credCmd.MarkFlagRequired("metadataUrl")
+	//credCmd.MarkFlagRequired("metadataUrl")
 	credCmd.Flags().StringVarP(&storageScopePrefix, "storageScopePrefix", "", "", "storage scope prefix (required)")
-	credCmd.MarkFlagRequired("storageScopePrefix")
+	//credCmd.MarkFlagRequired("storageScopePrefix")
 	credCmd.Flags().StringVarP(&cloudPlatformScope, "cloudPlatformScope", "", "", "cloud platform scope (required)")
-	credCmd.MarkFlagRequired("cloudPlatformScope")
+	//credCmd.MarkFlagRequired("cloudPlatformScope")
 }
 
 func validateFlags(credCmd *cobra.Command) error {

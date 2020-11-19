@@ -2825,13 +2825,13 @@ EOF
 }
 
 function create-sidecar-config {
-  echo "TODO (DangerOnTheRanger): swap imageMatchUrls with matchImages"
   cat >> "/etc/srv/kubernetes/cri_auth_config.yaml" << EOF
-kind: CRIAuthPluginConfig
-apiVersion: criauth.k8s.io/v1alpha1
-plugins:
+kind: CredentialProviderConfig
+apiVersion: kubelet.config.k8s.io/v1alpha1
+providers:
   - name: auth-provider-gcp
-    imageMatchUrls:
+    apiVersion: credentialprovider.kubelet.k8s.io/v1alpha1
+    matchImages:
     - "container.cloud.google.com"
     - "gcr.io"
     - "*.gcr.io"

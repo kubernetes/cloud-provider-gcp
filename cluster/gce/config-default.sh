@@ -500,7 +500,7 @@ export ENABLE_EGRESS_VIA_KONNECTIVITY_SERVICE="${KUBE_ENABLE_EGRESS_VIA_KONNECTI
 export ENABLE_CREDENTIAL_SIDECAR="${KUBE_ENABLE_CREDENTIAL_SIDECAR:-false}"
 if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
    if [[ -z "${FEATURE_GATES:-}" ]]; then
-        FEATURE_GATES="CRIAuthPlugins=true"
+        FEATURE_GATES="KubeletCredentialProviders=true"
     else
         FEATURE_GATES="${FEATURE_GATES},DevicePlugins=true"
     fi

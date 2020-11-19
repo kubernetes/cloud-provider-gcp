@@ -17,8 +17,8 @@ limitations under the License.
 package plugin
 
 import (
-	"fmt"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/gcpcredential"
 	"net/http"
 	"time"
@@ -32,10 +32,7 @@ type Response struct {
 	Password string `json:"password"`
 }
 
-func GetResponse(image string, metadataURL string, storageScopePrefix string, cloudScope string) (*Response, error) {
-	fmt.Printf("metadataURL: %s\n", metadataURL)
-	fmt.Printf("storageScopePrefix: %s\n", storageScopePrefix)
-	fmt.Printf("cloudPlatformScope: %s\n", cloudScope)
+func GetResponse(metadataURL string, storageScopePrefix string, cloudScope string) (*credentialproviderapi.CredentialProviderResponse, error) {
 	tr := utilnet.SetTransportDefaults(&http.Transport{})
 	metadataHTTPClientTimeout := time.Second * 10
 	httpClient := &http.Client{
@@ -45,8 +42,11 @@ func GetResponse(image string, metadataURL string, storageScopePrefix string, cl
 	provider := &gcpcredential.ContainerRegistryProvider{
 		gcpcredential.MetadataProvider{Client: httpClient},
 	}
-	cfg := provider.Provide(image)
-	username := cfg["gcr.io"].Username
-	password := cfg["gcr.io"].Password
-	return &Response{Username: username, Password: password}, nil
+	// pass an image string to Provide() - the image name is not actually used
+	cfg := provider.Provide("")
+	response := &credentialproviderapi.CredentialProviderResponse{Auth: make(map[string]credentialproviderapi.AuthConfig)}
+	for url, dockerConfig := range cfg {
+		response.Auth[url] = credentialproviderapi.AuthConfig{Username: dockerConfig.Username, Password: dockerConfig.Password}
+	}
+	return response, nil
 }

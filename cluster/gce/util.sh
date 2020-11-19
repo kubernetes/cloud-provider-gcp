@@ -825,7 +825,7 @@ function construct-linux-kubelet-flags {
   fi
 
   if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
-    flags+=" --cri-auth-plugin-file=/etc/srv/kubernetes/cri_auth_config.yaml --cri-auth-plugin-bin-dir=/home/kubernetes/bin"
+    flags+=" --image-credential-provider-config=/etc/srv/kubernetes/cri_auth_config.yaml --image-credential-provider-bin-dir=/home/kubernetes/bin"
   fi
 
   KUBELET_ARGS="${flags}"
