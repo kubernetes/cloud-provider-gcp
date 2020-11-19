@@ -93,7 +93,7 @@ func TestContainerRegistry(t *testing.T) {
 	provider := MakeRegistryProvider(transport)
 	response, err := GetResponse(provider)
 	if err != nil {
-		t.Errorf("Unexpected error while getting response: %s", err.Error())
+		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
 	if hasURL(registryURL, response) == false {
 		t.Errorf("URL %s expected in response, not found (response: %s)", registryURL, response.Auth)
@@ -146,7 +146,7 @@ func TestConfigProvider(t *testing.T) {
 	provider := MakeDockerConfigProvider(transport)
 	response, err := GetResponse(provider)
 	if err != nil {
-		t.Errorf("Unexpected error while getting response: %s", err.Error())
+		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
 	for _, auth := range response.Auth {
 		if usernameMatches(username, auth) == false {
@@ -200,7 +200,7 @@ func TestConfigURLProvider(t *testing.T) {
 	provider := MakeDockerConfigURLProvider(transport)
 	response, err := GetResponse(provider)
 	if err != nil {
-		t.Errorf("Unexpected error while getting response: %s", err.Error())
+		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
 	for _, auth := range response.Auth {
 		if usernameMatches(username, auth) == false {
