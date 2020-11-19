@@ -1326,11 +1326,9 @@ ${var_name}: ${var_value}
 EOF
     done
   fi
-  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
-    cat >>$file <<EOF
-ENABLE_CREDENTIAL_SIDECAR: $(yaml-quote ${ENABLE_CREDENTIAL_SIDECAR})
+  cat >>$file <<EOF
+ENABLE_CREDENTIAL_SIDECAR: $(yaml-quote ${ENABLE_CREDENTIAL_SIDECAR:-false})
 EOF
-  fi
 
   if [[ "${master}" == "true" ]]; then
     # Master-only env vars.
