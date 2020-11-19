@@ -15,7 +15,6 @@ go_library(
         "//cmd/auth-provider-gcp/apis/credentialprovider:go_default_library",
         "//cmd/auth-provider-gcp/credentialconfig:go_default_library",
         "//cmd/auth-provider-gcp/gcpcredential:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/credentialprovider:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/net:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
