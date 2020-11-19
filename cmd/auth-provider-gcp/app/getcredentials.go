@@ -53,7 +53,10 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 			} else {
 				provider = plugin.MakeDockerConfigURLProvider(transport)
 			}
-			authCredentials := plugin.GetResponse(provider)
+			authCredentials, err := plugin.GetResponse(provider)
+			if err != nil {
+				return err
+			}
 			jsonResponse, err := json.Marshal(authCredentials)
 			if err != nil {
 				return err
