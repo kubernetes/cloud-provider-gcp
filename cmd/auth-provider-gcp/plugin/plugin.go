@@ -33,10 +33,7 @@ const (
 
 // MakeRegistryProvider returns a ContainerRegistryProvider with the given transport.
 func MakeRegistryProvider(transport *http.Transport) *gcpcredential.ContainerRegistryProvider {
-	httpClient := &http.Client{
-		Transport: transport,
-		Timeout:   metadataHTTPClientTimeout,
-	}
+	httpClient := makeHTTPClient(transport)
 	provider := &gcpcredential.ContainerRegistryProvider{
 		gcpcredential.MetadataProvider{Client: httpClient},
 	}
@@ -45,10 +42,7 @@ func MakeRegistryProvider(transport *http.Transport) *gcpcredential.ContainerReg
 
 // MakeDockerConfigProvider returns a DockerConfigKeyProvider with the given transport.
 func MakeDockerConfigProvider(transport *http.Transport) *gcpcredential.DockerConfigKeyProvider {
-	httpClient := &http.Client{
-		Transport: transport,
-		Timeout:   metadataHTTPClientTimeout,
-	}
+	httpClient := makeHTTPClient(transport)
 	provider := &gcpcredential.DockerConfigKeyProvider{
 		gcpcredential.MetadataProvider{Client: httpClient},
 	}
@@ -57,14 +51,18 @@ func MakeDockerConfigProvider(transport *http.Transport) *gcpcredential.DockerCo
 
 // MakeDockerConfigURLProvider returns a DockerConfigURLKeyProvider with the given transport.
 func MakeDockerConfigURLProvider(transport *http.Transport) *gcpcredential.DockerConfigURLKeyProvider {
-	httpClient := &http.Client{
-		Transport: transport,
-		Timeout:   metadataHTTPClientTimeout,
-	}
+	httpClient := makeHTTPClient(transport)
 	provider := &gcpcredential.DockerConfigURLKeyProvider{
 		gcpcredential.MetadataProvider{Client: httpClient},
 	}
 	return provider
+}
+
+func makeHTTPClient(transport *http.Transport) *http.Client {
+	return &http.Client{
+		Transport: transport,
+		Timeout:   metadataHTTPClientTimeout,
+	}
 }
 
 // GetResponse queries the given provider for credentials.
