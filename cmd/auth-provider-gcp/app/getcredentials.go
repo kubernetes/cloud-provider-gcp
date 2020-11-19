@@ -20,27 +20,40 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/spf13/cobra"
+	utilnet "k8s.io/apimachinery/pkg/util/net"
+	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/credentialconfig"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/plugin"
-	//klog "k8s.io/klog/v2"
+	klog "k8s.io/klog/v2"
+	"net/http"
 )
 
 var (
-	metadataUrl        string
-	storageScopePrefix string
-	cloudPlatformScope string
+	authFlow string
 )
 
+const (
+	gcrAuthFlow             = "gcr"
+	dockerConfigAuthFlow    = "dockercfg"
+	dockerConfigURLAuthFlow = "dockercfg-url"
+)
+
+// NewGetCredentialsCommand returns a cobra command that retrieves auth credentials after validating flags.
 func NewGetCredentialsCommand() (*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:   "get-credentials",
 		Short: "Get authentication credentials",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO (DangerOnTheRanger): remove log statements once they are no longer logged to stdout (interferes with the plugin response which also goes to stdout)
-			//klog.Infof("get-credentials", image)
-			authCredentials, err := plugin.GetResponse(metadataUrl, storageScopePrefix, cloudPlatformScope)
-			if err != nil {
-				return err
+			klog.Infof("get-credentials %s", authFlow)
+			transport := utilnet.SetTransportDefaults(&http.Transport{})
+			var provider credentialconfig.DockerConfigProvider
+			if authFlow == gcrAuthFlow {
+				provider = plugin.MakeRegistryProvider(transport)
+			} else if authFlow == dockerConfigAuthFlow {
+				provider = plugin.MakeDockerConfigProvider(transport)
+			} else {
+				provider = plugin.MakeDockerConfigURLProvider(transport)
 			}
+			authCredentials := plugin.GetResponse(provider)
 			jsonResponse, err := json.Marshal(authCredentials)
 			if err != nil {
 				return err
@@ -50,22 +63,19 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 		},
 	}
 	defineFlags(cmd)
-	if err := validateFlags(cmd); err != nil {
+	if err := validateFlags(); err != nil {
 		return nil, err
 	}
 	return cmd, nil
 }
 
 func defineFlags(credCmd *cobra.Command) {
-	credCmd.Flags().StringVarP(&metadataUrl, "metadataUrl", "", "", "metadata URL (required)")
-	//credCmd.MarkFlagRequired("metadataUrl")
-	credCmd.Flags().StringVarP(&storageScopePrefix, "storageScopePrefix", "", "", "storage scope prefix (required)")
-	//credCmd.MarkFlagRequired("storageScopePrefix")
-	credCmd.Flags().StringVarP(&cloudPlatformScope, "cloudPlatformScope", "", "", "cloud platform scope (required)")
-	//credCmd.MarkFlagRequired("cloudPlatformScope")
+	credCmd.Flags().StringVarP(&authFlow, "authFlow", "a", gcrAuthFlow, "authentication flow (valid values are gcr, dockercfg, and dockercfg-url)")
 }
 
-func validateFlags(credCmd *cobra.Command) error {
-	// TODO (DangerOnTheRanger): add appropriate flag validation
+func validateFlags() error {
+	if authFlow != gcrAuthFlow && authFlow != dockerConfigAuthFlow && authFlow != dockerConfigURLAuthFlow {
+		return fmt.Errorf("invalid value \"%s\" for authFlow (must be one of \"%s\", \"%s\", or \"%s\")", authFlow, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
+	}
 	return nil
 }

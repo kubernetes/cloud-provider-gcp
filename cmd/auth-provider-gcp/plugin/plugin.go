@@ -17,36 +17,60 @@ limitations under the License.
 package plugin
 
 import (
-	utilnet "k8s.io/apimachinery/pkg/util/net"
-	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider"
+	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/credentialconfig"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/gcpcredential"
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider"
 	"net/http"
 	"time"
 )
 
-// TODO(DangerOnTheRanger): temporary structure until credentialprovider
-// is built with cloud-provider-gcp; GetAuthPluginResponse should return
-// CRIAuthPluginResponse instead, but this should be nearly a drop-in replacement
-type Response struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
+const (
+	metadataHTTPClientTimeout = time.Second * 10
+)
 
-func GetResponse(metadataURL string, storageScopePrefix string, cloudScope string) (*credentialproviderapi.CredentialProviderResponse, error) {
-	tr := utilnet.SetTransportDefaults(&http.Transport{})
-	metadataHTTPClientTimeout := time.Second * 10
+// MakeRegistryProvider returns a ContainerRegistryProvider with the given transport.
+func MakeRegistryProvider(transport *http.Transport) *gcpcredential.ContainerRegistryProvider {
 	httpClient := &http.Client{
-		Transport: tr,
+		Transport: transport,
 		Timeout:   metadataHTTPClientTimeout,
 	}
 	provider := &gcpcredential.ContainerRegistryProvider{
 		gcpcredential.MetadataProvider{Client: httpClient},
 	}
-	// pass an image string to Provide() - the image name is not actually used
+	return provider
+}
+
+// MakeDockerConfigProvider returns a DockerConfigKeyProvider with the given transport.
+func MakeDockerConfigProvider(transport *http.Transport) *gcpcredential.DockerConfigKeyProvider {
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   metadataHTTPClientTimeout,
+	}
+	provider := &gcpcredential.DockerConfigKeyProvider{
+		gcpcredential.MetadataProvider{Client: httpClient},
+	}
+	return provider
+}
+
+// MakeDockerConfigURLProvider returns a DockerConfigURLKeyProvider with the given transport.
+func MakeDockerConfigURLProvider(transport *http.Transport) *gcpcredential.DockerConfigURLKeyProvider {
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   metadataHTTPClientTimeout,
+	}
+	provider := &gcpcredential.DockerConfigURLKeyProvider{
+		gcpcredential.MetadataProvider{Client: httpClient},
+	}
+	return provider
+}
+
+// GetResponse queries the given provider for credentials.
+func GetResponse(provider credentialconfig.DockerConfigProvider) *credentialproviderapi.CredentialProviderResponse {
+	// pass an empty image string to Provide() - the image name is not actually used
 	cfg := provider.Provide("")
 	response := &credentialproviderapi.CredentialProviderResponse{Auth: make(map[string]credentialproviderapi.AuthConfig)}
 	for url, dockerConfig := range cfg {
 		response.Auth[url] = credentialproviderapi.AuthConfig{Username: dockerConfig.Username, Password: dockerConfig.Password}
 	}
-	return response, nil
+	return response
 }
