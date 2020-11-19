@@ -55,12 +55,15 @@ func getCredentials(cmd *cobra.Command, args []string) error {
 	klog.V(2).Infof("get-credentials %s", authFlow)
 	transport := utilnet.SetTransportDefaults(&http.Transport{})
 	var provider credentialconfig.DockerConfigProvider
-	if authFlow == gcrAuthFlow {
+	switch authFlow {
+	case gcrAuthFlow:
 		provider = plugin.MakeRegistryProvider(transport)
-	} else if authFlow == dockerConfigAuthFlow {
+	case dockerConfigAuthFlow:
 		provider = plugin.MakeDockerConfigProvider(transport)
-	} else {
+	case dockerConfigURLAuthFlow:
 		provider = plugin.MakeDockerConfigURLProvider(transport)
+	default:
+		return fmt.Errorf("unrecognized auth flow \"%s\"", authFlow)
 	}
 	authCredentials, err := plugin.GetResponse(provider)
 	if err != nil {
