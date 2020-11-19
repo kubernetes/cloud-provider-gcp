@@ -41,10 +41,8 @@ const (
 )
 
 func hasURL(url string, response *credentialproviderapi.CredentialProviderResponse) bool {
-	if _, ok := response.Auth[url]; ok {
-		return true
-	}
-	return false
+	_, ok := response.Auth[url]
+	return ok
 }
 
 func usernameMatches(expectedUsername string, auth credentialproviderapi.AuthConfig) bool {
