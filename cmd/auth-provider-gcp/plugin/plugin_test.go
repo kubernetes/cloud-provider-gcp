@@ -45,14 +45,6 @@ func hasURL(url string, response *credentialproviderapi.CredentialProviderRespon
 	return ok
 }
 
-func usernameMatches(expectedUsername string, auth credentialproviderapi.AuthConfig) bool {
-	return auth.Username == expectedUsername
-}
-
-func passwordMatches(expectedPassword string, auth credentialproviderapi.AuthConfig) bool {
-	return auth.Password == expectedPassword
-}
-
 func TestContainerRegistry(t *testing.T) {
 	// Taken from from pkg/credentialprovider/gcp/metadata_test.go in kubernetes/kubernetes
 	registryURL := "container.cloud.google.com"
@@ -97,10 +89,10 @@ func TestContainerRegistry(t *testing.T) {
 		t.Errorf("URL %s expected in response, not found (response: %s)", registryURL, response.Auth)
 	}
 	for _, auth := range response.Auth {
-		if usernameMatches(expectedUsername, auth) == false {
+		if expectedUsername != auth.Username {
 			t.Errorf("Expected username %s not found (username: %s)", expectedUsername, auth.Username)
 		}
-		if passwordMatches(dummyToken, auth) == false {
+		if dummyToken != auth.Password {
 			t.Errorf("Expected password %s not found (password: %s)", dummyToken, auth.Password)
 		}
 	}
@@ -147,10 +139,10 @@ func TestConfigProvider(t *testing.T) {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
 	for _, auth := range response.Auth {
-		if usernameMatches(username, auth) == false {
+		if username != auth.Username {
 			t.Errorf("Expected username %s not found (username: %s)", username, auth.Username)
 		}
-		if passwordMatches(password, auth) == false {
+		if password != auth.Password {
 			t.Errorf("Expected password %s not found (password: %s)", password, auth.Password)
 		}
 	}
@@ -201,10 +193,10 @@ func TestConfigURLProvider(t *testing.T) {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
 	for _, auth := range response.Auth {
-		if usernameMatches(username, auth) == false {
+		if username != auth.Username {
 			t.Errorf("Expected username %s not found (username: %s)", username, auth.Username)
 		}
-		if passwordMatches(password, auth) == false {
+		if password != auth.Password {
 			t.Errorf("Expected password %s not found (password: %s)", password, auth.Password)
 		}
 	}
