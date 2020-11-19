@@ -43,7 +43,7 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 		Use:   "get-credentials",
 		Short: "Get authentication credentials",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			klog.Infof("get-credentials %s", authFlow)
+			klog.V(2).Infof("get-credentials %s", authFlow)
 			transport := utilnet.SetTransportDefaults(&http.Transport{})
 			var provider credentialconfig.DockerConfigProvider
 			if authFlow == gcrAuthFlow {
