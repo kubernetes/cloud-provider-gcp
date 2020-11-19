@@ -42,34 +42,36 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:   "get-credentials",
 		Short: "Get authentication credentials",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			klog.V(2).Infof("get-credentials %s", authFlow)
-			transport := utilnet.SetTransportDefaults(&http.Transport{})
-			var provider credentialconfig.DockerConfigProvider
-			if authFlow == gcrAuthFlow {
-				provider = plugin.MakeRegistryProvider(transport)
-			} else if authFlow == dockerConfigAuthFlow {
-				provider = plugin.MakeDockerConfigProvider(transport)
-			} else {
-				provider = plugin.MakeDockerConfigURLProvider(transport)
-			}
-			authCredentials, err := plugin.GetResponse(provider)
-			if err != nil {
-				return err
-			}
-			jsonResponse, err := json.Marshal(authCredentials)
-			if err != nil {
-				return err
-			}
-			fmt.Println(string(jsonResponse))
-			return nil
-		},
+		RunE:  getCredentials,
 	}
 	defineFlags(cmd)
 	if err := validateFlags(); err != nil {
 		return nil, err
 	}
 	return cmd, nil
+}
+
+func getCredentials(cmd *cobra.Command, args []string) error {
+	klog.V(2).Infof("get-credentials %s", authFlow)
+	transport := utilnet.SetTransportDefaults(&http.Transport{})
+	var provider credentialconfig.DockerConfigProvider
+	if authFlow == gcrAuthFlow {
+		provider = plugin.MakeRegistryProvider(transport)
+	} else if authFlow == dockerConfigAuthFlow {
+		provider = plugin.MakeDockerConfigProvider(transport)
+	} else {
+		provider = plugin.MakeDockerConfigURLProvider(transport)
+	}
+	authCredentials, err := plugin.GetResponse(provider)
+	if err != nil {
+		return err
+	}
+	jsonResponse, err := json.Marshal(authCredentials)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(jsonResponse))
+	return nil
 }
 
 func defineFlags(credCmd *cobra.Command) {
