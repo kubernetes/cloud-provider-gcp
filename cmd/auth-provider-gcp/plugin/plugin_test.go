@@ -54,7 +54,7 @@ func passwordMatches(expectedPassword string, auth credentialproviderapi.AuthCon
 }
 
 func TestContainerRegistry(t *testing.T) {
-	// Taken from from pkg/credentialprovider/gcp/metadata_test.go in k/k
+	// Taken from from pkg/credentialprovider/gcp/metadata_test.go in kubernetes/kubernetes
 	registryURL := "container.cloud.google.com"
 	token := &gcpcredential.TokenBlob{AccessToken: dummyToken} // Fake value for testing.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +107,7 @@ func TestContainerRegistry(t *testing.T) {
 }
 
 func TestConfigProvider(t *testing.T) {
-	// Taken from from pkg/credentialprovider/gcp/metadata_test.go in k/k
+	// Taken from from pkg/credentialprovider/gcp/metadata_test.go in kubernetes/kubernetes
 	registryURL := "hello.kubernetes.io"
 	email := "foo@bar.baz"
 	username := "foo"
@@ -157,7 +157,7 @@ func TestConfigProvider(t *testing.T) {
 }
 
 func TestConfigURLProvider(t *testing.T) {
-	// Taken from from pkg/credentialprovider/gcp/metadata_test.go in k/k
+	// Taken from from pkg/credentialprovider/gcp/metadata_test.go in kubernetes/kubernetes
 	registryURL := "hello.kubernetes.io"
 	email := "foo@bar.baz"
 	username := "foo"
