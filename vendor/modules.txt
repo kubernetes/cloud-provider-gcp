@@ -828,7 +828,7 @@ k8s.io/component-base/version
 k8s.io/component-base/version/verflag
 # k8s.io/klog v1.0.0
 k8s.io/klog
-# k8s.io/klog/v2 v2.2.0
+# k8s.io/klog/v2 v2.4.0
 k8s.io/klog/v2
 # k8s.io/kube-controller-manager v0.19.0 => k8s.io/kube-controller-manager v0.19.0
 k8s.io/kube-controller-manager/config/v1alpha1
@@ -912,7 +912,6 @@ k8s.io/kubernetes/pkg/kubelet/types
 k8s.io/kubernetes/pkg/master/ports
 k8s.io/kubernetes/pkg/security/apparmor
 k8s.io/kubernetes/pkg/serviceaccount
-k8s.io/kubernetes/pkg/util/flag
 k8s.io/kubernetes/pkg/util/hash
 k8s.io/kubernetes/pkg/util/parsers
 k8s.io/kubernetes/pkg/util/taints

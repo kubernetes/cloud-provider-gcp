@@ -18,7 +18,7 @@ import (
 
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 const (
