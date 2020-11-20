@@ -1,1 +1,1 @@
-Temporarily copied from a PR intended to be merged into into kubernetes/kubernetes (https://github.com/kubernetes/kubernetes/pull/95775) - please reach out to SIG Cloud Provider with any questions.
+Temporarily copied from a PR intended to be merged into into kubernetes/kubernetes (https://github.com/kubernetes/kubernetes/pull/95775); imports of this package can be safely replaced and this directory removed once that PR is merged into a release of k8s that cloud-provider-gcp supports - please reach out to SIG Cloud Provider with any questions.

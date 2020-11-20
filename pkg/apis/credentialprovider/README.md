@@ -1,1 +1,1 @@
-Temporarily copied from code that will land in k8s v1.20 (https://github.com/kubernetes/kubernetes/pull/94196) - please reach out to SIG Cloud Provider with any questions.
+Temporarily copied from code that will land in k8s v1.20 (https://github.com/kubernetes/kubernetes/pull/94196); imports of this package can be safely replaced with `k8s.io/kubelet/pkg/apis/credentialprovider` and this directory removed once this repository is updated to k8s v1.20 - please reach out to SIG Cloud Provider with any questions.
