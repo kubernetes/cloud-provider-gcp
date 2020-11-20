@@ -35,7 +35,6 @@ const (
 
 var (
 	noDurationGiven time.Duration = 0
-	invalidDuration time.Duration = -1
 )
 
 // MakeRegistryProvider returns a ContainerRegistryProvider with the given transport.
@@ -79,7 +78,7 @@ func getCacheDuration() (time.Duration, error) {
 	} else {
 		cacheDuration, err := time.ParseDuration(unparsedCacheDuration)
 		if err != nil {
-			return invalidDuration, err
+			return noDurationGiven, err
 		}
 		return cacheDuration, nil
 	}
