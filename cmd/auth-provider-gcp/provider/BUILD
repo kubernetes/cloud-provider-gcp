@@ -12,7 +12,7 @@ go_library(
     srcs = ["provider.go"],
     importpath = "k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/provider",
     deps = [
-        "//cmd/auth-provider-gcp/apis/credentialprovider:go_default_library",
+        "//pkg/apis/credentialprovider:go_default_library",
         "//cmd/auth-provider-gcp/credentialconfig:go_default_library",
         "//pkg/gcpcredential:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/net:go_default_library",
