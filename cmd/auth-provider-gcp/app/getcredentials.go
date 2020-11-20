@@ -76,15 +76,16 @@ func getCredentials(cmd *cobra.Command, args []string) error {
 	var authRequest credentialproviderapi.CredentialProviderRequest
 	err = json.Unmarshal(unparsedRequest, &authRequest)
 	if err != nil {
-		return err
+		return fmt.Errorf("error unmarshaling auth credential request: %w", err)
 	}
 	authCredentials, err := provider.GetResponse(authRequest.Image, authProvider)
 	if err != nil {
-		return err
+		return fmt.Errorf("error getting authentication response from provider: %w", err)
 	}
 	jsonResponse, err := json.Marshal(authCredentials)
 	if err != nil {
-		return err
+		// The error from json.Marshal is intentionally not included so as to not leak credentials into the logs
+		return fmt.Errorf("error marshaling credentials")
 	}
 	// Emit authentication response for kubelet to consume
 	fmt.Println(string(jsonResponse))
