@@ -113,12 +113,12 @@ func ReadDockercfgFile(searchPaths []string) (cfg DockerConfig, err error) {
 			continue
 		}
 		if err != nil {
-			klog.V(4).Infof("while trying to read %s: %v", absDockerConfigFileLocation, err)
+			klog.Errorf("while trying to read %s: %v", absDockerConfigFileLocation, err)
 			continue
 		}
 		cfg, err := ReadDockerConfigFileFromBytes(contents)
 		if err != nil {
-			klog.V(4).Infof("couldn't get the config from %q contents: %v", absDockerConfigFileLocation, err)
+			klog.Errorf("couldn't get the config from %q contents: %v", absDockerConfigFileLocation, err)
 			continue
 		}
 
@@ -145,7 +145,7 @@ func ReadDockerConfigJSONFile(searchPaths []string) (cfg DockerConfig, err error
 		cfg, err = ReadSpecificDockerConfigJSONFile(absDockerConfigFileLocation)
 		if err != nil {
 			if !os.IsNotExist(err) {
-				klog.V(4).Infof("while trying to read %s: %v", absDockerConfigFileLocation, err)
+				klog.Errorf("while trying to read %s: %v", absDockerConfigFileLocation, err)
 			}
 			continue
 		}
