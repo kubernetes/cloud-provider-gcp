@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/gcpcredential"
+	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
 	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider"
 	"net/http"
 	"net/http/httptest"
