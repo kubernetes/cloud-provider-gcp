@@ -171,6 +171,7 @@ func ReadDockerConfigFile() (cfg DockerConfig, err error) {
 	if cfg, err := ReadDockerConfigJSONFile(nil); err == nil {
 		return cfg, nil
 	}
+	klog.Warningf("Defaulting to old config file")
 	// Can't find latest config file so check for the old one
 	return ReadDockercfgFile(nil)
 }
