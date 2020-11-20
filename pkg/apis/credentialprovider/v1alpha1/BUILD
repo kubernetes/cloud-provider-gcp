@@ -17,7 +17,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/conversion:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider:go_default_library",
+        "//pkg/apis/credentialprovider:go_default_library",
     ],
 )
 

@@ -29,8 +29,8 @@ filegroup(
     name = "all-srcs",
     srcs = [
         ":package-srcs",
-        "//cmd/auth-provider-gcp/apis/credentialprovider/install:all-srcs",
-        "//cmd/auth-provider-gcp/apis/credentialprovider/v1alpha1:all-srcs",
+        "//pkg/apis/credentialprovider/install:all-srcs",
+        "//pkg/apis/credentialprovider/v1alpha1:all-srcs",
     ],
     tags = ["automanaged"],
     visibility = ["//visibility:public"],

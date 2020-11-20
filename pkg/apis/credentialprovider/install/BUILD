@@ -3,14 +3,13 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["install.go"],
-    importmap = "k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/apis/credentialprovider/install",
-    importpath = "k8s.io/kubelet/pkg/apis/credentialprovider/install",
+    importpath = "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider/install",
     visibility = ["//visibility:public"],
     deps = [
-        "//staging/src/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//staging/src/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
-        "//staging/src/k8s.io/kubelet/pkg/apis/credentialprovider:go_default_library",
-        "//staging/src/k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
+        "//pkg/apis/credentialprovider:go_default_library",
+        "//pkg/apis/credentialprovider/v1alpha1:go_default_library",
     ],
 )
 
