@@ -22,7 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/credentialconfig"
-	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/plugin"
+	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/provider"
 	klog "k8s.io/klog/v2"
 	"net/http"
 )
@@ -54,18 +54,18 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 func getCredentials(cmd *cobra.Command, args []string) error {
 	klog.V(2).Infof("get-credentials %s", authFlow)
 	transport := utilnet.SetTransportDefaults(&http.Transport{})
-	var provider credentialconfig.DockerConfigProvider
+	var authProvider credentialconfig.DockerConfigProvider
 	switch authFlow {
 	case gcrAuthFlow:
-		provider = plugin.MakeRegistryProvider(transport)
+		authProvider = provider.MakeRegistryProvider(transport)
 	case dockerConfigAuthFlow:
-		provider = plugin.MakeDockerConfigProvider(transport)
+		authProvider = provider.MakeDockerConfigProvider(transport)
 	case dockerConfigURLAuthFlow:
-		provider = plugin.MakeDockerConfigURLProvider(transport)
+		authProvider = provider.MakeDockerConfigURLProvider(transport)
 	default:
 		return fmt.Errorf("unrecognized auth flow \"%s\"", authFlow)
 	}
-	authCredentials, err := plugin.GetResponse(provider)
+	authCredentials, err := provider.GetResponse(authProvider)
 	if err != nil {
 		return err
 	}
