@@ -1,1 +1,1 @@
-Temporarily copied from a PR intended to be merged into into kubernetes/kubernetes (https://github.com/kubernetes/kubernetes/pull/95775) - please do not modify this code!
+Temporarily copied from a PR intended to be merged into into kubernetes/kubernetes (https://github.com/kubernetes/kubernetes/pull/95775) - please reach out to SIG Cloud Provider with any questions.
