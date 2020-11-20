@@ -824,6 +824,10 @@ function construct-linux-kubelet-flags {
     flags+=" --container-runtime-endpoint=${CONTAINER_RUNTIME_ENDPOINT}"
   fi
 
+  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
+    flags+=" --image-credential-provider-config=/etc/srv/kubernetes/cri_auth_config.yaml --image-credential-provider-bin-dir=/home/kubernetes/bin"
+  fi
+
   KUBELET_ARGS="${flags}"
 }
 
@@ -1322,6 +1326,9 @@ ${var_name}: ${var_value}
 EOF
     done
   fi
+  cat >>$file <<EOF
+ENABLE_CREDENTIAL_SIDECAR: $(yaml-quote ${ENABLE_CREDENTIAL_SIDECAR:-false})
+EOF
 
   if [[ "${master}" == "true" ]]; then
     # Master-only env vars.

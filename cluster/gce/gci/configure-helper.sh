@@ -1410,6 +1410,10 @@ ExecStart=${kubelet_bin} \$KUBELET_OPTS
 WantedBy=multi-user.target
 EOF
 
+  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
+    create-sidecar-config
+  fi
+
   systemctl daemon-reload
   systemctl start kubelet.service
 }
@@ -2818,6 +2822,24 @@ EOF
 
   echo "Restart containerd to load the config change"
   systemctl restart containerd
+}
+
+function create-sidecar-config {
+  cat >> "/etc/srv/kubernetes/cri_auth_config.yaml" << EOF
+kind: CredentialProviderConfig
+apiVersion: kubelet.config.k8s.io/v1alpha1
+providers:
+  - name: auth-provider-gcp
+    apiVersion: credentialprovider.kubelet.k8s.io/v1alpha1
+    matchImages:
+    - "container.cloud.google.com"
+    - "gcr.io"
+    - "*.gcr.io"
+    - "*.pkg.dev"
+    args:
+    - --v=3
+    defaultCacheDuration: 1m
+EOF
 }
 
 ########### Main Function ###########
