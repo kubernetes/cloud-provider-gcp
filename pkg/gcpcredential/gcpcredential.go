@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/credentialconfig"
+	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	"k8s.io/klog/v2"
 )
 

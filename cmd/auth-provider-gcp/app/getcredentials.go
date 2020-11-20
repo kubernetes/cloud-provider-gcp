@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/credentialconfig"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/provider"
+	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	klog "k8s.io/klog/v2"
 	"net/http"
 )

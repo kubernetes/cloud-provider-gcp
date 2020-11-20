@@ -12,7 +12,7 @@ go_library(
         "config.go",
         "provider.go",
     ],
-    importpath = "k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/credentialconfig",
+    importpath = "k8s.io/cloud-provider-gcp/pkg/credentialconfig",
     deps = [
         "//vendor/k8s.io/klog/v2:go_default_library",
     ],

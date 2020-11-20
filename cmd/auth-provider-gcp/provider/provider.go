@@ -18,7 +18,7 @@ package provider
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/credentialconfig"
+	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
 	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider"
 	"net/http"

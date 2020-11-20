@@ -10,7 +10,7 @@ go_library(
     srcs = ["gcpcredential.go"],
     importpath = "k8s.io/cloud-provider-gcp/pkg/gcpcredential",
     deps = [
-        "//cmd/auth-provider-gcp/credentialconfig:go_default_library",
+        "//pkg/credentialconfig:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
     ],
 )
