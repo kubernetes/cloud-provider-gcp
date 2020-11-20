@@ -2836,6 +2836,8 @@ providers:
     - "gcr.io"
     - "*.gcr.io"
     - "*.pkg.dev"
+    args:
+    - --v=3
     defaultCacheDuration: 1m
 EOF
 }
