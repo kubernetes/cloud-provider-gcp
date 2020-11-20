@@ -26,20 +26,15 @@ import (
 	"testing"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	credentialproviderapi "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider"
 	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
+	credentialproviderapi "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider"
 )
 
 const (
-	serviceAccountsEndpoint = "/computeMetadata/v1/instance/service-accounts/"
-	defaultEndpoint         = "/computeMetadata/v1/instance/service-accounts/default/"
-	scopeEndpoint           = defaultEndpoint + "scopes"
-	emailEndpoint           = defaultEndpoint + "email"
-	tokenEndpoint           = defaultEndpoint + "token"
 	dummyToken              = "ya26.lots-of-indiscernible-garbage"
 	email                   = "1234@project.gserviceaccount.com"
 	expectedUsername        = "_token"
-	dummyImage              = "k8s.gcr.io/pause"
+	dummyImage = "k8s.gcr.io/pause"
 )
 
 func hasURL(url string, response *credentialproviderapi.CredentialProviderResponse) bool {
@@ -52,15 +47,17 @@ func TestContainerRegistry(t *testing.T) {
 	registryURL := "container.cloud.google.com"
 	token := &gcpcredential.TokenBlob{AccessToken: dummyToken} // Fake value for testing.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defaultPrefix := "/computeMetadata/v1/instance/service-accounts/default/"
 		// Only serve the URL key and the value endpoint
-		if scopeEndpoint == r.URL.Path {
+		switch r.URL.Path {
+		case defaultPrefix + "scopes":
 			w.WriteHeader(http.StatusOK)
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintf(w, `["%s.read_write"]`, gcpcredential.StorageScopePrefix)
-		} else if emailEndpoint == r.URL.Path {
+		case defaultPrefix + "email":
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprint(w, email)
-		} else if tokenEndpoint == r.URL.Path {
+		case defaultPrefix + "token":
 			w.WriteHeader(http.StatusOK)
 			w.Header().Set("Content-Type", "application/json")
 			bytes, err := json.Marshal(token)
@@ -68,10 +65,10 @@ func TestContainerRegistry(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			fmt.Fprintln(w, string(bytes))
-		} else if serviceAccountsEndpoint == r.URL.Path {
+		case "/computeMetadata/v1/instance/service-accounts/":
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprintln(w, "default/\ncustom")
-		} else {
+		default:
 			http.Error(w, "", http.StatusNotFound)
 		}
 	}))
