@@ -33,10 +33,6 @@ const (
 	apiVersion                = "credentialprovider.kubelet.k8s.io/v1alpha1"
 )
 
-var (
-	noDurationGiven time.Duration = 0
-)
-
 // MakeRegistryProvider returns a ContainerRegistryProvider with the given transport.
 func MakeRegistryProvider(transport *http.Transport) *gcpcredential.ContainerRegistryProvider {
 	httpClient := makeHTTPClient(transport)
@@ -74,11 +70,11 @@ func makeHTTPClient(transport *http.Transport) *http.Client {
 func getCacheDuration() (time.Duration, error) {
 	unparsedCacheDuration := os.Getenv(cacheDurationKey)
 	if unparsedCacheDuration == "" {
-		return noDurationGiven, nil
+		return 0, nil
 	} else {
 		cacheDuration, err := time.ParseDuration(unparsedCacheDuration)
 		if err != nil {
-			return noDurationGiven, err
+			return 0, err
 		}
 		return cacheDuration, nil
 	}
@@ -96,7 +92,7 @@ func GetResponse(provider credentialconfig.DockerConfigProvider) (*credentialpro
 	if err != nil {
 		return nil, err
 	}
-	if cacheDuration != noDurationGiven {
+	if cacheDuration != 0 {
 		response.CacheDuration = &metav1.Duration{cacheDuration}
 	}
 	response.TypeMeta.Kind = apiKind
