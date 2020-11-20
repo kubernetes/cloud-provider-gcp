@@ -26,15 +26,15 @@ import (
 	"testing"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
 	credentialproviderapi "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider"
+	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
 )
 
 const (
-	dummyToken              = "ya26.lots-of-indiscernible-garbage"
-	email                   = "1234@project.gserviceaccount.com"
-	expectedUsername        = "_token"
-	dummyImage = "k8s.gcr.io/pause"
+	dummyToken       = "ya26.lots-of-indiscernible-garbage"
+	email            = "1234@project.gserviceaccount.com"
+	expectedUsername = "_token"
+	dummyImage       = "k8s.gcr.io/pause"
 )
 
 func hasURL(url string, response *credentialproviderapi.CredentialProviderResponse) bool {
