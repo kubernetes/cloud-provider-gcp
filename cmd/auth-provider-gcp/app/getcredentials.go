@@ -84,7 +84,7 @@ func defineFlags(credCmd *cobra.Command) {
 
 func validateFlags() error {
 	if authFlow != gcrAuthFlow && authFlow != dockerConfigAuthFlow && authFlow != dockerConfigURLAuthFlow {
-		return fmt.Errorf("invalid value \"%s\" for authFlow (must be one of \"%s\", \"%s\", or \"%s\")", authFlow, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
+		return fmt.Errorf("invalid value %q for authFlow (must be one of %q, %q, or %q)", authFlow, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
 	}
 	return nil
 }
