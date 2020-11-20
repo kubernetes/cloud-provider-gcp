@@ -8,7 +8,7 @@ go_library(
         "types.go",
         "zz_generated.deepcopy.go",
     ],
-    importpath = "k8s.io/kubelet/pkg/apis/credentialprovider",
+    importpath = "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",

@@ -19,8 +19,8 @@ package install
 import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/kubelet/pkg/apis/credentialprovider"
-	"k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1"
+	"k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider"
+	"k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider/v1alpha1"
 )
 
 // Install registers the credentialprovider.kubelet.k8s.io APIs into the given scheme.

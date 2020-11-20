@@ -26,7 +26,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	conversion "k8s.io/apimachinery/pkg/conversion"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-	credentialprovider "k8s.io/kubelet/pkg/apis/credentialprovider"
+	credentialprovider "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider"
 )
 
 func init() {

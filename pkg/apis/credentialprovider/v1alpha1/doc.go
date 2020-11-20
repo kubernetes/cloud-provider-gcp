@@ -15,8 +15,8 @@ limitations under the License.
 */
 
 // +k8s:deepcopy-gen=package
-// +k8s:conversion-gen=k8s.io/kubelet/pkg/apis/credentialprovider
+// +k8s:conversion-gen=k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider
 // +k8s:defaulter-gen=TypeMeta
 // +groupName=credentialprovider.kubelet.k8s.io
 
-package v1alpha1 // import "k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1"
+package v1alpha1 // import "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider/v1alpha1"
