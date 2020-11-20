@@ -31,6 +31,11 @@ const (
 	metadataHTTPClientTimeout = time.Second * 10
 )
 
+var (
+	noDurationGiven time.Duration = 0
+	invalidDuration time.Duration = -1
+)
+
 // MakeRegistryProvider returns a ContainerRegistryProvider with the given transport.
 func MakeRegistryProvider(transport *http.Transport) *gcpcredential.ContainerRegistryProvider {
 	httpClient := makeHTTPClient(transport)
@@ -65,6 +70,19 @@ func makeHTTPClient(transport *http.Transport) *http.Client {
 	}
 }
 
+func getCacheDuration() (time.Duration, error) {
+	unparsedCacheDuration := os.Getenv(cacheDurationKey)
+	if unparsedCacheDuration == "" {
+		return noDurationGiven, nil
+	} else {
+		cacheDuration, err := time.ParseDuration(unparsedCacheDuration)
+		if err != nil {
+			return invalidDuration, err
+		}
+		return cacheDuration, nil
+	}
+}
+
 // GetResponse queries the given provider for credentials.
 func GetResponse(provider credentialconfig.DockerConfigProvider) (*credentialproviderapi.CredentialProviderResponse, error) {
 	// pass an empty image string to Provide() - the image name is not actually used
@@ -73,12 +91,11 @@ func GetResponse(provider credentialconfig.DockerConfigProvider) (*credentialpro
 	for url, dockerConfig := range cfg {
 		response.Auth[url] = credentialproviderapi.AuthConfig{Username: dockerConfig.Username, Password: dockerConfig.Password}
 	}
-	unparsedCacheDuration := os.Getenv(cacheDurationKey)
-	if unparsedCacheDuration != "" {
-		cacheDuration, err := time.ParseDuration(unparsedCacheDuration)
-		if err != nil {
-			return nil, err
-		}
+	cacheDuration, err := getCacheDuration()
+	if err != nil {
+		return nil, err
+	}
+	if cacheDuration != noDurationGiven {
 		response.CacheDuration = &metav1.Duration{cacheDuration}
 	}
 	return response, nil
