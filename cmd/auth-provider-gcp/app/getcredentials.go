@@ -20,11 +20,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/spf13/cobra"
+	"io/ioutil"
+	"net/http"
+	"os"
+
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/provider"
+	credentialproviderapi "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider"
 	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	klog "k8s.io/klog/v2"
-	"net/http"
 )
 
 var (
@@ -65,7 +69,16 @@ func getCredentials(cmd *cobra.Command, args []string) error {
 	default:
 		return fmt.Errorf("unrecognized auth flow \"%s\"", authFlow)
 	}
-	authCredentials, err := provider.GetResponse(authProvider)
+	unparsedRequest, err := ioutil.ReadAll(os.Stdin)
+	if err != nil {
+		return err
+	}
+	var authRequest credentialproviderapi.CredentialProviderRequest
+	err = json.Unmarshal(unparsedRequest, &authRequest)
+	if err != nil {
+		return err
+	}
+	authCredentials, err := provider.GetResponse(authRequest.Image, authProvider)
 	if err != nil {
 		return err
 	}
@@ -73,7 +86,7 @@ func getCredentials(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Emit authentication response for kubelet to consume 
+	// Emit authentication response for kubelet to consume
 	fmt.Println(string(jsonResponse))
 	return nil
 }

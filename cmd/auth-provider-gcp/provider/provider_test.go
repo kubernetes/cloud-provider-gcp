@@ -26,8 +26,8 @@ import (
 	"testing"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
 	credentialproviderapi "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider"
+	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
 )
 
 const (
@@ -39,6 +39,7 @@ const (
 	dummyToken              = "ya26.lots-of-indiscernible-garbage"
 	email                   = "1234@project.gserviceaccount.com"
 	expectedUsername        = "_token"
+	dummyImage              = "k8s.gcr.io/pause"
 )
 
 func hasURL(url string, response *credentialproviderapi.CredentialProviderResponse) bool {
@@ -82,7 +83,7 @@ func TestContainerRegistry(t *testing.T) {
 		},
 	})
 	provider := MakeRegistryProvider(transport)
-	response, err := GetResponse(provider)
+	response, err := GetResponse(dummyImage, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
@@ -135,7 +136,7 @@ func TestConfigProvider(t *testing.T) {
 		},
 	})
 	provider := MakeDockerConfigProvider(transport)
-	response, err := GetResponse(provider)
+	response, err := GetResponse(dummyImage, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
@@ -189,7 +190,7 @@ func TestConfigURLProvider(t *testing.T) {
 	})
 
 	provider := MakeDockerConfigURLProvider(transport)
-	response, err := GetResponse(provider)
+	response, err := GetResponse(dummyImage, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}

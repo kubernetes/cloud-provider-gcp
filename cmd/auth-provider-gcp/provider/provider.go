@@ -17,13 +17,14 @@ limitations under the License.
 package provider
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
-	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
-	credentialproviderapi "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider"
 	"net/http"
 	"os"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	credentialproviderapi "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider"
+	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
+	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
 )
 
 const (
@@ -81,9 +82,8 @@ func getCacheDuration() (time.Duration, error) {
 }
 
 // GetResponse queries the given provider for credentials.
-func GetResponse(provider credentialconfig.DockerConfigProvider) (*credentialproviderapi.CredentialProviderResponse, error) {
-	// pass an empty image string to Provide() - the image name is not actually used
-	cfg := provider.Provide("")
+func GetResponse(image string, provider credentialconfig.DockerConfigProvider) (*credentialproviderapi.CredentialProviderResponse, error) {
+	cfg := provider.Provide(image)
 	response := &credentialproviderapi.CredentialProviderResponse{Auth: make(map[string]credentialproviderapi.AuthConfig)}
 	for url, dockerConfig := range cfg {
 		response.Auth[url] = credentialproviderapi.AuthConfig{Username: dockerConfig.Username, Password: dockerConfig.Password}
