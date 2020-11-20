@@ -72,13 +72,12 @@ func getCacheDuration() (time.Duration, error) {
 	unparsedCacheDuration := os.Getenv(cacheDurationKey)
 	if unparsedCacheDuration == "" {
 		return 0, nil
-	} else {
-		cacheDuration, err := time.ParseDuration(unparsedCacheDuration)
-		if err != nil {
-			return 0, err
-		}
-		return cacheDuration, nil
 	}
+	cacheDuration, err := time.ParseDuration(unparsedCacheDuration)
+	if err != nil {
+		return 0, err
+	}
+	return cacheDuration, nil
 }
 
 // GetResponse queries the given provider for credentials.
