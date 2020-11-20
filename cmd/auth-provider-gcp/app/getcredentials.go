@@ -73,6 +73,7 @@ func getCredentials(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Emit authentication request for kubelet to consume 
 	fmt.Println(string(jsonResponse))
 	return nil
 }
