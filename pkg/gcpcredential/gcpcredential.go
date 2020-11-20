@@ -178,9 +178,6 @@ func runWithBackoff(f func() ([]byte, error)) []byte {
 // and "http://metadata.google.internal./computeMetadata/v1/instance/service-accounts/default/scopes" will also return `200`.
 // More information on metadata service can be found here - https://cloud.google.com/compute/docs/storing-retrieving-metadata
 func (g *ContainerRegistryProvider) Enabled() bool {
-	if !onGCEVM() {
-		return false
-	}
 	// Given that we are on GCE, we should keep retrying until the metadata server responds.
 	value := runWithBackoff(func() ([]byte, error) {
 		value, err := credentialconfig.ReadURL(serviceAccounts, g.Client, metadataHeader)
