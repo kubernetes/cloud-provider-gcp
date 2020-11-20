@@ -29,8 +29,8 @@ import (
 const (
 	cacheDurationKey          = "KUBE_SIDECAR_CACHE_DURATION"
 	metadataHTTPClientTimeout = time.Second * 10
-	apiKind = "CredentialProviderRequest"
-	apiVersion = "credentialprovider.kubelet.k8s.io/v1alpha1"
+	apiKind                   = "CredentialProviderResponse"
+	apiVersion                = "credentialprovider.kubelet.k8s.io/v1alpha1"
 )
 
 var (
