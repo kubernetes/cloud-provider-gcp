@@ -29,6 +29,8 @@ import (
 const (
 	cacheDurationKey          = "KUBE_SIDECAR_CACHE_DURATION"
 	metadataHTTPClientTimeout = time.Second * 10
+	apiKind = "CredentialProviderRequest"
+	apiVersion = "credentialprovider.kubelet.k8s.io/v1alpha1"
 )
 
 var (
@@ -98,5 +100,7 @@ func GetResponse(provider credentialconfig.DockerConfigProvider) (*credentialpro
 	if cacheDuration != noDurationGiven {
 		response.CacheDuration = &metav1.Duration{cacheDuration}
 	}
+	response.TypeMeta.Kind = apiKind
+	response.TypeMeta.APIVersion = apiVersion
 	return response, nil
 }
