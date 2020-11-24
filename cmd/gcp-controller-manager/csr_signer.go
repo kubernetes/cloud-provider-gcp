@@ -31,7 +31,7 @@ import (
 	"k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/client-go/rest"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	_ "k8s.io/kubernetes/pkg/apis/certificates/install" // Install certificates API group.
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
