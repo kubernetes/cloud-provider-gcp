@@ -82,7 +82,7 @@ go_library(
         "//vendor/k8s.io/component-base/config:go_default_library",
         "//vendor/k8s.io/component-base/config/options:go_default_library",
         "//vendor/k8s.io/component-base/version/verflag:go_default_library",
-        "//vendor/k8s.io/klog:go_default_library",
+        "//vendor/k8s.io/klog/v2:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/api/legacyscheme:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates/install:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1:go_default_library",
@@ -125,7 +125,7 @@ go_test(
         "//vendor/k8s.io/client-go/tools/cache:go_default_library",
         "//vendor/k8s.io/client-go/tools/record:go_default_library",
         "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
-        "//vendor/k8s.io/klog:go_default_library",
+        "//vendor/k8s.io/klog/v2:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1:go_default_library",
     ],
 )
