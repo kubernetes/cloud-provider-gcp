@@ -49,25 +49,31 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 		RunE:  getCredentials,
 	}
 	defineFlags(cmd)
-	if err := validateFlags(); err != nil {
+	if err := validateFlags(authFlow); err != nil {
 		return nil, err
 	}
 	return cmd, nil
 }
 
+func providerFromFlow(flow string) (credentialconfig.DockerConfigProvider, error) {
+	transport := utilnet.SetTransportDefaults(&http.Transport{})
+	switch flow {
+	case gcrAuthFlow:
+		return provider.MakeRegistryProvider(transport), nil
+	case dockerConfigAuthFlow:
+		return provider.MakeDockerConfigProvider(transport), nil
+	case dockerConfigURLAuthFlow:
+		return provider.MakeDockerConfigURLProvider(transport), nil
+	default:
+		return nil, fmt.Errorf("unrecognized auth flow \"%s\"", flow)
+	}
+}
+
 func getCredentials(cmd *cobra.Command, args []string) error {
 	klog.V(2).Infof("get-credentials %s", authFlow)
-	transport := utilnet.SetTransportDefaults(&http.Transport{})
-	var authProvider credentialconfig.DockerConfigProvider
-	switch authFlow {
-	case gcrAuthFlow:
-		authProvider = provider.MakeRegistryProvider(transport)
-	case dockerConfigAuthFlow:
-		authProvider = provider.MakeDockerConfigProvider(transport)
-	case dockerConfigURLAuthFlow:
-		authProvider = provider.MakeDockerConfigURLProvider(transport)
-	default:
-		return fmt.Errorf("unrecognized auth flow \"%s\"", authFlow)
+	authProvider, err := providerFromFlow(authFlow)
+	if err != nil {
+		return err
 	}
 	unparsedRequest, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
@@ -96,9 +102,9 @@ func defineFlags(credCmd *cobra.Command) {
 	credCmd.Flags().StringVarP(&authFlow, "authFlow", "a", gcrAuthFlow, "authentication flow (valid values are gcr, dockercfg, and dockercfg-url)")
 }
 
-func validateFlags() error {
-	if authFlow != gcrAuthFlow && authFlow != dockerConfigAuthFlow && authFlow != dockerConfigURLAuthFlow {
-		return fmt.Errorf("invalid value %q for authFlow (must be one of %q, %q, or %q)", authFlow, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
+func validateFlags(flow string) error {
+	if flow != gcrAuthFlow && flow != dockerConfigAuthFlow && flow != dockerConfigURLAuthFlow {
+		return fmt.Errorf("invalid value %q for authFlow (must be one of %q, %q, or %q)", flow, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
 	}
 	return nil
 }
