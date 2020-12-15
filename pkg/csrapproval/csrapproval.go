@@ -27,7 +27,7 @@ import (
 	capi "k8s.io/api/certificates/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
 )
 

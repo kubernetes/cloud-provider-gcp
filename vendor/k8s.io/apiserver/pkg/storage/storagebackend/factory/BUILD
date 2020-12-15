@@ -14,6 +14,7 @@ go_library(
         "//vendor/go.etcd.io/etcd/clientv3:go_default_library",
         "//vendor/go.etcd.io/etcd/pkg/transport:go_default_library",
         "//vendor/google.golang.org/grpc:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/net:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/server/egressselector:go_default_library",

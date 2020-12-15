@@ -46,9 +46,9 @@ import (
 	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/component-base/config/options"
 	"k8s.io/component-base/version/verflag"
+	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	"k8s.io/kubernetes/pkg/controller"
 )
 
 const (
@@ -186,12 +186,12 @@ func (s *controllerManager) isEnabled(name string) bool {
 func run(s *controllerManager) error {
 	ctx := context.Background()
 
-	informerClientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: s.informerKubeconfig}
+	informerClientBuilder := clientbuilder.SimpleControllerClientBuilder{ClientConfig: s.informerKubeconfig}
 	informerClient := informerClientBuilder.ClientOrDie("gcp-controller-manager-shared-informer")
 	sharedInformers := informers.NewSharedInformerFactory(informerClient, time.Duration(12)*time.Hour)
 	s.healthz.Checks["shared informers"] = informersCheck(sharedInformers)
 
-	controllerClientBuilder := controller.SimpleControllerClientBuilder{ClientConfig: s.controllerKubeconfig}
+	controllerClientBuilder := clientbuilder.SimpleControllerClientBuilder{ClientConfig: s.controllerKubeconfig}
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)

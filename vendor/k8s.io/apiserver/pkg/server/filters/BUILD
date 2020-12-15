@@ -19,7 +19,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/core/v1:go_default_library",
-        "//vendor/k8s.io/api/flowcontrol/v1alpha1:go_default_library",
+        "//vendor/k8s.io/api/flowcontrol/v1beta1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
