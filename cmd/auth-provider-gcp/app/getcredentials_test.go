@@ -35,7 +35,7 @@ func TestValidateAuthFlow(t *testing.T) {
 		{Flow: "Gcrauthflow", Error: &AuthFlowFlagError{flagValue: "Gcrauthflow"}},
 	}
 	for _, tc := range tests {
-		err := validateFlags(tc.Flow)
+		err := validateFlags(&CredentialOptions{AuthFlow: tc.Flow})
 		if err != nil && tc.Error == nil {
 			t.Errorf("with flow %q unexpected error %q", tc.Flow, err)
 		}

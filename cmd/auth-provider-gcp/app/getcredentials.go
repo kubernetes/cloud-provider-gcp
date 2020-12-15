@@ -31,15 +31,15 @@ import (
 	klog "k8s.io/klog/v2"
 )
 
-var (
-	authFlow string
-)
-
 const (
 	gcrAuthFlow             = "gcr"
 	dockerConfigAuthFlow    = "dockercfg"
 	dockerConfigURLAuthFlow = "dockercfg-url"
 )
+
+type CredentialOptions struct {
+	AuthFlow string
+}
 
 type AuthFlowFlagError struct {
 	flagValue string
@@ -59,13 +59,16 @@ func (p *AuthFlowTypeError) Error() string {
 
 // NewGetCredentialsCommand returns a cobra command that retrieves auth credentials after validating flags.
 func NewGetCredentialsCommand() (*cobra.Command, error) {
+	var options CredentialOptions
 	cmd := &cobra.Command{
 		Use:   "get-credentials",
 		Short: "Get authentication credentials",
-		RunE:  getCredentials,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return getCredentials(options.AuthFlow)
+		},
 	}
-	defineFlags(cmd)
-	if err := validateFlags(authFlow); err != nil {
+	defineFlags(cmd, &options)
+	if err := validateFlags(&options); err != nil {
 		return nil, err
 	}
 	return cmd, nil
@@ -85,7 +88,7 @@ func providerFromFlow(flow string) (credentialconfig.DockerConfigProvider, error
 	}
 }
 
-func getCredentials(cmd *cobra.Command, args []string) error {
+func getCredentials(authFlow string) error {
 	klog.V(2).Infof("get-credentials %s", authFlow)
 	authProvider, err := providerFromFlow(authFlow)
 	if err != nil {
@@ -114,13 +117,13 @@ func getCredentials(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func defineFlags(credCmd *cobra.Command) {
-	credCmd.Flags().StringVarP(&authFlow, "authFlow", "a", gcrAuthFlow, "authentication flow (valid values are gcr, dockercfg, and dockercfg-url)")
+func defineFlags(credCmd *cobra.Command, options *CredentialOptions) {
+	credCmd.Flags().StringVarP(&options.AuthFlow, "authFlow", "a", gcrAuthFlow, "authentication flow (valid values are gcr, dockercfg, and dockercfg-url)")
 }
 
-func validateFlags(flow string) error {
-	if flow != gcrAuthFlow && flow != dockerConfigAuthFlow && flow != dockerConfigURLAuthFlow {
-		return &AuthFlowFlagError{flagValue: flow}
+func validateFlags(options *CredentialOptions) error {
+	if options.AuthFlow != gcrAuthFlow && options.AuthFlow != dockerConfigAuthFlow && options.AuthFlow != dockerConfigURLAuthFlow {
+		return &AuthFlowFlagError{flagValue: options.AuthFlow}
 	}
 	return nil
 }
