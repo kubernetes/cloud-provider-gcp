@@ -17,14 +17,9 @@ limitations under the License.
 package app
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 )
-
-func flagError(val string) error {
-	return fmt.Errorf("invalid value %q for authFlow (must be one of %q, %q, or %q)", val, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
-}
 
 func TestValidateAuthFlow(t *testing.T) {
 	type FlagResult struct {
@@ -37,6 +32,7 @@ func TestValidateAuthFlow(t *testing.T) {
 		{Flow: dockerConfigURLAuthFlow, Error: nil},
 		{Flow: "bad-flow", Error: &AuthFlowFlagError{flagValue: "bad-flow"}},
 		{Flow: "", Error: &AuthFlowFlagError{flagValue: ""}},
+		{Flow: "Gcrauthflow", Error: &AuthFlowFlagError{flagValue: "Gcrauthflow"}},
 	}
 	for _, tc := range tests {
 		err := validateFlags(tc.Flow)
@@ -52,10 +48,6 @@ func TestValidateAuthFlow(t *testing.T) {
 			}
 		}
 	}
-}
-
-func providerError(val string) error {
-	return fmt.Errorf("unrecognized auth flow \"%s\"", val)
 }
 
 func TestProviderFromFlow(t *testing.T) {
