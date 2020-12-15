@@ -36,6 +36,7 @@ func TestValidateAuthFlow(t *testing.T) {
 		{Flow: dockerConfigAuthFlow, Error: nil},
 		{Flow: dockerConfigURLAuthFlow, Error: nil},
 		{Flow: "bad-flow", Error: &AuthFlowFlagError{flagValue: "bad-flow"}},
+		{Flow: "", Error: &AuthFlowFlagError{flagValue: ""}},
 	}
 	for _, tc := range tests {
 		err := validateFlags(tc.Flow)
@@ -68,6 +69,7 @@ func TestProviderFromFlow(t *testing.T) {
 		{Flow: dockerConfigAuthFlow, Type: "DockerConfigKeyProvider", Error: nil},
 		{Flow: dockerConfigURLAuthFlow, Type: "DockerConfigURLKeyProvider", Error: nil},
 		{Flow: "bad-flow", Type: "", Error: &AuthFlowTypeError{requestedFlow: "bad-flow"}},
+		{Flow: "", Type: "", Error: &AuthFlowTypeError{requestedFlow: ""}},
 	}
 	for _, tc := range tests {
 		provider, err := providerFromFlow(tc.Flow)
