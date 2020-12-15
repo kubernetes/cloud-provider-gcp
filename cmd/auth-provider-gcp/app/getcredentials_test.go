@@ -35,7 +35,7 @@ func TestValidateAuthFlow(t *testing.T) {
 		{Flow: gcrAuthFlow, Error: nil},
 		{Flow: dockerConfigAuthFlow, Error: nil},
 		{Flow: dockerConfigURLAuthFlow, Error: nil},
-		{Flow: "bad-flow", Error: flagError("bad-flow")},
+		{Flow: "bad-flow", Error: &AuthFlowFlagError{flagValue: "bad-flow"}},
 	}
 	for _, tc := range tests {
 		err := validateFlags(tc.Flow)
@@ -44,6 +44,11 @@ func TestValidateAuthFlow(t *testing.T) {
 		}
 		if err == nil && tc.Error != nil {
 			t.Errorf("with flow %q did not get expected error %q", tc.Flow, err)
+		}
+		if err != nil && tc.Error != nil {
+			if reflect.TypeOf(err) != reflect.TypeOf(tc.Error) {
+				t.Errorf("with flow %q got unexpected error type %q (expected %q)", tc.Flow, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
+			}
 		}
 	}
 }
@@ -62,7 +67,7 @@ func TestProviderFromFlow(t *testing.T) {
 		{Flow: gcrAuthFlow, Type: "ContainerRegistryProvider", Error: nil},
 		{Flow: dockerConfigAuthFlow, Type: "DockerConfigKeyProvider", Error: nil},
 		{Flow: dockerConfigURLAuthFlow, Type: "DockerConfigURLKeyProvider", Error: nil},
-		{Flow: "bad-flow", Type: "", Error: providerError("bad-flow")},
+		{Flow: "bad-flow", Type: "", Error: &AuthFlowTypeError{requestedFlow: "bad-flow"}},
 	}
 	for _, tc := range tests {
 		provider, err := providerFromFlow(tc.Flow)
@@ -71,6 +76,11 @@ func TestProviderFromFlow(t *testing.T) {
 		}
 		if err == nil && tc.Error != nil {
 			t.Errorf("with flow %q did not get expected error %q", tc.Flow, err)
+		}
+		if err != nil && tc.Error != nil {
+			if reflect.TypeOf(err) != reflect.TypeOf(tc.Error) {
+				t.Errorf("with flow %q got unexpected error type %q (expected %q)", tc.Flow, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
+			}
 		}
 		if tc.Type == "" && provider != nil {
 			t.Errorf("with flow %q got unexpectedly non-nil provider %q", provider)

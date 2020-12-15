@@ -41,6 +41,22 @@ const (
 	dockerConfigURLAuthFlow = "dockercfg-url"
 )
 
+type AuthFlowFlagError struct {
+	flagValue string
+}
+
+func (a *AuthFlowFlagError) Error() string {
+	return fmt.Sprintf("invalid value %q for authFlow (must be one of %q, %q, or %q)", a.flagValue, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
+}
+
+type AuthFlowTypeError struct {
+	requestedFlow string
+}
+
+func (p *AuthFlowTypeError) Error() string {
+	return fmt.Sprintf("unrecognized auth flow \"%s\"", p.requestedFlow)
+}
+
 // NewGetCredentialsCommand returns a cobra command that retrieves auth credentials after validating flags.
 func NewGetCredentialsCommand() (*cobra.Command, error) {
 	cmd := &cobra.Command{
@@ -65,7 +81,7 @@ func providerFromFlow(flow string) (credentialconfig.DockerConfigProvider, error
 	case dockerConfigURLAuthFlow:
 		return provider.MakeDockerConfigURLProvider(transport), nil
 	default:
-		return nil, fmt.Errorf("unrecognized auth flow \"%s\"", flow)
+		return nil, &AuthFlowTypeError{requestedFlow: flow}
 	}
 }
 
@@ -104,7 +120,7 @@ func defineFlags(credCmd *cobra.Command) {
 
 func validateFlags(flow string) error {
 	if flow != gcrAuthFlow && flow != dockerConfigAuthFlow && flow != dockerConfigURLAuthFlow {
-		return fmt.Errorf("invalid value %q for authFlow (must be one of %q, %q, or %q)", flow, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
+		return &AuthFlowFlagError{flagValue: flow}
 	}
 	return nil
 }
