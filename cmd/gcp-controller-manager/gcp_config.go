@@ -125,11 +125,16 @@ func loadGCPConfig(gceConfigPath, gceAPIEndpointOverride string) (gcpConfig, err
 	}
 
 	// Load all zones in the same region.
-	allZones, err := compute.NewZonesService(a.Compute).List(a.ProjectID).Do()
+	allZones := []*compute.Zone{}
+	accumulator := func(response *compute.ZoneList) error {
+		allZones = append(allZones, response.Items...)
+		return nil
+	}
+	err = compute.NewZonesService(a.Compute).List(a.ProjectID).Pages(context.TODO(), accumulator)
 	if err != nil {
 		return a, err
 	}
-	for _, z := range allZones.Items {
+	for _, z := range allZones {
 		if strings.HasPrefix(z.Name, region) {
 			a.Zones = append(a.Zones, z.Name)
 		}
