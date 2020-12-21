@@ -129,7 +129,7 @@ func getCredentials(authFlow string) error {
 }
 
 func defineFlags(credCmd *cobra.Command, options *CredentialOptions) {
-	credCmd.Flags().StringVarP(&options.AuthFlow, "authFlow", "a", gcrAuthFlow, "authentication flow (valid values are gcr, dockercfg, and dockercfg-url)")
+	credCmd.Flags().StringVarP(&options.AuthFlow, "authFlow", "a", gcrAuthFlow, fmt.Sprintf("authentication flow (valid values are %q, %q, and %q)", gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow))
 }
 
 func validateFlags(options *CredentialOptions) error {
