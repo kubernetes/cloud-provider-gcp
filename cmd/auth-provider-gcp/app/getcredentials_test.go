@@ -38,16 +38,17 @@ func TestValidateAuthFlow(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			err := validateFlags(&CredentialOptions{AuthFlow: tc.Flow})
-			if err != nil && tc.Error == nil {
-				t.Fatalf("with flow %q unexpected error %q", tc.Flow, err)
-			}
-			if err == nil && tc.Error != nil {
-				t.Fatalf("with flow %q did not get expected error %q", tc.Flow, err)
-			}
-			if err != nil && tc.Error != nil {
+			if tc.Error != nil {
+				if err == nil {
+					t.Fatalf("with flow %q did not get expected error %q", tc.Flow, err)
+				}
 				if reflect.TypeOf(err) != reflect.TypeOf(tc.Error) {
 					t.Fatalf("with flow %q got unexpected error type %q (expected %q)", tc.Flow, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
 				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("with flow %q unexpected error %q", tc.Flow, err)
 			}
 		})
 	}
@@ -70,25 +71,21 @@ func TestProviderFromFlow(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			provider, err := providerFromFlow(tc.Flow)
-			if err != nil && tc.Error == nil {
-				t.Fatalf("with flow %q unexpected error %q", tc.Flow, err)
-			}
-			if err == nil && tc.Error != nil {
-				t.Fatalf("with flow %q did not get expected error %q", tc.Flow, err)
-			}
-			if err != nil && tc.Error != nil {
+			if tc.Error != nil {
+				if err == nil {
+					t.Fatalf("with flow %q did not get expected error %q", tc.Flow, err)
+				}
 				if reflect.TypeOf(err) != reflect.TypeOf(tc.Error) {
 					t.Fatalf("with flow %q got unexpected error type %q (expected %q)", tc.Flow, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
 				}
+				return
 			}
-			if tc.Type == "" && provider != nil {
-				t.Fatalf("with flow %q got unexpectedly non-nil provider %q", tc.Flow, provider)
+			if err != nil {
+				t.Fatalf("with flow %q unexpected error %q", tc.Flow, err)
 			}
-			if provider != nil {
-				providerType := reflect.TypeOf(provider).String()
-				if providerType != "*gcpcredential."+tc.Type {
-					t.Errorf("with flow %q unexpected provider type %q", tc.Flow, providerType)
-				}
+			providerType := reflect.TypeOf(provider).String()
+			if providerType != "*gcpcredential."+tc.Type {
+				t.Errorf("with flow %q unexpected provider type %q", tc.Flow, providerType)
 			}
 		})
 	}
