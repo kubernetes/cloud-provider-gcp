@@ -60,7 +60,7 @@ type AuthFlowTypeError struct {
 }
 
 func (p *AuthFlowTypeError) Error() string {
-	return fmt.Sprintf("unrecognized auth flow \"%s\"", p.requestedFlow)
+	return fmt.Sprintf("unrecognized auth flow %q", p.requestedFlow)
 }
 
 func (p *AuthFlowTypeError) Is(err error) bool {
