@@ -17,6 +17,7 @@ limitations under the License.
 package app
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -42,7 +43,7 @@ func TestValidateAuthFlow(t *testing.T) {
 				if err == nil {
 					t.Fatalf("with flow %q did not get expected error %q", tc.Flow, err)
 				}
-				if reflect.TypeOf(err) != reflect.TypeOf(tc.Error) {
+				if !errors.Is(err, tc.Error) {
 					t.Fatalf("with flow %q got unexpected error type %q (expected %q)", tc.Flow, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
 				}
 				return
@@ -75,7 +76,7 @@ func TestProviderFromFlow(t *testing.T) {
 				if err == nil {
 					t.Fatalf("with flow %q did not get expected error %q", tc.Flow, err)
 				}
-				if reflect.TypeOf(err) != reflect.TypeOf(tc.Error) {
+				if !errors.Is(err, tc.Error) {
 					t.Fatalf("with flow %q got unexpected error type %q (expected %q)", tc.Flow, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
 				}
 				return

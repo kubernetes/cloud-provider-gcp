@@ -19,10 +19,11 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/spf13/cobra"
 	"io/ioutil"
 	"net/http"
 	"os"
+
+	"github.com/spf13/cobra"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/provider"
@@ -49,12 +50,22 @@ func (a *AuthFlowFlagError) Error() string {
 	return fmt.Sprintf("invalid value %q for authFlow (must be one of %q, %q, or %q)", a.flagValue, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
 }
 
+func (a *AuthFlowFlagError) Is(err error) bool {
+	_, ok := err.(*AuthFlowFlagError)
+	return ok
+}
+
 type AuthFlowTypeError struct {
 	requestedFlow string
 }
 
 func (p *AuthFlowTypeError) Error() string {
 	return fmt.Sprintf("unrecognized auth flow \"%s\"", p.requestedFlow)
+}
+
+func (p *AuthFlowTypeError) Is(err error) bool {
+	_, ok := err.(*AuthFlowTypeError)
+	return ok
 }
 
 // NewGetCredentialsCommand returns a cobra command that retrieves auth credentials after validating flags.
