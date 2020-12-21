@@ -23,70 +23,73 @@ import (
 
 func TestValidateAuthFlow(t *testing.T) {
 	type FlagResult struct {
+		Name  string
 		Flow  string
 		Error error
 	}
 	tests := []FlagResult{
-		{Flow: gcrAuthFlow, Error: nil},
-		{Flow: dockerConfigAuthFlow, Error: nil},
-		{Flow: dockerConfigURLAuthFlow, Error: nil},
-		{Flow: "bad-flow", Error: &AuthFlowFlagError{flagValue: "bad-flow"}},
-		{Flow: "", Error: &AuthFlowFlagError{flagValue: ""}},
-		{Flow: "Gcrauthflow", Error: &AuthFlowFlagError{flagValue: "Gcrauthflow"}},
+		{Name: "validate gcr auth flow", Flow: gcrAuthFlow, Error: nil},
+		{Name: "validate docker-cfg auth flow option", Flow: dockerConfigAuthFlow, Error: nil},
+		{Name: "validate docker-cfg-url auth flow option", Flow: dockerConfigURLAuthFlow, Error: nil},
+		{Name: "bad auth flow option", Flow: "bad-flow", Error: &AuthFlowFlagError{flagValue: "bad-flow"}},
+		{Name: "empty auth flow option", Flow: "", Error: &AuthFlowFlagError{flagValue: ""}},
+		{Name: "case-sensitive auth flow", Flow: "Gcrauthflow", Error: &AuthFlowFlagError{flagValue: "Gcrauthflow"}},
 	}
 	for _, tc := range tests {
-		err := validateFlags(&CredentialOptions{AuthFlow: tc.Flow})
-		if err != nil && tc.Error == nil {
-			t.Errorf("with flow %q unexpected error %q", tc.Flow, err)
-		}
-		if err == nil && tc.Error != nil {
-			t.Errorf("with flow %q did not get expected error %q", tc.Flow, err)
-		}
-		if err != nil && tc.Error != nil {
-			if reflect.TypeOf(err) != reflect.TypeOf(tc.Error) {
-				t.Errorf("with flow %q got unexpected error type %q (expected %q)", tc.Flow, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
+		t.Run(tc.Name, func(t *testing.T) {
+			err := validateFlags(&CredentialOptions{AuthFlow: tc.Flow})
+			if err != nil && tc.Error == nil {
+				t.Fatalf("with flow %q unexpected error %q", tc.Flow, err)
 			}
-		}
+			if err == nil && tc.Error != nil {
+				t.Fatalf("with flow %q did not get expected error %q", tc.Flow, err)
+			}
+			if err != nil && tc.Error != nil {
+				if reflect.TypeOf(err) != reflect.TypeOf(tc.Error) {
+					t.Fatalf("with flow %q got unexpected error type %q (expected %q)", tc.Flow, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
+				}
+			}
+		})
 	}
 }
 
 func TestProviderFromFlow(t *testing.T) {
 	type ProviderResult struct {
+		Name  string
 		Flow  string
 		Type  string
 		Error error
 	}
 	tests := []ProviderResult{
-		{Flow: gcrAuthFlow, Type: "ContainerRegistryProvider", Error: nil},
-		{Flow: dockerConfigAuthFlow, Type: "DockerConfigKeyProvider", Error: nil},
-		{Flow: dockerConfigURLAuthFlow, Type: "DockerConfigURLKeyProvider", Error: nil},
-		{Flow: "bad-flow", Type: "", Error: &AuthFlowTypeError{requestedFlow: "bad-flow"}},
-		{Flow: "", Type: "", Error: &AuthFlowTypeError{requestedFlow: ""}},
+		{Name: "gcr auth provider selection", Flow: gcrAuthFlow, Type: "ContainerRegistryProvider", Error: nil},
+		{Name: "docker-cfg auth provider selection", Flow: dockerConfigAuthFlow, Type: "DockerConfigKeyProvider", Error: nil},
+		{Name: "docker-cfg-url auth provider selection", Flow: dockerConfigURLAuthFlow, Type: "DockerConfigURLKeyProvider", Error: nil},
+		{Name: "non-existent auth provider request", Flow: "bad-flow", Type: "", Error: &AuthFlowTypeError{requestedFlow: "bad-flow"}},
+		{Name: "empty auth provider request", Flow: "", Type: "", Error: &AuthFlowTypeError{requestedFlow: ""}},
 	}
 	for _, tc := range tests {
-		provider, err := providerFromFlow(tc.Flow)
-		if err != nil && tc.Error == nil {
-			t.Errorf("with flow %q unexpected error %q", tc.Flow, err)
-		}
-		if err == nil && tc.Error != nil {
-			t.Errorf("with flow %q did not get expected error %q", tc.Flow, err)
-		}
-		if err != nil && tc.Error != nil {
-			if reflect.TypeOf(err) != reflect.TypeOf(tc.Error) {
-				t.Errorf("with flow %q got unexpected error type %q (expected %q)", tc.Flow, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
+		t.Run(tc.Name, func(t *testing.T) {
+			provider, err := providerFromFlow(tc.Flow)
+			if err != nil && tc.Error == nil {
+				t.Fatalf("with flow %q unexpected error %q", tc.Flow, err)
 			}
-		}
-		if tc.Type == "" && provider != nil {
-			t.Errorf("with flow %q got unexpectedly non-nil provider %q", provider)
-		}
-		// The nil check is meant for test cases where provider is nil on purpose,
-		// i,e, for error cases - any errors will get tested and caught above, so in
-		// those cases, we don't need to run additional checks
-		if provider != nil {
-			providerType := reflect.TypeOf(provider).String()
-			if providerType != "*gcpcredential."+tc.Type {
-				t.Errorf("with flow %q unexpected provider type %q", tc.Flow, providerType)
+			if err == nil && tc.Error != nil {
+				t.Fatalf("with flow %q did not get expected error %q", tc.Flow, err)
 			}
-		}
+			if err != nil && tc.Error != nil {
+				if reflect.TypeOf(err) != reflect.TypeOf(tc.Error) {
+					t.Fatalf("with flow %q got unexpected error type %q (expected %q)", tc.Flow, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
+				}
+			}
+			if tc.Type == "" && provider != nil {
+				t.Fatalf("with flow %q got unexpectedly non-nil provider %q", tc.Flow, provider)
+			}
+			if provider != nil {
+				providerType := reflect.TypeOf(provider).String()
+				if providerType != "*gcpcredential."+tc.Type {
+					t.Errorf("with flow %q unexpected provider type %q", tc.Flow, providerType)
+				}
+			}
+		})
 	}
 }
