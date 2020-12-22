@@ -94,25 +94,49 @@ func TestProviderFromFlow(t *testing.T) {
 }
 
 func TestFlagError(t *testing.T) {
-	badFlow := "bad-flow"
-	err := validateFlags(&CredentialOptions{AuthFlow: badFlow})
-	differentFlagValueErr := &AuthFlowFlagError{flagValue: "other-bad-flow"}
-	if !errors.Is(err, differentFlagValueErr) {
-		t.Fatalf("errors.Is should return true for different flagValues")
+	type FlagErrorTest struct {
+		Name            string
+		Options         CredentialOptions
+		ExpectedError   AuthFlowFlagError
+		MessageContains string
 	}
-	if !strings.Contains(err.Error(), badFlow) {
-		t.Fatalf("Flow %q missing from error message of AuthFlowFlagError", badFlow)
+	tests := []FlagErrorTest{
+		{Name: "errors.Is true for different flagValues", Options: CredentialOptions{AuthFlow: "bad-flow"}, ExpectedError: AuthFlowFlagError{flagValue: "other-bad-flow"}},
+		{Name: "error message contains rejected value", Options: CredentialOptions{AuthFlow: "bad-flow"}, ExpectedError: AuthFlowFlagError{flagValue: "bad-flow"}, MessageContains: "bad-flow"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			err := validateFlags(&tc.Options)
+			if !errors.Is(err, &tc.ExpectedError) {
+				t.Fatalf("did not get expected error %q (got %q instead", &tc.ExpectedError, err)
+			}
+			if !strings.Contains(err.Error(), tc.MessageContains) {
+				t.Fatalf("%q missing from error message %q", tc.MessageContains, err.Error())
+			}
+		})
 	}
 }
 
 func TestFlowError(t *testing.T) {
-	badProviderRequest := "bad-provider"
-	_, err := providerFromFlow(badProviderRequest)
-	differentFlagValueErr := &AuthFlowTypeError{requestedFlow: "other-bad-provider"}
-	if !errors.Is(err, differentFlagValueErr) {
-		t.Fatalf("errors.Is should return true for different requestedFlows")
+	type FlowErrorTest struct {
+		Name            string
+		Flow            string
+		ExpectedError   AuthFlowTypeError
+		MessageContains string
 	}
-	if !strings.Contains(err.Error(), badProviderRequest) {
-		t.Fatalf("Flow %q missing from error message of AuthFlowTypeError", badProviderRequest)
+	tests := []FlowErrorTest{
+		{Name: "errors.Is true for different requestedFlows", Flow: "bad-provider", ExpectedError: AuthFlowTypeError{requestedFlow: "other-bad-provider"}},
+		{Name: "error message contains rejected value", Flow: "bad-provider", ExpectedError: AuthFlowTypeError{requestedFlow: "bad-provider"}, MessageContains: "bad-provider"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			_, err := providerFromFlow(tc.Flow)
+			if !errors.Is(err, &tc.ExpectedError) {
+				t.Fatalf("did not get expected error %q (got %q instead", &tc.ExpectedError, err)
+			}
+			if !strings.Contains(err.Error(), tc.MessageContains) {
+				t.Fatalf("%q missing from error message %q", tc.MessageContains, err.Error())
+			}
+		})
 	}
 }
