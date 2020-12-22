@@ -100,7 +100,7 @@ func providerFromFlow(flow string) (credentialconfig.DockerConfigProvider, error
 }
 
 func getCredentials(authFlow string) error {
-	klog.V(2).Infof("get-credentials %s", authFlow)
+	klog.V(2).Infof("get-credentials (authFlow %s)", authFlow)
 	authProvider, err := providerFromFlow(authFlow)
 	if err != nil {
 		return err
