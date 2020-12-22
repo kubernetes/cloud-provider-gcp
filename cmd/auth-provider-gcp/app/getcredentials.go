@@ -19,10 +19,11 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/spf13/cobra"
 	"io/ioutil"
 	"net/http"
 	"os"
+
+	"github.com/spf13/cobra"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/provider"
@@ -31,43 +32,78 @@ import (
 	klog "k8s.io/klog/v2"
 )
 
-var (
-	authFlow string
-)
-
 const (
 	gcrAuthFlow             = "gcr"
 	dockerConfigAuthFlow    = "dockercfg"
 	dockerConfigURLAuthFlow = "dockercfg-url"
 )
 
+type CredentialOptions struct {
+	AuthFlow string
+}
+
+type AuthFlowFlagError struct {
+	flagValue string
+}
+
+func (a *AuthFlowFlagError) Error() string {
+	return fmt.Sprintf("invalid value %q for authFlow (must be one of %q, %q, or %q)", a.flagValue, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
+}
+
+func (a *AuthFlowFlagError) Is(err error) bool {
+	_, ok := err.(*AuthFlowFlagError)
+	return ok
+}
+
+type AuthFlowTypeError struct {
+	requestedFlow string
+}
+
+func (p *AuthFlowTypeError) Error() string {
+	return fmt.Sprintf("unrecognized auth flow %q", p.requestedFlow)
+}
+
+func (p *AuthFlowTypeError) Is(err error) bool {
+	_, ok := err.(*AuthFlowTypeError)
+	return ok
+}
+
 // NewGetCredentialsCommand returns a cobra command that retrieves auth credentials after validating flags.
 func NewGetCredentialsCommand() (*cobra.Command, error) {
+	var options CredentialOptions
 	cmd := &cobra.Command{
 		Use:   "get-credentials",
 		Short: "Get authentication credentials",
-		RunE:  getCredentials,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return getCredentials(options.AuthFlow)
+		},
 	}
-	defineFlags(cmd)
-	if err := validateFlags(); err != nil {
+	defineFlags(cmd, &options)
+	if err := validateFlags(&options); err != nil {
 		return nil, err
 	}
 	return cmd, nil
 }
 
-func getCredentials(cmd *cobra.Command, args []string) error {
-	klog.V(2).Infof("get-credentials %s", authFlow)
+func providerFromFlow(flow string) (credentialconfig.DockerConfigProvider, error) {
 	transport := utilnet.SetTransportDefaults(&http.Transport{})
-	var authProvider credentialconfig.DockerConfigProvider
-	switch authFlow {
+	switch flow {
 	case gcrAuthFlow:
-		authProvider = provider.MakeRegistryProvider(transport)
+		return provider.MakeRegistryProvider(transport), nil
 	case dockerConfigAuthFlow:
-		authProvider = provider.MakeDockerConfigProvider(transport)
+		return provider.MakeDockerConfigProvider(transport), nil
 	case dockerConfigURLAuthFlow:
-		authProvider = provider.MakeDockerConfigURLProvider(transport)
+		return provider.MakeDockerConfigURLProvider(transport), nil
 	default:
-		return fmt.Errorf("unrecognized auth flow \"%s\"", authFlow)
+		return nil, &AuthFlowTypeError{requestedFlow: flow}
+	}
+}
+
+func getCredentials(authFlow string) error {
+	klog.V(2).Infof("get-credentials (authFlow %s)", authFlow)
+	authProvider, err := providerFromFlow(authFlow)
+	if err != nil {
+		return err
 	}
 	unparsedRequest, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
@@ -92,13 +128,13 @@ func getCredentials(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func defineFlags(credCmd *cobra.Command) {
-	credCmd.Flags().StringVarP(&authFlow, "authFlow", "a", gcrAuthFlow, "authentication flow (valid values are gcr, dockercfg, and dockercfg-url)")
+func defineFlags(credCmd *cobra.Command, options *CredentialOptions) {
+	credCmd.Flags().StringVarP(&options.AuthFlow, "authFlow", "a", gcrAuthFlow, fmt.Sprintf("authentication flow (valid values are %q, %q, and %q)", gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow))
 }
 
-func validateFlags() error {
-	if authFlow != gcrAuthFlow && authFlow != dockerConfigAuthFlow && authFlow != dockerConfigURLAuthFlow {
-		return fmt.Errorf("invalid value %q for authFlow (must be one of %q, %q, or %q)", authFlow, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
+func validateFlags(options *CredentialOptions) error {
+	if options.AuthFlow != gcrAuthFlow && options.AuthFlow != dockerConfigAuthFlow && options.AuthFlow != dockerConfigURLAuthFlow {
+		return &AuthFlowFlagError{flagValue: options.AuthFlow}
 	}
 	return nil
 }
