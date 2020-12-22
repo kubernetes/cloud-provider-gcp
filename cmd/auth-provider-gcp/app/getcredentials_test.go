@@ -19,6 +19,7 @@ package app
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -89,5 +90,29 @@ func TestProviderFromFlow(t *testing.T) {
 				t.Errorf("with flow %q unexpected provider type %q", tc.Flow, providerType)
 			}
 		})
+	}
+}
+
+func TestFlagError(t *testing.T) {
+	badFlow := "bad-flow"
+	err := validateFlags(&CredentialOptions{AuthFlow: badFlow})
+	differentFlagValueErr := &AuthFlowFlagError{flagValue: "other-bad-flow"}
+	if !errors.Is(err, differentFlagValueErr) {
+		t.Fatalf("errors.Is should return true for different flagValues")
+	}
+	if !strings.Contains(err.Error(), badFlow) {
+		t.Fatalf("Flow %q missing from error message of AuthFlowFlagError", badFlow)
+	}
+}
+
+func TestFlowError(t *testing.T) {
+	badProviderRequest := "bad-provider"
+	_, err := providerFromFlow(badProviderRequest)
+	differentFlagValueErr := &AuthFlowTypeError{requestedFlow: "other-bad-provider"}
+	if !errors.Is(err, differentFlagValueErr) {
+		t.Fatalf("errors.Is should return true for different requestedFlows")
+	}
+	if !strings.Contains(err.Error(), badProviderRequest) {
+		t.Fatalf("Flow %q missing from error message of AuthFlowTypeError", badProviderRequest)
 	}
 }
