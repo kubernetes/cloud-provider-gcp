@@ -41,9 +41,7 @@ replace (
 require (
 	cloud.google.com/go v0.51.0
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
-	github.com/Sirupsen/logrus v1.0.6 // indirect
 	github.com/blang/semver v3.5.0+incompatible
-	github.com/docker/docker v1.13.1 // indirect
 	github.com/gofrs/flock v0.7.1
 	github.com/gogo/protobuf v1.3.1
 	github.com/google/go-tpm v0.2.0
@@ -56,23 +54,12 @@ require (
 	github.com/stretchr/testify v1.4.0
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200819165624-17cef6e3e9d5
 	golang.org/x/oauth2 v0.0.0-20191202225959-858c2ad4c8b6
-	google.golang.org/api v0.15.1
+	google.golang.org/api v0.22.0
 	google.golang.org/grpc v1.27.0
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/warnings.v0 v0.1.2
-	k8s.io/apiextensions-apiserver v0.19.0 // indirect
-	k8s.io/cluster-bootstrap v0.19.0 // indirect
-	k8s.io/cri-api v0.19.0 // indirect
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.4.0
-	k8s.io/kube-aggregator v0.19.0 // indirect
-	k8s.io/kube-proxy v0.19.0 // indirect
-	k8s.io/kube-scheduler v0.19.0 // indirect
-	k8s.io/kubectl v0.19.0 // indirect
-	k8s.io/kubelet v0.19.0 // indirect
-	k8s.io/sample-apiserver v0.19.0 // indirect
-	k8s.io/sample-cli-plugin v0.19.0 // indirect
-	k8s.io/sample-controller v0.19.0 // indirect
 	k8s.io/utils v0.0.0-20200729134348-d5654de09c73
 )
 

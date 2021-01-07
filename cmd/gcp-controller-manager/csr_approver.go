@@ -626,19 +626,38 @@ func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID 
 	return false, nil
 }
 
+type foundError struct{}
+
+func (*foundError) Error() string{
+	return "found"
+}
+
 func groupHasInstance(ctx *controllerContext, groupLocation, groupName string, instanceID uint64) (bool, error) {
 	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstanceGroupManagersService.ListManagedInstances")
-	instances, err := compute.NewInstanceGroupManagersService(ctx.gcpCfg.Compute).ListManagedInstances(ctx.gcpCfg.ProjectID, groupLocation, groupName).Do()
+	filter := func(response *compute.InstanceGroupManagersListManagedInstancesResponse) error {
+		for _, instance := range response.ManagedInstances{
+			// If the instance is found we return foundError which allows us to exit early and
+			// not go through the rest of the pages. The ListManagedInstances call does not 
+			// support filtering so we have to resort to this hack.
+			if instance.Id == instanceID {
+				return &foundError{}
+			}
+		}
+		return nil
+	}
+	err := compute.NewInstanceGroupManagersService(ctx.gcpCfg.Compute).ListManagedInstances(ctx.gcpCfg.ProjectID, groupLocation, groupName).Pages(context.TODO(), filter)
 	if err != nil {
-		recordMetric(csrmetrics.OutboundRPCStatusError)
-		return false, err
+		switch err.(type) {
+		case *foundError:
+			recordMetric(csrmetrics.OutboundRPCStatusOK)
+			return true, nil
+		default:
+			recordMetric(csrmetrics.OutboundRPCStatusError)
+			return false, err
+		}
+
 	}
 	recordMetric(csrmetrics.OutboundRPCStatusOK)
-	for _, inst := range instances.ManagedInstances {
-		if instanceID == inst.Id {
-			return true, nil
-		}
-	}
 	return false, nil
 }
 
