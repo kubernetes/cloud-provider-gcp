@@ -196,12 +196,14 @@ func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bo
 			Type:    capi.CertificateApproved,
 			Reason:  "AutoApproved",
 			Message: msg,
+			Status: v1.ConditionTrue,
 		})
 	} else {
 		csr.Status.Conditions = append(csr.Status.Conditions, capi.CertificateSigningRequestCondition{
 			Type:    capi.CertificateDenied,
 			Reason:  "AutoDenied",
 			Message: msg,
+			Status: v1.ConditionTrue,
 		})
 	}
 	updateRecordMetric := csrmetrics.OutboundRPCStartRecorder("k8s.CertificateSigningRequests.updateApproval")
