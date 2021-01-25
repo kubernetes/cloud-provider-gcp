@@ -4,7 +4,7 @@ require (
 	k8s.io/api v0.20.0
 	k8s.io/apimachinery v0.20.0
 	k8s.io/apiserver v0.20.0
-	k8s.io/client-go v0.20.0
+	k8s.io/client-go v9.0.0+incompatible
 	k8s.io/cloud-provider v0.20.0
 	k8s.io/component-base v0.20.0
 	k8s.io/kubelet v0.20.0
@@ -42,13 +42,12 @@ replace (
 )
 
 require (
-	cloud.google.com/go v0.54.0
+	cloud.google.com/go v0.72.0
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/gofrs/flock v0.7.1
 	github.com/gogo/protobuf v1.3.1
 	github.com/google/go-tpm v0.2.0
-	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/prometheus/client_golang v1.7.1
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
@@ -56,14 +55,16 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.6.1
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
-	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
-	google.golang.org/api v0.22.0
-	google.golang.org/grpc v1.27.1
+	golang.org/x/oauth2 v0.0.0-20201109201403-9fd604954f58
+	google.golang.org/api v0.35.0
+	google.golang.org/grpc v1.33.2
+	google.golang.org/grpc/examples v0.0.0-20210122012134-2c42474aca0c // indirect
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/warnings.v0 v0.1.2
 	k8s.io/controller-manager v0.20.0
 	k8s.io/klog/v2 v2.4.0
 	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
+	sigs.k8s.io/kubetest2 v0.0.0-20210106183352-5a41a5dbafe5 // indirect
 )
 
 go 1.13

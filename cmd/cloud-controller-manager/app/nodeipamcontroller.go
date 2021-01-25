@@ -17,7 +17,7 @@ limitations under the License.
 // This file holds the code related with the sample nodeipamcontroller
 // which demonstrates how cloud providers add external controllers to cloud-controller-manager
 
-package main
+package app
 
 import (
 	"errors"
