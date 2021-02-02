@@ -1,9 +1,9 @@
 package app
 
 import (
+	"flag"
 	"fmt"
 	"github.com/spf13/pflag"
-	"net/http"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -12,12 +12,10 @@ import (
 	"k8s.io/cloud-provider/app"
 	"k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/options"
-	"k8s.io/component-base/cli/flag"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/term"
 	"k8s.io/component-base/version/verflag"
-	genericcontrollermanager "k8s.io/controller-manager/app"
 	"k8s.io/klog/v2"
 	nodeipamcontrolleroptions "k8s.io/kubernetes/cmd/kube-controller-manager/app/options"
 	nodeipamconfig "k8s.io/kubernetes/pkg/controller/nodeipam/config"
@@ -33,15 +31,11 @@ func NewCloudControllerManagerCommand() *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:  "gcp-cloud-controller-manager",
-		Long: `gcp-cloud-controller-manager manages gcp cloud resources for a Kubernetes cluster.`,
+		Use: "cloud-controller-manager",
+		Long: `The Cloud controller manager is a daemon that embeds
+the cloud specific control loops shipped with Kubernetes.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			verflag.PrintAndExitIfRequested()
-
-			cloudProviderFlag := cmd.Flags().Lookup("cloud-provider")
-			if cloudProviderFlag.Value.String() == "" {
-				cloudProviderFlag.Value.Set(cloudProviderName)
-			}
 			cliflag.PrintFlags(cmd.Flags())
 
 			c, err := s.Config(knownControllers(), app.ControllersDisabledByDefault.List())
@@ -50,7 +44,7 @@ func NewCloudControllerManagerCommand() *cobra.Command {
 				os.Exit(1)
 			}
 
-			cloud := initializeCloudProvider(cloudProviderFlag.Value.String(), c)
+			cloud := initializeCloudProvider(c.ComponentConfig.KubeCloudShared.CloudProvider.Name, c)
 			controllerInitializers := app.DefaultControllerInitializers(c.Complete(), cloud)
 
 			fs := pflag.NewFlagSet("fs", pflag.ContinueOnError)
@@ -69,41 +63,39 @@ func NewCloudControllerManagerCommand() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
 			}
-		},
-		Args: func(cmd *cobra.Command, args []string) error {
-			for _, arg := range args {
-				if len(arg) > 0 {
-					return fmt.Errorf("%q does not take any arguments, got %q", cmd.CommandPath(), args)
-				}
-			}
-			return nil
+
 		},
 	}
+
+	fs := cmd.Flags()
 	namedFlagSets := s.Flags(knownControllers(), app.ControllersDisabledByDefault.List())
-	setupAdditionalFlags(cmd, namedFlagSets)
-
-	return cmd
-}
-
-func setupAdditionalFlags(command *cobra.Command, namedFlagSets flag.NamedFlagSets) {
-	fs := command.Flags()
 	verflag.AddFlags(namedFlagSets.FlagSet("global"))
-	globalflag.AddGlobalFlags(namedFlagSets.FlagSet("global"), command.Name())
+	globalflag.AddGlobalFlags(namedFlagSets.FlagSet("global"), cmd.Name())
 
+	if flag.CommandLine.Lookup("cloud-provider-gce-lb-src-cidrs") != nil {
+		// hoist this flag from the global flagset to preserve the commandline until
+		// the gce cloudprovider is removed.
+		globalflag.Register(namedFlagSets.FlagSet("generic"), "cloud-provider-gce-lb-src-cidrs")
+	}
+	if flag.CommandLine.Lookup("cloud-provider-gce-l7lb-src-cidrs") != nil {
+		globalflag.Register(namedFlagSets.FlagSet("generic"), "cloud-provider-gce-l7lb-src-cidrs")
+	}
 	for _, f := range namedFlagSets.FlagSets {
 		fs.AddFlagSet(f)
 	}
 	usageFmt := "Usage:\n  %s\n"
-	cols, _, _ := term.TerminalSize(command.OutOrStdout())
-	command.SetUsageFunc(func(cmd *cobra.Command) error {
+	cols, _, _ := term.TerminalSize(cmd.OutOrStdout())
+	cmd.SetUsageFunc(func(cmd *cobra.Command) error {
 		fmt.Fprintf(cmd.OutOrStderr(), usageFmt, cmd.UseLine())
 		cliflag.PrintSections(cmd.OutOrStderr(), namedFlagSets, cols)
 		return nil
 	})
-	command.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(cmd.OutOrStdout(), "%s\n\n"+usageFmt, cmd.Long, cmd.UseLine())
 		cliflag.PrintSections(cmd.OutOrStdout(), namedFlagSets, cols)
 	})
+
+	return cmd
 }
 
 func initializeCloudProvider(name string, config *config.Config) cloudprovider.Interface {
@@ -137,10 +129,4 @@ func initializeCloudProvider(name string, config *config.Config) cloudprovider.I
 
 func knownControllers() []string {
 	return []string{"cloud-node", "cloud-node-lifecycle", "service", "route"}
-}
-
-func startNodeIpamControllerWrapper(ccmconfig *config.CompletedConfig, nodeipamconfig nodeipamconfig.NodeIPAMControllerConfiguration, cloud cloudprovider.Interface) func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
-	return func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
-		return startNodeIpamController(ccmconfig, nodeipamconfig, ctx, cloud)
-	}
 }

@@ -45,6 +45,12 @@ const (
 	defaultNodeMaskCIDRIPv6 = 64
 )
 
+func startNodeIpamControllerWrapper(ccmconfig *cloudcontrollerconfig.CompletedConfig, nodeipamconfig nodeipamconfig.NodeIPAMControllerConfiguration, cloud cloudprovider.Interface) func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
+	return func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
+		return startNodeIpamController(ccmconfig, nodeipamconfig, ctx, cloud)
+	}
+}
+
 func startNodeIpamController(ccmconfig *cloudcontrollerconfig.CompletedConfig, nodeipamconfig nodeipamconfig.NodeIPAMControllerConfiguration, ctx genericcontrollermanager.ControllerContext, cloud cloudprovider.Interface) (http.Handler, bool, error) {
 	var serviceCIDR *net.IPNet
 	var secondaryServiceCIDR *net.IPNet
