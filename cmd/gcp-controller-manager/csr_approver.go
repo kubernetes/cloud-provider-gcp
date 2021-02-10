@@ -196,14 +196,14 @@ func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bo
 			Type:    capi.CertificateApproved,
 			Reason:  "AutoApproved",
 			Message: msg,
-			Status: v1.ConditionTrue,
+			Status:  v1.ConditionTrue,
 		})
 	} else {
 		csr.Status.Conditions = append(csr.Status.Conditions, capi.CertificateSigningRequestCondition{
 			Type:    capi.CertificateDenied,
 			Reason:  "AutoDenied",
 			Message: msg,
-			Status: v1.ConditionTrue,
+			Status:  v1.ConditionTrue,
 		})
 	}
 	updateRecordMetric := csrmetrics.OutboundRPCStartRecorder("k8s.CertificateSigningRequests.updateApproval")
@@ -366,6 +366,14 @@ func validateNodeServerCert(ctx *controllerContext, csr *capi.CertificateSigning
 				continue
 			}
 			return false, err
+		}
+
+		for _, dns := range x509cr.DNSNames {
+			// DNSName should be as the format of [INSTANCE_NAME].c.[PROJECT_ID].internal when using the global DNS, and [INSTANCE_NAME].[ZONE].c.[PROJECT_ID].internal when using zonal DNS.
+			if dns != fmt.Sprintf("%s.c.%s.internal", instanceName, ctx.gcpCfg.ProjectID) && dns != fmt.Sprintf("%s.%s.c.%s.internal", instanceName, z, ctx.gcpCfg.ProjectID) {
+				klog.Infof("deny CSR %q: DNSName in CSR (%q) doesn't match default DNS format on instance %q", csr.Name, dns, instanceName)
+				return false, nil
+			}
 		}
 	scanIPs:
 		for _, ip := range x509cr.IPAddresses {
@@ -630,16 +638,16 @@ func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID 
 
 type foundError struct{}
 
-func (*foundError) Error() string{
+func (*foundError) Error() string {
 	return "found"
 }
 
 func groupHasInstance(ctx *controllerContext, groupLocation, groupName string, instanceID uint64) (bool, error) {
 	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstanceGroupManagersService.ListManagedInstances")
 	filter := func(response *compute.InstanceGroupManagersListManagedInstancesResponse) error {
-		for _, instance := range response.ManagedInstances{
+		for _, instance := range response.ManagedInstances {
 			// If the instance is found we return foundError which allows us to exit early and
-			// not go through the rest of the pages. The ListManagedInstances call does not 
+			// not go through the rest of the pages. The ListManagedInstances call does not
 			// support filtering so we have to resort to this hack.
 			if instance.Id == instanceID {
 				return &foundError{}
