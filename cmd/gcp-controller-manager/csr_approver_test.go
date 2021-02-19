@@ -396,6 +396,7 @@ func TestValidators(t *testing.T) {
 			c.gcpCfg.Zones = []string{"z1", "z0"}
 			b.requestor = "system:node:i0"
 			b.ips = []net.IP{net.ParseIP("1.2.3.4")}
+			b.dns = []string{"i0.z0.c.p0.internal", "i0.c.p0.internal"}
 		}
 		cases := []func(*csrBuilder, *controllerContext){goodCase}
 		testValidator(t, "good", cases, fn, true, false)
@@ -431,6 +432,16 @@ func TestValidators(t *testing.T) {
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
 				b.ips = []net.IP{net.ParseIP("1.2.3.5")}
+			},
+			// Not matching zonal DNS.
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				b.dns = []string{"i1.z0.c.p1.internal", "i0.c.p0.internal"}
+			},
+			// Not matching global DNS.
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				b.dns = []string{"i0.z0.c.p0.internal", "i1.c.p1.internal"}
 			},
 		}
 		testValidator(t, "bad", cases, fn, false, false)
