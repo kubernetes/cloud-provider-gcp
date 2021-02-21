@@ -3,8 +3,6 @@
 reviewers:
   - bowei
   - cjcullen
-  - gmarek
-  - jingax10
   - MaciekPytel
   - mtaufen
   - mwielgus
@@ -16,10 +14,11 @@ approvers:
   - bowei
   - cheftako
   - cjcullen
-  - gmarek
-  - jingax10
   - MaciekPytel
   - mtaufen
   - mwielgus
   - vishh
   - yujuhong
+emeritus_approvers:
+- gmarek
+- jingax10
