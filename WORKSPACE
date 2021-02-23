@@ -105,8 +105,14 @@ fetch_kube_release(
         #"kubernetes-manifests.tar.gz": "38946246fb192d6e877d0d04a7b0645980b983b8b81ca2a259c50a035ced815b7",
         "kubernetes-manifests.tar.gz": "bf99bd768afdda829f617038b10aafff7f8cd07071bd0e8b585f118bfbff9df7",
         # we do not currently make modifications to these release tars below
+<<<<<<< HEAD
         #"kubernetes-node-linux-amd64.tar.gz": "7128a3c647c93181b7b52b668eb3030b8beee025b8b4614f14f159874e47dc34",
         "kubernetes-node-linux-amd64.tar.gz": "5baa2b45bdca2dd09d03b9e2a4fb17e105c47972b600f7c2dcbdbaec2a956ae1",
+=======
+        #"kubernetes-node-linux-amd64.tar.gz": "d32e568a78230ee25de25ca5ba0d9fc9b5b783d0e41fadb983f318b338a70357",
+        "kubernetes-node-linux-amd64.tar.gz": "7128a3c647c93181b7b52b668eb3030b8beee025b8b4614f14f159874e47dc34",
+        "kubernetes-node-windows-amd64.tar.gz": "3e2a0560a3af45add14290f4dddc6e5720b34851b49b3a7f1a4144f1e35a0dcb",
+>>>>>>> a71f515f (Add initial Windows crossbuild support.)
     },
     version = "v1.20.0",
 )

@@ -27,6 +27,20 @@ pkg_tar(
     ],
 )
 
+pkg_tar(
+    name = "kubernetes-node-windows-amd64",
+    srcs = [
+        "//cmd/auth-provider-gcp",
+    ],
+    extension = "tar.gz",
+    remap_paths = {
+        "/auth-provider-gcp.exe": "kubernetes/node/bin/auth-provider-gcp.exe",
+    },
+    deps = [
+        "@io_k8s_release//:kubernetes-node-windows-amd64",
+    ],
+)
+
 genrule(
     name = "rename_ccm_image",
     srcs = ["//cmd/cloud-controller-manager:image.tar"],
@@ -75,6 +89,19 @@ genrule(
     cmd = "shasum -a512 $< > $<.sha512",
 )
 
+genrule(
+    name = "gen_windows_node_shasum",
+    srcs = [
+        ":kubernetes-node-windows-amd64.tar.gz",
+    ],
+    outs = [
+        ":kubernetes-node-windows-amd64.tar.gz.sha512",
+    ],
+    output_to_bindir = 1,
+    cmd = "shasum -a512 $< > $<.sha512",
+)
+
+
 pkg_tar(
     name = "kubernetes-manifests",
     extension = "tar.gz",
@@ -94,3 +121,11 @@ release_filegroup(
         "@io_k8s_release//:kubernetes-node-linux-amd64",
     ],
 )
+
+release_filegroup(
+    name = "release-tars-windows",
+    srcs = [
+        ":kubernetes-node-windows-amd64.tar.gz.sha512",
+         "@io_k8s_release//:kubernetes-node-windows-amd64",
+    ]
+) 
