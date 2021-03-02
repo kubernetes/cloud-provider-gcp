@@ -369,8 +369,9 @@ func validateNodeServerCert(ctx *controllerContext, csr *capi.CertificateSigning
 		}
 
 		for _, dns := range x509cr.DNSNames {
-			// DNSName should be as the format of [INSTANCE_NAME].c.[PROJECT_ID].internal when using the global DNS, and [INSTANCE_NAME].[ZONE].c.[PROJECT_ID].internal when using zonal DNS.
-			if dns != fmt.Sprintf("%s.c.%s.internal", instanceName, ctx.gcpCfg.ProjectID) && dns != fmt.Sprintf("%s.%s.c.%s.internal", instanceName, z, ctx.gcpCfg.ProjectID) {
+			// Linux DNSName should be as the format of [INSTANCE_NAME].c.[PROJECT_ID].internal when using the global DNS, and [INSTANCE_NAME].[ZONE].c.[PROJECT_ID].internal when using zonal DNS.
+			// Windows DNSName should be INSTANCE_NAME
+			if dns != instanceName && dns != fmt.Sprintf("%s.c.%s.internal", instanceName, ctx.gcpCfg.ProjectID) && dns != fmt.Sprintf("%s.%s.c.%s.internal", instanceName, z, ctx.gcpCfg.ProjectID) {
 				klog.Infof("deny CSR %q: DNSName in CSR (%q) doesn't match default DNS format on instance %q", csr.Name, dns, instanceName)
 				return false, nil
 			}
