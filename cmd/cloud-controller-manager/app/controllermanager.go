@@ -3,7 +3,6 @@ package app
 import (
 	"flag"
 	"fmt"
-	"github.com/spf13/pflag"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -17,8 +16,6 @@ import (
 	"k8s.io/component-base/term"
 	"k8s.io/component-base/version/verflag"
 	"k8s.io/klog/v2"
-	nodeipamcontrolleroptions "k8s.io/kubernetes/cmd/kube-controller-manager/app/options"
-	nodeipamconfig "k8s.io/kubernetes/pkg/controller/nodeipam/config"
 )
 
 const cloudProviderName = "gce"
@@ -46,19 +43,6 @@ the cloud specific control loops shipped with Kubernetes.`,
 
 			cloud := initializeCloudProvider(c.ComponentConfig.KubeCloudShared.CloudProvider.Name, c)
 			controllerInitializers := app.DefaultControllerInitializers(c.Complete(), cloud)
-
-			fs := pflag.NewFlagSet("fs", pflag.ContinueOnError)
-			var nodeIPAMControllerOptions nodeipamcontrolleroptions.NodeIPAMControllerOptions
-			nodeIPAMControllerOptions.AddFlags(fs)
-			errors := nodeIPAMControllerOptions.Validate()
-			if len(errors) > 0 {
-				klog.Fatal("NodeIPAM controller values are not properly.")
-			}
-			var nodeipamconfig nodeipamconfig.NodeIPAMControllerConfiguration
-			nodeIPAMControllerOptions.ApplyTo(&nodeipamconfig)
-
-			controllerInitializers["nodeipam"] = startNodeIpamControllerWrapper(c.Complete(), nodeipamconfig, cloud)
-
 			if err := app.Run(c.Complete(), controllerInitializers, wait.NeverStop); err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
