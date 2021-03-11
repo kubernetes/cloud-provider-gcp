@@ -116,24 +116,14 @@ pkg_tar(
 release_filegroup(
     name = "release-tars",
     conditioned_srcs = {
-         "@io_bazel_rules_go//go/platform:linux_amd64": [":release-tars-linux"],
-         "@io_bazel_rules_go//go/platform:windows_amd64": [":release-tars-windows"],
-        },
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            ":kubernetes-manifests.tar.gz.sha512",
+            ":kubernetes-server-linux-amd64.tar.gz.sha512",
+            "@io_k8s_release//:kubernetes-node-linux-amd64",
+        ],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            ":kubernetes-node-windows-amd64.tar.gz.sha512",
+            "@io_k8s_release//:kubernetes-node-windows-amd64",
+        ]
+    }
 )
-
-release_filegroup(
-    name = "release-tars-linux",
-    srcs = [
-        ":kubernetes-manifests.tar.gz.sha512",
-        ":kubernetes-server-linux-amd64.tar.gz.sha512",
-        "@io_k8s_release//:kubernetes-node-linux-amd64",
-    ],
-)
-
-release_filegroup(
-    name = "release-tars-windows",
-    srcs = [
-        ":kubernetes-node-windows-amd64.tar.gz.sha512",
-         "@io_k8s_release//:kubernetes-node-windows-amd64",
-    ]
-) 
