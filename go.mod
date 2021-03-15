@@ -65,7 +65,7 @@ require (
 	honnef.co/go/tools v0.0.1-2020.1.5 // indirect
 	k8s.io/controller-manager v0.20.0
 	k8s.io/klog/v2 v2.4.0
-	k8s.io/utils v0.0.0-20210111153108-fddb29f9d009
+	k8s.io/utils v0.0.0-20210111153108-fddb29f9d009 // indirect
 	sigs.k8s.io/kubetest2 v0.0.0-20210309183806-9230b4e73d8d // indirect
 )
 
