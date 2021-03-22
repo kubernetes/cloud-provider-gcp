@@ -8,7 +8,6 @@ require (
 	k8s.io/cloud-provider v0.20.0
 	k8s.io/component-base v0.20.0
 	k8s.io/kubelet v0.20.0
-	k8s.io/kubernetes v1.20.0
 	k8s.io/legacy-cloud-providers v0.20.0
 )
 
