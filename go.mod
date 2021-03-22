@@ -4,7 +4,7 @@ require (
 	k8s.io/api v0.20.0
 	k8s.io/apimachinery v0.20.0
 	k8s.io/apiserver v0.20.0
-	k8s.io/client-go v9.0.0+incompatible
+	k8s.io/client-go v0.20.0
 	k8s.io/cloud-provider v0.20.0
 	k8s.io/component-base v0.20.0
 	k8s.io/kubelet v0.20.0
