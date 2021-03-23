@@ -16,7 +16,7 @@ go_binary(
 
 go_library(
     name = "go_default_library",
-    srcs = ["controller-manager.go"],
+    srcs = ["main.go"],
     importpath = "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager",
     deps = [
         "//cmd/cloud-controller-manager/app:go_default_library",

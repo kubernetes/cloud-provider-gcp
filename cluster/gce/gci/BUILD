@@ -82,9 +82,9 @@ go_test(
         "//vendor/k8s.io/apiserver/pkg/apis/audit/install:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/audit:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/audit/policy:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authentication/serviceaccount:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authentication/user:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizer:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/api/legacyscheme:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/serviceaccount:go_default_library",
     ],
 )

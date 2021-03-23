@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "context.go",
         "doc.go",
+        "received_time.go",
         "requestinfo.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/endpoints/request",

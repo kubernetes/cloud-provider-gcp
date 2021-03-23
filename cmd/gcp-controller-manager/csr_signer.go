@@ -21,13 +21,14 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	capi "k8s.io/api/certificates/v1"
 	certsv1 "k8s.io/api/certificates/v1"
 	certsv1b1 "k8s.io/api/certificates/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/wait"
+	apiserveroptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/client-go/rest"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
@@ -40,23 +41,23 @@ import (
 
 var (
 	groupVersions = []schema.GroupVersion{capi.SchemeGroupVersion}
-)
 
-// ClusterSigningGKERetryBackoff is the backoff between GKE cluster signing retries.
-const ClusterSigningGKERetryBackoff = 500 * time.Millisecond
+	// ClusterSigningGKERetryBackoff is the backoff between GKE cluster signing retries.
+	ClusterSigningGKERetryBackoff *wait.Backoff = apiserveroptions.DefaultAuthWebhookRetryBackoff()
+)
 
 // gkeSigner uses external calls to GKE in order to sign certificate signing
 // requests.
 type gkeSigner struct {
 	webhook      *webhook.GenericWebhook
 	ctx          *controllerContext
-	retryBackoff time.Duration
+	retryBackoff *wait.Backoff
 	validators   []csrValidator
 }
 
 // newGKESigner will create a new instance of a gkeSigner.
 func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
-	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, ctx.clusterSigningGKEKubeconfig, groupVersions, ClusterSigningGKERetryBackoff, nil)
+	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, ctx.clusterSigningGKEKubeconfig, groupVersions, *ClusterSigningGKERetryBackoff, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +132,7 @@ func (s *gkeSigner) metricLabel(csr *capi.CertificateSigningRequest, x509cr *x50
 func (s *gkeSigner) sign(csr *capi.CertificateSigningRequest) (*capi.CertificateSigningRequest, error) {
 	var statusCode int
 	var result rest.Result
-	webhook.WithExponentialBackoff(context.TODO(), ClusterSigningGKERetryBackoff, func() error {
+	webhook.WithExponentialBackoff(context.TODO(), *ClusterSigningGKERetryBackoff, func() error {
 		recordMetric := csrmetrics.OutboundRPCStartRecorder("container.webhook.Sign")
 		result = s.webhook.RestClient.Post().Body(csr).Do(context.TODO())
 		if result.Error() != nil {

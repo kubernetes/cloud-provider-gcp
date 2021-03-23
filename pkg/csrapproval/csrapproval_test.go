@@ -34,7 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 	testclient "k8s.io/client-go/testing"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 func init() {

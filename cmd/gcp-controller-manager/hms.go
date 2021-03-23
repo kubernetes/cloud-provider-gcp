@@ -24,13 +24,13 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	apiserveroptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/client-go/rest"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
 const (
-	hmsRetryBackoff   = 500 * time.Millisecond
 	hmsRequestTimeout = 30 * time.Second
 )
 
@@ -52,7 +52,7 @@ func newHMSClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*h
 		return nil, fmt.Errorf("failed to create REST client for HMS from config %v: %v", config, err)
 	}
 	return &hmsClient{
-		webhook: &webhook.GenericWebhook{client, hmsRetryBackoff, webhook.DefaultShouldRetry},
+		webhook: &webhook.GenericWebhook{client, *apiserveroptions.DefaultAuthWebhookRetryBackoff(), webhook.DefaultShouldRetry},
 	}, nil
 }
 

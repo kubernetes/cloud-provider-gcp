@@ -27,9 +27,9 @@ import (
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/provider"
-	credentialproviderapi "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider"
 	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	klog "k8s.io/klog/v2"
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider"
 )
 
 const (

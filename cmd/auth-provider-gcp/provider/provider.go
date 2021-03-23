@@ -22,9 +22,9 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	credentialproviderapi "k8s.io/cloud-provider-gcp/pkg/apis/credentialprovider"
 	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider"
 )
 
 const (
