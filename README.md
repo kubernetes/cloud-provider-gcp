@@ -72,16 +72,8 @@ go get github.com/bazelbuild/bazelisk
 alias bazel=bazelisk
 ```
 
-During development gazelle may be required to re-generate `BUILD` files.
-
-To install:
-
-```sh
-go get github.com/bazelbuild/bazel-gazelle/cmd/gazelle
-```
-
 To re-generate `BUILD` files:
 
 ```sh
-bazel run //:gazelle
+tools/update_bazel.sh
 ```
