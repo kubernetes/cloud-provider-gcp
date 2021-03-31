@@ -4,9 +4,11 @@ go 1.15
 
 require (
 	cloud.google.com/go v0.65.0
+	github.com/GoogleCloudPlatform/k8s-cloud-provider v0.0.0-20200415212048-7901bc822317
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/gofrs/flock v0.7.1
 	github.com/gogo/protobuf v1.3.1
+	github.com/google/go-cmp v0.5.2
 	github.com/google/go-tpm v0.2.0
 	github.com/prometheus/client_golang v1.7.1
 	github.com/prometheus/client_model v0.2.0
@@ -31,6 +33,7 @@ require (
 	k8s.io/kubelet v0.20.0
 	k8s.io/kubernetes v1.20.0
 	k8s.io/legacy-cloud-providers v0.20.0
+	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 )
 
 replace (
