@@ -1,5 +1,7 @@
+// +build !providerless
+
 /*
-Copyright 2014 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +16,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package gce is an implementation of Interface, LoadBalancer
-// and Instances for Google Compute Engine.
-package gce // import "k8s.io/legacy-cloud-providers/gce"
+package gce
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestVerifyMetricLabelCardinality(t *testing.T) {
+	mc := newGenericMetricContext("foo", "get", "us-central1", "<n/a>", "alpha")
+	assert.Len(t, mc.attributes, len(metricLabels), "cardinalities of labels and values must match")
+}
