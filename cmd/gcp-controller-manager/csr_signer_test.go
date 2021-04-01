@@ -50,7 +50,7 @@ users:
 var (
 	statusApproved = capi.CertificateSigningRequestStatus{
 		Conditions: []capi.CertificateSigningRequestCondition{
-			capi.CertificateSigningRequestCondition{Type: capi.CertificateApproved},
+			{Type: capi.CertificateApproved},
 		},
 	}
 )
