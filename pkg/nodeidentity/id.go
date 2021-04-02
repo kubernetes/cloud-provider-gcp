@@ -10,7 +10,7 @@ import (
 	"cloud.google.com/go/compute/metadata"
 )
 
-// CloudComputeInstanceIdentifierOIDis an x509 Extension OID for VM Identity info.
+// CloudComputeInstanceIdentifierOID is an x509 Extension OID for VM Identity info.
 var CloudComputeInstanceIdentifierOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 1, 21}
 
 // Identity uniquely identifies a GCE VM.
