@@ -487,7 +487,7 @@ func TestConfigMapPersist(t *testing.T) {
 			desc:        "correct serialization for empty namespace",
 			keyOverride: wantCMKey,
 			testSAMap: map[serviceAccount]gsaEmail{
-				serviceAccount{"", "namespaceLess"}: gsaEmail("yetanothergsa@random.com"),
+				{"", "namespaceLess"}: gsaEmail("yetanothergsa@random.com"),
 			},
 			wantActions: []ktesting.Action{
 				ktesting.NewCreateAction(cmRes, verifiedSAConfigMapNamespace,
