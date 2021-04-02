@@ -52,7 +52,7 @@ func newHMSClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*h
 		return nil, fmt.Errorf("failed to create REST client for HMS from config %v: %v", config, err)
 	}
 	return &hmsClient{
-		webhook: &webhook.GenericWebhook{client, *apiserveroptions.DefaultAuthWebhookRetryBackoff(), webhook.DefaultShouldRetry},
+		webhook: &webhook.GenericWebhook{RestClient: client, RetryBackoff: *apiserveroptions.DefaultAuthWebhookRetryBackoff(), ShouldRetry: webhook.DefaultShouldRetry},
 	}, nil
 }
 

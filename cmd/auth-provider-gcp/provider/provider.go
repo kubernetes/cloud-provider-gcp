@@ -38,7 +38,7 @@ const (
 func MakeRegistryProvider(transport *http.Transport) *gcpcredential.ContainerRegistryProvider {
 	httpClient := makeHTTPClient(transport)
 	provider := &gcpcredential.ContainerRegistryProvider{
-		gcpcredential.MetadataProvider{Client: httpClient},
+		MetadataProvider: gcpcredential.MetadataProvider{Client: httpClient},
 	}
 	return provider
 }
@@ -47,7 +47,7 @@ func MakeRegistryProvider(transport *http.Transport) *gcpcredential.ContainerReg
 func MakeDockerConfigProvider(transport *http.Transport) *gcpcredential.DockerConfigKeyProvider {
 	httpClient := makeHTTPClient(transport)
 	provider := &gcpcredential.DockerConfigKeyProvider{
-		gcpcredential.MetadataProvider{Client: httpClient},
+		MetadataProvider: gcpcredential.MetadataProvider{Client: httpClient},
 	}
 	return provider
 }
@@ -56,7 +56,7 @@ func MakeDockerConfigProvider(transport *http.Transport) *gcpcredential.DockerCo
 func MakeDockerConfigURLProvider(transport *http.Transport) *gcpcredential.DockerConfigURLKeyProvider {
 	httpClient := makeHTTPClient(transport)
 	provider := &gcpcredential.DockerConfigURLKeyProvider{
-		gcpcredential.MetadataProvider{Client: httpClient},
+		MetadataProvider: gcpcredential.MetadataProvider{Client: httpClient},
 	}
 	return provider
 }
@@ -92,7 +92,7 @@ func GetResponse(image string, provider credentialconfig.DockerConfigProvider) (
 		return nil, err
 	}
 	if cacheDuration != 0 {
-		response.CacheDuration = &metav1.Duration{cacheDuration}
+		response.CacheDuration = &metav1.Duration{Duration: cacheDuration}
 	}
 	response.TypeMeta.Kind = apiKind
 	response.TypeMeta.APIVersion = apiVersion

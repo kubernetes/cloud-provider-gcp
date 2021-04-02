@@ -585,8 +585,8 @@ func TestValidators(t *testing.T) {
 			},
 			func(b *csrBuilder, c *controllerContext) {
 				// VM from nodeidentity doesn't exist
-				fakeCA.regenerateValidCert(t, nodeidentity.Identity{"z0", 1, "i9", 2, "p0"})
-				defer fakeCA.regenerateValidCert(t, nodeidentity.Identity{"z0", 1, "i0", 2, "p0"})
+				fakeCA.regenerateValidCert(t, nodeidentity.Identity{Zone: "z0", ID: 1, Name: "i9", ProjectID: 2, ProjectName: "p0"})
+				defer fakeCA.regenerateValidCert(t, nodeidentity.Identity{Zone: "z0", ID: 1, Name: "i0", ProjectID: 2, ProjectName: "p0"})
 				goodCase(b, c)
 			},
 
@@ -629,7 +629,7 @@ func TestValidators(t *testing.T) {
 			b.requestor = tpmKubeletUsername
 			b.cn = "system:node:i0"
 
-			nodeID := nodeidentity.Identity{"z0", 1, "i0", 2, "p0"}
+			nodeID := nodeidentity.Identity{Zone: "z0", ID: 1, Name: "i0", ProjectID: 2, ProjectName: "p0"}
 			b.extraPEM["VM IDENTITY"], err = json.Marshal(nodeID)
 			if err != nil {
 				t.Fatalf("marshaling nodeID: %v", err)
@@ -646,7 +646,7 @@ func TestValidators(t *testing.T) {
 				// Instance is in a regional InstanceGroup, different zone from
 				// cluster.
 				b.cn = "system:node:i1"
-				nodeID := nodeidentity.Identity{"r0-a", 1, "i1", 2, "p0"}
+				nodeID := nodeidentity.Identity{Zone: "r0-a", ID: 1, Name: "i1", ProjectID: 2, ProjectName: "p0"}
 				b.extraPEM["VM IDENTITY"], err = json.Marshal(nodeID)
 				if err != nil {
 					t.Fatalf("marshaling nodeID: %v", err)
@@ -718,7 +718,7 @@ func TestValidators(t *testing.T) {
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
 				// VM from nodeidentity doesn't exist
-				nodeID := nodeidentity.Identity{"z0", 1, "i9", 2, "p0"}
+				nodeID := nodeidentity.Identity{Zone: "z0", ID: 1, Name: "i9", ProjectID: 2, ProjectName: "p0"}
 				b.extraPEM["VM IDENTITY"], err = json.Marshal(nodeID)
 				if err != nil {
 					t.Fatalf("marshaling nodeID: %v", err)
