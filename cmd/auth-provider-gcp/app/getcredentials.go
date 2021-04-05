@@ -38,31 +38,38 @@ const (
 	dockerConfigURLAuthFlow = "dockercfg-url"
 )
 
+// CredentialOptions contains a representation of the options passed to the credential provider.
 type CredentialOptions struct {
 	AuthFlow string
 }
 
+// AuthFlowFlagError represents an error that occurred during flag validation.
 type AuthFlowFlagError struct {
 	flagValue string
 }
 
+// Error implements error.Error.
 func (a *AuthFlowFlagError) Error() string {
 	return fmt.Sprintf("invalid value %q for authFlow (must be one of %q, %q, or %q)", a.flagValue, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
 }
 
+// Is implements the Is function that errors.Is checks for.
 func (a *AuthFlowFlagError) Is(err error) bool {
 	_, ok := err.(*AuthFlowFlagError)
 	return ok
 }
 
+// AuthFlowTypeError represents an indication that an unrecognized auth flow was passed.
 type AuthFlowTypeError struct {
 	requestedFlow string
 }
 
+// Error implements error.Error.
 func (p *AuthFlowTypeError) Error() string {
 	return fmt.Sprintf("unrecognized auth flow %q", p.requestedFlow)
 }
 
+// Is implements the Is function that errors.Is checks for.
 func (p *AuthFlowTypeError) Is(err error) bool {
 	_, ok := err.(*AuthFlowTypeError)
 	return ok
