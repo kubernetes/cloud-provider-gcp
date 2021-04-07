@@ -36,6 +36,7 @@ go_library(
         "//cmd/gcp-controller-manager:__subpackages__",
     ],
     deps = [
+        "//cloud-providers/gce:go_default_library",
         "//cmd/gcp-controller-manager/healthz:go_default_library",
         "//pkg/csrmetrics:go_default_library",
         "//pkg/nodeidentity:go_default_library",
@@ -90,7 +91,6 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/certificates:go_default_library",
-        "//vendor/k8s.io/legacy-cloud-providers/gce:go_default_library",
     ],
 )
 

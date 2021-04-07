@@ -19,11 +19,11 @@ go_library(
     srcs = ["main.go"],
     importpath = "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager",
     deps = [
+        "//cloud-providers/gce:go_default_library",
         "//cmd/cloud-controller-manager/app:go_default_library",
         "//vendor/k8s.io/component-base/logs:go_default_library",
         "//vendor/k8s.io/component-base/metrics/prometheus/clientgo:go_default_library",
         "//vendor/k8s.io/component-base/metrics/prometheus/version:go_default_library",
-        "//vendor/k8s.io/legacy-cloud-providers/gce:go_default_library",
     ],
 )
 

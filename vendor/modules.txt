@@ -924,9 +924,6 @@ k8s.io/kubernetes/pkg/security/apparmor
 k8s.io/kubernetes/pkg/util/hash
 k8s.io/kubernetes/pkg/util/parsers
 k8s.io/kubernetes/pkg/util/taints
-# k8s.io/legacy-cloud-providers v0.20.0 => k8s.io/legacy-cloud-providers v0.20.0
-## explicit
-k8s.io/legacy-cloud-providers/gce
 # k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 k8s.io/utils/buffer
 k8s.io/utils/integer
