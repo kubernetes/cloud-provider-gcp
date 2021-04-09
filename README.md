@@ -20,6 +20,22 @@ This command will build and publish
 IMAGE_REGISTRY=example.com IMAGE_REPO=my-repo IMAGE_TAG=v1 bazel run //cmd/gcp-controller-manager:publish
 ```
 
+# Cross-compiling
+
+Selecting the target platform is done with the `--platforms` option with `bazel`.
+This command builds release tarballs for Windows:
+
+```
+bazel build --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64 //release:release-tars
+```
+
+This command explicitly targets Linux as the target platform:
+
+```
+bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 //release:release-tars
+```
+
+
 # Dependency management
 
 Dependencies are managed using [Go modules](https://github.com/golang/go/wiki/Modules) (`go mod` subcommands).

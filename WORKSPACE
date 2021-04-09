@@ -107,6 +107,7 @@ fetch_kube_release(
         # we do not currently make modifications to these release tars below
         #"kubernetes-node-linux-amd64.tar.gz": "7128a3c647c93181b7b52b668eb3030b8beee025b8b4614f14f159874e47dc34",
         "kubernetes-node-linux-amd64.tar.gz": "5baa2b45bdca2dd09d03b9e2a4fb17e105c47972b600f7c2dcbdbaec2a956ae1",
+        "kubernetes-node-windows-amd64.tar.gz": "0756353944bb182984384f398df3586c14b7a6228d18cef27a294a3b69a4f4d1",
     },
     version = "v1.20.0",
 )
