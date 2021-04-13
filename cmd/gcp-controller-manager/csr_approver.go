@@ -507,31 +507,7 @@ func validateTPMAttestation(ctx *controllerContext, csr *capi.CertificateSigning
 	return true, nil
 }
 
-func ekPubAndIDFromCert(ctx *controllerContext, blocks map[string]*pem.Block) (*rsa.PublicKey, *nodeidentity.Identity, error) {
-	// When we switch away from ekPubAndIDFromAPI, remove this. Just a
-	// safe-guard against accidental execution.
-	panic("ekPubAndIDFromCert should not be reachable")
-
-	attestCert := blocks["ATTESTATION CERTIFICATE"].Bytes
-	aikCert, err := x509.ParseCertificate(attestCert)
-	if err != nil {
-		return nil, nil, fmt.Errorf("parsing ATTESTATION_CERTIFICATE: %v", err)
-	}
-	if err := ctx.gcpCfg.TPMEndorsementCACache.verify(aikCert); err != nil {
-		// TODO(awly): handle temporary CA unavailability without denying CSRs.
-		return nil, nil, fmt.Errorf("verifying EK certificate validity: %v", err)
-	}
-	aikPub, ok := aikCert.PublicKey.(*rsa.PublicKey)
-	if !ok {
-		return nil, nil, fmt.Errorf("public key in ATTESTATION CERTIFICATE is %T, want *rsa.PublicKey", aikCert.PublicKey)
-	}
-	nodeID, err := nodeidentity.FromAIKCert(aikCert)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed extracting VM identity from EK certificate: %v", err)
-	}
-
-	return aikPub, &nodeID, nil
-}
+// Delete func ekPubAndIDFromCert(#200)
 
 func ekPubAndIDFromAPI(ctx *controllerContext, blocks map[string]*pem.Block) (*rsa.PublicKey, *nodeidentity.Identity, error) {
 	nodeIDRaw := blocks["VM IDENTITY"].Bytes

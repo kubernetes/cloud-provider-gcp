@@ -121,7 +121,7 @@ func initFakeCA(t *testing.T, srvURL string) *fakeCA {
 	}
 	ca.intermediateCertRaw, ca.intermediateCert, ca.intermediateCertKey = makeCert(t, interTmpl, rootCert, rootKey)
 
-	ca.regenerateValidCert(t, nodeidentity.Identity{"z0", 1, "i0", 2, "p0"})
+	ca.regenerateValidCert(t, nodeidentity.Identity{Zone: "z0", ID: 1, Name: "i0", ProjectID: 2, ProjectName: "p0"})
 
 	_, ca.invalidCerts["revoked"], _ = makeCert(t, &x509.Certificate{
 		SerialNumber:          big.NewInt(4),

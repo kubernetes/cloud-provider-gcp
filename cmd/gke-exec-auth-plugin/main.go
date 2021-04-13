@@ -95,7 +95,7 @@ func writeResponse(token string, key, cert []byte) error {
 	resp := &clientauthentication.ExecCredential{
 		Status: &clientauthentication.ExecCredentialStatus{
 			// Make Kubelet poke us every hour, we'll cache the cert for longer.
-			ExpirationTimestamp:   &metav1.Time{time.Now().Add(responseExpiry)},
+			ExpirationTimestamp:   &metav1.Time{Time: time.Now().Add(responseExpiry)},
 			Token:                 token,
 			ClientCertificateData: string(cert),
 			ClientKeyData:         string(key),
