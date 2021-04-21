@@ -76,3 +76,20 @@ not implementing modules correctly.
 ```
 go mod tidy && ./tools/update_vendor.sh
 ```
+
+# Bazel
+
+Bazel is required to build and release cloud-provider-gcp.
+
+To install:
+
+```sh
+go get github.com/bazelbuild/bazelisk
+alias bazel=bazelisk
+```
+
+To re-generate `BUILD` files:
+
+```sh
+tools/update_bazel.sh
+```
