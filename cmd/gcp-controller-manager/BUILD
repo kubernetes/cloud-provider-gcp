@@ -80,6 +80,7 @@ go_library(
         "//vendor/k8s.io/client-go/tools/leaderelection/resourcelock:go_default_library",
         "//vendor/k8s.io/client-go/tools/record:go_default_library",
         "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
+        "//vendor/k8s.io/cloud-provider-gcp/providers/gce:go_default_library",
         "//vendor/k8s.io/component-base/config:go_default_library",
         "//vendor/k8s.io/component-base/config/options:go_default_library",
         "//vendor/k8s.io/component-base/version/verflag:go_default_library",
@@ -90,7 +91,6 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/certificates:go_default_library",
-        "//vendor/k8s.io/legacy-cloud-providers/gce:go_default_library",
     ],
 )
 
