@@ -36,6 +36,10 @@ import (
 	"k8s.io/legacy-cloud-providers/gce"
 )
 
+const (
+	userAgentName = "gcp-controller-manager"
+)
+
 // gcpConfig groups GCP-specific configuration for all controllers.
 type gcpConfig struct {
 	ClusterName           string
@@ -88,6 +92,8 @@ func loadGCPConfig(gceConfigPath, gceAPIEndpointOverride string) (gcpConfig, err
 	if gceAPIEndpointOverride != "" {
 		a.Compute.BasePath = gceAPIEndpointOverride
 	}
+	a.Compute.UserAgent = userAgentName
+
 	a.BetaCompute, err = betacompute.New(client)
 	if err != nil {
 		return a, fmt.Errorf("creating GCE Beta API client: %v", err)
@@ -95,11 +101,12 @@ func loadGCPConfig(gceConfigPath, gceAPIEndpointOverride string) (gcpConfig, err
 	if gceAPIEndpointOverride != "" {
 		a.BetaCompute.BasePath = strings.Replace(gceAPIEndpointOverride, "v1", "beta", -1)
 	}
+	a.BetaCompute.UserAgent = userAgentName
+
 	a.Container, err = container.New(client)
 	if err != nil {
-		return a, fmt.Errorf("creating GCE API client: %v", err)
+		return a, fmt.Errorf("creating GKE API client: %v", err)
 	}
-
 	// Overwrite GKE API endpoint in case we're not running in prod.
 	gkeAPIEndpoint, err := metadata.Get("instance/attributes/gke-api-endpoint")
 	if err != nil {
@@ -112,6 +119,7 @@ func loadGCPConfig(gceConfigPath, gceAPIEndpointOverride string) (gcpConfig, err
 	if gkeAPIEndpoint != "" {
 		a.Container.BasePath = gkeAPIEndpoint
 	}
+	a.Container.UserAgent = userAgentName
 
 	// Get cluster zone from metadata server.
 	a.Location, err = metadata.Get("instance/attributes/cluster-location")
