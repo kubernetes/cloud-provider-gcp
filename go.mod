@@ -29,8 +29,19 @@ require (
 )
 
 replace (
+	cloud.google.com/go => cloud.google.com/go v0.65.0
+	github.com/gofrs/flock => github.com/gofrs/flock v0.7.1
+	github.com/google/go-tpm => github.com/google/go-tpm v0.2.0
+	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.7.1
+	github.com/spf13/cobra => github.com/spf13/cobra v1.1.1
+	github.com/spf13/pflag => github.com/spf13/pflag v1.0.5
+	github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
 	go.etcd.io/etcd => go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
+	golang.org/x/oauth2 => golang.org/x/oauth2 v0.0.0-20210112200429-01de73cf58bd
+	google.golang.org/api => google.golang.org/api v0.30.0
 	google.golang.org/grpc => google.golang.org/grpc v1.27.1
+	gopkg.in/gcfg.v1 => gopkg.in/gcfg.v1 v1.2.3
+	gopkg.in/warnings.v0 => gopkg.in/warnings.v0 v0.1.2
 
 	k8s.io/api => k8s.io/api v0.20.0
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.20.0
