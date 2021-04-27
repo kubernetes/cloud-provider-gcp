@@ -1,4 +1,4 @@
-# cloud.google.com/go v0.65.0
+# cloud.google.com/go v0.65.0 => cloud.google.com/go v0.65.0
 ## explicit
 cloud.google.com/go/compute/metadata
 # github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78
@@ -48,7 +48,7 @@ github.com/go-openapi/jsonreference
 github.com/go-openapi/spec
 # github.com/go-openapi/swag v0.19.5
 github.com/go-openapi/swag
-# github.com/gofrs/flock v0.7.1
+# github.com/gofrs/flock v0.7.1 => github.com/gofrs/flock v0.7.1
 ## explicit
 github.com/gofrs/flock
 # github.com/gogo/protobuf v1.3.1
@@ -70,7 +70,7 @@ github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
-# github.com/google/go-tpm v0.2.0
+# github.com/google/go-tpm v0.2.0 => github.com/google/go-tpm v0.2.0
 ## explicit
 github.com/google/go-tpm/tpm2
 github.com/google/go-tpm/tpmutil
@@ -119,7 +119,7 @@ github.com/opencontainers/go-digest
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/client_golang v1.7.1
+# github.com/prometheus/client_golang v1.7.1 => github.com/prometheus/client_golang v1.7.1
 ## explicit
 github.com/prometheus/client_golang/prometheus
 github.com/prometheus/client_golang/prometheus/internal
@@ -138,13 +138,13 @@ github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
 # github.com/sirupsen/logrus v1.6.0
 github.com/sirupsen/logrus
-# github.com/spf13/cobra v1.1.1
+# github.com/spf13/cobra v1.1.1 => github.com/spf13/cobra v1.1.1
 ## explicit
 github.com/spf13/cobra
-# github.com/spf13/pflag v1.0.5
+# github.com/spf13/pflag v1.0.5 => github.com/spf13/pflag v1.0.5
 ## explicit
 github.com/spf13/pflag
-# github.com/stretchr/testify v1.7.0
+# github.com/stretchr/testify v1.7.0 => github.com/stretchr/testify v1.7.0
 ## explicit
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
@@ -217,7 +217,7 @@ golang.org/x/net/idna
 golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
 golang.org/x/net/websocket
-# golang.org/x/oauth2 v0.0.0-20210112200429-01de73cf58bd
+# golang.org/x/oauth2 v0.0.0-20210112200429-01de73cf58bd => golang.org/x/oauth2 v0.0.0-20210112200429-01de73cf58bd
 ## explicit
 golang.org/x/oauth2
 golang.org/x/oauth2/google
@@ -240,7 +240,7 @@ golang.org/x/text/unicode/norm
 golang.org/x/text/width
 # golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 golang.org/x/time/rate
-# google.golang.org/api v0.30.0
+# google.golang.org/api v0.30.0 => google.golang.org/api v0.30.0
 ## explicit
 google.golang.org/api/compute/v0.alpha
 google.golang.org/api/compute/v0.beta
@@ -340,7 +340,7 @@ google.golang.org/protobuf/runtime/protoimpl
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
-# gopkg.in/gcfg.v1 v1.2.3
+# gopkg.in/gcfg.v1 v1.2.3 => gopkg.in/gcfg.v1 v1.2.3
 ## explicit
 gopkg.in/gcfg.v1
 gopkg.in/gcfg.v1/scanner
@@ -350,7 +350,7 @@ gopkg.in/gcfg.v1/types
 gopkg.in/inf.v0
 # gopkg.in/natefinch/lumberjack.v2 v2.0.0
 gopkg.in/natefinch/lumberjack.v2
-# gopkg.in/warnings.v0 v0.1.2
+# gopkg.in/warnings.v0 v0.1.2 => gopkg.in/warnings.v0 v0.1.2
 ## explicit
 gopkg.in/warnings.v0
 # gopkg.in/yaml.v2 v2.2.8
@@ -937,8 +937,19 @@ sigs.k8s.io/structured-merge-diff/v4/typed
 sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.2.0
 sigs.k8s.io/yaml
+# cloud.google.com/go => cloud.google.com/go v0.65.0
 # go.etcd.io/etcd => go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
 # google.golang.org/grpc => google.golang.org/grpc v1.27.1
+# github.com/gofrs/flock => github.com/gofrs/flock v0.7.1
+# github.com/google/go-tpm => github.com/google/go-tpm v0.2.0
+# github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.7.1
+# github.com/spf13/cobra => github.com/spf13/cobra v1.1.1
+# github.com/spf13/pflag => github.com/spf13/pflag v1.0.5
+# github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
+# golang.org/x/oauth2 => golang.org/x/oauth2 v0.0.0-20210112200429-01de73cf58bd
+# google.golang.org/api => google.golang.org/api v0.30.0
+# gopkg.in/gcfg.v1 => gopkg.in/gcfg.v1 v1.2.3
+# gopkg.in/warnings.v0 => gopkg.in/warnings.v0 v0.1.2
 # k8s.io/api => k8s.io/api v0.20.0
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.20.0
 # k8s.io/apimachinery => k8s.io/apimachinery v0.20.0
