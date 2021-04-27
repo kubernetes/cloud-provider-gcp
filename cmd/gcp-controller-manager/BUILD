@@ -40,6 +40,7 @@ go_library(
         "//pkg/csrmetrics:go_default_library",
         "//pkg/nodeidentity:go_default_library",
         "//pkg/tpmattest:go_default_library",
+        "//providers/gce:go_default_library",
         "//vendor/cloud.google.com/go/compute/metadata:go_default_library",
         "//vendor/github.com/google/go-tpm/tpm2:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus/promhttp:go_default_library",
@@ -90,7 +91,6 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/controller/certificates:go_default_library",
-        "//vendor/k8s.io/legacy-cloud-providers/gce:go_default_library",
     ],
 )
 

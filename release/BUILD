@@ -101,7 +101,6 @@ genrule(
     cmd = "shasum -a512 $< > $<.sha512",
 )
 
-
 pkg_tar(
     name = "kubernetes-manifests",
     extension = "tar.gz",
@@ -124,6 +123,6 @@ release_filegroup(
         "@io_bazel_rules_go//go/platform:windows_amd64": [
             ":kubernetes-node-windows-amd64.tar.gz.sha512",
             "@io_k8s_release//:kubernetes-node-windows-amd64",
-        ]
-    }
+        ],
+    },
 )

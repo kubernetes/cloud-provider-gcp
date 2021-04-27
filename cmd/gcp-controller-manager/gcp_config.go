@@ -22,6 +22,7 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
+	"k8s.io/cloud-provider-gcp/providers/gce"
 	"sort"
 	"strings"
 
@@ -32,8 +33,6 @@ import (
 	container "google.golang.org/api/container/v1"
 	gcfg "gopkg.in/gcfg.v1"
 	warnings "gopkg.in/warnings.v0"
-
-	"k8s.io/legacy-cloud-providers/gce"
 )
 
 const (
