@@ -22,6 +22,18 @@ up() {
 
 test(){
 	kubectl get all --all-namespaces
+	# TODO(jhf) remove smoke tests once we have proper tests.
+	kubectl create deploy nginx --image=mirror.gcr.io/library/nginx:latest
+	kubectl expose deploy/nginx --port=80 --target-port=80 --type=LoadBalancer
+	external_ip=""
+	while true; do
+		external_ip=$(kubectl get svc nginx -o template --template='{{range .status.loadBalancer.ingress}}{{.ip}}{{end}}')
+		if [ -n "$external_ip" ]; then
+			break
+		fi
+		sleep 1
+	done
+	curl -o/dev/null --quiet "http://$external_ip"
 }
 
 dumplogs(){
