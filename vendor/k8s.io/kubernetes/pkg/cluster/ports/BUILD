@@ -9,5 +9,4 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/cluster/ports",
     importpath = "k8s.io/kubernetes/pkg/cluster/ports",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/k8s.io/cloud-provider:go_default_library"],
 )

@@ -71,6 +71,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/server/storage:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/storagebackend:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/storagebackend/factory:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/storage/value:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/webhook:go_default_library",

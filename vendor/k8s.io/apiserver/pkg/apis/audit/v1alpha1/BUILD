@@ -11,6 +11,7 @@ go_library(
         "zz_generated.conversion.go",
         "zz_generated.deepcopy.go",
         "zz_generated.defaults.go",
+        "zz_generated.prerelease-lifecycle.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/apis/audit/v1alpha1",
     importpath = "k8s.io/apiserver/pkg/apis/audit/v1alpha1",
