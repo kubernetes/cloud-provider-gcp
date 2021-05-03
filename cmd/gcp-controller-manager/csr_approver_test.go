@@ -38,7 +38,7 @@ import (
 	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
-	authorization "k8s.io/api/authorization/v1beta1"
+	authorization "k8s.io/api/authorization/v1"
 	capi "k8s.io/api/certificates/v1"
 	certsv1 "k8s.io/api/certificates/v1"
 	v1 "k8s.io/api/core/v1"

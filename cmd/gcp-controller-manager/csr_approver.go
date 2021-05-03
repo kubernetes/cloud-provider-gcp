@@ -36,7 +36,7 @@ import (
 	container "google.golang.org/api/container/v1"
 	"google.golang.org/api/googleapi"
 
-	authorization "k8s.io/api/authorization/v1beta1"
+	authorization "k8s.io/api/authorization/v1"
 	capi "k8s.io/api/certificates/v1"
 	certsv1 "k8s.io/api/certificates/v1"
 	v1 "k8s.io/api/core/v1"
@@ -262,7 +262,7 @@ func (a *gkeApprover) authorizeSAR(csr *capi.CertificateSigningRequest, rattrs a
 			ResourceAttributes: &rattrs,
 		},
 	}
-	sar, err := a.ctx.client.AuthorizationV1beta1().SubjectAccessReviews().Create(context.TODO(), sar, metav1.CreateOptions{})
+	sar, err := a.ctx.client.AuthorizationV1().SubjectAccessReviews().Create(context.TODO(), sar, metav1.CreateOptions{})
 	if err != nil {
 		return false, err
 	}

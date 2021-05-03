@@ -7,7 +7,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/csrmetrics:go_default_library",
-        "//vendor/k8s.io/api/authorization/v1beta1:go_default_library",
+        "//vendor/k8s.io/api/authorization/v1:go_default_library",
         "//vendor/k8s.io/api/certificates/v1beta1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/client-go/kubernetes:go_default_library",
@@ -21,7 +21,7 @@ go_test(
     srcs = ["csrapproval_test.go"],
     embed = [":go_default_library"],
     deps = [
-        "//vendor/k8s.io/api/authorization/v1beta1:go_default_library",
+        "//vendor/k8s.io/api/authorization/v1:go_default_library",
         "//vendor/k8s.io/api/certificates/v1beta1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
