@@ -23,7 +23,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	authorization "k8s.io/api/authorization/v1beta1"
+	authorization "k8s.io/api/authorization/v1"
 	capi "k8s.io/api/certificates/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
@@ -248,7 +248,7 @@ func (vc *Context) subjectAccessReview(csr *capi.CertificateSigningRequest, ratt
 			ResourceAttributes: &rattrs,
 		},
 	}
-	sar, err := vc.Client.AuthorizationV1beta1().SubjectAccessReviews().Create(context.TODO(), sar, metav1.CreateOptions{})
+	sar, err := vc.Client.AuthorizationV1().SubjectAccessReviews().Create(context.TODO(), sar, metav1.CreateOptions{})
 	if err != nil {
 		return false, err
 	}
