@@ -27,23 +27,23 @@ function get-num-nodes {
 #   NUM_NODES
 #   NUM_WINDOWS_NODES
 function get-master-size {
-  local suggested_master_size=2
+  local suggested_master_size=1
   if [[ "$(get-num-nodes)" -gt "5" ]]; then
     suggested_master_size=2
   fi
   if [[ "$(get-num-nodes)" -gt "10" ]]; then
     suggested_master_size=4
   fi
-  if [[ "$(get-num-nodes)" -gt "100" ]]; then
+  if [[ "$(get-num-nodes)" -gt "50" ]]; then
     suggested_master_size=8
   fi
-  if [[ "$(get-num-nodes)" -gt "250" ]]; then
+  if [[ "$(get-num-nodes)" -gt "100" ]]; then
     suggested_master_size=16
   fi
   if [[ "$(get-num-nodes)" -gt "500" ]]; then
     suggested_master_size=32
   fi
-  if [[ "$(get-num-nodes)" -gt "3000" ]]; then
+  if [[ "$(get-num-nodes)" -gt "2000" ]]; then
     suggested_master_size=64
   fi
   echo "${suggested_master_size}"
@@ -79,7 +79,6 @@ function get-master-disk-size() {
 
 function get-node-ip-range {
   if [[ -n "${NODE_IP_RANGE:-}" ]]; then
-    >&2 echo "Using user provided NODE_IP_RANGE: ${NODE_IP_RANGE}"
     echo "${NODE_IP_RANGE}"
     return
   fi
@@ -143,7 +142,7 @@ export WINDOWS_CNI_CONFIG_DIR="${WINDOWS_K8S_DIR}\cni\config"
 # CNI storage path for Windows nodes
 export WINDOWS_CNI_STORAGE_PATH="https://storage.googleapis.com/k8s-artifacts-cni/release"
 # CNI version for Windows nodes
-export WINDOWS_CNI_VERSION="v0.8.5"
+export WINDOWS_CNI_VERSION="v0.8.7"
 # Pod manifests directory for Windows nodes on Windows nodes.
 export WINDOWS_MANIFESTS_DIR="${WINDOWS_K8S_DIR}\manifests"
 # Directory where cert/key files will be stores on Windows nodes.
@@ -158,3 +157,9 @@ export WINDOWS_KUBECONFIG_FILE="${WINDOWS_K8S_DIR}\kubelet.kubeconfig"
 export WINDOWS_BOOTSTRAP_KUBECONFIG_FILE="${WINDOWS_K8S_DIR}\kubelet.bootstrap-kubeconfig"
 # Path for kube-proxy kubeconfig file on Windows nodes.
 export WINDOWS_KUBEPROXY_KUBECONFIG_FILE="${WINDOWS_K8S_DIR}\kubeproxy.kubeconfig"
+# Pause container image for Windows container.
+export WINDOWS_INFRA_CONTAINER="k8s.gcr.io/pause:3.4.1"
+# Storage Path for csi-proxy. csi-proxy only needs to be installed for Windows.
+export CSI_PROXY_STORAGE_PATH="https://storage.googleapis.com/gke-release/csi-proxy"
+# Version for csi-proxy
+export CSI_PROXY_VERSION="v0.2.2-gke.0"

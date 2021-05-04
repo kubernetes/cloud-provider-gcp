@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright 2014 The Kubernetes Authors.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,16 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Bring up a Kubernetes cluster.
-#
-# If the full release name (gs://<bucket>/<release>) is passed in then we take
-# that directly.  If not then we assume we are doing development stuff and take
-# the defaults in the release config.
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
-
-"${KUBE_ROOT}/hack/ginkgo-e2e.sh" --ginkgo.focus=Networking
+METADATA_ENDPOINT="http://metadata.google.internal/computeMetadata/v1/instance/attributes/kube-master-internal-ip"
+METADATA_HEADER="Metadata-Flavor: Google"
+ip=$(curl -s --fail ${METADATA_ENDPOINT} -H "${METADATA_HEADER}")
+if [ -n "$ip" ];
+then
+    # Check if route is already set if not set it
+    if ! sudo ip route show table local | grep -q "$(echo "$ip" | cut -d'/' -f 1)";
+    then
+            sudo ip route add to local "${ip}/32" dev "$(ip route | grep default | awk '{print $5}')"
+    fi
+fi

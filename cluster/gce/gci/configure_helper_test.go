@@ -113,7 +113,6 @@ func (c *ManifestTestCase) mustInvokeFunc(env interface{}, scriptNames []string,
 		args += fmt.Sprintf("source %q ;", script)
 	}
 	args += c.manifestFuncName
-
 	cmd := exec.Command("bash", "-c", args)
 
 	bs, err := cmd.CombinedOutput()
@@ -172,7 +171,7 @@ func copyFile(src, dst string) (err error) {
 	}
 	defer func() {
 		cerr := out.Close()
-		if cerr == nil {
+		if err == nil {
 			err = cerr
 		}
 	}()
