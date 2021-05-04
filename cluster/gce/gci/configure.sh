@@ -149,12 +149,27 @@ function validate-hash {
   local -r file="$1"
   local -r expected="$2"
 
-  actual_sha1=$(sha1sum "${file}" | awk '{ print $1 }') || true
-  actual_sha512=$(sha512sum "${file}" | awk '{ print $1 }') || true
-  if [[ "${actual_sha1}" != "${expected}" ]] && [[ "${actual_sha512}" != "${expected}" ]]; then
-    echo "== ${file} corrupted, sha1 ${actual_sha1}/sha512 ${actual_sha512} doesn't match expected ${expected} =="
-    return 1
+  if [[ ${#expected} == 40 ]]; then
+    actual=$(sha1sum ${file} | awk '{ print $1 }') || true
+    if [[ "${actual}" != "${expected}" ]]; then
+      echo "== ${file} corrupted, sha1 ${actual} doesn't match expected ${expected} =="
+      return 1
+    fi
+    echo Success for ${file} and sha1 ${expected}.
+    return 0
   fi
+  if [[ ${#expected} == 128 ]]; then
+    actual=$(sha512sum ${file} | awk '{ print $1 }') || true
+    if [[ "${actual}" != "${expected}" ]]; then
+      echo "== ${file} corrupted, sha512 ${actual} doesn't match expected ${expected} =="
+      return 1
+    fi
+    echo Success for ${file} and sha512 ${expected}.
+    return 0
+   fi
+
+  echo "== ${file} cannot be checked, unrecognized hash form ${expected} =="
+  return 1
 }
 
 # Get default service account credentials of the VM.
@@ -434,6 +449,7 @@ function load-docker-images {
   if [[ "${KUBERNETES_MASTER:-}" == "true" ]]; then
     try-load-docker-image "${img_dir}/kube-apiserver.tar"
     try-load-docker-image "${img_dir}/kube-controller-manager.tar"
+    try-load-docker-image "${img_dir}/cloud-controller-manager.tar"
     try-load-docker-image "${img_dir}/kube-scheduler.tar"
   else
     try-load-docker-image "${img_dir}/kube-proxy.tar"
@@ -604,12 +620,14 @@ function install-kube-binary-config {
     else
       cp "${src_dir}/kube-apiserver.tar" "${dst_dir}"
       cp "${src_dir}/kube-controller-manager.tar" "${dst_dir}"
+      cp "${src_dir}/cloud-controller-manager.tar" "${dst_dir}"
       cp "${src_dir}/kube-scheduler.tar" "${dst_dir}"
       cp -r "${KUBE_HOME}/kubernetes/addons" "${dst_dir}"
     fi
     load-docker-images
     mv "${src_dir}/kubelet" "${KUBE_BIN}"
     mv "${src_dir}/kubectl" "${KUBE_BIN}"
+    mv "${src_dir}/auth-provider-gcp" "${KUBE_BIN}"
 
     # Some older images have LICENSES baked-in as a file. Presumably they will
     # have the directory baked-in eventually.

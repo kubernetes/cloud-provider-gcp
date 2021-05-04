@@ -566,3 +566,13 @@ export WINDOWS_ENABLE_DSR="${WINDOWS_ENABLE_DSR:-false}"
 # TLS_CIPHER_SUITES defines cipher suites allowed to be used by kube-apiserver. 
 # If this variable is unset or empty, kube-apiserver will allow its default set of cipher suites.
 export TLS_CIPHER_SUITES=""
+
+# Optional: Enable credential sidecar.
+export ENABLE_CREDENTIAL_SIDECAR="${KUBE_ENABLE_CREDENTIAL_SIDECAR:-false}"
+if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
+   if [[ -z "${FEATURE_GATES:-}" ]]; then
+        FEATURE_GATES="KubeletCredentialProviders=true"
+    else
+        FEATURE_GATES="${FEATURE_GATES},KubeletCredentialProviders=true"
+    fi
+fi

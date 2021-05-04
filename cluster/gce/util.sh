@@ -23,7 +23,7 @@ readonly GCE_MAX_LOCAL_SSD=8
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
 source "${KUBE_ROOT}/cluster/gce/${KUBE_CONFIG_FILE-"config-default.sh"}"
 source "${KUBE_ROOT}/cluster/common.sh"
-source "${KUBE_ROOT}/hack/lib/util.sh"
+source "${KUBE_ROOT}/cluster/util.sh"
 
 if [[ "${NODE_OS_DISTRIBUTION}" == "gci" || "${NODE_OS_DISTRIBUTION}" == "ubuntu" || "${NODE_OS_DISTRIBUTION}" == "custom" ]]; then
   source "${KUBE_ROOT}/cluster/gce/${NODE_OS_DISTRIBUTION}/node-helper.sh"
@@ -245,7 +245,7 @@ function copy-to-staging() {
     fi
   fi
 
-  echo "${hash}" > "${tar}.sha512"
+  #echo "${hash}" > "${tar}.sha512"
   gsutil -m -q -h "Cache-Control:private, max-age=0" cp "${tar}" "${tar}.sha512" "${staging_path}"
   gsutil -m acl ch -g all:R "${gs_url}" "${gs_url}.sha512" >/dev/null 2>&1 || true
   echo "+++ ${basename_tar} uploaded (sha512 = ${hash})"
@@ -835,6 +835,10 @@ function construct-linux-kubelet-flags {
     flags+=" --container-runtime-endpoint=${CONTAINER_RUNTIME_ENDPOINT}"
   fi
 
+  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
+    flags+=" --image-credential-provider-config=/etc/srv/kubernetes/cri_auth_config.yaml --image-credential-provider-bin-dir=/home/kubernetes/bin"
+  fi
+
   KUBELET_ARGS="${flags}"
 }
 
@@ -1330,6 +1334,9 @@ ${var_name}: ${var_value}
 EOF
     done
   fi
+  cat >>$file <<EOF
+ENABLE_CREDENTIAL_SIDECAR: $(yaml-quote ${ENABLE_CREDENTIAL_SIDECAR:-false})
+EOF
 
   if [[ "${master}" == "true" ]]; then
     # Master-only env vars.

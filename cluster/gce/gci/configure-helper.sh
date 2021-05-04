@@ -748,6 +748,9 @@ function create-master-auth {
   if [[ -n "${KUBE_BOOTSTRAP_TOKEN:-}" ]]; then
     append_or_replace_prefixed_line "${known_tokens_csv}" "${KUBE_BOOTSTRAP_TOKEN},"          "gcp:kube-bootstrap,uid:gcp:kube-bootstrap,system:masters"
   fi
+  if [[ -n "${CLOUD_CONTROLLER_MANAGER_TOKEN:-}" ]]; then
+    append_or_replace_prefixed_line "${known_tokens_csv}" "${CLOUD_CONTROLLER_MANAGER_TOKEN}," "system:cloud-controller-manager,uid:system:cloud-controller-manager"
+  fi
   if [[ -n "${KUBE_CONTROLLER_MANAGER_TOKEN:-}" ]]; then
     append_or_replace_prefixed_line "${known_tokens_csv}" "${KUBE_CONTROLLER_MANAGER_TOKEN}," "system:kube-controller-manager,uid:system:kube-controller-manager"
   fi
@@ -1153,6 +1156,7 @@ rules:
   - level: None
     users:
       - system:kube-controller-manager
+      - system:cloud-controller-manager
       - system:kube-scheduler
       - system:serviceaccount:kube-system:endpoint-controller
     verbs: ["get", "update"]
@@ -1177,6 +1181,7 @@ rules:
   - level: None
     users:
       - system:kube-controller-manager
+      - system:cloud-controller-manager
     verbs: ["get", "list"]
     resources:
       - group: "metrics.k8s.io"
@@ -1624,6 +1629,10 @@ ExecStart=${kubelet_bin} \$KUBELET_OPTS
 [Install]
 WantedBy=multi-user.target
 EOF
+
+  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
+    create-sidecar-config
+  fi
 
   systemctl daemon-reload
   systemctl start kubelet.service
@@ -2078,7 +2087,8 @@ function start-kube-controller-manager {
   local params=("${CONTROLLER_MANAGER_TEST_LOG_LEVEL:-"--v=2"}" "${CONTROLLER_MANAGER_TEST_ARGS:-}" "${CLOUD_CONFIG_OPT}")
   local config_path='/etc/srv/kubernetes/kube-controller-manager/kubeconfig'
   params+=("--use-service-account-credentials")
-  params+=("--cloud-provider=gce")
+  params+=("--cloud-provider=external")
+  params+=("--external-cloud-volume-plugin=gce")
   params+=("--kubeconfig=${config_path}" "--authentication-kubeconfig=${config_path}" "--authorization-kubeconfig=${config_path}")
   params+=("--root-ca-file=${CA_CERT_BUNDLE_PATH}")
   params+=("--service-account-private-key-file=${SERVICEACCOUNT_KEY_PATH}")
@@ -2169,6 +2179,91 @@ function start-kube-controller-manager {
     sed -i -e "s@{{runAsUser}}@0@g" "${src_file}"
     sed -i -e "s@{{runAsGroup}}@0@g" "${src_file}"
   fi
+  cp "${src_file}" /etc/kubernetes/manifests
+}
+
+# Starts cloud controller manager.
+# It prepares the log file, loads the docker image, calculates variables, sets them
+# in the manifest file, and then copies the manifest file to /etc/kubernetes/manifests.
+#
+# Assumed vars (which are calculated in function compute-master-manifest-variables)
+#   CLOUD_CONFIG_OPT
+#   CLOUD_CONFIG_VOLUME
+#   CLOUD_CONFIG_MOUNT
+#   DOCKER_REGISTRY
+function start-cloud-controller-manager {
+  echo "Start cloud provider controller-manager"
+  setup-addon-manifests "addons" "cloud-controller-manager"
+
+  create-kubeconfig "cloud-controller-manager" ${CLOUD_CONTROLLER_MANAGER_TOKEN}
+  prepare-log-file /var/log/cloud-controller-manager.log
+  # Calculate variables and assemble the command line.
+  local params="${CONTROLLER_MANAGER_TEST_LOG_LEVEL:-"--v=4"} ${CONTROLLER_MANAGER_TEST_ARGS:-} ${CLOUD_CONFIG_OPT}"
+  params+=" --port=10253"
+  params+=" --use-service-account-credentials"
+  params+=" --cloud-provider=gce"
+  params+=" --kubeconfig=/etc/srv/kubernetes/cloud-controller-manager/kubeconfig"
+  if [[ -n "${INSTANCE_PREFIX:-}" ]]; then
+    params+=" --cluster-name=${INSTANCE_PREFIX}"
+  fi
+  if [[ -n "${CLUSTER_IP_RANGE:-}" ]]; then
+    params+=" --cluster-cidr=${CLUSTER_IP_RANGE}"
+  fi
+  if [[ -n "${CONCURRENT_SERVICE_SYNCS:-}" ]]; then
+    params+=" --concurrent-service-syncs=${CONCURRENT_SERVICE_SYNCS}"
+  fi
+  if [[ "${NETWORK_PROVIDER:-}" == "kubenet" ]]; then
+    params+=" --allocate-node-cidrs=true"
+  elif [[ -n "${ALLOCATE_NODE_CIDRS:-}" ]]; then
+    params+=" --allocate-node-cidrs=${ALLOCATE_NODE_CIDRS}"
+  fi
+  if [[ -n "${TERMINATED_POD_GC_THRESHOLD:-}" ]]; then
+    params+=" --terminated-pod-gc-threshold=${TERMINATED_POD_GC_THRESHOLD}"
+  fi
+  if [[ "${ENABLE_IP_ALIASES:-}" == 'true' ]]; then
+    params+=" --cidr-allocator-type=${NODE_IPAM_MODE}"
+    params+=" --configure-cloud-routes=false"
+  fi
+  if [[ -n "${FEATURE_GATES:-}" ]]; then
+    params+=" --feature-gates=${FEATURE_GATES}"
+  fi
+  if [[ -n "${CLUSTER_SIGNING_DURATION:-}" ]]; then
+    params+=" --experimental-cluster-signing-duration=$CLUSTER_SIGNING_DURATION"
+  fi
+  # Disable using HPA metrics REST clients if metrics-server isn't enabled,
+  # or if we want to explicitly disable it by setting HPA_USE_REST_CLIENT.
+  if [[ "${ENABLE_METRICS_SERVER:-}" != "true" ]] ||
+     [[ "${HPA_USE_REST_CLIENTS:-}" == "false" ]]; then
+    params+=" --horizontal-pod-autoscaler-use-rest-clients=false"
+  fi
+  if [[ -n "${RUN_CONTROLLERS:-}" ]]; then
+    params+=" --controllers=${RUN_CONTROLLERS}"
+  fi
+
+  params="$(convert-manifest-params "${params}")"
+  local kube_rc_docker_tag=$(cat /home/kubernetes/kube-docker-files/cloud-controller-manager.docker_tag)
+  kube_rc_docker_tag=$(echo ${kube_rc_docker_tag} | sed 's/+/-/g')
+  local container_env=""
+  if [[ -n "${ENABLE_CACHE_MUTATION_DETECTOR:-}" ]]; then
+    container_env="\"env\":[{\"name\": \"KUBE_CACHE_MUTATION_DETECTOR\", \"value\": \"${ENABLE_CACHE_MUTATION_DETECTOR}\"}],"
+  fi
+
+  local -r src_file="${KUBE_HOME}/kube-manifests/kubernetes/gci-trusty/cloud-controller-manager.manifest"
+  # Evaluate variables.
+  sed -i -e "s@{{pillar\['kube_docker_registry'\]}}@${DOCKER_REGISTRY}@g" "${src_file}"
+  sed -i -e "s@{{pillar\['cloud-controller-manager_docker_tag'\]}}@${kube_rc_docker_tag}@g" "${src_file}"
+  sed -i -e "s@{{params}}@${params}@g" "${src_file}"
+  sed -i -e "s@{{container_env}}@${container_env}@g" ${src_file}
+  sed -i -e "s@{{cloud_config_mount}}@${CLOUD_CONFIG_MOUNT}@g" "${src_file}"
+  sed -i -e "s@{{cloud_config_volume}}@${CLOUD_CONFIG_VOLUME}@g" "${src_file}"
+  sed -i -e "s@{{additional_cloud_config_mount}}@@g" "${src_file}"
+  sed -i -e "s@{{additional_cloud_config_volume}}@@g" "${src_file}"
+  sed -i -e "s@{{pv_recycler_mount}}@${PV_RECYCLER_MOUNT}@g" "${src_file}"
+  sed -i -e "s@{{pv_recycler_volume}}@${PV_RECYCLER_VOLUME}@g" "${src_file}"
+  sed -i -e "s@{{flexvolume_hostpath_mount}}@${FLEXVOLUME_HOSTPATH_MOUNT}@g" "${src_file}"
+  sed -i -e "s@{{flexvolume_hostpath}}@${FLEXVOLUME_HOSTPATH_VOLUME}@g" "${src_file}"
+  sed -i -e "s@{{cpurequest}}@${CLOUD_CONTROLLER_MANAGER_CPU_REQUEST}@g" "${src_file}"
+
   cp "${src_file}" /etc/kubernetes/manifests
 }
 
@@ -3085,6 +3180,24 @@ EOF
   systemctl restart containerd
 }
 
+function create-sidecar-config {
+  cat >> "/etc/srv/kubernetes/cri_auth_config.yaml" << EOF
+kind: CredentialProviderConfig
+apiVersion: kubelet.config.k8s.io/v1alpha1
+providers:
+  - name: auth-provider-gcp
+    apiVersion: credentialprovider.kubelet.k8s.io/v1alpha1
+    matchImages:
+    - "container.cloud.google.com"
+    - "gcr.io"
+    - "*.gcr.io"
+    - "*.pkg.dev"
+    args:
+    - --v=3
+    defaultCacheDuration: 1m
+EOF
+}
+
 # This function detects the platform/arch of the machine where the script runs,
 # and sets the HOST_PLATFORM and HOST_ARCH environment variables accordingly.
 # Callers can specify HOST_PLATFORM_OVERRIDE and HOST_ARCH_OVERRIDE to skip the detection.
@@ -3279,6 +3392,7 @@ function main() {
   readonly KUBEDNS_AUTOSCALER="Deployment/kube-dns"
 
   # Resource requests of master components.
+  CLOUD_CONTROLLER_MANAGER_CPU_REQUEST="${KUBE_CONTROLLER_MANAGER_CPU_REQUEST:-200m}"
   KUBE_CONTROLLER_MANAGER_CPU_REQUEST="${KUBE_CONTROLLER_MANAGER_CPU_REQUEST:-200m}"
   KUBE_SCHEDULER_CPU_REQUEST="${KUBE_SCHEDULER_CPU_REQUEST:-75m}"
 
@@ -3333,6 +3447,7 @@ function main() {
 
   log-start 'GenerateTokens'
   KUBE_CONTROLLER_MANAGER_TOKEN="$(secure_random 32)"
+  CLOUD_CONTROLLER_MANAGER_TOKEN="$(secure_random 32)"
   KUBE_SCHEDULER_TOKEN="$(secure_random 32)"
   KUBE_CLUSTER_AUTOSCALER_TOKEN="$(secure_random 32)"
   if [[ "${ENABLE_L7_LOADBALANCING:-}" == "glbc" ]]; then
@@ -3422,6 +3537,7 @@ function main() {
       log-wrap 'StartKonnectivityServer' start-konnectivity-server
     fi
     log-wrap 'StartKubeControllerManager' start-kube-controller-manager
+    log-wrap 'StartCloudControllerManager' start-cloud-controller-manager
     log-wrap 'StartKubeScheduler' start-kube-scheduler
     log-wrap 'WaitTillApiserverReady' wait-till-apiserver-ready
     log-wrap 'StartKubeAddons' start-kube-addons
