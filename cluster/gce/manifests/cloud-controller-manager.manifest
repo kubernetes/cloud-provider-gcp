@@ -26,7 +26,7 @@
     },
     "command": ["/cloud-controller-manager"],
     "args": [
-      "--log-file=/var/log/cloud-controller-manager.log",
+      "--log_file=/var/log/cloud-controller-manager.log",
       "--logtostderr=false",
       {{params}}
     ],

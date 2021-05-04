@@ -23,6 +23,12 @@ import (
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/app"
 	klog "k8s.io/klog/v2"
 	"os"
+
+	// bazel test on "k8s.io/cloud-provider-gcp/providers/gce/gcpcredential" run into issues
+	// because it has dependencies on "k8s.io/cloud-provider/credentialconfig" which is not required by "k8s.io/cloud-provider-gcp" hence
+	// it will fail to get the dependency from //vendor directory.
+	// TODO: remove the import after https://github.com/kubernetes/cloud-provider-gcp/issues/211 solved.
+	_ "k8s.io/cloud-provider-gcp/providers/gce/gcpcredential"
 )
 
 func main() {

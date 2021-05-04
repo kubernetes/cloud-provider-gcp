@@ -19,11 +19,18 @@ go_library(
     srcs = ["main.go"],
     importpath = "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager",
     deps = [
-        "//cmd/cloud-controller-manager/app:go_default_library",
         "//providers/gce:go_default_library",
+        "//vendor/github.com/spf13/pflag:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
+        "//vendor/k8s.io/cloud-provider:go_default_library",
+        "//vendor/k8s.io/cloud-provider/app:go_default_library",
+        "//vendor/k8s.io/cloud-provider/app/config:go_default_library",
+        "//vendor/k8s.io/cloud-provider/options:go_default_library",
+        "//vendor/k8s.io/component-base/cli/flag:go_default_library",
         "//vendor/k8s.io/component-base/logs:go_default_library",
         "//vendor/k8s.io/component-base/metrics/prometheus/clientgo:go_default_library",
         "//vendor/k8s.io/component-base/metrics/prometheus/version:go_default_library",
+        "//vendor/k8s.io/klog/v2:go_default_library",
     ],
 )
 

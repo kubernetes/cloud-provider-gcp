@@ -7,7 +7,6 @@ go_library(
         "create_update.go",
         "delete.go",
         "doc.go",
-        "export.go",
         "meta.go",
         "rest.go",
         "table.go",
@@ -34,5 +33,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/features:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/names:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v4/fieldpath:go_default_library",
     ],
 )

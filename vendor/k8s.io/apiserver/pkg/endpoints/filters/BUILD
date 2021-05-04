@@ -12,6 +12,7 @@ go_library(
         "doc.go",
         "impersonation.go",
         "metrics.go",
+        "request_deadline.go",
         "request_received_time.go",
         "requestinfo.go",
         "storageversion.go",

@@ -1,5 +1,4 @@
 # See the OWNERS docs at https://go.k8s.io/owners
-
 approvers:
 - saad-ali
 - jingxu97
@@ -9,4 +8,5 @@ approvers:
 - cheftako
 reviewers:
 - cici37
+- jiahuif
 - jpbetz

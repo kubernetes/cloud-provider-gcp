@@ -16,5 +16,6 @@ go_library(
         "//vendor/k8s.io/component-base/config:go_default_library",
         "//vendor/k8s.io/component-base/config/options:go_default_library",
         "//vendor/k8s.io/controller-manager/config:go_default_library",
+        "//vendor/k8s.io/controller-manager/pkg/leadermigration/options:go_default_library",
     ],
 )
