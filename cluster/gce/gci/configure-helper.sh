@@ -2228,24 +2228,12 @@ function start-cloud-controller-manager {
   elif [[ -n "${ALLOCATE_NODE_CIDRS:-}" ]]; then
     params+=" --allocate-node-cidrs=${ALLOCATE_NODE_CIDRS}"
   fi
-  if [[ -n "${TERMINATED_POD_GC_THRESHOLD:-}" ]]; then
-    params+=" --terminated-pod-gc-threshold=${TERMINATED_POD_GC_THRESHOLD}"
-  fi
   if [[ "${ENABLE_IP_ALIASES:-}" == 'true' ]]; then
     params+=" --cidr-allocator-type=${NODE_IPAM_MODE}"
     params+=" --configure-cloud-routes=false"
   fi
   if [[ -n "${FEATURE_GATES:-}" ]]; then
     params+=" --feature-gates=${FEATURE_GATES}"
-  fi
-  if [[ -n "${CLUSTER_SIGNING_DURATION:-}" ]]; then
-    params+=" --experimental-cluster-signing-duration=$CLUSTER_SIGNING_DURATION"
-  fi
-  # Disable using HPA metrics REST clients if metrics-server isn't enabled,
-  # or if we want to explicitly disable it by setting HPA_USE_REST_CLIENT.
-  if [[ "${ENABLE_METRICS_SERVER:-}" != "true" ]] ||
-     [[ "${HPA_USE_REST_CLIENTS:-}" == "false" ]]; then
-    params+=" --horizontal-pod-autoscaler-use-rest-clients=false"
   fi
   if [[ -n "${RUN_CONTROLLERS:-}" ]]; then
     params+=" --controllers=${RUN_CONTROLLERS}"
