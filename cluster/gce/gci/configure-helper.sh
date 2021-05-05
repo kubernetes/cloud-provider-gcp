@@ -1921,9 +1921,6 @@ function start-cloud-controller-manager {
   elif [[ -n "${ALLOCATE_NODE_CIDRS:-}" ]]; then
     params+=" --allocate-node-cidrs=${ALLOCATE_NODE_CIDRS}"
   fi
-  if [[ -n "${TERMINATED_POD_GC_THRESHOLD:-}" ]]; then
-    params+=" --terminated-pod-gc-threshold=${TERMINATED_POD_GC_THRESHOLD}"
-  fi
   if [[ "${ENABLE_IP_ALIASES:-}" == 'true' ]]; then
     params+=" --cidr-allocator-type=${NODE_IPAM_MODE}"
     params+=" --configure-cloud-routes=false"
