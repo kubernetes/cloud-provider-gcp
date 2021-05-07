@@ -45,6 +45,7 @@ import (
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/healthz"
 	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/component-base/config/options"
+	"k8s.io/component-base/logs"
 	"k8s.io/component-base/version/verflag"
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
@@ -76,8 +77,8 @@ var (
 )
 
 func main() {
-	klog.InitFlags(flag.CommandLine)
-	defer klog.Flush()
+	logs.InitLogs()
+
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 
 	leConfig := &componentbaseconfig.LeaderElectionConfiguration{

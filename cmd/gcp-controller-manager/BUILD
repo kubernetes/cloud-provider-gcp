@@ -83,6 +83,7 @@ go_library(
         "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
         "//vendor/k8s.io/component-base/config:go_default_library",
         "//vendor/k8s.io/component-base/config/options:go_default_library",
+        "//vendor/k8s.io/component-base/logs:go_default_library",
         "//vendor/k8s.io/component-base/version/verflag:go_default_library",
         "//vendor/k8s.io/controller-manager/pkg/clientbuilder:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
