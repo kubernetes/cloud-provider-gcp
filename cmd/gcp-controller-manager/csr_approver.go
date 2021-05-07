@@ -586,11 +586,13 @@ func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID 
 		return false, fmt.Errorf("fetching cluster info: %v", err)
 	}
 	recordMetric(csrmetrics.OutboundRPCStatusOK)
+	var errors []error
 	for _, np := range cluster.NodePools {
 		for _, ig := range np.InstanceGroupUrls {
 			igName, igLocation, err := parseInstanceGroupURL(ig)
 			if err != nil {
-				return false, err
+				errors = append(errors, err)
+				continue
 			}
 			// InstanceGroups can be regional, igLocation can be either region
 			// or a zone. Match them to instanceZone by prefix to cover both.
@@ -603,13 +605,19 @@ func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID 
 			// InstanceGroups can be regional, instances are always zonal.
 			ok, err := groupHasInstance(ctx, igLocation, igName, instanceID)
 			if err != nil {
-				return false, fmt.Errorf("checking that group %q contains instance %v: %v", igName, instanceID, err)
+				errors = append(errors, fmt.Errorf("checking that group %q contains instance %v: %v", igName, instanceID, err))
+				continue
 			}
 			if ok {
 				return true, nil
 			}
 		}
 	}
+
+	if len(errors) > 0 {
+		return false, fmt.Errorf("clusterHasInstance failed: %q", errors)
+	}
+
 	return false, nil
 }
 
