@@ -27,7 +27,7 @@ if [[ "${KUBERNETES_PROVIDER:-gce}" != "gce" ]]; then
 fi
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
-source "${KUBE_ROOT}/hack/lib/util.sh"
+source "${KUBE_ROOT}/cluster/util.sh"
 source "${KUBE_ROOT}/cluster/kube-util.sh"
 
 # Print the number of routes used for K8s cluster node connectivity.
@@ -170,8 +170,8 @@ export KUBE_GCE_ENABLE_IP_ALIASES=true
 export SECONDARY_RANGE_NAME="pods-default"
 export STORAGE_BACKEND="etcd3"
 export STORAGE_MEDIA_TYPE="application/vnd.kubernetes.protobuf"
-export ETCD_IMAGE=3.4.3-0
-export ETCD_VERSION=3.4.3
+export ETCD_IMAGE=3.4.13-0
+export ETCD_VERSION=3.4.13
 
 # Upgrade master with updated kube envs
 "${KUBE_ROOT}/cluster/gce/upgrade.sh" -M -l

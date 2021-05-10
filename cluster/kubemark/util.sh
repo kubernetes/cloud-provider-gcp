@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
-# Copyright 2017 The Kubernetes Authors.
+# Copyright 2014 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,14 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# These steps must be executed once the host /var and /lib volumes have
-# been mounted, and therefore cannot be done in the docker build stage.
-
-# For systems without journald
-mkdir -p /var/log/journal
-
-# Use exec to get the signal
-# A non-quoted string and add the comment to prevent shellcheck failures on this line.
-# See https://github.com/koalaman/shellcheck/wiki/SC2086
-# shellcheck disable=SC2086
-exec /usr/local/bin/fluentd $FLUENTD_ARGS
+KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
+source "${KUBE_ROOT}/test/kubemark/cloud-provider-config.sh"
+source "${KUBE_ROOT}/cluster/${CLOUD_PROVIDER}/util.sh"
+source "${KUBE_ROOT}/cluster/kubemark/${CLOUD_PROVIDER}/config-default.sh"

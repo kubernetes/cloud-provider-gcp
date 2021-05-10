@@ -74,3 +74,4 @@ if [[ "${1:-}" =~ ^(path)$ ]]; then
 fi
 
 "${kubectl}" "${config[@]:+${config[@]}}" "${@+$@}"
+

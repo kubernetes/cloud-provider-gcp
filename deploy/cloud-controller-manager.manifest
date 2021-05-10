@@ -5,8 +5,7 @@
   "name":"cloud-controller-manager",
   "namespace": "kube-system",
   "annotations": {
-    "scheduler.alpha.kubernetes.io/critical-pod": "",
-    "seccomp.security.alpha.kubernetes.io/pod": "docker/default"
+    "scheduler.alpha.kubernetes.io/critical-pod": ""
   },
   "labels": {
     "tier": "control-plane",
@@ -14,6 +13,13 @@
   }
 },
 "spec":{
+"securityContext": {
+  "seccompProfile": {
+      "type": "RuntimeDefault"
+  },
+  "runAsUser": {{runAsUser}},
+  "runAsGroup": {{runAsGroup}}
+},
 "priorityClass": "system-node-critical",
 "hostNetwork": true,
 "containers":[

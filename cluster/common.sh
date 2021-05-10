@@ -30,7 +30,7 @@ source "${KUBE_ROOT}/cluster/util.sh"
 # NOTE This must match the version_regex in build/common.sh
 # kube::release::parse_and_validate_release_version()
 #
-# KUBE_RELEASE_VERSION_REGEX is used in get-build.sh and cluster/gce/util.sh and KUBE_RELEASE_VERSION_DASHED_REGEX is used in cluster/gce/util.sh,
+# KUBE_RELEASE_VERSION_REGEX is used in hack/get-build.sh and cluster/gce/util.sh and KUBE_RELEASE_VERSION_DASHED_REGEX is used in cluster/gce/util.sh,
 # make sure to remove these vars when not used anymore
 export KUBE_RELEASE_VERSION_REGEX="^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-([a-zA-Z0-9]+)\\.(0|[1-9][0-9]*))?$"
 export KUBE_RELEASE_VERSION_DASHED_REGEX="v(0|[1-9][0-9]*)-(0|[1-9][0-9]*)-(0|[1-9][0-9]*)(-([a-zA-Z0-9]+)-(0|[1-9][0-9]*))?"
@@ -40,7 +40,7 @@ export KUBE_RELEASE_VERSION_DASHED_REGEX="v(0|[1-9][0-9]*)-(0|[1-9][0-9]*)-(0|[1
 # NOTE This must match the version_regex in build/common.sh
 # kube::release::parse_and_validate_ci_version()
 #
-# TODO: KUBE_CI_VERSION_REGEX is used in get-build.sh and KUBE_CI_VERSION_DASHED_REGEX is used in cluster/gce/util.sh,
+# TODO: KUBE_CI_VERSION_REGEX is used in hack/get-build.sh and KUBE_CI_VERSION_DASHED_REGEX is used in cluster/gce/util.sh,
 # make sure to remove these vars when not used anymore
 export KUBE_CI_VERSION_REGEX="^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)-([a-zA-Z0-9]+)\\.(0|[1-9][0-9]*)(\\.(0|[1-9][0-9]*)\\+[-0-9a-z]*)?$"
 export KUBE_CI_VERSION_DASHED_REGEX="^v(0|[1-9][0-9]*)-(0|[1-9][0-9]*)-(0|[1-9][0-9]*)-([a-zA-Z0-9]+)-(0|[1-9][0-9]*)(-(0|[1-9][0-9]*)\\+[-0-9a-z]*)?"
@@ -314,15 +314,12 @@ function find-tar() {
     "${KUBE_ROOT}/bazel-bin/release/${tarball}"
     #"${KUBE_ROOT}/node/${tarball}"
     #"${KUBE_ROOT}/server/${tarball}"
-    #"${KUBE_ROOT}/_output/${tarball}"
     #"${KUBE_ROOT}/_output/release-tars/${tarball}"
-    #"${KUBE_ROOT}/bazel-bin/build/release-tars/${tarball}"
   )
-  echo locations set to $locations >&2
   location=$( (ls -t "${locations[@]}" 2>/dev/null || true) | head -1 )
 
   if [[ ! -f "${location}" ]]; then
-    echo "!!! Cannot find ${tarball} at ${location}" >&2
+    echo "!!! Cannot find ${tarball}" >&2
     exit 1
   fi
   echo "${location}"
@@ -339,8 +336,7 @@ function find-tar() {
 function find-release-tars() {
   SERVER_BINARY_TAR=$(find-tar kubernetes-server-linux-amd64.tar.gz)
   if [[ -z "${SERVER_BINARY_TAR}" ]]; then
-    echo "Could not find ${SERVER_BINARY_TAR}"
-    exit 1
+	  exit 1
   fi
   export SERVER_BINARY_TAR
 
@@ -349,7 +345,6 @@ function find-release-tars() {
     if NODE_BINARY_TAR=$(find-tar kubernetes-node-windows-amd64.tar.gz); then
       find_result=0
     else
-      echo "Could not find ${NODE_BINARY_TAR}"
       find_result=1
     fi
     export NODE_BINARY_TAR
@@ -362,7 +357,6 @@ function find-release-tars() {
     if KUBE_MANIFESTS_TAR=$(find-tar kubernetes-manifests.tar.gz); then
       find_result=0
     else
-      echo "Could not find ${KUBE_MANIFESTS_TAR}"
       find_result=1
     fi
     export KUBE_MANIFESTS_TAR
@@ -497,7 +491,7 @@ EOF
        | ${CFSSLJSON_BIN} -bare "${prefix}"
       ;;
     *)
-      echo "Unknown, unsupported etcd certs type: ${type_cert}" >&2
+      echo "Unknow, unsupported etcd certs type: ${type_cert}" >&2
       echo "Supported type: client, server, peer" >&2
       exit 2
   esac
