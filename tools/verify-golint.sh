@@ -36,7 +36,7 @@ PATH="${GOBIN}:${PATH}"
 # Install golint
 echo 'installing golint'
 pushd "${KUBE_ROOT}/tools" >/dev/null
-  GO111MODULE=on go get -u golang.org/x/lint/golint
+  GO111MODULE=on go install -mod=readonly golang.org/x/lint/golint
 popd >/dev/null
 
 cd "${KUBE_ROOT}"
