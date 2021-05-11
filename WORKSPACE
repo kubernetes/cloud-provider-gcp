@@ -45,7 +45,7 @@ go_rules_dependencies()
 go_download_sdk(
     name = "go_sdk",
     sdks = {
-        "linux_amd64": ("go1.15.10b5.linux-amd64.tar.gz", "7533b0307fd995deb9ef68d67899582c336a3c62387d19d03d10202129e9fad3"),
+        "linux_amd64": ("go1.16.4b7.linux-amd64.tar.gz", "de60f0620f46b1872813f72646fdece76be94f43c1abe84b69033c26f823a31f"),
     },
     urls = ["https://storage.googleapis.com/go-boringcrypto/{}"],
 )
