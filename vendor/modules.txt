@@ -362,7 +362,7 @@ google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
 # gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b => gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b
 ## explicit
-# gopkg.in/gcfg.v1 v1.2.3 => gopkg.in/gcfg.v1 v1.2.3
+# gopkg.in/gcfg.v1 v1.2.0 => gopkg.in/gcfg.v1 v1.2.3
 ## explicit
 gopkg.in/gcfg.v1
 gopkg.in/gcfg.v1/scanner
@@ -903,7 +903,7 @@ k8s.io/cloud-provider/service/helpers
 k8s.io/cloud-provider/volume
 k8s.io/cloud-provider/volume/errors
 k8s.io/cloud-provider/volume/helpers
-# k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000 => ./providers
+# k8s.io/cloud-provider-gcp/providers v0.0.0 => ./providers
 ## explicit
 k8s.io/cloud-provider-gcp/providers/gce
 k8s.io/cloud-provider-gcp/providers/gce/gcpcredential
