@@ -27,10 +27,7 @@ function get-num-nodes {
 #   NUM_NODES
 #   NUM_WINDOWS_NODES
 function get-master-size {
-  local suggested_master_size=1
-  if [[ "$(get-num-nodes)" -gt "5" ]]; then
-    suggested_master_size=2
-  fi
+  local suggested_master_size=2
   if [[ "$(get-num-nodes)" -gt "10" ]]; then
     suggested_master_size=4
   fi
