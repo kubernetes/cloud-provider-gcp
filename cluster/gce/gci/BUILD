@@ -65,6 +65,7 @@ go_test(
     srcs = [
         "apiserver_etcd_test.go",
         "apiserver_kms_test.go",
+        "append_or_replace_prefixed_line_test.go",
         "audit_policy_test.go",
         "configure_helper_test.go",
     ],
@@ -74,6 +75,7 @@ go_test(
         "//cluster/gce/manifests",
     ],
     deps = [
+        "//vendor/github.com/google/go-cmp/cmp:go_default_library",
         "//vendor/github.com/stretchr/testify/assert:go_default_library",
         "//vendor/github.com/stretchr/testify/require:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",

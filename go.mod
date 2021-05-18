@@ -32,14 +32,14 @@ require (
 	google.golang.org/genproto v0.0.0-20210111234610-22ae2b108f89 // indirect
 	google.golang.org/grpc v1.34.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
-	gopkg.in/gcfg.v1 v1.2.3
+	gopkg.in/gcfg.v1 v1.2.0
 	gopkg.in/warnings.v0 v0.1.2
 	k8s.io/api v0.21.0
 	k8s.io/apimachinery v0.21.0
 	k8s.io/apiserver v0.21.0
 	k8s.io/client-go v9.0.0+incompatible
 	k8s.io/cloud-provider v0.21.0
-	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
+	k8s.io/cloud-provider-gcp/providers v0.0.0
 	k8s.io/component-base v0.21.0
 	k8s.io/controller-manager v0.21.0
 	k8s.io/klog/v2 v2.8.0
