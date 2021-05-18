@@ -3201,6 +3201,7 @@ providers:
     - "*.gcr.io"
     - "*.pkg.dev"
     args:
+    - get-credentials
     - --v=3
     defaultCacheDuration: 1m
 EOF
