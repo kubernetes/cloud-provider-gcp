@@ -17,7 +17,7 @@ limitations under the License.
 package app
 
 import (
-	"encoding/json"
+	stdjson "encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -25,6 +25,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/provider"
 	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
@@ -117,7 +119,7 @@ func getCredentials(authFlow string) error {
 		return err
 	}
 	var authRequest credentialproviderapi.CredentialProviderRequest
-	err = json.Unmarshal(unparsedRequest, &authRequest)
+	err = stdjson.Unmarshal(unparsedRequest, &authRequest)
 	if err != nil {
 		return fmt.Errorf("error unmarshaling auth credential request: %w", err)
 	}
@@ -125,10 +127,9 @@ func getCredentials(authFlow string) error {
 	if err != nil {
 		return fmt.Errorf("error getting authentication response from provider: %w", err)
 	}
-	jsonResponse, err := json.Marshal(authCredentials)
+	jsonResponse, err := encodeCredentials(authCredentials)
 	if err != nil {
-		// The error from json.Marshal is intentionally not included so as to not leak credentials into the logs
-		return fmt.Errorf("error marshaling credentials")
+		return fmt.Errorf(err.Error())
 	}
 	// Emit authentication response for kubelet to consume
 	fmt.Println(string(jsonResponse))
@@ -144,4 +145,21 @@ func validateFlags(options *CredentialOptions) error {
 		return &AuthFlowFlagError{flagValue: options.AuthFlow}
 	}
 	return nil
+}
+
+func encodeCredentials(credentials *credentialproviderapi.CredentialProviderResponse) ([]byte, error) {
+	mediaType := "application/json"
+	codecs := serializer.NewCodecFactory(runtime.NewScheme())
+	info, ok := runtime.SerializerInfoForMediaType(codecs.SupportedMediaTypes(), mediaType)
+	if !ok {
+		return nil, fmt.Errorf("unsupported media type %q", mediaType)
+	}
+
+	encoder := codecs.EncoderForVersion(info.Serializer, credentialproviderapi.SchemeGroupVersion)
+	data, err := runtime.Encode(encoder, credentials)
+	if err != nil {
+		// Intentionally do not include encoding errors to avoid leaking credentials into the logs
+		return nil, fmt.Errorf("failed to encode response: %v", err)
+	}
+	return data, nil
 }
