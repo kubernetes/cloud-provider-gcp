@@ -24,7 +24,6 @@ KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
 source "${KUBE_ROOT}/tools/version.sh"
 get_version_vars
-IMAGE_TAG=${KUBE_GIT_VERSION:-latest}
 
 # Prefix with STABLE_ so that these values are saved to stable-status.txt
 # instead of volatile-status.txt.
@@ -35,5 +34,5 @@ IMAGE_TAG=${KUBE_GIT_VERSION:-latest}
 cat <<EOF
 STABLE_IMAGE_REGISTRY ${IMAGE_REGISTRY:-gcr.io}
 STABLE_IMAGE_REPO ${IMAGE_REPO:-k8s-image-staging}
-STABLE_IMAGE_TAG ${IMAGE_TAG:-latest}
+STABLE_IMAGE_TAG ${IMAGE_TAG:-${KUBE_GIT_VERSION/+/_}}
 EOF
