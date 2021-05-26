@@ -118,12 +118,17 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: internalIP})
 
 				if g.stackType == "IPV4_IPV6" {
+					// Handling only the internal v6 address. External v6 addresses will be handled once vendor apis are updated.
 					internalIPV6, err := metadata.Get(fmt.Sprintf(networkInterfaceIPV6, nic))
 					if err != nil {
 						return nil, fmt.Errorf("couldn't get internal IPV6: %v", err)
 					}
 					internalIPV6 = strings.TrimSuffix(internalIPV6, "\n")
-					nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: internalIPV6})
+					if internalIPV6 != "" {
+						nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: internalIPV6})
+					} else {
+						klog.Warningf("internal IPV6 range is empty")
+					}
 				}
 
 				acs, err := metadata.Get(fmt.Sprintf(networkInterfaceAccessConfigs, nic))
