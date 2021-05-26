@@ -44,6 +44,7 @@ import (
 const (
 	defaultZone                   = ""
 	networkInterfaceIP            = "instance/network-interfaces/%s/ip"
+	networkInterfaceIPV6          = "instance/network-interfaces/%s/ipv6s"
 	networkInterfaceAccessConfigs = "instance/network-interfaces/%s/access-configs"
 	networkInterfaceExternalIP    = "instance/network-interfaces/%s/access-configs/%s/external-ip"
 )
@@ -115,6 +116,15 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 					return nil, fmt.Errorf("couldn't get internal IP: %v", err)
 				}
 				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: internalIP})
+
+				if g.stackType == "IPV4_IPV6" {
+					internalIPV6, err := metadata.Get(fmt.Sprintf(networkInterfaceIPV6, nic))
+					if err != nil {
+						return nil, fmt.Errorf("couldn't get internal IPV6: %v", err)
+					}
+					internalIPV6 = strings.TrimSuffix(internalIPV6, "\n")
+					nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: internalIPV6})
+				}
 
 				acs, err := metadata.Get(fmt.Sprintf(networkInterfaceAccessConfigs, nic))
 				if err != nil {
@@ -510,6 +520,10 @@ func (g *Cloud) AliasRangesByProviderID(providerID string) (cidrs []string, err 
 	for _, networkInterface := range res.NetworkInterfaces {
 		for _, r := range networkInterface.AliasIpRanges {
 			cidrs = append(cidrs, r.IpCidrRange)
+		}
+		if g.stackType == "IPV4_IPV6" {
+			ipv6Address := networkInterface.Ipv6Address
+			cidrs = append(cidrs, ipv6Address+"/112")
 		}
 	}
 	return
