@@ -15,7 +15,7 @@ go_library(
         "//pkg/credentialconfig:go_default_library",
         "//pkg/gcpcredential:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider:go_default_library",
+        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1:go_default_library",
     ],
 )
 
@@ -26,6 +26,6 @@ go_test(
     deps = [
         "//pkg/gcpcredential:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/net:go_default_library",
-        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider:go_default_library",
+        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1:go_default_library",
     ],
 )

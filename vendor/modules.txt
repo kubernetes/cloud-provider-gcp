@@ -961,6 +961,7 @@ k8s.io/kube-openapi/pkg/util/proto
 # k8s.io/kubelet v0.21.0 => k8s.io/kubelet v0.21.0
 ## explicit
 k8s.io/kubelet/pkg/apis/credentialprovider
+k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1
 # k8s.io/kubernetes v1.21.0
 ## explicit
 k8s.io/kubernetes/pkg/api/legacyscheme

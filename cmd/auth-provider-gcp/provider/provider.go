@@ -25,8 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
-	"k8s.io/kubelet/pkg/apis/credentialprovider"
-	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider"
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1"
 )
 
 const (
@@ -90,20 +89,20 @@ func getCacheDuration() (time.Duration, error) {
 	return cacheDuration, nil
 }
 
-func getCacheKeyType() (credentialprovider.PluginCacheKeyType, error) {
+func getCacheKeyType() (credentialproviderapi.PluginCacheKeyType, error) {
 	keyType := os.Getenv(cacheTypeKey)
 	if keyType == "" {
 		return credentialproviderapi.ImagePluginCacheKeyType, nil
 	}
 	switch keyType {
 	case cacheImage:
-		return credentialprovider.ImagePluginCacheKeyType, nil
+		return credentialproviderapi.ImagePluginCacheKeyType, nil
 	case cacheRegistry:
-		return credentialprovider.RegistryPluginCacheKeyType, nil
+		return credentialproviderapi.RegistryPluginCacheKeyType, nil
 	case cacheGlobal:
-		return credentialprovider.GlobalPluginCacheKeyType, nil
+		return credentialproviderapi.GlobalPluginCacheKeyType, nil
 	default:
-		var nilKeyType credentialprovider.PluginCacheKeyType = ""
+		var nilKeyType credentialproviderapi.PluginCacheKeyType = ""
 		return nilKeyType, fmt.Errorf("Unknown cache key %q", keyType)
 	}
 }
