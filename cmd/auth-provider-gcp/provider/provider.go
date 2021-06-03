@@ -71,6 +71,10 @@ func makeHTTPClient(transport *http.Transport) *http.Client {
 func getCacheDuration() (time.Duration, error) {
 	unparsedCacheDuration := os.Getenv(cacheDurationKey)
 	if unparsedCacheDuration == "" {
+		// a value of 0 for the cache duration will result in the credentials not being cached
+		// at all, which is equivalent to what the in-tree provider does; since the
+		// KUBE_SIDECAR_CACHE_DURATION environment variable is not set by default,
+		// backwards compatibility is maintained by default
 		return 0, nil
 	}
 	cacheDuration, err := time.ParseDuration(unparsedCacheDuration)
@@ -91,9 +95,7 @@ func GetResponse(image string, provider credentialconfig.DockerConfigProvider) (
 	if err != nil {
 		return nil, err
 	}
-	if cacheDuration != 0 {
-		response.CacheDuration = &metav1.Duration{Duration: cacheDuration}
-	}
+	response.CacheDuration = &metav1.Duration{Duration: cacheDuration}
 	response.TypeMeta.Kind = apiKind
 	response.TypeMeta.APIVersion = apiVersion
 	response.CacheKeyType = credentialproviderapi.RegistryPluginCacheKeyType
