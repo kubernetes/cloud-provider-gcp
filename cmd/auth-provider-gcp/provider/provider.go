@@ -17,6 +17,7 @@ limitations under the License.
 package provider
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -24,11 +25,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
+	"k8s.io/kubelet/pkg/apis/credentialprovider"
 	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider"
 )
 
 const (
+	cacheImage                = "image"
+	cacheRegistry             = "registry"
+	cacheGlobal               = "global"
 	cacheDurationKey          = "KUBE_SIDECAR_CACHE_DURATION"
+	cacheTypeKey              = "KUBE_SIDECAR_CACHE_TYPE"
 	metadataHTTPClientTimeout = time.Second * 10
 	apiKind                   = "CredentialProviderResponse"
 	apiVersion                = "credentialprovider.kubelet.k8s.io/v1alpha1"
@@ -84,6 +90,24 @@ func getCacheDuration() (time.Duration, error) {
 	return cacheDuration, nil
 }
 
+func getCacheKeyType() (credentialprovider.PluginCacheKeyType, error) {
+	keyType := os.Getenv(cacheTypeKey)
+	if keyType == "" {
+		return credentialproviderapi.ImagePluginCacheKeyType, nil
+	}
+	switch keyType {
+	case cacheImage:
+		return credentialprovider.ImagePluginCacheKeyType, nil
+	case cacheRegistry:
+		return credentialprovider.RegistryPluginCacheKeyType, nil
+	case cacheGlobal:
+		return credentialprovider.GlobalPluginCacheKeyType, nil
+	default:
+		var nilKeyType credentialprovider.PluginCacheKeyType = ""
+		return nilKeyType, fmt.Errorf("Unknown cache key %q", keyType)
+	}
+}
+
 // GetResponse queries the given provider for credentials.
 func GetResponse(image string, provider credentialconfig.DockerConfigProvider) (*credentialproviderapi.CredentialProviderResponse, error) {
 	cfg := provider.Provide(image)
@@ -98,6 +122,10 @@ func GetResponse(image string, provider credentialconfig.DockerConfigProvider) (
 	response.CacheDuration = &metav1.Duration{Duration: cacheDuration}
 	response.TypeMeta.Kind = apiKind
 	response.TypeMeta.APIVersion = apiVersion
-	response.CacheKeyType = credentialproviderapi.RegistryPluginCacheKeyType
+	cacheKey, err := getCacheKeyType()
+	if err != nil {
+		return nil, err
+	}
+	response.CacheKeyType = cacheKey
 	return response, nil
 }

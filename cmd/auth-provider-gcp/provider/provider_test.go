@@ -34,7 +34,7 @@ const (
 	dummyToken       = "ya26.lots-of-indiscernible-garbage"
 	email            = "1234@project.gserviceaccount.com"
 	expectedUsername = "_token"
-	expectedCacheKey = credentialproviderapi.RegistryPluginCacheKeyType
+	expectedCacheKey = credentialproviderapi.ImagePluginCacheKeyType
 	dummyImage       = "k8s.gcr.io/pause"
 )
 
