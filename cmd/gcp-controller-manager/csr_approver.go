@@ -368,10 +368,21 @@ func validateNodeServerCert(ctx *controllerContext, csr *capi.CertificateSigning
 			return false, err
 		}
 
+		// Format the Domain-scoped projectID before validating the DNS name, e.g. example.com:my-project-123456789012
+		projectID := ctx.gcpCfg.ProjectID
+		if strings.Contains(projectID, ":") {
+			parts := strings.Split(projectID, ":")
+			if len(parts) != 2 {
+				klog.Infof("expected the Domain-scoped project to contain only one colon, got: %s", projectID)
+				return false, err
+			}
+			projectID = fmt.Sprintf("%s.%s", parts[1], parts[0])
+		}
+
 		for _, dns := range x509cr.DNSNames {
 			// Linux DNSName should be as the format of [INSTANCE_NAME].c.[PROJECT_ID].internal when using the global DNS, and [INSTANCE_NAME].[ZONE].c.[PROJECT_ID].internal when using zonal DNS.
 			// Windows DNSName should be INSTANCE_NAME
-			if dns != instanceName && dns != fmt.Sprintf("%s.c.%s.internal", instanceName, ctx.gcpCfg.ProjectID) && dns != fmt.Sprintf("%s.%s.c.%s.internal", instanceName, z, ctx.gcpCfg.ProjectID) {
+			if dns != instanceName && dns != fmt.Sprintf("%s.c.%s.internal", instanceName, projectID) && dns != fmt.Sprintf("%s.%s.c.%s.internal", instanceName, z, projectID) {
 				klog.Infof("deny CSR %q: DNSName in CSR (%q) doesn't match default DNS format on instance %q", csr.Name, dns, instanceName)
 				return false, nil
 			}

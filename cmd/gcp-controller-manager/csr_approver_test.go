@@ -398,7 +398,16 @@ func TestValidators(t *testing.T) {
 			b.ips = []net.IP{net.ParseIP("1.2.3.4")}
 			b.dns = []string{"i0.z0.c.p0.internal", "i0.c.p0.internal", "i0"}
 		}
-		cases := []func(*csrBuilder, *controllerContext){goodCase}
+		cases := []func(*csrBuilder, *controllerContext){
+			// None Domain-scoped project
+			goodCase,
+			// Domain-scoped project
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				c.gcpCfg.ProjectID = "p0:p1"
+				b.dns = []string{"i0.z0.c.p1.p0.internal", "i0.c.p1.p0.internal", "i0"}
+			},
+		}
 		testValidator(t, "good", cases, fn, true, false)
 
 		cases = []func(*csrBuilder, *controllerContext){
@@ -447,6 +456,12 @@ func TestValidators(t *testing.T) {
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
 				b.dns = []string{"i0.z0.c.p0.internal", "i0.c.p0.internal", "i1"}
+			},
+			// Not matching Domain-scoped project DNS.
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				c.gcpCfg.ProjectID = "p0:p1:p2"
+				b.dns = []string{"i0.z0.c.p0.internal", "i0.c.p1.p2.p0.internal", "i0"}
 			},
 		}
 		testValidator(t, "bad", cases, fn, false, false)
@@ -865,6 +880,13 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 		t.Logf("fakeGCPAPI request %q", req.URL.Path)
 		switch req.URL.Path {
 		case "/compute/v1/projects/p0/zones/z0/instances/i0":
+			json.NewEncoder(rw).Encode(compute.Instance{
+				Id:                1,
+				Name:              "i0",
+				Zone:              "z0",
+				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
+			})
+		case "/compute/v1/projects/p0:p1/zones/z0/instances/i0":
 			json.NewEncoder(rw).Encode(compute.Instance{
 				Id:                1,
 				Name:              "i0",
