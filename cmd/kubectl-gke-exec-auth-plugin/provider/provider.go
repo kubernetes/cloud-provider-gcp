@@ -60,7 +60,7 @@ func gcloudAccessToken() (string, error) {
 		return "", err
 	}
 	token := string(output)
-	token = strings.Trim(token, "\n")
+	token = strings.Trim(token, "\n\r")
 
 	return token, nil
 }
