@@ -28,7 +28,7 @@ import (
 	"testing"
 
 	authorization "k8s.io/api/authorization/v1"
-	capi "k8s.io/api/certificates/v1beta1"
+	capi "k8s.io/api/certificates/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -127,7 +127,7 @@ func TestHandle(t *testing.T) {
 		if got, expected := a.Verb, "update"; got != expected {
 			t.Errorf("got: %v, expected: %v", got, expected)
 		}
-		if got, expected := a.Resource, (schema.GroupVersionResource{Group: "certificates.k8s.io", Version: "v1beta1", Resource: "certificatesigningrequests"}); got != expected {
+		if got, expected := a.Resource, (schema.GroupVersionResource{Group: "certificates.k8s.io", Version: "v1", Resource: "certificatesigningrequests"}); got != expected {
 			t.Errorf("got: %v, expected: %v", got, expected)
 		}
 		if got, expected := a.Subresource, "approval"; got != expected {
@@ -240,7 +240,7 @@ func TestHandle(t *testing.T) {
 				if got, expected := a.Verb, "update"; got != expected {
 					t.Errorf("got: %v, expected: %v", got, expected)
 				}
-				if got, expected := a.Resource, (schema.GroupVersionResource{Group: "certificates.k8s.io", Version: "v1beta1", Resource: "certificatesigningrequests"}); got != expected {
+				if got, expected := a.Resource, (schema.GroupVersionResource{Group: "certificates.k8s.io", Version: "v1", Resource: "certificatesigningrequests"}); got != expected {
 					t.Errorf("got: %v, expected: %v", got, expected)
 				}
 				if got, expected := a.Subresource, "approval"; got != expected {
