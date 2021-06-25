@@ -25,6 +25,7 @@ import (
 
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -44,7 +45,7 @@ func (f fakeIndexer) GetByKey(key string) (interface{}, bool, error) {
 	return f.obj, f.obj != nil, f.err
 }
 
-func newPod(key, ksa string) *core.Pod {
+func newPod(uid types.UID, key, ksa string) *core.Pod {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		panic(err)
@@ -57,6 +58,7 @@ func newPod(key, ksa string) *core.Pod {
 		ObjectMeta: meta.ObjectMeta{
 			Namespace: namespace,
 			Name:      name,
+			UID:       uid,
 		},
 		Spec: core.PodSpec{
 			NodeName:           testNode,
@@ -77,6 +79,9 @@ func TestNodeSync(t *testing.T) {
 	podKey1 := testNamespace + "/testPod1"
 	podKey2 := testNamespace + "/testPod2"
 	podKeyUnauthz := testNamespace + "/testPodUnauthz"
+	podUID0 := types.UID("testUIDForTestPod0")
+	podUID1 := types.UID("testUIDForTestPod1")
+	podUID2 := types.UID("testUIDForTestPod2")
 
 	tests := []struct {
 		desc        string
@@ -90,50 +95,64 @@ func TestNodeSync(t *testing.T) {
 	}{
 		{
 			desc:        "add first pod with authorized gsa",
-			idxObj:      newPod(podKey0, "testKSA0"),
-			wantPodMap:  map[string]gsaEmail{podKey0: "testGSA0"},
+			idxObj:      newPod(podUID0, podKey0, "testKSA0"),
+			wantPodMap:  map[types.UID]pod{podUID0: pod{podKey0, "testGSA0"}},
 			wantGSASync: []gsaEmail{"testGSA0"},
 		},
 		{
 			desc:       "add pod with unauthorized gsa",
-			initPodMap: map[string]gsaEmail{podKey0: "testGSA0"},
-			idxObj:     newPod(podKeyUnauthz, "testKSAUnauthz"),
-			wantPodMap: map[string]gsaEmail{podKey0: "testGSA0"},
+			initPodMap: map[types.UID]pod{podUID0: pod{podKey0, "testGSA0"}},
+			idxObj:     newPod(podUID1, podKeyUnauthz, "testKSAUnauthz"),
+			wantPodMap: map[types.UID]pod{podUID0: pod{podKey0, "testGSA0"}},
 		},
 		{
 			desc:        "add pod with a new gsa",
-			initPodMap:  map[string]gsaEmail{podKey0: "testGSA0", podKey1: "testGSA1"},
-			idxObj:      newPod(podKey2, "testKSA2"),
-			wantPodMap:  map[string]gsaEmail{podKey0: "testGSA0", podKey1: "testGSA1", podKey2: "testGSA2"},
+			initPodMap:  map[types.UID]pod{podUID0: pod{podKey0, "testGSA0"}, podUID1: pod{podKey1, "testGSA1"}},
+			idxObj:      newPod(podUID2, podKey2, "testKSA2"),
+			wantPodMap:  map[types.UID]pod{podUID0: pod{podKey0, "testGSA0"}, podUID1: pod{podKey1, "testGSA1"}, podUID2: pod{podKey2, "testGSA2"}},
 			wantGSASync: []gsaEmail{"testGSA0", "testGSA1", "testGSA2"},
 		},
 		{
 			desc:        "update pod with different gsa",
-			initPodMap:  map[string]gsaEmail{podKey0: "testGSA1"},
-			idxObj:      newPod(podKey0, "testKSA2"),
-			wantPodMap:  map[string]gsaEmail{podKey0: "testGSA2"},
+			initPodMap:  map[types.UID]pod{podUID0: pod{podKey0, "testGSA1"}},
+			idxObj:      newPod(podUID0, podKey0, "testKSA2"),
+			wantPodMap:  map[types.UID]pod{podUID0: pod{podKey0, "testGSA2"}},
 			wantGSASync: []gsaEmail{"testGSA2"},
 		},
 		{
 			desc:        "add pod with repeating gsa",
-			initPodMap:  map[string]gsaEmail{podKey0: "testGSA1"},
-			idxObj:      newPod(podKey1, "testKSA1"),
-			wantPodMap:  map[string]gsaEmail{podKey0: "testGSA1", podKey1: "testGSA1"},
+			initPodMap:  map[types.UID]pod{podUID0: pod{podKey0, "testGSA1"}},
+			idxObj:      newPod(podUID1, podKey1, "testKSA1"),
+			wantPodMap:  map[types.UID]pod{podUID0: pod{podKey0, "testGSA1"}, podUID1: pod{podKey1, "testGSA1"}},
 			wantGSASync: []gsaEmail{"testGSA1"},
 		},
 		{
 			desc:        "pod delete with unique gsa",
-			initPodMap:  map[string]gsaEmail{podKey0: "testGSA0", podKey1: "testGSA1"},
+			initPodMap:  map[types.UID]pod{podUID0: pod{podKey0, "testGSA0"}, podUID1: pod{podKey1, "testGSA1"}},
 			keyOverride: podKey0,
-			wantPodMap:  map[string]gsaEmail{podKey1: "testGSA1"},
+			wantPodMap:  map[types.UID]pod{podUID1: pod{podKey1, "testGSA1"}},
 			wantGSASync: []gsaEmail{"testGSA1"},
 		},
 		{
 			desc:        "pod delete with repeating gsa",
-			initPodMap:  map[string]gsaEmail{podKey0: "testGSA0", podKey1: "testGSA0"},
+			initPodMap:  map[types.UID]pod{podUID0: pod{podKey0, "testGSA0"}, podUID1: pod{podKey1, "testGSA0"}},
 			keyOverride: podKey0,
-			wantPodMap:  map[string]gsaEmail{podKey1: "testGSA0"},
+			wantPodMap:  map[types.UID]pod{podUID1: pod{podKey1, "testGSA0"}},
 			wantGSASync: []gsaEmail{"testGSA0"},
+		},
+		{
+			desc:        "delete pods with the same key and the same gsa",
+			initPodMap:  map[types.UID]pod{podUID0: pod{podKey0, "testGSA0"}, podUID1: pod{podKey0, "testGSA0"}, podUID2: pod{podKey2, "testGSA2"}},
+			keyOverride: podKey0,
+			wantPodMap:  map[types.UID]pod{podUID2: pod{podKey2, "testGSA2"}},
+			wantGSASync: []gsaEmail{"testGSA2"},
+		},
+		{
+			desc:        "delete pods with the same key and but different gsa",
+			initPodMap:  map[types.UID]pod{podUID0: pod{podKey0, "testGSA0"}, podUID1: pod{podKey0, "testGSA1"}, podUID2: pod{podKey2, "testGSA2"}},
+			keyOverride: podKey0,
+			wantPodMap:  map[types.UID]pod{podUID2: pod{podKey2, "testGSA2"}},
+			wantGSASync: []gsaEmail{"testGSA2"},
 		},
 		{
 			desc:        "get pod failed",
@@ -150,8 +169,8 @@ func TestNodeSync(t *testing.T) {
 				t.Fatalf("error creating test HMS client: %v", err)
 			}
 			nodes := newNodeMap()
-			for pod, gsa := range tc.initPodMap {
-				nodes.add(testNode, pod, gsa)
+			for podUID, pod := range tc.initPodMap {
+				nodes.add(testNode, podUID, pod.key, pod.gsa)
 			}
 			ns := &nodeSyncer{
 				location:    testLoc,

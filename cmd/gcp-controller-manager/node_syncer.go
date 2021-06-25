@@ -22,6 +22,7 @@ import (
 	"time"
 
 	core "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -135,16 +136,8 @@ func (ns *nodeSyncer) processNext() bool {
 // verifiedSAs map that service-account-verifier maintains.  The (pod, GSA) pair is then
 // added to the nodeMap table which is keyed by the name of the node where the pod is running.
 //
-// In each nodeMap entry, the validated GSA is stored in a map indexed by the pod's workqueue key.
-// This key (ie, <namespace name>/<pod name>) is chosen (over the Pod's UID) because it is the only
-// piece of information available to this control-loop on pod delete events.
-//
-// TODO(danielywong): Handle pod recreate with the same name regardless of its Add/Delete event
-// processing order.  Pod names are unique within a namespace but can be reused.  The processing
-// order of Delete and Add events for a pod is therefore significant.  One possible resolution is by
-// delay processing (ie, requeue) of Add event if the pod's UID have changed in order to give time
-// for the Delete event to be processed.  A max requeue count will also be needed in case the Delete
-// event was lost.
+// In each nodeMap entry, the validated GSA and the pod's workqueue key (ie, <namespace name>/<pod
+// name>) are stored in a map indexed by the pod object's UID.
 //
 // TODO(danielywong): Call ns.sync only if necessary; that is, first use of a GSA on Pod addition or
 // last use on Pod delete.
@@ -154,12 +147,16 @@ func (ns *nodeSyncer) process(key string) error {
 		return fmt.Errorf("failed to get Pod %q: %v", key, err)
 	}
 	if !exists {
-		node, gsa, found := ns.nodes.remove(key)
-		if !found {
-			return nil
+		syncNodes := ns.nodes.remove(key)
+		klog.Infof("Pod %q being removed was found in %v nodes", key, len(syncNodes))
+		for node, gsa := range syncNodes {
+			klog.Infof("Pod %q and GSA %q are removed from Node %q", key, gsa, node)
+			if err := ns.sync(node); err != nil {
+				// Log only; retries will be triggered by informer's resync events.
+				klog.Warningf("Failed to sync Node %q: %v", node, err)
+			}
 		}
-		klog.Infof("Pod %q and its GSA %q is removed from Node %q", key, gsa, node)
-		return ns.sync(node)
+		return nil
 	}
 	pod, ok := o.(*core.Pod)
 	if !ok {
@@ -177,7 +174,7 @@ func (ns *nodeSyncer) process(key string) error {
 	}
 	node := pod.Spec.NodeName
 	klog.Infof("Adding GSA %q to Node %q where Pod %q is running as KSA %q.", gsa, node, key, ksa)
-	gsaLast, found := ns.nodes.add(node, key, gsa)
+	gsaLast, found := ns.nodes.add(node, pod.ObjectMeta.UID, key, gsa)
 	if found && gsaLast == gsa {
 		return nil
 	}
@@ -196,8 +193,15 @@ func (ns *nodeSyncer) sync(node string) error {
 	return ns.hms.sync(node, ns.location, gsaList)
 }
 
-// podMap is a map of GSAs indexed by Pod keys.
-type podMap map[string]gsaEmail
+// podMap is a map of pods keyed by their UID
+type podMap map[types.UID]pod
+
+// pod contains the key of the pod from the informer events (ie, "<namespace>/<name>") and the GSA
+// that the pod was authorized to run as.
+type pod struct {
+	key string
+	gsa gsaEmail
+}
 
 // nodeMap is a thread-safe map of podMap's indexed by Node name.
 type nodeMap struct {
@@ -211,29 +215,36 @@ func newNodeMap() *nodeMap {
 	}
 }
 
-func (nm *nodeMap) add(node, pod string, gsa gsaEmail) (gsaEmail, bool) {
+func (nm *nodeMap) add(node string, podUID types.UID, podKey string, gsa gsaEmail) (gsaEmail, bool) {
 	nm.Lock()
 	defer nm.Unlock()
 	n, found := nm.m[node]
 	if !found {
-		nm.m[node] = map[string]gsaEmail{pod: gsa}
+		p := pod{podKey, gsa}
+		nm.m[node] = map[types.UID]pod{podUID: p}
 		return "", false
 	}
-	g, found := n[pod]
-	n[pod] = gsa
-	return g, found
+	p, found := n[podUID]
+	n[podUID] = pod{podKey, gsa}
+	return p.gsa, found
 }
 
-func (nm *nodeMap) remove(pod string) (string, gsaEmail, bool) {
+// Remove removes all the pods with matching podKey and returns the list of the removed pods' GSA
+// per node in a map keyed by the node name.
+func (nm *nodeMap) remove(podKey string) map[string][]gsaEmail {
 	nm.Lock()
 	defer nm.Unlock()
+
+	rc := make(map[string][]gsaEmail)
 	for node, pods := range nm.m {
-		if gsa, ok := pods[pod]; ok {
-			delete(pods, pod)
-			return node, gsa, true
+		for podUID, pod := range pods {
+			if pod.key == podKey {
+				rc[node] = append(rc[node], pod.gsa)
+				delete(pods, podUID)
+			}
 		}
 	}
-	return "", "", false
+	return rc
 }
 
 func (nm *nodeMap) gsaEmailsByNode(node string) ([]gsaEmail, error) {
@@ -243,8 +254,8 @@ func (nm *nodeMap) gsaEmailsByNode(node string) ([]gsaEmail, error) {
 		return nil, fmt.Errorf("Node not found: %q", node)
 	}
 	set := make(map[gsaEmail]bool)
-	for _, gsa := range nm.m[node] {
-		set[gsa] = true
+	for _, pod := range nm.m[node] {
+		set[pod.gsa] = true
 	}
 	l := make([]gsaEmail, 0, len(set))
 	for gsa := range set {
