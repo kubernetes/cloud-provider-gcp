@@ -44,10 +44,21 @@ type controllerContext struct {
 // logs. These loops are intentionally started in a random order.
 func loops() map[string]func(*controllerContext) error {
 	ll := map[string]func(*controllerContext) error{
-		"certificate-approver": func(ctx *controllerContext) error {
-			approver := newGKEApprover(ctx)
+		"node-certificate-approver": func(ctx *controllerContext) error {
+			approver := newNodeApprover(ctx)
 			approveController := certificates.NewCertificateController(
-				"approver",
+				"node-certificate-approver",
+				ctx.client,
+				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
+				approver.handle,
+			)
+			go approveController.Run(20, ctx.done)
+			return nil
+		},
+		"istiod-certificate-approver": func(ctx *controllerContext) error {
+			approver := newIstiodApprover(ctx)
+			approveController := certificates.NewCertificateController(
+				"istiod-certificate-approver",
 				ctx.client,
 				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
 				approver.handle,
