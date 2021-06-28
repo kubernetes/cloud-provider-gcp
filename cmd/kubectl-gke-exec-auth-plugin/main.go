@@ -24,7 +24,7 @@ func main() {
 		msg := fmt.Errorf("unable to convert ExecCredential object to json format. Error :%v\n", err)
 		panic(msg)
 	}
-	fmt.Printf("%s", ecStr)
+	fmt.Print(ecStr)
 }
 
 func formatToJSON(i interface{}) (string, error) {
