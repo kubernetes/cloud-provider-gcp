@@ -15,13 +15,22 @@ func main() {
 
 	ec, err := provider.ExecCredential()
 	if err != nil {
-		msg := fmt.Errorf("unable to retrieve access token for GKE. Error : %v", err)
+		msg := fmt.Errorf("unable to retrieve access token for GKE. Error : %v\n", err)
 		panic(msg)
 	}
-	fmt.Printf("%s", formatToJSON(ec))
+
+	ecStr, err := formatToJSON(ec)
+	if err != nil {
+		msg := fmt.Errorf("unable to convert ExecCredential object to json format. Error :%v\n", err)
+		panic(msg)
+	}
+	fmt.Printf("%s", ecStr)
 }
 
-func formatToJSON(i interface{}) string {
-	s, _ := json.MarshalIndent(i, "", "    ")
-	return string(s)
+func formatToJSON(i interface{}) (string, error) {
+	s, err := json.MarshalIndent(i, "", "    ")
+	if err != nil {
+		return "", err
+	}
+	return string(s), nil
 }
