@@ -19,7 +19,6 @@ go_library(
     ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/kubectl-gke-exec-auth-plugin",
     deps = [
-        "//cmd/kubectl-gke-exec-auth-plugin/provider:go_default_library",
         "//vendor/github.com/spf13/pflag:go_default_library",
         "//vendor/golang.org/x/oauth2:go_default_library",
         "//vendor/golang.org/x/oauth2/google:go_default_library",
