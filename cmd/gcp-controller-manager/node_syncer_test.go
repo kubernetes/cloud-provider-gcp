@@ -25,6 +25,7 @@ import (
 
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -77,6 +78,14 @@ func TestNodeSync(t *testing.T) {
 	podKey1 := testNamespace + "/testPod1"
 	podKey2 := testNamespace + "/testPod2"
 	podKeyUnauthz := testNamespace + "/testPodUnauthz"
+	node := &core.Node{
+		ObjectMeta: meta.ObjectMeta{
+			Name: testNode,
+		},
+		Spec: core.NodeSpec{
+			ProviderID: fmt.Sprintf("gce://project/%s/instance", testLoc),
+		},
+	}
 
 	tests := []struct {
 		desc        string
@@ -154,11 +163,11 @@ func TestNodeSync(t *testing.T) {
 				nodes.add(testNode, pod, gsa)
 			}
 			ns := &nodeSyncer{
-				location:    testLoc,
 				indexer:     fakeIndexer{obj: tc.idxObj, err: tc.idxErr},
 				hms:         hmsClient,
 				verifiedSAs: &verifiedSAs,
 				nodes:       nodes,
+				zones:       newNodeZones(fake.NewSimpleClientset(node)),
 			}
 
 			podKey := tc.keyOverride
