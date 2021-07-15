@@ -104,7 +104,7 @@ func loops() map[string]func(*controllerContext) error {
 				ctx.sharedInformers.Core().V1().Pods(),
 				ctx.verifiedSAs,
 				ctx.hmsSyncNodeURL,
-				ctx.gcpCfg.Location,
+				ctx.client,
 			)
 			if err != nil {
 				return err

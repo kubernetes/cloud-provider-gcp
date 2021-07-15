@@ -24,11 +24,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	authorization "k8s.io/api/authorization/v1"
-	capi "k8s.io/api/certificates/v1beta1"
+	capi "k8s.io/api/certificates/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/klog/v2"
-	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1beta1"
+	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
 )
 
 var nodeClientKeyUsages = []capi.KeyUsage{
@@ -226,7 +226,7 @@ func (vc *Context) updateCSR(csr *capi.CertificateSigningRequest, approved bool,
 			Message: msg,
 		})
 	}
-	_, err := vc.Client.CertificatesV1beta1().CertificateSigningRequests().UpdateApproval(context.TODO(), csr, metav1.UpdateOptions{})
+	_, err := vc.Client.CertificatesV1().CertificateSigningRequests().UpdateApproval(context.TODO(), "", csr, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("error updating approval status for csr: %v", err)
 	}

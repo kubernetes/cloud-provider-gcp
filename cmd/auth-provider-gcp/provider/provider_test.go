@@ -27,13 +27,14 @@ import (
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
-	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider"
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1"
 )
 
 const (
 	dummyToken       = "ya26.lots-of-indiscernible-garbage"
 	email            = "1234@project.gserviceaccount.com"
 	expectedUsername = "_token"
+	expectedCacheKey = credentialproviderapi.ImagePluginCacheKeyType
 	dummyImage       = "k8s.gcr.io/pause"
 )
 
@@ -87,6 +88,9 @@ func TestContainerRegistry(t *testing.T) {
 	if hasURL(registryURL, response) == false {
 		t.Errorf("URL %s expected in response, not found (response: %s)", registryURL, response.Auth)
 	}
+	if expectedCacheKey != response.CacheKeyType {
+		t.Errorf("Expected %s as cache key (found %s instead)", expectedCacheKey, response.CacheKeyType)
+	}
 	for _, auth := range response.Auth {
 		if expectedUsername != auth.Username {
 			t.Errorf("Expected username %s not found (username: %s)", expectedUsername, auth.Username)
@@ -136,6 +140,9 @@ func TestConfigProvider(t *testing.T) {
 	response, err := GetResponse(dummyImage, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
+	}
+	if expectedCacheKey != response.CacheKeyType {
+		t.Errorf("Expected %s as cache key (found %s instead)", expectedCacheKey, response.CacheKeyType)
 	}
 	for _, auth := range response.Auth {
 		if username != auth.Username {
@@ -190,6 +197,9 @@ func TestConfigURLProvider(t *testing.T) {
 	response, err := GetResponse(dummyImage, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
+	}
+	if expectedCacheKey != response.CacheKeyType {
+		t.Errorf("Expected %s as cache key (found %s instead)", expectedCacheKey, response.CacheKeyType)
 	}
 	for _, auth := range response.Auth {
 		if username != auth.Username {

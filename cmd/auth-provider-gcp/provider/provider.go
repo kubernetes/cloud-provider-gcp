@@ -17,6 +17,7 @@ limitations under the License.
 package provider
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -24,11 +25,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
-	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider"
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1"
 )
 
 const (
+	cacheImage                = "image"
+	cacheRegistry             = "registry"
+	cacheGlobal               = "global"
 	cacheDurationKey          = "KUBE_SIDECAR_CACHE_DURATION"
+	cacheTypeKey              = "KUBE_SIDECAR_CACHE_TYPE"
 	metadataHTTPClientTimeout = time.Second * 10
 	apiKind                   = "CredentialProviderResponse"
 	apiVersion                = "credentialprovider.kubelet.k8s.io/v1alpha1"
@@ -71,6 +76,10 @@ func makeHTTPClient(transport *http.Transport) *http.Client {
 func getCacheDuration() (time.Duration, error) {
 	unparsedCacheDuration := os.Getenv(cacheDurationKey)
 	if unparsedCacheDuration == "" {
+		// a value of 0 for the cache duration will result in the credentials not being cached
+		// at all, which is equivalent to what the in-tree provider does; since the
+		// KUBE_SIDECAR_CACHE_DURATION environment variable is not set by default,
+		// backwards compatibility is maintained by default
 		return 0, nil
 	}
 	cacheDuration, err := time.ParseDuration(unparsedCacheDuration)
@@ -78,6 +87,24 @@ func getCacheDuration() (time.Duration, error) {
 		return 0, err
 	}
 	return cacheDuration, nil
+}
+
+func getCacheKeyType() (credentialproviderapi.PluginCacheKeyType, error) {
+	keyType := os.Getenv(cacheTypeKey)
+	if keyType == "" {
+		return credentialproviderapi.ImagePluginCacheKeyType, nil
+	}
+	switch keyType {
+	case cacheImage:
+		return credentialproviderapi.ImagePluginCacheKeyType, nil
+	case cacheRegistry:
+		return credentialproviderapi.RegistryPluginCacheKeyType, nil
+	case cacheGlobal:
+		return credentialproviderapi.GlobalPluginCacheKeyType, nil
+	default:
+		var nilKeyType credentialproviderapi.PluginCacheKeyType = ""
+		return nilKeyType, fmt.Errorf("Unknown cache key %q", keyType)
+	}
 }
 
 // GetResponse queries the given provider for credentials.
@@ -91,10 +118,13 @@ func GetResponse(image string, provider credentialconfig.DockerConfigProvider) (
 	if err != nil {
 		return nil, err
 	}
-	if cacheDuration != 0 {
-		response.CacheDuration = &metav1.Duration{Duration: cacheDuration}
-	}
+	response.CacheDuration = &metav1.Duration{Duration: cacheDuration}
 	response.TypeMeta.Kind = apiKind
 	response.TypeMeta.APIVersion = apiVersion
+	cacheKey, err := getCacheKeyType()
+	if err != nil {
+		return nil, err
+	}
+	response.CacheKeyType = cacheKey
 	return response, nil
 }

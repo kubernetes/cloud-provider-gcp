@@ -17,14 +17,17 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
 
 	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/workqueue"
@@ -48,10 +51,10 @@ type nodeSyncer struct {
 	nodes       *nodeMap
 	verifiedSAs *saMap
 	hms         *hmsClient
-	location    string
+	zones       *nodeZones
 }
 
-func newNodeSyncer(informer coreinformers.PodInformer, sm *saMap, hmsSyncNodeURL, location string) (*nodeSyncer, error) {
+func newNodeSyncer(informer coreinformers.PodInformer, sm *saMap, hmsSyncNodeURL string, client clientset.Interface) (*nodeSyncer, error) {
 	hms, err := newHMSClient(hmsSyncNodeURL, &clientcmdapi.AuthProviderConfig{Name: "gcp"})
 	if err != nil {
 		return nil, err
@@ -65,7 +68,7 @@ func newNodeSyncer(informer coreinformers.PodInformer, sm *saMap, hmsSyncNodeURL
 		nodes:       newNodeMap(),
 		verifiedSAs: sm,
 		hms:         hms,
-		location:    location,
+		zones:       newNodeZones(client),
 	}
 	informer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ns.onPodAdd,
@@ -190,7 +193,11 @@ func (ns *nodeSyncer) sync(node string) error {
 	if err != nil {
 		return fmt.Errorf("Failed to retrieve GSA list for Node %q: %v", node, err)
 	}
-	return ns.hms.sync(node, ns.location, gsaList)
+	zone, err := ns.zones.zoneByNode(node)
+	if err != nil {
+		return fmt.Errorf("failed to find zone for node %q: %w", node, err)
+	}
+	return ns.hms.sync(node, zone, gsaList)
 }
 
 // podMap is a map of pods keyed by their UID
@@ -265,4 +272,35 @@ func (nm *nodeMap) gsaEmailsByNode(node string) ([]gsaEmail, error) {
 		l = append(l, gsa)
 	}
 	return l, nil
+}
+
+type nodeZones struct {
+	sync.Mutex
+	m      map[string]string
+	client clientset.Interface
+}
+
+func newNodeZones(client clientset.Interface) *nodeZones {
+	return &nodeZones{
+		m:      make(map[string]string),
+		client: client,
+	}
+}
+
+func (nz *nodeZones) zoneByNode(nodeName string) (string, error) {
+	nz.Lock()
+	defer nz.Unlock()
+	if zone, ok := nz.m[nodeName]; ok {
+		return zone, nil
+	}
+	node, err := nz.client.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("failed to get node object: %w", err)
+	}
+	_, zone, _, err := parseNodeURL(node.Spec.ProviderID)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse node url: %w", err)
+	}
+	nz.m[nodeName] = zone
+	return zone, nil
 }
