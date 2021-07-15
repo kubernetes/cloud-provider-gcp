@@ -150,7 +150,7 @@ func (ns *nodeSyncer) process(key string) error {
 		syncNodes := ns.nodes.remove(key)
 		klog.Infof("Pod %q being removed was found in %v nodes", key, len(syncNodes))
 		for node, gsa := range syncNodes {
-			klog.Infof("Pod %q and GSA %q are removed from Node %q", key, gsa, node)
+			klog.Infof("Pod %q is removed from Node %q (affected GSAs: %v)", key, node, gsa)
 			if err := ns.sync(node); err != nil {
 				// Log only; retries will be triggered by informer's resync events.
 				klog.Warningf("Failed to sync Node %q: %v", node, err)
@@ -224,9 +224,12 @@ func (nm *nodeMap) add(node string, podUID types.UID, podKey string, gsa gsaEmai
 		nm.m[node] = map[types.UID]pod{podUID: p}
 		return "", false
 	}
-	p, found := n[podUID]
+	var lastGSA gsaEmail
+	if p, found := n[podUID]; found {
+		lastGSA = p.gsa
+	}
 	n[podUID] = pod{podKey, gsa}
-	return p.gsa, found
+	return lastGSA, found
 }
 
 // Remove removes all the pods with matching podKey and returns the list of the removed pods' GSA
