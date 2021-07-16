@@ -8,7 +8,7 @@ load(
 load("//defs:version.bzl", "version_x_defs")
 
 go_binary(
-    name = "kubectl-gke-exec-auth-plugin",
+    name = "gke-gcloud-auth-plugin",
     embed = [":go_default_library"],
 )
 
@@ -17,7 +17,7 @@ go_library(
     srcs = [
         "main.go",
     ],
-    importpath = "k8s.io/cloud-provider-gcp/cmd/kubectl-gke-exec-auth-plugin",
+    importpath = "k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin",
     deps = [
         "//vendor/github.com/spf13/pflag:go_default_library",
         "//vendor/golang.org/x/oauth2:go_default_library",
