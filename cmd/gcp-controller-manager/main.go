@@ -72,6 +72,7 @@ var (
 	csrApproverAllowLegacyKubelet      = pflag.Bool("csr-allow-legacy-kubelet", true, "Allow legacy kubelet bootstrap flow.")
 	gceAPIEndpointOverride             = pflag.String("gce-api-endpoint-override", "", "If set, talks to a different GCE API Endpoint. By default it talks to https://www.googleapis.com/compute/v1/projects/")
 	directPath                         = pflag.Bool("direct-path", false, "Enable Direct Path.")
+	delayDirectPathGSARemove           = pflag.Bool("delay-direct-path-gsa-remove", false, "Delay removal of deleted Direct Path workloads' Google Service Accounts.")
 	hmsAuthorizeSAMappingURL           = pflag.String("hms-authorize-sa-mapping-url", "", "URL for reaching the Hosted Master Service AuthorizeSAMapping API.")
 	hmsSyncNodeURL                     = pflag.String("hms-sync-node-url", "", "URL for reaching the Hosted Master Service SyncNode API.")
 )
@@ -104,6 +105,7 @@ func main() {
 		hmsAuthorizeSAMappingURL:           *hmsAuthorizeSAMappingURL,
 		hmsSyncNodeURL:                     *hmsSyncNodeURL,
 		healthz:                            healthz.NewHandler(),
+		delayDirectPathGSARemove:           *delayDirectPathGSARemove,
 	}
 	var err error
 	s.informerKubeconfig, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
@@ -159,6 +161,7 @@ type controllerManager struct {
 	leaderElectionConfig               componentbaseconfig.LeaderElectionConfiguration
 	hmsAuthorizeSAMappingURL           string
 	hmsSyncNodeURL                     string
+	delayDirectPathGSARemove           bool
 
 	// Fields initialized from other sources.
 	gcpConfig            gcpConfig
@@ -226,6 +229,7 @@ func run(s *controllerManager) error {
 				done:                               ctx.Done(),
 				hmsAuthorizeSAMappingURL:           s.hmsAuthorizeSAMappingURL,
 				hmsSyncNodeURL:                     s.hmsSyncNodeURL,
+				delayDirectPathGSARemove:           s.delayDirectPathGSARemove,
 			}); err != nil {
 				klog.Fatalf("Failed to start %q: %v", name, err)
 			}
