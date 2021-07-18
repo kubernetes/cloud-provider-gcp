@@ -24,6 +24,7 @@ import (
 
 	core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -35,8 +36,8 @@ import (
 
 const (
 	nodeSyncerControlLoopName = "node-syncer"
-	nodeSyncerQueueName       = "node-syncer-queue"
 	nodeSyncerResyncPeriod    = 30 * time.Minute
+	nodeSyncerGSARemoveDelay  = 30 * time.Minute
 )
 
 // nodeSyncer implements a custom control loop responsible for synchronizing GCE with the list of
@@ -44,16 +45,18 @@ const (
 // the service-account-verifier control loop which shares the result over the verifiedSAs map.  Use
 // of individual authorized GSA on each node is tracked by this control loop based on Pod events.
 type nodeSyncer struct {
-	indexer     cache.Indexer
-	hasSynced   func() bool
-	queue       workqueue.RateLimitingInterface
-	nodes       *nodeMap
-	verifiedSAs *saMap
-	hms         *hmsClient
-	zones       *nodeZones
+	indexer        cache.Indexer
+	hasSynced      func() bool
+	queue          workqueue.RateLimitingInterface
+	nodes          *nodeMap
+	verifiedSAs    *saMap
+	hms            *hmsClient
+	zones          *nodeZones
+	delayGSARemove bool
+	podRemoveQueue workqueue.DelayingInterface
 }
 
-func newNodeSyncer(informer coreinformers.PodInformer, sm *saMap, hmsSyncNodeURL string, client clientset.Interface) (*nodeSyncer, error) {
+func newNodeSyncer(informer coreinformers.PodInformer, sm *saMap, hmsSyncNodeURL string, client clientset.Interface, delayGSARemove bool) (*nodeSyncer, error) {
 	hms, err := newHMSClient(hmsSyncNodeURL, &clientcmdapi.AuthProviderConfig{Name: "gcp"})
 	if err != nil {
 		return nil, err
@@ -63,11 +66,13 @@ func newNodeSyncer(informer coreinformers.PodInformer, sm *saMap, hmsSyncNodeURL
 		hasSynced: informer.Informer().HasSynced,
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
 			workqueue.NewItemExponentialFailureRateLimiter(200*time.Millisecond, 1000*time.Second),
-		), nodeSyncerQueueName),
-		nodes:       newNodeMap(),
-		verifiedSAs: sm,
-		hms:         hms,
-		zones:       newNodeZones(client),
+		), "node-syncer-queue"),
+		nodes:          newNodeMap(),
+		verifiedSAs:    sm,
+		hms:            hms,
+		zones:          newNodeZones(client),
+		delayGSARemove: delayGSARemove,
+		podRemoveQueue: workqueue.NewDelayingQueue(),
 	}
 	informer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ns.onPodAdd,
@@ -106,6 +111,9 @@ func (ns *nodeSyncer) Run(workers int, stopCh <-chan struct{}) {
 	for i := 0; i < workers; i++ {
 		go wait.Until(ns.work, time.Second, stopCh)
 	}
+	if ns.delayGSARemove {
+		go wait.Until(ns.workPodRemoveQueue, time.Second, stopCh)
+	}
 	<-stopCh
 }
 
@@ -131,6 +139,41 @@ func (ns *nodeSyncer) processNext() bool {
 	return true
 }
 
+func (ns *nodeSyncer) workPodRemoveQueue() {
+	for ns.processNextPodRemove() {
+	}
+}
+
+func (ns *nodeSyncer) processNextPodRemove() bool {
+	key, quit := ns.podRemoveQueue.Get()
+	if quit {
+		return false
+	}
+	defer ns.podRemoveQueue.Done(key)
+
+	uid, ok := key.(types.UID)
+	if !ok {
+		klog.Warningf("Dropping invalid key %q for delayed pod removal", key)
+		return true
+	}
+	if err := ns.removePod(uid); err != nil {
+		klog.Warningf("Delayed removal of Pod %q had failed: %v", uid, err)
+	}
+	return true
+}
+
+func (ns *nodeSyncer) removePod(uid types.UID) error {
+	node, gsa, found := ns.nodes.remove(uid)
+	if !found {
+		return fmt.Errorf("Pod %q is not found for delayed removal", uid)
+	}
+	klog.Infof("Pod %q running as %q is removed from Node %q after delay", uid, gsa, node)
+	if err := ns.sync(node); err != nil {
+		klog.Warningf("Failed to sync Node %q for delayed GSA removal", node)
+	}
+	return nil
+}
+
 // Process processes Pod events to maintain the list of GSAs that are authorized by
 // service-account-verifier and in-use by running Pods for each node in the cluster.
 //
@@ -138,16 +181,8 @@ func (ns *nodeSyncer) processNext() bool {
 // verifiedSAs map that service-account-verifier maintains.  The (pod, GSA) pair is then
 // added to the nodeMap table which is keyed by the name of the node where the pod is running.
 //
-// In each nodeMap entry, the validated GSA is stored in a map indexed by the pod's workqueue key.
-// This key (ie, <namespace name>/<pod name>) is chosen (over the Pod's UID) because it is the only
-// piece of information available to this control-loop on pod delete events.
-//
-// TODO(danielywong): Handle pod recreate with the same name regardless of its Add/Delete event
-// processing order.  Pod names are unique within a namespace but can be reused.  The processing
-// order of Delete and Add events for a pod is therefore significant.  One possible resolution is by
-// delay processing (ie, requeue) of Add event if the pod's UID have changed in order to give time
-// for the Delete event to be processed.  A max requeue count will also be needed in case the Delete
-// event was lost.
+// In each nodeMap entry, the validated GSA and the pod's workqueue key (ie, <namespace name>/<pod
+// name>) are stored in a map indexed by the pod object's UID.
 //
 // TODO(danielywong): Call ns.sync only if necessary; that is, first use of a GSA on Pod addition or
 // last use on Pod delete.
@@ -156,13 +191,36 @@ func (ns *nodeSyncer) process(key string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get Pod %q: %v", key, err)
 	}
-	if !exists {
-		node, gsa, found := ns.nodes.remove(key)
-		if !found {
+	if !exists { // pod removal event
+		podUIDs := ns.nodes.find(key)
+		if len(podUIDs) == 0 {
+			klog.Warningf("Pod key %q not found", key)
+			return nil // no retry
+		}
+		if ns.delayGSARemove {
+			for _, uid := range podUIDs {
+				klog.Infof("Pod %q (UID %q) is queued for delayed removal", key, uid)
+				ns.podRemoveQueue.AddAfter(uid, nodeSyncerGSARemoveDelay)
+			}
 			return nil
 		}
-		klog.Infof("Pod %q and its GSA %q is removed from Node %q", key, gsa, node)
-		return ns.sync(node)
+		nodeSet := make(map[string]bool)
+		for _, uid := range podUIDs {
+			node, gsa, found := ns.nodes.remove(uid)
+			if !found {
+				klog.Warning("Pod %q (UID %q) not found on removal event: %v", key, uid, err)
+				continue
+			}
+			klog.Infof("Pod %q running as %q is removed from Node %q (pod UID: %q)", key, gsa, node, uid)
+			nodeSet[node] = true
+		}
+		for node, _ := range nodeSet {
+			if err := ns.sync(node); err != nil {
+				// Log only; retries will be triggered by informer's resync events.
+				klog.Warningf("Failed to sync Node %q for GSA removal: %v", node, err)
+			}
+		}
+		return nil
 	}
 	pod, ok := o.(*core.Pod)
 	if !ok {
@@ -180,12 +238,12 @@ func (ns *nodeSyncer) process(key string) error {
 	}
 	node := pod.Spec.NodeName
 	klog.Infof("Adding GSA %q to Node %q where Pod %q is running as KSA %q.", gsa, node, key, ksa)
-	gsaLast, found := ns.nodes.add(node, key, gsa)
+	gsaLast, found := ns.nodes.add(node, pod.ObjectMeta.UID, key, gsa)
 	if found && gsaLast == gsa {
 		return nil
 	}
 	if found && gsaLast != gsa {
-		klog.Infof("The authorized GSA of KSA %q that Pod %q runs as has has changed from %q to %q.", ksa, key, gsaLast, gsa)
+		klog.Infof("The authorized GSA of KSA %q that Pod %q runs as has been changed from %q to %q.", ksa, key, gsaLast, gsa)
 	}
 	return ns.sync(node)
 }
@@ -203,8 +261,15 @@ func (ns *nodeSyncer) sync(node string) error {
 	return ns.hms.sync(node, zone, gsaList)
 }
 
-// podMap is a map of GSAs indexed by Pod keys.
-type podMap map[string]gsaEmail
+// podMap is a map of pods keyed by their UID
+type podMap map[types.UID]pod
+
+// pod contains the key of the pod from the informer events (ie, "<namespace>/<name>") and the GSA
+// that the pod was authorized to run as.
+type pod struct {
+	key string
+	gsa gsaEmail
+}
 
 // nodeMap is a thread-safe map of podMap's indexed by Node name.
 type nodeMap struct {
@@ -218,29 +283,52 @@ func newNodeMap() *nodeMap {
 	}
 }
 
-func (nm *nodeMap) add(node, pod string, gsa gsaEmail) (gsaEmail, bool) {
+func (nm *nodeMap) add(node string, podUID types.UID, podKey string, gsa gsaEmail) (gsaEmail, bool) {
 	nm.Lock()
 	defer nm.Unlock()
 	n, found := nm.m[node]
 	if !found {
-		nm.m[node] = map[string]gsaEmail{pod: gsa}
+		p := pod{podKey, gsa}
+		nm.m[node] = map[types.UID]pod{podUID: p}
 		return "", false
 	}
-	g, found := n[pod]
-	n[pod] = gsa
-	return g, found
+	var lastGSA gsaEmail
+	if p, found := n[podUID]; found {
+		lastGSA = p.gsa
+	}
+	n[podUID] = pod{podKey, gsa}
+	return lastGSA, found
 }
 
-func (nm *nodeMap) remove(pod string) (string, gsaEmail, bool) {
+// Remove removes the pod identified by its UID and returns the pod's node name and GSA.
+func (nm *nodeMap) remove(uid types.UID) (string, gsaEmail, bool) {
 	nm.Lock()
 	defer nm.Unlock()
+
 	for node, pods := range nm.m {
-		if gsa, ok := pods[pod]; ok {
-			delete(pods, pod)
+		if pod, ok := pods[uid]; ok {
+			gsa := pod.gsa
+			delete(pods, uid)
 			return node, gsa, true
 		}
 	}
-	return "", "", false
+	return "", gsaEmail(""), false
+}
+
+// find finds all the pods identified by podKey and returns their UIDs.
+func (nm *nodeMap) find(podKey string) []types.UID {
+	nm.Lock()
+	defer nm.Unlock()
+
+	var uid []types.UID
+	for _, pods := range nm.m {
+		for podUID, pod := range pods {
+			if pod.key == podKey {
+				uid = append(uid, podUID)
+			}
+		}
+	}
+	return uid
 }
 
 func (nm *nodeMap) gsaEmailsByNode(node string) ([]gsaEmail, error) {
@@ -250,8 +338,8 @@ func (nm *nodeMap) gsaEmailsByNode(node string) ([]gsaEmail, error) {
 		return nil, fmt.Errorf("Node not found: %q", node)
 	}
 	set := make(map[gsaEmail]bool)
-	for _, gsa := range nm.m[node] {
-		set[gsa] = true
+	for _, pod := range nm.m[node] {
+		set[pod.gsa] = true
 	}
 	l := make([]gsaEmail, 0, len(set))
 	for gsa := range set {
