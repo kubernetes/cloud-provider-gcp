@@ -132,6 +132,7 @@ type Cloud struct {
 	unsafeSubnetworkURL string
 	// DEPRECATED: Do not rely on this value as it may be incorrect.
 	secondaryRangeName       string
+	stackType                string
 	networkProjectID         string
 	onXPN                    bool
 	nodeTags                 []string    // List of tags to use on firewall rules for load balancers
@@ -185,6 +186,7 @@ type ConfigGlobal struct {
 	// aliases. The secondary range must be present on the subnetwork the
 	// cluster is attached to.
 	SecondaryRangeName string   `gcfg:"secondary-range-name"`
+	StackType          string   `gcfg:"stack-type"`
 	NodeTags           []string `gcfg:"node-tags"`
 	NodeInstancePrefix string   `gcfg:"node-instance-prefix"`
 	Regional           bool     `gcfg:"regional"`
@@ -230,6 +232,7 @@ type CloudConfig struct {
 	SubnetworkURL        string
 	// DEPRECATED: Do not rely on this value as it may be incorrect.
 	SecondaryRangeName string
+	StackType          string
 	NodeTags           []string
 	NodeInstancePrefix string
 	TokenSource        oauth2.TokenSource
@@ -390,6 +393,7 @@ func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 
 	if configFile != nil {
 		cloudConfig.SecondaryRangeName = configFile.Global.SecondaryRangeName
+		cloudConfig.StackType = configFile.Global.StackType
 	}
 
 	return cloudConfig, err
@@ -517,6 +521,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		unsafeIsLegacyNetwork:    isLegacyNetwork,
 		unsafeSubnetworkURL:      subnetURL,
 		secondaryRangeName:       config.SecondaryRangeName,
+		stackType:                config.StackType,
 		nodeTags:                 config.NodeTags,
 		nodeInstancePrefix:       config.NodeInstancePrefix,
 		useMetadataServer:        config.UseMetadataServer,
