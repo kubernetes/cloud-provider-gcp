@@ -85,7 +85,8 @@ func (s *gkeSigner) handleInternal(csr *capi.CertificateSigningRequest) (process
 		csr.Spec.SignerName != certsv1.KubeAPIServerClientSignerName &&
 		csr.Spec.SignerName != certsv1.KubeAPIServerClientKubeletSignerName &&
 		csr.Spec.SignerName != certsv1.KubeletServingSignerName &&
-		csr.Spec.SignerName != certsv1b1.LegacyUnknownSignerName {
+		csr.Spec.SignerName != certsv1b1.LegacyUnknownSignerName &&
+		csr.Spec.SignerName != istiodSignerName {
 		return false, nil, nil
 	}
 
