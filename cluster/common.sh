@@ -289,11 +289,7 @@ function load-or-gen-kube-basicauth() {
 function set_binary_version() {
   if [[ "${1}" =~ "/" ]]; then
     IFS='/' read -r -a path <<< "${1}"
-    if [[ "${path[0]}" == "release" ]]; then
-      KUBE_VERSION=$(gsutil cat "gs://kubernetes-release/${1}.txt")
-    else
-      KUBE_VERSION=$(gsutil cat "gs://kubernetes-release-dev/${1}.txt")
-    fi
+    KUBE_VERSION=$(curl -Ls "https://dl.k8s.io/${1}.txt")
   else
     KUBE_VERSION=${1}
   fi
