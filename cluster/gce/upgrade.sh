@@ -61,9 +61,9 @@ function usage() {
   local release_latest
   local ci_latest
 
-  release_stable=$(gsutil cat gs://kubernetes-release/release/stable.txt)
-  release_latest=$(gsutil cat gs://kubernetes-release/release/latest.txt)
-  ci_latest=$(gsutil cat gs://kubernetes-release-dev/ci/latest.txt)
+  release_stable=$(curl -Ls https://dl.k8s.io/release/stable.txt)
+  release_latest=$(curl -Ls https://dl.k8s.io/release/latest.txt)
+  ci_latest=$(curl -Ls https://dl.k8s.io/ci/latest.txt)
 
   echo "Right now, versions are as follows:"
   echo "  release/stable: ${0} ${release_stable}"
