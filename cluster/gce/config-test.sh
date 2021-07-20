@@ -100,7 +100,7 @@ export NODE_IMAGE_PROJECT=${KUBE_GCE_NODE_PROJECT:-cos-cloud}
 export NODE_SERVICE_ACCOUNT=${KUBE_GCE_NODE_SERVICE_ACCOUNT:-default}
 
 # Default container runtime for linux
-export CONTAINER_RUNTIME=${KUBE_CONTAINER_RUNTIME:-containerd}
+export CONTAINER_RUNTIME=${KUBE_CONTAINER_RUNTIME:-test-handler}
 # Default container runtime for windows
 export WINDOWS_CONTAINER_RUNTIME=${KUBE_WINDOWS_CONTAINER_RUNTIME:-docker}
 
