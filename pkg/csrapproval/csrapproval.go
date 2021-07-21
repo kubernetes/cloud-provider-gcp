@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	authorization "k8s.io/api/authorization/v1"
@@ -218,15 +219,18 @@ func (vc *Context) updateCSR(csr *capi.CertificateSigningRequest, approved bool,
 			Type:    capi.CertificateApproved,
 			Reason:  "AutoApproved",
 			Message: msg,
+			// sense of this condition is true, i.e, approved
+			Status: corev1.ConditionTrue,
 		})
 	} else {
 		csr.Status.Conditions = append(csr.Status.Conditions, capi.CertificateSigningRequestCondition{
 			Type:    capi.CertificateDenied,
 			Reason:  "AutoDenied",
 			Message: msg,
+			Status:  corev1.ConditionTrue,
 		})
 	}
-	_, err := vc.Client.CertificatesV1().CertificateSigningRequests().UpdateApproval(context.TODO(), "", csr, metav1.UpdateOptions{})
+	_, err := vc.Client.CertificatesV1().CertificateSigningRequests().UpdateApproval(context.TODO(), csr.Name, csr, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("error updating approval status for csr: %v", err)
 	}
