@@ -14,7 +14,7 @@ pkg_tar(
 """
 
 def _archive_url(folder, version, archive):
-    return paths.join("https://storage.googleapis.com", folder, version, archive)
+    return paths.join("https://dl.k8s.io", folder, version, archive)
 
 def _fetch_kube_release(ctx):
     build_file_contents = BUILD_PRELUDE
@@ -33,7 +33,7 @@ def _fetch_kube_release(ctx):
 fetch_kube_release = repository_rule(
     implementation = _fetch_kube_release,
     attrs = {
-        "folder": attr.string(default = "kubernetes-release/release"),
+        "folder": attr.string(default = "release"),
         "version": attr.string(mandatory = True),
         "archives": attr.string_dict(mandatory = True),
     },
