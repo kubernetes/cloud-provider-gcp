@@ -8,11 +8,10 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/spf13/pflag"
+	"flag"
 	"golang.org/x/oauth2/google"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientauth "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
-	"k8s.io/component-base/version/verflag"
 )
 
 var (
@@ -38,9 +37,18 @@ type gcloudConfiguration struct {
 	X          map[string]interface{} `json:"-"` // Rest of the fields should go here.
 }
 
+var (
+	helpMessage = "gke-gcloud-auth-plugin is an auth plugin to be used by kubectl to interact with GKE Clusters"
+	helpFlagPtr = flag.Bool("help", false, "--help prints the help statement")
+)
+
 func main() {
-	pflag.Parse()
-	verflag.PrintAndExitIfRequested()
+	flag.Parse()
+
+	if *helpFlagPtr {
+		fmt.Printf(helpMessage)
+		return
+	}
 
 	ec, err := execCredential()
 	if err != nil {
