@@ -42,20 +42,30 @@ import (
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
+	pflag.CommandLine.SetNormalizeFunc(cliflag.WordSepNormalizeFunc)
+
 	ccmOptions, err := options.NewCloudControllerManagerOptions()
 	if err != nil {
 		klog.Fatalf("unable to initialize command options: %v", err)
 	}
 
-	fss := cliflag.NamedFlagSets{}
-	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, app.DefaultInitFuncConstructors, fss, wait.NeverStop)
+	controllerInitializers := app.DefaultInitFuncConstructors
+	// Here is an example to remove the controller which is not needed.
+	// e.g. remove the cloud-node-lifecycle controller which current cloud provider does not need.
+	//delete(controllerInitializers, "cloud-node-lifecycle")
 
-	// TODO: once we switch everything over to Cobra commands, we can go back to calling (https://github.com/kubernetes/cloud-provider-gcp/issues/215)
-	// utilflag.InitFlags() (by removing its pflag.Parse() call). For now, we have to set the
-	// normalize func and add the go flag set by hand.
-	// Here is an sample
-	pflag.CommandLine.SetNormalizeFunc(cliflag.WordSepNormalizeFunc)
-	// utilflag.InitFlags()
+	// Here is an example to add an controller(NodeIpamController) which will be used by cloud provider
+	// generate nodeIPAMConfig. Here is an sample code.
+	// If you do not need additional controller, please ignore.
+
+	nodeIpamController := nodeIPAMController{}
+	nodeIpamController.nodeIPAMControllerOptions.NodeIPAMControllerConfiguration = &nodeIpamController.nodeIPAMControllerConfiguration
+	fss := cliflag.NamedFlagSets{}
+	nodeIpamController.nodeIPAMControllerOptions.AddFlags(fss.FlagSet("nodeipam controller"))
+	controllerInitializers["nodeipam"] = nodeIpamController.startNodeIpamControllerWrapper
+
+	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, fss, wait.NeverStop)
+
 	logs.InitLogs()
 	defer logs.FlushLogs()
 

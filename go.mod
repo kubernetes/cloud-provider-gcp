@@ -5,6 +5,7 @@ go 1.15
 require (
 	cloud.google.com/go v0.75.0
 	github.com/blang/semver v3.5.1+incompatible // indirect
+	github.com/evanphx/json-patch v4.9.0+incompatible
 	github.com/go-openapi/spec v0.19.6 // indirect
 	github.com/go-openapi/swag v0.19.7 // indirect
 	github.com/gofrs/flock v0.7.1
@@ -41,11 +42,14 @@ require (
 	k8s.io/cloud-provider v0.21.0
 	k8s.io/cloud-provider-gcp/providers v0.0.0
 	k8s.io/component-base v0.21.0
+	k8s.io/component-helpers v0.21.0
 	k8s.io/controller-manager v0.21.0
 	k8s.io/klog/v2 v2.8.0
+	k8s.io/kube-controller-manager v0.21.0
 	k8s.io/kubelet v0.21.0
 	k8s.io/kubernetes v1.21.0
-	k8s.io/utils v0.0.0-20210111153108-fddb29f9d009 // indirect
+	k8s.io/metrics v0.21.0
+	k8s.io/utils v0.0.0-20210111153108-fddb29f9d009
 	sigs.k8s.io/kubetest2 v0.0.0-20210423234514-1c731a5d2283 // indirect
 )
 
