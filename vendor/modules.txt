@@ -38,6 +38,7 @@ github.com/docker/distribution/reference
 github.com/emicklei/go-restful
 github.com/emicklei/go-restful/log
 # github.com/evanphx/json-patch v4.11.0+incompatible
+## explicit
 github.com/evanphx/json-patch
 # github.com/felixge/httpsnoop v1.0.1
 github.com/felixge/httpsnoop
@@ -1019,6 +1020,8 @@ k8s.io/component-base/traces
 k8s.io/component-base/version
 k8s.io/component-base/version/verflag
 # k8s.io/component-helpers v0.22.0 => k8s.io/component-helpers v0.22.0
+## explicit
+k8s.io/component-helpers/node/topology
 k8s.io/component-helpers/scheduling/corev1
 k8s.io/component-helpers/scheduling/corev1/nodeaffinity
 # k8s.io/controller-manager v0.22.0 => k8s.io/controller-manager v0.22.0
@@ -1038,6 +1041,9 @@ k8s.io/controller-manager/pkg/leadermigration/options
 # k8s.io/klog/v2 v2.9.0 => k8s.io/klog/v2 v2.8.0
 ## explicit
 k8s.io/klog/v2
+# k8s.io/kube-controller-manager v0.22.0 => k8s.io/kube-controller-manager v0.22.0
+## explicit
+k8s.io/kube-controller-manager/config/v1alpha1
 # k8s.io/kube-openapi v0.0.0-20210421082810-95288971da7e
 k8s.io/kube-openapi/pkg/builder
 k8s.io/kube-openapi/pkg/common
@@ -1079,7 +1085,14 @@ k8s.io/kubernetes/pkg/security/apparmor
 k8s.io/kubernetes/pkg/util/hash
 k8s.io/kubernetes/pkg/util/parsers
 k8s.io/kubernetes/pkg/util/taints
+# k8s.io/metrics v0.22.0 => k8s.io/metrics v0.22.0
+## explicit
+k8s.io/metrics/pkg/apis/metrics
+k8s.io/metrics/pkg/apis/metrics/v1alpha1
+k8s.io/metrics/pkg/apis/metrics/v1beta1
+k8s.io/metrics/pkg/client/clientset/versioned/scheme
 # k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9 => k8s.io/utils v0.0.0-20210802155522-efc7438f0176
+## explicit
 k8s.io/utils/buffer
 k8s.io/utils/integer
 k8s.io/utils/internal/third_party/forked/golang/golang-lru
