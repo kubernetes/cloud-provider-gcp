@@ -1,5 +1,6 @@
 startup --expand_configs_in_place
 
+build --stamp
 build --workspace_status_command tools/workspace-status.sh
 build --define RELEASE=devel
 
