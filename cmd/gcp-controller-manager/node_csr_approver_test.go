@@ -106,7 +106,7 @@ func TestHasKubeletUsages(t *testing.T) {
 	}
 }
 
-func TestHandle(t *testing.T) {
+func TestNodeApproverHandle(t *testing.T) {
 	verifyCreateAndUpdate := func(t *testing.T, as []testclient.Action) {
 		if len(as) != 2 {
 			t.Fatalf("expected two calls but got: %#v", as)
@@ -282,7 +282,7 @@ func TestHandle(t *testing.T) {
 				validate:       c.validate,
 				preApproveHook: c.preApproveHook,
 			}
-			approver := gkeApprover{
+			approver := nodeApprover{
 				ctx:        &controllerContext{client: client},
 				validators: []csrValidator{validator},
 			}
@@ -800,7 +800,7 @@ func forAllCases(t *testing.T, desc string, cases []func(b *csrBuilder, c *contr
 		o := &controllerContext{}
 		c(&b, o)
 		t.Run(fmt.Sprintf("%s %d", desc, i), func(t *testing.T) {
-			csr := makeFancyTestCSR(b)
+			csr := makeFancyTestCSR(t, b)
 			csr.Name = t.Name()
 			x509cr, err := certutil.ParseCSR(csr.Spec.Request)
 			if err != nil {
@@ -820,7 +820,7 @@ func makeTestCSR(t *testing.T) *capi.CertificateSigningRequest {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return makeFancyTestCSR(csrBuilder{cn: "test-cert", key: pk})
+	return makeFancyTestCSR(t, csrBuilder{cn: "test-cert", key: pk})
 }
 
 type csrBuilder struct {
@@ -836,7 +836,7 @@ type csrBuilder struct {
 	key        *ecdsa.PrivateKey
 }
 
-func makeFancyTestCSR(b csrBuilder) *capi.CertificateSigningRequest {
+func makeFancyTestCSR(t *testing.T, b csrBuilder) *capi.CertificateSigningRequest {
 	csrb, err := x509.CreateCertificateRequest(insecureRand, &x509.CertificateRequest{
 		Subject: pkix.Name{
 			CommonName:   b.cn,
@@ -847,7 +847,7 @@ func makeFancyTestCSR(b csrBuilder) *capi.CertificateSigningRequest {
 		IPAddresses:    b.ips,
 	}, b.key)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	blocks := [][]byte{pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrb})}
 	for typ, data := range b.extraPEM {
