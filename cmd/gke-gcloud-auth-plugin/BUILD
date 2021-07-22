@@ -10,6 +10,8 @@ load("//defs:version.bzl", "version_x_defs")
 go_binary(
     name = "gke-gcloud-auth-plugin",
     embed = [":go_default_library"],
+    pure = "on",
+    x_defs = version_x_defs(),
 )
 
 go_library(

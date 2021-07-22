@@ -70,15 +70,15 @@ var (
 	startupErrorsThreshold = 5 * time.Minute
 )
 
-// gkeApprover handles approval/denial of CSRs based on SubjectAccessReview and
+// nodeApprover handles approval/denial of CSRs based on SubjectAccessReview and
 // CSR attestation data.
-type gkeApprover struct {
+type nodeApprover struct {
 	ctx        *controllerContext
 	validators []csrValidator
 }
 
-func newGKEApprover(ctx *controllerContext) *gkeApprover {
-	return &gkeApprover{
+func newNodeApprover(ctx *controllerContext) *nodeApprover {
+	return &nodeApprover{
 		ctx:        ctx,
 		validators: csrValidators(ctx),
 	}
@@ -120,7 +120,7 @@ func csrValidators(ctx *controllerContext) []csrValidator {
 	return validators
 }
 
-func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
+func (a *nodeApprover) handle(csr *capi.CertificateSigningRequest) error {
 	recordMetric := csrmetrics.ApprovalStartRecorder(authFlowLabelNone)
 	if len(csr.Status.Certificate) != 0 {
 		return nil
@@ -190,7 +190,7 @@ func (a *gkeApprover) handle(csr *capi.CertificateSigningRequest) error {
 	return nil
 }
 
-func (a *gkeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bool, msg string) error {
+func (a *nodeApprover) updateCSR(csr *capi.CertificateSigningRequest, approved bool, msg string) error {
 	if approved {
 		csr.Status.Conditions = append(csr.Status.Conditions, capi.CertificateSigningRequestCondition{
 			Type:    capi.CertificateApproved,
@@ -247,7 +247,7 @@ type csrValidator struct {
 	preApproveHook preApproveHookFunc
 }
 
-func (a *gkeApprover) authorizeSAR(csr *capi.CertificateSigningRequest, rattrs authorization.ResourceAttributes) (bool, error) {
+func (a *nodeApprover) authorizeSAR(csr *capi.CertificateSigningRequest, rattrs authorization.ResourceAttributes) (bool, error) {
 	extra := make(map[string]authorization.ExtraValue)
 	for k, v := range csr.Spec.Extra {
 		extra[k] = authorization.ExtraValue(v)
