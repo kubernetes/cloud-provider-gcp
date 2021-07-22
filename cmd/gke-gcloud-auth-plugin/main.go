@@ -38,9 +38,19 @@ type gcloudConfiguration struct {
 	X          map[string]interface{} `json:"-"` // Rest of the fields should go here.
 }
 
+var (
+	helpMessage = "gke-gcloud-auth-plugin is an auth plugin to be used by kubectl to interact with GKE Clusters\n"
+	helpFlagPtr = pflag.Bool("help", false, "--help prints the help statement")
+)
+
 func main() {
 	pflag.Parse()
 	verflag.PrintAndExitIfRequested()
+
+	if *helpFlagPtr {
+		fmt.Printf(helpMessage)
+		return
+	}
 
 	ec, err := execCredential()
 	if err != nil {
