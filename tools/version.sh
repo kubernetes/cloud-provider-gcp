@@ -112,3 +112,38 @@ get_version_vars() {
     exit 1
   fi
 }
+
+# Prints the value that needs to be passed to the -ldflags parameter of go build
+# in order to set the Kubernetes based on the git tree status.
+kube::version::ldflags() {
+  get_version_vars
+
+  local -a ldflags
+  function add_ldflag() {
+    local key=${1}
+    local val=${2}
+    # If you update these, also update the list component-base/version/def.bzl.
+    ldflags+=(
+      "-X 'k8s.io/client-go/pkg/version.${key}=${val}'"
+      "-X 'k8s.io/component-base/version.${key}=${val}'"
+    )
+  }
+
+  add_ldflag "buildDate" "$(date ${SOURCE_DATE_EPOCH:+"--date=@${SOURCE_DATE_EPOCH}"} -u +'%Y-%m-%dT%H:%M:%SZ')"
+  if [[ -n ${KUBE_GIT_COMMIT-} ]]; then
+    add_ldflag "gitCommit" "${KUBE_GIT_COMMIT}"
+    add_ldflag "gitTreeState" "${KUBE_GIT_TREE_STATE}"
+  fi
+
+  if [[ -n ${KUBE_GIT_VERSION-} ]]; then
+    add_ldflag "gitVersion" "${KUBE_GIT_VERSION}"
+  fi
+
+  if [[ -n ${KUBE_GIT_MAJOR-} && -n ${KUBE_GIT_MINOR-} ]]; then
+    add_ldflag "gitMajor" "${KUBE_GIT_MAJOR}"
+    add_ldflag "gitMinor" "${KUBE_GIT_MINOR}"
+  fi
+
+  # The -ldflags parameter takes a single string, so join the output.
+  echo "${ldflags[*]-}"
+}

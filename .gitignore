@@ -1,2 +1,6 @@
 bazel-*
 MERGED_LICENSES
+
+_output
+
+.idea
