@@ -11,7 +11,7 @@ cd "${REPO_ROOT}"
 source "${REPO_ROOT}"/test/boskos.sh
 
 build(){
-	bazel build //release:release-tars
+	make release-tars
 }
 
 up() {
