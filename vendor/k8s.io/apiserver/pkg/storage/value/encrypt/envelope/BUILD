@@ -11,7 +11,6 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/storage/value/encrypt/envelope",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/hashicorp/golang-lru:go_default_library",
         "//vendor/golang.org/x/crypto/cryptobyte:go_default_library",
         "//vendor/google.golang.org/grpc:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/value:go_default_library",
@@ -19,5 +18,6 @@ go_library(
         "//vendor/k8s.io/component-base/metrics:go_default_library",
         "//vendor/k8s.io/component-base/metrics/legacyregistry:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/k8s.io/utils/lru:go_default_library",
     ],
 )
