@@ -90,7 +90,7 @@ func gcloudAccessToken() (string, *meta.Time, error) {
 		return "", nil, err
 	}
 
-	return gc.Credential.AccessToken, &meta.Time{gc.Credential.TokenExpiry}, nil
+	return gc.Credential.AccessToken, &meta.Time{Time: gc.Credential.TokenExpiry}, nil
 }
 
 func defaultAccessToken() (string, *meta.Time, error) {
@@ -104,7 +104,7 @@ func defaultAccessToken() (string, *meta.Time, error) {
 		return "", nil, fmt.Errorf("cannot retrieve default token from google default token source: %v", err)
 	}
 
-	return tok.AccessToken, &meta.Time{tok.Expiry}, nil
+	return tok.AccessToken, &meta.Time{Time: tok.Expiry}, nil
 }
 
 // retrieveGcloudConfig returns an object which represents gcloud config output
