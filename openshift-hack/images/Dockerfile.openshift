@@ -1,0 +1,16 @@
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.16-openshift-4.9 AS builder
+
+WORKDIR /build
+COPY . .
+RUN CGO_ENABLED=0 GOOS=${GOOS} GOPROXY=${GOPROXY} go build \
+	-ldflags="-w -s -X 'main.version=${VERSION}'" \
+	-o=gcp-cloud-controller-manager \
+	cmd/cloud-controller-manager/main.go
+
+FROM registry.ci.openshift.org/ocp/4.9:base
+
+LABEL description="GCP Cloud Controller Manager"
+
+COPY --from=builder /build/gcp-cloud-controller-manager /bin/gcp-cloud-controller-manager
+
+ENTRYPOINT [ "/bin/gcp-cloud-controller-manager" ]
