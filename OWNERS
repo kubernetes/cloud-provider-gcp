@@ -1,17 +1,8 @@
-# See the OWNERS docs at https://go.k8s.io/owners
-
 approvers:
-- cheftako
-- saad-ali
-- jingxu97
-- bowei
-- freehan
-- mrhohn
-- mikedanese
-- calebamiles
-- jprzychodzen
-emeritus_approvers:
-- dnardo
-- nicksardo
-reviewers:
-- jpbetz
+- Fedosin
+- JoelSpeed
+- elmiko
+- lobziik
+
+component: "Cloud Compute"
+subcomponent: "Cloud Controller Manager"
