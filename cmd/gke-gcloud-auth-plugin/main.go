@@ -39,19 +39,12 @@ type gcloudConfiguration struct {
 }
 
 var (
-	helpMessage = "gke-gcloud-auth-plugin is an auth plugin to be used by kubectl to interact with GKE Clusters\n"
-	helpFlagPtr = pflag.Bool("help", false, "--help prints the help statement")
-	useAdcPtr   = pflag.Bool("use_application_default_credentials", false, "returns exec credential filled with application default credentials.")
+	useAdcPtr = pflag.Bool("use_application_default_credentials", false, "returns exec credential filled with application default credentials.")
 )
 
 func main() {
 	pflag.Parse()
 	verflag.PrintAndExitIfRequested()
-
-	if *helpFlagPtr {
-		fmt.Printf(helpMessage)
-		return
-	}
 
 	ec, err := execCredential()
 	if err != nil {
