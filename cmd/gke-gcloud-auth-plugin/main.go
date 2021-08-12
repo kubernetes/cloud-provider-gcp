@@ -38,6 +38,10 @@ type gcloudConfiguration struct {
 	X          map[string]interface{} `json:"-"` // Rest of the fields should go here.
 }
 
+var (
+	useAdcPtr = pflag.Bool("use_application_default_credentials", false, "returns exec credential filled with application default credentials.")
+)
+
 func main() {
 	pflag.Parse()
 	verflag.PrintAndExitIfRequested()
@@ -77,11 +81,13 @@ func execCredential() (*clientauth.ExecCredential, error) {
 }
 
 func accessToken() (string, *meta.Time, error) {
-	token, expiry, err := gcloudAccessToken()
-	if err != nil {
-		return defaultAccessToken()
+	if !*useAdcPtr {
+		token, expiry, err := gcloudAccessToken()
+		if err == nil {
+			return token, expiry, nil
+		}
 	}
-	return token, expiry, nil
+	return defaultAccessToken()
 }
 
 func gcloudAccessToken() (string, *meta.Time, error) {
