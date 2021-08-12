@@ -47,10 +47,7 @@ const (
 	observationMaintenancePeriod = 10 * time.Second
 )
 
-var (
-	nonMutatingRequestVerbs = sets.NewString("get", "list", "watch")
-	watchVerbs              = sets.NewString("watch")
-)
+var nonMutatingRequestVerbs = sets.NewString("get", "list", "watch")
 
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	errorMsg := fmt.Sprintf("Internal Server Error: %#v", r.RequestURI)

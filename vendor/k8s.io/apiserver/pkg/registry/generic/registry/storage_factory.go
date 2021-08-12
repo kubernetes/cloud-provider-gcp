@@ -50,7 +50,7 @@ func StorageWithCacher() generic.StorageDecorator {
 			return s, d, err
 		}
 		if klog.V(5).Enabled() {
-			klog.InfoS("Storage caching is enabled", objectTypeToArgs(newFunc())...)
+			klog.Infof("Storage caching is enabled for %s", objectTypeToString(newFunc()))
 		}
 
 		cacherConfig := cacherstorage.Config{
@@ -83,16 +83,15 @@ func StorageWithCacher() generic.StorageDecorator {
 	}
 }
 
-func objectTypeToArgs(obj runtime.Object) []interface{} {
+func objectTypeToString(obj runtime.Object) string {
 	// special-case unstructured objects that tell us their apiVersion/kind
 	if u, isUnstructured := obj.(*unstructured.Unstructured); isUnstructured {
 		if apiVersion, kind := u.GetAPIVersion(), u.GetKind(); len(apiVersion) > 0 && len(kind) > 0 {
-			return []interface{}{"apiVersion", apiVersion, "kind", kind}
+			return fmt.Sprintf("apiVersion=%s, kind=%s", apiVersion, kind)
 		}
 	}
-
 	// otherwise just return the type
-	return []interface{}{"type", fmt.Sprintf("%T", obj)}
+	return fmt.Sprintf("%T", obj)
 }
 
 // TODO : Remove all the code below when PR

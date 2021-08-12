@@ -2,10 +2,7 @@
 
 approvers:
 - sig-instrumentation-approvers
-- serathius
 reviewers:
 - sig-instrumentation-reviewers
-- serathius
 labels:
 - sig/instrumentation
-- wg/structured-logging

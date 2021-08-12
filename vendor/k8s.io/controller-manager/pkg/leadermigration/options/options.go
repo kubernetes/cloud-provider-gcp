@@ -73,8 +73,7 @@ func (o *LeaderMigrationOptions) ApplyTo(cfg *config.GenericControllerManagerCon
 		return nil
 	}
 	if o.ControllerMigrationConfig == "" {
-		cfg.LeaderMigration = *migrationconfig.DefaultLeaderMigrationConfiguration()
-		return nil
+		return fmt.Errorf("--leader-migration-config is required")
 	}
 	leaderMigrationConfig, err := migrationconfig.ReadLeaderMigrationConfiguration(o.ControllerMigrationConfig)
 	if err != nil {

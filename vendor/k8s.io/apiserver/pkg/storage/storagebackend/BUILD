@@ -7,7 +7,6 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/storage/storagebackend",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/go.opentelemetry.io/otel/trace:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/server/egressselector:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/etcd3:go_default_library",

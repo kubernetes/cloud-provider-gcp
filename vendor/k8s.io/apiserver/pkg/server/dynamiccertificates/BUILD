@@ -9,7 +9,6 @@ go_library(
         "dynamic_cafile_content.go",
         "dynamic_serving_content.go",
         "dynamic_sni_content.go",
-        "interfaces.go",
         "named_certificates.go",
         "static_content.go",
         "tlsconfig.go",

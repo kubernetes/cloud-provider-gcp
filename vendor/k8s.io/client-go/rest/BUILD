@@ -12,7 +12,6 @@ go_library(
         "url_utils.go",
         "urlbackoff.go",
         "warnings.go",
-        "with_retry.go",
         "zz_generated.deepcopy.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/rest",

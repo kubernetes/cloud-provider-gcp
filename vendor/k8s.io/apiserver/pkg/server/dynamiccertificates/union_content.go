@@ -26,6 +26,7 @@ import (
 
 type unionCAContent []CAContentProvider
 
+var _ Notifier = &unionCAContent{}
 var _ CAContentProvider = &unionCAContent{}
 var _ ControllerRunner = &unionCAContent{}
 
@@ -76,7 +77,9 @@ func (c unionCAContent) VerifyOptions() (x509.VerifyOptions, bool) {
 // AddListener adds a listener to be notified when the CA content changes.
 func (c unionCAContent) AddListener(listener Listener) {
 	for _, curr := range c {
-		curr.AddListener(listener)
+		if notifier, ok := curr.(Notifier); ok {
+			notifier.AddListener(listener)
+		}
 	}
 }
 

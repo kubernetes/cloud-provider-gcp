@@ -49,8 +49,6 @@ type Interface interface {
 	// that the request should be executed then `execute()` will be
 	// invoked once to execute the request; otherwise `execute()` will
 	// not be invoked.
-	// Handle() should never return while execute() is running, even if
-	// ctx is cancelled or times out.
 	Handle(ctx context.Context,
 		requestDigest RequestDigest,
 		noteFn func(fs *flowcontrol.FlowSchema, pl *flowcontrol.PriorityLevelConfiguration),
@@ -68,9 +66,6 @@ type Interface interface {
 
 	// Install installs debugging endpoints to the web-server.
 	Install(c *mux.PathRecorderMux)
-
-	// WatchTracker provides the WatchTracker interface.
-	WatchTracker
 }
 
 // This request filter implements https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1040-priority-and-fairness/README.md

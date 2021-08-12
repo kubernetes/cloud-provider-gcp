@@ -32,9 +32,8 @@ import (
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
 	"k8s.io/apiserver/pkg/storage/value"
-	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/clientv3"
 	"k8s.io/klog/v2"
 )
 
@@ -121,14 +120,6 @@ func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive, p
 	}
 	wc := w.createWatchChan(ctx, key, rev, recursive, progressNotify, pred)
 	go wc.run()
-
-	// For etcd watch we don't have an easy way to answer whether the watch
-	// has already caught up. So in the initial version (given that watchcache
-	// is by default enabled for all resources but Events), we just deliver
-	// the initialization signal immediately. Improving this will be explored
-	// in the future.
-	utilflowcontrol.WatchInitialized(ctx)
-
 	return wc, nil
 }
 
@@ -292,7 +283,7 @@ func (wc *watchChan) processEvent(wg *sync.WaitGroup) {
 				continue
 			}
 			if len(wc.resultChan) == outgoingBufSize {
-				klog.V(3).InfoS("Fast watcher, slow processing. Probably caused by slow dispatching events to watchers", "outgoingEvents", outgoingBufSize, "objectType", wc.watcher.objectType)
+				klog.V(3).InfoS("Fast watcher, slow processing. Probably caused by slow dispatching events to watchers", "outgoingEvents", outgoingBufSize)
 			}
 			// If user couldn't receive results fast enough, we also block incoming events from watcher.
 			// Because storing events in local will cause more memory usage.
@@ -411,7 +402,7 @@ func (wc *watchChan) sendError(err error) {
 
 func (wc *watchChan) sendEvent(e *event) {
 	if len(wc.incomingEventChan) == incomingBufSize {
-		klog.V(3).InfoS("Fast watcher, slow processing. Probably caused by slow decoding, user not receiving fast, or other processing logic", "incomingEvents", incomingBufSize, "objectType", wc.watcher.objectType)
+		klog.V(3).InfoS("Fast watcher, slow processing. Probably caused by slow decoding, user not receiving fast, or other processing logic", "incomingEvents", incomingBufSize)
 	}
 	select {
 	case wc.incomingEventChan <- e:

@@ -33,6 +33,7 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/apis/core/helper:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/core/pods:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/core/v1:go_default_library",
+        "//vendor/k8s.io/kubernetes/pkg/apis/core/v1/helper:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/capabilities:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/cluster/ports:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/features:go_default_library",

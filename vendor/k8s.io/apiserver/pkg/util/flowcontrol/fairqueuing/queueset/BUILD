@@ -4,7 +4,6 @@ go_library(
     name = "go_default_library",
     srcs = [
         "doc.go",
-        "fifo_list.go",
         "queueset.go",
         "types.go",
     ],
@@ -12,6 +11,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/pkg/errors:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/clock:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/endpoints/request:go_default_library",
@@ -21,7 +21,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/promise:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/promise/lockingpromise:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/metrics:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/request:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/shufflesharding:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
     ],

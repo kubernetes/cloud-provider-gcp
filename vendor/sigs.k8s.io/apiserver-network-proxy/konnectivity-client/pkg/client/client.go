@@ -19,7 +19,6 @@ package client
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"math/rand"
 	"net"
@@ -35,7 +34,7 @@ import (
 type Tunnel interface {
 	// Dial connects to the address on the named network, similar to
 	// what net.Dial does. The only supported protocol is tcp.
-	DialContext(ctx context.Context, protocol, address string) (net.Conn, error)
+	Dial(protocol, address string) (net.Conn, error)
 }
 
 type dialResult struct {
@@ -50,10 +49,6 @@ type grpcTunnel struct {
 	conns           map[int64]*conn
 	pendingDialLock sync.RWMutex
 	connsLock       sync.RWMutex
-
-	// The tunnel will be closed if the caller fails to read via conn.Read()
-	// more than readTimeoutSeconds after a packet has been received.
-	readTimeoutSeconds int
 }
 
 type clientConn interface {
@@ -66,24 +61,23 @@ var _ clientConn = &grpc.ClientConn{}
 // gRPC based proxy service.
 // Currently, a single tunnel supports a single connection, and the tunnel is closed when the connection is terminated
 // The Dial() method of the returned tunnel should only be called once
-func CreateSingleUseGrpcTunnel(ctx context.Context, address string, opts ...grpc.DialOption) (Tunnel, error) {
-	c, err := grpc.DialContext(ctx, address, opts...)
+func CreateSingleUseGrpcTunnel(address string, opts ...grpc.DialOption) (Tunnel, error) {
+	c, err := grpc.Dial(address, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	grpcClient := client.NewProxyServiceClient(c)
 
-	stream, err := grpcClient.Proxy(ctx)
+	stream, err := grpcClient.Proxy(context.Background())
 	if err != nil {
 		return nil, err
 	}
 
 	tunnel := &grpcTunnel{
-		stream:             stream,
-		pendingDial:        make(map[int64]chan<- dialResult),
-		conns:              make(map[int64]*conn),
-		readTimeoutSeconds: 10,
+		stream:      stream,
+		pendingDial: make(map[int64]chan<- dialResult),
+		conns:       make(map[int64]*conn),
 	}
 
 	go tunnel.serve(c)
@@ -116,16 +110,9 @@ func (t *grpcTunnel) serve(c clientConn) {
 			if !ok {
 				klog.V(1).Infoln("DialResp not recognized; dropped")
 			} else {
-				result := dialResult{
+				ch <- dialResult{
 					err:    resp.Error,
 					connid: resp.ConnectID,
-				}
-				select  {
-				case ch <- result:
-				default:
-					klog.ErrorS(fmt.Errorf("blocked pending channel"), "Received second dial response for connection request", "connectionID", resp.ConnectID, "dialID", resp.Random)
-					// On multiple dial responses, avoid leaking serve goroutine.
-					return
 				}
 			}
 
@@ -142,14 +129,7 @@ func (t *grpcTunnel) serve(c clientConn) {
 			t.connsLock.RUnlock()
 
 			if ok {
-				timer := time.NewTimer((time.Duration)(t.readTimeoutSeconds) * time.Second)
-				select {
-				case conn.readCh <- resp.Data:
-					timer.Stop()
-				case <-timer.C:
-					klog.ErrorS(fmt.Errorf("timeout"), "readTimeout has been reached, the grpc connection to the proxy server will be closed", "connectionID", conn.connID, "readTimeoutSeconds", t.readTimeoutSeconds)
-					return
-				}
+				conn.readCh <- resp.Data
 			} else {
 				klog.V(1).InfoS("connection not recognized", "connectionID", resp.ConnectID)
 			}
@@ -175,13 +155,13 @@ func (t *grpcTunnel) serve(c clientConn) {
 
 // Dial connects to the address on the named network, similar to
 // what net.Dial does. The only supported protocol is tcp.
-func (t *grpcTunnel) DialContext(ctx context.Context, protocol, address string) (net.Conn, error) {
+func (t *grpcTunnel) Dial(protocol, address string) (net.Conn, error) {
 	if protocol != "tcp" {
 		return nil, errors.New("protocol not supported")
 	}
 
-	random := rand.Int63() /* #nosec G404 */
-	resCh := make(chan dialResult, 1)
+	random := rand.Int63()
+	resCh := make(chan dialResult)
 	t.pendingDialLock.Lock()
 	t.pendingDial[random] = resCh
 	t.pendingDialLock.Unlock()
@@ -219,14 +199,12 @@ func (t *grpcTunnel) DialContext(ctx context.Context, protocol, address string) 
 		}
 		c.connID = res.connid
 		c.readCh = make(chan []byte, 10)
-		c.closeCh = make(chan string, 1)
+		c.closeCh = make(chan string)
 		t.connsLock.Lock()
 		t.conns[res.connid] = c
 		t.connsLock.Unlock()
 	case <-time.After(30 * time.Second):
-		return nil, errors.New("dial timeout, backstop")
-	case <-ctx.Done():
-		return nil, errors.New("dial timeout, context")
+		return nil, errors.New("dial timeout")
 	}
 
 	return c, nil
