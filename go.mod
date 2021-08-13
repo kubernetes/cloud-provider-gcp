@@ -4,18 +4,36 @@ go 1.16
 
 require (
 	cloud.google.com/go v0.75.0
+	github.com/Microsoft/hcsshim v0.8.10-0.20200715222032-5eafd1556990 // indirect
+	github.com/auth0/go-jwt-middleware v1.0.1 // indirect
+	github.com/container-storage-interface/spec v1.5.0 // indirect
+	github.com/containernetworking/cni v0.8.1 // indirect
+	github.com/coredns/corefile-migration v1.0.12 // indirect
 	github.com/gofrs/flock v0.7.1
+	github.com/google/cadvisor v0.39.2 // indirect
 	github.com/google/go-cmp v0.5.5
 	github.com/google/go-tpm v0.2.0
 	github.com/google/uuid v1.1.4 // indirect
+	github.com/heketi/heketi v10.3.0+incompatible // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
+	github.com/ishidawataru/sctp v0.0.0-20190723014705-7c296d48a2b5 // indirect
+	github.com/libopenstorage/openstorage v1.0.0 // indirect
+	github.com/moby/ipvs v1.0.1 // indirect
+	github.com/mvdan/xurls v1.1.0 // indirect
 	github.com/onsi/ginkgo v1.14.1 // indirect
 	github.com/onsi/gomega v1.10.3 // indirect
+	github.com/opencontainers/runc v1.0.1 // indirect
 	github.com/prometheus/client_golang v1.11.0
+	github.com/quobyte/api v0.1.8 // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/spf13/cobra v1.1.3
 	github.com/spf13/pflag v1.0.5
+	github.com/storageos/go-api v2.2.0+incompatible // indirect
 	github.com/stretchr/testify v1.7.0
+	golang.org/x/exp v0.0.0-20210220032938-85be41e4509f // indirect
 	golang.org/x/oauth2 v0.0.0-20210112200429-01de73cf58bd
+	gonum.org/v1/gonum v0.6.2 // indirect
+	gonum.org/v1/netlib v0.0.0-20190331212654-76723241ea4e // indirect
 	google.golang.org/api v0.36.0
 	gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
 	gopkg.in/gcfg.v1 v1.2.0
@@ -29,8 +47,12 @@ require (
 	k8s.io/component-base v0.22.0
 	k8s.io/controller-manager v0.22.0
 	k8s.io/klog/v2 v2.9.0
+	k8s.io/kubectl v0.0.0 // indirect
 	k8s.io/kubelet v0.22.0
-	k8s.io/kubernetes v1.22.0
+	k8s.io/kubernetes v1.15.0-alpha.1
+	k8s.io/legacy-cloud-providers v0.0.0-20210809163733-8cecffd58035 // indirect
+	k8s.io/pod-security-admission v0.0.0 // indirect
+	k8s.io/system-validators v1.5.0 // indirect
 )
 
 replace (
@@ -80,7 +102,7 @@ replace (
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.22.0
 	k8s.io/kubectl => k8s.io/kubectl v0.22.0
 	k8s.io/kubelet => k8s.io/kubelet v0.22.0
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.22.0
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.0.0-20210809163733-8cecffd58035
 	k8s.io/metrics => k8s.io/metrics v0.22.0
 	k8s.io/mount-utils => k8s.io/mount-utils v0.22.0
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.22.0
