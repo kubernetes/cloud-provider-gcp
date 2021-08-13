@@ -17,6 +17,7 @@ filegroup(
         "cluster-autoscaler.manifest",
         "etcd.manifest",
         "glbc.manifest",
+        "pdcsi-controller.yaml",
         "konnectivity-server.yaml",
         "kube-addon-manager.yaml",
         "kube-apiserver.manifest",
