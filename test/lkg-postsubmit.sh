@@ -5,8 +5,8 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-CLOUD_PROVIDER_LKG_FILE="$(git rev-parse --show-toplevel)/PROVIDER_LKG_INFO"
-CLOUD_PROVIDER_LKG_HASH=$(git rev-parse --short HEAD)
-echo $CLOUD_PROVIDER_LKG_HASH > $CLOUD_PROVIDER_LKG_FILE
-git add $CLOUD_PROVIDER_LKG_FILE
-git commit -m "Update cloud-provider-gcp LKG version to $CLOUD_PROVIDER_LKG_HASH"
+KUBERNETES_LKG_PATTERN="k8s-lkg-update-*"
+NEWEST_LKG_BRANCH=$(git for-each-ref --sort=committerdate refs/heads/ --format='%(refname:short)' | grep $KUBERNETES_LKG_PATTERN | head -n1)
+git checkout master
+git merge $NEWEST_LKG_BRANCH
+git push origin master
