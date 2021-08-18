@@ -520,7 +520,7 @@ func TestUpdateInternalLoadBalancerNodes(t *testing.T) {
 	assert.Contains(
 		t,
 		instances[0].Instance,
-		fmt.Sprintf("projects/%s/zones/%s/instances/%s", vals.ProjectID, vals.ZoneName, node2Name),
+		fmt.Sprintf("%s/zones/%s/instances/%s", vals.ProjectID, vals.ZoneName, node2Name),
 	)
 
 	// Expect initial zone to have test-node-3
@@ -530,7 +530,7 @@ func TestUpdateInternalLoadBalancerNodes(t *testing.T) {
 	assert.Contains(
 		t,
 		instances[0].Instance,
-		fmt.Sprintf("projects/%s/zones/%s/instances/%s", vals.ProjectID, vals.SecondaryZoneName, node3Name),
+		fmt.Sprintf("%s/zones/%s/instances/%s", vals.ProjectID, vals.SecondaryZoneName, node3Name),
 	)
 }
 
