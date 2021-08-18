@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	cloud.google.com/go v0.54.0
-	github.com/GoogleCloudPlatform/k8s-cloud-provider v0.0.0-20200415212048-7901bc822317
+	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.16.1-0.20210702024009-ea6160c1d0e3 
 	github.com/google/go-cmp v0.5.2
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
@@ -22,7 +22,7 @@ require (
 
 replace (
 	cloud.google.com/go => cloud.google.com/go v0.54.0
-	github.com/GoogleCloudPlatform/k8s-cloud-provider => github.com/GoogleCloudPlatform/k8s-cloud-provider v0.0.0-20200415212048-7901bc822317
+	github.com/GoogleCloudPlatform/k8s-cloud-provider => github.com/GoogleCloudPlatform/k8s-cloud-provider v1.16.1-0.20210702024009-ea6160c1d0e3
 	github.com/google/go-cmp => github.com/google/go-cmp v0.5.2
 	github.com/stretchr/testify => github.com/stretchr/testify v1.6.1
 	golang.org/x/oauth2 => golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
