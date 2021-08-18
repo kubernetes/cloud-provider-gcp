@@ -3,17 +3,18 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = [
+        "apf_context.go",
         "apf_controller.go",
         "apf_controller_debug.go",
         "apf_filter.go",
         "formatting.go",
         "rule.go",
+        "watch_tracker.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/util/flowcontrol",
     importpath = "k8s.io/apiserver/pkg/util/flowcontrol",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/pkg/errors:go_default_library",
         "//vendor/k8s.io/api/flowcontrol/v1beta1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/equality:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
@@ -37,6 +38,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/format:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/metrics:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/request:go_default_library",
         "//vendor/k8s.io/client-go/informers:go_default_library",
         "//vendor/k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta1:go_default_library",
         "//vendor/k8s.io/client-go/listers/flowcontrol/v1beta1:go_default_library",

@@ -35,6 +35,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/server/httplog:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/metrics:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/request:go_default_library",
         "//vendor/k8s.io/client-go/kubernetes/scheme:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
     ],
