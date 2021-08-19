@@ -11,6 +11,7 @@ go_library(
     importpath = "k8s.io/kubernetes/pkg/security/apparmor",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/opencontainers/runc/libcontainer/apparmor:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/api/v1/pod:go_default_library",
