@@ -18,7 +18,6 @@ github.com/PuerkitoBio/urlesc
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
 # github.com/blang/semver v3.5.1+incompatible
-## explicit
 github.com/blang/semver
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
@@ -47,15 +46,12 @@ github.com/go-logr/logr
 github.com/go-openapi/jsonpointer
 # github.com/go-openapi/jsonreference v0.19.5
 github.com/go-openapi/jsonreference
-# github.com/go-openapi/spec v0.19.6 => github.com/go-openapi/spec v0.19.6
-## explicit
 # github.com/go-openapi/swag v0.19.14 => github.com/go-openapi/swag v0.19.7
 github.com/go-openapi/swag
 # github.com/gofrs/flock v0.7.1 => github.com/gofrs/flock v0.7.1
 ## explicit
 github.com/gofrs/flock
 # github.com/gogo/protobuf v1.3.2
-## explicit
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/protoc-gen-gogo/descriptor
@@ -102,8 +98,6 @@ github.com/grpc-ecosystem/go-grpc-prometheus
 github.com/grpc-ecosystem/grpc-gateway/internal
 github.com/grpc-ecosystem/grpc-gateway/runtime
 github.com/grpc-ecosystem/grpc-gateway/utilities
-# github.com/hashicorp/golang-lru v0.5.4 => github.com/hashicorp/golang-lru v0.5.4
-## explicit
 # github.com/imdario/mergo v0.3.11 => github.com/imdario/mergo v0.3.11
 ## explicit
 github.com/imdario/mergo
@@ -124,8 +118,6 @@ github.com/moby/term/windows
 github.com/modern-go/concurrent
 # github.com/modern-go/reflect2 v1.0.1
 github.com/modern-go/reflect2
-# github.com/mrunalp/fileutils v0.5.0
-## explicit
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 github.com/munnerz/goautoneg
 # github.com/onsi/ginkgo v1.14.1 => github.com/onsi/ginkgo v1.14.1
@@ -138,7 +130,6 @@ github.com/opencontainers/go-digest
 github.com/opencontainers/runc/libcontainer/apparmor
 github.com/opencontainers/runc/libcontainer/utils
 # github.com/pkg/errors v0.9.1
-## explicit
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
@@ -150,7 +141,6 @@ github.com/prometheus/client_golang/prometheus/promhttp
 github.com/prometheus/client_golang/prometheus/testutil
 github.com/prometheus/client_golang/prometheus/testutil/promlint
 # github.com/prometheus/client_model v0.2.0
-## explicit
 github.com/prometheus/client_model/go
 # github.com/prometheus/common v0.26.0
 github.com/prometheus/common/expfmt
@@ -170,8 +160,6 @@ github.com/spf13/pflag
 ## explicit
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
-# go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
-## explicit
 # go.etcd.io/etcd/api/v3 v3.5.0
 go.etcd.io/etcd/api/v3/authpb
 go.etcd.io/etcd/api/v3/etcdserverpb
@@ -271,7 +259,6 @@ go.uber.org/atomic
 # go.uber.org/multierr v1.6.0
 go.uber.org/multierr
 # go.uber.org/zap v1.17.0 => go.uber.org/zap v1.17.0
-## explicit
 go.uber.org/zap
 go.uber.org/zap/buffer
 go.uber.org/zap/internal/bufferpool
@@ -286,8 +273,6 @@ golang.org/x/crypto/internal/subtle
 golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/poly1305
 golang.org/x/crypto/salsa20/salsa
-# golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 => golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5
-## explicit
 # golang.org/x/net v0.0.0-20210520170846-37e1c6afe023
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
@@ -1092,8 +1077,6 @@ k8s.io/utils/trace
 # sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.22
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/kubetest2 v0.0.0-20210423234514-1c731a5d2283
-## explicit
 # sigs.k8s.io/structured-merge-diff/v4 v4.1.2
 sigs.k8s.io/structured-merge-diff/v4/fieldpath
 sigs.k8s.io/structured-merge-diff/v4/merge
@@ -1155,3 +1138,4 @@ sigs.k8s.io/yaml
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.22.0
 # k8s.io/sample-controller => k8s.io/sample-controller v0.22.0
 # k8s.io/utils => k8s.io/utils v0.0.0-20210802155522-efc7438f0176
+# knative.dev/eventing-contrib => github.com/knative/eventing-contrib v0.11.2
