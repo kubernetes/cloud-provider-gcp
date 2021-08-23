@@ -652,12 +652,20 @@ function kube::util::ensure-cfssl {
     kernel=$(uname -s)
     case "${kernel}" in
       Linux)
-        curl --retry 10 -L -o cfssl https://pkg.cfssl.org/R1.2/cfssl_linux-amd64
-        curl --retry 10 -L -o cfssljson https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64
+        curl --retry 10 -L -o cfssl https://github.com/cloudflare/cfssl/releases/download/v1.6.0/cfssl_1.6.0_linux_amd64
+        curl --retry 10 -L -o cfssljson https://github.com/cloudflare/cfssl/releases/download/v1.6.0/cfssljson_1.6.0_linux_amd64
+        sha256sum -c <<EOF || exit 1
+          b830b0faf606cb2ae8b45c783edf4776eedb3728efd515e7f1ce63b3a475d667  cfssl
+          c6ede7b74d3688968cee140e56484507e6b5de9abd6530bb1ecfacd2e2ceec9d  cfssljson
+EOF
         ;;
       Darwin)
-        curl --retry 10 -L -o cfssl https://pkg.cfssl.org/R1.2/cfssl_darwin-amd64
-        curl --retry 10 -L -o cfssljson https://pkg.cfssl.org/R1.2/cfssljson_darwin-amd64
+        curl --retry 10 -L -o cfssl https://github.com/cloudflare/cfssl/releases/download/v1.6.0/cfssl_1.6.0_darwin_amd64
+        curl --retry 10 -L -o cfssljson https://github.com/cloudflare/cfssl/releases/download/v1.6.0/cfssljson_1.6.0_darwin_amd64
+        sha256sum -c <<EOF || exit 1
+          d61c99d0da39a33b2a8d9214f4cf518aaee412dced56579829e4dc7c9529ff92  cfssl
+          187cf827518b5e23dc4becd9dd0269af8e6b05861840bebb2801700bb0e760ad  cfssljson
+EOF
         ;;
       *)
         echo "Unknown, unsupported platform: ${kernel}." >&2
