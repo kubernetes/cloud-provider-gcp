@@ -76,12 +76,20 @@ func (g *Cloud) CreateRoute(ctx context.Context, clusterName string, nameHint st
 	if err != nil {
 		return mc.Observe(err)
 	}
+
+	res, err := g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(targetInstance.Name), targetInstance.Zone))
+	if err != nil {
+		return nil
+	}
+
+	networkURL := res.NetworkInterfaces[0].Network
+
 	cr := &compute.Route{
 		// TODO(thockin): generate a unique name for node + route cidr. Don't depend on name hints.
 		Name:            truncateClusterName(clusterName) + "-" + nameHint,
 		DestRange:       route.DestinationCIDR,
 		NextHopInstance: fmt.Sprintf("zones/%s/instances/%s", targetInstance.Zone, targetInstance.Name),
-		Network:         g.NetworkURL(),
+		Network:         networkURL,
 		Priority:        1000,
 		Description:     k8sNodeRouteTag,
 	}
