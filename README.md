@@ -1,71 +1,60 @@
 # cloud-provider-gcp
 
-## Publishing gcp-controller-manager image
+## Building Container Images
 
 This command will build and publish
-`gcr.io/k8s-image-staging/gcp-controller-manager:latest`:
+`gcr.io/k8s-image-staging/cloud-controller-manager`:
 
-```
-bazel run //cmd/gcp-controller-manager:publish
+```sh
+make images
 ```
 
 Environment variables `IMAGE_REGISTRY`, `IMAGE_REPO` and `IMAGE_TAG` can be
 used to override destination GCR repository and tag.
 
 This command will build and publish
-`example.com/my-repo/gcp-controller-manager:v1`:
+`example.com/my-repo/cloud-controller-manager:v1`:
 
 
-```
-IMAGE_REGISTRY=example.com IMAGE_REPO=my-repo IMAGE_TAG=v1 bazel run //cmd/gcp-controller-manager:publish
+```sh
+IMAGE_REGISTRY=example.com IMAGE_REPO=my-repo IMAGE_TAG=v1 make images
 ```
 
 # Cross-compiling
 
-Selecting the target platform is done with the `--platforms` option with `bazel`.
-This command builds release tarballs for Windows:
-
+This project uses standard go tools for cross-building.
+```sh
+GOOS=linux GOARCH=amd64 go build ./cmd/cloud-controller-manager
 ```
-bazel build --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64 //release:release-tars
-```
+Alternatively, run `make bin` to build both server and node binaries for all supported platforms.
 
-This command explicitly targets Linux as the target platform:
+Server
+  - linux/amd64
 
-```
-bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 //release:release-tars
-```
-
+Node:
+  - linux/amd64
+  - windows/amd64
 
 # Dependency management
 
-Dependencies are managed using [Go modules](https://github.com/golang/go/wiki/Modules) (`go mod` subcommands).
-
-Note that builds are done with Bazel and not the Go tool. Don't follow public
-Go module docs, instead use instructions in this readme.
-
-## Working within GOPATH
-
-If you work within `GOPATH`, `go mod` will error out unless you do one of:
-
-- move repo outside of GOPATH (it should "just work")
-- set env var `GO111MODULE=on`
+This project manages dependencies using standard [Go modules](https://github.com/golang/go/wiki/Modules) (`go mod` subcommands).
 
 ## Add a new dependency
 
 ```
-go get github.com/new/dependency && ./tools/update_vendor.sh
+go get github.com/new/dependency
 ```
 
 ## Update an existing dependency
 
 ```
-go get -u github.com/existing/dependency && ./tools/update_vendor.sh
+go get -u github.com/existing/dependency
 ```
 
 ## Update all dependencies
 
 ```
-go get -u && ./tools/update_vendor.sh
+go get -u
 ```
 
 Note that this most likely won't work due to cross-dependency issues or repos
@@ -86,4 +75,9 @@ To re-generate `BUILD` files:
 
 ```sh
 tools/update_bazel.sh
+```
+## Clean up unused dependencies
+
+```
+go mod tidy
 ```
