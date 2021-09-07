@@ -66,6 +66,17 @@ func loops() map[string]func(*controllerContext) error {
 			go approveController.Run(20, ctx.done)
 			return nil
 		},
+		"oidc-certificate-approver": func(ctx *controllerContext) error {
+			approver := newOIDCApprover(ctx)
+			approveController := certificates.NewCertificateController(
+				"oidc-certificate-approver",
+				ctx.client,
+				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
+				approver.handle,
+			)
+			go approveController.Run(20, ctx.done)
+			return nil
+		},
 		"certificate-signer": func(ctx *controllerContext) error {
 			signer, err := newGKESigner(ctx)
 			if err != nil {
