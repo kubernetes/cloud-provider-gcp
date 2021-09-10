@@ -1,5 +1,7 @@
 # cloud-provider-gcp
 
+This repository is part of the [provider-gcp](https://github.com/kubernetes/community/blob/master/sig-cloud-provider/README.md#provider-gcp) of [Cloud Provider SIG](https://github.com/kubernetes/community/tree/master/sig-cloud-provider).
+
 ## Publishing gcp-controller-manager image
 
 This command will build and publish
@@ -93,3 +95,13 @@ To re-generate `BUILD` files:
 ```sh
 tools/update_bazel.sh
 ```
+
+## Folder /cluster
+
+The `/cluster` folder is intended as a long term home of the "kube-up" implementation for GCP.
+
+The `cloud-provider-gcp:/cluster` is a selective copy of `k8s/k8s:/cluster` with a number of direct contributions committed on top.
+
+This directory will be kept up-to-date with changes to `k8s/k8s:/cluster` until the `/cluster` directory is removed from `k8s/k8s` (issue proposing the removal: [kubernetes/kubernetes#78995](https://github.com/kubernetes/kubernetes/issues/78995)). It is unclear when the `/cluster` directory will be removed.
+
+See also [kubernetes/cloud-provider-gcp#216](https://github.com/kubernetes/cloud-provider-gcp/pull/216) for information.
