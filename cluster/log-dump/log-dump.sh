@@ -41,7 +41,7 @@ readonly master_ssh_supported_providers="gce aws"
 readonly node_ssh_supported_providers="gce gke aws"
 readonly gcloud_supported_providers="gce gke"
 
-readonly master_logfiles="kube-apiserver.log kube-apiserver-audit.log kube-scheduler.log kube-controller-manager.log etcd.log etcd-events.log glbc.log cluster-autoscaler.log kube-addon-manager.log konnectivity-server.log fluentd.log kubelet.cov"
+readonly master_logfiles="kube-apiserver.log kube-apiserver-audit.log kube-scheduler.log kube-controller-manager.log etcd.log etcd-events.log glbc.log cluster-autoscaler.log kube-addon-manager.log konnectivity-server.log fluentd.log kubelet.cov cloud-controller-manager.log"
 readonly node_logfiles="kube-proxy.log containers/konnectivity-agent-*.log fluentd.log node-problem-detector.log kubelet.cov"
 readonly node_systemd_services="node-problem-detector"
 readonly hollow_node_logfiles="kubelet-hollow-node-*.log kubeproxy-hollow-node-*.log npd-hollow-node-*.log"
@@ -103,7 +103,7 @@ function setup() {
     echo 'LOG_DUMP_SSH_USER not set, but required when using log_dump_custom_get_instances'
     exit 1
   fi
-  source "${KUBE_ROOT}/hack/lib/util.sh"
+  source "${KUBE_ROOT}/cluster/util.sh"
 }
 
 function log-dump-ssh() {

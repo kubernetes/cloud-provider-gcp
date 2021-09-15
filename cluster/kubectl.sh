@@ -32,25 +32,15 @@ set -o pipefail
 
 KUBE_ROOT=${KUBE_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}
 source "${KUBE_ROOT}/cluster/kube-util.sh"
-source "${KUBE_ROOT}/hack/lib/util.sh"
+source "${KUBE_ROOT}/cluster/clientbin.sh"
 
 # If KUBECTL_PATH isn't set, gather up the list of likely places and use ls
 # to find the latest one.
 if [[ -z "${KUBECTL_PATH:-}" ]]; then
-  kubectl=$( kube::util::find-binary "kubectl" )
+  kubectl=$( get_bin "kubectl" "cmd/kubectl" )
 
   if [[ ! -x "$kubectl" ]]; then
-    {
-      echo "It looks as if you don't have a compiled kubectl binary"
-      echo
-      echo "If you are running from a clone of the git repo, please run"
-      echo "'./build/run.sh make cross'. Note that this requires having"
-      echo "Docker installed."
-      echo
-      echo "If you are running from a binary release tarball, something is wrong. "
-      echo "Look at http://kubernetes.io/ for information on how to contact the "
-      echo "development team for help."
-    } >&2
+    print_error "kubectl"
     exit 1
   fi
 elif [[ ! -x "${KUBECTL_PATH}" ]]; then
@@ -84,4 +74,3 @@ if [[ "${1:-}" =~ ^(path)$ ]]; then
 fi
 
 "${kubectl}" "${config[@]:+${config[@]}}" "${@+$@}"
-
