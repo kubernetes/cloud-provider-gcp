@@ -14,11 +14,12 @@
 },
 "spec":{
 "securityContext": {
+  {{runAsUser}}
+  {{runAsGroup}}
+  {{supplementalGroups}}
   "seccompProfile": {
       "type": "RuntimeDefault"
-  },
-  "runAsUser": {{runAsUser}},
-  "runAsGroup": {{runAsGroup}}
+  }
 },
 "priorityClass": "system-node-critical",
 "hostNetwork": true,
