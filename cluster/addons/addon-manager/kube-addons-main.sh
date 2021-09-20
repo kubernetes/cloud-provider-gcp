@@ -62,7 +62,7 @@ done < <(find /etc/kubernetes/admission-controls \( -name \*.yaml -o -name \*.js
 log INFO "== Entering periodical apply loop at $(date -Is) =="
 while true; do
   start_sec=$(date +"%s")
-  if is_leader || is_cloud_leader; then
+  if is_leader; then
     ensure_addons
     reconcile_addons
   else

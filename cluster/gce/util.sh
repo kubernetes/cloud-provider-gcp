@@ -23,7 +23,7 @@ readonly GCE_MAX_LOCAL_SSD=8
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
 source "${KUBE_ROOT}/cluster/gce/${KUBE_CONFIG_FILE-"config-default.sh"}"
 source "${KUBE_ROOT}/cluster/common.sh"
-source "${KUBE_ROOT}/cluster/util.sh"
+source "${KUBE_ROOT}/hack/lib/util.sh"
 
 if [[ "${NODE_OS_DISTRIBUTION}" == "gci" || "${NODE_OS_DISTRIBUTION}" == "ubuntu" || "${NODE_OS_DISTRIBUTION}" == "custom" ]]; then
   source "${KUBE_ROOT}/cluster/gce/${NODE_OS_DISTRIBUTION}/node-helper.sh"
@@ -88,13 +88,13 @@ function set-linux-node-image() {
 function set-windows-node-image() {
   WINDOWS_NODE_IMAGE_PROJECT="windows-cloud"
   if [[ "${WINDOWS_NODE_OS_DISTRIBUTION}" == "win2019" ]]; then
-    WINDOWS_NODE_IMAGE="windows-server-2019-dc-core-v20210112"
+    WINDOWS_NODE_IMAGE="windows-server-2019-dc-core-v20210413"
   elif [[ "${WINDOWS_NODE_OS_DISTRIBUTION}" == "win1909" ]]; then
-    WINDOWS_NODE_IMAGE="windows-server-1909-dc-core-v20210112"
+    WINDOWS_NODE_IMAGE="windows-server-1909-dc-core-v20210413"
   elif [[ "${WINDOWS_NODE_OS_DISTRIBUTION}" == "win2004" ]]; then
-    WINDOWS_NODE_IMAGE="windows-server-2004-dc-core-v20210112"
+    WINDOWS_NODE_IMAGE="windows-server-2004-dc-core-v20210413"
   elif [[ "${WINDOWS_NODE_OS_DISTRIBUTION,,}" == "win20h2" ]]; then
-    WINDOWS_NODE_IMAGE="windows-server-20h2-dc-core-v20210112"
+    WINDOWS_NODE_IMAGE="windows-server-20h2-dc-core-v20210413"
   else
     echo "Unknown WINDOWS_NODE_OS_DISTRIBUTION ${WINDOWS_NODE_OS_DISTRIBUTION}" >&2
     exit 1
@@ -245,7 +245,7 @@ function copy-to-staging() {
     fi
   fi
 
-  #echo "${hash}" > "${tar}.sha512"
+  echo "${hash}" > "${tar}.sha512"
   gsutil -m -q -h "Cache-Control:private, max-age=0" cp "${tar}" "${tar}.sha512" "${staging_path}"
   gsutil -m acl ch -g all:R "${gs_url}" "${gs_url}.sha512" >/dev/null 2>&1 || true
   echo "+++ ${basename_tar} uploaded (sha512 = ${hash})"
@@ -526,13 +526,13 @@ function tars_from_version() {
     find-release-tars
     upload-tars
   elif [[ ${KUBE_VERSION} =~ ${KUBE_RELEASE_VERSION_REGEX} ]]; then
-    SERVER_BINARY_TAR_URL="https://dl.k8s.io/release/${KUBE_VERSION}/kubernetes-server-linux-amd64.tar.gz"
+    SERVER_BINARY_TAR_URL="https://storage.googleapis.com/kubernetes-release/release/${KUBE_VERSION}/kubernetes-server-linux-amd64.tar.gz"
     # TODO: Clean this up.
     KUBE_MANIFESTS_TAR_URL="${SERVER_BINARY_TAR_URL/server-linux-amd64/manifests}"
     KUBE_MANIFESTS_TAR_HASH=$(curl "${KUBE_MANIFESTS_TAR_URL}" --silent --show-error | ${sha512sum})
     KUBE_MANIFESTS_TAR_HASH=${KUBE_MANIFESTS_TAR_HASH%%[[:blank:]]*}
   elif [[ ${KUBE_VERSION} =~ ${KUBE_CI_VERSION_REGEX} ]]; then
-    SERVER_BINARY_TAR_URL="https://dl.k8s.io-dev/ci/${KUBE_VERSION}/kubernetes-server-linux-amd64.tar.gz"
+    SERVER_BINARY_TAR_URL="https://storage.googleapis.com/k8s-release-dev/ci/${KUBE_VERSION}/kubernetes-server-linux-amd64.tar.gz"
     # TODO: Clean this up.
     KUBE_MANIFESTS_TAR_URL="${SERVER_BINARY_TAR_URL/server-linux-amd64/manifests}"
     KUBE_MANIFESTS_TAR_HASH=$(curl "${KUBE_MANIFESTS_TAR_URL}" --silent --show-error | ${sha512sum})
@@ -762,9 +762,6 @@ function construct-linux-kubelet-flags {
   flags+=" --experimental-check-node-capabilities-before-mount=true"
   # Keep in sync with the mkdir command in configure-helper.sh (until the TODO is resolved)
   flags+=" --cert-dir=/var/lib/kubelet/pki/"
-  # Configure the directory that the Kubelet should use to store dynamic config checkpoints
-  flags+=" --dynamic-config-dir=/var/lib/kubelet/dynamic-config"
-
 
   if [[ "${node_type}" == "master" ]]; then
     flags+=" ${MASTER_KUBELET_TEST_ARGS:-}"
@@ -833,10 +830,6 @@ function construct-linux-kubelet-flags {
 
   if [[ -n "${CONTAINER_RUNTIME_ENDPOINT:-}" ]]; then
     flags+=" --container-runtime-endpoint=${CONTAINER_RUNTIME_ENDPOINT}"
-  fi
-
-  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
-    flags+=" --image-credential-provider-config=/etc/srv/kubernetes/cri_auth_config.yaml --image-credential-provider-bin-dir=/home/kubernetes/bin"
   fi
 
   KUBELET_ARGS="${flags}"
@@ -1029,7 +1022,7 @@ EOF
 # cat the Kubelet config yaml for masters
 function print-master-kubelet-config {
   cat <<EOF
-enableDebuggingHandlers: false
+enableDebuggingHandlers: ${MASTER_KUBELET_ENABLE_DEBUGGING_HANDLERS:-false}
 hairpinMode: none
 staticPodPath: /etc/kubernetes/manifests
 authentication:
@@ -1053,7 +1046,7 @@ EOF
 # cat the Kubelet config yaml in common between linux nodes and windows nodes
 function print-common-node-kubelet-config {
   cat <<EOF
-enableDebuggingHandlers: true
+enableDebuggingHandlers: ${KUBELET_ENABLE_DEBUGGING_HANDLERS:-true}
 EOF
   if [[ "${HAIRPIN_MODE:-}" == "promiscuous-bridge" ]] || \
      [[ "${HAIRPIN_MODE:-}" == "hairpin-veth" ]] || \
@@ -1250,7 +1243,6 @@ VOLUME_PLUGIN_DIR: $(yaml-quote "${VOLUME_PLUGIN_DIR}")
 KUBELET_ARGS: $(yaml-quote "${KUBELET_ARGS}")
 REQUIRE_METADATA_KUBELET_CONFIG_FILE: $(yaml-quote true)
 ENABLE_NETD: $(yaml-quote "${ENABLE_NETD:-false}")
-ENABLE_NODE_TERMINATION_HANDLER: $(yaml-quote "${ENABLE_NODE_TERMINATION_HANDLER:-false}")
 CUSTOM_NETD_YAML: |
 ${CUSTOM_NETD_YAML//\'/\'\'}
 CUSTOM_CALICO_NODE_DAEMONSET_YAML: |
@@ -1334,9 +1326,6 @@ ${var_name}: ${var_value}
 EOF
     done
   fi
-  cat >>$file <<EOF
-ENABLE_CREDENTIAL_SIDECAR: $(yaml-quote ${ENABLE_CREDENTIAL_SIDECAR:-false})
-EOF
 
   if [[ "${master}" == "true" ]]; then
     # Master-only env vars.
@@ -1362,6 +1351,21 @@ ETCD_PEER_KEY: $(yaml-quote "${ETCD_PEER_KEY_BASE64:-}")
 ETCD_PEER_CERT: $(yaml-quote "${ETCD_PEER_CERT_BASE64:-}")
 SERVICEACCOUNT_ISSUER: $(yaml-quote "${SERVICEACCOUNT_ISSUER:-}")
 KUBECTL_PRUNE_WHITELIST_OVERRIDE: $(yaml-quote "${KUBECTL_PRUNE_WHITELIST_OVERRIDE:-}")
+KUBE_SCHEDULER_RUNASUSER: 2001
+KUBE_SCHEDULER_RUNASGROUP: 2001
+KUBE_ADDON_MANAGER_RUNASUSER: 2002
+KUBE_ADDON_MANAGER_RUNASGROUP: 2002
+KUBE_CONTROLLER_MANAGER_RUNASUSER: 2003
+KUBE_CONTROLLER_MANAGER_RUNASGROUP: 2003
+KUBE_API_SERVER_RUNASUSER: 2004
+KUBE_API_SERVER_RUNASGROUP: 2004
+KUBE_PKI_READERS_GROUP: 2005
+ETCD_RUNASUSER: 2006
+ETCD_RUNASGROUP: 2006
+KUBE_POD_LOG_READERS_GROUP: 2007
+KONNECTIVITY_SERVER_RUNASUSER: 2008
+KONNECTIVITY_SERVER_RUNASGROUP: 2008
+KONNECTIVITY_SERVER_SOCKET_WRITER_GROUP: 2008
 EOF
     # KUBE_APISERVER_REQUEST_TIMEOUT_SEC (if set) controls the --request-timeout
     # flag
@@ -1598,6 +1602,13 @@ BOOTSTRAP_KUBECONFIG_FILE: $(yaml-quote "${WINDOWS_BOOTSTRAP_KUBECONFIG_FILE}")
 KUBEPROXY_KUBECONFIG_FILE: $(yaml-quote "${WINDOWS_KUBEPROXY_KUBECONFIG_FILE}")
 WINDOWS_INFRA_CONTAINER: $(yaml-quote "${WINDOWS_INFRA_CONTAINER}")
 WINDOWS_ENABLE_PIGZ: $(yaml-quote "${WINDOWS_ENABLE_PIGZ}")
+ENABLE_NODE_PROBLEM_DETECTOR: $(yaml-quote "${WINDOWS_ENABLE_NODE_PROBLEM_DETECTOR}")
+NODE_PROBLEM_DETECTOR_VERSION: $(yaml-quote "${NODE_PROBLEM_DETECTOR_VERSION}")
+NODE_PROBLEM_DETECTOR_TAR_HASH: $(yaml-quote "${NODE_PROBLEM_DETECTOR_TAR_HASH}")
+NODE_PROBLEM_DETECTOR_RELEASE_PATH: $(yaml-quote "${NODE_PROBLEM_DETECTOR_RELEASE_PATH}")
+NODE_PROBLEM_DETECTOR_CUSTOM_FLAGS: $(yaml-quote "${WINDOWS_NODE_PROBLEM_DETECTOR_CUSTOM_FLAGS}")
+NODE_PROBLEM_DETECTOR_TOKEN: $(yaml-quote "${NODE_PROBLEM_DETECTOR_TOKEN:-}")
+WINDOWS_NODEPROBLEMDETECTOR_KUBECONFIG_FILE: $(yaml-quote "${WINDOWS_NODEPROBLEMDETECTOR_KUBECONFIG_FILE}")
 EOF
 }
 
@@ -1699,7 +1710,7 @@ function setup-easyrsa {
   # Note: This was heavily cribbed from make-ca-cert.sh
   (set -x
     cd "${KUBE_TEMP}"
-    curl -L -O --connect-timeout 20 --retry 6 --retry-delay 2 https://dl.k8s.io/easy-rsa/easy-rsa.tar.gz
+    curl -L -O --connect-timeout 20 --retry 6 --retry-delay 2 https://storage.googleapis.com/kubernetes-release/easy-rsa/easy-rsa.tar.gz
     tar xzf easy-rsa.tar.gz
     mkdir easy-rsa-master/kubelet
     cp -r easy-rsa-master/easyrsa3/* easy-rsa-master/kubelet
@@ -1906,7 +1917,7 @@ function update-or-verify-gcloud() {
   else
     local version
     version=$(gcloud version --format=json)
-    python -c"
+    python3 -c"
 import json,sys
 from distutils import version
 

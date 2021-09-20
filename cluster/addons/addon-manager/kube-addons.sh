@@ -46,7 +46,7 @@ if [ -z "${KUBECTL_PRUNE_WHITELIST_OVERRIDE:-}" ]; then
     core/v1/Secret
     core/v1/Service
     batch/v1/Job
-    batch/v1beta1/CronJob
+    batch/v1/CronJob
     apps/v1/DaemonSet
     apps/v1/Deployment
     apps/v1/ReplicaSet
@@ -291,25 +291,4 @@ function is_leader() {
     return 1
     ;;
   esac
-}
-
-function is_cloud_leader() {
-  # In multi-master setup, only one addon manager should be running. We use
-  # existing leader election in cloud-controller-manager instead of implementing
-  # a separate mechanism here.
-  if ! $ADDON_MANAGER_LEADER_ELECTION; then
-    log INFO "Leader election disabled."
-    return 0;
-  fi
-  # shellcheck disable=SC2086
-  # Disabling because "${KUBECTL_OPTS}" needs to allow for expansion here
-  CLOUD_CONTROLLER_MANAGER_LEADER=$(${KUBECTL} ${KUBECTL_OPTS} -n kube-system get ep cloud-controller-manager \
-    -o go-template=$'{{index .metadata.annotations "control-plane.alpha.kubernetes.io/leader"}}' \
-    | sed 's/^.*"holderIdentity":"\([^"]*\)".*/\1/' | awk -F'_' '{print $1}')
-  # If there was any problem with getting the leader election results, var will
-  # be empty. Since it's better to have multiple addon managers than no addon
-  # managers at all, we're going to assume that we're the leader in such case.
-  log INFO "Leader is $CLOUD_CONTROLLER_MANAGER_LEADER"
-  [[ "$CLOUD_CONTROLLER_MANAGER_LEADER" == "" ||
-     "$HOSTNAME" == "$CLOUD_CONTROLLER_MANAGER_LEADER" ]]
 }

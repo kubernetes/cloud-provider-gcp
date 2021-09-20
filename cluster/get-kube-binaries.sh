@@ -46,7 +46,7 @@
 #
 #  Set KUBERNETES_SKIP_CONFIRM to skip the installation confirmation prompt.
 #  Set KUBERNETES_RELEASE_URL to choose where to download binaries from.
-#    (Defaults to https://dl.k8s.io).
+#    (Defaults to https://storage.googleapis.com/kubernetes-release/release).
 #  Set KUBERNETES_DOWNLOAD_TESTS to additionally download and extract the test
 #    binaries tarball.
 
@@ -158,7 +158,7 @@ function download_tarball() {
   mkdir -p "${download_path}"
 
   if [[ $(which gsutil) ]] && [[ "$url" =~ ^https://storage.googleapis.com/.* ]]; then
-    gsutil cp "${url//'https://storage.googleapis.com/'/'gs://'}" "${download_path}/${file}"
+    gsutil cp "${url//'https://storage.googleapis.com/'/gs://}" "${download_path}/${file}"
   elif [[ $(which curl) ]]; then
     # if the url belongs to GCS API we should use oauth2_token in the headers
     curl_headers=""

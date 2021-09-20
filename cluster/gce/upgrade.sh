@@ -28,7 +28,7 @@ if [[ "${KUBERNETES_PROVIDER:-gce}" != "gce" ]]; then
 fi
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
-source "${KUBE_ROOT}/cluster/util.sh"
+source "${KUBE_ROOT}/hack/lib/util.sh"
 source "${KUBE_ROOT}/cluster/kube-util.sh"
 
 function usage() {
@@ -61,9 +61,9 @@ function usage() {
   local release_latest
   local ci_latest
 
-  release_stable=$(curl -Ls https://dl.k8s.io/release/stable.txt)
-  release_latest=$(curl -Ls https://dl.k8s.io/release/latest.txt)
-  ci_latest=$(curl -Ls https://dl.k8s.io/ci/latest.txt)
+  release_stable=$(gsutil cat gs://kubernetes-release/release/stable.txt)
+  release_latest=$(gsutil cat gs://kubernetes-release/release/latest.txt)
+  ci_latest=$(gsutil cat gs://k8s-release-dev/ci/latest.txt)
 
   echo "Right now, versions are as follows:"
   echo "  release/stable: ${0} ${release_stable}"
