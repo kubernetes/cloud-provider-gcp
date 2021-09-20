@@ -13,5 +13,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/clock:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/debug:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/metrics:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/request:go_default_library",
     ],
 )
