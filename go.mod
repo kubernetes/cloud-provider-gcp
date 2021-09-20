@@ -37,6 +37,7 @@ require (
 	k8s.io/client-go v9.0.0+incompatible
 	k8s.io/cloud-provider v0.22.0
 	k8s.io/cloud-provider-gcp/providers v0.0.0
+	k8s.io/code-generator v0.22.2 // indirect
 	k8s.io/component-base v0.22.0
 	k8s.io/component-helpers v0.22.0
 	k8s.io/controller-manager v0.22.0
