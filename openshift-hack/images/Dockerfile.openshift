@@ -5,7 +5,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${GOOS} GOPROXY=${GOPROXY} go build \
 	-ldflags="-w -s -X 'main.version=${VERSION}'" \
 	-o=gcp-cloud-controller-manager \
-	cmd/cloud-controller-manager/main.go
+	./cmd/cloud-controller-manager
 
 FROM registry.ci.openshift.org/ocp/4.9:base
 
