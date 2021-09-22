@@ -1,20 +1,24 @@
 # See the OWNERS docs at https://go.k8s.io/owners
 
 reviewers:
-  - bentheelder
-  - cheftako
-  - dims
-  - justaugustus
-  - mikedanese
-  - spiffxp
+  - bowei
+  - cjcullen
+  - MaciekPytel
+  - mtaufen
+  - mwielgus
+  - vishh
+  - yujuhong
 approvers:
-  - bentheelder
+  - amwat
+  - BenTheElder
+  - bowei
   - cheftako
-  - dims
-  - mikedanese
-  - spiffxp
+  - cjcullen
+  - MaciekPytel
+  - mtaufen
+  - mwielgus
+  - vishh
+  - yujuhong
 emeritus_approvers:
-  - eparis
-  - roberthbailey   # 2019-03-08
-  - jbeda
-  - zmerlynn
+- gmarek
+- jingax10

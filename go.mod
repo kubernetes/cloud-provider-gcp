@@ -48,7 +48,7 @@ require (
 	k8s.io/kubernetes v1.22.0
 	k8s.io/metrics v0.22.0
 	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
-	sigs.k8s.io/kubetest2 v0.0.0-20210423234514-1c731a5d2283 // indirect
+	sigs.k8s.io/kubetest2 v0.0.0-20210825194555-4a034357d975 // indirect
 )
 
 replace (
