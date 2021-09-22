@@ -38,6 +38,10 @@ type gcloudConfiguration struct {
 	X          map[string]interface{} `json:"-"` // Rest of the fields should go here.
 }
 
+var (
+	useAdcPtr = pflag.Bool("use_application_default_credentials", false, "returns exec credential filled with application default credentials.")
+)
+
 func main() {
 	pflag.Parse()
 	verflag.PrintAndExitIfRequested()
@@ -77,11 +81,13 @@ func execCredential() (*clientauth.ExecCredential, error) {
 }
 
 func accessToken() (string, *meta.Time, error) {
-	token, expiry, err := gcloudAccessToken()
-	if err != nil {
-		return defaultAccessToken()
+	if !*useAdcPtr {
+		token, expiry, err := gcloudAccessToken()
+		if err == nil {
+			return token, expiry, nil
+		}
 	}
-	return token, expiry, nil
+	return defaultAccessToken()
 }
 
 func gcloudAccessToken() (string, *meta.Time, error) {
@@ -90,7 +96,7 @@ func gcloudAccessToken() (string, *meta.Time, error) {
 		return "", nil, err
 	}
 
-	return gc.Credential.AccessToken, &meta.Time{gc.Credential.TokenExpiry}, nil
+	return gc.Credential.AccessToken, &meta.Time{Time: gc.Credential.TokenExpiry}, nil
 }
 
 func defaultAccessToken() (string, *meta.Time, error) {
@@ -104,7 +110,7 @@ func defaultAccessToken() (string, *meta.Time, error) {
 		return "", nil, fmt.Errorf("cannot retrieve default token from google default token source: %v", err)
 	}
 
-	return tok.AccessToken, &meta.Time{tok.Expiry}, nil
+	return tok.AccessToken, &meta.Time{Time: tok.Expiry}, nil
 }
 
 // retrieveGcloudConfig returns an object which represents gcloud config output

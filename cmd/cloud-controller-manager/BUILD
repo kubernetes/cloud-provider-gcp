@@ -16,12 +16,20 @@ go_binary(
 
 go_library(
     name = "go_default_library",
-    srcs = ["main.go"],
+    srcs = [
+        "main.go",
+        "nodeipamcontroller.go",
+    ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager",
     deps = [
+        "//cmd/cloud-controller-manager/options:go_default_library",
+        "//pkg/controller/nodeipam:go_default_library",
+        "//pkg/controller/nodeipam/config:go_default_library",
+        "//pkg/controller/nodeipam/ipam:go_default_library",
         "//providers/gce:go_default_library",
         "//vendor/github.com/spf13/pflag:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
         "//vendor/k8s.io/cloud-provider:go_default_library",
         "//vendor/k8s.io/cloud-provider/app:go_default_library",
         "//vendor/k8s.io/cloud-provider/app/config:go_default_library",
@@ -30,7 +38,10 @@ go_library(
         "//vendor/k8s.io/component-base/logs:go_default_library",
         "//vendor/k8s.io/component-base/metrics/prometheus/clientgo:go_default_library",
         "//vendor/k8s.io/component-base/metrics/prometheus/version:go_default_library",
+        "//vendor/k8s.io/controller-manager/app:go_default_library",
+        "//vendor/k8s.io/controller-manager/pkg/features:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/k8s.io/utils/net:go_default_library",
     ],
 )
 

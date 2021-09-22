@@ -118,7 +118,7 @@ func TestIstiodApproverHandle(t *testing.T) {
 				csr := as[0].(testclient.UpdateAction).GetObject().(*capi.CertificateSigningRequest)
 				_, denied := certificates.GetCertApprovalCondition(&csr.Status)
 				if !denied {
-					t.Fatalf("expected CSR to be approved: %#v", csr.Status)
+					t.Fatalf("expected CSR to be denied: %#v", csr.Status)
 				}
 			},
 		},
@@ -144,7 +144,7 @@ func TestIstiodApproverHandle(t *testing.T) {
 				csr := as[0].(testclient.UpdateAction).GetObject().(*capi.CertificateSigningRequest)
 				_, denied := certificates.GetCertApprovalCondition(&csr.Status)
 				if !denied {
-					t.Fatalf("expected CSR to be approved: %#v", csr.Status)
+					t.Fatalf("expected CSR to be denied: %#v", csr.Status)
 				}
 			},
 		},
@@ -169,7 +169,7 @@ func TestIstiodApproverHandle(t *testing.T) {
 				csr := as[0].(testclient.UpdateAction).GetObject().(*capi.CertificateSigningRequest)
 				_, denied := certificates.GetCertApprovalCondition(&csr.Status)
 				if !denied {
-					t.Fatalf("expected CSR to be approved: %#v", csr.Status)
+					t.Fatalf("expected CSR to be denied: %#v", csr.Status)
 				}
 			},
 		},
@@ -195,7 +195,7 @@ func TestIstiodApproverHandle(t *testing.T) {
 				csr := as[0].(testclient.UpdateAction).GetObject().(*capi.CertificateSigningRequest)
 				_, denied := certificates.GetCertApprovalCondition(&csr.Status)
 				if !denied {
-					t.Fatalf("expected CSR to be approved: %#v", csr.Status)
+					t.Fatalf("expected CSR to be denied: %#v", csr.Status)
 				}
 			},
 		},
@@ -220,7 +220,7 @@ func TestIstiodApproverHandle(t *testing.T) {
 				csr := as[0].(testclient.UpdateAction).GetObject().(*capi.CertificateSigningRequest)
 				_, denied := certificates.GetCertApprovalCondition(&csr.Status)
 				if !denied {
-					t.Fatalf("expected CSR to be approved: %#v", csr.Status)
+					t.Fatalf("expected CSR to be denied: %#v", csr.Status)
 				}
 			},
 		},

@@ -136,7 +136,7 @@ func processCSR(client clientset.Interface, privateKeyData []byte, hostname stri
 		apicertificates.UsageClientAuth,
 	}
 	name := digestedName(privateKeyData, subject, usages)
-	reqName, reqUID, err := csr.RequestCertificate(client, csrData, name, apicertificates.KubeAPIServerClientKubeletSignerName, usages, privateKey)
+	reqName, reqUID, err := csr.RequestCertificate(client, csrData, name, apicertificates.KubeAPIServerClientKubeletSignerName, nil, usages, privateKey)
 	if err != nil {
 		return nil, err
 	}
