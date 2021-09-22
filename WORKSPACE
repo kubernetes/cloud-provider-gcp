@@ -101,12 +101,9 @@ fetch_kube_release(
     name = "io_k8s_release",
     archives = {
         "kubernetes-server-linux-amd64.tar.gz": "af62692a5d5c6024a78d230061061b3fcd2f5422cea2f3d6aaad2fe20fb13746",
-        #"kubernetes-server-linux-amd64.tar.gz": "1772c20e7765a2288bd335f754b9cf5cb2e2e0b5b11f80db0d9b582c1016c663",
         "kubernetes-manifests.tar.gz": "037d1a93edd2b9f54902adaca6060f9dd94911fc4c7122d06c26112ef5e72cce",
-        #"kubernetes-manifests.tar.gz": "bf99bd768afdda829f617038b10aafff7f8cd07071bd0e8b585f118bfbff9df7",
         # we do not currently make modifications to these release tars below
         "kubernetes-node-linux-amd64.tar.gz": "55e63ed2452693c1026307a14554e5b2fff549a97993400d178cd827c76ce128",
-        #"kubernetes-node-linux-amd64.tar.gz": "5baa2b45bdca2dd09d03b9e2a4fb17e105c47972b600f7c2dcbdbaec2a956ae1",
         "kubernetes-node-windows-amd64.tar.gz": "17eea748c06137bc802d836a7db8e2d4fba379f3cea1d22b88fcfbbd7c8396ad",
     },
     version = "v1.22.0",
