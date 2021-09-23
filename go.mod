@@ -24,10 +24,12 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489 // indirect
+	go.etcd.io/etcd/client/v3 v3.5.0 // indirect
 	go.uber.org/zap v1.17.0 // indirect
 	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
 	golang.org/x/oauth2 v0.0.0-20210427180440-81ed05c6b58c
 	google.golang.org/api v0.46.0
+	google.golang.org/grpc v1.38.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
 	gopkg.in/gcfg.v1 v1.2.0
 	gopkg.in/warnings.v0 v0.1.2
@@ -46,7 +48,7 @@ require (
 	k8s.io/kubernetes v1.22.0
 	k8s.io/metrics v0.22.0
 	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
-	sigs.k8s.io/kubetest2 v0.0.0-20210423234514-1c731a5d2283 // indirect
+	sigs.k8s.io/kubetest2 v0.0.0-20210825194555-4a034357d975 // indirect
 )
 
 replace (
@@ -57,6 +59,7 @@ replace (
 	github.com/google/uuid => github.com/google/uuid v1.1.4 // indirect
 	github.com/hashicorp/golang-lru => github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/imdario/mergo => github.com/imdario/mergo v0.3.11 // indirect
+	github.com/mrunalp/fileutils => github.com/mrunalp/fileutils v0.5.0
 	github.com/onsi/ginkgo => github.com/onsi/ginkgo v1.14.1 // indirect
 	github.com/onsi/gomega v1.10.3 => github.com/onsi/gomega v1.10.3 // indirect
 	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.7.1
