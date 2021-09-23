@@ -1012,7 +1012,11 @@ func makeAttestationDataAndSignature(t *testing.T, csrKey *ecdsa.PrivateKey, aik
 	// Hash algorithm here must match tpmPub.NameAlg.
 	tpmPubDigest := sha256.Sum256(tpmPubRaw)
 	attestData, err := tpm2.AttestationData{
-		Type: tpm2.TagAttestCertify,
+		// In go-tpm v0.3.0 validation was added to check that the magic value
+		// is always 0xff544347
+		// See https://github.com/google/go-tpm/pull/136 for details.
+		Magic: 0xff544347,
+		Type:  tpm2.TagAttestCertify,
 		AttestedCertifyInfo: &tpm2.CertifyInfo{
 			Name: tpm2.Name{
 				Digest: &tpm2.HashValue{

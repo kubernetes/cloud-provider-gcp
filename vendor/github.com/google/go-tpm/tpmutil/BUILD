@@ -15,6 +15,18 @@ go_library(
     importpath = "github.com/google/go-tpm/tpmutil",
     visibility = ["//visibility:public"],
     deps = select({
+        "@io_bazel_rules_go//go/platform:android": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:darwin": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:ios": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:linux": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
         "@io_bazel_rules_go//go/platform:windows": [
             "//vendor/github.com/google/go-tpm/tpmutil/tbs:go_default_library",
         ],
