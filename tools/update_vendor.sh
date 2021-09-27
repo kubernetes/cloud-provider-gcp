@@ -25,12 +25,6 @@ KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
 # update vendor/
 go mod vendor
-# remove repo-originated BUILD files
-find vendor -type f \( \
-    -name BUILD \
-    -o -name BUILD.bazel \
-    -o -name '*.bzl' \
-  \) -delete
 
 # clean up unused dependencies
 go mod tidy
@@ -39,5 +33,3 @@ go mod tidy
 rm -fr "${KUBE_ROOT}/vendor/k8s.io/cloud-provider-gcp/providers"
 ln -s "../../../providers" "${KUBE_ROOT}/vendor/k8s.io/cloud-provider-gcp/providers"
 
-# restore BUILD files in vendor/
-bazel run //:gazelle
