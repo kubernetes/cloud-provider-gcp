@@ -996,6 +996,8 @@ k8s.io/cloud-provider/volume/helpers
 ## explicit
 k8s.io/cloud-provider-gcp/providers/gce
 k8s.io/cloud-provider-gcp/providers/gce/gcpcredential
+# k8s.io/code-generator v0.22.2 => k8s.io/code-generator v0.22.0
+## explicit
 # k8s.io/component-base v0.22.0 => k8s.io/component-base v0.22.0
 ## explicit
 k8s.io/component-base/cli/flag
@@ -1107,6 +1109,8 @@ k8s.io/utils/trace
 # sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.22
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
+# sigs.k8s.io/controller-tools v0.7.0
+## explicit
 # sigs.k8s.io/kubetest2 v0.0.0-20210825194555-4a034357d975
 ## explicit
 # sigs.k8s.io/structured-merge-diff/v4 v4.1.2

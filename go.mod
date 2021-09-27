@@ -39,6 +39,7 @@ require (
 	k8s.io/client-go v9.0.0+incompatible
 	k8s.io/cloud-provider v0.22.0
 	k8s.io/cloud-provider-gcp/providers v0.0.0
+	k8s.io/code-generator v0.22.2 // indirect
 	k8s.io/component-base v0.22.0
 	k8s.io/component-helpers v0.22.0
 	k8s.io/controller-manager v0.22.0
@@ -48,6 +49,7 @@ require (
 	k8s.io/kubernetes v1.22.0
 	k8s.io/metrics v0.22.0
 	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
+	sigs.k8s.io/controller-tools v0.7.0 // indirect
 	sigs.k8s.io/kubetest2 v0.0.0-20210825194555-4a034357d975 // indirect
 )
 
