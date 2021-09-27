@@ -29,6 +29,12 @@ This document describes the steps to update cloud-provider-gcp with a Kubernetes
 5. Refer to [update an existing dependency](https://github.com/kubernetes/cloud-provider-gcp/blob/master/README.md#update-an-existing-dependency)
    and [clean up unused dependency](https://github.com/kubernetes/cloud-provider-gcp/blob/master/README.md#clean-up-unused-dependencies) for the dependencies operations if needed.
 
+6. Update /cluster directory
+   
+   - Rebase /cluster directory with the /cluster directory from kubernetes/kubernetes at desired Kubernetes release version. 
+     (kubernetes/kubernetes/cluster/images should not be pulled in cloud-provide-gcp.)
+   - Selectively re-applies direct contributions made to the /cluster directory of cloud-provider-gcp that are clobbered by the rebase of the /cluster directory. [Sample Commit](https://github.com/kubernetes/cloud-provider-gcp/pull/273/commits/51df62fb33bcca341ac891051280271a6882b2e2)
+   - Remove any changes regarding with OWNERS files.
 
 ## Build cloud-provider-gcp
 
