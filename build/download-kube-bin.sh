@@ -21,8 +21,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
-source "${KUBE_ROOT}/tools/build/lib/common.sh"
+KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
+source "${KUBE_ROOT}/build/lib/common.sh"
 
 KUBE_VERSION=v1.21.0
 

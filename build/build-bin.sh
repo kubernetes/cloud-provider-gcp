@@ -21,9 +21,9 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
+KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
-source "${KUBE_ROOT}/tools/build/lib/common.sh"
+source "${KUBE_ROOT}/build/lib/common.sh"
 source "${KUBE_ROOT}/tools/version.sh"
 
 function build-binaries() {

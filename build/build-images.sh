@@ -21,9 +21,9 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
+KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
-source "${KUBE_ROOT}/tools/build/lib/common.sh"
+source "${KUBE_ROOT}/build/lib/common.sh"
 source "${KUBE_ROOT}/tools/version.sh"
 
 function build-images() {
@@ -35,7 +35,7 @@ function build-images() {
 	local image_root="${OUT_DIR}/images"
 	local docker_stage="${OUT_DIR}/docker-stage"
 	local bin_dir="${BIN_DIR}/linux-amd64"
-	local docker_file_path="${KUBE_ROOT}/tools/build/server-image/Dockerfile"
+	local docker_file_path="${KUBE_ROOT}/build/server-image/Dockerfile"
 
 	mkdir -p "${image_root}"
 

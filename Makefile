@@ -29,12 +29,12 @@ test:
 
 .PHONY: bin
 bin:
-	./tools/build/build-bin.sh
+	./build/build-bin.sh
 
 .PHONY: images
 images: bin
-	./tools/build/build-images.sh
+	./build/build-images.sh
 
 .PHONY: release-tars
 release-tars: bin images
-	./tools/build/build-release-tars.sh
+	./build/build-release-tars.sh

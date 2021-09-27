@@ -21,8 +21,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-KUBE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-source "${KUBE_ROOT}/tools/build/lib/common.sh"
+KUBE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source "${KUBE_ROOT}/build/lib/common.sh"
 source "${KUBE_ROOT}/tools/lib/util.sh"
 
 RELEASE_STAGING_DIR="${OUT_DIR}/release-staging"
@@ -98,7 +98,7 @@ function generate-tarball-checksums() {
 }
 
 function build-release-tarballs() {
-	KUBE_DOWNLOAD_DIR="${KUBE_DOWNLOAD_DIR}" "${KUBE_ROOT}/tools/build/download-kube-bin.sh"
+	KUBE_DOWNLOAD_DIR="${KUBE_DOWNLOAD_DIR}" "${KUBE_ROOT}/build/download-kube-bin.sh"
 	mkdir -p "${RELEASE_TARBALLS_DIR}"
 
 	build-server-tarball &
