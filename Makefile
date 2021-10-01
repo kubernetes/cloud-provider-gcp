@@ -25,7 +25,7 @@ clean:
 
 .PHONY: test
 test:
-	go test ./...
+	./build/run-tests.sh
 
 .PHONY: bin
 bin:
