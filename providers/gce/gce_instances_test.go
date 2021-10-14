@@ -96,6 +96,11 @@ func TestNodeAddresses(t *testing.T) {
 	instance := &ga.Instance{
 		Name: "n1",
 		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				NetworkIP: "10.1.1.1",
+			},
+		},
 	}
 	instanceMap["n1"] = instance
 
@@ -121,6 +126,14 @@ func TestNodeAddresses(t *testing.T) {
 	instance = &ga.Instance{
 		Name: "n2",
 		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				NetworkIP: "10.1.1.2",
+				AccessConfigs: []*ga.AccessConfig{
+					{NatIP: "20.1.1.2"},
+				},
+			},
+		},
 	}
 	instanceMap["n2"] = instance
 
@@ -211,9 +224,10 @@ func TestNodeAddresses(t *testing.T) {
 			wantErr:  "instance not found",
 		},
 		{
-			name:     "alpha instance not found",
-			nodeName: "n3",
-			wantErr:  "alpha instance not found",
+			name:      "alpha instance not found",
+			nodeName:  "n3",
+			dualStack: true,
+			wantErr:   "alpha instance not found",
 		},
 		{
 			name:     "external single stack instance",
@@ -359,13 +373,6 @@ func TestAliasRangesByProviderID(t *testing.T) {
 		{
 			name:       "internal single stack instance",
 			providerId: "gce://p1/us-central1-b/n1",
-			wantCIDRs: []string{
-				"10.11.1.0/24",
-			},
-		},
-		{
-			name:       "internal single stack instance",
-			providerId: "gce://p1/us-central1-b/n1",
 			dualStack:  true,
 			wantCIDRs: []string{
 				"10.11.1.0/24",
@@ -375,14 +382,8 @@ func TestAliasRangesByProviderID(t *testing.T) {
 		{
 			name:       "instance not found",
 			providerId: "gce://p1/us-central1-b/x1",
+			dualStack:  true,
 			wantErr:    "alpha instance not found",
-		},
-		{
-			name:       "external single stack instance",
-			providerId: "gce://p1/us-central1-b/n2",
-			wantCIDRs: []string{
-				"10.11.2.0/24",
-			},
 		},
 		{
 			name:       "internal single stack instance",
@@ -396,6 +397,7 @@ func TestAliasRangesByProviderID(t *testing.T) {
 		{
 			name:       "network interface not found",
 			providerId: "gce://p1/us-central1-b/n4",
+			dualStack:  true,
 			wantErr:    "",
 		},
 		{
