@@ -2235,7 +2235,7 @@ function start-cloud-controller-manager {
   if [[ -n "${FEATURE_GATES:-}" ]]; then
     # remove feature gates that the CCM doesn't support, since the CCM will early exit
     # if given a feature gate it doesn't recognize
-    local safe_feature_gates=$(echo "${FEATURE_GATES}" | grep --perl-regexp -o "((StreamingProxyRedirects|ValidateProxyRedirects|AdvancedAuditing|APIResponseCompression|APIListChunking|DryRun|RemainingItemCount|ServerSideApply|StorageVersionHash|StorageVersionAPI|WatchBookmark|APIPriorityAndFairness|RemoveSelfLink|SelectorIndex|WarningHeaders|EfficientWatchResumption|APIServerIdentity|APIServerTracing)=(true|false),*)" | tr -d "\n") 
+    local safe_feature_gates=$(echo "${FEATURE_GATES}" | grep --perl-regexp -o "((${CCM_FEATURE_GATE_FILTER})=(true|false),*)" | tr -d "\n") 
     if [[ -n "${safe_feature_gates:-}" ]]; then
       params+=" --feature-gates=${safe_feature_gates}"
     fi

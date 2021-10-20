@@ -573,3 +573,6 @@ if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
         FEATURE_GATES="${FEATURE_GATES},KubeletCredentialProviders=true"
     fi
 fi
+
+# feature gate filter for the CCM, defines which feature gates are considered valid to pass through to the CCM from $FEATURE_GATES
+export CCM_FEATURE_GATE_FILTER="${KUBE_CCM_FEATURE_GATE_FILTER:-StreamingProxyRedirects|ValidateProxyRedirects|AdvancedAuditing|APIResponseCompression|APIListChunking|DryRun|RemainingItemCount|ServerSideApply|StorageVersionHash|StorageVersionAPI|WatchBookmark|APIPriorityAndFairness|RemoveSelfLink|SelectorIndex|WarningHeaders|EfficientWatchResumption|APIServerIdentity|APIServerTracing}"
