@@ -9,18 +9,17 @@ require (
 	github.com/go-openapi/spec v0.19.6 // indirect
 	github.com/gofrs/flock v0.7.1
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/google/go-cmp v0.5.5
+	github.com/google/go-cmp v0.5.6
 	github.com/google/go-tpm v0.3.2
 	github.com/google/uuid v1.1.4 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/mrunalp/fileutils v0.5.0 // indirect
-	github.com/onsi/ginkgo v1.14.1 // indirect
-	github.com/onsi/gomega v1.10.3 // indirect
+	github.com/onsi/gomega v1.14.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.11.0
 	github.com/prometheus/client_model v0.2.0 // indirect
-	github.com/spf13/cobra v1.1.3
+	github.com/spf13/cobra v1.2.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489 // indirect
@@ -28,17 +27,19 @@ require (
 	go.uber.org/zap v1.17.0 // indirect
 	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
 	golang.org/x/oauth2 v0.0.0-20210427180440-81ed05c6b58c
+	golang.org/x/tools v0.1.5 // indirect
 	google.golang.org/api v0.46.0
 	google.golang.org/grpc v1.38.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
 	gopkg.in/gcfg.v1 v1.2.0
 	gopkg.in/warnings.v0 v0.1.2
-	k8s.io/api v0.22.0
-	k8s.io/apimachinery v0.22.0
+	k8s.io/api v0.22.2
+	k8s.io/apimachinery v0.22.2
 	k8s.io/apiserver v0.22.0
 	k8s.io/client-go v9.0.0+incompatible
 	k8s.io/cloud-provider v0.22.0
 	k8s.io/cloud-provider-gcp/providers v0.0.0
+	k8s.io/code-generator v0.22.2
 	k8s.io/component-base v0.22.0
 	k8s.io/component-helpers v0.22.0
 	k8s.io/controller-manager v0.22.0
@@ -48,6 +49,7 @@ require (
 	k8s.io/kubernetes v1.22.0
 	k8s.io/metrics v0.22.0
 	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
+	sigs.k8s.io/controller-tools v0.7.0
 	sigs.k8s.io/kubetest2 v0.0.0-20210825194555-4a034357d975 // indirect
 )
 
