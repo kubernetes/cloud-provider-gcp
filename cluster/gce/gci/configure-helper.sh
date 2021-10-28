@@ -2233,9 +2233,9 @@ function start-cloud-controller-manager {
     params+=" --configure-cloud-routes=false"
   fi
   if [[ -n "${FEATURE_GATES:-}" ]]; then
-    # remove feature gates that the CCM doesn't support, since the CCM will early exit
+    # remove non-GCP feature gates, since the CCM will early exit
     # if given a feature gate it doesn't recognize
-    local safe_feature_gates=$(echo "${FEATURE_GATES}" | grep --perl-regexp -o "((${CCM_FEATURE_GATE_FILTER})=(true|false),*)" | tr -d "\n") 
+    local safe_feature_gates=$(echo "${FEATURE_GATES}" | grep --perl-regexp -o "((${GCP_FEATURE_GATE_FILTER})=(true|false),*)" | tr -d "\n") 
     if [[ -n "${safe_feature_gates:-}" ]]; then
       params+=" --feature-gates=${safe_feature_gates}"
     fi
