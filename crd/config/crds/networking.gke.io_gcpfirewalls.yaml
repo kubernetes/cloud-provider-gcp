@@ -1,0 +1,222 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.7.0
+  creationTimestamp: null
+  name: gcpfirewalls.networking.gke.io
+spec:
+  group: networking.gke.io
+  names:
+    kind: GCPFirewall
+    listKind: GCPFirewallList
+    plural: gcpfirewalls
+    shortNames:
+    - gf
+    singular: gcpfirewall
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: GCPFirewall describes a GCP firewall spec that can be used to
+          configure GCE firewalls. A GCPFirewallSpec will correspond 1:1 with a GCE
+          firewall rule.
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: 'Spec is the desired configuration for GCP firewall More
+              info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status'
+            properties:
+              action:
+                default: ALLOW
+                description: Rule action of the firewall rule. Only allow action is
+                  supported. If not specified, defaults to ALLOW.
+                enum:
+                - ALLOW
+                type: string
+              disabled:
+                description: If set to true, the GCPFirewall is not synced by the
+                  controller.
+                type: boolean
+              ingress:
+                description: A collection of sources from which ingress traffic is
+                  allowed. If this field is missing, no ingress rules are programmed.
+                  if this field is empty, this rule allows all sources.
+                properties:
+                  ipBlocks:
+                    description: IPBlocks specify the set of CIDRs that the rule applies
+                      to. If this field is present and contains at least one item,
+                      this rule allows traffic only if the traffic matches at least
+                      one item in the list. Valid example list items are "192.168.1.1/24"
+                      or "2001:db9::/64".
+                    items:
+                      description: CIDR defines a IP block. TODO(sugangli) Modify
+                        the validation to include IPv6 CIDRs with FW 3.0 support.
+                      pattern: ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(/(3[0-2]|2[0-9]|1[0-9]|[0-9]))?$
+                      type: string
+                    maxItems: 256
+                    minItems: 1
+                    type: array
+                type: object
+              ports:
+                description: List of protocol/ ports which needs to be selected by
+                  this rule. If this field is empty or missing, this rule matches
+                  all protocol/ ports. If this field is present and contains at least
+                  one item, then this rule allows traffic only if the traffic matches
+                  at least one port in the list.
+                items:
+                  description: ProtocolPort describes the protocol and ports to allow
+                    traffic on.
+                  properties:
+                    endPort:
+                      description: EndPort is the last port of the port range that
+                        is selected on the firewall rule targets. If StartPort is
+                        not specified or greater than this value, then this field
+                        is ignored.
+                      format: int32
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
+                    protocol:
+                      description: The protocol which the traffic must match.
+                      enum:
+                      - TCP
+                      - UDP
+                      - ICMP
+                      - SCTP
+                      - AH
+                      - ESP
+                      type: string
+                    startPort:
+                      description: StartPort is the starting port of the port range
+                        that is selected on the firewall rule targets for the specified
+                        protocol. If EndPort is not specified, this is the only port
+                        selected. If StartPort is not provided, all ports are matched.
+                      format: int32
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
+                  required:
+                  - protocol
+                  type: object
+                type: array
+            type: object
+          status:
+            description: 'Status is the runtime status of this GCP firewall More info:
+              https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status'
+            properties:
+              conditions:
+                description: Conditions describe the current condition of the firewall
+                  rule.
+                items:
+                  description: "Condition contains details for one aspect of the current
+                    state of this API Resource. --- This struct is intended for direct
+                    use as an array at the field path .status.conditions.  For example,
+                    type FooStatus struct{     // Represents the observations of a
+                    foo's current state.     // Known .status.conditions.type are:
+                    \"Available\", \"Progressing\", and \"Degraded\"     // +patchMergeKey=type
+                    \    // +patchStrategy=merge     // +listType=map     // +listMapKey=type
+                    \    Conditions []metav1.Condition `json:\"conditions,omitempty\"
+                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`
+                    \n     // other fields }"
+                  properties:
+                    lastTransitionTime:
+                      description: lastTransitionTime is the last time the condition
+                        transitioned from one status to another. This should be when
+                        the underlying condition changed.  If that is not known, then
+                        using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: message is a human readable message indicating
+                        details about the transition. This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: observedGeneration represents the .metadata.generation
+                        that the condition was set based upon. For instance, if .metadata.generation
+                        is currently 12, but the .status.conditions[x].observedGeneration
+                        is 9, the condition is out of date with respect to the current
+                        state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: reason contains a programmatic identifier indicating
+                        the reason for the condition's last transition. Producers
+                        of specific condition types may define expected values and
+                        meanings for this field, and whether the values are considered
+                        a guaranteed API. The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                        --- Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                maxItems: 8
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              priority:
+                description: Priority of the GCP firewall rule.
+                format: int32
+                type: integer
+              resourceURL:
+                description: Resource link for the GCE firewall rule. In case of FW
+                  3.0, this is the GCE Network Firewall Policy resource.
+                type: string
+              type:
+                description: Type specifies the underlying GCE firewall implementation
+                  type. Takes one of the values from [VPC, REGIONAL, GLOBAL]
+                enum:
+                - VPC
+                - REGIONAL
+                - GLOBAL
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
