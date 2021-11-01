@@ -24,9 +24,9 @@ import (
 	"strings"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	compute "google.golang.org/api/compute/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	taintsutil "k8s.io/kubernetes/pkg/util/taints"
 
 	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -47,6 +47,7 @@ const (
 	// InstanceIDAnnotationKey is the node annotation key where the external ID is written.
 	InstanceIDAnnotationKey = "container.googleapis.com/instance_id"
 	lastAppliedLabelsKey    = "node.gke.io/last-applied-node-labels"
+	lastAppliedTaintsKey    = "node.gke.io/last-applied-node-taints"
 )
 
 var errNoMetadata = fmt.Errorf("instance did not have 'kube-labels' metadata")
@@ -116,7 +117,7 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 			{
 				name: "labels-reconciler",
 				annotate: func(node *core.Node, instance *compute.Instance) bool {
-					klog.Errorf("Triggering label reconcilation")
+					klog.Infof("Triggering label reconcilation")
 					desiredLabels, err := extractKubeLabels(instance)
 					if err != nil {
 						if err != errNoMetadata {
@@ -136,6 +137,27 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 					err = mergeManagedLabels(node, desiredLabels)
 					if err != nil {
 						klog.Errorf("Error merging labels: %v", err)
+						return false
+					}
+
+					return true
+				},
+			},
+			{
+				name: "taints-reconciler",
+				annotate: func(node *core.Node, instance *compute.Instance) bool {
+					klog.Infof("Triggering taint reconcilation")
+					desiredTaints, err := extractNodeTaints(instance)
+					if err != nil {
+						if err != errNoMetadata {
+							klog.Errorf("Error reconciling taints: %v", err)
+						}
+						return false
+					}
+
+					err = mergeManagedTaints(node, desiredTaints)
+					if err != nil {
+						klog.Errorf("Error merging taints: %v", err)
 						return false
 					}
 
@@ -286,6 +308,55 @@ func extractKubeLabels(instance *compute.Instance) (map[string]string, error) {
 	return parsedLabels, nil
 }
 
+func extractNodeTaints(instance *compute.Instance) ([]core.Taint, error) {
+	const kubeEnvKey = "kube-env"
+
+	if instance.Metadata == nil {
+		return nil, errNoMetadata
+	}
+
+	var kubeEnv *string
+	for _, item := range instance.Metadata.Items {
+		if item == nil || item.Key != kubeEnvKey {
+			continue
+		}
+		if item.Value == nil {
+			return nil, fmt.Errorf("instance %q had nil %q", instance.SelfLink, kubeEnvKey)
+		}
+		kubeEnv = item.Value
+		break
+	}
+	if kubeEnv == nil {
+		return nil, errNoMetadata
+	}
+	if len(*kubeEnv) == 0 {
+		klog.Infof("Node taints not found in instance metadata, %s is empty", kubeEnvKey)
+		return nil, nil
+	}
+
+	var taintsEnv string
+	for _, env := range strings.Split(*kubeEnv, ";") {
+		if strings.HasPrefix(env, "node_taints") {
+			taintsEnv = env
+			break
+		}
+	}
+	if taintsEnv == "" {
+		// No taints present in the instance metadata.
+		klog.Infof("Node taints not found in instance metadata, node_taints not found in %s", kubeEnvKey)
+		return nil, nil
+	}
+	parts := strings.SplitN(taintsEnv, "=", 2)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("malformed node_taints in instance metadata")
+	}
+	parsedTaints, err := parseTaints(parts[1])
+	if err != nil {
+		return nil, err
+	}
+	return parsedTaints, nil
+}
+
 func extractLastAppliedLabels(node *core.Node) map[string]string {
 	lastLabels, ok := node.ObjectMeta.Annotations[lastAppliedLabelsKey]
 	if !ok || len(lastLabels) == 0 {
@@ -298,6 +369,20 @@ func extractLastAppliedLabels(node *core.Node) map[string]string {
 		return nil
 	}
 	return parsedLabels
+}
+
+func extractLastAppliedTaints(node *core.Node) []core.Taint {
+	lastTaints, ok := node.ObjectMeta.Annotations[lastAppliedTaintsKey]
+	if !ok || len(lastTaints) == 0 {
+		return nil
+	}
+
+	parsedTaints, err := parseTaints(lastTaints)
+	if err != nil {
+		klog.Errorf("Failed to parse last applied taints annotation: %q, treat it as not set, err: %v", lastTaints, err)
+		return nil
+	}
+	return parsedTaints
 }
 
 func mergeManagedLabels(node *core.Node, desiredLabels map[string]string) error {
@@ -319,6 +404,34 @@ func mergeManagedLabels(node *core.Node, desiredLabels map[string]string) error 
 	return nil
 }
 
+func mergeManagedTaints(node *core.Node, desiredTaints []core.Taint) error {
+	if node.ObjectMeta.Annotations == nil {
+		node.ObjectMeta.Annotations = make(map[string]string)
+	}
+	lastAppliedTaints := extractLastAppliedTaints(node)
+	// Merge GCE managed taints by:
+	// 1. delete managed taints to be removed, which is present in last-applied-taints
+	// 2. add/update taints from GCE taint source to node
+	// 3. update last-applied-taints in annotation
+	for _, taint := range lastAppliedTaints {
+		node.Spec.Taints, _ = taintsutil.DeleteTaint(node.Spec.Taints, &taint)
+	}
+	for _, taint := range desiredTaints {
+		updated := false
+		for i := range node.Spec.Taints {
+			if taint.MatchTaint(&node.Spec.Taints[i]) {
+				node.Spec.Taints[i] = taint
+				updated = true
+			}
+		}
+		if !updated {
+			node.Spec.Taints = append(node.Spec.Taints, taint)
+		}
+	}
+	node.ObjectMeta.Annotations[lastAppliedTaintsKey] = serializeTaints(desiredTaints)
+	return nil
+}
+
 func parseLabels(labelString string) (map[string]string, error) {
 	labels := make(map[string]string)
 	for _, kv := range strings.Split(labelString, ",") {
@@ -334,6 +447,16 @@ func parseLabels(labelString string) (map[string]string, error) {
 	return labels, nil
 }
 
+func parseTaints(taintsString string) ([]core.Taint, error) {
+	var taints []core.Taint
+	taintsList := strings.Split(taintsString, ",")
+	taints, _, err := taintsutil.ParseTaints(taintsList)
+	if err != nil {
+		return nil, err
+	}
+	return taints, nil
+}
+
 func serializeLabels(labels map[string]string) string {
 	labelElements := make([]string, 0, len(labels))
 	for key, value := range labels {
@@ -342,4 +465,14 @@ func serializeLabels(labels map[string]string) string {
 	// Sort labels to avoid test flakes.
 	sort.Strings(labelElements)
 	return strings.Join(labelElements, ",")
+}
+
+func serializeTaints(taints []core.Taint) string {
+	taintElements := make([]string, 0, len(taints))
+	for _, taint := range taints {
+		taintElements = append(taintElements, fmt.Sprintf("%s=%s:%s", taint.Key, taint.Value, string(taint.Effect)))
+	}
+	// Sort taints to avoid test flakes.
+	sort.Strings(taintElements)
+	return strings.Join(taintElements, ",")
 }
