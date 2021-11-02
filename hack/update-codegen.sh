@@ -35,8 +35,8 @@ mkdir -p "$GOPATH/src/k8s.io"
 ln -s "${SCRIPT_ROOT}" "$GOPATH/src/k8s.io/cloud-provider-gcp"
 
 readonly REPO_BASE=k8s.io/cloud-provider-gcp
-readonly OUTPUT_BASE_PKG=${REPO_BASE}/pkg/client
-readonly APIS_BASE_PKG=${REPO_BASE}/pkg/apis
+readonly OUTPUT_BASE_PKG=${REPO_BASE}/crd/client
+readonly APIS_BASE_PKG=${REPO_BASE}/crd/apis
 readonly CLIENTSET_NAME=versioned
 readonly CLIENTSET_PKG_NAME=clientset
 
@@ -68,7 +68,7 @@ codegen_for () {
           object:headerFile=${SCRIPT_ROOT}/hack/boilerplate.go.txt \
           crd:crdVersions=v1 \
           paths=${apis_pkg}/... \
-          output:crd:artifacts:config=${SCRIPT_ROOT}/config/crds
+          output:crd:artifacts:config=${SCRIPT_ROOT}/crd/config/crds
 
   echo "Generating clientset at ${output_pkg}/${CLIENTSET_PKG_NAME}"
   go run ${CODEGEN_PKG}/cmd/client-gen \
