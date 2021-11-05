@@ -38,6 +38,7 @@ require (
 	k8s.io/apiserver v0.22.0
 	k8s.io/client-go v9.0.0+incompatible
 	k8s.io/cloud-provider v0.22.0
+	k8s.io/cloud-provider-gcp/crd v0.0.0-20211102221542-9b1b41d67772 // indirect
 	k8s.io/cloud-provider-gcp/providers v0.0.0
 	k8s.io/code-generator v0.22.2
 	k8s.io/component-base v0.22.0

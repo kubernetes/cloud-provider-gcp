@@ -4,15 +4,16 @@ go_library(
     name = "go_default_library",
     srcs = [
         "doc.go",
-        "types.go",
-        "zz_generated.deepcopy.go",
-        "zz_generated.register.go",
+        "register.go",
     ],
-    importpath = "k8s.io/cloud-provider-gcp/crd/apis/gcpfirewall/v1alpha1",
+    importpath = "k8s.io/cloud-provider-gcp/crd/client/gcpfirewall/clientset/versioned/scheme",
     visibility = ["//visibility:public"],
     deps = [
+        "//crd/apis/gcpfirewall/v1alpha1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
     ],
 )

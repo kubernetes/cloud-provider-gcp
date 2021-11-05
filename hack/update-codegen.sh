@@ -19,11 +19,9 @@ set -o nounset
 set -o pipefail
 
 readonly SCRIPT_ROOT=$(cd $(dirname ${BASH_SOURCE})/.. && pwd)
-readonly CODEGEN_PKG=${SCRIPT_ROOT}/vendor/k8s.io/code-generator
-readonly CONTROLLER_GEN=${SCRIPT_ROOT}/vendor/sigs.k8s.io/controller-tools
 
 readonly GO111MODULE="on"
-readonly GOFLAGS="-mod=vendor"
+readonly GOFLAGS="-mod=mod"
 readonly GOPATH="$(mktemp -d)"
 
 export GO111MODULE GOFLAGS GOPATH
@@ -64,14 +62,14 @@ codegen_for () {
 
   echo "Performing code generation for ${crd_name} CRD"
   echo "Generating deepcopy functions and CRD artifacts"
-  go run ${CONTROLLER_GEN}/cmd/controller-gen \
+  go run -v sigs.k8s.io/controller-tools/cmd/controller-gen \
           object:headerFile=${SCRIPT_ROOT}/hack/boilerplate.go.txt \
           crd:crdVersions=v1 \
           paths=${apis_pkg}/... \
           output:crd:artifacts:config=${SCRIPT_ROOT}/crd/config/crds
 
   echo "Generating clientset at ${output_pkg}/${CLIENTSET_PKG_NAME}"
-  go run ${CODEGEN_PKG}/cmd/client-gen \
+  go run k8s.io/code-generator/cmd/client-gen \
           --clientset-name "${CLIENTSET_NAME}" \
           --input-base "" \
           --input "${apis_pkg}" \
@@ -79,13 +77,13 @@ codegen_for () {
           ${COMMON_FLAGS}
 
   echo "Generating listers at ${output_pkg}/listers"
-  go run ${CODEGEN_PKG}/cmd/lister-gen \
+  go run k8s.io/code-generator/cmd/lister-gen \
           --input-dirs "${apis_pkg}" \
           --output-package "${output_pkg}/listers" \
           ${COMMON_FLAGS}
 
   echo "Generating informers at ${output_pkg}/informers"
-  go run ${CODEGEN_PKG}/cmd/informer-gen \
+  go run k8s.io/code-generator/cmd/informer-gen \
            --input-dirs "${apis_pkg}" \
            --versioned-clientset-package "${output_pkg}/${CLIENTSET_PKG_NAME}/${CLIENTSET_NAME}" \
            --listers-package "${output_pkg}/listers" \
@@ -93,7 +91,7 @@ codegen_for () {
            ${COMMON_FLAGS}
 
   echo "Generating register at ${apis_pkg}"
-  go run ${CODEGEN_PKG}/cmd/register-gen \
+  go run k8s.io/code-generator/cmd/register-gen \
           --input-dirs "${apis_pkg}" \
           --output-package "${apis_pkg}" \
           ${COMMON_FLAGS}
