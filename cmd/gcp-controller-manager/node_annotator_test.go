@@ -19,6 +19,7 @@ package main
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"testing"
 
 	compute "google.golang.org/api/compute/v1"
@@ -207,6 +208,128 @@ func TestExtractKubeLabels(t *testing.T) {
 	}
 }
 
+func TestExtractNodeTaints(t *testing.T) {
+	var something = "something"
+	cs := map[string]struct {
+		vm                  *compute.Instance
+		in                  string
+		out                 []core.Taint
+		expectNoMetadataErr bool
+		expectErr           bool
+	}{
+		"no metadata": {
+			vm:                  &compute.Instance{},
+			expectNoMetadataErr: true,
+		},
+		"no 'kube-env' metadata": {
+			vm: &compute.Instance{
+				Metadata: &compute.Metadata{
+					Items: []*compute.MetadataItems{
+						{
+							Key:   something,
+							Value: &something,
+						},
+					},
+				},
+			},
+			expectNoMetadataErr: true,
+		},
+		"no value of 'kube-env' metadata": {
+			vm: &compute.Instance{
+				Metadata: &compute.Metadata{
+					Items: []*compute.MetadataItems{
+						{
+							Key: something,
+						},
+					},
+				},
+			},
+			expectNoMetadataErr: true,
+		},
+		"empty 'kube-env'": {
+			in:  "",
+			out: nil,
+		},
+		"valid taint without value": {
+			in: "node_taints=k1=:NoSchedule",
+			out: []core.Taint{
+				{Key: "k1", Effect: core.TaintEffectNoSchedule},
+			},
+		},
+		"valid taint with key, value and effect": {
+			in: "node_taints=k1=v1:PreferNoSchedule",
+			out: []core.Taint{
+				{Key: "k1", Value: "v1", Effect: core.TaintEffectPreferNoSchedule},
+			},
+		},
+		"valid taint with a domain name": {
+			in: "node_taints=acme.com/taint-key=taint-value:NoExecute",
+			out: []core.Taint{
+				{Key: "acme.com/taint-key", Value: "taint-value", Effect: core.TaintEffectNoExecute},
+			},
+		},
+		"valid kube-env with no taints": {
+			in:  " ",
+			out: nil,
+		},
+		"multiple valid taints": {
+			in: "some_other_env=v1;node_taints=k1=v1:NoSchedule,k2=v2:NoExecute;some_other_env_2=v2",
+			out: []core.Taint{
+				{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule},
+				{Key: "k2", Value: "v2", Effect: core.TaintEffectNoExecute},
+			},
+		},
+		"invalid taint key": {
+			in:        "node_taints=k1.^=v1:NoSchedule",
+			expectErr: true,
+		},
+		"invalid taint value": {
+			in:        "node_taints=k1=v1^:NoSchedule",
+			expectErr: true,
+		},
+		"invalid taint effect": {
+			in:        "node_taints=k1=v1:DontSchedule",
+			expectErr: true,
+		},
+		"invalid taints without effect": {
+			in:        "node_taints=a=b,c",
+			expectErr: true,
+		},
+		"invalid taints with empty taint string": {
+			in:        "node_taints=,,,",
+			expectErr: true,
+		},
+	}
+
+	for name, c := range cs {
+		t.Run(name, func(t *testing.T) {
+			vm := c.vm
+			if vm == nil {
+				vm = &compute.Instance{
+					Metadata: &compute.Metadata{
+						Items: []*compute.MetadataItems{
+							{
+								Key:   "kube-env",
+								Value: &c.in,
+							},
+						},
+					},
+				}
+			}
+			out, err := extractNodeTaints(vm)
+			if got, want := out, c.out; !reflect.DeepEqual(got, want) {
+				t.Errorf("unexpected taints\n\tgot:\t%v\n\twant:\t%v", got, want)
+			}
+			if c.expectNoMetadataErr && err != errNoMetadata {
+				t.Errorf("got %v, want errNoMetadata", err)
+			}
+			if got, want := (err != nil), c.expectErr || c.expectNoMetadataErr; got != want {
+				t.Errorf("unexpected error value: %v", err)
+			}
+		})
+	}
+}
+
 func TestMergeManagedLabels(t *testing.T) {
 	cs := map[string]struct {
 		lastAppliedLabels map[string]string
@@ -269,6 +392,150 @@ func TestMergeManagedLabels(t *testing.T) {
 			err := mergeManagedLabels(node, c.desiredLabels)
 			if got, want := node.ObjectMeta.Labels, c.outLabels; !reflect.DeepEqual(got, want) {
 				t.Errorf("unexpected labels\n\tgot:\t%v\n\twant:\t%v", got, want)
+			}
+			if got, want := node.ObjectMeta.Annotations, c.outAnnotation; !reflect.DeepEqual(got, want) {
+				t.Errorf("unexpected annotations\n\tgot:\t%v\n\twant:\t%v", got, want)
+			}
+			if got, want := (err != nil), c.expectErr; got != want {
+				t.Errorf("unexpected error value: %v", err)
+			}
+		})
+	}
+}
+
+func TestMergeManagedTaints(t *testing.T) {
+	cs := map[string]struct {
+		lastAppliedTaints map[string]string
+		liveTaints        []core.Taint
+		desiredTaints     []core.Taint
+		outTaints         []core.Taint
+		outAnnotation     map[string]string
+		expectErr         bool
+	}{
+		"empty last applied taint": {
+			liveTaints:    []core.Taint{},
+			desiredTaints: []core.Taint{{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule}},
+			outTaints:     []core.Taint{{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule}},
+			outAnnotation: map[string]string{lastAppliedTaintsKey: "k1=v1:NoSchedule"},
+		},
+		"empty desired taint": {
+			liveTaints:    []core.Taint{{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule}},
+			desiredTaints: []core.Taint{},
+			outTaints:     []core.Taint{{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule}},
+			outAnnotation: map[string]string{lastAppliedTaintsKey: ""},
+		},
+		"valid merge - add taint": {
+			lastAppliedTaints: map[string]string{lastAppliedTaintsKey: "k1=v1:NoSchedule,k2=v2:NoExecute"},
+			liveTaints: []core.Taint{
+				{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule},
+				{Key: "k2", Value: "v2", Effect: core.TaintEffectNoExecute},
+				{Key: "k3", Value: "v3", Effect: core.TaintEffectPreferNoSchedule},
+			},
+			desiredTaints: []core.Taint{
+				{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule},
+				{Key: "k2", Value: "v2", Effect: core.TaintEffectNoExecute},
+				{Key: "k4", Value: "v4", Effect: core.TaintEffectPreferNoSchedule},
+			},
+			outTaints: []core.Taint{
+				{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule},
+				{Key: "k2", Value: "v2", Effect: core.TaintEffectNoExecute},
+				{Key: "k3", Value: "v3", Effect: core.TaintEffectPreferNoSchedule},
+				{Key: "k4", Value: "v4", Effect: core.TaintEffectPreferNoSchedule},
+			},
+			outAnnotation: map[string]string{lastAppliedTaintsKey: "k1=v1:NoSchedule,k2=v2:NoExecute,k4=v4:PreferNoSchedule"},
+		},
+		"valid merge - remove taint": {
+			lastAppliedTaints: map[string]string{lastAppliedTaintsKey: "k1=v1:NoSchedule,k2=v2:NoExecute"},
+			liveTaints: []core.Taint{
+				{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule},
+				{Key: "k2", Value: "v2", Effect: core.TaintEffectNoExecute},
+				{Key: "k3", Value: "v3", Effect: core.TaintEffectPreferNoSchedule},
+			},
+			desiredTaints: []core.Taint{
+				{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule},
+			},
+			outTaints: []core.Taint{
+				{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule},
+				{Key: "k3", Value: "v3", Effect: core.TaintEffectPreferNoSchedule},
+			},
+			outAnnotation: map[string]string{lastAppliedTaintsKey: "k1=v1:NoSchedule"},
+		},
+		"valid merge - update taint": {
+			lastAppliedTaints: map[string]string{lastAppliedTaintsKey: "k1=v1:NoSchedule,k2=v2:NoExecute"},
+			liveTaints: []core.Taint{
+				{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule},
+				{Key: "k2", Value: "v2", Effect: core.TaintEffectNoExecute},
+				{Key: "k3", Value: "v3", Effect: core.TaintEffectPreferNoSchedule},
+			},
+			desiredTaints: []core.Taint{
+				{Key: "k1", Value: "v4", Effect: core.TaintEffectPreferNoSchedule},
+				{Key: "k2", Value: "v5", Effect: core.TaintEffectNoExecute},
+			},
+			outTaints: []core.Taint{
+				{Key: "k1", Value: "v4", Effect: core.TaintEffectPreferNoSchedule},
+				{Key: "k2", Value: "v5", Effect: core.TaintEffectNoExecute},
+				{Key: "k3", Value: "v3", Effect: core.TaintEffectPreferNoSchedule},
+			},
+			outAnnotation: map[string]string{lastAppliedTaintsKey: "k1=v4:PreferNoSchedule,k2=v5:NoExecute"},
+		},
+		"valid merge - update, add and remove taint": {
+			lastAppliedTaints: map[string]string{lastAppliedTaintsKey: "k1=v1:NoSchedule,k2=v2:NoExecute"},
+			liveTaints: []core.Taint{
+				{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule},
+				{Key: "k2", Value: "v2", Effect: core.TaintEffectNoExecute},
+				{Key: "k3", Value: "v3", Effect: core.TaintEffectPreferNoSchedule},
+			},
+			desiredTaints: []core.Taint{
+				{Key: "k1", Value: "v5", Effect: core.TaintEffectPreferNoSchedule},
+				{Key: "k4", Value: "v4", Effect: core.TaintEffectNoExecute},
+			},
+			outTaints: []core.Taint{
+				{Key: "k1", Value: "v5", Effect: core.TaintEffectPreferNoSchedule},
+				{Key: "k3", Value: "v3", Effect: core.TaintEffectPreferNoSchedule},
+				{Key: "k4", Value: "v4", Effect: core.TaintEffectNoExecute},
+			},
+			outAnnotation: map[string]string{lastAppliedTaintsKey: "k1=v5:PreferNoSchedule,k4=v4:NoExecute"},
+		},
+		"invalid last applied taint": {
+			lastAppliedTaints: map[string]string{lastAppliedTaintsKey: "k1=v1,k2"},
+			liveTaints: []core.Taint{
+				{Key: "k1", Value: "v1", Effect: core.TaintEffectNoSchedule},
+				{Key: "k2", Value: "v2", Effect: core.TaintEffectNoExecute},
+				{Key: "k3", Value: "v3", Effect: core.TaintEffectPreferNoSchedule},
+			},
+			desiredTaints: []core.Taint{
+				{Key: "k1", Value: "v5", Effect: core.TaintEffectNoSchedule},
+				{Key: "k4", Value: "v4", Effect: core.TaintEffectNoExecute},
+			},
+			outTaints: []core.Taint{
+				{Key: "k1", Value: "v5", Effect: core.TaintEffectNoSchedule},
+				{Key: "k2", Value: "v2", Effect: core.TaintEffectNoExecute},
+				{Key: "k3", Value: "v3", Effect: core.TaintEffectPreferNoSchedule},
+				{Key: "k4", Value: "v4", Effect: core.TaintEffectNoExecute},
+			},
+			outAnnotation: map[string]string{lastAppliedTaintsKey: "k1=v5:NoSchedule,k4=v4:NoExecute"},
+		},
+	}
+
+	for name, c := range cs {
+		t.Run(name, func(t *testing.T) {
+			node := &core.Node{
+				ObjectMeta: v1.ObjectMeta{
+					Annotations: c.lastAppliedTaints,
+				},
+				Spec: core.NodeSpec{
+					Taints: c.liveTaints,
+				},
+			}
+			err := mergeManagedTaints(node, c.desiredTaints)
+			sort.Slice(node.Spec.Taints, func(i, j int) bool {
+				if node.Spec.Taints[i].Key < node.Spec.Taints[j].Key {
+					return true
+				}
+				return false
+			})
+			if got, want := node.Spec.Taints, c.outTaints; !reflect.DeepEqual(got, want) {
+				t.Errorf("unexpected taints\n\tgot:\t%v\n\twant:\t%v", got, want)
 			}
 			if got, want := node.ObjectMeta.Annotations, c.outAnnotation; !reflect.DeepEqual(got, want) {
 				t.Errorf("unexpected annotations\n\tgot:\t%v\n\twant:\t%v", got, want)
