@@ -2238,6 +2238,8 @@ function start-cloud-controller-manager {
     local safe_feature_gates=$(echo "${FEATURE_GATES}" | grep --perl-regexp -o "((${GCP_FEATURE_GATE_FILTER})=(true|false),*)" | tr -d "\n") 
     if [[ -n "${safe_feature_gates:-}" ]]; then
       params+=" --feature-gates=${safe_feature_gates}"
+    else
+      echo "None of the given feature gates (${FEATURE_GATES}) were found to be safe to pass to the CCM"
     fi
   fi
   if [[ -n "${RUN_CONTROLLERS:-}" ]]; then
