@@ -452,10 +452,16 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 	// For example,
 	// staging API endpoint: https://www.googleapis.com/compute/staging_v1/
 	if config.APIEndpoint != "" {
-		service.BasePath = fmt.Sprintf("%sprojects/", config.APIEndpoint)
-		serviceBeta.BasePath = fmt.Sprintf("%sprojects/", strings.Replace(config.APIEndpoint, "v1", "beta", -1))
-		serviceAlpha.BasePath = fmt.Sprintf("%sprojects/", strings.Replace(config.APIEndpoint, "v1", "alpha", -1))
+		service.BasePath = config.APIEndpoint
+		serviceBeta.BasePath = strings.Replace(config.APIEndpoint, "v1", "beta", -1)
+		serviceAlpha.BasePath = strings.Replace(config.APIEndpoint, "v1", "alpha", -1)
 	}
+
+	// Previously "projects/" was a part of BasePath, but recent changes in Google Cloud SDK removed it from there.
+	// To bring the old format back we update BasePath including "projects/" there again.
+	service.BasePath += "projects/"
+	serviceBeta.BasePath += "projects/"
+	serviceAlpha.BasePath += "projects/"
 
 	containerService, err := container.NewService(context.Background(), option.WithTokenSource(config.TokenSource))
 	if err != nil {
