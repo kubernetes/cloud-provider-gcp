@@ -6,20 +6,16 @@ require (
 	cloud.google.com/go v0.81.0
 	github.com/evanphx/json-patch v4.11.0+incompatible
 	github.com/gofrs/flock v0.7.1
-	github.com/google/go-cmp v0.5.5
-	github.com/google/go-tpm v0.2.0
+	github.com/google/go-cmp v0.5.6
+	github.com/google/go-tpm v0.3.2
 	github.com/google/uuid v1.1.4 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
-	github.com/onsi/ginkgo v1.14.1 // indirect
-	github.com/onsi/gomega v1.10.3 // indirect
 	github.com/prometheus/client_golang v1.11.0
-	github.com/spf13/cobra v1.1.3
+	github.com/spf13/cobra v1.2.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/oauth2 v0.0.0-20210427180440-81ed05c6b58c
-	golang.org/x/tools v0.1.5 // indirect
 	google.golang.org/api v0.46.0
-	google.golang.org/grpc v1.38.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
 	gopkg.in/gcfg.v1 v1.2.0
 	gopkg.in/warnings.v0 v0.1.2
@@ -28,7 +24,6 @@ require (
 	k8s.io/apiserver v0.22.0
 	k8s.io/client-go v9.0.0+incompatible
 	k8s.io/cloud-provider v0.22.0
-	k8s.io/cloud-provider-gcp/crd v0.0.0-20211102221542-9b1b41d67772 // indirect
 	k8s.io/cloud-provider-gcp/providers v0.0.0
 	k8s.io/code-generator v0.22.2
 	k8s.io/component-base v0.22.0
@@ -40,6 +35,7 @@ require (
 	k8s.io/kubernetes v1.22.0
 	k8s.io/metrics v0.22.0
 	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
+	sigs.k8s.io/controller-tools v0.7.0
 )
 
 replace (
