@@ -19,7 +19,6 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rsa"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -32,7 +31,7 @@ import (
 type NVPublic struct {
 	NVIndex    tpmutil.Handle
 	NameAlg    Algorithm
-	Attributes NVAttr
+	Attributes KeyProp
 	AuthPolicy tpmutil.U16Bytes
 	DataSize   uint16
 }
@@ -125,11 +124,11 @@ func (p Public) Name() (Name, error) {
 	if err != nil {
 		return Name{}, err
 	}
-	hash, err := p.NameAlg.Hash()
+	hash, err := p.NameAlg.HashConstructor()
 	if err != nil {
 		return Name{}, err
 	}
-	nameHash := hash.New()
+	nameHash := hash()
 	nameHash.Write(pubEncoded)
 	return Name{
 		Digest: &HashValue{
@@ -619,6 +618,11 @@ func (p Private) Encode() ([]byte, error) {
 	return tpmutil.Pack(p)
 }
 
+type tpmtSigScheme struct {
+	Scheme Algorithm
+	Hash   Algorithm
+}
+
 // AttestationData contains data attested by TPM commands (like Certify).
 type AttestationData struct {
 	Magic                uint32
@@ -641,13 +645,6 @@ func DecodeAttestationData(in []byte) (*AttestationData, error) {
 	if err := tpmutil.UnpackBuf(buf, &ad.Magic, &ad.Type); err != nil {
 		return nil, fmt.Errorf("decoding Magic/Type: %v", err)
 	}
-	// All attestation structures have the magic prefix
-	// TPMS_GENERATED_VALUE to symbolize they were created by
-	// the TPM when signed with an AK.
-	if ad.Magic != 0xff544347 {
-		return nil, fmt.Errorf("incorrect magic value: %x", ad.Magic)
-	}
-
 	n, err := DecodeName(buf)
 	if err != nil {
 		return nil, fmt.Errorf("decoding QualifiedSigner: %v", err)
@@ -961,11 +958,11 @@ func decodeHashValue(in *bytes.Buffer) (*HashValue, error) {
 	if err := tpmutil.UnpackBuf(in, &hv.Alg); err != nil {
 		return nil, fmt.Errorf("decoding Alg: %v", err)
 	}
-	hfn, err := hv.Alg.Hash()
-	if err != nil {
-		return nil, err
+	hfn, ok := hashConstructors[hv.Alg]
+	if !ok {
+		return nil, fmt.Errorf("unsupported hash algorithm type 0x%x", hv.Alg)
 	}
-	hv.Value = make(tpmutil.U16Bytes, hfn.Size())
+	hv.Value = make(tpmutil.U16Bytes, hfn().Size())
 	if _, err := in.Read(hv.Value); err != nil {
 		return nil, fmt.Errorf("decoding Value: %v", err)
 	}
@@ -1004,8 +1001,16 @@ type TaggedProperty struct {
 // information.
 type Ticket struct {
 	Type      tpmutil.Tag
-	Hierarchy tpmutil.Handle
+	Hierarchy uint32
 	Digest    tpmutil.U16Bytes
+}
+
+func decodeTicket(in *bytes.Buffer) (*Ticket, error) {
+	var t Ticket
+	if err := tpmutil.UnpackBuf(in, &t.Type, &t.Hierarchy, &t.Digest); err != nil {
+		return nil, fmt.Errorf("decoding Type, Hierarchy, Digest: %v", err)
+	}
+	return &t, nil
 }
 
 // AuthCommand represents a TPMS_AUTH_COMMAND. This structure encapsulates parameters
@@ -1015,49 +1020,4 @@ type AuthCommand struct {
 	Nonce      tpmutil.U16Bytes
 	Attributes SessionAttributes
 	Auth       tpmutil.U16Bytes
-}
-
-// TPMLDigest represents the TPML_Digest structure
-// It is used to convey a list of digest values.
-// This type is used in TPM2_PolicyOR() and in TPM2_PCR_Read()
-type TPMLDigest struct {
-	Digests []tpmutil.U16Bytes
-}
-
-// Encode converts the TPMLDigest structure into a byte slice
-func (list *TPMLDigest) Encode() ([]byte, error) {
-	res, err := tpmutil.Pack(uint32(len(list.Digests)))
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range list.Digests {
-		b, err := tpmutil.Pack(item)
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, b...)
-
-	}
-	return res, nil
-}
-
-// DecodeTPMLDigest decodes a TPML_Digest part of a message.
-func DecodeTPMLDigest(buf []byte) (*TPMLDigest, error) {
-	in := bytes.NewBuffer(buf)
-	var tpmld TPMLDigest
-	var count uint32
-	if err := binary.Read(in, binary.BigEndian, &count); err != nil {
-		return nil, fmt.Errorf("decoding TPML_Digest: %v", err)
-	}
-	for in.Len() > 0 {
-		var hash tpmutil.U16Bytes
-		if err := hash.TPMUnmarshal(in); err != nil {
-			return nil, err
-		}
-		tpmld.Digests = append(tpmld.Digests, hash)
-	}
-	if count != uint32(len(tpmld.Digests)) {
-		return nil, fmt.Errorf("expected size and read size does not match")
-	}
-	return &tpmld, nil
 }

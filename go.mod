@@ -7,7 +7,7 @@ require (
 	github.com/evanphx/json-patch v4.11.0+incompatible
 	github.com/gofrs/flock v0.7.1
 	github.com/google/go-cmp v0.5.6
-	github.com/google/go-tpm v0.3.2
+	github.com/google/go-tpm v0.2.0
 	github.com/google/uuid v1.1.4 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/prometheus/client_golang v1.11.0
