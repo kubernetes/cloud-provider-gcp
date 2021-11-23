@@ -37,6 +37,7 @@ type controllerContext struct {
 	done                               <-chan struct{}
 	hmsAuthorizeSAMappingURL           string
 	hmsSyncNodeURL                     string
+	delayDirectPathGSARemove           bool
 }
 
 // loops returns all the control loops that the GCPControllerManager can start.
@@ -127,6 +128,7 @@ func loops() map[string]func(*controllerContext) error {
 				ctx.verifiedSAs,
 				ctx.hmsSyncNodeURL,
 				ctx.client,
+				ctx.delayDirectPathGSARemove,
 			)
 			if err != nil {
 				return err

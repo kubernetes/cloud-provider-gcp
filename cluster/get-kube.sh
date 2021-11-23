@@ -29,7 +29,7 @@
 #    stable release, (e.g. 'v1.3.7').
 #    See https://github.com/kubernetes/kubernetes/releases for release options.
 #  Set KUBERNETES_RELEASE_URL to choose where to download binaries from.
-#    (Defaults to https://dl.k8s.io/release).
+#    (Defaults to https://storage.googleapis.com/kubernetes-release/release).
 #
 #  Set KUBERNETES_SERVER_ARCH to choose the server (Kubernetes cluster)
 #  architecture to download:
@@ -241,7 +241,7 @@ fi
 
 if "${need_download}"; then
   if [[ $(which gsutil) ]] && [[ "$kubernetes_tar_url" =~ ^https://storage.googleapis.com/.* ]]; then
-    gsutil cp "${kubernetes_tar_url//'https://storage.googleapis.com/'/'gs://'}" "${file}"
+    gsutil cp "${kubernetes_tar_url//'https://storage.googleapis.com/'/gs://}" "${file}"
   elif [[ $(which curl) ]]; then
     # if the url belongs to GCS API we should use oauth2_token in the headers
     curl_headers=""
