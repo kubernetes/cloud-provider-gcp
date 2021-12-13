@@ -25,6 +25,10 @@ cd "${KUBE_ROOT}"
 # exit code, if a script fails we'll set this to 1
 res=0
 
+# printout go version
+echo "The current GO version been used:"
+echo $(GOFLAGS='' go version)
+
 # run all verify scripts, optionally skipping any of them
 
 if [[ "${VERIFY_GOFMT:-true}" == "true" ]]; then
