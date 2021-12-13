@@ -71,12 +71,6 @@ go get -u && ./tools/update_vendor.sh
 Note that this most likely won't work due to cross-dependency issues or repos
 not implementing modules correctly.
 
-## Clean up unused dependencies
-
-```
-go mod tidy && ./tools/update_vendor.sh
-```
-
 # Bazel
 
 Bazel is required to build and release cloud-provider-gcp.

@@ -45,6 +45,12 @@ if [[ "${VERIFY_GOVET:-true}" == "true" ]]; then
   cd "${KUBE_ROOT}"
 fi
 
+if [[ "${VERIFY_VENDOR:-true}" == "true" ]]; then
+  echo "[*] Verifying vendor..."
+  tools/verify-vendor.sh || res=1
+  cd "${KUBE_ROOT}"
+fi
+
 # exit based on verify scripts
 if [[ "${res}" = 0 ]]; then
   echo ""
