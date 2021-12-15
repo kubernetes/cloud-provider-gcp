@@ -94,10 +94,15 @@ var _ cloudprovider.Zones = (*Cloud)(nil)
 var _ cloudprovider.PVLabeler = (*Cloud)(nil)
 var _ cloudprovider.Clusters = (*Cloud)(nil)
 
+// StackType indicates whether the cluster is a single stack IPv4, single
+// stack IPv6 or a dual stack cluster
 type StackType string
 
+// NetworkStackDualStack indicates the StackType is dual stack
 const NetworkStackDualStack StackType = "IPV4_IPV6"
+// NetworkStackIPV4 indicates the StackType is IPV4
 const NetworkStackIPV4 StackType = "IPV4"
+// NetworkStackIPV6 indicates the StackType is IPV6
 const NetworkStackIPV6 StackType = "IPV6"
 
 // Cloud is an implementation of Interface, LoadBalancer and Instances for Google Compute Engine.

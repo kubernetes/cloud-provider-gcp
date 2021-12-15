@@ -365,14 +365,14 @@ func TestAliasRangesByProviderID(t *testing.T) {
 
 	testcases := []struct {
 		name       string
-		providerId string
+		providerID string
 		dualStack  bool
 		wantErr    string
 		wantCIDRs  []string
 	}{
 		{
 			name:       "internal single stack instance",
-			providerId: "gce://p1/us-central1-b/n1",
+			providerID: "gce://p1/us-central1-b/n1",
 			dualStack:  true,
 			wantCIDRs: []string{
 				"10.11.1.0/24",
@@ -381,13 +381,13 @@ func TestAliasRangesByProviderID(t *testing.T) {
 		},
 		{
 			name:       "instance not found",
-			providerId: "gce://p1/us-central1-b/x1",
+			providerID: "gce://p1/us-central1-b/x1",
 			dualStack:  true,
 			wantErr:    "alpha instance not found",
 		},
 		{
 			name:       "internal single stack instance",
-			providerId: "gce://p1/us-central1-b/n2",
+			providerID: "gce://p1/us-central1-b/n2",
 			dualStack:  true,
 			wantCIDRs: []string{
 				"10.11.2.0/24",
@@ -396,13 +396,13 @@ func TestAliasRangesByProviderID(t *testing.T) {
 		},
 		{
 			name:       "network interface not found",
-			providerId: "gce://p1/us-central1-b/n4",
+			providerID: "gce://p1/us-central1-b/n4",
 			dualStack:  true,
 			wantErr:    "",
 		},
 		{
 			name:       "single stack instance",
-			providerId: "gce://p1/us-central1-b/n5",
+			providerID: "gce://p1/us-central1-b/n5",
 			dualStack:  true,
 			wantErr:    "IPV6 address not found",
 		},
@@ -415,7 +415,7 @@ func TestAliasRangesByProviderID(t *testing.T) {
 			} else {
 				gce.stackType = NetworkStackIPV4
 			}
-			gotCIDRs, err := gce.AliasRangesByProviderID(test.providerId)
+			gotCIDRs, err := gce.AliasRangesByProviderID(test.providerID)
 			if err != nil && (test.wantErr == "" || !strings.Contains(err.Error(), test.wantErr)) {
 				t.Errorf("gce.AliasRangesByProviderID. Want err: %v, got: %v", test.wantErr, err)
 			} else if err == nil && test.wantErr != "" {
