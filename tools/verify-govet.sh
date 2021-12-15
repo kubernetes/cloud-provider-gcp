@@ -20,6 +20,9 @@ set -o pipefail
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 
+source "${KUBE_ROOT}/tools/lib/golang.sh"
+kube::golang::verify_go_version
+
 cd "${KUBE_ROOT}"
 
 # Use eval to preserve embedded quoted strings.

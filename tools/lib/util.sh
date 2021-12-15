@@ -73,3 +73,17 @@ kube::util::trap_add() {
     trap "${new_cmd}" "${trap_add_name}"
   done
 }
+
+# kube::util::ensure-bash-version
+# Check if we are using a supported bash version
+#
+function kube::util::ensure-bash-version {
+  # shellcheck disable=SC2004
+  if ((${BASH_VERSINFO[0]}<4)) || ( ((${BASH_VERSINFO[0]}==4)) && ((${BASH_VERSINFO[1]}<2)) ); then
+    echo "ERROR: This script requires a minimum bash version of 4.2, but got version of ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
+    if [ "$(uname)" = 'Darwin' ]; then
+      echo "On macOS with homebrew 'brew install bash' is sufficient."
+    fi
+    exit 1
+  fi
+}

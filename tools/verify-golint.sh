@@ -23,9 +23,9 @@ set -o nounset
 set -o pipefail
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
-source "${KUBE_ROOT}/tools/lib/util.sh"
+source "${KUBE_ROOT}/tools/lib/init.sh"
 
-#kube::golang::verify_go_version
+kube::golang::verify_go_version
 
 # Ensure that we find the binaries we build before anything else.
 KUBE_ROOT_ABSOLUTE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"

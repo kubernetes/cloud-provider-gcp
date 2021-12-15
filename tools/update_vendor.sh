@@ -23,6 +23,9 @@ cd "$(pwd -P)"
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
+source "${KUBE_ROOT}/tools/lib/init.sh"
+kube::golang::verify_go_version
+
 # update vendor/
 go mod vendor
 # remove repo-originated BUILD files
