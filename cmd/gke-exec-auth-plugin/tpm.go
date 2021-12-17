@@ -113,8 +113,7 @@ func tpmAttest(dev tpmDevice, privateKey crypto.PrivateKey) ([]byte, error) {
 	// reliable enough.
 	aikCertRaw, aikCert, err := readAIKCert(dev, aikh, aikPub)
 	if err != nil {
-		klog.Errorf("failed reading AIK cert: %v", err)
-		klog.Info("proceeding without AIK cert in CSR")
+		klog.Warningf("proceeding without AIK cert in CSR: failed reading AIK cert: %v", err)
 	} else {
 		klog.Info("AIK cert loaded")
 
