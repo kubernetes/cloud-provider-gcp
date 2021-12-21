@@ -20,9 +20,13 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin",
     deps = [
         "//vendor/github.com/spf13/pflag:go_default_library",
+        "//vendor/golang.org/x/oauth2:go_default_library",
         "//vendor/golang.org/x/oauth2/google:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/client-go/pkg/apis/clientauthentication/v1beta1:go_default_library",
+        "//vendor/k8s.io/client-go/tools/clientcmd:go_default_library",
+        "//vendor/k8s.io/client-go/tools/clientcmd/api:go_default_library",
         "//vendor/k8s.io/component-base/version/verflag:go_default_library",
+        "//vendor/k8s.io/klog/v2:go_default_library",
     ],
 )
