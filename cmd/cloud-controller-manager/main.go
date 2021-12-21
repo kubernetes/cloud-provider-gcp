@@ -55,7 +55,9 @@ func main() {
 	nodeIpamController.nodeIPAMControllerOptions.NodeIPAMControllerConfiguration = &nodeIpamController.nodeIPAMControllerConfiguration
 	fss := cliflag.NamedFlagSets{}
 	nodeIpamController.nodeIPAMControllerOptions.AddFlags(fss.FlagSet("nodeipam controller"))
-	controllerInitializers["nodeipam"] = nodeIpamController.startNodeIpamControllerWrapper
+	controllerInitializers["nodeipam"] = app.ControllerInitFuncConstructor{
+		Constructor: nodeIpamController.startNodeIpamControllerWrapper,
+	}
 
 	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, fss, wait.NeverStop)
 
