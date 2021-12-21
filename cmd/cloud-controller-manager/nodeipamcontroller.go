@@ -21,10 +21,10 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"strings"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -36,6 +36,7 @@ import (
 	"k8s.io/cloud-provider/app"
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	genericcontrollermanager "k8s.io/controller-manager/app"
+	"k8s.io/controller-manager/controller"
 	"k8s.io/controller-manager/pkg/features"
 	"k8s.io/klog/v2"
 	netutils "k8s.io/utils/net"
@@ -53,19 +54,19 @@ type nodeIPAMController struct {
 	nodeIPAMControllerOptions       nodeipamcontrolleroptions.NodeIPAMControllerOptions
 }
 
-func (nodeIpamController *nodeIPAMController) startNodeIpamControllerWrapper(completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) app.InitFunc {
+func (nodeIpamController *nodeIPAMController) startNodeIpamControllerWrapper(initContext app.ControllerInitContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) app.InitFunc {
 	errors := nodeIpamController.nodeIPAMControllerOptions.Validate()
 	if len(errors) > 0 {
 		klog.Fatal("NodeIPAM controller values are not properly set.")
 	}
 	nodeIpamController.nodeIPAMControllerOptions.ApplyTo(&nodeIpamController.nodeIPAMControllerConfiguration)
 
-	return func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
-		return startNodeIpamController(completedConfig, nodeIpamController.nodeIPAMControllerConfiguration, ctx, cloud)
+	return func(ctx context.Context, controllerContext genericcontrollermanager.ControllerContext) (controller.Interface, bool, error) {
+		return startNodeIpamController(completedConfig, nodeIpamController.nodeIPAMControllerConfiguration, controllerContext, cloud)
 	}
 }
 
-func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, nodeIPAMConfig nodeipamconfig.NodeIPAMControllerConfiguration, ctx genericcontrollermanager.ControllerContext, cloud cloudprovider.Interface) (http.Handler, bool, error) {
+func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, nodeIPAMConfig nodeipamconfig.NodeIPAMControllerConfiguration, ctx genericcontrollermanager.ControllerContext, cloud cloudprovider.Interface) (controller.Interface, bool, error) {
 	var serviceCIDR *net.IPNet
 	var secondaryServiceCIDR *net.IPNet
 
