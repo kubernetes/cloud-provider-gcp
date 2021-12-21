@@ -52,7 +52,7 @@ var (
 	useAdcPtr = pflag.Bool("use_application_default_credentials", false, "returns exec credential filled with application default credentials.")
 )
 
-type credBuilder struct {
+type pluginContext struct {
 	googleDefaultTokenSource         func(ctx context.Context, scope ...string) (oauth2.TokenSource, error)
 	gcloudConfigOutput               func() ([]byte, error)
 	k8sStartingConfig                func(po *clientcmd.PathOptions) (*clientcmdapi.Config, error)
@@ -61,11 +61,8 @@ type credBuilder struct {
 	useApplicationDefaultCredentials bool
 }
 
-func main() {
-	pflag.Parse()
-	verflag.PrintAndExitIfRequested()
-
-	cb := credBuilder{
+func newPluginContext() *pluginContext {
+	return &pluginContext{
 		googleDefaultTokenSource:         google.DefaultTokenSource,
 		k8sStartingConfig:                k8sStartingConfig,
 		gcloudConfigOutput:               gcloudConfigOutput,
@@ -73,8 +70,14 @@ func main() {
 		cachedTokenEnvVarInput:           cachedTokenEnvVarInput,
 		useApplicationDefaultCredentials: *useAdcPtr,
 	}
+}
 
-	ec, err := cb.execCredential()
+func main() {
+	pflag.Parse()
+	verflag.PrintAndExitIfRequested()
+	pc := newPluginContext()
+
+	ec, err := execCredential(pc)
 	if err != nil {
 		klog.Fatalf("unable to retrieve access token for GKE. Error : %v", err)
 	}
@@ -89,8 +92,8 @@ func main() {
 
 // ExecCredential return an object of type ExecCredential which
 // holds a bearer token to authenticate to GKE.
-func (cb *credBuilder) execCredential() (*clientauth.ExecCredential, error) {
-	token, expiry, err := cb.accessToken()
+func execCredential(pc *pluginContext) (*clientauth.ExecCredential, error) {
+	token, expiry, err := accessToken(pc)
 	if err != nil {
 		return nil, err
 	}
@@ -107,36 +110,36 @@ func (cb *credBuilder) execCredential() (*clientauth.ExecCredential, error) {
 	}, nil
 }
 
-func (cb *credBuilder) accessToken() (string, *meta.Time, error) {
-	if !cb.useApplicationDefaultCredentials {
-		token, expiry, err := cb.gcloudAccessToken()
+func accessToken(pc *pluginContext) (string, *meta.Time, error) {
+	if !pc.useApplicationDefaultCredentials {
+		token, expiry, err := gcloudAccessToken(pc)
 		if err == nil {
 			return token, expiry, nil
 		}
 		// if err is not nil, fall back to returning Application default credentials
 	}
-	return cb.defaultAccessToken()
+	return defaultAccessToken(pc)
 }
 
-func (cb *credBuilder) gcloudAccessToken() (string, *meta.Time, error) {
-	if token, expiry, ok := cb.cachedGcloudAccessToken(); ok {
+func gcloudAccessToken(pc *pluginContext) (string, *meta.Time, error) {
+	if token, expiry, ok := cachedGcloudAccessToken(pc); ok {
 		return token, expiry, nil
 	}
 
-	gc, err := cb.newGcloudConfig()
+	gc, err := newGcloudConfig(pc)
 	if err != nil {
 		return "", nil, err
 	}
 
-	if err := cb.cacheGcloudAccessToken(gc.Credential.AccessToken, gc.Credential.TokenExpiry); err != nil {
+	if err := cacheGcloudAccessToken(pc, gc.Credential.AccessToken, gc.Credential.TokenExpiry); err != nil {
 		klog.V(4).Infof("Failed to cache token ", err)
 	}
 
 	return gc.Credential.AccessToken, &meta.Time{Time: gc.Credential.TokenExpiry}, nil
 }
 
-func (cb *credBuilder) defaultAccessToken() (string, *meta.Time, error) {
-	ts, err := cb.googleDefaultTokenSource(context.Background(), defaultScopes...)
+func defaultAccessToken(pc *pluginContext) (string, *meta.Time, error) {
+	ts, err := pc.googleDefaultTokenSource(context.Background(), defaultScopes...)
 	if err != nil {
 		return "", nil, fmt.Errorf("cannot construct google default token source: %v", err)
 	}
@@ -150,8 +153,8 @@ func (cb *credBuilder) defaultAccessToken() (string, *meta.Time, error) {
 }
 
 // newGcloudConfig returns an object which represents gcloud config output
-func (cb *credBuilder) newGcloudConfig() (*gcloudConfiguration, error) {
-	gcloudConfigbytes, err := cb.gcloudConfigOutput()
+func newGcloudConfig(pc *pluginContext) (*gcloudConfiguration, error) {
+	gcloudConfigbytes, err := pc.gcloudConfigOutput()
 	if err != nil {
 		return nil, err
 	}
@@ -177,8 +180,8 @@ func gcloudConfigOutput() ([]byte, error) {
 	return stdoutBuffer.Bytes(), nil
 }
 
-func (cb *credBuilder) cachedGcloudAccessToken() (string, *meta.Time, bool) {
-	token, expiry := cb.cachedTokenEnvVarInput()
+func cachedGcloudAccessToken(pc *pluginContext) (string, *meta.Time, bool) {
+	token, expiry := pc.cachedTokenEnvVarInput()
 
 	timeStamp, err := time.Parse(time.RFC3339Nano, expiry)
 	if err != nil {
@@ -200,9 +203,9 @@ func (cb *credBuilder) cachedGcloudAccessToken() (string, *meta.Time, bool) {
 	return tok.AccessToken, &meta.Time{tok.Expiry}, true
 }
 
-func (cb *credBuilder) cacheGcloudAccessToken(accessToken string, expiry time.Time) error {
+func cacheGcloudAccessToken(pc *pluginContext, accessToken string, expiry time.Time) error {
 	po := clientcmd.NewDefaultPathOptions()
-	startingConfig, err := cb.k8sStartingConfig(po)
+	startingConfig, err := pc.k8sStartingConfig(po)
 	if err != nil {
 		klog.V(4).Infof("Error getting starting config %v", err)
 	}
@@ -220,7 +223,7 @@ func (cb *credBuilder) cacheGcloudAccessToken(accessToken string, expiry time.Ti
 		appendExecEnv(&currAuthInfo.Exec.Env, accessTokenExpiryEnvVar, expiry.Format(time.RFC3339Nano))
 	}
 
-	return cb.clientcmdModifyConfig(po, *startingConfig, false)
+	return pc.clientcmdModifyConfig(po, *startingConfig, false)
 }
 
 func k8sStartingConfig(po *clientcmd.PathOptions) (*clientcmdapi.Config, error) {

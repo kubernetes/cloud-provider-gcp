@@ -24,12 +24,12 @@ func (*mockTokenSource) Token() (*oauth2.Token, error) {
 func TestExecCredential(t *testing.T) {
 	testCases := []struct {
 		testName      string
-		cb            credBuilder
+		pc            *pluginContext
 		expectedToken string
 	}{
 		{
 			testName: "ApplicationDefaultCredentialsSetToTrue",
-			cb: credBuilder{
+			pc: &pluginContext{
 				googleDefaultTokenSource:         fakeDefaultTokenSource,
 				gcloudConfigOutput:               fakeGcloudConfigOutput,
 				k8sStartingConfig:                fakeK8sStartingConfig,
@@ -41,7 +41,7 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "NewGcloudAccessToken",
-			cb: credBuilder{
+			pc: &pluginContext{
 				googleDefaultTokenSource:         nil,
 				gcloudConfigOutput:               fakeGcloudConfigOutput,
 				clientcmdModifyConfig:            fakeModifyConfig,
@@ -53,7 +53,7 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "GcloudAccessTokenFailureFallbackToADC",
-			cb: credBuilder{
+			pc: &pluginContext{
 				googleDefaultTokenSource: fakeDefaultTokenSource,
 				gcloudConfigOutput: func() ([]byte, error) {
 					return []byte("bad token string"), nil
@@ -67,7 +67,7 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "GcloudCommandFailureFailureFallbackToADC",
-			cb: credBuilder{
+			pc: &pluginContext{
 				googleDefaultTokenSource: fakeDefaultTokenSource,
 				gcloudConfigOutput: func() ([]byte, error) {
 					return []byte("gcloud_command_failure"), errors.New("gcloud command failure")
@@ -81,7 +81,7 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "CachedTokenIsValid",
-			cb: credBuilder{
+			pc: &pluginContext{
 				googleDefaultTokenSource:         nil,
 				gcloudConfigOutput:               nil,
 				k8sStartingConfig:                fakeK8sStartingConfig,
@@ -93,7 +93,7 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "CachedTokenInvalid",
-			cb: credBuilder{
+			pc: &pluginContext{
 				googleDefaultTokenSource: nil,
 				gcloudConfigOutput:       fakeGcloudConfigOutput,
 				k8sStartingConfig:        fakeK8sStartingConfig,
@@ -107,7 +107,7 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "CachedTokenOverwrite",
-			cb: credBuilder{
+			pc: &pluginContext{
 				googleDefaultTokenSource: nil,
 				gcloudConfigOutput:       fakeGcloudConfigOutput,
 				k8sStartingConfig:        fakeK8sStartingConfigWithEnvVars,
@@ -121,7 +121,7 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "CachingFails",
-			cb: credBuilder{
+			pc: &pluginContext{
 				googleDefaultTokenSource: nil,
 				gcloudConfigOutput:       fakeGcloudConfigOutput,
 				k8sStartingConfig:        fakeK8sStartingConfig,
@@ -137,7 +137,7 @@ func TestExecCredential(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
-			ec, err := tc.cb.execCredential()
+			ec, err := execCredential(tc.pc)
 			if err != nil {
 				t.Fatalf("err should be nil")
 			}
