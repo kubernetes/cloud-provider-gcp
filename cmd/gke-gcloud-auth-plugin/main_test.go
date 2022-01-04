@@ -169,13 +169,13 @@ func fakeGcloudConfigOutput() ([]byte, error) {
         "zone": "us-central1-c"
       },
       "container": {
-        "cluster": "kirantumkur-cluster",
+        "cluster": "user-cluster",
         "use_application_default_credentials": "false"
       },
       "core": {
-        "account": "kirantumkur@google.com",
+        "account": "user@company.com",
         "disable_usage_reporting": "False",
-        "project": "kirantumkur-gke-dev"
+        "project": "user-gke-dev"
       }
     }
   },
@@ -184,7 +184,7 @@ func fakeGcloudConfigOutput() ([]byte, error) {
     "token_expiry": "2021-12-21T01:07:51Z"
   },
   "sentinels": {
-    "config_sentinel": "/usr/local/google/home/kirantumkur/.config/gcloud/config_sentinel"
+    "config_sentinel": "/usr/local/google/home/user/.config/gcloud/config_sentinel"
   }
 }`
 	return []byte(fakeOutput), nil
