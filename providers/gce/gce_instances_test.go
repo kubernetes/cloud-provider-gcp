@@ -29,7 +29,6 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	alpha "google.golang.org/api/compute/v0.alpha"
 	ga "google.golang.org/api/compute/v1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -79,12 +78,10 @@ func TestNodeAddresses(t *testing.T) {
 	require.NoError(t, err)
 
 	instanceMap := make(map[string]*ga.Instance)
-	alphaInstanceMap := make(map[string]*alpha.Instance)
-	// n1 is instance with internal IPv6 address
-	alphaInstance := &alpha.Instance{
+	instance := &ga.Instance{
 		Name: "n1",
 		Zone: "us-central1-b",
-		NetworkInterfaces: []*alpha.NetworkInterface{
+		NetworkInterfaces: []*ga.NetworkInterface{
 			{
 				NetworkIP:   "10.1.1.1",
 				StackType:   "IPV4_IPV6",
@@ -92,43 +89,20 @@ func TestNodeAddresses(t *testing.T) {
 			},
 		},
 	}
-	alphaInstanceMap["n1"] = alphaInstance
-	instance := &ga.Instance{
-		Name: "n1",
-		Zone: "us-central1-b",
-		NetworkInterfaces: []*ga.NetworkInterface{
-			{
-				NetworkIP: "10.1.1.1",
-			},
-		},
-	}
 	instanceMap["n1"] = instance
 
 	// n2 is instance with external IPv6 address
-	alphaInstance = &alpha.Instance{
-		Name: "n2",
-		Zone: "us-central1-b",
-		NetworkInterfaces: []*alpha.NetworkInterface{
-			{
-				NetworkIP:      "10.1.1.2",
-				StackType:      "IPV4_IPV6",
-				Ipv6AccessType: "EXTERNAL",
-				Ipv6AccessConfigs: []*alpha.AccessConfig{
-					{ExternalIpv6: "2001:1900::0:2"},
-				},
-				AccessConfigs: []*alpha.AccessConfig{
-					{NatIP: "20.1.1.2"},
-				},
-			},
-		},
-	}
-	alphaInstanceMap["n2"] = alphaInstance
 	instance = &ga.Instance{
 		Name: "n2",
 		Zone: "us-central1-b",
 		NetworkInterfaces: []*ga.NetworkInterface{
 			{
-				NetworkIP: "10.1.1.2",
+				NetworkIP:      "10.1.1.2",
+				StackType:      "IPV4_IPV6",
+				Ipv6AccessType: "EXTERNAL",
+				Ipv6AccessConfigs: []*ga.AccessConfig{
+					{ExternalIpv6: "2001:1900::0:2"},
+				},
 				AccessConfigs: []*ga.AccessConfig{
 					{NatIP: "20.1.1.2"},
 				},
@@ -137,19 +111,7 @@ func TestNodeAddresses(t *testing.T) {
 	}
 	instanceMap["n2"] = instance
 
-	// n3 is instance not present in the alphaInstanceMap
-	instance = &ga.Instance{
-		Name: "n3",
-		Zone: "us-central1-b",
-	}
-	instanceMap["n3"] = instance
-
 	// n4 is instance with invalid network interfaces
-	alphaInstance = &alpha.Instance{
-		Name: "n4",
-		Zone: "us-central1-b",
-	}
-	alphaInstanceMap["n4"] = alphaInstance
 	instance = &ga.Instance{
 		Name: "n4",
 		Zone: "us-central1-b",
@@ -157,35 +119,22 @@ func TestNodeAddresses(t *testing.T) {
 	instanceMap["n4"] = instance
 
 	// n5 is a single stack instance
-	alphaInstance = &alpha.Instance{
+	instance = &ga.Instance{
 		Name: "n5",
 		Zone: "us-central1-b",
-		NetworkInterfaces: []*alpha.NetworkInterface{
+		NetworkInterfaces: []*ga.NetworkInterface{
 			{
 				NetworkIP: "10.1.1.5",
 				StackType: "IPV4",
-				AccessConfigs: []*alpha.AccessConfig{
+				AccessConfigs: []*ga.AccessConfig{
 					{NatIP: "20.1.1.5"},
 				},
 			},
 		},
 	}
-	alphaInstanceMap["n5"] = alphaInstance
-	instance = &ga.Instance{
-		Name: "n5",
-		Zone: "us-central1-b",
-	}
 	instanceMap["n5"] = instance
 
 	mockGCE := gce.c.(*cloud.MockGCE)
-	mai := mockGCE.AlphaInstances().(*cloud.MockAlphaInstances)
-	mai.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockAlphaInstances) (bool, *alpha.Instance, error) {
-		ret, ok := alphaInstanceMap[key.Name]
-		if !ok {
-			return true, nil, fmt.Errorf("alpha instance not found")
-		}
-		return true, ret, nil
-	}
 	mi := mockGCE.Instances().(*cloud.MockInstances)
 	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances) (bool, *ga.Instance, error) {
 		ret, ok := instanceMap[key.Name]
@@ -222,12 +171,6 @@ func TestNodeAddresses(t *testing.T) {
 			name:     "instance not found",
 			nodeName: "x1",
 			wantErr:  "instance not found",
-		},
-		{
-			name:      "alpha instance not found",
-			nodeName:  "n3",
-			dualStack: true,
-			wantErr:   "alpha instance not found",
 		},
 		{
 			name:     "external single stack instance",
@@ -286,14 +229,14 @@ func TestAliasRangesByProviderID(t *testing.T) {
 	gce, err := fakeGCECloud(DefaultTestClusterValues())
 	require.NoError(t, err)
 
-	alphaInstanceMap := make(map[string]*alpha.Instance)
+	instanceMap := make(map[string]*ga.Instance)
 	// n1 is instance with internal IPv6 address
-	alphaInstance := &alpha.Instance{
+	instance := &ga.Instance{
 		Name: "n1",
 		Zone: "us-central1-b",
-		NetworkInterfaces: []*alpha.NetworkInterface{
+		NetworkInterfaces: []*ga.NetworkInterface{
 			{
-				AliasIpRanges: []*alpha.AliasIpRange{
+				AliasIpRanges: []*ga.AliasIpRange{
 					{IpCidrRange: "10.11.1.0/24"},
 				},
 				NetworkIP:   "10.1.1.1",
@@ -302,63 +245,63 @@ func TestAliasRangesByProviderID(t *testing.T) {
 			},
 		},
 	}
-	alphaInstanceMap["n1"] = alphaInstance
+	instanceMap["n1"] = instance
 
 	// n2 is instance with external IPv6 address
-	alphaInstance = &alpha.Instance{
+	instance = &ga.Instance{
 		Name: "n2",
 		Zone: "us-central1-b",
-		NetworkInterfaces: []*alpha.NetworkInterface{
+		NetworkInterfaces: []*ga.NetworkInterface{
 			{
-				AliasIpRanges: []*alpha.AliasIpRange{
+				AliasIpRanges: []*ga.AliasIpRange{
 					{IpCidrRange: "10.11.2.0/24"},
 				},
 				NetworkIP:      "10.1.1.2",
 				StackType:      "IPV4_IPV6",
 				Ipv6AccessType: "EXTERNAL",
-				Ipv6AccessConfigs: []*alpha.AccessConfig{
+				Ipv6AccessConfigs: []*ga.AccessConfig{
 					{ExternalIpv6: "2001:1900::2:0:0"},
 				},
-				AccessConfigs: []*alpha.AccessConfig{
+				AccessConfigs: []*ga.AccessConfig{
 					{NatIP: "20.1.1.2"},
 				},
 			},
 		},
 	}
-	alphaInstanceMap["n2"] = alphaInstance
+	instanceMap["n2"] = instance
 
 	// n4 is instance with invalid network interfaces
-	alphaInstance = &alpha.Instance{
+	instance = &ga.Instance{
 		Name: "n4",
 		Zone: "us-central1-b",
 	}
-	alphaInstanceMap["n4"] = alphaInstance
+	instanceMap["n4"] = instance
 
 	// n5 is a single stack instance
-	alphaInstance = &alpha.Instance{
+	instance = &ga.Instance{
 		Name: "n5",
 		Zone: "us-central1-b",
-		NetworkInterfaces: []*alpha.NetworkInterface{
+		NetworkInterfaces: []*ga.NetworkInterface{
 			{
-				AliasIpRanges: []*alpha.AliasIpRange{
+				AliasIpRanges: []*ga.AliasIpRange{
 					{IpCidrRange: "10.11.5.0/24"},
 				},
 				NetworkIP: "10.1.1.5",
 				StackType: "IPV4",
-				AccessConfigs: []*alpha.AccessConfig{
+				AccessConfigs: []*ga.AccessConfig{
 					{NatIP: "20.1.1.5"},
 				},
 			},
 		},
 	}
-	alphaInstanceMap["n5"] = alphaInstance
+	instanceMap["n5"] = instance
 
 	mockGCE := gce.c.(*cloud.MockGCE)
-	mai := mockGCE.AlphaInstances().(*cloud.MockAlphaInstances)
-	mai.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockAlphaInstances) (bool, *alpha.Instance, error) {
-		ret, ok := alphaInstanceMap[key.Name]
+	mai := mockGCE.Instances().(*cloud.MockInstances)
+	mai.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances) (bool, *ga.Instance, error) {
+		ret, ok := instanceMap[key.Name]
 		if !ok {
-			return true, nil, fmt.Errorf("alpha instance not found")
+			return true, nil, fmt.Errorf("instance not found")
 		}
 		return true, ret, nil
 	}
@@ -383,7 +326,7 @@ func TestAliasRangesByProviderID(t *testing.T) {
 			name:       "instance not found",
 			providerId: "gce://p1/us-central1-b/x1",
 			dualStack:  true,
-			wantErr:    "alpha instance not found",
+			wantErr:    "instance not found",
 		},
 		{
 			name:       "internal single stack instance",
