@@ -87,7 +87,7 @@ func main() {
 		LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
 		RenewDeadline: metav1.Duration{Duration: 10 * time.Second},
 		RetryPeriod:   metav1.Duration{Duration: 2 * time.Second},
-		//TODO(acumino): Switch endpointsleases to leases in one of the future version.
+		//TODO(acumino): Migrate endpointsleases to leases in vesrion 1.24.
 		ResourceLock: rl.EndpointsLeasesResourceLock,
 	}
 	options.BindLeaderElectionFlags(leConfig, pflag.CommandLine)
