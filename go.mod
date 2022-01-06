@@ -55,7 +55,7 @@ replace (
 	github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
 	go.uber.org/zap => go.uber.org/zap v1.17.0 // indirect
 	golang.org/x/lint => golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
-	golang.org/x/oauth2 => golang.org/x/oauth2 v0.0.0-20210112200429-01de73cf58bd
+	golang.org/x/oauth2 => golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	golang.org/x/sync => golang.org/x/sync v0.0.0-20201207232520-09787c993a3a // indirect
 	google.golang.org/api => google.golang.org/api v0.63.0
 	google.golang.org/genproto => google.golang.org/genproto v0.0.0-20210111234610-22ae2b108f89 // indirect
