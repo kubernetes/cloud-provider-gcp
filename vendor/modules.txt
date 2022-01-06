@@ -293,9 +293,10 @@ golang.org/x/net/idna
 golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
 golang.org/x/net/websocket
-# golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8 => golang.org/x/oauth2 v0.0.0-20210112200429-01de73cf58bd
+# golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8 => golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 ## explicit
 golang.org/x/oauth2
+golang.org/x/oauth2/authhandler
 golang.org/x/oauth2/google
 golang.org/x/oauth2/google/internal/externalaccount
 golang.org/x/oauth2/internal
@@ -1198,7 +1199,7 @@ sigs.k8s.io/yaml
 # github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
 # go.uber.org/zap => go.uber.org/zap v1.17.0
 # golang.org/x/lint => golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5
-# golang.org/x/oauth2 => golang.org/x/oauth2 v0.0.0-20210112200429-01de73cf58bd
+# golang.org/x/oauth2 => golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 # golang.org/x/sync => golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 # google.golang.org/api => google.golang.org/api v0.63.0
 # google.golang.org/genproto => google.golang.org/genproto v0.0.0-20210111234610-22ae2b108f89
