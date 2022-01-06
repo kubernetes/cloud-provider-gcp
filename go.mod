@@ -15,7 +15,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/oauth2 v0.0.0-20210427180440-81ed05c6b58c
-	google.golang.org/api v0.46.0
+	google.golang.org/api v0.63.0
 	gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
 	gopkg.in/gcfg.v1 v1.2.0
 	gopkg.in/warnings.v0 v0.1.2
@@ -57,7 +57,7 @@ replace (
 	golang.org/x/lint => golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
 	golang.org/x/oauth2 => golang.org/x/oauth2 v0.0.0-20210112200429-01de73cf58bd
 	golang.org/x/sync => golang.org/x/sync v0.0.0-20201207232520-09787c993a3a // indirect
-	google.golang.org/api => google.golang.org/api v0.46.0
+	google.golang.org/api => google.golang.org/api v0.63.0
 	google.golang.org/genproto => google.golang.org/genproto v0.0.0-20210111234610-22ae2b108f89 // indirect
 	google.golang.org/grpc => google.golang.org/grpc v1.34.0 // indirect
 	gopkg.in/check.v1 => gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
