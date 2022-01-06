@@ -4,6 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "context.go",
+        "evaluator.go",
         "format.go",
         "metrics.go",
         "request.go",
