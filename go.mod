@@ -3,7 +3,7 @@ module k8s.io/cloud-provider-gcp
 go 1.16
 
 require (
-	cloud.google.com/go v0.81.0
+	cloud.google.com/go v0.99.0
 	github.com/evanphx/json-patch v4.11.0+incompatible
 	github.com/gofrs/flock v0.7.1
 	github.com/google/go-cmp v0.5.6
@@ -14,7 +14,7 @@ require (
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/oauth2 v0.0.0-20210427180440-81ed05c6b58c
+	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	google.golang.org/api v0.63.0
 	gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
 	gopkg.in/gcfg.v1 v1.2.0
