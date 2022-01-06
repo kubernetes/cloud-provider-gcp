@@ -18,7 +18,6 @@ package v1
 
 import (
 	"bytes"
-	unsafe "unsafe"
 
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"

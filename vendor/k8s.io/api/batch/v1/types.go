@@ -289,6 +289,7 @@ type UncountedTerminatedPods struct {
 	Failed []types.UID `json:"failed,omitempty" protobuf:"bytes,2,rep,name=failed,casttype=k8s.io/apimachinery/pkg/types.UID"`
 }
 
+// +enum
 type JobConditionType string
 
 // These are built-in conditions of a job.
