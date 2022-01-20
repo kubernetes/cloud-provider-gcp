@@ -15,18 +15,10 @@
 package tpmutil
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 )
-
-// maxBytesBufferSize sets a sane upper bound on the size of a U32Bytes
-// buffer. This limit exists to prevent a maliciously large size prefix
-// from resulting in a massive memory allocation, potentially causing
-// an OOM condition on the system.
-// We expect no buffer from a TPM to approach 1Mb in size.
-const maxBytesBufferSize = 1024 * 1024 // 1Mb.
 
 // RawBytes is for Pack and RunCommand arguments that are already encoded.
 // Compared to []byte, RawBytes will not be prepended with slice length during
@@ -60,7 +52,6 @@ func (b *U16Bytes) TPMUnmarshal(in io.Reader) error {
 		return err
 	}
 	size := int(tmpSize)
-
 	if len(*b) >= size {
 		*b = (*b)[:size]
 	} else {
@@ -72,7 +63,7 @@ func (b *U16Bytes) TPMUnmarshal(in io.Reader) error {
 		return err
 	}
 	if n != size {
-		return io.ErrUnexpectedEOF
+		return fmt.Errorf("unable to read all contents in to U16Bytes")
 	}
 	return nil
 }
@@ -104,11 +95,6 @@ func (b *U32Bytes) TPMUnmarshal(in io.Reader) error {
 		return err
 	}
 	size := int(tmpSize)
-
-	if size > maxBytesBufferSize {
-		return bytes.ErrTooLarge
-	}
-
 	if len(*b) >= size {
 		*b = (*b)[:size]
 	} else {
