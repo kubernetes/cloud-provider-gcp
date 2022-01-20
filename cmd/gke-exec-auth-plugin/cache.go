@@ -122,12 +122,12 @@ func validPEMKey(key []byte, cert *x509.Certificate) bool {
 func getExistingKeyCert(dir string) ([]byte, []byte, bool) {
 	key, err := ioutil.ReadFile(filepath.Join(dir, keyFileName))
 	if err != nil {
-		klog.Errorf("failed reading existing private key: %v", err)
+		klog.Warningf("failed reading existing private key: %v", err)
 		return nil, nil, false
 	}
 	cert, err := ioutil.ReadFile(filepath.Join(dir, certFileName))
 	if err != nil {
-		klog.Errorf("failed reading existing certificate: %v", err)
+		klog.Warningf("failed reading existing certificate: %v", err)
 		return nil, nil, false
 	}
 	// Check cert expiration.
