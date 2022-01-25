@@ -9,6 +9,5 @@ go_library(
     deps = [
         "//vendor/github.com/spf13/pflag:go_default_library",
         "//vendor/k8s.io/component-base/logs:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
     ],
 )

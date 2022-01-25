@@ -39,6 +39,7 @@ go_library(
         "//vendor/k8s.io/component-base/metrics/prometheus/clientgo:go_default_library",
         "//vendor/k8s.io/component-base/metrics/prometheus/version:go_default_library",
         "//vendor/k8s.io/controller-manager/app:go_default_library",
+        "//vendor/k8s.io/controller-manager/controller:go_default_library",
         "//vendor/k8s.io/controller-manager/pkg/features:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
         "//vendor/k8s.io/utils/net:go_default_library",

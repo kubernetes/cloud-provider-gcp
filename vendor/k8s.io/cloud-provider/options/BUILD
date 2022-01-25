@@ -35,5 +35,6 @@ go_library(
         "//vendor/k8s.io/controller-manager/options:go_default_library",
         "//vendor/k8s.io/controller-manager/pkg/clientbuilder:go_default_library",
         "//vendor/k8s.io/controller-manager/pkg/features/register:go_default_library",
+        "//vendor/k8s.io/utils/net:go_default_library",
     ],
 )

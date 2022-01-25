@@ -6,5 +6,8 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/util/flowcontrol/debug",
     importpath = "k8s.io/apiserver/pkg/util/flowcontrol/debug",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/k8s.io/apiserver/pkg/endpoints/request:go_default_library"],
+    deps = [
+        "//vendor/k8s.io/apiserver/pkg/endpoints/request:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/request:go_default_library",
+    ],
 )

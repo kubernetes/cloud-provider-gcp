@@ -4,7 +4,6 @@ go_library(
     name = "go_default_library",
     srcs = [
         "ciphersuites_flag.go",
-        "ciphersuites_flag_114.go",
         "colon_separated_multimap_string_string.go",
         "configuration_map.go",
         "flags.go",

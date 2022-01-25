@@ -118,7 +118,7 @@ func TestCreateMasterAuditPolicy(t *testing.T) {
 
 	at := auditTester{
 		T:       t,
-		checker: auditpolicy.NewChecker(policy),
+		checker: auditpolicy.NewPolicyRuleEvaluator(policy),
 	}
 
 	at.testResources(none, kubeproxy, "watch", endpoints, sysEndpoints, services, serviceStatus)
@@ -162,7 +162,7 @@ func TestCreateMasterAuditPolicy(t *testing.T) {
 
 type auditTester struct {
 	*testing.T
-	checker auditpolicy.Checker
+	checker auditpkg.PolicyRuleEvaluator
 }
 
 func (t *auditTester) testResources(level audit.Level, usrVerbRes ...interface{}) {
@@ -231,10 +231,10 @@ func (t *auditTester) expectLevel(expected audit.Level, attrs authorizer.Attribu
 	name := fmt.Sprintf("%s.%s.%s", attrs.GetUser().GetName(), attrs.GetVerb(), obj)
 	checker := t.checker
 	t.Run(name, func(t *testing.T) {
-		level, stages := checker.LevelAndStages(attrs)
-		assert.Equal(t, expected, level)
-		if level != audit.LevelNone {
-			assert.ElementsMatch(t, stages, []audit.Stage{audit.StageRequestReceived})
+		ls := checker.EvaluatePolicyRule(attrs)
+		assert.Equal(t, expected, ls.Level)
+		if ls.Level != audit.LevelNone {
+			assert.ElementsMatch(t, ls.OmitStages, []audit.Stage{audit.StageRequestReceived})
 		}
 	})
 }

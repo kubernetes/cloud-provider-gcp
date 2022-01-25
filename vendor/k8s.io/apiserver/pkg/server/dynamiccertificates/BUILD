@@ -20,6 +20,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/server/dynamiccertificates",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/fsnotify/fsnotify:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/fields:go_default_library",
@@ -35,5 +36,6 @@ go_library(
         "//vendor/k8s.io/client-go/util/cert:go_default_library",
         "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/k8s.io/utils/net:go_default_library",
     ],
 )
