@@ -75,20 +75,18 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 		panic(err)
 	}
 	gce := &Cloud{
-		region:              vals.Region,
-		service:             service,
-		managedZones:        []string{vals.ZoneName},
-		localZone:           vals.ZoneName,
-		projectID:           vals.ProjectID,
-		networkProjectID:    vals.ProjectID,
-		ClusterID:           fakeClusterID(vals.ClusterID),
-		onXPN:               vals.OnXPN,
-		metricsCollector:    newLoadBalancerMetrics(),
-		projectsBasePath:    getProjectsBasePath(service.BasePath),
-		regional:            vals.Regional,
-		networkURL:          vals.NetworkURL,
-		unsafeSubnetworkURL: vals.SubnetworkURL,
-		stackType:           vals.StackType,
+		region:           vals.Region,
+		service:          service,
+		managedZones:     []string{vals.ZoneName, vals.SecondaryZoneName},
+		localZone:        vals.ZoneName,
+		projectID:        vals.ProjectID,
+		networkProjectID: vals.ProjectID,
+		ClusterID:        fakeClusterID(vals.ClusterID),
+		onXPN:            vals.OnXPN,
+		metricsCollector: newLoadBalancerMetrics(),
+		projectsBasePath: getProjectsBasePath(service.BasePath),
+		regional:         vals.Regional,
+		networkURL:       vals.NetworkURL,
 	}
 	c := cloud.NewMockGCE(&gceProjectRouter{gce})
 	gce.c = c
