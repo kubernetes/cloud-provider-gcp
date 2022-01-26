@@ -24,7 +24,7 @@ set -o pipefail
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 source "${KUBE_ROOT}/build/lib/common.sh"
 
-KUBE_VERSION=v1.22.0
+KUBE_VERSION=v1.23.3
 
 KUBERNETES_RELEASE_URL="${KUBERNETES_RELEASE_URL:-https://dl.k8s.io}"
 DOWNLOAD_URL_PREFIX="${KUBERNETES_RELEASE_URL}/${KUBE_VERSION}"
@@ -37,10 +37,10 @@ KUBE_DOWNLOAD_DIR="${KUBE_DOWNLOAD_DIR:-"${OUT_DIR}/kube"}"
 # or append .sha256 to the url for an individual checksum
 
 KUBE_TARBALLS=(
-  kubernetes-server-linux-amd64.tar.gz:d54435de50214faabc49e3659625a689623508128ca9a4f97b4f2c54b40bc9e14dd17e1971c06c90aa74fc335d0038a7ac4b7b90882edb0944af99354d6c9762
-  kubernetes-node-linux-amd64.tar.gz:aa990405a1c6bd6737a8ff89fd536ba28ad62dec7de2e44ae223f4fcb42d6a9ffdfb324144def946b777ac7ba6fac085a49a7977cb79289a3256cced783bf215
-  kubernetes-node-windows-amd64.tar.gz:9cc73fb1d3f9ec926fd09bc3904d62ec79da4a3c4fb9a5c4c784bc1f08c650711c21fb30874b05db4bd354e4d04b0153296180d89a53c04d9241dd6a1384510d
-  kubernetes-manifests.tar.gz:b531f48757c94d211cd097387a187e892c6ab794317a43adfe378524f0d479a0cff98becf5a0a570f244ebc63355df893c01fd2d57836d939e8fd82b392ba259
+  kubernetes-server-linux-amd64.tar.gz:667bc04778070685e5fb5b6281fe78263c5081af0613adfe9a68df0695210cb2273e89a1d37a27e4cbf947b9e565ef7697d8b90ddfba23aeeb4c9f8474a373c5
+  kubernetes-node-linux-amd64.tar.gz:9fd17ed04dc8e13ba5b4d67ec657b8afba721c344bd9785669af3def481dcbd8a2eecb02e54e5eebd0559645c6e819f757c49de731e53073f06a12d871e569eb
+  kubernetes-node-windows-amd64.tar.gz:8d687018bf4b70065d4871406702d57f0ef14abb6c8e8bd7635d2d94f8a56aead9a641ede4477e34534bc705e76bb94cec10dbb9414c5885ad0a5d07d1105401
+  kubernetes-manifests.tar.gz:92a84cb49e24390ad65b0c411aaf38b3fbc85c868298096351cf84d65b62057be45c2e46ed6d6456d84e267ee1d1617fcd413520964fc32048c21238ec3d8c6c
 )
 
 function download_tarball() {
