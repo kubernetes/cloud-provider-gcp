@@ -45,7 +45,7 @@ go_rules_dependencies()
 go_download_sdk(
     name = "go_sdk",
     sdks = {
-        "linux_amd64": ("go1.16.4b7.linux-amd64.tar.gz", "de60f0620f46b1872813f72646fdece76be94f43c1abe84b69033c26f823a31f"),
+        "linux_amd64": ("go1.17.5b7.linux-amd64.tar.gz", "92407bbc855fd05c5252a2ee2d4fcb6eb077cf64fd0d70da53ba7914c22ec1d7"),
     },
     urls = ["https://storage.googleapis.com/go-boringcrypto/{}"],
 )
@@ -100,11 +100,11 @@ load("//defs:repo_rules.bzl", "fetch_kube_release")
 fetch_kube_release(
     name = "io_k8s_release",
     archives = {
-        "kubernetes-server-linux-amd64.tar.gz": "af62692a5d5c6024a78d230061061b3fcd2f5422cea2f3d6aaad2fe20fb13746",
-        "kubernetes-manifests.tar.gz": "037d1a93edd2b9f54902adaca6060f9dd94911fc4c7122d06c26112ef5e72cce",
+        "kubernetes-server-linux-amd64.tar.gz": "9dc1be960e0f9fa41652aad90ea67c228e6b96b21f3d1833741d4362834df081",
+        "kubernetes-manifests.tar.gz": "a65cc4f74063b0d2d65b47b054bcc5d1bf3f00ae69563419530e374f414756b0",
         # we do not currently make modifications to these release tars below
-        "kubernetes-node-linux-amd64.tar.gz": "55e63ed2452693c1026307a14554e5b2fff549a97993400d178cd827c76ce128",
-        "kubernetes-node-windows-amd64.tar.gz": "17eea748c06137bc802d836a7db8e2d4fba379f3cea1d22b88fcfbbd7c8396ad",
+        "kubernetes-node-linux-amd64.tar.gz": "faa25a8a0b14742b2f48184ad04a3c32c357912a9cdf4a0988d97a70174d5eab",
+        "kubernetes-node-windows-amd64.tar.gz": "aec9dfbd64670bc1175577aa2538e8eefc770c85e6e8cc2ea6719c524a02adff",
     },
-    version = "v1.22.0",
+    version = "v1.23.1",
 )

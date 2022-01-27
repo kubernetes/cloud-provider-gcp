@@ -8,6 +8,7 @@ go_library(
         "doc.go",
         "received_time.go",
         "requestinfo.go",
+        "webhook_duration.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/endpoints/request",
     importpath = "k8s.io/apiserver/pkg/endpoints/request",
@@ -19,8 +20,8 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/apis/audit:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authentication/user:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/k8s.io/utils/clock:go_default_library",
     ],
 )

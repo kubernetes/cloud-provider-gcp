@@ -20,6 +20,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"sync"
 	"testing"
@@ -32,8 +34,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
-	"net/http"
-	"net/http/httptest"
 )
 
 func newKSA(sa serviceAccount, gsa gsaEmail) *core.ServiceAccount {
@@ -469,7 +469,7 @@ func TestConfigMapPersist(t *testing.T) {
 			wantErr:    true,
 			wantActions: []ktesting.Action{
 				ktesting.NewUpdateAction(cmRes, verifiedSAConfigMapNamespace, newCMFromSAMap(t, &mapWithBothSA)),
-				ktesting.NewDeleteAction(cmRes, verifiedSAConfigMapNamespace, wantCMKey),
+				ktesting.NewDeleteActionWithOptions(cmRes, verifiedSAConfigMapNamespace, wantCMKey, *meta.NewDeleteOptions(0)),
 			},
 		},
 		{

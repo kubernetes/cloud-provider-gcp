@@ -7,8 +7,8 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/server/egressselector/metrics",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/util/clock:go_default_library",
         "//vendor/k8s.io/component-base/metrics:go_default_library",
         "//vendor/k8s.io/component-base/metrics/legacyregistry:go_default_library",
+        "//vendor/k8s.io/utils/clock:go_default_library",
     ],
 )
