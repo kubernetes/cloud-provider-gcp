@@ -53,7 +53,12 @@ type gcloudConfiguration struct {
 	X          map[string]interface{} `json:"-"` // Rest of the fields should go here.
 }
 
-// cache is the struct that gets cached in the cache file.
+// cache is the struct that gets cached in the cache file in json format.
+// {
+//    "current_context": "gke_user-gke-dev_us-central1_autopilot-cluster-11",
+//    "access_token": "ya29.A0ARrdaM8WL....G0xYXGIQNPi5WvHe07ia4Gs",
+//    "token_expiry": "2022-01-27T08:27:52Z"
+// }
 type cache struct {
 	// CurrentContext refers to which context the token was last retrieved for. If
 	// currentContext in kubeconfig is changed, the current cached access token is invalidated.
@@ -101,6 +106,17 @@ func main() {
 		klog.Fatalf("unable to convert ExecCredential object to json format. Error :%v", err)
 	}
 	// Print output to be consumed by kubectl
+	// {
+	//    "kind": "ExecCredential",
+	//    "apiVersion": "client.authentication.k8s.io/v1beta1",
+	//    "spec": {
+	//        "interactive": false
+	//    },
+	//    "status": {
+	//        "expirationTimestamp": "2022-01-27T07:10:46Z",
+	//        "token": "ya29.A0ARrda.......0jDi8weH-36jJNru6Ps"
+	//    }
+	// }
 	fmt.Print(ecStr)
 }
 
