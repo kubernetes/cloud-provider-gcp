@@ -51,12 +51,19 @@ type gcloudConfiguration struct {
 	X          map[string]interface{} `json:"-"` // Rest of the fields should go here.
 }
 
+// cache is the struct that gets cached in the cache file.
 type cache struct {
+	// CurrentContext refers to which context the token was last retrieved for. If
+	// currentContext in kubeconfig is changed, the current cached access token is invalidated.
 	CurrentContext string `json:"current_context"`
-	AccessToken    string `json:"access_token"`
-	TokenExpiry    string `json:"token_expiry"`
+	// AccessToken is gcloud access token
+	AccessToken string `json:"access_token"`
+	// TokenExpiry is gcloud access token's expiry.
+	TokenExpiry string `json:"token_expiry"`
 }
 
+// pluginContext holds data to be passed around (eg: useApplicationDefaultCredentials)
+// as well as methods that may needs to be mocked in test scenarios.
 type pluginContext struct {
 	googleDefaultTokenSource         func(ctx context.Context, scope ...string) (oauth2.TokenSource, error)
 	gcloudConfigOutput               func() ([]byte, error)
@@ -115,6 +122,7 @@ func execCredential(pc *pluginContext) (*clientauth.ExecCredential, error) {
 	}, nil
 }
 
+// accessToken return either the ApplicationDefaultCredentials or the gcloudAccessToken
 func accessToken(pc *pluginContext) (string, *meta.Time, error) {
 	if !pc.useApplicationDefaultCredentials {
 		token, expiry, err := gcloudAccessToken(pc)
@@ -126,6 +134,9 @@ func accessToken(pc *pluginContext) (string, *meta.Time, error) {
 	return defaultAccessToken(pc)
 }
 
+// gcloudAccessToken returns a cached token if the token is not expired. If the token is
+// expired, it gets a new access token by invoking gcloud command, caches the new token
+// and returns the token.
 func gcloudAccessToken(pc *pluginContext) (string, *meta.Time, error) {
 	if token, expiry, ok := cachedGcloudAccessToken(pc); ok {
 		return token, expiry, nil
@@ -254,6 +265,8 @@ func cachedToken(pc *pluginContext) (string, string) {
 	if err != nil {
 		klog.V(4).Infof("Error getting starting config %v", err)
 	}
+	// If current context is not the same as what the cached access token was
+	// generated for, then consider the current access token invalid.
 	if c.CurrentContext != startingConfig.CurrentContext {
 		return "", ""
 	}
