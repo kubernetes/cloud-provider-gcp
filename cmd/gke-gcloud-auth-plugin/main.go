@@ -204,7 +204,7 @@ func cachedGcloudAccessToken(pc *pluginContext) (string, *meta.Time, bool) {
 		return "", nil, false
 	}
 
-	return tok.AccessToken, &meta.Time{tok.Expiry}, true
+	return tok.AccessToken, &meta.Time{Time: tok.Expiry}, true
 }
 
 func cacheGcloudAccessToken(pc *pluginContext, accessToken string, expiry time.Time) error {

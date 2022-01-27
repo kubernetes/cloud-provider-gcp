@@ -8,7 +8,6 @@ import (
 
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
-	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
@@ -215,8 +214,4 @@ func fakeK8sStartingConfig() (*clientcmdapi.Config, error) {
 		CurrentContext: "gke_user-gke-dev_us-east1-b_cluster-1",
 		Extensions:     nil,
 	}, nil
-}
-
-func fakeModifyConfig(configAccess clientcmd.ConfigAccess, newConfig clientcmdapi.Config, relativizePaths bool) error {
-	return nil
 }
