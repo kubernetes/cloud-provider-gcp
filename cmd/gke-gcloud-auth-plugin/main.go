@@ -27,7 +27,7 @@ const (
 	// co-located with kubeconfig file. This file is deleted by get-credentials
 	// code in "gcloud container clusters" upon every invocation and is recreated
 	// by gke-gcloud-auth-plugin.
-	cacheFileName = "plugin_cache"
+	cacheFileName = "gke_gcloud_auth_plugin_cache"
 )
 
 var (
