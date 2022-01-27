@@ -24,7 +24,9 @@ import (
 
 const (
 	// cacheFileName is the file which stores the access tokens. This file is
-	// co-located with kubeconfig file.
+	// co-located with kubeconfig file. This file is deleted by get-credentials
+	// code in "gcloud container clusters" upon every invocation and is recreated
+	// by gke-gcloud-auth-plugin.
 	cacheFileName = "plugin_cache"
 )
 
@@ -264,6 +266,11 @@ func writeCacheFile(content string) error {
 		return err
 	}
 	defer unlockFile(cacheFilePath)
+
+	// 0600 provides the same permissions as ~/.kube/config file.
+	// ls ~/.kube/ -al
+	// -rw-------  1 kirantumkur primarygroup 2836 Jan 27 08:00 config
+	// -rw-------  1 kirantumkur primarygroup  327 Jan 27 08:00 plugin_cache
 	return ioutil.WriteFile(cacheFilePath, []byte(content), 0600)
 }
 
