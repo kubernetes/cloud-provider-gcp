@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -33,8 +34,8 @@ func TestExecCredential(t *testing.T) {
 				googleDefaultTokenSource:         fakeDefaultTokenSource,
 				gcloudConfigOutput:               fakeGcloudConfigOutput,
 				k8sStartingConfig:                fakeK8sStartingConfig,
-				clientcmdModifyConfig:            fakeModifyConfig,
-				cachedTokenEnvVarInput:           func() (string, string) { return "", "" },
+				cachedToken:                      func(pc *pluginContext) (string, string) { return "", "" },
+				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: true,
 			},
 			expectedToken: "default_access_token",
@@ -44,9 +45,9 @@ func TestExecCredential(t *testing.T) {
 			pc: &pluginContext{
 				googleDefaultTokenSource:         nil,
 				gcloudConfigOutput:               fakeGcloudConfigOutput,
-				clientcmdModifyConfig:            fakeModifyConfig,
 				k8sStartingConfig:                fakeK8sStartingConfig,
-				cachedTokenEnvVarInput:           func() (string, string) { return "", "" },
+				cachedToken:                      func(pc *pluginContext) (string, string) { return "", "" },
+				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
 			},
 			expectedToken: "ya29.gcloud_token",
@@ -59,8 +60,8 @@ func TestExecCredential(t *testing.T) {
 					return []byte("bad token string"), nil
 				},
 				k8sStartingConfig:                fakeK8sStartingConfig,
-				clientcmdModifyConfig:            fakeModifyConfig,
-				cachedTokenEnvVarInput:           func() (string, string) { return "", "" },
+				cachedToken:                      func(pc *pluginContext) (string, string) { return "", "" },
+				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
 			},
 			expectedToken: "default_access_token",
@@ -73,8 +74,8 @@ func TestExecCredential(t *testing.T) {
 					return []byte("gcloud_command_failure"), errors.New("gcloud command failure")
 				},
 				k8sStartingConfig:                fakeK8sStartingConfig,
-				clientcmdModifyConfig:            fakeModifyConfig,
-				cachedTokenEnvVarInput:           func() (string, string) { return "", "" },
+				cachedToken:                      func(pc *pluginContext) (string, string) { return "", "" },
+				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
 			},
 			expectedToken: "default_access_token",
@@ -82,11 +83,13 @@ func TestExecCredential(t *testing.T) {
 		{
 			testName: "CachedTokenIsValid",
 			pc: &pluginContext{
-				googleDefaultTokenSource:         nil,
-				gcloudConfigOutput:               nil,
-				k8sStartingConfig:                fakeK8sStartingConfig,
-				clientcmdModifyConfig:            fakeModifyConfig,
-				cachedTokenEnvVarInput:           func() (string, string) { return "cached_token", time.Now().Add(time.Hour).Format(time.RFC3339Nano) },
+				googleDefaultTokenSource: nil,
+				gcloudConfigOutput:       nil,
+				k8sStartingConfig:        fakeK8sStartingConfig,
+				cachedToken: func(pc *pluginContext) (string, string) {
+					return "cached_token", time.Now().Add(time.Hour).Format(time.RFC3339Nano)
+				},
+				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
 			},
 			expectedToken: "cached_token",
@@ -97,10 +100,10 @@ func TestExecCredential(t *testing.T) {
 				googleDefaultTokenSource: nil,
 				gcloudConfigOutput:       fakeGcloudConfigOutput,
 				k8sStartingConfig:        fakeK8sStartingConfig,
-				clientcmdModifyConfig:    fakeModifyConfig,
-				cachedTokenEnvVarInput: func() (string, string) {
+				cachedToken: func(pc *pluginContext) (string, string) {
 					return "cached_token_invalid", time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
 				},
+				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
 			},
 			expectedToken: "ya29.gcloud_token",
@@ -110,11 +113,11 @@ func TestExecCredential(t *testing.T) {
 			pc: &pluginContext{
 				googleDefaultTokenSource: nil,
 				gcloudConfigOutput:       fakeGcloudConfigOutput,
-				k8sStartingConfig:        fakeK8sStartingConfigWithEnvVars,
-				clientcmdModifyConfig:    fakeModifyConfig,
-				cachedTokenEnvVarInput: func() (string, string) {
+				k8sStartingConfig:        fakeK8sStartingConfig,
+				cachedToken: func(pc *pluginContext) (string, string) {
 					return "cached_token_expired", time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
 				},
+				writeCacheFile:                   func(content string) error { return fmt.Errorf("error writing to file") },
 				useApplicationDefaultCredentials: false,
 			},
 			expectedToken: "ya29.gcloud_token",
@@ -125,10 +128,10 @@ func TestExecCredential(t *testing.T) {
 				googleDefaultTokenSource: nil,
 				gcloudConfigOutput:       fakeGcloudConfigOutput,
 				k8sStartingConfig:        fakeK8sStartingConfig,
-				clientcmdModifyConfig: func(configAccess clientcmd.ConfigAccess, newConfig clientcmdapi.Config, relativizePaths bool) error {
-					return errors.New("caching error")
+				cachedToken: func(pc *pluginContext) (string, string) {
+					return "cached_token", time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
 				},
-				cachedTokenEnvVarInput:           func() (string, string) { return "cached_token", time.Now().Add(-time.Hour).Format(time.RFC3339Nano) },
+				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
 			},
 			expectedToken: "ya29.gcloud_token",
@@ -190,18 +193,7 @@ func fakeGcloudConfigOutput() ([]byte, error) {
 	return []byte(fakeOutput), nil
 }
 
-func fakeK8sStartingConfigWithEnvVars(po *clientcmd.PathOptions) (*clientcmdapi.Config, error) {
-	c, err := fakeK8sStartingConfig(po)
-	if err != nil {
-		return nil, err
-	}
-	c.AuthInfos["gke_user-gke-dev_us-east1-b_cluster-1"].Exec.Env = []clientcmdapi.ExecEnvVar{}
-	appendExecEnv(&c.AuthInfos["gke_user-gke-dev_us-east1-b_cluster-1"].Exec.Env, accessTokenEnvVar, "cached_token_expired")
-	appendExecEnv(&c.AuthInfos["gke_user-gke-dev_us-east1-b_cluster-1"].Exec.Env, accessTokenExpiryEnvVar, time.Now().Add(-time.Hour).Format(time.RFC3339Nano))
-	return c, nil
-}
-
-func fakeK8sStartingConfig(po *clientcmd.PathOptions) (*clientcmdapi.Config, error) {
+func fakeK8sStartingConfig() (*clientcmdapi.Config, error) {
 	return &clientcmdapi.Config{
 		Kind:        "Config",
 		APIVersion:  "v1",

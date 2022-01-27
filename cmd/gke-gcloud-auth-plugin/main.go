@@ -5,8 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io/ioutil"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -21,8 +22,7 @@ import (
 )
 
 const (
-	accessTokenEnvVar       = "GCLOUD_ACCESS_TOKEN"
-	accessTokenExpiryEnvVar = "GCLOUD_ACCESS_TOKEN_EXPIRY"
+	cacheFileName = "plugin_cache"
 )
 
 var (
@@ -33,6 +33,8 @@ var (
 	defaultScopes = []string{
 		"https://www.googleapis.com/auth/cloud-platform",
 		"https://www.googleapis.com/auth/userinfo.email"}
+
+	useAdcPtr = pflag.Bool("use_application_default_credentials", false, "returns exec credential filled with application default credentials.")
 )
 
 type credential struct {
@@ -48,16 +50,18 @@ type gcloudConfiguration struct {
 	X          map[string]interface{} `json:"-"` // Rest of the fields should go here.
 }
 
-var (
-	useAdcPtr = pflag.Bool("use_application_default_credentials", false, "returns exec credential filled with application default credentials.")
-)
+type cache struct {
+	CurrentContext string `json:"current_context"`
+	AccessToken    string `json:"access_token"`
+	TokenExpiry    string `json:"token_expiry"`
+}
 
 type pluginContext struct {
 	googleDefaultTokenSource         func(ctx context.Context, scope ...string) (oauth2.TokenSource, error)
 	gcloudConfigOutput               func() ([]byte, error)
-	k8sStartingConfig                func(po *clientcmd.PathOptions) (*clientcmdapi.Config, error)
-	clientcmdModifyConfig            func(configAccess clientcmd.ConfigAccess, newConfig clientcmdapi.Config, relativizePaths bool) error
-	cachedTokenEnvVarInput           func() (string, string)
+	k8sStartingConfig                func() (*clientcmdapi.Config, error)
+	cachedToken                      func(pc *pluginContext) (string, string)
+	writeCacheFile                   func(content string) error
 	useApplicationDefaultCredentials bool
 }
 
@@ -66,8 +70,8 @@ func newPluginContext() *pluginContext {
 		googleDefaultTokenSource:         google.DefaultTokenSource,
 		k8sStartingConfig:                k8sStartingConfig,
 		gcloudConfigOutput:               gcloudConfigOutput,
-		clientcmdModifyConfig:            clientcmd.ModifyConfig,
-		cachedTokenEnvVarInput:           cachedTokenEnvVarInput,
+		cachedToken:                      cachedToken,
+		writeCacheFile:                   writeCacheFile,
 		useApplicationDefaultCredentials: *useAdcPtr,
 	}
 }
@@ -132,7 +136,8 @@ func gcloudAccessToken(pc *pluginContext) (string, *meta.Time, error) {
 	}
 
 	if err := cacheGcloudAccessToken(pc, gc.Credential.AccessToken, gc.Credential.TokenExpiry); err != nil {
-		klog.V(4).Infof("Failed to cache token ", err)
+		//fmt.Printf("caching failed: %+v", err)
+		klog.V(4).Infof("Failed to cache token %+v", err)
 	}
 
 	return gc.Credential.AccessToken, &meta.Time{Time: gc.Credential.TokenExpiry}, nil
@@ -160,7 +165,6 @@ func newGcloudConfig(pc *pluginContext) (*gcloudConfiguration, error) {
 	}
 	var gc gcloudConfiguration
 	if err := json.Unmarshal(gcloudConfigbytes, &gc); err != nil {
-		fmt.Printf("error parsing gcloud output : %+v", err.Error())
 		return nil, fmt.Errorf("error parsing gcloud output : %+v", err.Error())
 	}
 
@@ -181,7 +185,7 @@ func gcloudConfigOutput() ([]byte, error) {
 }
 
 func cachedGcloudAccessToken(pc *pluginContext) (string, *meta.Time, bool) {
-	token, expiry := pc.cachedTokenEnvVarInput()
+	token, expiry := pc.cachedToken(pc)
 
 	timeStamp, err := time.Parse(time.RFC3339Nano, expiry)
 	if err != nil {
@@ -204,47 +208,64 @@ func cachedGcloudAccessToken(pc *pluginContext) (string, *meta.Time, bool) {
 }
 
 func cacheGcloudAccessToken(pc *pluginContext, accessToken string, expiry time.Time) error {
-	po := clientcmd.NewDefaultPathOptions()
-	startingConfig, err := pc.k8sStartingConfig(po)
+	startingConfig, err := pc.k8sStartingConfig()
 	if err != nil {
 		klog.V(4).Infof("Error getting starting config %v", err)
 	}
-	ctx := startingConfig.Contexts[startingConfig.CurrentContext]
-	currAuthInfo, ok := startingConfig.AuthInfos[ctx.AuthInfo]
-	if !ok {
-		klog.V(4).Infof("curr auth info not found")
+
+	c := cache{
+		CurrentContext: startingConfig.CurrentContext,
+		AccessToken:    accessToken,
+		TokenExpiry:    expiry.Format(time.RFC3339Nano),
 	}
 
-	if currAuthInfo.Exec != nil {
-		if currAuthInfo.Exec.Env == nil {
-			currAuthInfo.Exec.Env = []clientcmdapi.ExecEnvVar{}
-		}
-		appendExecEnv(&currAuthInfo.Exec.Env, accessTokenEnvVar, accessToken)
-		appendExecEnv(&currAuthInfo.Exec.Env, accessTokenExpiryEnvVar, expiry.Format(time.RFC3339Nano))
+	formatted, err := formatToJSON(c)
+	if err != nil {
+		return err
 	}
 
-	return pc.clientcmdModifyConfig(po, *startingConfig, false)
+	return pc.writeCacheFile(formatted)
 }
 
-func k8sStartingConfig(po *clientcmd.PathOptions) (*clientcmdapi.Config, error) {
+func writeCacheFile(content string) error {
+	cacheFilePath := getCacheFilePath()
+	return ioutil.WriteFile(cacheFilePath, []byte(content), 0600)
+}
+
+func cachedToken(pc *pluginContext) (string, string) {
+	cacheFilePath := getCacheFilePath()
+	content, err := ioutil.ReadFile(cacheFilePath)
+	if err != nil {
+		//fmt.Printf("error reading file : %+v", err)
+		return "", ""
+	}
+	var c cache
+	if err := json.Unmarshal(content, &c); err != nil {
+		return "", ""
+	}
+
+	startingConfig, err := pc.k8sStartingConfig()
+	if err != nil {
+		klog.V(4).Infof("Error getting starting config %v", err)
+	}
+	if c.CurrentContext != startingConfig.CurrentContext {
+		return "", ""
+	}
+
+	return c.AccessToken, c.TokenExpiry
+}
+
+func k8sStartingConfig() (*clientcmdapi.Config, error) {
+	po := clientcmd.NewDefaultPathOptions()
 	return po.GetStartingConfig()
 }
 
-func cachedTokenEnvVarInput() (string, string) {
-	return os.Getenv(accessTokenEnvVar), os.Getenv(accessTokenExpiryEnvVar)
-}
-
-func appendExecEnv(envs *[]clientcmdapi.ExecEnvVar, name, value string) {
-	found := false
-	for i := range *envs {
-		if (*envs)[i].Name == name {
-			(*envs)[i].Value = value
-			found = true
-		}
-	}
-	if !found {
-		*envs = append(*envs, clientcmdapi.ExecEnvVar{name, value})
-	}
+func getCacheFilePath() string {
+	po := clientcmd.NewDefaultPathOptions()
+	kubeconfig := po.GetDefaultFilename()
+	dir := filepath.Dir(kubeconfig)
+	cacheFilePath := filepath.Join(dir, cacheFileName)
+	return cacheFilePath
 }
 
 func formatToJSON(i interface{}) (string, error) {
