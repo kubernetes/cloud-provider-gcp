@@ -168,7 +168,6 @@ func gcloudAccessToken(pc *pluginContext) (string, *meta.Time, error) {
 	}
 
 	if err := cacheGcloudAccessToken(pc, gc.Credential.AccessToken, gc.Credential.TokenExpiry); err != nil {
-		//fmt.Printf("caching failed: %+v", err)
 		klog.V(4).Infof("Failed to cache token %+v", err)
 	}
 
@@ -278,7 +277,6 @@ func cachedToken(pc *pluginContext) (string, string) {
 	cacheFilePath := getCacheFilePath()
 	content, err := readFile(cacheFilePath)
 	if err != nil {
-		//fmt.Printf("error reading file : %+v", err)
 		return "", ""
 	}
 	var c cache
