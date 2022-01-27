@@ -23,6 +23,8 @@ import (
 )
 
 const (
+	// cacheFileName is the file which stores the access tokens. This file is
+	// co-located with kubeconfig file.
 	cacheFileName = "plugin_cache"
 )
 
