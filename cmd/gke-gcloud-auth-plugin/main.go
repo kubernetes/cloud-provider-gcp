@@ -269,8 +269,8 @@ func writeCacheFile(content string) error {
 
 	// 0600 provides the same permissions as ~/.kube/config file.
 	// ls ~/.kube/ -al
-	// -rw-------  1 kirantumkur primarygroup 2836 Jan 27 08:00 config
-	// -rw-------  1 kirantumkur primarygroup  327 Jan 27 08:00 plugin_cache
+	// -rw-------  1 username1 primarygroup 2836 Jan 27 08:00 config
+	// -rw-------  1 username1 primarygroup  327 Jan 27 08:00 plugin_cache
 	return ioutil.WriteFile(cacheFilePath, []byte(content), 0600)
 }
 
