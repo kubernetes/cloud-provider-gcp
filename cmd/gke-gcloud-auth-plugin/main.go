@@ -168,7 +168,7 @@ func gcloudAccessToken(pc *pluginContext) (string, *meta.Time, error) {
 	}
 
 	if err := cacheGcloudAccessToken(pc, gc.Credential.AccessToken, gc.Credential.TokenExpiry); err != nil {
-		klog.V(4).Infof("Failed to cache token %+v", err)
+		klog.V(4).Infof("Failed to cache token %v", err)
 	}
 
 	return gc.Credential.AccessToken, &meta.Time{Time: gc.Credential.TokenExpiry}, nil
@@ -196,7 +196,7 @@ func newGcloudConfig(pc *pluginContext) (*gcloudConfiguration, error) {
 	}
 	var gc gcloudConfiguration
 	if err := json.Unmarshal(gcloudConfigbytes, &gc); err != nil {
-		return nil, fmt.Errorf("error parsing gcloud output : %+v", err.Error())
+		return nil, fmt.Errorf("error parsing gcloud output : %v", err.Error())
 	}
 
 	return &gc, nil
@@ -220,7 +220,7 @@ func cachedGcloudAccessToken(pc *pluginContext) (string, *meta.Time, bool) {
 
 	timeStamp, err := time.Parse(time.RFC3339Nano, expiry)
 	if err != nil {
-		klog.V(4).Infof("\nerror parsing time %+v\n\n", err)
+		klog.V(4).Infof("\nerror parsing time %v\n\n", err)
 		return "", nil, false
 	}
 
@@ -231,7 +231,7 @@ func cachedGcloudAccessToken(pc *pluginContext) (string, *meta.Time, bool) {
 	}
 
 	if !tok.Valid() || tok.Expiry.IsZero() {
-		klog.V(4).Infof("\nerror validating token %+v\n\n", tok)
+		klog.V(4).Infof("\nerror validating token %v\n\n", tok)
 		return "", nil, false
 	}
 
