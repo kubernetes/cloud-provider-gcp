@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
@@ -229,12 +230,17 @@ func cacheGcloudAccessToken(pc *pluginContext, accessToken string, expiry time.T
 
 func writeCacheFile(content string) error {
 	cacheFilePath := getCacheFilePath()
+	err := lockFile(cacheFilePath)
+	if err != nil {
+		return err
+	}
+	defer unlockFile(cacheFilePath)
 	return ioutil.WriteFile(cacheFilePath, []byte(content), 0600)
 }
 
 func cachedToken(pc *pluginContext) (string, string) {
 	cacheFilePath := getCacheFilePath()
-	content, err := ioutil.ReadFile(cacheFilePath)
+	content, err := readFile(cacheFilePath)
 	if err != nil {
 		//fmt.Printf("error reading file : %+v", err)
 		return "", ""
@@ -253,6 +259,16 @@ func cachedToken(pc *pluginContext) (string, string) {
 	}
 
 	return c.AccessToken, c.TokenExpiry
+}
+
+func readFile(filename string) ([]byte, error) {
+	err := lockFile(filename)
+	if err != nil {
+		return []byte(""), err
+	}
+	defer unlockFile(filename)
+
+	return ioutil.ReadFile(filename)
 }
 
 func k8sStartingConfig() (*clientcmdapi.Config, error) {
@@ -274,4 +290,33 @@ func formatToJSON(i interface{}) (string, error) {
 		return "", err
 	}
 	return string(s), nil
+}
+
+// the lockfile code is copied from client-go clientcmd code
+// https://github.com/kubernetes/client-go/blob/6d69eb8ad66c8962b6ce2f610d46fa3ab7d23afb/tools/clientcmd/loader.go#L436
+func lockFile(filename string) error {
+	// TODO: find a way to do this with actual file locks. Will
+	// probably need separate solution for windows and Linux.
+
+	// Make sure the dir exists before we try to create a lock file.
+	dir := filepath.Dir(filename)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err = os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+	}
+	f, err := os.OpenFile(lockName(filename), os.O_CREATE|os.O_EXCL, 0)
+	if err != nil {
+		return err
+	}
+	f.Close()
+	return nil
+}
+
+func unlockFile(filename string) error {
+	return os.Remove(lockName(filename))
+}
+
+func lockName(filename string) string {
+	return filename + ".lock"
 }
