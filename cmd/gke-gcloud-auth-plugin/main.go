@@ -328,7 +328,9 @@ func formatToJSON(i interface{}) (string, error) {
 	return string(s), nil
 }
 
-// the lockfile code is copied from client-go clientcmd code
+// The lockfile code is copied from client-go clientcmd code to be the same code
+// which updated kubeconfig file for regular kubeconfig updates as well as previous
+// Authprovider storing accesstokens in kubeconfig.
 // https://github.com/kubernetes/client-go/blob/6d69eb8ad66c8962b6ce2f610d46fa3ab7d23afb/tools/clientcmd/loader.go#L436
 func lockFile(filename string) error {
 	// TODO: find a way to do this with actual file locks. Will
