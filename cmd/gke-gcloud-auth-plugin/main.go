@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	useAdcPtr = pflag.Bool("use_application_default_credentials", false, "returns exec credential filled with application default credentials.")
+	useAdcPtr = pflag.Bool("use_application_default_credentials", false, "Output is an ExecCredential filled with application default credentials.")
 )
 
 func main() {
