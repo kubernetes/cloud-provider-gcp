@@ -1,12 +1,12 @@
-package main
+package clientgocred
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
