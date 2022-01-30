@@ -170,7 +170,7 @@ func accessToken(pc *pluginContext) (string, *meta.Time, error) {
 // expired, it gets a new access token by invoking gcloud command, caches the new token
 // and returns the token.
 func gcloudAccessToken(pc *pluginContext) (string, *meta.Time, error) {
-	if token, expiry, ok := cachedGcloudAccessToken(pc); ok {
+	if token, expiry, ok := getCachedGcloudAccessToken(pc); ok {
 		return token, expiry, nil
 	}
 
@@ -179,7 +179,7 @@ func gcloudAccessToken(pc *pluginContext) (string, *meta.Time, error) {
 		return "", nil, err
 	}
 
-	if err = cacheGcloudAccessToken(pc, gc.Credential.AccessToken, gc.Credential.TokenExpiry); err != nil {
+	if err = addGcloudAccessTokenToCache(pc, gc.Credential.AccessToken, gc.Credential.TokenExpiry); err != nil {
 		klog.V(4).Infof("Failed to cache token %v", err)
 	}
 
@@ -227,7 +227,7 @@ func gcloudConfigOutput() ([]byte, error) {
 	return stdoutBuffer.Bytes(), nil
 }
 
-func cachedGcloudAccessToken(pc *pluginContext) (string, *meta.Time, bool) {
+func getCachedGcloudAccessToken(pc *pluginContext) (string, *meta.Time, bool) {
 	token, expiry := pc.cachedToken(pc)
 
 	timeStamp, err := time.Parse(time.RFC3339Nano, expiry)
@@ -250,7 +250,7 @@ func cachedGcloudAccessToken(pc *pluginContext) (string, *meta.Time, bool) {
 	return tok.AccessToken, &meta.Time{Time: tok.Expiry}, true
 }
 
-func cacheGcloudAccessToken(pc *pluginContext, accessToken string, expiry time.Time) error {
+func addGcloudAccessTokenToCache(pc *pluginContext, accessToken string, expiry time.Time) error {
 	startingConfig, err := pc.k8sStartingConfig()
 	if err != nil {
 		klog.V(4).Infof("Error getting starting config %v", err)
