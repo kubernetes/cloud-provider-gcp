@@ -1,10 +1,11 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/spf13/pflag"
 	"k8s.io/cloud-provider-gcp/pkg/clientgocred"
 	"k8s.io/component-base/version/verflag"
-	"k8s.io/klog/v2"
 )
 
 var (
@@ -17,6 +18,6 @@ func main() {
 
 	opts := &clientgocred.Options{UseApplicationDefaultCredentials: *useAdcPtr}
 	if err := clientgocred.PrintCred(opts); err != nil {
-		klog.Fatalf("Print credential failed with error :%v", err)
+		panic(fmt.Errorf("print credential failed with error: %w", err))
 	}
 }

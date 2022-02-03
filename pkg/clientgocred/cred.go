@@ -1,5 +1,7 @@
-// package clientgocred an ExecCredential object prints to stdout . This
-// is defined by Client-go Credential: https://kubernetes.io/docs/reference/access-authn-authz/authentication/#client-go-credential-plugins
+// package clientgocred prints an ExecCredential object to stdout. The ExecCredential
+// object is filled with an access_token either from gcloud or from application
+// default credentials. This is defined by Client-go Credential plugins:
+// https://kubernetes.io/docs/reference/access-authn-authz/authentication/#client-go-credential-plugins
 // This library can be used with GKE Clusters for use with kubectl and custom
 // k8s clients.
 package clientgocred
@@ -10,18 +12,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/natefinch/atomic"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clientauth "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientauthv1b1 "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	"k8s.io/klog/v2"
+	"k8s.io/client-go/util/retry"
 )
 
 const (
@@ -61,6 +64,9 @@ type gcloudConfiguration struct {
 //    "access_token": "ya29.A0ARrdaM8WL....G0xYXGIQNPi5WvHe07ia4Gs",
 //    "token_expiry": "2022-01-27T08:27:52Z"
 // }
+// The current_context helps us cache tokens by context(cluster) similar to how
+// this was done for Authprovider in kubeconfig.
+//
 type cache struct {
 	// CurrentContext refers to which context the token was last retrieved for. If
 	// currentContext in kubeconfig is changed, the current cached access token is invalidated.
@@ -71,23 +77,23 @@ type cache struct {
 	TokenExpiry string `json:"token_expiry"`
 }
 
-// pluginContext holds data to be passed around (eg: useApplicationDefaultCredentials)
+// plugin holds data to be passed around (eg: useApplicationDefaultCredentials)
 // as well as methods that may needs to be mocked in test scenarios.
-type pluginContext struct {
+type plugin struct {
 	googleDefaultTokenSource         func(ctx context.Context, scope ...string) (oauth2.TokenSource, error)
 	gcloudConfigOutput               func() ([]byte, error)
 	k8sStartingConfig                func() (*clientcmdapi.Config, error)
-	cachedToken                      func(pc *pluginContext) (string, string)
+	getCachedToken                   func(pc *plugin) (string, string, error)
 	writeCacheFile                   func(content string) error
 	useApplicationDefaultCredentials bool
 }
 
-func newPluginContext(options *Options) *pluginContext {
-	return &pluginContext{
+func newPlugin(options *Options) *plugin {
+	return &plugin{
 		googleDefaultTokenSource:         google.DefaultTokenSource,
 		k8sStartingConfig:                k8sStartingConfig,
 		gcloudConfigOutput:               gcloudConfigOutput,
-		cachedToken:                      cachedToken,
+		getCachedToken:                   getCachedToken,
 		writeCacheFile:                   writeCacheFile,
 		useApplicationDefaultCredentials: options.UseApplicationDefaultCredentials,
 	}
@@ -98,7 +104,7 @@ type Options struct {
 	UseApplicationDefaultCredentials bool
 }
 
-// PrintCred prints ExecCredentail to stdout  to be consumed by kubectl to connect to GKE Clusters
+// PrintCred prints ExecCredential to stdout to be consumed by kubectl to connect to GKE Clusters
 // {
 //    "kind": "ExecCredential",
 //    "apiVersion": "client.authentication.k8s.io/v1beta1",
@@ -116,17 +122,15 @@ func PrintCred(options *Options) error {
 			UseApplicationDefaultCredentials: false,
 		}
 	}
-	pc := newPluginContext(options)
+	pc := newPlugin(options)
 
-	ec, err := execCredential(pc)
+	ec, err := pc.execCredential()
 	if err != nil {
-		klog.Errorf("unable to retrieve access token for GKE. Error : %v", err)
 		return err
 	}
 
 	ecStr, err := formatToJSON(ec)
 	if err != nil {
-		klog.Errorf("unable to convert ExecCredential object to json format. Error :%v", err)
 		return err
 	}
 
@@ -134,20 +138,20 @@ func PrintCred(options *Options) error {
 	return nil
 }
 
-// ExecCredential return an object of type ExecCredential which
+// execCredential return an object of type ExecCredential which
 // holds a bearer token to authenticate to GKE.
-func execCredential(pc *pluginContext) (*clientauth.ExecCredential, error) {
-	token, expiry, err := accessToken(pc)
+func (pc *plugin) execCredential() (*clientauthv1b1.ExecCredential, error) {
+	token, expiry, err := pc.accessToken()
 	if err != nil {
 		return nil, err
 	}
 
-	return &clientauth.ExecCredential{
-		TypeMeta: meta.TypeMeta{
+	return &clientauthv1b1.ExecCredential{
+		TypeMeta: metav1.TypeMeta{
 			Kind:       "ExecCredential",
 			APIVersion: "client.authentication.k8s.io/v1beta1",
 		},
-		Status: &clientauth.ExecCredentialStatus{
+		Status: &clientauthv1b1.ExecCredentialStatus{
 			Token:               token,
 			ExpirationTimestamp: expiry,
 		},
@@ -155,60 +159,68 @@ func execCredential(pc *pluginContext) (*clientauth.ExecCredential, error) {
 }
 
 // accessToken return either the ApplicationDefaultCredentials or the gcloudAccessToken
-func accessToken(pc *pluginContext) (string, *meta.Time, error) {
+func (pc *plugin) accessToken() (string, *metav1.Time, error) {
 	if !pc.useApplicationDefaultCredentials {
-		token, expiry, err := gcloudAccessToken(pc)
+		token, expiry, err := pc.gcloudAccessToken()
 		if err == nil {
 			return token, expiry, nil
 		}
 		// if err is not nil, fall back to returning Application default credentials
 	}
-	return defaultAccessToken(pc)
+	return pc.defaultAccessToken()
 }
 
 // gcloudAccessToken returns a cached token if the token is not expired. If the token is
 // expired, it gets a new access token by invoking gcloud command, caches the new token
 // and returns the token.
-func gcloudAccessToken(pc *pluginContext) (string, *meta.Time, error) {
-	if token, expiry, ok := getCachedGcloudAccessToken(pc); ok {
+func (pc *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
+	if token, expiry, err := pc.getCachedGcloudAccessToken(); err == nil {
 		return token, expiry, nil
 	}
 
-	gc, err := newGcloudConfig(pc)
+	gc, err := pc.newGcloudConfig()
 	if err != nil {
 		return "", nil, err
 	}
 
-	if err = addGcloudAccessTokenToCache(pc, gc.Credential.AccessToken, gc.Credential.TokenExpiry); err != nil {
-		klog.V(4).Infof("Failed to cache token %v", err)
-	}
+	pc.addGcloudAccessTokenToCache(gc.Credential.AccessToken, gc.Credential.TokenExpiry)
 
-	return gc.Credential.AccessToken, &meta.Time{Time: gc.Credential.TokenExpiry}, nil
+	return gc.Credential.AccessToken, &metav1.Time{Time: gc.Credential.TokenExpiry}, nil
 }
 
-func defaultAccessToken(pc *pluginContext) (string, *meta.Time, error) {
-	ts, err := pc.googleDefaultTokenSource(context.Background(), defaultScopes...)
+func (pc *plugin) defaultAccessToken() (string, *metav1.Time, error) {
+	var tok *oauth2.Token
+
+	// Retries help get around occasional network glitches
+	err := retry.OnError(retry.DefaultRetry, func(err error) bool { return true }, func() error {
+		ts, err := pc.googleDefaultTokenSource(context.Background(), defaultScopes...)
+		if err != nil {
+			return fmt.Errorf("cannot construct google default token source: %w", err)
+		}
+
+		tok, err = ts.Token()
+		if err != nil {
+			return fmt.Errorf("cannot retrieve default token from google default token source: %w", err)
+		}
+
+		return nil
+	})
 	if err != nil {
-		return "", nil, fmt.Errorf("cannot construct google default token source: %v", err)
+		return "", nil, err
 	}
 
-	tok, err := ts.Token()
-	if err != nil {
-		return "", nil, fmt.Errorf("cannot retrieve default token from google default token source: %v", err)
-	}
-
-	return tok.AccessToken, &meta.Time{Time: tok.Expiry}, nil
+	return tok.AccessToken, &metav1.Time{Time: tok.Expiry}, nil
 }
 
 // newGcloudConfig returns an object which represents gcloud config output
-func newGcloudConfig(pc *pluginContext) (*gcloudConfiguration, error) {
+func (pc *plugin) newGcloudConfig() (*gcloudConfiguration, error) {
 	gcloudConfigbytes, err := pc.gcloudConfigOutput()
 	if err != nil {
 		return nil, err
 	}
 	var gc gcloudConfiguration
 	if err := json.Unmarshal(gcloudConfigbytes, &gc); err != nil {
-		return nil, fmt.Errorf("error parsing gcloud output : %v", err.Error())
+		return nil, fmt.Errorf("error parsing gcloud output : %w", err)
 	}
 
 	return &gc, nil
@@ -222,38 +234,34 @@ func gcloudConfigOutput() ([]byte, error) {
 	cmd.Stderr = &stderrBuffer
 	err := cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve gcloud config. Error message: %s, stdout: %s, stderr: %s", err.Error(), stdoutBuffer.String(), stderrBuffer.String())
+		return nil, fmt.Errorf("while executing gcloud config config-helper: %w", err)
 	}
 	return stdoutBuffer.Bytes(), nil
 }
 
-func getCachedGcloudAccessToken(pc *pluginContext) (string, *meta.Time, bool) {
-	token, expiry := pc.cachedToken(pc)
-
-	timeStamp, err := time.Parse(time.RFC3339Nano, expiry)
+func (pc *plugin) getCachedGcloudAccessToken() (string, *metav1.Time, error) {
+	token, expiry, err := pc.getCachedToken(pc)
 	if err != nil {
-		klog.V(4).Infof("\nerror parsing time %v\n\n", err)
-		return "", nil, false
+		return "", nil, err
 	}
 
-	tok := &oauth2.Token{
-		AccessToken: token,
-		TokenType:   "Bearer",
-		Expiry:      timeStamp,
+	expiryTimeStamp, err := time.Parse(time.RFC3339Nano, expiry)
+	if err != nil {
+		return "", nil, err
 	}
 
-	if !tok.Valid() || tok.Expiry.IsZero() {
-		klog.V(4).Infof("\nerror validating token %v\n\n", tok)
-		return "", nil, false
+	// Check if the cached token is valid for 10 secs
+	if token == "" || time.Now().After(expiryTimeStamp.Add(-10*time.Second)) {
+		return "", nil, fmt.Errorf("cached token is invalid")
 	}
 
-	return tok.AccessToken, &meta.Time{Time: tok.Expiry}, true
+	return token, &metav1.Time{Time: expiryTimeStamp}, nil
 }
 
-func addGcloudAccessTokenToCache(pc *pluginContext, accessToken string, expiry time.Time) error {
+func (pc *plugin) addGcloudAccessTokenToCache(accessToken string, expiry time.Time) error {
 	startingConfig, err := pc.k8sStartingConfig()
 	if err != nil {
-		klog.V(4).Infof("Error getting starting config %v", err)
+		return fmt.Errorf("error getting starting config: %w", err)
 	}
 
 	c := cache{
@@ -272,49 +280,35 @@ func addGcloudAccessTokenToCache(pc *pluginContext, accessToken string, expiry t
 
 func writeCacheFile(content string) error {
 	cacheFilePath := getCacheFilePath()
-	if err := lockFile(cacheFilePath); err != nil {
-		return err
-	}
-	defer unlockFile(cacheFilePath)
-
-	// 0600 provides the same permissions as ~/.kube/config file.
+	// File is atomically written with 0600 - the same permissions as ~/.kube/config file.
 	// ls ~/.kube/ -al
-	// -rw-------  1 username1 primarygroup 2836 Jan 27 08:00 config
-	// -rw-------  1 username1 primarygroup  327 Jan 27 08:00 plugin_cache
-	return ioutil.WriteFile(cacheFilePath, []byte(content), 0600)
+	// -rw-------  1 username primarygroup 2836 Jan 27 08:00 config
+	// -rw-------  1 username primarygroup  327 Jan 27 08:00 gke_gcloud_auth_plugin_cache
+	return atomic.WriteFile(cacheFilePath, strings.NewReader(content))
 }
 
-func cachedToken(pc *pluginContext) (string, string) {
+func getCachedToken(pc *plugin) (string, string, error) {
 	cacheFilePath := getCacheFilePath()
-	content, err := readFile(cacheFilePath)
+	content, err := ioutil.ReadFile(cacheFilePath)
 	if err != nil {
-		return "", ""
+		return "", "", err
 	}
 	var c cache
 	if err = json.Unmarshal(content, &c); err != nil {
-		return "", ""
+		return "", "", err
 	}
 
 	startingConfig, err := pc.k8sStartingConfig()
 	if err != nil {
-		klog.V(4).Infof("Error getting starting config %v", err)
+		return "", "", err
 	}
 	// If current context is not the same as what the cached access token was
 	// generated for, then consider the current access token invalid.
 	if c.CurrentContext != startingConfig.CurrentContext {
-		return "", ""
+		return "", "", err
 	}
 
-	return c.AccessToken, c.TokenExpiry
-}
-
-func readFile(filename string) ([]byte, error) {
-	if err := lockFile(filename); err != nil {
-		return []byte(""), err
-	}
-	defer unlockFile(filename)
-
-	return ioutil.ReadFile(filename)
+	return c.AccessToken, c.TokenExpiry, err
 }
 
 func k8sStartingConfig() (*clientcmdapi.Config, error) {
@@ -336,35 +330,4 @@ func formatToJSON(i interface{}) (string, error) {
 		return "", err
 	}
 	return string(s), nil
-}
-
-// The lockfile code is copied from client-go clientcmd code to be the same code
-// which updated kubeconfig file for regular kubeconfig updates as well as previous
-// Authprovider storing accesstokens in kubeconfig.
-// https://github.com/kubernetes/client-go/blob/6d69eb8ad66c8962b6ce2f610d46fa3ab7d23afb/tools/clientcmd/loader.go#L436
-func lockFile(filename string) error {
-	// TODO: find a way to do this with actual file locks. Will
-	// probably need separate solution for windows and Linux.
-
-	// Make sure the dir exists before we try to create a lock file.
-	dir := filepath.Dir(filename)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		if err = os.MkdirAll(dir, 0755); err != nil {
-			return err
-		}
-	}
-	f, err := os.OpenFile(lockName(filename), os.O_CREATE|os.O_EXCL, 0)
-	if err != nil {
-		return err
-	}
-	f.Close()
-	return nil
-}
-
-func unlockFile(filename string) error {
-	return os.Remove(lockName(filename))
-}
-
-func lockName(filename string) string {
-	return filename + ".lock"
 }

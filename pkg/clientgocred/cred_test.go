@@ -24,16 +24,16 @@ func (*mockTokenSource) Token() (*oauth2.Token, error) {
 func TestExecCredential(t *testing.T) {
 	testCases := []struct {
 		testName      string
-		pc            *pluginContext
+		pc            *plugin
 		expectedToken string
 	}{
 		{
 			testName: "ApplicationDefaultCredentialsSetToTrue",
-			pc: &pluginContext{
+			pc: &plugin{
 				googleDefaultTokenSource:         fakeDefaultTokenSource,
 				gcloudConfigOutput:               fakeGcloudConfigOutput,
 				k8sStartingConfig:                fakeK8sStartingConfig,
-				cachedToken:                      func(pc *pluginContext) (string, string) { return "", "" },
+				getCachedToken:                   func(pc *plugin) (string, string, error) { return "", "", nil },
 				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: true,
 			},
@@ -41,11 +41,11 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "NewGcloudAccessToken",
-			pc: &pluginContext{
+			pc: &plugin{
 				googleDefaultTokenSource:         nil,
 				gcloudConfigOutput:               fakeGcloudConfigOutput,
 				k8sStartingConfig:                fakeK8sStartingConfig,
-				cachedToken:                      func(pc *pluginContext) (string, string) { return "", "" },
+				getCachedToken:                   func(pc *plugin) (string, string, error) { return "", "", nil },
 				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
 			},
@@ -53,13 +53,13 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "GcloudAccessTokenFailureFallbackToADC",
-			pc: &pluginContext{
+			pc: &plugin{
 				googleDefaultTokenSource: fakeDefaultTokenSource,
 				gcloudConfigOutput: func() ([]byte, error) {
 					return []byte("bad token string"), nil
 				},
 				k8sStartingConfig:                fakeK8sStartingConfig,
-				cachedToken:                      func(pc *pluginContext) (string, string) { return "", "" },
+				getCachedToken:                   func(pc *plugin) (string, string, error) { return "", "", nil },
 				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
 			},
@@ -67,13 +67,13 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "GcloudCommandFailureFailureFallbackToADC",
-			pc: &pluginContext{
+			pc: &plugin{
 				googleDefaultTokenSource: fakeDefaultTokenSource,
 				gcloudConfigOutput: func() ([]byte, error) {
 					return []byte("gcloud_command_failure"), errors.New("gcloud command failure")
 				},
 				k8sStartingConfig:                fakeK8sStartingConfig,
-				cachedToken:                      func(pc *pluginContext) (string, string) { return "", "" },
+				getCachedToken:                   func(pc *plugin) (string, string, error) { return "", "", nil },
 				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
 			},
@@ -81,12 +81,12 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "CachedTokenIsValid",
-			pc: &pluginContext{
+			pc: &plugin{
 				googleDefaultTokenSource: nil,
 				gcloudConfigOutput:       nil,
 				k8sStartingConfig:        fakeK8sStartingConfig,
-				cachedToken: func(pc *pluginContext) (string, string) {
-					return "cached_token", time.Now().Add(time.Hour).Format(time.RFC3339Nano)
+				getCachedToken: func(pc *plugin) (string, string, error) {
+					return "cached_token", time.Now().Add(time.Hour).Format(time.RFC3339Nano), nil
 				},
 				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
@@ -95,12 +95,12 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "CachedTokenInvalid",
-			pc: &pluginContext{
+			pc: &plugin{
 				googleDefaultTokenSource: nil,
 				gcloudConfigOutput:       fakeGcloudConfigOutput,
 				k8sStartingConfig:        fakeK8sStartingConfig,
-				cachedToken: func(pc *pluginContext) (string, string) {
-					return "cached_token_invalid", time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
+				getCachedToken: func(pc *plugin) (string, string, error) {
+					return "cached_token_invalid", time.Now().Add(-time.Hour).Format(time.RFC3339Nano), nil
 				},
 				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
@@ -109,12 +109,12 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "CachedTokenOverwrite",
-			pc: &pluginContext{
+			pc: &plugin{
 				googleDefaultTokenSource: nil,
 				gcloudConfigOutput:       fakeGcloudConfigOutput,
 				k8sStartingConfig:        fakeK8sStartingConfig,
-				cachedToken: func(pc *pluginContext) (string, string) {
-					return "cached_token_expired", time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
+				getCachedToken: func(pc *plugin) (string, string, error) {
+					return "cached_token_expired", time.Now().Add(-time.Hour).Format(time.RFC3339Nano), nil
 				},
 				writeCacheFile:                   func(content string) error { return fmt.Errorf("error writing to file") },
 				useApplicationDefaultCredentials: false,
@@ -123,12 +123,12 @@ func TestExecCredential(t *testing.T) {
 		},
 		{
 			testName: "CachingFails",
-			pc: &pluginContext{
+			pc: &plugin{
 				googleDefaultTokenSource: nil,
 				gcloudConfigOutput:       fakeGcloudConfigOutput,
 				k8sStartingConfig:        fakeK8sStartingConfig,
-				cachedToken: func(pc *pluginContext) (string, string) {
-					return "cached_token", time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
+				getCachedToken: func(pc *plugin) (string, string, error) {
+					return "cached_token", time.Now().Add(-time.Hour).Format(time.RFC3339Nano), nil
 				},
 				writeCacheFile:                   func(content string) error { return nil },
 				useApplicationDefaultCredentials: false,
@@ -139,7 +139,7 @@ func TestExecCredential(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
-			ec, err := execCredential(tc.pc)
+			ec, err := tc.pc.execCredential()
 			if err != nil {
 				t.Fatalf("err should be nil")
 			}
@@ -153,7 +153,6 @@ func TestExecCredential(t *testing.T) {
 			if err != nil {
 				t.Fatalf("err should be nil")
 			}
-
 		})
 	}
 }
