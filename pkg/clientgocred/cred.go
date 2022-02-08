@@ -191,7 +191,7 @@ func (pc *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 func (pc *plugin) defaultAccessToken() (string, *metav1.Time, error) {
 	var tok *oauth2.Token
 
-	// Retries help get around occasional network glitches
+	// Retries (max 5 retries with approx delay 10*ms+jitter setup) help get around occasional network glitches
 	err := retry.OnError(retry.DefaultRetry, func(err error) bool { return true }, func() error {
 		ts, err := pc.googleDefaultTokenSource(context.Background(), defaultScopes...)
 		if err != nil {
