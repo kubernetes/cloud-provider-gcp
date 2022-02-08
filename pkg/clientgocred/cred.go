@@ -66,7 +66,6 @@ type gcloudConfiguration struct {
 // }
 // The current_context helps us cache tokens by context(cluster) similar to how
 // this was done for Authprovider in kubeconfig.
-//
 type cache struct {
 	// CurrentContext refers to which context the token was last retrieved for. If
 	// currentContext in kubeconfig is changed, the current cached access token is invalidated.
@@ -183,7 +182,7 @@ func (pc *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 		return "", nil, err
 	}
 
-	pc.addGcloudAccessTokenToCache(gc.Credential.AccessToken, gc.Credential.TokenExpiry)
+	pc.writeGcloudAccessTokenToCache(gc.Credential.AccessToken, gc.Credential.TokenExpiry)
 
 	return gc.Credential.AccessToken, &metav1.Time{Time: gc.Credential.TokenExpiry}, nil
 }
@@ -258,7 +257,7 @@ func (pc *plugin) getCachedGcloudAccessToken() (string, *metav1.Time, error) {
 	return token, &metav1.Time{Time: expiryTimeStamp}, nil
 }
 
-func (pc *plugin) addGcloudAccessTokenToCache(accessToken string, expiry time.Time) error {
+func (pc *plugin) writeGcloudAccessTokenToCache(accessToken string, expiry time.Time) error {
 	startingConfig, err := pc.k8sStartingConfig()
 	if err != nil {
 		return fmt.Errorf("error getting starting config: %w", err)
