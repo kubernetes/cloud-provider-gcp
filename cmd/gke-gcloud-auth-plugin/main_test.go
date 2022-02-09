@@ -1,10 +1,15 @@
 package main
 
 import (
+	"fmt"
+	"io"
+	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientauth "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
 )
@@ -84,17 +89,69 @@ func TestGcloudPlugin(t *testing.T) {
 			}
 
 			creds, err := p.execCredential()
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("wantErr=%v, err=%v", tc.wantErr, err)
-			}
-			if tc.wantErr {
-				t.Log(err)
+			if tc.wantErr && err == nil {
+				t.Fatalf("p.execCredential() returned nil error, wanted non-nil")
+			} else if tc.wantErr && err != nil {
 				return
+			} else if !tc.wantErr && err != nil {
+				t.Fatalf("p.execCredential() returned non-nil error, want nil error: %v", err)
 			}
 
 			if diff := cmp.Diff(tc.wantStatus, creds.Status); diff != "" {
 				t.Errorf("execCredential() returned unexpected diff (-want +got): %s", diff)
 			}
 		})
+	}
+}
+
+func TestGcloudPluginWithAuthorizationToken(t *testing.T) {
+
+	tokenFile, err := ioutil.TempFile("", "auth-token-test*")
+	if err != nil {
+		t.Fatalf("error creating temp auth-token file: %v", err)
+	}
+	defer os.Remove(tokenFile.Name())
+
+	if _, err := io.WriteString(tokenFile, "authz-t0k3n"); err != nil {
+		t.Fatal(err)
+	}
+
+	newYears := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	gcloudConfig := fmt.Sprintf(`
+{
+  "configuration": {
+    "active_configuration": "inspect-mikedanese-k8s",
+    "properties": {
+      "auth": {
+        "authorization_token_file": "%s"
+      }
+    }
+  },
+  "credential": {
+    "access_token": "ya29.t0k3n",
+    "token_expiry": "2022-01-01T00:00:00Z"
+  }
+}
+`, tokenFile.Name())
+
+	wantStatus := &clientauth.ExecCredentialStatus{
+		Token:               "iam-ya29.t0k3n^authz-t0k3n",
+		ExpirationTimestamp: &metav1.Time{Time: newYears},
+	}
+
+	p := &plugin{
+		readGcloudConfigRaw: func() ([]byte, error) {
+			return []byte(gcloudConfig), nil
+		},
+	}
+
+	creds, err := p.execCredential()
+	if err != nil {
+		t.Fatalf("unexpected err=%v", err)
+	}
+
+	if diff := cmp.Diff(wantStatus, creds.Status); diff != "" {
+		t.Errorf("execCredential() returned unexpected diff (-want +got): %s", diff)
 	}
 }

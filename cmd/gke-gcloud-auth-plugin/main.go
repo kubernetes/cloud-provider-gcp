@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"time"
@@ -30,16 +31,19 @@ var (
 )
 
 // types unmarshaled from gcloud config in json format
-type (
-	gcloudConfiguration struct {
-		Credential credential `json:"credential"`
-	}
-
-	credential struct {
+type gcloudConfiguration struct {
+	Credential struct {
 		AccessToken string    `json:"access_token"`
 		TokenExpiry time.Time `json:"token_expiry"`
-	}
-)
+	} `json:"credential"`
+	Configuration struct {
+		Properties struct {
+			Auth struct {
+				AuthorizationTokenFile string `json:"authorization_token_file"`
+			} `json:"auth"`
+		} `json:"properties"`
+	} `json:"configuration"`
+}
 
 var (
 	useApplicationDefaultCredentials = pflag.Bool("use_application_default_credentials", false, "returns exec credential filled with application default credentials.")
@@ -124,7 +128,16 @@ func (p *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 		return "", nil, fmt.Errorf("failed to retrieve expiry time from gcloud config json object")
 	}
 
-	return gc.Credential.AccessToken, &metav1.Time{Time: gc.Credential.TokenExpiry}, nil
+	token := gc.Credential.AccessToken
+	if authzTokenFile := gc.Configuration.Properties.Auth.AuthorizationTokenFile; authzTokenFile != "" {
+		authzTokenBytes, err := ioutil.ReadFile(authzTokenFile)
+		if err != nil {
+			return "", nil, fmt.Errorf("gcloud config sets property auth/authorization_token_file, but can't read file at %s: %w", authzTokenFile, err)
+		}
+		token = fmt.Sprintf("iam-%s^%s", token, authzTokenBytes)
+	}
+
+	return token, &metav1.Time{Time: gc.Credential.TokenExpiry}, nil
 }
 
 func (p *plugin) defaultAccessToken() (string, *metav1.Time, error) {
