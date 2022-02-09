@@ -5,11 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"time"
 
 	"github.com/spf13/pflag"
 	"golang.org/x/oauth2/google"
+
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientauth "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
 	"k8s.io/component-base/version/verflag"
@@ -22,48 +25,70 @@ var (
 	//   email instead of numeric uniqueID.
 	defaultScopes = []string{
 		"https://www.googleapis.com/auth/cloud-platform",
-		"https://www.googleapis.com/auth/userinfo.email"}
+		"https://www.googleapis.com/auth/userinfo.email",
+	}
 )
 
-type credential struct {
-	AccessToken string                 `json:"access_token"`
-	TokenExpiry time.Time              `json:"token_expiry"`
-	X           map[string]interface{} `json:"-"` // Rest of the fields should go here.
-}
+// types unmarshaled from gcloud config in json format
+type (
+	gcloudConfiguration struct {
+		Credential credential `json:"credential"`
+	}
 
-// gcloudConfiguration is the struct unmarshalled
-// from gcloud config in json format
-type gcloudConfiguration struct {
-	Credential credential             `json:"credential"`
-	X          map[string]interface{} `json:"-"` // Rest of the fields should go here.
-}
+	credential struct {
+		AccessToken string    `json:"access_token"`
+		TokenExpiry time.Time `json:"token_expiry"`
+	}
+)
 
 var (
-	useAdcPtr = pflag.Bool("use_application_default_credentials", false, "returns exec credential filled with application default credentials.")
+	useApplicationDefaultCredentials = pflag.Bool("use_application_default_credentials", false, "returns exec credential filled with application default credentials.")
 )
 
 func main() {
 	pflag.Parse()
 	verflag.PrintAndExitIfRequested()
 
-	ec, err := execCredential()
-	if err != nil {
-		msg := fmt.Errorf("unable to retrieve access token for GKE. Error : %v", err)
-		panic(msg)
+	p := plugin{
+		useApplicationDefaultCredentials: *useApplicationDefaultCredentials,
+		readGcloudConfigRaw:              readGcloudConfigRaw,
+		w:                                os.Stdout,
 	}
 
-	ecStr, err := formatToJSON(ec)
-	if err != nil {
-		msg := fmt.Errorf("unable to convert ExecCredential object to json format. Error :%v", err)
-		panic(msg)
+	if err := p.run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to retrieve access token for GKE: %s", err)
+		os.Exit(1)
 	}
-	fmt.Print(ecStr)
 }
 
-// ExecCredential return an object of type ExecCredential which
+type plugin struct {
+	useApplicationDefaultCredentials bool
+	readGcloudConfigRaw              func() ([]byte, error)
+	w                                io.Writer
+}
+
+func (p *plugin) run() error {
+	creds, err := p.execCredential()
+	if err != nil {
+		return fmt.Errorf("unable to retrieve access token for GKE: %w", err)
+	}
+
+	out, err := json.Marshal(creds)
+	if err != nil {
+		return fmt.Errorf("unable to convert ExecCredential object to json format: %w", err)
+	}
+
+	if _, err := p.w.Write(out); err != nil {
+		return fmt.Errorf("unable to write ExecCredential to stdout: %w", err)
+	}
+
+	return nil
+}
+
+// execCredential return an object of type ExecCredential which
 // holds a bearer token to authenticate to GKE.
-func execCredential() (*clientauth.ExecCredential, error) {
-	token, expiry, err := accessToken()
+func (p *plugin) execCredential() (*clientauth.ExecCredential, error) {
+	token, expiry, err := p.accessToken()
 	if err != nil {
 		return nil, err
 	}
@@ -80,18 +105,18 @@ func execCredential() (*clientauth.ExecCredential, error) {
 	}, nil
 }
 
-func accessToken() (string, *meta.Time, error) {
-	if !*useAdcPtr {
-		token, expiry, err := gcloudAccessToken()
+func (p *plugin) accessToken() (string, *meta.Time, error) {
+	if !p.useApplicationDefaultCredentials {
+		token, expiry, err := p.gcloudAccessToken()
 		if err == nil {
 			return token, expiry, nil
 		}
 	}
-	return defaultAccessToken()
+	return p.defaultAccessToken()
 }
 
-func gcloudAccessToken() (string, *meta.Time, error) {
-	gc, err := retrieveGcloudConfig()
+func (p *plugin) gcloudAccessToken() (string, *meta.Time, error) {
+	gc, err := p.readGcloudConfig()
 	if err != nil {
 		return "", nil, err
 	}
@@ -99,51 +124,44 @@ func gcloudAccessToken() (string, *meta.Time, error) {
 	return gc.Credential.AccessToken, &meta.Time{Time: gc.Credential.TokenExpiry}, nil
 }
 
-func defaultAccessToken() (string, *meta.Time, error) {
+func (p *plugin) defaultAccessToken() (string, *meta.Time, error) {
 	ts, err := google.DefaultTokenSource(context.Background(), defaultScopes...)
 	if err != nil {
-		return "", nil, fmt.Errorf("cannot construct google default token source: %v", err)
+		return "", nil, fmt.Errorf("cannot construct google default token source: %w", err)
 	}
 
 	tok, err := ts.Token()
 	if err != nil {
-		return "", nil, fmt.Errorf("cannot retrieve default token from google default token source: %v", err)
+		return "", nil, fmt.Errorf("cannot retrieve default token from google default token source: %w", err)
 	}
 
 	return tok.AccessToken, &meta.Time{Time: tok.Expiry}, nil
 }
 
-// retrieveGcloudConfig returns an object which represents gcloud config output
-func retrieveGcloudConfig() (*gcloudConfiguration, error) {
-	gcloudConfigbytes, err := gcloudConfigOutput()
+// readGcloudConfig returns an object which represents gcloud config output
+func (p *plugin) readGcloudConfig() (*gcloudConfiguration, error) {
+	gcRaw, err := p.readGcloudConfigRaw()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to retrieve gcloud config: %w", err)
 	}
+
 	var gc gcloudConfiguration
-	if err := json.Unmarshal(gcloudConfigbytes, &gc); err != nil {
-		return nil, fmt.Errorf("error parsing gcloud output : %+v", err.Error())
+	if err := json.Unmarshal(gcRaw, &gc); err != nil {
+		return nil, fmt.Errorf("error parsing gcloud output : %w", err)
 	}
 
 	return &gc, nil
 }
 
-func gcloudConfigOutput() ([]byte, error) {
+func readGcloudConfigRaw() ([]byte, error) {
 	cmd := exec.Command("gcloud", "config", "config-helper", "--format=json")
-	var stdoutBuffer bytes.Buffer
-	var stderrBuffer bytes.Buffer
-	cmd.Stdout = &stdoutBuffer
-	cmd.Stderr = &stderrBuffer
-	err := cmd.Run()
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve gcloud config. Error message: %s, stdout: %s, stderr: %s", err.Error(), stdoutBuffer.String(), stderrBuffer.String())
-	}
-	return stdoutBuffer.Bytes(), nil
-}
 
-func formatToJSON(i interface{}) (string, error) {
-	s, err := json.MarshalIndent(i, "", "    ")
-	if err != nil {
-		return "", err
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+
+	if err := cmd.Run(); err != nil {
+		return nil, err
 	}
-	return string(s), nil
+
+	return buf.Bytes(), nil
 }
