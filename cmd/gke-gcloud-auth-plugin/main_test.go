@@ -63,6 +63,11 @@ func TestGcloudPlugin(t *testing.T) {
 				ExpirationTimestamp: &metav1.Time{Time: newYears},
 			},
 		},
+		{
+			name:    "empty response from gcloud",
+			config:  "",
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tcs {

@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/pflag"
 	"golang.org/x/oauth2/google"
 
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientauth "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
 	"k8s.io/component-base/version/verflag"
 )
@@ -94,7 +94,7 @@ func (p *plugin) execCredential() (*clientauth.ExecCredential, error) {
 	}
 
 	return &clientauth.ExecCredential{
-		TypeMeta: meta.TypeMeta{
+		TypeMeta: metav1.TypeMeta{
 			Kind:       "ExecCredential",
 			APIVersion: "client.authentication.k8s.io/v1beta1",
 		},
@@ -105,26 +105,23 @@ func (p *plugin) execCredential() (*clientauth.ExecCredential, error) {
 	}, nil
 }
 
-func (p *plugin) accessToken() (string, *meta.Time, error) {
+func (p *plugin) accessToken() (string, *metav1.Time, error) {
 	if !p.useApplicationDefaultCredentials {
-		token, expiry, err := p.gcloudAccessToken()
-		if err == nil {
-			return token, expiry, nil
-		}
+		return p.gcloudAccessToken()
 	}
 	return p.defaultAccessToken()
 }
 
-func (p *plugin) gcloudAccessToken() (string, *meta.Time, error) {
+func (p *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 	gc, err := p.readGcloudConfig()
 	if err != nil {
 		return "", nil, err
 	}
 
-	return gc.Credential.AccessToken, &meta.Time{Time: gc.Credential.TokenExpiry}, nil
+	return gc.Credential.AccessToken, &metav1.Time{Time: gc.Credential.TokenExpiry}, nil
 }
 
-func (p *plugin) defaultAccessToken() (string, *meta.Time, error) {
+func (p *plugin) defaultAccessToken() (string, *metav1.Time, error) {
 	ts, err := google.DefaultTokenSource(context.Background(), defaultScopes...)
 	if err != nil {
 		return "", nil, fmt.Errorf("cannot construct google default token source: %w", err)
@@ -135,7 +132,7 @@ func (p *plugin) defaultAccessToken() (string, *meta.Time, error) {
 		return "", nil, fmt.Errorf("cannot retrieve default token from google default token source: %w", err)
 	}
 
-	return tok.AccessToken, &meta.Time{Time: tok.Expiry}, nil
+	return tok.AccessToken, &metav1.Time{Time: tok.Expiry}, nil
 }
 
 // readGcloudConfig returns an object which represents gcloud config output
