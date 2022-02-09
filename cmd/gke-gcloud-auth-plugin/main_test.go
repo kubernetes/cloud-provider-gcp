@@ -68,6 +68,11 @@ func TestGcloudPlugin(t *testing.T) {
 			config:  "",
 			wantErr: true,
 		},
+		{
+			name:    "response with empty json object from gcloud",
+			config:  "{}",
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tcs {

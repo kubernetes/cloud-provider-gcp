@@ -117,6 +117,12 @@ func (p *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	if gc.Credential.AccessToken == "" {
+		return "", nil, fmt.Errorf("failed to retrieve access token from gcloud config json object")
+	}
+	if gc.Credential.TokenExpiry.IsZero() {
+		return "", nil, fmt.Errorf("failed to retrieve expiry time from gcloud config json object")
+	}
 
 	return gc.Credential.AccessToken, &metav1.Time{Time: gc.Credential.TokenExpiry}, nil
 }
