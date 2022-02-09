@@ -25,6 +25,10 @@ cd "${KUBE_ROOT}"
 # exit code, if a script fails we'll set this to 1
 res=0
 
+# printout go version
+echo "The current GO version been used:"
+echo $(GOFLAGS='' go version)
+
 # run all verify scripts, optionally skipping any of them
 
 if [[ "${VERIFY_GOFMT:-true}" == "true" ]]; then
@@ -42,6 +46,12 @@ fi
 if [[ "${VERIFY_GOVET:-true}" == "true" ]]; then
   echo "[*] Verifying govet..."
   tools/verify-govet.sh || res=1
+  cd "${KUBE_ROOT}"
+fi
+
+if [[ "${VERIFY_VENDOR:-true}" == "true" ]]; then
+  echo "[*] Verifying vendor..."
+  tools/verify-vendor.sh || res=1
   cd "${KUBE_ROOT}"
 fi
 
