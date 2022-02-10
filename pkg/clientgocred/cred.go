@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -175,6 +176,9 @@ func (pc *plugin) accessToken() (string, *metav1.Time, error) {
 func (pc *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 	if token, expiry, err := pc.getCachedGcloudAccessToken(); err == nil {
 		return token, expiry, nil
+	} else {
+		// log and ignore error; move on to getting a new token from gcloud
+		klog.V(4).Infof("Getting cached gcloud access token failed with error: %v", err)
 	}
 
 	gc, err := pc.newGcloudConfig()
@@ -182,7 +186,10 @@ func (pc *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 		return "", nil, err
 	}
 
-	pc.writeGcloudAccessTokenToCache(gc.Credential.AccessToken, gc.Credential.TokenExpiry)
+	if err := pc.writeGcloudAccessTokenToCache(gc.Credential.AccessToken, gc.Credential.TokenExpiry); err != nil {
+		// log and ignore error as writing to cache is best effort
+		klog.V(4).Infof("Failed to write gcloud access token to cache with error: %v", err)
+	}
 
 	return gc.Credential.AccessToken, &metav1.Time{Time: gc.Credential.TokenExpiry}, nil
 }
@@ -190,8 +197,8 @@ func (pc *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 func (pc *plugin) defaultAccessToken() (string, *metav1.Time, error) {
 	var tok *oauth2.Token
 
-	// Retries (max 5 retries with approx delay 10*ms+jitter setup) help get around occasional network glitches
-	err := retry.OnError(retry.DefaultRetry, func(err error) bool { return true }, func() error {
+	// Retries (max 4 retries with approx delay 10*ms+jitter setup) help get around occasional network glitches
+	err := retry.OnError(retry.DefaultBackoff, func(err error) bool { return true }, func() error {
 		ts, err := pc.googleDefaultTokenSource(context.Background(), defaultScopes...)
 		if err != nil {
 			return fmt.Errorf("cannot construct google default token source: %w", err)
@@ -219,7 +226,7 @@ func (pc *plugin) newGcloudConfig() (*gcloudConfiguration, error) {
 	}
 	var gc gcloudConfiguration
 	if err := json.Unmarshal(gcloudConfigbytes, &gc); err != nil {
-		return nil, fmt.Errorf("error parsing gcloud output : %w", err)
+		return nil, fmt.Errorf("error parsing gcloud output: %w", err)
 	}
 
 	return &gc, nil
@@ -249,9 +256,12 @@ func (pc *plugin) getCachedGcloudAccessToken() (string, *metav1.Time, error) {
 		return "", nil, err
 	}
 
-	// Check if the cached token is valid for 10 secs
-	if token == "" || time.Now().After(expiryTimeStamp.Add(-10*time.Second)) {
-		return "", nil, fmt.Errorf("cached token is invalid")
+	if token == "" {
+		return "", nil, fmt.Errorf("cached token is empty")
+	}
+	// Check if the cached token is valid for 10 secs (this check comes from oauth2 token.Valid())
+	if time.Now().After(expiryTimeStamp.Add(-10 * time.Second)) {
+		return "", nil, fmt.Errorf("cached token is expiring in 10 seconds")
 	}
 
 	return token, &metav1.Time{Time: expiryTimeStamp}, nil
