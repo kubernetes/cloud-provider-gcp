@@ -4,6 +4,7 @@ load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_binary",
     "go_library",
+    "go_test",
 )
 load("//defs:version.bzl", "version_x_defs")
 
@@ -24,5 +25,16 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/client-go/pkg/apis/clientauthentication/v1beta1:go_default_library",
         "//vendor/k8s.io/component-base/version/verflag:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["main_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//vendor/github.com/google/go-cmp/cmp:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/client-go/pkg/apis/clientauthentication/v1beta1:go_default_library",
     ],
 )
