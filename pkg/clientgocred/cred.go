@@ -46,17 +46,19 @@ var (
 		"https://www.googleapis.com/auth/userinfo.email"}
 )
 
-type credential struct {
-	AccessToken string                 `json:"access_token"`
-	TokenExpiry time.Time              `json:"token_expiry"`
-	X           map[string]interface{} `json:"-"` // Rest of the fields should go here.
-}
-
-// gcloudConfiguration is the struct unmarshalled
-// from gcloud config in json format
+// gcloudConfiguration holds types unmarshaled from gcloud config in json format
 type gcloudConfiguration struct {
-	Credential credential             `json:"credential"`
-	X          map[string]interface{} `json:"-"` // Rest of the fields should go here.
+	Credential struct {
+		AccessToken string    `json:"access_token"`
+		TokenExpiry time.Time `json:"token_expiry"`
+	} `json:"credential"`
+	Configuration struct {
+		Properties struct {
+			Auth struct {
+				AuthorizationTokenFile string `json:"authorization_token_file"`
+			} `json:"auth"`
+		} `json:"properties"`
+	} `json:"configuration"`
 }
 
 // cache is the struct that gets cached in the cache file in json format.
@@ -81,7 +83,7 @@ type cache struct {
 // as well as methods that may needs to be mocked in test scenarios.
 type plugin struct {
 	googleDefaultTokenSource         func(ctx context.Context, scope ...string) (oauth2.TokenSource, error)
-	gcloudConfigOutput               func() ([]byte, error)
+	readGcloudConfigRaw              func() ([]byte, error)
 	k8sStartingConfig                func() (*clientcmdapi.Config, error)
 	getCachedToken                   func(pc *plugin) (string, string, error)
 	writeCacheFile                   func(content string) error
@@ -92,7 +94,7 @@ func newPlugin(options *Options) *plugin {
 	return &plugin{
 		googleDefaultTokenSource:         google.DefaultTokenSource,
 		k8sStartingConfig:                k8sStartingConfig,
-		gcloudConfigOutput:               gcloudConfigOutput,
+		readGcloudConfigRaw:              readGcloudConfigRaw,
 		getCachedToken:                   getCachedToken,
 		writeCacheFile:                   writeCacheFile,
 		useApplicationDefaultCredentials: options.UseApplicationDefaultCredentials,
@@ -134,7 +136,10 @@ func PrintCred(options *Options) error {
 		return err
 	}
 
-	fmt.Print(ecStr)
+	if _, err := fmt.Print(ecStr); err != nil {
+		return fmt.Errorf("unable to write ExecCredential to stdout: %w", err)
+	}
+
 	return nil
 }
 
@@ -161,8 +166,7 @@ func (pc *plugin) execCredential() (*clientauthv1b1.ExecCredential, error) {
 // accessToken return either the ApplicationDefaultCredentials or the gcloudAccessToken
 func (pc *plugin) accessToken() (string, *metav1.Time, error) {
 	if !pc.useApplicationDefaultCredentials {
-		token, expiry, err := pc.gcloudAccessToken()
-		if err == nil {
+		if token, expiry, err := pc.gcloudAccessToken(); err == nil {
 			return token, expiry, nil
 		}
 		// if err is not nil, fall back to returning Application default credentials
@@ -181,17 +185,33 @@ func (pc *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 		klog.V(4).Infof("Getting cached gcloud access token failed with error: %v", err)
 	}
 
-	gc, err := pc.newGcloudConfig()
+	gc, err := pc.readGcloudConfig()
 	if err != nil {
 		return "", nil, err
 	}
 
-	if err := pc.writeGcloudAccessTokenToCache(gc.Credential.AccessToken, gc.Credential.TokenExpiry); err != nil {
+	if gc.Credential.AccessToken == "" {
+		return "", nil, fmt.Errorf("failed to retrieve access token from gcloud config json object")
+	}
+	if gc.Credential.TokenExpiry.IsZero() {
+		return "", nil, fmt.Errorf("failed to retrieve expiry time from gcloud config json object")
+	}
+
+	token := gc.Credential.AccessToken
+	if authzTokenFile := gc.Configuration.Properties.Auth.AuthorizationTokenFile; authzTokenFile != "" {
+		authzTokenBytes, err := ioutil.ReadFile(authzTokenFile)
+		if err != nil {
+			return "", nil, fmt.Errorf("gcloud config sets property auth/authorization_token_file, but can't read file at %s: %w", authzTokenFile, err)
+		}
+		token = fmt.Sprintf("iam-%s^%s", token, authzTokenBytes)
+	}
+
+	if err := pc.writeGcloudAccessTokenToCache(token, gc.Credential.TokenExpiry); err != nil {
 		// log and ignore error as writing to cache is best effort
 		klog.V(4).Infof("Failed to write gcloud access token to cache with error: %v", err)
 	}
 
-	return gc.Credential.AccessToken, &metav1.Time{Time: gc.Credential.TokenExpiry}, nil
+	return token, &metav1.Time{Time: gc.Credential.TokenExpiry}, nil
 }
 
 func (pc *plugin) defaultAccessToken() (string, *metav1.Time, error) {
@@ -218,9 +238,9 @@ func (pc *plugin) defaultAccessToken() (string, *metav1.Time, error) {
 	return tok.AccessToken, &metav1.Time{Time: tok.Expiry}, nil
 }
 
-// newGcloudConfig returns an object which represents gcloud config output
-func (pc *plugin) newGcloudConfig() (*gcloudConfiguration, error) {
-	gcloudConfigbytes, err := pc.gcloudConfigOutput()
+// readGcloudConfig returns an object which represents gcloud config output
+func (pc *plugin) readGcloudConfig() (*gcloudConfiguration, error) {
+	gcloudConfigbytes, err := pc.readGcloudConfigRaw()
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +252,7 @@ func (pc *plugin) newGcloudConfig() (*gcloudConfiguration, error) {
 	return &gc, nil
 }
 
-func gcloudConfigOutput() ([]byte, error) {
+func readGcloudConfigRaw() ([]byte, error) {
 	cmd := exec.Command("gcloud", "config", "config-helper", "--format=json")
 	var stdoutBuffer bytes.Buffer
 	var stderrBuffer bytes.Buffer

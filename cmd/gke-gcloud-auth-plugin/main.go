@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	useAdcPtr = pflag.Bool("use_application_default_credentials", false, "Output is an ExecCredential filled with application default credentials.")
+	useApplicationDefaultCredentials = pflag.Bool("use_application_default_credentials", false, "Output is an ExecCredential filled with application default credentials.")
 )
 
 func main() {
@@ -22,7 +22,7 @@ func main() {
 
 	verflag.PrintAndExitIfRequested()
 
-	opts := &clientgocred.Options{UseApplicationDefaultCredentials: *useAdcPtr}
+	opts := &clientgocred.Options{UseApplicationDefaultCredentials: *useApplicationDefaultCredentials}
 	if err := clientgocred.PrintCred(opts); err != nil {
 		klog.Exit(fmt.Errorf("print credential failed with error: %w", err))
 	}

@@ -4,10 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"golang.org/x/oauth2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientauth "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
@@ -31,7 +37,7 @@ func TestExecCredential(t *testing.T) {
 			testName: "ApplicationDefaultCredentialsSetToTrue",
 			pc: &plugin{
 				googleDefaultTokenSource:         fakeDefaultTokenSource,
-				gcloudConfigOutput:               fakeGcloudConfigOutput,
+				readGcloudConfigRaw:              fakeGcloudConfigOutput,
 				k8sStartingConfig:                fakeK8sStartingConfig,
 				getCachedToken:                   func(pc *plugin) (string, string, error) { return "", "", nil },
 				writeCacheFile:                   func(content string) error { return nil },
@@ -43,7 +49,7 @@ func TestExecCredential(t *testing.T) {
 			testName: "NewGcloudAccessToken",
 			pc: &plugin{
 				googleDefaultTokenSource:         nil,
-				gcloudConfigOutput:               fakeGcloudConfigOutput,
+				readGcloudConfigRaw:              fakeGcloudConfigOutput,
 				k8sStartingConfig:                fakeK8sStartingConfig,
 				getCachedToken:                   func(pc *plugin) (string, string, error) { return "", "", nil },
 				writeCacheFile:                   func(content string) error { return nil },
@@ -55,7 +61,7 @@ func TestExecCredential(t *testing.T) {
 			testName: "GcloudAccessTokenFailureFallbackToADC",
 			pc: &plugin{
 				googleDefaultTokenSource: fakeDefaultTokenSource,
-				gcloudConfigOutput: func() ([]byte, error) {
+				readGcloudConfigRaw: func() ([]byte, error) {
 					return []byte("bad token string"), nil
 				},
 				k8sStartingConfig:                fakeK8sStartingConfig,
@@ -66,10 +72,10 @@ func TestExecCredential(t *testing.T) {
 			expectedToken: "default_access_token",
 		},
 		{
-			testName: "GcloudCommandFailureFailureFallbackToADC",
+			testName: "GcloudCommandFailureFallbackToADC",
 			pc: &plugin{
 				googleDefaultTokenSource: fakeDefaultTokenSource,
-				gcloudConfigOutput: func() ([]byte, error) {
+				readGcloudConfigRaw: func() ([]byte, error) {
 					return []byte("gcloud_command_failure"), errors.New("gcloud command failure")
 				},
 				k8sStartingConfig:                fakeK8sStartingConfig,
@@ -83,7 +89,7 @@ func TestExecCredential(t *testing.T) {
 			testName: "CachedTokenIsValid",
 			pc: &plugin{
 				googleDefaultTokenSource: nil,
-				gcloudConfigOutput:       nil,
+				readGcloudConfigRaw:      nil,
 				k8sStartingConfig:        fakeK8sStartingConfig,
 				getCachedToken: func(pc *plugin) (string, string, error) {
 					return "cached_token", time.Now().Add(time.Hour).Format(time.RFC3339Nano), nil
@@ -97,7 +103,7 @@ func TestExecCredential(t *testing.T) {
 			testName: "CachedTokenInvalid",
 			pc: &plugin{
 				googleDefaultTokenSource: nil,
-				gcloudConfigOutput:       fakeGcloudConfigOutput,
+				readGcloudConfigRaw:      fakeGcloudConfigOutput,
 				k8sStartingConfig:        fakeK8sStartingConfig,
 				getCachedToken: func(pc *plugin) (string, string, error) {
 					return "cached_token_invalid", time.Now().Add(-time.Hour).Format(time.RFC3339Nano), nil
@@ -111,7 +117,7 @@ func TestExecCredential(t *testing.T) {
 			testName: "CachedTokenOverwrite",
 			pc: &plugin{
 				googleDefaultTokenSource: nil,
-				gcloudConfigOutput:       fakeGcloudConfigOutput,
+				readGcloudConfigRaw:      fakeGcloudConfigOutput,
 				k8sStartingConfig:        fakeK8sStartingConfig,
 				getCachedToken: func(pc *plugin) (string, string, error) {
 					return "cached_token_expired", time.Now().Add(-time.Hour).Format(time.RFC3339Nano), nil
@@ -125,7 +131,7 @@ func TestExecCredential(t *testing.T) {
 			testName: "CachingFails",
 			pc: &plugin{
 				googleDefaultTokenSource: nil,
-				gcloudConfigOutput:       fakeGcloudConfigOutput,
+				readGcloudConfigRaw:      fakeGcloudConfigOutput,
 				k8sStartingConfig:        fakeK8sStartingConfig,
 				getCachedToken: func(pc *plugin) (string, string, error) {
 					return "cached_token", time.Now().Add(-time.Hour).Format(time.RFC3339Nano), nil
@@ -154,6 +160,64 @@ func TestExecCredential(t *testing.T) {
 				t.Fatalf("err should be nil")
 			}
 		})
+	}
+}
+
+func TestGcloudPluginWithAuthorizationToken(t *testing.T) {
+	tokenFile, err := ioutil.TempFile("", "auth-token-test*")
+	if err != nil {
+		t.Fatalf("error creating temp auth-token file: %v", err)
+	}
+	defer os.Remove(tokenFile.Name())
+
+	if _, err := io.WriteString(tokenFile, "authz-t0k3n"); err != nil {
+		t.Fatal(err)
+	}
+
+	newYears := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	gcloudConfig := fmt.Sprintf(`
+{
+  "configuration": {
+    "active_configuration": "inspect-mikedanese-k8s",
+    "properties": {
+      "auth": {
+        "authorization_token_file": "%s"
+      }
+    }
+  },
+  "credential": {
+    "access_token": "ya29.t0k3n",
+    "token_expiry": "2022-01-01T00:00:00Z"
+  }
+}
+`, tokenFile.Name())
+
+	wantStatus := &clientauth.ExecCredentialStatus{
+		Token:               "iam-ya29.t0k3n^authz-t0k3n",
+		ExpirationTimestamp: &metav1.Time{Time: newYears},
+	}
+
+	p := &plugin{
+		googleDefaultTokenSource: nil,
+		readGcloudConfigRaw: func() ([]byte, error) {
+			return []byte(gcloudConfig), nil
+		},
+		k8sStartingConfig: fakeK8sStartingConfig,
+		getCachedToken: func(pc *plugin) (string, string, error) {
+			return "cached_token_invalid", time.Now().Add(-time.Hour).Format(time.RFC3339Nano), nil
+		},
+		writeCacheFile:                   func(content string) error { return nil },
+		useApplicationDefaultCredentials: false,
+	}
+
+	creds, err := p.execCredential()
+	if err != nil {
+		t.Fatalf("unexpected err=%v", err)
+	}
+
+	if diff := cmp.Diff(wantStatus, creds.Status); diff != "" {
+		t.Errorf("execCredential() returned unexpected diff (-want +got): %s", diff)
 	}
 }
 
