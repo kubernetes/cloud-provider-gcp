@@ -1638,7 +1638,7 @@ ExecStart=${kubelet_bin} \$KUBELET_OPTS
 WantedBy=multi-user.target
 EOF
 
-  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
+  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-true} == "true" ]]; then
     create-sidecar-config
   fi
 

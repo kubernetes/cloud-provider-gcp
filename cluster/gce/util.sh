@@ -822,8 +822,8 @@ function construct-linux-kubelet-flags {
     flags+=" --container-runtime-endpoint=${CONTAINER_RUNTIME_ENDPOINT}"
   fi
 
-  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
-    flags+=" --image-credential-provider-config=/etc/srv/kubernetes/cri_auth_config.yaml --image-credential-provider-bin-dir=/home/kubernetes/bin"
+  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-true} == "true" ]]; then
+    flags+=" --feature-gates=KubeletCredentialProviders=true,DisableKubeletCloudCredentialProviders=true --image-credential-provider-config=/etc/srv/kubernetes/cri_auth_config.yaml --image-credential-provider-bin-dir=/home/kubernetes/bin"
   fi
 
   KUBELET_ARGS="${flags}"
@@ -1322,7 +1322,7 @@ EOF
     done
   fi
   cat >>$file <<EOF
-ENABLE_CREDENTIAL_SIDECAR: $(yaml-quote ${ENABLE_CREDENTIAL_SIDECAR:-false})
+ENABLE_CREDENTIAL_SIDECAR: $(yaml-quote ${ENABLE_CREDENTIAL_SIDECAR:-true})
 EOF
 
   if [[ "${master}" == "true" ]]; then

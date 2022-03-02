@@ -568,12 +568,12 @@ export WINDOWS_NODE_PROBLEM_DETECTOR_CUSTOM_FLAGS="${WINDOWS_NODE_PROBLEM_DETECT
 export TLS_CIPHER_SUITES=""
 
 # Optional: Enable credential sidecar.
-export ENABLE_CREDENTIAL_SIDECAR="${KUBE_ENABLE_CREDENTIAL_SIDECAR:-false}"
-if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
+export ENABLE_CREDENTIAL_SIDECAR="${KUBE_ENABLE_CREDENTIAL_SIDECAR:-true}"
+if [[ ${ENABLE_CREDENTIAL_SIDECAR:-true} == "true" ]]; then
    if [[ -z "${FEATURE_GATES:-}" ]]; then
-        FEATURE_GATES="KubeletCredentialProviders=true"
+        FEATURE_GATES="KubeletCredentialProviders=true, DisableKubeletCloudCredentialProviders=true"
     else
-        FEATURE_GATES="${FEATURE_GATES},KubeletCredentialProviders=true"
+        FEATURE_GATES="${FEATURE_GATES},KubeletCredentialProviders=true, DisableKubeletCloudCredentialProviders=true"
     fi
 fi
 
