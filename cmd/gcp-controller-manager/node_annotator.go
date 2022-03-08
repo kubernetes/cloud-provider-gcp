@@ -155,12 +155,15 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 						return false
 					}
 
-					err = mergeManagedTaints(node, desiredTaints)
-					if err != nil {
-						klog.Errorf("Error merging taints: %v", err)
-						return false
+					if node.ObjectMeta.Annotations == nil {
+						node.ObjectMeta.Annotations = make(map[string]string)
 					}
 
+					// Set last applied taints annotation. Cluster autoscaler relies on
+					// this.
+					// Note: We don't merge the taints like we do for labels because we
+					// don't want to reapply any taints the user might have deleted.
+					node.ObjectMeta.Annotations[lastAppliedTaintsKey] = serializeTaints(desiredTaints)
 					return true
 				},
 			},
@@ -371,20 +374,6 @@ func extractLastAppliedLabels(node *core.Node) map[string]string {
 	return parsedLabels
 }
 
-func extractLastAppliedTaints(node *core.Node) []core.Taint {
-	lastTaints, ok := node.ObjectMeta.Annotations[lastAppliedTaintsKey]
-	if !ok || len(lastTaints) == 0 {
-		return nil
-	}
-
-	parsedTaints, err := parseTaints(lastTaints)
-	if err != nil {
-		klog.Errorf("Failed to parse last applied taints annotation: %q, treat it as not set, err: %v", lastTaints, err)
-		return nil
-	}
-	return parsedTaints
-}
-
 func mergeManagedLabels(node *core.Node, desiredLabels map[string]string) error {
 	if node.ObjectMeta.Annotations == nil {
 		node.ObjectMeta.Annotations = make(map[string]string)
@@ -401,34 +390,6 @@ func mergeManagedLabels(node *core.Node, desiredLabels map[string]string) error 
 		node.ObjectMeta.Labels[key] = value
 	}
 	node.ObjectMeta.Annotations[lastAppliedLabelsKey] = serializeLabels(desiredLabels)
-	return nil
-}
-
-func mergeManagedTaints(node *core.Node, desiredTaints []core.Taint) error {
-	if node.ObjectMeta.Annotations == nil {
-		node.ObjectMeta.Annotations = make(map[string]string)
-	}
-	lastAppliedTaints := extractLastAppliedTaints(node)
-	// Merge GCE managed taints by:
-	// 1. delete managed taints to be removed, which is present in last-applied-taints
-	// 2. add/update taints from GCE taint source to node
-	// 3. update last-applied-taints in annotation
-	for _, taint := range lastAppliedTaints {
-		node.Spec.Taints, _ = taintsutil.DeleteTaint(node.Spec.Taints, &taint)
-	}
-	for _, taint := range desiredTaints {
-		updated := false
-		for i := range node.Spec.Taints {
-			if taint.MatchTaint(&node.Spec.Taints[i]) {
-				node.Spec.Taints[i] = taint
-				updated = true
-			}
-		}
-		if !updated {
-			node.Spec.Taints = append(node.Spec.Taints, taint)
-		}
-	}
-	node.ObjectMeta.Annotations[lastAppliedTaintsKey] = serializeTaints(desiredTaints)
 	return nil
 }
 
