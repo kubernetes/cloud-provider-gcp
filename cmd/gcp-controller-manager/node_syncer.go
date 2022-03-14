@@ -293,7 +293,8 @@ func (nm *nodeMap) add(node string, podUID types.UID, podKey string, gsa gsaEmai
 		return "", false
 	}
 	var lastGSA gsaEmail
-	if p, found := n[podUID]; found {
+	p, found := n[podUID]
+	if found {
 		lastGSA = p.gsa
 	}
 	n[podUID] = podEntry{podKey, gsa}
