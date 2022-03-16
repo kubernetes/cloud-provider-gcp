@@ -20,7 +20,6 @@ def image(binary, visibility = ["//visibility:public"]):
         repository = "k8s.gcr.io",
         cmd = ["/" + name],
         files = [binary],
-        stamp = True,
         base = "@distroless//image",
         visibility = visibility,
     )
@@ -33,7 +32,6 @@ def image(binary, visibility = ["//visibility:public"]):
         image = ":image",
         registry = image_registry,
         repository = repository,
-        stamp = True,
         tag = "{STABLE_IMAGE_TAG}",
     )
     container_bundle(
@@ -41,7 +39,6 @@ def image(binary, visibility = ["//visibility:public"]):
         images = {
             image_registry + "/" + repository + ":{STABLE_IMAGE_TAG}": ":image",
         },
-        stamp = True,
         visibility = visibility,
     )
     native.genrule(
