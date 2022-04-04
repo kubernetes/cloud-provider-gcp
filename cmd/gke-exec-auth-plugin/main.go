@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/pkg/apis/clientauthentication"
-	clientauthv1alpha1 "k8s.io/client-go/pkg/apis/clientauthentication/v1alpha1"
+	clientauthv1beta1 "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
 	"k8s.io/klog/v2"
 )
 
@@ -36,13 +36,13 @@ var (
 	codecs       = serializer.NewCodecFactory(scheme)
 	groupVersion = schema.GroupVersion{
 		Group:   "client.authentication.k8s.io",
-		Version: "v1alpha1",
+		Version: "v1beta1",
 	}
 )
 
 func init() {
 	metav1.AddToGroupVersion(scheme, schema.GroupVersion{Version: "v1"})
-	clientauthv1alpha1.AddToScheme(scheme)
+	clientauthv1beta1.AddToScheme(scheme)
 	clientauthentication.AddToScheme(scheme)
 }
 
