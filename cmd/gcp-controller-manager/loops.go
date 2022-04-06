@@ -106,7 +106,7 @@ func loops() map[string]func(*controllerContext) error {
 			return nil
 		},
 	}
-	if *directPath {
+	if *directPath || *directPathWithoutChannelAuthn {
 		ll[saVerifierControlLoopName] = func(ctx *controllerContext) error {
 			serviceAccountVerifier, err := newServiceAccountVerifier(
 				ctx.client,
@@ -122,6 +122,8 @@ func loops() map[string]func(*controllerContext) error {
 			go serviceAccountVerifier.Run(3, ctx.done)
 			return nil
 		}
+	}
+	if *directPath {
 		ll[nodeSyncerControlLoopName] = func(ctx *controllerContext) error {
 			nodeSyncer, err := newNodeSyncer(
 				ctx.sharedInformers.Core().V1().Pods(),
