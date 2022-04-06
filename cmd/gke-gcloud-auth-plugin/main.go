@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/pflag"
-	"k8s.io/cloud-provider-gcp/pkg/clientgocred"
+	"k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin/cred"
 	"k8s.io/component-base/version/verflag"
 	"k8s.io/klog/v2"
 )
@@ -22,8 +22,8 @@ func main() {
 
 	verflag.PrintAndExitIfRequested()
 
-	opts := &clientgocred.Options{UseApplicationDefaultCredentials: *useApplicationDefaultCredentials}
-	if err := clientgocred.PrintCred(opts); err != nil {
+	opts := &cred.Options{UseApplicationDefaultCredentials: *useApplicationDefaultCredentials}
+	if err := cred.PrintCred(opts); err != nil {
 		klog.Exit(fmt.Errorf("print credential failed with error: %w", err))
 	}
 }

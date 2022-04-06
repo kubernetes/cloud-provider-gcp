@@ -1,10 +1,10 @@
-// package clientgocred prints an ExecCredential object to stdout. The ExecCredential
+// Package cred prints an ExecCredential object to stdout. The ExecCredential
 // object is filled with an access_token either from gcloud or from application
 // default credentials. This is defined by Client-go Credential plugins:
 // https://kubernetes.io/docs/reference/access-authn-authz/authentication/#client-go-credential-plugins
 // This library can be used with GKE Clusters for use with kubectl and custom
 // k8s clients.
-package clientgocred
+package cred
 
 import (
 	"bytes"
@@ -13,9 +13,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os/exec"
-	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -67,28 +65,6 @@ type gcloudConfiguration struct {
 	} `json:"configuration"`
 }
 
-// GcloudConfig holds values used to track if gcloud auth configuration has changed.
-// By reading the following gcloud config files, we are able to determine if gcloud
-// configuration has changed without have to run slow "gcloud info" and "gcloud config config-helper --format=json"
-type GcloudConfig struct {
-	// UserConfigDirectory is retrieved by running  gcloud info | grep 'User Config Directory'
-	UserConfigDirectory string `json:"user_config_directory"`
-	// ActiveUserConfig is the content in UserConfigDirectory/active_config file
-	ActiveUserConfig string `json:"active_user_config"`
-
-	// ActiveConfigurationPath is the path retrieved by running gcloud info | grep 'Active Configuration Path'
-	ActiveConfigurationPath string `json:"active_configuration_path"`
-	// ActiveConfiguration is the cache of file at ActiveConfigurationPath
-	ActiveConfiguration string `json:"active_configuration"`
-
-	// AuthorizationTokenPath holds value pointed by gcloudconfiguration.Configuration.Properties.Auth.AuthorizationTokenFile.
-	// This value being empty is a valid configuration.
-	AuthorizationTokenPath string `json:"authorization_token_path"`
-	// AuthorizationToken is the token present in file pointed to AuthorizationTokenPath
-	// This token being empty is a valid configuration.
-	AuthorizationToken string `json:"authorization_token"`
-}
-
 // cache is the struct that gets cached in the cache file in json format.
 // {
 //    "current_context": "gke_user-gke-dev_us-central1_autopilot-cluster-11",
@@ -105,17 +81,12 @@ type cache struct {
 	AccessToken string `json:"access_token"`
 	// TokenExpiry is gcloud access token's expiry.
 	TokenExpiry string `json:"token_expiry"`
-	// GcloudConfig holds values used to track if gcloud auth configuration has changed.
-	// By reading the following gcloud config files, we are able to determine if gcloud
-	// configuration has changed without have to run slow "gcloud info" and "gcloud config config-helper --format=json"
-	GcloudConfig GcloudConfig `json:"gcloud_config"`
 }
 
 // plugin holds data to be passed around (eg: useApplicationDefaultCredentials)
 // as well as methods that may needs to be mocked in test scenarios.
 type plugin struct {
 	googleDefaultTokenSource         func(ctx context.Context, scope ...string) (oauth2.TokenSource, error)
-	readGcloudInfoRaw                func() ([]byte, error)
 	readGcloudConfigRaw              func() ([]byte, error)
 	k8sStartingConfig                func() (*clientcmdapi.Config, error)
 	readFile                         func(filename string) ([]byte, error)
@@ -129,7 +100,6 @@ func newPlugin(options *Options) *plugin {
 	return &plugin{
 		googleDefaultTokenSource:         google.DefaultTokenSource,
 		k8sStartingConfig:                k8sStartingConfig,
-		readGcloudInfoRaw:                readGcloudInfoRaw,
 		readGcloudConfigRaw:              readGcloudConfigRaw,
 		readFile:                         readFile,
 		writeCacheFile:                   writeCacheFile,
@@ -203,15 +173,10 @@ func (p *plugin) execCredential() (*clientauthv1b1.ExecCredential, error) {
 
 // accessToken return either the ApplicationDefaultCredentials or the gcloudAccessToken
 func (p *plugin) accessToken() (string, *metav1.Time, error) {
-	if !p.useApplicationDefaultCredentials {
-		if token, expiry, err := p.gcloudAccessToken(); err != nil {
-			// if err is not nil, log and fall back to returning Application default credentials
-			klog.V(4).Infof("Getting gcloud access token failed with error: %v", err)
-		} else { // if err is nil
-			return token, expiry, nil
-		}
+	if p.useApplicationDefaultCredentials {
+		return p.defaultAccessToken()
 	}
-	return p.defaultAccessToken()
+	return p.gcloudAccessToken()
 }
 
 // gcloudAccessToken returns a cached token if the token is not expired. If the token is
@@ -232,12 +197,13 @@ func (p *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 	}
 
 	if gc.Credential.AccessToken == "" {
-		return "", nil, fmt.Errorf("failed to retrieve access token from gcloud config json object")
+		return "", nil, fmt.Errorf("gcloud config config-helper returned an empty access token")
 	}
 	if gc.Credential.TokenExpiry.IsZero() {
 		return "", nil, fmt.Errorf("failed to retrieve expiry time from gcloud config json object")
 	}
 
+	// Authorization Token File is not commonly used. Currently, this is for specific internal debugging scenarios.
 	token := gc.Credential.AccessToken
 	var authzTokenFile string
 	var authzTokenBytes []byte
@@ -249,7 +215,7 @@ func (p *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 		token = fmt.Sprintf("iam-%s^%s", token, authzTokenBytes)
 	}
 
-	if err := p.writeGcloudAccessTokenToCache(token, gc.Credential.TokenExpiry, authzTokenBytes, authzTokenFile); err != nil {
+	if err := p.writeGcloudAccessTokenToCache(token, gc.Credential.TokenExpiry); err != nil {
 		// log and ignore error as writing to cache is best effort
 		klog.V(4).Infof("Failed to write gcloud access token to cache with error: %v", err)
 	}
@@ -275,7 +241,7 @@ func (p *plugin) defaultAccessToken() (string, *metav1.Time, error) {
 		return nil
 	})
 	if err != nil {
-		return "", nil, fmt.Errorf("getting google default token failed after multiple retries")
+		return "", nil, fmt.Errorf("getting google default token failed after multiple retries: %w", err)
 	}
 
 	return tok.AccessToken, &metav1.Time{Time: tok.Expiry}, nil
@@ -295,72 +261,16 @@ func (p *plugin) readGcloudConfig() (*gcloudConfiguration, error) {
 	return &gc, nil
 }
 
-func (p *plugin) writeGcloudAccessTokenToCache(accessToken string, expiry time.Time, authzTokenBytes []byte, authzTokenPath string) error {
+func (p *plugin) writeGcloudAccessTokenToCache(accessToken string, expiry time.Time) error {
 	startingConfig, err := p.k8sStartingConfig()
 	if err != nil {
 		return fmt.Errorf("error getting starting config: %w", err)
-	}
-
-	gcloudInfoBytes, err := p.readGcloudInfoRaw()
-	if err != nil {
-		return fmt.Errorf("error invoking gcloud info: %w", err)
-	}
-	gcloudInfo := string(gcloudInfoBytes)
-
-	// User Config Directory: [/Users/username/.config/gcloud]
-	re := regexp.MustCompile(`User Config Directory: \[(.*?)\]`)
-	if !re.MatchString(gcloudInfo) {
-		return fmt.Errorf("error retrieving user config directory from gcloud info")
-	}
-	matches := re.FindStringSubmatch(gcloudInfo)
-	if matches == nil || len(matches) != 2 {
-		return fmt.Errorf("error matching user config directory from gcloud info")
-	}
-	userConfigDirectory := matches[1]
-
-	// Eg 1: cat /Users/username/.config/gcloud/active_config
-	// default
-	// Eg 2: cat /Users/username/.config/gcloud/active_config
-	// username-inspect-k8s
-	userConfig, err := p.readFile(path.Join(userConfigDirectory, activeConfig))
-	if err != nil {
-		return fmt.Errorf("reading user config directory at %s received error: %w", userConfigDirectory, err)
-	}
-
-	// Active Configuration Path: [/Users/username/.config/gcloud/configurations/config_default]
-	re = regexp.MustCompile(`Active Configuration Path: \[(.*?)\]`)
-	if !re.MatchString(gcloudInfo) {
-		return fmt.Errorf("error retrieving user config directory from gcloud info")
-	}
-	matches = re.FindStringSubmatch(gcloudInfo)
-	if matches == nil || len(matches) != 2 {
-		return fmt.Errorf("error matching user config directory from gcloud info")
-	}
-	activeConfigurationPath := matches[1]
-
-	// cat /Users/username/.config/gcloud/configurations/config_default
-	// [core]
-	//   account = username@google.com
-	//   project = project1-gke
-	activeConfiguration, err := p.readFile(activeConfigurationPath)
-	if err != nil {
-		return fmt.Errorf("reading active configuration at %s received error: %w", activeConfigurationPath, err)
 	}
 
 	c := cache{
 		CurrentContext: startingConfig.CurrentContext,
 		AccessToken:    accessToken,
 		TokenExpiry:    expiry.Format(time.RFC3339Nano),
-		GcloudConfig: GcloudConfig{
-			UserConfigDirectory:     userConfigDirectory,
-			ActiveUserConfig:        string(userConfig),
-			ActiveConfigurationPath: activeConfigurationPath,
-			ActiveConfiguration:     string(activeConfiguration),
-		},
-	}
-	if authzTokenPath != "" {
-		c.GcloudConfig.AuthorizationTokenPath = authzTokenPath
-		c.GcloudConfig.AuthorizationToken = string(authzTokenBytes)
 	}
 
 	formatted, err := formatToJSON(c)
@@ -406,30 +316,6 @@ func (p *plugin) getCachedGcloudAccessToken() (string, *metav1.Time, error) {
 		return "", nil, fmt.Errorf("cache is invalid as the k8s starting config changed")
 	}
 
-	activeUserConfigBytes, err := p.readFile(path.Join(c.GcloudConfig.UserConfigDirectory, activeConfig))
-	if err != nil {
-		return "", nil, err
-	}
-	if c.GcloudConfig.ActiveUserConfig != string(activeUserConfigBytes) {
-		return "", nil, fmt.Errorf("cache is invalid because gcloud active user config changed from %s to %s", c.GcloudConfig.ActiveUserConfig, activeUserConfigBytes)
-	}
-	activeConfigurationBytes, err := p.readFile(c.GcloudConfig.ActiveConfigurationPath)
-	if err != nil {
-		return "", nil, fmt.Errorf("cache is invalid as reading active configuration file at %s failed with error %w", c.GcloudConfig.ActiveConfigurationPath, err)
-	}
-	if c.GcloudConfig.ActiveConfiguration != string(activeConfigurationBytes) {
-		return "", nil, fmt.Errorf("cache is invalid as gcloud active config changed from %s to %s", c.GcloudConfig.ActiveConfiguration, activeConfigurationBytes)
-	}
-	if c.GcloudConfig.AuthorizationTokenPath != "" {
-		authTokenBytes, err := p.readFile(c.GcloudConfig.AuthorizationTokenPath)
-		if err != nil {
-			return "", nil, fmt.Errorf("cache is invalid as reading authorization token at %s failed with error %w", c.GcloudConfig.AuthorizationTokenPath, err)
-		}
-		if c.GcloudConfig.AuthorizationToken != string(authTokenBytes) {
-			return "", nil, fmt.Errorf("cache is invalid as gcloud authorization token changed")
-		}
-	}
-
 	return c.AccessToken, &metav1.Time{Time: expiryTimeStamp}, nil
 }
 
@@ -455,10 +341,6 @@ func getCacheFilePath() string {
 	return cacheFilePath
 }
 
-func readGcloudInfoRaw() ([]byte, error) {
-	return executeCommand("gcloud", "info")
-}
-
 func readGcloudConfigRaw() ([]byte, error) {
 	return executeCommand("gcloud", "config", "config-helper", "--format=json")
 }
@@ -471,7 +353,7 @@ func executeCommand(name string, arg ...string) ([]byte, error) {
 	cmd.Stderr = &stderrBuffer
 	err := cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf("while executing gcloud config config-helper: %w", err)
+		return nil, fmt.Errorf("failure while executing %s, with args %v: %w", name, arg, err)
 	}
 	return stdoutBuffer.Bytes(), nil
 }
