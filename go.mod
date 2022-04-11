@@ -36,6 +36,8 @@ require (
 	sigs.k8s.io/controller-tools v0.7.0
 )
 
+require github.com/natefinch/atomic v1.0.1
+
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.16.1-0.20210702024009-ea6160c1d0e3 // indirect
