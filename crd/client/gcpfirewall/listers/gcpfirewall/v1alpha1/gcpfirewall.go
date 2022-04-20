@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,8 +31,9 @@ type GCPFirewallLister interface {
 	// List lists all GCPFirewalls in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.GCPFirewall, err error)
-	// GCPFirewalls returns an object that can list and get GCPFirewalls.
-	GCPFirewalls(namespace string) GCPFirewallNamespaceLister
+	// Get retrieves the GCPFirewall from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	Get(name string) (*v1alpha1.GCPFirewall, error)
 	GCPFirewallListerExpansion
 }
 
@@ -54,41 +55,9 @@ func (s *gCPFirewallLister) List(selector labels.Selector) (ret []*v1alpha1.GCPF
 	return ret, err
 }
 
-// GCPFirewalls returns an object that can list and get GCPFirewalls.
-func (s *gCPFirewallLister) GCPFirewalls(namespace string) GCPFirewallNamespaceLister {
-	return gCPFirewallNamespaceLister{indexer: s.indexer, namespace: namespace}
-}
-
-// GCPFirewallNamespaceLister helps list and get GCPFirewalls.
-// All objects returned here must be treated as read-only.
-type GCPFirewallNamespaceLister interface {
-	// List lists all GCPFirewalls in the indexer for a given namespace.
-	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1alpha1.GCPFirewall, err error)
-	// Get retrieves the GCPFirewall from the indexer for a given namespace and name.
-	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1alpha1.GCPFirewall, error)
-	GCPFirewallNamespaceListerExpansion
-}
-
-// gCPFirewallNamespaceLister implements the GCPFirewallNamespaceLister
-// interface.
-type gCPFirewallNamespaceLister struct {
-	indexer   cache.Indexer
-	namespace string
-}
-
-// List lists all GCPFirewalls in the indexer for a given namespace.
-func (s gCPFirewallNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.GCPFirewall, err error) {
-	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1alpha1.GCPFirewall))
-	})
-	return ret, err
-}
-
-// Get retrieves the GCPFirewall from the indexer for a given namespace and name.
-func (s gCPFirewallNamespaceLister) Get(name string) (*v1alpha1.GCPFirewall, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
+// Get retrieves the GCPFirewall from the index for a given name.
+func (s *gCPFirewallLister) Get(name string) (*v1alpha1.GCPFirewall, error) {
+	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
 	}

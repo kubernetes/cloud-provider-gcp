@@ -16,7 +16,7 @@ spec:
     shortNames:
     - gf
     singular: gcpfirewall
-  scope: Namespaced
+  scope: Cluster
   versions:
   - name: v1alpha1
     schema:
@@ -53,24 +53,54 @@ spec:
                   controller.
                 type: boolean
               ingress:
-                description: A collection of sources from which ingress traffic is
-                  allowed. If this field is missing, no ingress rules are programmed.
-                  if this field is empty, this rule allows all sources.
+                description: A collection of sources and destinations to determine
+                  which ingress traffic is allowed. If source is nil or empty, the
+                  traffic is allowed from all sources (0.0.0.0/0). If destination
+                  is nil or empty, the traffic is allowed to all kubernetes cluster
+                  entities (nodes, pods and services) from the specified sources.
+                  If both are nil, the traffic is allowed from all sources (0.0.00/0)
+                  to the cluster entities.
                 properties:
-                  ipBlocks:
-                    description: IPBlocks specify the set of CIDRs that the rule applies
-                      to. If this field is present and contains at least one item,
-                      this rule allows traffic only if the traffic matches at least
-                      one item in the list. Valid example list items are "192.168.1.1/24"
-                      or "2001:db9::/64".
-                    items:
-                      description: CIDR defines a IP block. TODO(sugangli) Modify
-                        the validation to include IPv6 CIDRs with FW 3.0 support.
-                      pattern: ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(/(3[0-2]|2[0-9]|1[0-9]|[0-9]))?$
-                      type: string
-                    maxItems: 256
-                    minItems: 1
-                    type: array
+                  destination:
+                    description: ' Destination specifies the target of the firewall
+                      rule. If this field is empty, this rule allows traffic from
+                      specified sources to all kubernetes cluster entities.'
+                    properties:
+                      ipBlocks:
+                        description: IPBlocks specify the set of destination CIDRs
+                          that the rule applies to. If this field is present and contains
+                          at least one item, this rule allows traffic only if the
+                          traffic matches at least one item in the list. If this field
+                          is empty, this rule allows all destinations. Valid example
+                          list items are "192.168.1.1/24" or "2001:db9::/64".
+                        items:
+                          description: CIDR defines a IP block. TODO(sugangli) Modify
+                            the validation to include IPv6 CIDRs with FW 3.0 support.
+                          pattern: ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(/(3[0-2]|2[0-9]|1[0-9]|[0-9]))?$
+                          type: string
+                        maxItems: 256
+                        minItems: 1
+                        type: array
+                    type: object
+                  source:
+                    description: Source describes a peer to allow traffic from.
+                    properties:
+                      ipBlocks:
+                        description: IPBlocks specify the set of source CIDR ranges
+                          that the rule applies to. If this field is present and contains
+                          at least one item, this rule allows traffic only if the
+                          traffic matches at least one item in the list. If this field
+                          is empty, this rule allows all sources. Valid example list
+                          items are "192.168.1.1/24" or "2001:db9::/64".
+                        items:
+                          description: CIDR defines a IP block. TODO(sugangli) Modify
+                            the validation to include IPv6 CIDRs with FW 3.0 support.
+                          pattern: ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(/(3[0-2]|2[0-9]|1[0-9]|[0-9]))?$
+                          type: string
+                        maxItems: 256
+                        minItems: 1
+                        type: array
+                    type: object
                 type: object
               ports:
                 description: List of protocol/ ports which needs to be selected by
