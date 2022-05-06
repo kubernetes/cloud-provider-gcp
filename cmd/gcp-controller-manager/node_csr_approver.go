@@ -398,6 +398,14 @@ func validateNodeServerCert(ctx *controllerContext, csr *capi.CertificateSigning
 						continue scanIPs
 					}
 				}
+				if ip.String() == iface.Ipv6Address {
+					continue scanIPs
+				}
+				for _, ac := range iface.Ipv6AccessConfigs {
+					if ip.String() == ac.ExternalIpv6 {
+						continue scanIPs
+					}
+				}
 			}
 			klog.Infof("deny CSR %q: IP addresses in CSR (%q) don't match NetworkInterfaces on instance %q (%+v)", csr.Name, x509cr.IPAddresses, instanceName, inst.NetworkInterfaces)
 			return false, nil
