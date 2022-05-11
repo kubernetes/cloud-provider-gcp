@@ -26,8 +26,9 @@ type Protocol string
 type CIDR string
 
 // +genclient
+// +genclient:nonNamespaced
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:shortName=gf
+// +kubebuilder:resource:shortName=gf,scope=Cluster
 
 // GCPFirewall describes a GCP firewall spec that can be used to configure GCE
 // firewalls. A GCPFirewallSpec will correspond 1:1 with a GCE firewall rule.
@@ -82,20 +83,47 @@ type GCPFirewallSpec struct {
 	// +optional
 	Ports []ProtocolPort `json:"ports,omitempty"`
 
-	// A collection of sources from which ingress traffic is allowed. If this
-	// field is missing, no ingress rules are programmed. if this field is empty,
-	// this rule allows all sources.
+	// A collection of sources and destinations to determine which ingress traffic is allowed.
+	// If source is nil or empty, the traffic is allowed from all sources (0.0.0.0/0).
+	// If destination is nil or empty, the traffic is allowed to all kubernetes cluster entities
+	// (nodes, pods and services) from the specified sources.
+	// If both are nil, the traffic is allowed from all sources (0.0.00/0) to the cluster entities.
 	// +optional
-	Ingress *GCPFirewallIngressPeer `json:"ingress,omitempty"`
+	Ingress *GCPFirewallIngress `json:"ingress,omitempty"`
 }
 
-// GCPFirewallIngressPeer describes a peer to allow traffic from. Items in the
-// sub-fields are combined using a logical OR operation. If all the sub-fields
-// are missing, then traffic is allowed from all sources.
-type GCPFirewallIngressPeer struct {
-	// IPBlocks specify the set of CIDRs that the rule applies to. If this field
+// GCPFirewallIngress describes a source and a destination for the ingress firewall rule.
+type GCPFirewallIngress struct {
+	// Source describes a peer to allow traffic from.
+	// +optional
+	Source *IngressSource `json:"source,omitempty"`
+	//  Destination specifies the target of the firewall rule. If this field is empty,
+	// this rule allows traffic from specified sources to all kubernetes cluster entities.
+	// +optional
+	Destination *IngressDestination `json:"destination,omitempty"`
+}
+
+// IngressSource specifies the source of the firewall rules.
+type IngressSource struct {
+	// IPBlocks specify the set of source CIDR ranges that the rule applies to. If this field
 	// is present and contains at least one item, this rule allows traffic only if
-	// the traffic matches at least one item in the list.
+	// the traffic matches at least one item in the list. If this field is empty,
+	// this rule allows all sources.
+	// Valid example list items are "192.168.1.1/24" or "2001:db9::/64".
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=256
+	IPBlocks []CIDR `json:"ipBlocks,omitempty"`
+}
+
+// IngressDestination specifies the target of the firewall rules. The destination entities specified
+// are ANDed with GCE node network tags of the kubernetes cluster. In other words, the traffic
+// is allowed to a destination IP address only if it belongs to one of the cluster nodes.
+type IngressDestination struct {
+	// IPBlocks specify the set of destination CIDRs that the rule applies to. If this field
+	// is present and contains at least one item, this rule allows traffic only if
+	// the traffic matches at least one item in the list. If this field is empty,
+	// this rule allows all destinations.
 	// Valid example list items are "192.168.1.1/24" or "2001:db9::/64".
 	// +optional
 	// +kubebuilder:validation:MinItems=1

@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,3 @@ package v1alpha1
 // GCPFirewallListerExpansion allows custom methods to be added to
 // GCPFirewallLister.
 type GCPFirewallListerExpansion interface{}
-
-// GCPFirewallNamespaceListerExpansion allows custom methods to be added to
-// GCPFirewallNamespaceLister.
-type GCPFirewallNamespaceListerExpansion interface{}

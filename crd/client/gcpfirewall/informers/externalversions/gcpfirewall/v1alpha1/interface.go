@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,5 +41,5 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 
 // GCPFirewalls returns a GCPFirewallInformer.
 func (v *version) GCPFirewalls() GCPFirewallInformer {
-	return &gCPFirewallInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+	return &gCPFirewallInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

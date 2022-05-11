@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ import (
 // GCPFirewallsGetter has a method to return a GCPFirewallInterface.
 // A group's client should implement this interface.
 type GCPFirewallsGetter interface {
-	GCPFirewalls(namespace string) GCPFirewallInterface
+	GCPFirewalls() GCPFirewallInterface
 }
 
 // GCPFirewallInterface has methods to work with GCPFirewall resources.
@@ -53,14 +53,12 @@ type GCPFirewallInterface interface {
 // gCPFirewalls implements GCPFirewallInterface
 type gCPFirewalls struct {
 	client rest.Interface
-	ns     string
 }
 
 // newGCPFirewalls returns a GCPFirewalls
-func newGCPFirewalls(c *NetworkingV1alpha1Client, namespace string) *gCPFirewalls {
+func newGCPFirewalls(c *NetworkingV1alpha1Client) *gCPFirewalls {
 	return &gCPFirewalls{
 		client: c.RESTClient(),
-		ns:     namespace,
 	}
 }
 
@@ -68,7 +66,6 @@ func newGCPFirewalls(c *NetworkingV1alpha1Client, namespace string) *gCPFirewall
 func (c *gCPFirewalls) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.GCPFirewall, err error) {
 	result = &v1alpha1.GCPFirewall{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("gcpfirewalls").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
@@ -85,7 +82,6 @@ func (c *gCPFirewalls) List(ctx context.Context, opts v1.ListOptions) (result *v
 	}
 	result = &v1alpha1.GCPFirewallList{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("gcpfirewalls").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -102,7 +98,6 @@ func (c *gCPFirewalls) Watch(ctx context.Context, opts v1.ListOptions) (watch.In
 	}
 	opts.Watch = true
 	return c.client.Get().
-		Namespace(c.ns).
 		Resource("gcpfirewalls").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -113,7 +108,6 @@ func (c *gCPFirewalls) Watch(ctx context.Context, opts v1.ListOptions) (watch.In
 func (c *gCPFirewalls) Create(ctx context.Context, gCPFirewall *v1alpha1.GCPFirewall, opts v1.CreateOptions) (result *v1alpha1.GCPFirewall, err error) {
 	result = &v1alpha1.GCPFirewall{}
 	err = c.client.Post().
-		Namespace(c.ns).
 		Resource("gcpfirewalls").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(gCPFirewall).
@@ -126,7 +120,6 @@ func (c *gCPFirewalls) Create(ctx context.Context, gCPFirewall *v1alpha1.GCPFire
 func (c *gCPFirewalls) Update(ctx context.Context, gCPFirewall *v1alpha1.GCPFirewall, opts v1.UpdateOptions) (result *v1alpha1.GCPFirewall, err error) {
 	result = &v1alpha1.GCPFirewall{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("gcpfirewalls").
 		Name(gCPFirewall.Name).
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -141,7 +134,6 @@ func (c *gCPFirewalls) Update(ctx context.Context, gCPFirewall *v1alpha1.GCPFire
 func (c *gCPFirewalls) UpdateStatus(ctx context.Context, gCPFirewall *v1alpha1.GCPFirewall, opts v1.UpdateOptions) (result *v1alpha1.GCPFirewall, err error) {
 	result = &v1alpha1.GCPFirewall{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("gcpfirewalls").
 		Name(gCPFirewall.Name).
 		SubResource("status").
@@ -155,7 +147,6 @@ func (c *gCPFirewalls) UpdateStatus(ctx context.Context, gCPFirewall *v1alpha1.G
 // Delete takes name of the gCPFirewall and deletes it. Returns an error if one occurs.
 func (c *gCPFirewalls) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("gcpfirewalls").
 		Name(name).
 		Body(&opts).
@@ -170,7 +161,6 @@ func (c *gCPFirewalls) DeleteCollection(ctx context.Context, opts v1.DeleteOptio
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("gcpfirewalls").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -183,7 +173,6 @@ func (c *gCPFirewalls) DeleteCollection(ctx context.Context, opts v1.DeleteOptio
 func (c *gCPFirewalls) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.GCPFirewall, err error) {
 	result = &v1alpha1.GCPFirewall{}
 	err = c.client.Patch(pt).
-		Namespace(c.ns).
 		Resource("gcpfirewalls").
 		Name(name).
 		SubResource(subresources...).

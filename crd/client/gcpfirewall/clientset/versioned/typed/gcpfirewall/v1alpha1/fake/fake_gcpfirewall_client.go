@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,8 +28,8 @@ type FakeNetworkingV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeNetworkingV1alpha1) GCPFirewalls(namespace string) v1alpha1.GCPFirewallInterface {
-	return &FakeGCPFirewalls{c, namespace}
+func (c *FakeNetworkingV1alpha1) GCPFirewalls() v1alpha1.GCPFirewallInterface {
+	return &FakeGCPFirewalls{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
