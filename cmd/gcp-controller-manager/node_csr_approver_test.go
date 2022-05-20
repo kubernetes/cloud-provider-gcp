@@ -402,7 +402,7 @@ func TestValidators(t *testing.T) {
 			c.gcpCfg.ProjectID = "p0"
 			c.gcpCfg.Zones = []string{"z1", "z0"}
 			b.requestor = "system:node:ds0"
-			b.ips = []net.IP{net.ParseIP("1.2.3.4"), net.ParseIP("fd20:9b0:892f:800:0:5::")}
+			b.ips = []net.IP{net.ParseIP("1.2.3.4"), net.ParseIP("fd20:fbc:b0e2::b:0:0")}
 			b.dns = []string{"ds0.z0.c.p0.internal", "ds0.c.p0.internal", "ds0"}
 		}
 		dualStackExtCase := func(b *csrBuilder, c *controllerContext) {
@@ -965,7 +965,7 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 				Id:                1,
 				Name:              "ds0",
 				Zone:              "z0",
-				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4", Ipv6Address: "fd20:9b0:892f:800:0:5::"}},
+				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4", Ipv6Address: "fd20:fbc:b0e2:0:0:b:0:0"}},
 			})
 		case "/compute/v1/projects/p0/zones/z0/instances/ds1":
 			json.NewEncoder(rw).Encode(compute.Instance{
