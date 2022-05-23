@@ -6,6 +6,7 @@ go_library(
         "errorcode.go",
         "errorcode_string.go",
         "types.go",
+        "types_118.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/internal/typesinternal",
     importpath = "golang.org/x/tools/internal/typesinternal",

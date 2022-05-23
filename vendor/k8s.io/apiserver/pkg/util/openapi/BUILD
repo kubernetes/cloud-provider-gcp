@@ -10,7 +10,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/util/openapi",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/googleapis/gnostic/openapiv2:go_default_library",
+        "//vendor/github.com/google/gnostic/openapiv2:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/features:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
         "//vendor/k8s.io/kube-openapi/pkg/common:go_default_library",

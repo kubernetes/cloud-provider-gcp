@@ -4,6 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "config.go",
+        "kube_features.go",
         "logs.go",
         "options.go",
         "validate.go",
@@ -15,12 +16,11 @@ go_library(
         "//vendor/github.com/spf13/pflag:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
         "//vendor/k8s.io/component-base/cli/flag:go_default_library",
         "//vendor/k8s.io/component-base/config:go_default_library",
         "//vendor/k8s.io/component-base/config/v1alpha1:go_default_library",
+        "//vendor/k8s.io/component-base/featuregate:go_default_library",
         "//vendor/k8s.io/component-base/logs/registry:go_default_library",
-        "//vendor/k8s.io/component-base/logs/sanitization:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
     ],
 )

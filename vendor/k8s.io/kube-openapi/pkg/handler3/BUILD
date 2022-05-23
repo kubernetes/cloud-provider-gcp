@@ -8,9 +8,10 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/golang/protobuf/proto:go_default_library",
-        "//vendor/github.com/googleapis/gnostic/openapiv3:go_default_library",
+        "//vendor/github.com/google/gnostic/openapiv3:go_default_library",
         "//vendor/github.com/munnerz/goautoneg:go_default_library",
         "//vendor/k8s.io/kube-openapi/pkg/common:go_default_library",
+        "//vendor/k8s.io/kube-openapi/pkg/internal/handler:go_default_library",
         "//vendor/k8s.io/kube-openapi/pkg/spec3:go_default_library",
         "//vendor/k8s.io/kube-openapi/pkg/validation/spec:go_default_library",
     ],

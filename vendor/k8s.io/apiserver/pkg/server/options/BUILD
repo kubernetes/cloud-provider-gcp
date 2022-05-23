@@ -55,8 +55,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver/v1alpha1:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/apis/audit:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/apis/audit/v1:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/apis/audit/v1alpha1:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/apis/audit/v1beta1:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/audit:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/audit/policy:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authentication/authenticatorfactory:go_default_library",
