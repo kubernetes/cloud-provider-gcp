@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"sort"
 
 	"k8s.io/client-go/informers"
@@ -34,7 +35,7 @@ type controllerContext struct {
 	csrApproverVerifyClusterMembership bool
 	csrApproverAllowLegacyKubelet      bool
 	verifiedSAs                        *saMap
-	done                               <-chan struct{}
+	context                            context.Context
 	hmsAuthorizeSAMappingURL           string
 	hmsSyncNodeURL                     string
 	delayDirectPathGSARemove           bool
@@ -53,7 +54,7 @@ func loops() map[string]func(*controllerContext) error {
 				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
 				approver.handle,
 			)
-			go approveController.Run(20, ctx.done)
+			go approveController.Run(ctx.context, 20)
 			return nil
 		},
 		"istiod-certificate-approver": func(ctx *controllerContext) error {
@@ -64,7 +65,7 @@ func loops() map[string]func(*controllerContext) error {
 				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
 				approver.handle,
 			)
-			go approveController.Run(20, ctx.done)
+			go approveController.Run(ctx.context, 20)
 			return nil
 		},
 		"oidc-certificate-approver": func(ctx *controllerContext) error {
@@ -75,7 +76,7 @@ func loops() map[string]func(*controllerContext) error {
 				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
 				approver.handle,
 			)
-			go approveController.Run(20, ctx.done)
+			go approveController.Run(ctx.context, 20)
 			return nil
 		},
 		"certificate-signer": func(ctx *controllerContext) error {
@@ -90,7 +91,7 @@ func loops() map[string]func(*controllerContext) error {
 				signer.handle,
 			)
 
-			go signController.Run(20, ctx.done)
+			go signController.Run(ctx.context, 20)
 			return nil
 		},
 		"node-annotator": func(ctx *controllerContext) error {
@@ -102,7 +103,7 @@ func loops() map[string]func(*controllerContext) error {
 			if err != nil {
 				return err
 			}
-			go nodeAnnotateController.Run(5, ctx.done)
+			go nodeAnnotateController.Run(5, ctx.context.Done())
 			return nil
 		},
 	}
@@ -119,7 +120,7 @@ func loops() map[string]func(*controllerContext) error {
 			if err != nil {
 				return err
 			}
-			go serviceAccountVerifier.Run(3, ctx.done)
+			go serviceAccountVerifier.Run(3, ctx.context.Done())
 			return nil
 		}
 		ll[nodeSyncerControlLoopName] = func(ctx *controllerContext) error {
@@ -133,7 +134,7 @@ func loops() map[string]func(*controllerContext) error {
 			if err != nil {
 				return err
 			}
-			go nodeSyncer.Run(10, ctx.done)
+			go nodeSyncer.Run(10, ctx.context.Done())
 			return nil
 		}
 	}

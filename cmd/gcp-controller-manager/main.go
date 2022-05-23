@@ -227,7 +227,7 @@ func run(s *controllerManager) error {
 				csrApproverVerifyClusterMembership: s.csrApproverVerifyClusterMembership,
 				csrApproverAllowLegacyKubelet:      s.csrApproverAllowLegacyKubelet,
 				verifiedSAs:                        verifiedSAs,
-				done:                               ctx.Done(),
+				context:                            ctx,
 				hmsAuthorizeSAMappingURL:           s.hmsAuthorizeSAMappingURL,
 				hmsSyncNodeURL:                     s.hmsSyncNodeURL,
 				delayDirectPathGSARemove:           s.delayDirectPathGSARemove,
