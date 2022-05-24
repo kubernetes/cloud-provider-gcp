@@ -457,8 +457,6 @@ NETWORK_PROVIDER=${NETWORK_PROVIDER:-kubenet} # none, kubenet
 # Network Policy plugin specific settings.
 NETWORK_POLICY_PROVIDER=${NETWORK_POLICY_PROVIDER:-none} # calico
 
-export NON_MASQUERADE_CIDR='0.0.0.0/0'
-
 # How should the kubelet configure hairpin mode?
 HAIRPIN_MODE=${HAIRPIN_MODE:-hairpin-veth} # promiscuous-bridge, hairpin-veth, none
 
