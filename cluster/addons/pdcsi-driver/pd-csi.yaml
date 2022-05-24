@@ -24,7 +24,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
-        image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0
+        image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
         name: csi-driver-registrar
         volumeMounts:
         - mountPath: /csi
@@ -35,7 +35,7 @@ spec:
         - --v=5
         - --endpoint=unix:/csi/csi.sock
         - --run-controller-service=false
-        image: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver:v1.3.1
+        image: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver:v1.4.0
         name: gce-pd-driver
         securityContext:
           privileged: true
@@ -122,7 +122,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
-        image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0
+        image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
         name: csi-driver-registrar
         volumeMounts:
         - mountPath: /csi
@@ -133,7 +133,7 @@ spec:
         - --v=5
         - --endpoint=unix:/csi/csi.sock
         - --run-controller-service=false
-        image: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver:v1.3.1
+        image: k8s.gcr.io/cloud-provider-gcp/gcp-compute-persistent-disk-csi-driver:v1.4.0
         name: gce-pd-driver
         volumeMounts:
         - mountPath: C:\var\lib\kubelet
