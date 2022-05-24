@@ -24,6 +24,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"path"
 	"reflect"
@@ -387,33 +388,42 @@ func validateNodeServerCert(ctx *controllerContext, csr *capi.CertificateSigning
 				return false, nil
 			}
 		}
+		instIps := getInstanceIps(inst.NetworkInterfaces)
 	scanIPs:
 		for _, ip := range x509cr.IPAddresses {
-			for _, iface := range inst.NetworkInterfaces {
-				if ip.String() == iface.NetworkIP {
+			for _, instIP := range instIps {
+				if ip.Equal(net.ParseIP(instIP)) {
 					continue scanIPs
-				}
-				for _, ac := range iface.AccessConfigs {
-					if ip.String() == ac.NatIP {
-						continue scanIPs
-					}
-				}
-				if ip.String() == iface.Ipv6Address {
-					continue scanIPs
-				}
-				for _, ac := range iface.Ipv6AccessConfigs {
-					if ip.String() == ac.ExternalIpv6 {
-						continue scanIPs
-					}
 				}
 			}
-			klog.Infof("deny CSR %q: IP addresses in CSR (%q) don't match NetworkInterfaces on instance %q (%+v)", csr.Name, x509cr.IPAddresses, instanceName, inst.NetworkInterfaces)
+			klog.Infof("deny CSR %q: IP addresses in CSR (%q) don't match NetworkInterfaces on instance %q (%+v)", csr.Name, x509cr.IPAddresses, instanceName, instIps)
 			return false, nil
 		}
 		return true, nil
 	}
 	klog.Infof("deny CSR %q: instance name %q doesn't match any VM in cluster project/zone", csr.Name, instanceName)
 	return false, nil
+}
+
+func getInstanceIps(ifaces []*compute.NetworkInterface) []string {
+	var ips []string
+	for _, iface := range ifaces {
+		ips = append(ips, iface.NetworkIP)
+		if iface.Ipv6Address != "" {
+			ips = append(ips, iface.Ipv6Address)
+		}
+		for _, ac := range iface.AccessConfigs {
+			if ac.NatIP != "" {
+				ips = append(ips, ac.NatIP)
+			}
+		}
+		for _, ac := range iface.Ipv6AccessConfigs {
+			if ac.ExternalIpv6 != "" {
+				ips = append(ips, ac.ExternalIpv6)
+			}
+		}
+	}
+	return ips
 }
 
 var tpmAttestationBlocks = []string{
