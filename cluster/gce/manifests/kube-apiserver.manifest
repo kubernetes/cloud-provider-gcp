@@ -59,7 +59,6 @@
       "timeoutSeconds": 15
     },
     "ports":[
-      {{insecure_port_mapping}}
       { "name": "https",
       "containerPort": {{secure_port}},
       "hostPort": {{secure_port}}}

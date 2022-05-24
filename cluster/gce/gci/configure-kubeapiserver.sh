@@ -59,7 +59,6 @@ function configure-etcd-params {
 #   CLOUD_CONFIG_VOLUME
 #   CLOUD_CONFIG_MOUNT
 #   DOCKER_REGISTRY
-#   INSECURE_PORT_MAPPING
 function start-kube-apiserver {
   echo "Start kubernetes api-server"
   prepare-log-file "${KUBE_API_SERVER_LOG_PATH:-/var/log/kube-apiserver.log}" "${KUBE_API_SERVER_RUNASUSER:-0}"
@@ -67,7 +66,6 @@ function start-kube-apiserver {
 
   # Calculate variables and assemble the command line.
   local params="${API_SERVER_TEST_LOG_LEVEL:-"--v=2"} ${APISERVER_TEST_ARGS:-} ${CLOUD_CONFIG_OPT}"
-  params+=" --address=127.0.0.1"
   params+=" --allow-privileged=true"
   params+=" --cloud-provider=external"
   params+=" --client-ca-file=${CA_CERT_BUNDLE_PATH}"
@@ -76,10 +74,6 @@ function start-kube-apiserver {
   configure-etcd-params params
 
   params+=" --secure-port=443"
-  if [[ "${ENABLE_APISERVER_INSECURE_PORT:-false}" != "true" ]]; then
-    # Default is :8080
-    params+=" --insecure-port=0"
-  fi
   params+=" --tls-cert-file=${APISERVER_SERVER_CERT_PATH}"
   params+=" --tls-private-key-file=${APISERVER_SERVER_KEY_PATH}"
   if [[ -n "${OLD_MASTER_IP:-}" ]]; then
@@ -137,10 +131,6 @@ function start-kube-apiserver {
       params=$(append-param-if-not-present "${params}" "max-requests-inflight" 1500)
       params=$(append-param-if-not-present "${params}" "max-mutating-requests-inflight" 500)
     fi
-    # Set amount of memory available for apiserver based on number of nodes.
-    # TODO: Once we start setting proper requests and limits for apiserver
-    # we should reuse the same logic here instead of current heuristic.
-    params=$(append-param-if-not-present "${params}" "target-ram-mb" $((NUM_NODES * 60)))
   fi
   if [[ -n "${SERVICE_CLUSTER_IP_RANGE:-}" ]]; then
     params+=" --service-cluster-ip-range=${SERVICE_CLUSTER_IP_RANGE}"
@@ -388,7 +378,6 @@ function start-kube-apiserver {
   sed -i -e "s@{{pillar\['allow_privileged'\]}}@true@g" "${src_file}"
   sed -i -e "s@{{liveness_probe_initial_delay}}@${KUBE_APISERVER_LIVENESS_PROBE_INITIAL_DELAY_SEC:-15}@g" "${src_file}"
   sed -i -e "s@{{secure_port}}@443@g" "${src_file}"
-  sed -i -e "s@{{insecure_port_mapping}}@${INSECURE_PORT_MAPPING}@g" "${src_file}"
   sed -i -e "s@{{additional_cloud_config_mount}}@@g" "${src_file}"
   sed -i -e "s@{{additional_cloud_config_volume}}@@g" "${src_file}"
   sed -i -e "s@{{webhook_authn_config_mount}}@${webhook_authn_config_mount}@g" "${src_file}"
