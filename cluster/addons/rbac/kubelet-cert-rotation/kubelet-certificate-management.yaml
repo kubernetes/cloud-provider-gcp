@@ -38,6 +38,7 @@ rules:
 - apiGroups:
   - "certificates.k8s.io"
   resources:
+  - certificatesigningrequests
   - certificatesigningrequests/nodeclient
   verbs:
   - "create"
