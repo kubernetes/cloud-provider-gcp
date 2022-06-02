@@ -145,7 +145,9 @@ func (p *plugin) execCredential() (*clientauthv1b1.ExecCredential, error) {
 	}, nil
 }
 
-// accessToken return either a valid access token from token provider
+// accessToken returns a cached token if a valid token exists. If no valid token exists,
+// it gets a new access token by invoking the token provider, and follows the providers
+// policy on caching the new token.
 func (p *plugin) accessToken() (string, *metav1.Time, error) {
 	useCache := p.tokenProvider.useCache()
 
