@@ -9,7 +9,7 @@ load("//defs:version.bzl", "version_x_defs")
 
 go_library(
     name = "go_default_library",
-    srcs = ["cred.go"],
+    srcs = ["cred.go", "*_provider.go"],
     importpath = "k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin/cred",
     deps = [
         "//vendor/github.com/natefinch/atomic:go_default_library",
