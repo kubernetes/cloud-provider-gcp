@@ -43,7 +43,7 @@ func (p *gcloudTokenProvider) readGcloudConfig() (*gcloudConfiguration, error) {
 	return &gc, nil
 }
 
-func (p *gcloudTokenProvider) getToken() (string, *time.Time, error) {
+func (p *gcloudTokenProvider) token() (string, *time.Time, error) {
 	gc, err := p.readGcloudConfig()
 	if err != nil {
 		return "", nil, err

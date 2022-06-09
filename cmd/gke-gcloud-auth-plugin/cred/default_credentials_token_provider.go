@@ -26,7 +26,7 @@ type defaultCredentialsTokenProvider struct {
 	googleDefaultTokenSource func(ctx context.Context, scope ...string) (oauth2.TokenSource, error)
 }
 
-func (p *defaultCredentialsTokenProvider) getToken() (string, *time.Time, error) {
+func (p *defaultCredentialsTokenProvider) token() (string, *time.Time, error) {
 	var tok *oauth2.Token
 
 	// Retries (max 4 retries with approx delay 10*ms+jitter setup) help get around occasional network glitches

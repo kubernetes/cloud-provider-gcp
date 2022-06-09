@@ -161,7 +161,7 @@ func (p *plugin) accessToken() (string, *metav1.Time, error) {
 		}
 	}
 
-	token, expiry, err := p.tokenProvider.getToken()
+	token, expiry, err := p.tokenProvider.token()
 	if err != nil {
 		return "", nil, fmt.Errorf("Failed to retrieve access token:: %w", err)
 	}
