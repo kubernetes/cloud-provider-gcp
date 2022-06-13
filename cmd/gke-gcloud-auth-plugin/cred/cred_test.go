@@ -103,7 +103,7 @@ func TestExecCredential(t *testing.T) {
 				readFile:          fakeReadFile,
 				timeNow:           fakeTimeNow,
 				writeCacheFile:    nil, // this code should be unreachable when ADC is set to true
-				tokenProvider:     &defaultCredentialsTokenProvider{
+				tokenProvider: &defaultCredentialsTokenProvider{
 					googleDefaultTokenSource: fakeDefaultTokenSource,
 				},
 			},
@@ -116,7 +116,7 @@ func TestExecCredential(t *testing.T) {
 				getCacheFilePath:  fakeGetCacheFilePath,
 				readFile:          fakeReadFile,
 				timeNow:           fakeTimeNow,
-				tokenProvider:     &gcloudTokenProvider{
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: fakeGcloudConfigOutput,
 					readFile:            fakeReadFile,
 				},
@@ -130,10 +130,10 @@ func TestExecCredential(t *testing.T) {
 				k8sStartingConfig: func() (*clientcmdapi.Config, error) {
 					return nil, fmt.Errorf("error reading starting config")
 				},
-				getCacheFilePath:  fakeGetCacheFilePath,
-				readFile:          fakeReadFile,
-				timeNow:           fakeTimeNow,
-				tokenProvider:     &gcloudTokenProvider{
+				getCacheFilePath: fakeGetCacheFilePath,
+				readFile:         fakeReadFile,
+				timeNow:          fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: fakeGcloudConfigOutput,
 					readFile:            fakeReadFile,
 				},
@@ -153,8 +153,8 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:           fakeTimeNow,
-				tokenProvider:      &gcloudTokenProvider{
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: nil, // Code should be unreachable in this test
 					readFile:            nil, // Code should be unreachable in this test
 				},
@@ -174,8 +174,8 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:           fakeTimeNow,
-				tokenProvider:     &gcloudTokenProvider{
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: fakeGcloudConfigOutput,
 					readFile:            fakeReadFile,
 				},
@@ -196,8 +196,8 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:           fakeTimeNow,
-				tokenProvider:     &gcloudTokenProvider{
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: fakeGcloudConfigOutput,
 					readFile:            fakeReadFile,
 				},
@@ -218,8 +218,8 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:           fakeTimeNow,
-				tokenProvider:     &gcloudTokenProvider{
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: fakeGcloudConfigOutput,
 					readFile:            fakeReadFile,
 				},
@@ -240,8 +240,8 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:           fakeTimeNow,
-				tokenProvider:     &gcloudTokenProvider{
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: fakeGcloudConfigOutput,
 					readFile:            fakeReadFile,
 				},
@@ -262,8 +262,8 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:           fakeTimeNow,
-				tokenProvider:     &gcloudTokenProvider{
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: fakeGcloudConfigOutput,
 					readFile:            fakeReadFile,
 				},
@@ -279,7 +279,7 @@ func TestExecCredential(t *testing.T) {
 				readFile:          fakeReadFile,
 				timeNow:           fakeTimeNow,
 				writeCacheFile:    func(content string) error { return fmt.Errorf("error writing cache file") },
-				tokenProvider:     &gcloudTokenProvider{
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: fakeGcloudConfigOutput,
 					readFile:            fakeReadFile,
 				},
@@ -294,7 +294,7 @@ func TestExecCredential(t *testing.T) {
 				getCacheFilePath:  fakeGetCacheFilePath,
 				readFile:          fakeReadFile,
 				timeNow:           fakeTimeNow,
-				tokenProvider:     &gcloudTokenProvider{
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: fakeGcloudConfigWithAuthzTokenOutput,
 					readFile: func(filename string) ([]byte, error) {
 						switch filename {
@@ -328,8 +328,8 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:           fakeTimeNow,
-				tokenProvider:     &gcloudTokenProvider{
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: fakeGcloudConfigWithAuthzTokenOutput,
 					readFile: func(filename string) ([]byte, error) {
 						switch filename {
@@ -357,8 +357,8 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:           fakeTimeNow,
-				tokenProvider:     &gcloudTokenProvider{
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: fakeGcloudConfigWithAuthzTokenOutput,
 					readFile: func(filename string) ([]byte, error) {
 						switch filename {

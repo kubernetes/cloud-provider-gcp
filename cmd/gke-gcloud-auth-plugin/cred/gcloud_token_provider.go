@@ -71,7 +71,7 @@ func (p *gcloudTokenProvider) token() (string, *time.Time, error) {
 	return token, &gc.Credential.TokenExpiry, nil
 }
 
-func (p *gcloudTokenProvider) useCache() bool  { return true }
+func (p *gcloudTokenProvider) useCache() bool { return true }
 
 func readGcloudConfigRaw() ([]byte, error) {
 	return executeCommand("gcloud", "config", "config-helper", "--format=json")

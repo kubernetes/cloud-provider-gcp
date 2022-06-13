@@ -50,4 +50,4 @@ func (p *defaultCredentialsTokenProvider) token() (string, *time.Time, error) {
 	return tok.AccessToken, &tok.Expiry, nil
 }
 
-func (p *defaultCredentialsTokenProvider) useCache() bool  { return false }
+func (p *defaultCredentialsTokenProvider) useCache() bool { return false }

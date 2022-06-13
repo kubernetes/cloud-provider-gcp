@@ -97,11 +97,11 @@ type Options struct {
 func PrintCred(options *Options) error {
 	var tokenProvider tokenProvider = nil
 	if options.UseApplicationDefaultCredentials {
-		tokenProvider = &defaultCredentialsTokenProvider {
+		tokenProvider = &defaultCredentialsTokenProvider{
 			googleDefaultTokenSource: google.DefaultTokenSource,
 		}
 	} else {
-		tokenProvider = &gcloudTokenProvider {
+		tokenProvider = &gcloudTokenProvider{
 			readGcloudConfigRaw: readGcloudConfigRaw,
 			readFile:            readFile,
 		}
