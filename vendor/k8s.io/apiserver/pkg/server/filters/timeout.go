@@ -93,6 +93,10 @@ func (t *timeoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resultCh := make(chan interface{})
 	var tw timeoutWriter
 	tw, w = newTimeoutWriter(w)
+
+	// Make a copy of request and work on it in new goroutine
+	// to avoid race condition when accessing/modifying request (e.g. headers)
+	rCopy := r.Clone(r.Context())
 	go func() {
 		defer func() {
 			err := recover()
@@ -107,7 +111,7 @@ func (t *timeoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			resultCh <- err
 		}()
-		t.handler.ServeHTTP(w, r)
+		t.handler.ServeHTTP(w, rCopy)
 	}()
 	select {
 	case err := <-resultCh:
@@ -149,7 +153,7 @@ type timeoutWriter interface {
 }
 
 func newTimeoutWriter(w http.ResponseWriter) (timeoutWriter, http.ResponseWriter) {
-	base := &baseTimeoutWriter{w: w}
+	base := &baseTimeoutWriter{w: w, handlerHeaders: w.Header().Clone()}
 	wrapped := responsewriter.WrapForHTTP1Or2(base)
 
 	return base, wrapped
