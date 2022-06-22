@@ -133,7 +133,7 @@ func loops() map[string]func(*controllerContext) error {
 			if err != nil {
 				return err
 			}
-			go nodeSyncer.Run(10, ctx.done)
+			go nodeSyncer.Run(30, ctx.done)
 			return nil
 		}
 	}

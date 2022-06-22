@@ -43,6 +43,8 @@ func newHMSClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*h
 		Host:         url,
 		AuthProvider: authProvider,
 		Timeout:      hmsRequestTimeout,
+		QPS:          50,
+		Burst:        100,
 		ContentConfig: rest.ContentConfig{
 			NegotiatedSerializer: serializer.NegotiatedSerializerWrapper(runtime.SerializerInfo{}),
 		},
