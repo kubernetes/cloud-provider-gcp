@@ -97,7 +97,7 @@ function detect_client_info() {
   if [ -n "${KUBERNETES_CLIENT_ARCH-}" ]; then
     CLIENT_ARCH="${KUBERNETES_CLIENT_ARCH}"
   else
-    # TODO: migrate the kube::util::host_platform function out of hack/lib and
+    # TODO: migrate the kube::util::host_platform function out of cluster and
     # use it here.
     local machine
     machine="$(uname -m)"
