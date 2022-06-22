@@ -27,7 +27,8 @@ export REGION=${ZONE%-*}
 RELEASE_REGION_FALLBACK=${RELEASE_REGION_FALLBACK:-false}
 REGIONAL_KUBE_ADDONS=${REGIONAL_KUBE_ADDONS:-true}
 # TODO: Migrate to e2-standard machine family.
-NODE_SIZE=${NODE_SIZE:-n1-standard-2}
+# TODO: Needs to be reverted when kubetest2 support node size override.
+NODE_SIZE=${NODE_SIZE:-n1-standard-4}
 NUM_NODES=${NUM_NODES:-3}
 NUM_WINDOWS_NODES=${NUM_WINDOWS_NODES:-0}
 # TODO: Migrate to e2-standard machine family.
@@ -212,7 +213,7 @@ HEAPSTER_MACHINE_TYPE=${HEAPSTER_MACHINE_TYPE:-}
 NUM_ADDITIONAL_NODES=${NUM_ADDITIONAL_NODES:-}
 ADDITIONAL_MACHINE_TYPE=${ADDITIONAL_MACHINE_TYPE:-}
 
-# Set etcd image (e.g. k8s.gcr.io/etcd) and version (e.g. v3.5.0-0) if you need
+# Set etcd image (e.g. k8s.gcr.io/etcd) and version (e.g. v3.5.1-0) if you need
 # non-default version.
 export ETCD_IMAGE=${TEST_ETCD_IMAGE:-}
 export ETCD_DOCKER_REPOSITORY=${TEST_ETCD_DOCKER_REPOSITORY:-}

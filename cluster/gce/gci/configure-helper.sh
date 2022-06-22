@@ -986,7 +986,7 @@ egressSelections:
     transport:
       uds:
         udsName: /etc/srv/kubernetes/konnectivity-server/konnectivity-server.socket
-- name: master
+- name: controlplane
   connection:
     proxyProtocol: Direct
 - name: etcd
@@ -1008,7 +1008,7 @@ egressSelections:
           caBundle: /etc/srv/kubernetes/pki/konnectivity-server/ca.crt
           clientKey: /etc/srv/kubernetes/pki/konnectivity-server/client.key
           clientCert: /etc/srv/kubernetes/pki/konnectivity-server/client.crt
-- name: master
+- name: controlplane
   connection:
     proxyProtocol: Direct
 - name: etcd
@@ -1516,7 +1516,6 @@ function create-master-etcd-apiserver-auth {
    fi
 }
 
-
 function docker-installed {
     if systemctl cat docker.service &> /dev/null ; then
         return 0
@@ -1684,7 +1683,6 @@ ExecStart=${kubelet_bin} \$KUBELET_OPTS
 [Install]
 WantedBy=multi-user.target
 EOF
-
   if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
     create-sidecar-config
   fi
@@ -1818,7 +1816,7 @@ function prepare-kube-proxy-manifest-variables {
   sed -i -e "s@{{container_env}}@${container_env}@g" "${src_file}"
   sed -i -e "s@{{kube_cache_mutation_detector_env_name}}@${kube_cache_mutation_detector_env_name}@g" "${src_file}"
   sed -i -e "s@{{kube_cache_mutation_detector_env_value}}@${kube_cache_mutation_detector_env_value}@g" "${src_file}"
-  sed -i -e "s@{{ cpurequest }}@100m@g" "${src_file}"
+  sed -i -e "s@{{ cpurequest }}@${KUBE_PROXY_CPU_REQUEST:-100m}@g" "${src_file}"
   sed -i -e "s@{{api_servers_with_port}}@${api_servers}@g" "${src_file}"
   sed -i -e "s@{{kubernetes_service_host_env_value}}@${KUBERNETES_MASTER_NAME}@g" "${src_file}"
   if [[ -n "${CLUSTER_IP_RANGE:-}" ]]; then
@@ -1845,7 +1843,27 @@ function start-kube-proxy {
 # $5: pod name, which should be either etcd or etcd-events
 function prepare-etcd-manifest {
   local host_name=${ETCD_HOSTNAME:-$(hostname -s)}
-  local -r host_ip=$(python3 -c "import socket;print(socket.gethostbyname(\"${host_name}\"))")
+
+  local resolve_host_script_py='
+import socket
+import time
+import sys
+
+timeout_sec=300
+
+def resolve(host):
+  for attempt in range(timeout_sec):
+    try:
+      print(socket.gethostbyname(host))
+      break
+    except Exception as e:
+      sys.stderr.write("error: resolving host %s to IP failed: %s\n" % (host, e))
+      time.sleep(1)
+      continue
+
+'
+
+  local -r host_ip=$(python3 -c "${resolve_host_script_py}"$'\n'"resolve(\"${host_name}\")")
   local etcd_cluster=""
   local cluster_state="new"
   local etcd_protocol="http"
@@ -2002,6 +2020,7 @@ function prepare-konnectivity-server-manifest {
     params+=("--agent-service-account=konnectivity-agent")
     params+=("--authentication-audience=system:konnectivity-server")
     params+=("--kubeconfig=/etc/srv/kubernetes/konnectivity-server/kubeconfig")
+    params+=("--proxy-strategies=default")
   elif [[ "${KONNECTIVITY_SERVICE_PROXY_PROTOCOL_MODE:-grpc}" == 'http-connect' ]]; then
     # GRPC can work with either UDS or mTLS.
     params+=("--mode=http-connect")
@@ -2011,6 +2030,7 @@ function prepare-konnectivity-server-manifest {
     params+=("--authentication-audience=")
     # Need to fix ANP code to allow kubeconfig to be set with mtls.
     params+=("--kubeconfig=")
+    params+=("--proxy-strategies=destHost,default")
   else
     echo "KONNECTIVITY_SERVICE_PROXY_PROTOCOL_MODE must be set to either grpc or http-connect"
     exit 1
@@ -2021,6 +2041,8 @@ function prepare-konnectivity-server-manifest {
   params+=("--admin-port=$3")
   params+=("--kubeconfig-qps=75")
   params+=("--kubeconfig-burst=150")
+  params+=("--keepalive-time=60s")
+  params+=("--frontend-keepalive-time=60s")
   konnectivity_args=""
   for param in "${params[@]}"; do
     konnectivity_args+=", \"${param}\""
@@ -3236,6 +3258,10 @@ oom_score = -999
   runtime_type = "io.containerd.runc.v2"
 [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
   endpoint = ["https://mirror.gcr.io","https://registry-1.docker.io"]
+# Enable registry.k8s.io as the primary mirror for k8s.gcr.io
+# See: https://github.com/kubernetes/k8s.io/issues/3411
+[plugins."io.containerd.grpc.v1.cri".registry.mirrors."k8s.gcr.io"]
+  endpoint = ["https://registry.k8s.io", "https://k8s.gcr.io",]
 EOF
 
   if [[ "${CONTAINER_RUNTIME_TEST_HANDLER:-}" == "true" ]]; then
@@ -3280,7 +3306,6 @@ providers:
     defaultCacheDuration: 1m
 EOF
 }
-
 
 # This function detects the platform/arch of the machine where the script runs,
 # and sets the HOST_PLATFORM and HOST_ARCH environment variables accordingly.
