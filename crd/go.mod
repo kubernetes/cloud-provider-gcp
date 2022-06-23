@@ -1,18 +1,12 @@
 module k8s.io/cloud-provider-gcp/crd
 
-go 1.13
+go 1.16
 
 require (
-	k8s.io/api v0.22.2
-	k8s.io/apimachinery v0.22.2
-	k8s.io/client-go v0.22.2
-	k8s.io/code-generator v0.22.2
+	github.com/docker/spdystream v0.0.0-20160310174837-449fdfce4d96 // indirect
+	k8s.io/api v0.21.1
+	k8s.io/apimachinery v0.21.1
+	k8s.io/client-go v0.21.1
+	k8s.io/code-generator v0.21.1
 	sigs.k8s.io/controller-tools v0.6.0
-)
-
-replace (
-	k8s.io/api => k8s.io/api v0.20.0
-	k8s.io/apimachinery => k8s.io/apimachinery v0.20.0
-	k8s.io/client-go => k8s.io/client-go v0.20.0
-	k8s.io/code-generator => k8s.io/code-generator v0.20.0
 )

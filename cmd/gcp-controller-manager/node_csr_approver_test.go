@@ -398,9 +398,25 @@ func TestValidators(t *testing.T) {
 			b.ips = []net.IP{net.ParseIP("1.2.3.4")}
 			b.dns = []string{"i0.z0.c.p0.internal", "i0.c.p0.internal", "i0"}
 		}
+		dualStackCase := func(b *csrBuilder, c *controllerContext) {
+			c.gcpCfg.ProjectID = "p0"
+			c.gcpCfg.Zones = []string{"z1", "z0"}
+			b.requestor = "system:node:ds0"
+			b.ips = []net.IP{net.ParseIP("1.2.3.4"), net.ParseIP("fd20:fbc:b0e2::b:0:0")}
+			b.dns = []string{"ds0.z0.c.p0.internal", "ds0.c.p0.internal", "ds0"}
+		}
+		dualStackExtCase := func(b *csrBuilder, c *controllerContext) {
+			c.gcpCfg.ProjectID = "p0"
+			c.gcpCfg.Zones = []string{"z1", "z0"}
+			b.requestor = "system:node:ds1"
+			b.ips = []net.IP{net.ParseIP("1.2.3.4"), net.ParseIP("2600:1900:1:1:0:5::")}
+			b.dns = []string{"ds1.z0.c.p0.internal", "ds1.c.p0.internal", "ds1"}
+		}
 		cases := []func(*csrBuilder, *controllerContext){
 			// None Domain-scoped project
 			goodCase,
+			dualStackCase,
+			dualStackExtCase,
 			// Domain-scoped project
 			func(b *csrBuilder, c *controllerContext) {
 				goodCase(b, c)
@@ -943,6 +959,29 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 				ManagedInstances: []*compute.ManagedInstance{{
 					Id: 4,
 				}},
+			})
+		case "/compute/v1/projects/p0/zones/z0/instances/ds0":
+			json.NewEncoder(rw).Encode(compute.Instance{
+				Id:                1,
+				Name:              "ds0",
+				Zone:              "z0",
+				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4", Ipv6Address: "fd20:fbc:b0e2:0:0:b:0:0"}},
+			})
+		case "/compute/v1/projects/p0/zones/z0/instances/ds1":
+			json.NewEncoder(rw).Encode(compute.Instance{
+				Id:   1,
+				Name: "ds1",
+				Zone: "z0",
+				NetworkInterfaces: []*compute.NetworkInterface{
+					{
+						NetworkIP: "1.2.3.4",
+						Ipv6AccessConfigs: []*compute.AccessConfig{
+							{
+								ExternalIpv6: "2600:1900:1:1:0:5::",
+							},
+						},
+					},
+				},
 			})
 		default:
 			http.Error(rw, "not found", http.StatusNotFound)
