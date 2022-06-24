@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"testing"
@@ -234,7 +235,7 @@ func TestIstiodApproverHandle(t *testing.T) {
 			}
 
 			csr := makeFancyTestCSR(t, tc.csr)
-			if err := approver.handle(csr); err != nil {
+			if err := approver.handle(context.TODO(), csr); err != nil {
 				t.Fatal(err)
 			}
 			tc.verifyActions(t, client.Actions())
