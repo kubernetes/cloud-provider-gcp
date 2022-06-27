@@ -95,6 +95,12 @@ type Options struct {
 //    }
 // }
 func PrintCred(options *Options) error {
+	if options == nil {
+		options = &Options{
+			UseApplicationDefaultCredentials: false,
+		}
+	}
+
 	var tokenProvider tokenProvider = nil
 	if options.UseApplicationDefaultCredentials {
 		tokenProvider = &defaultCredentialsTokenProvider{

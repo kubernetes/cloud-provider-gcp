@@ -22,7 +22,7 @@ type gcloudConfiguration struct {
 }
 
 //
-// gcloudTokenProvider provides gcloud Oath 2.0 tokens.
+// gcloudTokenProvider provides gcloud OAth 2.0 tokens.
 //
 type gcloudTokenProvider struct {
 	readGcloudConfigRaw func() ([]byte, error)
@@ -31,12 +31,12 @@ type gcloudTokenProvider struct {
 
 // readGcloudConfig returns an object which represents gcloud config output
 func (p *gcloudTokenProvider) readGcloudConfig() (*gcloudConfiguration, error) {
-	gcloudConfigbytes, err := p.readGcloudConfigRaw()
+	gcloudConfigBytes, err := p.readGcloudConfigRaw()
 	if err != nil {
 		return nil, err
 	}
 	var gc gcloudConfiguration
-	if err := json.Unmarshal(gcloudConfigbytes, &gc); err != nil {
+	if err := json.Unmarshal(gcloudConfigBytes, &gc); err != nil {
 		return nil, fmt.Errorf("error parsing gcloud output: %w", err)
 	}
 
