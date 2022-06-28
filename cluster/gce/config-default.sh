@@ -464,7 +464,7 @@ fi
 export FLUENTD_GCP_YAML_VERSION="v3.2.0"
 FLUENTD_GCP_VERSION="${FLUENTD_GCP_VERSION:-1.6.17}"
 FLUENTD_GCP_MEMORY_LIMIT="${FLUENTD_GCP_MEMORY_LIMIT:-}"
-FLUENTD_GCP_CPU_REQUEST="${FLUENTD_GCP_CPU_REQUEST:-75m}"
+FLUENTD_GCP_CPU_REQUEST="${FLUENTD_GCP_CPU_REQUEST:-}"
 FLUENTD_GCP_MEMORY_REQUEST="${FLUENTD_GCP_MEMORY_REQUEST:-}"
 
 # Heapster requirements
@@ -562,6 +562,10 @@ export WINDOWS_ENABLE_DSR="${WINDOWS_ENABLE_DSR:-false}"
 # NPD analyzes the host for problems that can disrupt workloads.
 export WINDOWS_ENABLE_NODE_PROBLEM_DETECTOR="${WINDOWS_ENABLE_NODE_PROBLEM_DETECTOR:-none}"
 export WINDOWS_NODE_PROBLEM_DETECTOR_CUSTOM_FLAGS="${WINDOWS_NODE_PROBLEM_DETECTOR_CUSTOM_FLAGS:-}"
+
+# Enable Windows Hyper-V
+# sig-storage uses it to create Virtual Hard Disks in tests
+export WINDOWS_ENABLE_HYPERV="${WINDOWS_ENABLE_HYPERV:-false}"
 
 # TLS_CIPHER_SUITES defines cipher suites allowed to be used by kube-apiserver.
 # If this variable is unset or empty, kube-apiserver will allow its default set of cipher suites.

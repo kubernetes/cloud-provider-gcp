@@ -88,13 +88,13 @@ function set-linux-node-image() {
 function set-windows-node-image() {
   WINDOWS_NODE_IMAGE_PROJECT="windows-cloud"
   if [[ "${WINDOWS_NODE_OS_DISTRIBUTION}" == "win2019" ]]; then
-    WINDOWS_NODE_IMAGE="windows-server-2019-dc-core-v20210413"
+    WINDOWS_NODE_IMAGE="windows-server-2019-dc-core-v20210914"
   elif [[ "${WINDOWS_NODE_OS_DISTRIBUTION}" == "win1909" ]]; then
     WINDOWS_NODE_IMAGE="windows-server-1909-dc-core-v20210413"
   elif [[ "${WINDOWS_NODE_OS_DISTRIBUTION}" == "win2004" ]]; then
-    WINDOWS_NODE_IMAGE="windows-server-2004-dc-core-v20210413"
+    WINDOWS_NODE_IMAGE="windows-server-2004-dc-core-v20210914"
   elif [[ "${WINDOWS_NODE_OS_DISTRIBUTION,,}" == "win20h2" ]]; then
-    WINDOWS_NODE_IMAGE="windows-server-20h2-dc-core-v20210413"
+    WINDOWS_NODE_IMAGE="windows-server-20h2-dc-core-v20210914"
   else
     echo "Unknown WINDOWS_NODE_OS_DISTRIBUTION ${WINDOWS_NODE_OS_DISTRIBUTION}" >&2
     exit 1
@@ -163,9 +163,19 @@ function verify-prereqs() {
   # we use gcloud to create the cluster, gsutil to stage binaries and data
   for cmd in gcloud gsutil; do
     if ! which "${cmd}" >/dev/null; then
-      echo "Can't find ${cmd} in PATH, please fix and retry. The Google Cloud " >&2
-      echo "SDK can be downloaded from https://cloud.google.com/sdk/." >&2
-      exit 1
+      local resp="n"
+      if [[ "${KUBE_PROMPT_FOR_UPDATE}" == "y" ]]; then
+        echo "Can't find ${cmd} in PATH.  Do you wish to install the Google Cloud SDK? [Y/n]"
+        read -r resp
+      fi
+      if [[ "${resp}" != "n" && "${resp}" != "N" ]]; then
+        curl https://sdk.cloud.google.com | bash
+      fi
+      if ! which "${cmd}" >/dev/null; then
+        echo "Can't find ${cmd} in PATH, please fix and retry. The Google Cloud " >&2
+        echo "SDK can be downloaded from https://cloud.google.com/sdk/." >&2
+        exit 1
+      fi
     fi
   done
   update-or-verify-gcloud
@@ -235,7 +245,7 @@ function copy-to-staging() {
     fi
   fi
 
-  #echo "${hash}" > "${tar}.sha512"
+  # echo "${hash}" > "${tar}.sha512"
   gsutil -m -q -h "Cache-Control:private, max-age=0" cp "${tar}" "${tar}.sha512" "${staging_path}"
   gsutil -m acl ch -g all:R "${gs_url}" "${gs_url}.sha512" >/dev/null 2>&1 || true
   echo "+++ ${basename_tar} uploaded (sha512 = ${hash})"
@@ -879,15 +889,6 @@ function construct-windows-kubelet-flags {
   # Configure kubelet to run as a windows service.
   flags+=" --windows-service=true"
 
-  # TODO(mtaufen): Configure logging for kubelet running as a service. I haven't
-  # been able to figure out how to direct stdout/stderr into log files when
-  # configuring it to run via sc.exe, so we just manually override logging
-  # config here.
-  flags+=" --log-file=${WINDOWS_LOGS_DIR}\kubelet.log"
-  # klog sets this to true internally, so need to override to false so we
-  # actually log to the file
-  flags+=" --logtostderr=false"
-
   # Configure the file path for host dns configuration
   flags+=" --resolv-conf=${WINDOWS_CNI_DIR}\hostdns.conf"
 
@@ -924,16 +925,6 @@ function construct-windows-kubeproxy-flags {
 
   # Configure kube-proxy to run as a windows service.
   flags+=" --windows-service=true"
-
-  # TODO(mtaufen): Configure logging for kube-proxy running as a service.
-  # I haven't been able to figure out how to direct stdout/stderr into log
-  # files when configuring it to run via sc.exe, so we just manually
-  # override logging config here.
-  flags+=" --log-file=${WINDOWS_LOGS_DIR}\kube-proxy.log"
-
-  # klog sets this to true internally, so need to override to false
-  # so we actually log to the file
-  flags+=" --logtostderr=false"
 
   # Enabling Windows DSR mode unlocks newer network features and reduces
   # port usage for services.
@@ -1617,6 +1608,7 @@ BOOTSTRAP_KUBECONFIG_FILE: $(yaml-quote "${WINDOWS_BOOTSTRAP_KUBECONFIG_FILE}")
 KUBEPROXY_KUBECONFIG_FILE: $(yaml-quote "${WINDOWS_KUBEPROXY_KUBECONFIG_FILE}")
 WINDOWS_INFRA_CONTAINER: $(yaml-quote "${WINDOWS_INFRA_CONTAINER}")
 WINDOWS_ENABLE_PIGZ: $(yaml-quote "${WINDOWS_ENABLE_PIGZ}")
+WINDOWS_ENABLE_HYPERV: $(yaml-quote "${WINDOWS_ENABLE_HYPERV}")
 ENABLE_NODE_PROBLEM_DETECTOR: $(yaml-quote "${WINDOWS_ENABLE_NODE_PROBLEM_DETECTOR}")
 NODE_PROBLEM_DETECTOR_VERSION: $(yaml-quote "${NODE_PROBLEM_DETECTOR_VERSION}")
 NODE_PROBLEM_DETECTOR_TAR_HASH: $(yaml-quote "${NODE_PROBLEM_DETECTOR_TAR_HASH}")
