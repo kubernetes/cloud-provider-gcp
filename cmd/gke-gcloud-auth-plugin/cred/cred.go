@@ -199,9 +199,6 @@ func (p *plugin) gcloudAccessToken() (string, *metav1.Time, error) {
 	if gc.Credential.AccessToken == "" {
 		return "", nil, fmt.Errorf("gcloud config config-helper returned an empty access token")
 	}
-	if gc.Credential.TokenExpiry.IsZero() {
-		return "", nil, fmt.Errorf("failed to retrieve expiry time from gcloud config json object")
-	}
 
 	// Authorization Token File is not commonly used. Currently, this is for specific internal debugging scenarios.
 	token := gc.Credential.AccessToken
