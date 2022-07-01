@@ -57,7 +57,11 @@ type gkeSigner struct {
 
 // newGKESigner will create a new instance of a gkeSigner.
 func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
-	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, ctx.clusterSigningGKEKubeconfig, groupVersions, *ClusterSigningGKERetryBackoff, nil)
+	clientConfig, err := webhook.LoadKubeconfig(ctx.clusterSigningGKEKubeconfig, nil)
+	if err != nil {
+		return nil, err
+	}
+	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, clientConfig, groupVersions, *ClusterSigningGKERetryBackoff)
 	if err != nil {
 		return nil, err
 	}
