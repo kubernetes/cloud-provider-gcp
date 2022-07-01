@@ -9,6 +9,7 @@ go_library(
         "time_budget.go",
         "util.go",
         "watch_cache.go",
+        "watch_cache_interval.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/storage/cacher",
     importpath = "k8s.io/apiserver/pkg/storage/cacher",

@@ -11,6 +11,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/util/flowcontrol/metrics",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/apiserver/pkg/endpoints/request:go_default_library",
         "//vendor/k8s.io/component-base/metrics:go_default_library",
         "//vendor/k8s.io/component-base/metrics/legacyregistry:go_default_library",
         "//vendor/k8s.io/component-base/metrics/testutil:go_default_library",
