@@ -74,7 +74,7 @@ func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
 }
 
 // handle is called by the generic Kubernetes certificate controller.
-func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
+func (s *gkeSigner) handle(_ context.Context, csr *capi.CertificateSigningRequest) error {
 	_, _, err := s.handleInternal(csr)
 	return err
 }

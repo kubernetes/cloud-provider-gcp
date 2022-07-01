@@ -24,7 +24,7 @@ type oidcApprover struct {
 	ctx *controllerContext
 }
 
-func (a *oidcApprover) handle(csr *capi.CertificateSigningRequest) error {
+func (a *oidcApprover) handle(_ context.Context, csr *capi.CertificateSigningRequest) error {
 	if csr.Spec.SignerName != oidcSignerName {
 		return nil
 	}
