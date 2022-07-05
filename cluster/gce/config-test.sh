@@ -27,10 +27,11 @@ export REGION=${ZONE%-*}
 RELEASE_REGION_FALLBACK=${RELEASE_REGION_FALLBACK:-false}
 REGIONAL_KUBE_ADDONS=${REGIONAL_KUBE_ADDONS:-true}
 # TODO: Migrate to e2-standard machine family.
-NODE_SIZE=${NODE_SIZE:-n1-standard-2}
+NODE_SIZE=${NODE_SIZE:-n1-standard-4}
 NUM_NODES=${NUM_NODES:-3}
 NUM_WINDOWS_NODES=${NUM_WINDOWS_NODES:-0}
 # TODO: Migrate to e2-standard machine family.
+# (TODO/cloud-provider-gcp): Needs to be reverted when kubetest2 support node size override.
 MASTER_SIZE=${MASTER_SIZE:-n1-standard-$(get-master-size)}
 MASTER_MIN_CPU_ARCHITECTURE=${MASTER_MIN_CPU_ARCHITECTURE:-} # To allow choosing better architectures.
 export MASTER_DISK_TYPE=pd-ssd
