@@ -98,27 +98,28 @@ func TestExecCredential(t *testing.T) {
 		{
 			testName: "ApplicationDefaultCredentialsSetToTrue",
 			p: &plugin{
-				googleDefaultTokenSource:         fakeDefaultTokenSource,
-				readGcloudConfigRaw:              nil, // this code should be unreachable when ADC is set to true,
-				k8sStartingConfig:                nil, // this code should be unreachable when ADC is set to true,
-				getCacheFilePath:                 nil, // this code should be unreachable when ADC is set to true,
-				readFile:                         fakeReadFile,
-				timeNow:                          fakeTimeNow,
-				writeCacheFile:                   nil, // this code should be unreachable when ADC is set to true
-				useApplicationDefaultCredentials: true,
+				k8sStartingConfig: nil, // this code should be unreachable when ADC is set to true,
+				getCacheFilePath:  nil, // this code should be unreachable when ADC is set to true,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				writeCacheFile:    nil, // this code should be unreachable when ADC is set to true
+				tokenProvider: &defaultCredentialsTokenProvider{
+					googleDefaultTokenSource: fakeDefaultTokenSource,
+				},
 			},
 			wantToken: fakeExecCredential("default_access_token", &metav1.Time{Time: newYears}),
 		},
 		{
 			testName: "NewGcloudAccessToken",
 			p: &plugin{
-				googleDefaultTokenSource:         nil,
-				readGcloudConfigRaw:              fakeGcloudConfigOutput,
-				k8sStartingConfig:                fakeK8sStartingConfig,
-				getCacheFilePath:                 fakeGetCacheFilePath,
-				readFile:                         fakeReadFile,
-				timeNow:                          fakeTimeNow,
-				useApplicationDefaultCredentials: false,
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+				},
 			},
 			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFile,
@@ -126,25 +127,24 @@ func TestExecCredential(t *testing.T) {
 		{
 			testName: "GetK8sStartingConfigFails",
 			p: &plugin{
-				googleDefaultTokenSource: nil,
-				readGcloudConfigRaw:      fakeGcloudConfigOutput,
 				k8sStartingConfig: func() (*clientcmdapi.Config, error) {
 					return nil, fmt.Errorf("error reading starting config")
 				},
-				getCacheFilePath:                 fakeGetCacheFilePath,
-				readFile:                         fakeReadFile,
-				timeNow:                          fakeTimeNow,
-				useApplicationDefaultCredentials: false,
+				getCacheFilePath: fakeGetCacheFilePath,
+				readFile:         fakeReadFile,
+				timeNow:          fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+				},
 			},
 			wantToken: fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 		},
 		{
 			testName: "CachedFileIsValid",
 			p: &plugin{
-				googleDefaultTokenSource: nil, // Code should be unreachable in this test
-				readGcloudConfigRaw:      nil, // Code should be unreachable in this test
-				k8sStartingConfig:        fakeK8sStartingConfig,
-				getCacheFilePath:         fakeGetCacheFilePath,
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
 				readFile: func(filename string) ([]byte, error) {
 					switch filename {
 					case fakeGetCacheFilePath():
@@ -153,18 +153,19 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:                          fakeTimeNow,
-				useApplicationDefaultCredentials: false,
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: nil, // Code should be unreachable in this test
+					readFile:            nil, // Code should be unreachable in this test
+				},
 			},
 			wantToken: fakeExecCredential("ya29.cached_token", &metav1.Time{Time: time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC)}),
 		},
 		{
 			testName: "cachedFileIsNotPresent",
 			p: &plugin{
-				googleDefaultTokenSource: nil,
-				readGcloudConfigRaw:      fakeGcloudConfigOutput,
-				k8sStartingConfig:        fakeK8sStartingConfig,
-				getCacheFilePath:         fakeGetCacheFilePath,
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
 				readFile: func(filename string) ([]byte, error) {
 					switch filename {
 					case fakeGetCacheFilePath():
@@ -173,8 +174,11 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:                          fakeTimeNow,
-				useApplicationDefaultCredentials: false,
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+				},
 			},
 			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFile,
@@ -182,10 +186,8 @@ func TestExecCredential(t *testing.T) {
 		{
 			testName: "cachedFileIsMalformed",
 			p: &plugin{
-				googleDefaultTokenSource: nil,
-				readGcloudConfigRaw:      fakeGcloudConfigOutput,
-				k8sStartingConfig:        fakeK8sStartingConfig,
-				getCacheFilePath:         fakeGetCacheFilePath,
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
 				readFile: func(filename string) ([]byte, error) {
 					switch filename {
 					case fakeGetCacheFilePath():
@@ -194,8 +196,11 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:                          fakeTimeNow,
-				useApplicationDefaultCredentials: false,
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+				},
 			},
 			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFile,
@@ -203,10 +208,8 @@ func TestExecCredential(t *testing.T) {
 		{
 			testName: "cachedFileExpiryTimestampIsMalformed",
 			p: &plugin{
-				googleDefaultTokenSource: nil,
-				readGcloudConfigRaw:      fakeGcloudConfigOutput,
-				k8sStartingConfig:        fakeK8sStartingConfig,
-				getCacheFilePath:         fakeGetCacheFilePath,
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
 				readFile: func(filename string) ([]byte, error) {
 					switch filename {
 					case fakeGetCacheFilePath():
@@ -215,8 +218,11 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:                          fakeTimeNow,
-				useApplicationDefaultCredentials: false,
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+				},
 			},
 			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFile,
@@ -224,10 +230,8 @@ func TestExecCredential(t *testing.T) {
 		{
 			testName: "cachedFileAccessTokenIsEmpty",
 			p: &plugin{
-				googleDefaultTokenSource: nil,
-				readGcloudConfigRaw:      fakeGcloudConfigOutput,
-				k8sStartingConfig:        fakeK8sStartingConfig,
-				getCacheFilePath:         fakeGetCacheFilePath,
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
 				readFile: func(filename string) ([]byte, error) {
 					switch filename {
 					case fakeGetCacheFilePath():
@@ -236,8 +240,11 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:                          fakeTimeNow,
-				useApplicationDefaultCredentials: false,
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+				},
 			},
 			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFile,
@@ -245,10 +252,8 @@ func TestExecCredential(t *testing.T) {
 		{
 			testName: "cachedFileClusterContextChanged",
 			p: &plugin{
-				googleDefaultTokenSource: nil,
-				readGcloudConfigRaw:      fakeGcloudConfigOutput,
-				k8sStartingConfig:        fakeK8sStartingConfig,
-				getCacheFilePath:         fakeGetCacheFilePath,
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
 				readFile: func(filename string) ([]byte, error) {
 					switch filename {
 					case fakeGetCacheFilePath():
@@ -257,8 +262,11 @@ func TestExecCredential(t *testing.T) {
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:                          fakeTimeNow,
-				useApplicationDefaultCredentials: false,
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+				},
 			},
 			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFile,
@@ -266,14 +274,15 @@ func TestExecCredential(t *testing.T) {
 		{
 			testName: "CachingFailsSafely",
 			p: &plugin{
-				googleDefaultTokenSource:         nil,
-				readGcloudConfigRaw:              fakeGcloudConfigOutput,
-				k8sStartingConfig:                fakeK8sStartingConfig,
-				getCacheFilePath:                 fakeGetCacheFilePath,
-				readFile:                         fakeReadFile,
-				timeNow:                          fakeTimeNow,
-				writeCacheFile:                   func(content string) error { return fmt.Errorf("error writing cache file") },
-				useApplicationDefaultCredentials: false,
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				writeCacheFile:    func(content string) error { return fmt.Errorf("error writing cache file") },
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+				},
 			},
 			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: "",
@@ -281,26 +290,27 @@ func TestExecCredential(t *testing.T) {
 		{
 			testName: "GcloudAccessTokenWithAuthorizationToken",
 			p: &plugin{
-				googleDefaultTokenSource: nil,
-				readGcloudConfigRaw:      fakeGcloudConfigWithAuthzTokenOutput,
-				k8sStartingConfig:        fakeK8sStartingConfig,
-				getCacheFilePath:         fakeGetCacheFilePath,
-				readFile: func(filename string) ([]byte, error) {
-					switch filename {
-					case "/usr/local/google/home/username/.config/gcloud/active_config":
-						return []byte("username-inspect-k8s"), nil
-					case "/Users/username/.config/gcloud/active_config":
-						return []byte("username-inspect-k8s"), nil
-					case "/usr/local/google/home/username/.config/gcloud/configurations/fakeConfigDefault":
-						return []byte(""), nil
-					case "auth-token-test-file":
-						return []byte("authz-t0k3n"), nil
-					default:
-						return fakeReadFile(filename)
-					}
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigWithAuthzTokenOutput,
+					readFile: func(filename string) ([]byte, error) {
+						switch filename {
+						case "/usr/local/google/home/username/.config/gcloud/active_config":
+							return []byte("username-inspect-k8s"), nil
+						case "/Users/username/.config/gcloud/active_config":
+							return []byte("username-inspect-k8s"), nil
+						case "/usr/local/google/home/username/.config/gcloud/configurations/fakeConfigDefault":
+							return []byte(""), nil
+						case "auth-token-test-file":
+							return []byte("authz-t0k3n"), nil
+						default:
+							return fakeReadFile(filename)
+						}
+					},
 				},
-				timeNow:                          fakeTimeNow,
-				useApplicationDefaultCredentials: false,
 			},
 			wantToken:     fakeExecCredential("iam-ya29.gcloud_t0k3n^authz-t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFileWithAuthzToken,
@@ -308,22 +318,28 @@ func TestExecCredential(t *testing.T) {
 		{
 			testName: "CachedFileWithAuthzTokenFilePathChanged",
 			p: &plugin{
-				googleDefaultTokenSource: nil,
-				readGcloudConfigRaw:      fakeGcloudConfigWithAuthzTokenOutput,
-				k8sStartingConfig:        fakeK8sStartingConfig,
-				getCacheFilePath:         fakeGetCacheFilePath,
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
 				readFile: func(filename string) ([]byte, error) {
 					switch filename {
 					case fakeGetCacheFilePath():
 						return []byte(cachedFileAutzTokenPathChanged), nil
-					case "auth-token-test-file":
-						return []byte("authz-t0k3n"), nil
 					default:
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:                          fakeTimeNow,
-				useApplicationDefaultCredentials: false,
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigWithAuthzTokenOutput,
+					readFile: func(filename string) ([]byte, error) {
+						switch filename {
+						case "auth-token-test-file":
+							return []byte("authz-t0k3n"), nil
+						default:
+							return fakeReadFile(filename)
+						}
+					},
+				},
 			},
 			wantToken:     fakeExecCredential("iam-ya29.gcloud_t0k3n^authz-t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFileWithAuthzToken,
@@ -331,22 +347,28 @@ func TestExecCredential(t *testing.T) {
 		{
 			testName: "CachedFileWithAuthzTokenChanged",
 			p: &plugin{
-				googleDefaultTokenSource: nil,
-				readGcloudConfigRaw:      fakeGcloudConfigWithAuthzTokenOutput,
-				k8sStartingConfig:        fakeK8sStartingConfig,
-				getCacheFilePath:         fakeGetCacheFilePath,
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
 				readFile: func(filename string) ([]byte, error) {
 					switch filename {
 					case fakeGetCacheFilePath():
 						return []byte(cachedFileAutzTokenChanged), nil
-					case "auth-token-test-file":
-						return []byte("authz-t0k3n"), nil
 					default:
 						return fakeReadFile(filename)
 					}
 				},
-				timeNow:                          fakeTimeNow,
-				useApplicationDefaultCredentials: false,
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigWithAuthzTokenOutput,
+					readFile: func(filename string) ([]byte, error) {
+						switch filename {
+						case "auth-token-test-file":
+							return []byte("authz-t0k3n"), nil
+						default:
+							return fakeReadFile(filename)
+						}
+					},
+				},
 			},
 			wantToken:     fakeExecCredential("iam-ya29.gcloud_t0k3n^authz-t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFileWithAuthzToken,
