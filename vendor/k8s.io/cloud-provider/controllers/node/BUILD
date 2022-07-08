@@ -27,5 +27,6 @@ go_library(
         "//vendor/k8s.io/cloud-provider/node/helpers:go_default_library",
         "//vendor/k8s.io/component-helpers/node/util:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/k8s.io/utils/net:go_default_library",
     ],
 )

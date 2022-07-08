@@ -12,6 +12,7 @@ go_library(
     importpath = "k8s.io/kubernetes/pkg/apis/core/validation",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/google/go-cmp/cmp:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
         "//vendor/k8s.io/api/events/v1beta1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/equality:go_default_library",
@@ -21,7 +22,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1/validation:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/diff:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/intstr:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/validation:go_default_library",
@@ -37,7 +37,6 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/cluster/ports:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/features:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/fieldpath:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/security/apparmor:go_default_library",
         "//vendor/k8s.io/utils/net:go_default_library",
     ],
 )

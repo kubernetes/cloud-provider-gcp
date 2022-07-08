@@ -27,11 +27,11 @@ export REGION=${ZONE%-*}
 RELEASE_REGION_FALLBACK=${RELEASE_REGION_FALLBACK:-false}
 REGIONAL_KUBE_ADDONS=${REGIONAL_KUBE_ADDONS:-true}
 # TODO: Migrate to e2-standard machine family.
-# TODO: Needs to be reverted when kubetest2 support node size override.
 NODE_SIZE=${NODE_SIZE:-n1-standard-4}
 NUM_NODES=${NUM_NODES:-3}
 NUM_WINDOWS_NODES=${NUM_WINDOWS_NODES:-0}
 # TODO: Migrate to e2-standard machine family.
+# (TODO/cloud-provider-gcp): Needs to be reverted when kubetest2 support node size override.
 MASTER_SIZE=${MASTER_SIZE:-n1-standard-$(get-master-size)}
 MASTER_MIN_CPU_ARCHITECTURE=${MASTER_MIN_CPU_ARCHITECTURE:-} # To allow choosing better architectures.
 export MASTER_DISK_TYPE=pd-ssd
@@ -107,23 +107,11 @@ export NODE_IMAGE=${KUBE_GCE_NODE_IMAGE:-${GCI_VERSION}}
 export NODE_IMAGE_PROJECT=${KUBE_GCE_NODE_PROJECT:-cos-cloud}
 export NODE_SERVICE_ACCOUNT=${KUBE_GCE_NODE_SERVICE_ACCOUNT:-default}
 
-# Default container runtime for linux
-export CONTAINER_RUNTIME=${KUBE_CONTAINER_RUNTIME:-containerd}
-# Default container runtime for windows
-export WINDOWS_CONTAINER_RUNTIME=${KUBE_WINDOWS_CONTAINER_RUNTIME:-docker}
-
-# Set default values with override
-if [[ "${CONTAINER_RUNTIME}" == "docker" ]]; then
-  export CONTAINER_RUNTIME_ENDPOINT=${KUBE_CONTAINER_RUNTIME_ENDPOINT:-unix:///var/run/dockershim.sock}
-  export CONTAINER_RUNTIME_NAME=${KUBE_CONTAINER_RUNTIME_NAME:-docker}
-  export LOAD_IMAGE_COMMAND=${KUBE_LOAD_IMAGE_COMMAND:-}
-elif [[ "${CONTAINER_RUNTIME}" == "containerd" || "${CONTAINER_RUNTIME}" == "remote" ]]; then
-  export CONTAINER_RUNTIME_ENDPOINT=${KUBE_CONTAINER_RUNTIME_ENDPOINT:-unix:///run/containerd/containerd.sock}
-  export CONTAINER_RUNTIME_NAME=${KUBE_CONTAINER_RUNTIME_NAME:-containerd}
-  export LOAD_IMAGE_COMMAND=${KUBE_LOAD_IMAGE_COMMAND:-ctr -n=k8s.io images import}
-  export LOG_DUMP_SYSTEMD_SERVICES=${LOG_DUMP_SYSTEMD_SERVICES:-containerd}
-  export CONTAINER_RUNTIME_TEST_HANDLER="true"
-fi
+export CONTAINER_RUNTIME_ENDPOINT=${KUBE_CONTAINER_RUNTIME_ENDPOINT:-unix:///run/containerd/containerd.sock}
+export CONTAINER_RUNTIME_NAME=${KUBE_CONTAINER_RUNTIME_NAME:-containerd}
+export LOAD_IMAGE_COMMAND=${KUBE_LOAD_IMAGE_COMMAND:-ctr -n=k8s.io images import}
+export LOG_DUMP_SYSTEMD_SERVICES=${LOG_DUMP_SYSTEMD_SERVICES:-containerd}
+export CONTAINER_RUNTIME_TEST_HANDLER="true"
 
 export GCI_DOCKER_VERSION=${KUBE_GCI_DOCKER_VERSION:-}
 
@@ -302,7 +290,7 @@ fi
 
 # Optional: Enable node logging.
 export ENABLE_NODE_LOGGING=${KUBE_ENABLE_NODE_LOGGING:-true}
-export LOGGING_DESTINATION=${KUBE_LOGGING_DESTINATION:-gcp} # options: elasticsearch, gcp
+export LOGGING_DESTINATION=${KUBE_LOGGING_DESTINATION:-gcp} # options: gcp
 
 # Optional: When set to true, Elasticsearch and Kibana will be setup as part of the cluster bring up.
 export ENABLE_CLUSTER_LOGGING=${KUBE_ENABLE_CLUSTER_LOGGING:-true}
@@ -335,9 +323,6 @@ export DNS_MEMORY_LIMIT=${KUBE_DNS_MEMORY_LIMIT:-170Mi}
 
 # Optional: Enable DNS horizontal autoscaler
 export ENABLE_DNS_HORIZONTAL_AUTOSCALER=${KUBE_ENABLE_DNS_HORIZONTAL_AUTOSCALER:-true}
-
-# Optional: Install Kubernetes UI
-export ENABLE_CLUSTER_UI=${KUBE_ENABLE_CLUSTER_UI:-true}
 
 # Optional: Install node problem detector.
 #   none           - Not run node problem detector.
@@ -473,8 +458,11 @@ EVICTION_HARD=${EVICTION_HARD:-memory.available<250Mi,nodefs.available<10%,nodef
 SCHEDULING_ALGORITHM_PROVIDER=${SCHEDULING_ALGORITHM_PROVIDER:-}
 
 # Optional: install a default StorageClass
+# ENABLE_DEFAULT_STORAGE_CLASS=${ENABLE_DEFAULT_STORAGE_CLASS:-false}
+# (TODO/cloud-provider-gcp): Revert to env when possible
 ENABLE_DEFAULT_STORAGE_CLASS=${ENABLE_DEFAULT_STORAGE_CLASS:-true}
 
+# (TODO/cloud-provider-gcp): Figure out how to add support for this
 # Optional: install pd csi driver
 ENABLE_PDCSI_DRIVER="${ENABLE_PDCSI_DRIVER:-true}"
 
@@ -528,14 +516,11 @@ HEAPSTER_GCP_MEMORY_PER_NODE=${HEAPSTER_GCP_MEMORY_PER_NODE:-4}
 HEAPSTER_GCP_BASE_CPU=${HEAPSTER_GCP_BASE_CPU:-80m}
 HEAPSTER_GCP_CPU_PER_NODE=${HEAPSTER_GCP_CPU_PER_NODE:-0.5}
 
-# Optional: custom system banner for dashboard addon
-CUSTOM_KUBE_DASHBOARD_BANNER=${CUSTOM_KUBE_DASHBOARD_BANNER:-}
-
 # Default Stackdriver resources version exported by Fluentd-gcp addon
 LOGGING_STACKDRIVER_RESOURCE_TYPES=${LOGGING_STACKDRIVER_RESOURCE_TYPES:-old}
 
 # Adding to PROVIDER_VARS, since this is GCP-specific.
-PROVIDER_VARS="${PROVIDER_VARS:-} FLUENTD_GCP_YAML_VERSION FLUENTD_GCP_VERSION FLUENTD_GCP_MEMORY_LIMIT FLUENTD_GCP_CPU_REQUEST FLUENTD_GCP_MEMORY_REQUEST HEAPSTER_GCP_BASE_MEMORY HEAPSTER_GCP_MEMORY_PER_NODE HEAPSTER_GCP_BASE_CPU HEAPSTER_GCP_CPU_PER_NODE CUSTOM_KUBE_DASHBOARD_BANNER LOGGING_STACKDRIVER_RESOURCE_TYPES"
+PROVIDER_VARS="${PROVIDER_VARS:-} FLUENTD_GCP_YAML_VERSION FLUENTD_GCP_VERSION FLUENTD_GCP_MEMORY_LIMIT FLUENTD_GCP_CPU_REQUEST FLUENTD_GCP_MEMORY_REQUEST HEAPSTER_GCP_BASE_MEMORY HEAPSTER_GCP_MEMORY_PER_NODE HEAPSTER_GCP_BASE_CPU HEAPSTER_GCP_CPU_PER_NODE LOGGING_STACKDRIVER_RESOURCE_TYPES"
 
 # Fluentd configuration for node-journal
 ENABLE_NODE_JOURNAL=${ENABLE_NODE_JOURNAL:-false}
@@ -620,3 +605,9 @@ export WINDOWS_NODE_PROBLEM_DETECTOR_CUSTOM_FLAGS="${WINDOWS_NODE_PROBLEM_DETECT
 # TLS_CIPHER_SUITES defines cipher suites allowed to be used by kube-apiserver.
 # If this variable is unset or empty, kube-apiserver will allow its default set of cipher suites.
 export TLS_CIPHER_SUITES=""
+
+# CLOUD_PROVIDER_FLAG defines the cloud-provider value presented to KCM, apiserver,
+# and kubelet
+# (TODO/cloud-provider-gcp): Need to be added to kubetest2 as env
+# export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-gce}"
+export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-external}"

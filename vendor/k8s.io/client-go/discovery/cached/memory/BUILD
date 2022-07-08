@@ -7,12 +7,14 @@ go_library(
     importpath = "k8s.io/client-go/discovery/cached/memory",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/googleapis/gnostic/openapiv2:go_default_library",
+        "//vendor/github.com/google/gnostic/openapiv2:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/version:go_default_library",
         "//vendor/k8s.io/client-go/discovery:go_default_library",
+        "//vendor/k8s.io/client-go/openapi:go_default_library",
+        "//vendor/k8s.io/client-go/openapi/cached:go_default_library",
         "//vendor/k8s.io/client-go/rest:go_default_library",
     ],
 )

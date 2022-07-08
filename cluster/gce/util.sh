@@ -163,19 +163,9 @@ function verify-prereqs() {
   # we use gcloud to create the cluster, gsutil to stage binaries and data
   for cmd in gcloud gsutil; do
     if ! which "${cmd}" >/dev/null; then
-      local resp="n"
-      if [[ "${KUBE_PROMPT_FOR_UPDATE}" == "y" ]]; then
-        echo "Can't find ${cmd} in PATH.  Do you wish to install the Google Cloud SDK? [Y/n]"
-        read -r resp
-      fi
-      if [[ "${resp}" != "n" && "${resp}" != "N" ]]; then
-        curl https://sdk.cloud.google.com | bash
-      fi
-      if ! which "${cmd}" >/dev/null; then
-        echo "Can't find ${cmd} in PATH, please fix and retry. The Google Cloud " >&2
-        echo "SDK can be downloaded from https://cloud.google.com/sdk/." >&2
-        exit 1
-      fi
+      echo "Can't find ${cmd} in PATH, please fix and retry. The Google Cloud " >&2
+      echo "SDK can be downloaded from https://cloud.google.com/sdk/." >&2
+      exit 1
     fi
   done
   update-or-verify-gcloud
@@ -245,6 +235,7 @@ function copy-to-staging() {
     fi
   fi
 
+  # (TODO/cloud-provider-gcp): Figure out how to remove this ugly hack (probably we will need to stop doing bazel) 
   # echo "${hash}" > "${tar}.sha512"
   gsutil -m -q -h "Cache-Control:private, max-age=0" cp "${tar}" "${tar}.sha512" "${staging_path}"
   gsutil -m acl ch -g all:R "${gs_url}" "${gs_url}.sha512" >/dev/null 2>&1 || true
@@ -740,7 +731,7 @@ function yaml-map-string-string {
 # Returns kubelet flags used on both Linux and Windows nodes.
 function construct-common-kubelet-flags {
   local flags="${KUBELET_TEST_LOG_LEVEL:-"--v=2"} ${KUBELET_TEST_ARGS:-}"
-  flags+=" --cloud-provider=gce"
+  flags+=" --cloud-provider=${CLOUD_PROVIDER_FLAG:-gce}"
   # TODO(mtaufen): ROTATE_CERTIFICATES seems unused; delete it?
   if [[ -n "${ROTATE_CERTIFICATES:-}" ]]; then
     flags+=" --rotate-certificates=true"
@@ -759,7 +750,6 @@ function construct-linux-kubelet-flags {
   flags="$(construct-common-kubelet-flags)"
   # Keep in sync with CONTAINERIZED_MOUNTER_HOME in configure-helper.sh
   flags+=" --experimental-mounter-path=/home/kubernetes/containerized_mounter/mounter"
-  flags+=" --experimental-check-node-capabilities-before-mount=true"
   # Keep in sync with the mkdir command in configure-helper.sh (until the TODO is resolved)
   flags+=" --cert-dir=/var/lib/kubelet/pki/"
 
@@ -791,26 +781,6 @@ function construct-linux-kubelet-flags {
       flags+=" --resolv-conf=/run/systemd/resolve/resolv.conf"
     fi
   fi
-  # Network plugin
-  if [[ -n "${NETWORK_PROVIDER:-}" || -n "${NETWORK_POLICY_PROVIDER:-}" ]]; then
-    flags+=" --cni-bin-dir=/home/kubernetes/bin"
-    if [[ "${NETWORK_POLICY_PROVIDER:-}" == "calico" || "${ENABLE_NETD:-}" == "true" ]]; then
-      # Calico uses CNI always.
-      # Note that network policy won't work for master node.
-      if [[ "${node_type}" == "master" ]]; then
-        flags+=" --network-plugin=${NETWORK_PROVIDER}"
-      else
-        flags+=" --network-plugin=cni"
-      fi
-    else
-      # Otherwise use the configured value.
-      flags+=" --network-plugin=${NETWORK_PROVIDER}"
-
-    fi
-  fi
-  if [[ -n "${NON_MASQUERADE_CIDR:-}" ]]; then
-    flags+=" --non-masquerade-cidr=${NON_MASQUERADE_CIDR}"
-  fi
   flags+=" --volume-plugin-dir=${VOLUME_PLUGIN_DIR}"
   local node_labels
   node_labels="$(build-linux-node-labels "${node_type}")"
@@ -820,22 +790,18 @@ function construct-linux-kubelet-flags {
   if [[ -n "${NODE_TAINTS:-}" ]]; then
     flags+=" --register-with-taints=${NODE_TAINTS}"
   fi
-  if [[ "${CONTAINER_RUNTIME:-}" != "docker" ]]; then
-    flags+=" --container-runtime=remote"
-    if [[ "${CONTAINER_RUNTIME}" == "containerd" ]]; then
-      CONTAINER_RUNTIME_ENDPOINT=${KUBE_CONTAINER_RUNTIME_ENDPOINT:-unix:///run/containerd/containerd.sock}
-      flags+=" --runtime-cgroups=/system.slice/containerd.service"
-    fi
+
+  CONTAINER_RUNTIME_ENDPOINT=${KUBE_CONTAINER_RUNTIME_ENDPOINT:-unix:///run/containerd/containerd.sock}
+  flags+=" --container-runtime-endpoint=${CONTAINER_RUNTIME_ENDPOINT}"
+
+  if [[ "${CONTAINER_RUNTIME_ENDPOINT}" =~ /containerd.sock$ ]]; then
+    flags+=" --runtime-cgroups=/system.slice/containerd.service"
   fi
 
-  if [[ -n "${CONTAINER_RUNTIME_ENDPOINT:-}" ]]; then
-    flags+=" --container-runtime-endpoint=${CONTAINER_RUNTIME_ENDPOINT}"
-  fi
-
+  # (TODO/cloud-provider-gcp): Let's figure out how to inject this flag
   if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
     flags+=" --image-credential-provider-config=/etc/srv/kubernetes/cri_auth_config.yaml --image-credential-provider-bin-dir=/home/kubernetes/bin"
   fi
-
   KUBELET_ARGS="${flags}"
 }
 
@@ -875,16 +841,7 @@ function construct-windows-kubelet-flags {
 
   # The directory where the TLS certs are located.
   flags+=" --cert-dir=${WINDOWS_PKI_DIR}"
-
-  flags+=" --network-plugin=cni"
-  flags+=" --cni-bin-dir=${WINDOWS_CNI_DIR}"
-  flags+=" --cni-conf-dir=${WINDOWS_CNI_CONFIG_DIR}"
   flags+=" --pod-manifest-path=${WINDOWS_MANIFESTS_DIR}"
-
-  # Windows images are large and we don't have gcr mirrors yet. Allow longer
-  # pull progress deadline.
-  flags+=" --image-pull-progress-deadline=5m"
-  flags+=" --enable-debugging-handlers=true"
 
   # Configure kubelet to run as a windows service.
   flags+=" --windows-service=true"
@@ -903,13 +860,8 @@ function construct-windows-kubelet-flags {
   # Force disable KubeletPodResources feature on Windows until #78628 is fixed.
   flags+=" --feature-gates=KubeletPodResources=false"
 
-  if [[ "${WINDOWS_CONTAINER_RUNTIME:-}" != "docker" ]]; then
-    flags+=" --container-runtime=remote"
-    if [[ "${WINDOWS_CONTAINER_RUNTIME}" == "containerd" ]]; then
-      WINDOWS_CONTAINER_RUNTIME_ENDPOINT=${KUBE_WINDOWS_CONTAINER_RUNTIME_ENDPOINT:-npipe:////./pipe/containerd-containerd}
-      flags+=" --container-runtime-endpoint=${WINDOWS_CONTAINER_RUNTIME_ENDPOINT}"
-    fi
-  fi
+  WINDOWS_CONTAINER_RUNTIME_ENDPOINT=${KUBE_WINDOWS_CONTAINER_RUNTIME_ENDPOINT:-npipe:////./pipe/containerd-containerd}
+  flags+=" --container-runtime-endpoint=${WINDOWS_CONTAINER_RUNTIME_ENDPOINT}"
 
   KUBELET_ARGS="${flags}"
 }
@@ -1151,7 +1103,6 @@ METADATA_AGENT_CLUSTER_LEVEL_MEMORY_REQUEST: $(yaml-quote "${METADATA_AGENT_CLUS
 DOCKER_REGISTRY_MIRROR_URL: $(yaml-quote "${DOCKER_REGISTRY_MIRROR_URL:-}")
 ENABLE_L7_LOADBALANCING: $(yaml-quote "${ENABLE_L7_LOADBALANCING:-none}")
 ENABLE_CLUSTER_LOGGING: $(yaml-quote "${ENABLE_CLUSTER_LOGGING:-false}")
-ENABLE_CLUSTER_UI: $(yaml-quote "${ENABLE_CLUSTER_UI:-false}")
 ENABLE_NODE_PROBLEM_DETECTOR: $(yaml-quote "${ENABLE_NODE_PROBLEM_DETECTOR:-none}")
 NODE_PROBLEM_DETECTOR_VERSION: $(yaml-quote "${NODE_PROBLEM_DETECTOR_VERSION:-}")
 NODE_PROBLEM_DETECTOR_TAR_HASH: $(yaml-quote "${NODE_PROBLEM_DETECTOR_TAR_HASH:-}")
@@ -1194,6 +1145,7 @@ MULTIZONE: $(yaml-quote "${MULTIZONE:-}")
 MULTIMASTER: $(yaml-quote "${MULTIMASTER:-}")
 NON_MASQUERADE_CIDR: $(yaml-quote "${NON_MASQUERADE_CIDR:-}")
 ENABLE_DEFAULT_STORAGE_CLASS: $(yaml-quote "${ENABLE_DEFAULT_STORAGE_CLASS:-}")
+# (TODO/cloud-provider-gcp): Need to figure out how to inject this
 ENABLE_PDCSI_DRIVER: $(yaml-quote "${ENABLE_PDCSI_DRIVER:-}")
 ENABLE_VOLUME_SNAPSHOTS: $(yaml-quote "${ENABLE_VOLUME_SNAPSHOTS:-}")
 ENABLE_APISERVER_ADVANCED_AUDIT: $(yaml-quote "${ENABLE_APISERVER_ADVANCED_AUDIT:-}")
@@ -1230,6 +1182,7 @@ CONTAINER_RUNTIME: $(yaml-quote "${CONTAINER_RUNTIME:-}")
 CONTAINER_RUNTIME_ENDPOINT: $(yaml-quote "${CONTAINER_RUNTIME_ENDPOINT:-}")
 CONTAINER_RUNTIME_NAME: $(yaml-quote "${CONTAINER_RUNTIME_NAME:-}")
 CONTAINER_RUNTIME_TEST_HANDLER: $(yaml-quote "${CONTAINER_RUNTIME_TEST_HANDLER:-}")
+CONTAINERD_INFRA_CONTAINER: $(yaml-quote "${CONTAINER_INFRA_CONTAINER:-}")
 UBUNTU_INSTALL_CONTAINERD_VERSION: $(yaml-quote "${UBUNTU_INSTALL_CONTAINERD_VERSION:-}")
 UBUNTU_INSTALL_RUNC_VERSION: $(yaml-quote "${UBUNTU_INSTALL_RUNC_VERSION:-}")
 NODE_LOCAL_SSDS_EXT: $(yaml-quote "${NODE_LOCAL_SSDS_EXT:-}")
@@ -1327,12 +1280,14 @@ ${var_name}: ${var_value}
 EOF
     done
   fi
+  # (TODO/cloud-provider-gcp): Need to figure out how to inject this
   cat >>$file <<EOF
 ENABLE_CREDENTIAL_SIDECAR: $(yaml-quote ${ENABLE_CREDENTIAL_SIDECAR:-false})
 EOF
 
   if [[ "${master}" == "true" ]]; then
     # Master-only env vars.
+    # (TODO/cloud-provider-gcp): Need to figure out how to inject ccm groups
     cat >>"$file" <<EOF
 KUBERNETES_MASTER: $(yaml-quote 'true')
 KUBE_USER: $(yaml-quote "${KUBE_USER}")
@@ -1588,6 +1543,7 @@ NODE_BINARY_TAR_URL: $(yaml-quote "${NODE_BINARY_TAR_URL}")
 NODE_BINARY_TAR_HASH: $(yaml-quote "${NODE_BINARY_TAR_HASH}")
 CSI_PROXY_STORAGE_PATH: $(yaml-quote "${CSI_PROXY_STORAGE_PATH}")
 CSI_PROXY_VERSION: $(yaml-quote "${CSI_PROXY_VERSION}")
+CSI_PROXY_FLAGS: $(yaml-quote "${CSI_PROXY_FLAGS}")
 ENABLE_CSI_PROXY: $(yaml-quote "${ENABLE_CSI_PROXY}")
 K8S_DIR: $(yaml-quote "${WINDOWS_K8S_DIR}")
 NODE_DIR: $(yaml-quote "${WINDOWS_NODE_DIR}")

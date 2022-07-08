@@ -6,4 +6,8 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apimachinery/pkg/util/clock",
     importpath = "k8s.io/apimachinery/pkg/util/clock",
     visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/k8s.io/utils/clock:go_default_library",
+        "//vendor/k8s.io/utils/clock/testing:go_default_library",
+    ],
 )

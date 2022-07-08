@@ -57,7 +57,11 @@ type gkeSigner struct {
 
 // newGKESigner will create a new instance of a gkeSigner.
 func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
-	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, ctx.clusterSigningGKEKubeconfig, groupVersions, *ClusterSigningGKERetryBackoff, nil)
+	clientConfig, err := webhook.LoadKubeconfig(ctx.clusterSigningGKEKubeconfig, nil)
+	if err != nil {
+		return nil, err
+	}
+	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, clientConfig, groupVersions, *ClusterSigningGKERetryBackoff)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +74,7 @@ func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
 }
 
 // handle is called by the generic Kubernetes certificate controller.
-func (s *gkeSigner) handle(csr *capi.CertificateSigningRequest) error {
+func (s *gkeSigner) handle(_ context.Context, csr *capi.CertificateSigningRequest) error {
 	_, _, err := s.handleInternal(csr)
 	return err
 }

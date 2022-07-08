@@ -15,6 +15,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -287,7 +288,7 @@ func TestNodeApproverHandle(t *testing.T) {
 				validators: []csrValidator{validator},
 			}
 			csr := makeTestCSR(t)
-			if err := approver.handle(csr); err != nil && !c.err {
+			if err := approver.handle(context.TODO(), csr); err != nil && !c.err {
 				t.Errorf("unexpected err: %v", err)
 			}
 			c.verifyActions(t, client.Actions())

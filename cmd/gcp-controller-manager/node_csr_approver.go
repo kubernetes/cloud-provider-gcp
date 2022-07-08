@@ -121,7 +121,7 @@ func csrValidators(ctx *controllerContext) []csrValidator {
 	return validators
 }
 
-func (a *nodeApprover) handle(csr *capi.CertificateSigningRequest) error {
+func (a *nodeApprover) handle(ctx context.Context, csr *capi.CertificateSigningRequest) error {
 	recordMetric := csrmetrics.ApprovalStartRecorder(authFlowLabelNone)
 	if len(csr.Status.Certificate) != 0 {
 		return nil

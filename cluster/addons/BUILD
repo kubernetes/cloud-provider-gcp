@@ -35,7 +35,6 @@ filegroup(
     name = "all-srcs",
     srcs = [
         ":package-srcs",
-        "//cluster/addons/fluentd-elasticsearch/es-image:all-srcs",
     ],
     tags = ["automanaged"],
 )

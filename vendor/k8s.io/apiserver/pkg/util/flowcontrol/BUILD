@@ -33,6 +33,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/authentication/serviceaccount:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authentication/user:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/endpoints/request:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/server/httplog:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/server/mux:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/apihelpers:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing:go_default_library",
