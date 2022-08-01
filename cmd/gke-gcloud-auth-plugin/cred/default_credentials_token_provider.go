@@ -19,9 +19,7 @@ var (
 		"https://www.googleapis.com/auth/userinfo.email"}
 )
 
-//
 // defaultCredentialsTokenProvider provides default credential tokens.
-//
 type defaultCredentialsTokenProvider struct {
 	googleDefaultTokenSource func(ctx context.Context, scope ...string) (oauth2.TokenSource, error)
 }

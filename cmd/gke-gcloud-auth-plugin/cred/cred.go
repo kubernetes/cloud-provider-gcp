@@ -39,9 +39,11 @@ const (
 
 // cache is the struct that gets cached in the cache file in json format.
 // {
-//    "current_context": "gke_user-gke-dev_us-central1_autopilot-cluster-11",
-//    "access_token": "ya29.A0ARrdaM8WL....G0xYXGIQNPi5WvHe07ia4Gs",
-//    "token_expiry": "2022-01-27T08:27:52Z"
+//
+//	"current_context": "gke_user-gke-dev_us-central1_autopilot-cluster-11",
+//	"access_token": "ya29.A0ARrdaM8WL....G0xYXGIQNPi5WvHe07ia4Gs",
+//	"token_expiry": "2022-01-27T08:27:52Z"
+//
 // }
 // The current_context helps us cache tokens by context(cluster) similar to how
 // this was done for Authprovider in kubeconfig.
@@ -84,15 +86,17 @@ type Options struct {
 
 // PrintCred prints ExecCredential to stdout to be consumed by kubectl to connect to GKE Clusters
 // {
-//    "kind": "ExecCredential",
-//    "apiVersion": "client.authentication.k8s.io/v1beta1",
-//    "spec": {
-//        "interactive": false
-//    },
-//    "status": {
-//        "expirationTimestamp": "2022-01-27T07:10:46Z",
-//        "token": "ya29.A0ARrda.......0jDi8weH-36jJNru6Ps"
-//    }
+//
+//	"kind": "ExecCredential",
+//	"apiVersion": "client.authentication.k8s.io/v1beta1",
+//	"spec": {
+//	    "interactive": false
+//	},
+//	"status": {
+//	    "expirationTimestamp": "2022-01-27T07:10:46Z",
+//	    "token": "ya29.A0ARrda.......0jDi8weH-36jJNru6Ps"
+//	}
+//
 // }
 func PrintCred(options *Options) error {
 	if options == nil {
