@@ -75,6 +75,7 @@ var (
 	delayDirectPathGSARemove           = pflag.Bool("delay-direct-path-gsa-remove", false, "Delay removal of deleted Direct Path workloads' Google Service Accounts.")
 	hmsAuthorizeSAMappingURL           = pflag.String("hms-authorize-sa-mapping-url", "", "URL for reaching the Hosted Master Service AuthorizeSAMapping API.")
 	hmsSyncNodeURL                     = pflag.String("hms-sync-node-url", "", "URL for reaching the Hosted Master Service SyncNode API.")
+	csrAllowListPath                   = pflag.String("csr-allow-list-path", "", "An allow list for csr auto approve, we will put username in the allow list")
 )
 
 func main() {

@@ -118,6 +118,7 @@ go_test(
         "//pkg/nodeidentity:go_default_library",
         "//pkg/tpmattest:go_default_library",
         "//vendor/github.com/google/go-tpm/tpm2:go_default_library",
+        "//vendor/github.com/google/go-cmp/cmp:go_default_library",
         "//vendor/google.golang.org/api/compute/v0.beta:go_default_library",
         "//vendor/google.golang.org/api/compute/v1:go_default_library",
         "//vendor/google.golang.org/api/container/v1:go_default_library",

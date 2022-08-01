@@ -19,13 +19,15 @@ limitations under the License.
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/x509"
 	"fmt"
-	"k8s.io/cloud-provider-gcp/providers/gce"
+	"os"
 	"sort"
 	"strings"
 
+	"k8s.io/cloud-provider-gcp/providers/gce"
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2"
 	betacompute "google.golang.org/api/compute/v0.beta"
@@ -60,6 +62,24 @@ func getRegionFromLocation(loc string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid gcp location %q", loc)
 	}
+}
+
+func loadCSRAllowList(csrAllowListPath string) ([]string, error) {
+	list := make([]string, 0)
+	if len(csrAllowListPath) == 0 {
+		return list, fmt.Errorf("csrAllowListPath is nil")
+	}
+	file, err := os.Open(csrAllowListPath)
+	if err != nil {
+		return list, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		list = append(list, scanner.Text())
+	}
+	return list, scanner.Err()
 }
 
 func loadGCPConfig(gceConfigPath, gceAPIEndpointOverride string) (gcpConfig, error) {
