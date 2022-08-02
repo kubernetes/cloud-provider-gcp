@@ -131,7 +131,8 @@ func getCertApprovalCondition(status *capi.CertificateSigningRequestStatus) (app
 // - v.Validate(csr): Validate the SAN, IP address in the certificate.
 //
 // - SubjectAccessReview to ensure that the subject of the certificate
-//	 has the Permission give in Options.Permission on the API server.
+//
+//	has the Permission give in Options.Permission on the API server.
 //
 // - v.PreApproveHoook(csr) completes without error.
 //

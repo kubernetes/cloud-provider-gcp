@@ -21,9 +21,7 @@ type gcloudConfiguration struct {
 	} `json:"configuration"`
 }
 
-//
 // gcloudTokenProvider provides gcloud OAth 2.0 tokens.
-//
 type gcloudTokenProvider struct {
 	readGcloudConfigRaw func() ([]byte, error)
 	readFile            func(filename string) ([]byte, error)

@@ -75,7 +75,9 @@ var newNodeIdentity = nodeidentity.FromMetadata
 //
 // High-level flow (TPM commands in parens):
 // - load AIK from template in NVRAM (TPM2_NV_ReadPublic, TPM2_NV_Read,
-//   TPM2_CreatePrimary)
+//
+//	TPM2_CreatePrimary)
+//
 // - load privateKey into the TPM (TPM2_LoadExternal)
 // - certify (sign) privateKey with AIK (TPM2_Certify)
 // - read AIK certificate from NVRAM (TPM2_NV_ReadPubluc, TPM2_NV_Read)
