@@ -1,4 +1,4 @@
-package cred
+package main
 
 import (
 	"context"

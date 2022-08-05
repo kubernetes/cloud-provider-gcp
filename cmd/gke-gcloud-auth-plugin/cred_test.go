@@ -1,4 +1,4 @@
-package cred
+package main
 
 import (
 	"context"
@@ -83,6 +83,29 @@ var (
     "access_token": "iam-ya29.gcloud_t0k3n^authz-t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z"
 }`
+
+	// Edge cloud test helpers
+	fakeEdgeCloudLocation = "us-central-fake"
+	fakeEdgeCloudCluster  = "fake-edge-cloud-cluster"
+	kubeCtlStartingConfig = fakeCurrentContext
+
+	validEdgeCloudCacheFile = fmt.Sprintf(baseCacheFile,
+		kubeCtlStartingConfig,
+		"EdgeCloud_CachedAccessToken",
+		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+	)
+
+	expiredEdgeCloudCacheFile = fmt.Sprintf(baseCacheFile,
+		kubeCtlStartingConfig,
+		"EdgeCloud_CachedAccessToken",
+		time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+	)
+
+	wantEdgeCloudCacheFile = fmt.Sprintf(`{
+    "current_context": "%s",
+    "access_token": "EdgeCloud_NewAccessToken",
+    "token_expiry": "2022-01-01T00:00:00Z"
+}`, kubeCtlStartingConfig)
 )
 
 func TestExecCredential(t *testing.T) {
@@ -373,6 +396,67 @@ func TestExecCredential(t *testing.T) {
 			wantToken:     fakeExecCredential("iam-ya29.gcloud_t0k3n^authz-t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFileWithAuthzToken,
 		},
+		{
+			testName: "EdgeCloudExpectsCachedTokenWhenValidCacheExists",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile: func(filename string) ([]byte, error) {
+					switch filename {
+					case fakeGetCacheFilePath():
+						return []byte(validEdgeCloudCacheFile), nil
+					default:
+						return fakeReadFile(filename)
+					}
+				},
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudEdgeCloudTokenProvider{
+					location:    fakeEdgeCloudLocation,
+					clusterName: fakeEdgeCloudCluster,
+					getTokenRaw: nil, // Code should be unreachable in this test
+				},
+			},
+			wantToken: fakeExecCredential("EdgeCloud_CachedAccessToken", &metav1.Time{Time: time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC)}),
+		},
+		{
+			testName: "EdgeCloudExpectsNewTokenWhenNoCacheExists",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				tokenProvider: &gcloudEdgeCloudTokenProvider{
+					location:    fakeEdgeCloudLocation,
+					clusterName: fakeEdgeCloudCluster,
+					getTokenRaw: fakeEdgeCloudTokenOutput,
+				},
+			},
+			wantToken:     fakeExecCredential("EdgeCloud_NewAccessToken", &metav1.Time{Time: newYears}),
+			wantCacheFile: wantEdgeCloudCacheFile,
+		},
+		{
+			testName: "EdgeCloudExpectsNewTokenWhenCacheFileExpires",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile: func(filename string) ([]byte, error) {
+					switch filename {
+					case fakeGetCacheFilePath():
+						return []byte(expiredEdgeCloudCacheFile), nil
+					default:
+						return fakeReadFile(filename)
+					}
+				},
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudEdgeCloudTokenProvider{
+					location:    fakeEdgeCloudLocation,
+					clusterName: fakeEdgeCloudCluster,
+					getTokenRaw: fakeEdgeCloudTokenOutput,
+				},
+			},
+			wantToken:     fakeExecCredential("EdgeCloud_NewAccessToken", &metav1.Time{Time: newYears}),
+			wantCacheFile: wantEdgeCloudCacheFile,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -516,4 +600,13 @@ func fakeExecCredential(token string, expiry *metav1.Time) *clientauthv1b1.ExecC
 
 func fakeTimeNow() time.Time {
 	return time.Date(2022, 1, 2, 0, 0, 0, 0, time.UTC)
+}
+
+func fakeEdgeCloudTokenOutput(location string, clusterName string) ([]byte, error) {
+	return []byte(`
+	{
+		"accessToken": "EdgeCloud_NewAccessToken",
+		"expireTime": "2022-01-01T00:00:00Z"
+	  }
+`), nil
 }

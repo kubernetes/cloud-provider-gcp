@@ -4,11 +4,12 @@
 // https://kubernetes.io/docs/reference/access-authn-authz/authentication/#client-go-credential-plugins
 // This library can be used with GKE Clusters for use with kubectl and custom
 // k8s clients.
-package cred
+package main
 
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os/exec"
@@ -17,11 +18,13 @@ import (
 	"time"
 
 	"github.com/natefinch/atomic"
+	"github.com/spf13/pflag"
 	"golang.org/x/oauth2/google"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientauthv1b1 "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/component-base/version/verflag"
 	"k8s.io/klog/v2"
 )
 
@@ -79,9 +82,46 @@ func newPlugin(tokenProvider tokenProvider) *plugin {
 	}
 }
 
-// Options struct inputs to PrintCred
-type Options struct {
-	UseApplicationDefaultCredentials bool
+var (
+	useApplicationDefaultCredentials = pflag.Bool("use_application_default_credentials", false, "Output is an ExecCredential filled with application default credentials.")
+	useEdgeCloud                     = pflag.Bool("use_edge_cloud", false, "Output is an ExecCredential for an Edge Cloud cluster.")
+	location                         = pflag.String("location", "", "Location of the Cluster.")
+	cluster                          = pflag.String("cluster", "", "Name of the Cluster.")
+)
+
+func main() {
+	klog.InitFlags(nil)
+	defer klog.Flush()
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine) // this is required to setup klog flags
+	pflag.Parse()
+
+	verflag.PrintAndExitIfRequested()
+
+	var tokenProvider tokenProvider = nil
+	if *useEdgeCloud {
+		if *location == "" || *cluster == "" {
+			klog.Exit(fmt.Errorf("for --use_edge_cloud: --location and --cluster are required"))
+		}
+
+		tokenProvider = &gcloudEdgeCloudTokenProvider{
+			location:    *location,
+			clusterName: *cluster,
+			getTokenRaw: getGcloudEdgeCloudTokenRaw,
+		}
+	} else if *useApplicationDefaultCredentials {
+		tokenProvider = &defaultCredentialsTokenProvider{
+			googleDefaultTokenSource: google.DefaultTokenSource,
+		}
+	} else {
+		tokenProvider = &gcloudTokenProvider{
+			readGcloudConfigRaw: readGcloudConfigRaw,
+			readFile:            readFile,
+		}
+	}
+
+	if err := PrintCred(&tokenProvider); err != nil {
+		klog.Exit(fmt.Errorf("print credential failed with error: %w", err))
+	}
 }
 
 // PrintCred prints ExecCredential to stdout to be consumed by kubectl to connect to GKE Clusters
@@ -98,25 +138,8 @@ type Options struct {
 //	}
 //
 // }
-func PrintCred(options *Options) error {
-	if options == nil {
-		options = &Options{
-			UseApplicationDefaultCredentials: false,
-		}
-	}
-
-	var tokenProvider tokenProvider = nil
-	if options.UseApplicationDefaultCredentials {
-		tokenProvider = &defaultCredentialsTokenProvider{
-			googleDefaultTokenSource: google.DefaultTokenSource,
-		}
-	} else {
-		tokenProvider = &gcloudTokenProvider{
-			readGcloudConfigRaw: readGcloudConfigRaw,
-			readFile:            readFile,
-		}
-	}
-	p := newPlugin(tokenProvider)
+func PrintCred(tokenProvider *tokenProvider) error {
+	p := newPlugin(*tokenProvider)
 
 	ec, err := p.execCredential()
 	if err != nil {
