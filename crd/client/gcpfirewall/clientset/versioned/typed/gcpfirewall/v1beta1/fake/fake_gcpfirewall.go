@@ -27,32 +27,32 @@ import (
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
-	v1alpha1 "k8s.io/cloud-provider-gcp/crd/apis/gcpfirewall/v1alpha1"
+	v1beta1 "k8s.io/cloud-provider-gcp/crd/apis/gcpfirewall/v1beta1"
 )
 
 // FakeGCPFirewalls implements GCPFirewallInterface
 type FakeGCPFirewalls struct {
-	Fake *FakeNetworkingV1alpha1
+	Fake *FakeNetworkingV1beta1
 }
 
-var gcpfirewallsResource = schema.GroupVersionResource{Group: "networking.gke.io", Version: "v1alpha1", Resource: "gcpfirewalls"}
+var gcpfirewallsResource = schema.GroupVersionResource{Group: "networking.gke.io", Version: "v1beta1", Resource: "gcpfirewalls"}
 
-var gcpfirewallsKind = schema.GroupVersionKind{Group: "networking.gke.io", Version: "v1alpha1", Kind: "GCPFirewall"}
+var gcpfirewallsKind = schema.GroupVersionKind{Group: "networking.gke.io", Version: "v1beta1", Kind: "GCPFirewall"}
 
 // Get takes name of the gCPFirewall, and returns the corresponding gCPFirewall object, and an error if there is any.
-func (c *FakeGCPFirewalls) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.GCPFirewall, err error) {
+func (c *FakeGCPFirewalls) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.GCPFirewall, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(gcpfirewallsResource, name), &v1alpha1.GCPFirewall{})
+		Invokes(testing.NewRootGetAction(gcpfirewallsResource, name), &v1beta1.GCPFirewall{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.GCPFirewall), err
+	return obj.(*v1beta1.GCPFirewall), err
 }
 
 // List takes label and field selectors, and returns the list of GCPFirewalls that match those selectors.
-func (c *FakeGCPFirewalls) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.GCPFirewallList, err error) {
+func (c *FakeGCPFirewalls) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.GCPFirewallList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(gcpfirewallsResource, gcpfirewallsKind, opts), &v1alpha1.GCPFirewallList{})
+		Invokes(testing.NewRootListAction(gcpfirewallsResource, gcpfirewallsKind, opts), &v1beta1.GCPFirewallList{})
 	if obj == nil {
 		return nil, err
 	}
@@ -61,8 +61,8 @@ func (c *FakeGCPFirewalls) List(ctx context.Context, opts v1.ListOptions) (resul
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &v1alpha1.GCPFirewallList{ListMeta: obj.(*v1alpha1.GCPFirewallList).ListMeta}
-	for _, item := range obj.(*v1alpha1.GCPFirewallList).Items {
+	list := &v1beta1.GCPFirewallList{ListMeta: obj.(*v1beta1.GCPFirewallList).ListMeta}
+	for _, item := range obj.(*v1beta1.GCPFirewallList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -77,40 +77,40 @@ func (c *FakeGCPFirewalls) Watch(ctx context.Context, opts v1.ListOptions) (watc
 }
 
 // Create takes the representation of a gCPFirewall and creates it.  Returns the server's representation of the gCPFirewall, and an error, if there is any.
-func (c *FakeGCPFirewalls) Create(ctx context.Context, gCPFirewall *v1alpha1.GCPFirewall, opts v1.CreateOptions) (result *v1alpha1.GCPFirewall, err error) {
+func (c *FakeGCPFirewalls) Create(ctx context.Context, gCPFirewall *v1beta1.GCPFirewall, opts v1.CreateOptions) (result *v1beta1.GCPFirewall, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(gcpfirewallsResource, gCPFirewall), &v1alpha1.GCPFirewall{})
+		Invokes(testing.NewRootCreateAction(gcpfirewallsResource, gCPFirewall), &v1beta1.GCPFirewall{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.GCPFirewall), err
+	return obj.(*v1beta1.GCPFirewall), err
 }
 
 // Update takes the representation of a gCPFirewall and updates it. Returns the server's representation of the gCPFirewall, and an error, if there is any.
-func (c *FakeGCPFirewalls) Update(ctx context.Context, gCPFirewall *v1alpha1.GCPFirewall, opts v1.UpdateOptions) (result *v1alpha1.GCPFirewall, err error) {
+func (c *FakeGCPFirewalls) Update(ctx context.Context, gCPFirewall *v1beta1.GCPFirewall, opts v1.UpdateOptions) (result *v1beta1.GCPFirewall, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(gcpfirewallsResource, gCPFirewall), &v1alpha1.GCPFirewall{})
+		Invokes(testing.NewRootUpdateAction(gcpfirewallsResource, gCPFirewall), &v1beta1.GCPFirewall{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.GCPFirewall), err
+	return obj.(*v1beta1.GCPFirewall), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeGCPFirewalls) UpdateStatus(ctx context.Context, gCPFirewall *v1alpha1.GCPFirewall, opts v1.UpdateOptions) (*v1alpha1.GCPFirewall, error) {
+func (c *FakeGCPFirewalls) UpdateStatus(ctx context.Context, gCPFirewall *v1beta1.GCPFirewall, opts v1.UpdateOptions) (*v1beta1.GCPFirewall, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(gcpfirewallsResource, "status", gCPFirewall), &v1alpha1.GCPFirewall{})
+		Invokes(testing.NewRootUpdateSubresourceAction(gcpfirewallsResource, "status", gCPFirewall), &v1beta1.GCPFirewall{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.GCPFirewall), err
+	return obj.(*v1beta1.GCPFirewall), err
 }
 
 // Delete takes name of the gCPFirewall and deletes it. Returns an error if one occurs.
 func (c *FakeGCPFirewalls) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(gcpfirewallsResource, name), &v1alpha1.GCPFirewall{})
+		Invokes(testing.NewRootDeleteAction(gcpfirewallsResource, name), &v1beta1.GCPFirewall{})
 	return err
 }
 
@@ -118,16 +118,16 @@ func (c *FakeGCPFirewalls) Delete(ctx context.Context, name string, opts v1.Dele
 func (c *FakeGCPFirewalls) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	action := testing.NewRootDeleteCollectionAction(gcpfirewallsResource, listOpts)
 
-	_, err := c.Fake.Invokes(action, &v1alpha1.GCPFirewallList{})
+	_, err := c.Fake.Invokes(action, &v1beta1.GCPFirewallList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched gCPFirewall.
-func (c *FakeGCPFirewalls) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.GCPFirewall, err error) {
+func (c *FakeGCPFirewalls) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.GCPFirewall, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(gcpfirewallsResource, name, pt, data, subresources...), &v1alpha1.GCPFirewall{})
+		Invokes(testing.NewRootPatchSubresourceAction(gcpfirewallsResource, name, pt, data, subresources...), &v1beta1.GCPFirewall{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.GCPFirewall), err
+	return obj.(*v1beta1.GCPFirewall), err
 }
