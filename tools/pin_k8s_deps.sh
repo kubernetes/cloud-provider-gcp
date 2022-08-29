@@ -5,7 +5,7 @@ set -o pipefail
 set -o nounset
 set -x
 
-KUBE_VERSION=${KUBE_VERSION:-"24.2"}
+KUBE_VERSION=${KUBE_VERSION:-"25.0"}
 
 KUBE_DEPS=(
  "k8s.io/api@v0.${KUBE_VERSION}"
