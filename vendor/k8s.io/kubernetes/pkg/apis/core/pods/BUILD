@@ -8,9 +8,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/apis/core:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/features:go_default_library",
         "//vendor/k8s.io/kubernetes/pkg/fieldpath:go_default_library",
     ],
 )

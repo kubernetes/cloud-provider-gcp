@@ -54,7 +54,7 @@ go_library(
         "//vendor/k8s.io/component-base/metrics:go_default_library",
         "//vendor/k8s.io/component-base/metrics/legacyregistry:go_default_library",
         "//vendor/k8s.io/component-base/metrics/prometheus/workqueue:go_default_library",
-        "//vendor/k8s.io/component-base/traces:go_default_library",
+        "//vendor/k8s.io/component-base/tracing:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
         "//vendor/k8s.io/utils/clock:go_default_library",
     ],

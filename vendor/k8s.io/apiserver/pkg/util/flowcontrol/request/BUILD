@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = [
+        "config.go",
         "list_work_estimator.go",
         "mutating_work_estimator.go",
         "object_count_tracker.go",

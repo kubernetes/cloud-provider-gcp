@@ -8,12 +8,12 @@ go_library(
         "field_behavior.pb.go",
         "http.pb.go",
         "resource.pb.go",
+        "routing.pb.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/genproto/googleapis/api/annotations",
     importpath = "google.golang.org/genproto/googleapis/api/annotations",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/protobuf/proto:go_default_library",
         "//vendor/google.golang.org/protobuf/reflect/protoreflect:go_default_library",
         "//vendor/google.golang.org/protobuf/runtime/protoimpl:go_default_library",
         "//vendor/google.golang.org/protobuf/types/descriptorpb:go_default_library",

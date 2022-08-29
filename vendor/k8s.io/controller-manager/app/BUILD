@@ -28,6 +28,7 @@ go_library(
         "//vendor/k8s.io/component-base/configz:go_default_library",
         "//vendor/k8s.io/component-base/logs:go_default_library",
         "//vendor/k8s.io/component-base/metrics/legacyregistry:go_default_library",
+        "//vendor/k8s.io/component-base/metrics/prometheus/controllers:go_default_library",
         "//vendor/k8s.io/component-base/metrics/prometheus/workqueue:go_default_library",
         "//vendor/k8s.io/controller-manager/pkg/clientbuilder:go_default_library",
         "//vendor/k8s.io/controller-manager/pkg/informerfactory:go_default_library",

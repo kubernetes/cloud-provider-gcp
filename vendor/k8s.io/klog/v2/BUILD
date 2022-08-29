@@ -20,6 +20,7 @@ go_library(
         "//vendor/github.com/go-logr/logr:go_default_library",
         "//vendor/k8s.io/klog/v2/internal/buffer:go_default_library",
         "//vendor/k8s.io/klog/v2/internal/clock:go_default_library",
+        "//vendor/k8s.io/klog/v2/internal/dbg:go_default_library",
         "//vendor/k8s.io/klog/v2/internal/serialize:go_default_library",
         "//vendor/k8s.io/klog/v2/internal/severity:go_default_library",
     ],

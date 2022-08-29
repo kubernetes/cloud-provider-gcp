@@ -24,7 +24,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/coreos/go-systemd/v22/daemon:go_default_library",
-        "//vendor/github.com/emicklei/go-restful:go_default_library",
+        "//vendor/github.com/emicklei/go-restful/v3:go_default_library",
         "//vendor/github.com/evanphx/json-patch:go_default_library",
         "//vendor/github.com/google/uuid:go_default_library",
         "//vendor/go.opentelemetry.io/otel/trace:go_default_library",

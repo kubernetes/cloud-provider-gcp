@@ -6,4 +6,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/klog/v2/internal/serialize",
     importpath = "k8s.io/klog/v2/internal/serialize",
     visibility = ["//vendor/k8s.io/klog/v2:__subpackages__"],
+    deps = ["//vendor/github.com/go-logr/logr:go_default_library"],
 )

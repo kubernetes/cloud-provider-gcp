@@ -6,5 +6,8 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/authentication/request/bearertoken",
     importpath = "k8s.io/apiserver/pkg/authentication/request/bearertoken",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/k8s.io/apiserver/pkg/authentication/authenticator:go_default_library"],
+    deps = [
+        "//vendor/k8s.io/apiserver/pkg/authentication/authenticator:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/warning:go_default_library",
+    ],
 )

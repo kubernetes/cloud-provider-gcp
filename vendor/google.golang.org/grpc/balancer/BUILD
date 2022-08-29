@@ -7,6 +7,7 @@ go_library(
     importpath = "google.golang.org/grpc/balancer",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/google.golang.org/grpc/channelz:go_default_library",
         "//vendor/google.golang.org/grpc/connectivity:go_default_library",
         "//vendor/google.golang.org/grpc/credentials:go_default_library",
         "//vendor/google.golang.org/grpc/internal:go_default_library",

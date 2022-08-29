@@ -35,7 +35,7 @@ go_library(
         "//vendor/k8s.io/client-go/tools/clientcmd/api:go_default_library",
         "//vendor/k8s.io/component-base/metrics:go_default_library",
         "//vendor/k8s.io/component-base/metrics/legacyregistry:go_default_library",
-        "//vendor/k8s.io/component-base/traces:go_default_library",
+        "//vendor/k8s.io/component-base/tracing:go_default_library",
         "//vendor/k8s.io/utils/lru:go_default_library",
     ],
 )

@@ -2,13 +2,17 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "go_default_library",
-    srcs = ["resolver.go"],
+    srcs = [
+        "map.go",
+        "resolver.go",
+    ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/resolver",
     importpath = "google.golang.org/grpc/resolver",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/google.golang.org/grpc/attributes:go_default_library",
         "//vendor/google.golang.org/grpc/credentials:go_default_library",
+        "//vendor/google.golang.org/grpc/internal/pretty:go_default_library",
         "//vendor/google.golang.org/grpc/serviceconfig:go_default_library",
     ],
 )
