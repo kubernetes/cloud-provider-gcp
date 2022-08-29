@@ -38,8 +38,20 @@ var nodeClientKeyUsages = []capi.KeyUsage{
 	capi.UsageClientAuth,
 }
 
+// see https://issue.k8s.io/109077
+var nodeClientKeyUsagesNoEncipherment = []capi.KeyUsage{
+	capi.UsageDigitalSignature,
+	capi.UsageClientAuth,
+}
+
 var nodeServerKeyUsages = []capi.KeyUsage{
 	capi.UsageKeyEncipherment,
+	capi.UsageDigitalSignature,
+	capi.UsageServerAuth,
+}
+
+// see https://issue.k8s.io/109077
+var nodeServerKeyUsagesNoEncipherment = []capi.KeyUsage{
 	capi.UsageDigitalSignature,
 	capi.UsageServerAuth,
 }
@@ -301,7 +313,7 @@ func IsNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 		return false
 	}
 
-	return hasExactUsages(csr, nodeClientKeyUsages)
+	return hasExactUsages(csr, nodeClientKeyUsagesNoEncipherment) || hasExactUsages(csr, nodeClientKeyUsages)
 }
 
 // IsNodeServerCert recognizes server certificates
@@ -310,7 +322,7 @@ func IsNodeServerCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 		return false
 	}
 
-	if !hasExactUsages(csr, nodeServerKeyUsages) {
+	if !hasExactUsages(csr, nodeServerKeyUsagesNoEncipherment) && !hasExactUsages(csr, nodeServerKeyUsages) {
 		return false
 	}
 

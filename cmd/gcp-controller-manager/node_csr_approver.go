@@ -295,8 +295,21 @@ var (
 		capi.UsageDigitalSignature,
 		capi.UsageClientAuth,
 	}
+
+	// see https://issue.k8s.io/109077
+	kubeletClientUsagesNoEncipherment = []capi.KeyUsage{
+		capi.UsageDigitalSignature,
+		capi.UsageClientAuth,
+	}
+
 	kubeletServerUsages = []capi.KeyUsage{
 		capi.UsageKeyEncipherment,
+		capi.UsageDigitalSignature,
+		capi.UsageServerAuth,
+	}
+
+	// see https://issue.k8s.io/109077
+	kubeletServerUsagesNoEncipherment = []capi.KeyUsage{
 		capi.UsageDigitalSignature,
 		capi.UsageServerAuth,
 	}
@@ -322,7 +335,7 @@ func isNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 	if len(x509cr.DNSNames) > 0 || len(x509cr.IPAddresses) > 0 {
 		return false
 	}
-	return hasExactUsages(csr, kubeletClientUsages)
+	return hasExactUsages(csr, kubeletClientUsagesNoEncipherment) || hasExactUsages(csr, kubeletClientUsages)
 }
 
 func isLegacyNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
@@ -339,7 +352,7 @@ func isNodeServerCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 	if csr.Spec.SignerName != certsv1.KubeletServingSignerName {
 		return false
 	}
-	if !hasExactUsages(csr, kubeletServerUsages) {
+	if !hasExactUsages(csr, kubeletServerUsagesNoEncipherment) && !hasExactUsages(csr, kubeletServerUsages) {
 		return false
 	}
 	return csr.Spec.Username == x509cr.Subject.CommonName
