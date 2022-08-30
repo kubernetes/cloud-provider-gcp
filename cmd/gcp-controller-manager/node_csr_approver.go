@@ -56,6 +56,8 @@ const (
 	tpmKubeletUsername    = "kubelet-bootstrap"
 
 	authFlowLabelNone = "unknown"
+
+	createdByInstanceMetadataKey = "created-by"
 )
 
 var (
@@ -466,6 +468,19 @@ func isNodeClientCertWithAttestation(csr *capi.CertificateSigningRequest, x509cr
 	return true
 }
 
+func getInstanceMetadata(inst *compute.Instance, key string) string {
+	if inst == nil || inst.Metadata == nil || inst.Metadata.Items == nil {
+		return ""
+	}
+
+	for _, item := range inst.Metadata.Items {
+		if item.Key == key && item.Value != nil {
+			return *item.Value
+		}
+	}
+	return ""
+}
+
 func validateTPMAttestation(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 	blocks, err := parsePEMBlocks(csr.Spec.Request)
 	if err != nil {
@@ -510,7 +525,12 @@ func validateTPMAttestation(ctx *controllerContext, csr *capi.CertificateSigning
 	}
 	recordMetric(csrmetrics.OutboundRPCStatusOK)
 	if ctx.csrApproverVerifyClusterMembership {
-		ok, err := clusterHasInstance(ctx, inst.Zone, inst.Id)
+		// get the instance group of this instance from the metadata.
+		// the metadata is user controlled, clusterHasInstance verifies
+		// that the group is indeed part of the cluster.
+		instanceGroupHint := getInstanceMetadata(inst, createdByInstanceMetadataKey)
+		klog.V(3).Infof("inst[%q] has instanceGroupHint [%q]", inst.Id, instanceGroupHint)
+		ok, err := clusterHasInstance(ctx, inst.Zone, inst.Id, instanceGroupHint)
 		if err != nil {
 			return false, fmt.Errorf("checking VM membership in cluster: %v", err)
 		}
@@ -614,45 +634,86 @@ func parsePEMBlocks(raw []byte) (map[string]*pem.Block, error) {
 	return blocks, nil
 }
 
-func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID uint64) (bool, error) {
+// getClusterInstanceGroupUrls returns a list of instance groups for all node pools in the cluster.
+func getClusterInstanceGroupUrls(ctx *controllerContext, instanceZone string) ([]string, error) {
+	var instanceGroupUrls []string
 	// instanceZone looks like
 	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
 	// Convert it to just "us-central1-c".
 	instanceZone = path.Base(instanceZone)
-
 	clusterName := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", ctx.gcpCfg.ProjectID, ctx.gcpCfg.Location, ctx.gcpCfg.ClusterName)
+
 	recordMetric := csrmetrics.OutboundRPCStartRecorder("container.ProjectsLocationsClustersService.Get")
 	cluster, err := container.NewProjectsLocationsClustersService(ctx.gcpCfg.Container).Get(clusterName).Do()
 	if err != nil {
 		recordMetric(csrmetrics.OutboundRPCStatusError)
-		return false, fmt.Errorf("fetching cluster info: %v", err)
+		return nil, fmt.Errorf("fetching cluster info: %v", err)
 	}
-	recordMetric(csrmetrics.OutboundRPCStatusOK)
-	var errors []error
-	for _, np := range cluster.NodePools {
-		for _, ig := range np.InstanceGroupUrls {
-			igName, igLocation, err := parseInstanceGroupURL(ig)
-			if err != nil {
-				errors = append(errors, err)
-				continue
-			}
-			// InstanceGroups can be regional, igLocation can be either region
-			// or a zone. Match them to instanceZone by prefix to cover both.
-			if !strings.HasPrefix(instanceZone, igLocation) {
-				klog.V(2).Infof("instance group %q is in zone/region %q, node sending the CSR is in %q; skipping instance group", ig, igLocation, instanceZone)
-				continue
-			}
 
-			// Note: use igLocation here instead of instanceZone.
-			// InstanceGroups can be regional, instances are always zonal.
-			ok, err := groupHasInstance(ctx, igLocation, igName, instanceID)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("checking that group %q contains instance %v: %v", igName, instanceID, err))
-				continue
-			}
-			if ok {
-				return true, nil
-			}
+	recordMetric(csrmetrics.OutboundRPCStatusOK)
+	for _, np := range cluster.NodePools {
+		instanceGroupUrls = append(instanceGroupUrls, np.InstanceGroupUrls...)
+	}
+	return instanceGroupUrls, nil
+}
+
+func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID uint64, instanceGroupHint string) (bool, error) {
+	clusterInstanceGroupUrls, err := getClusterInstanceGroupUrls(ctx, instanceZone)
+	if err != nil {
+		return false, err
+	}
+
+	// InstanceGroupHint is the name of the instancegroup obtained from the instance metadata.
+	// Since this is user-modifiable, we should still verify membership.
+	// However, we can avoid some GCE API ListManagedInstanceGroupInstances calls using the hint.
+
+	// verify that the instanceGroupHint is in fact
+	// part of the cluster's known instance groups
+	var instanceGroupHintValid = false
+	var instanceGroupHintResolved = ""
+	for _, g := range clusterInstanceGroupUrls {
+		// perform a suffix match.
+		// instanceGroupHint is of the form project/p0/zones/z0/instanceGroup...
+		// g includes the hostname: https://www.googleapis.com/compute/v1/project/...
+		if strings.HasSuffix(g, instanceGroupHint) {
+			instanceGroupHintValid = true
+			instanceGroupHintResolved = g
+		}
+	}
+
+	// If the instanceGroupHint points is verified to be part of the cluster,
+	// insert the hinted group at the beginning of the cluster instancegroup list
+	if instanceGroupHintValid {
+		clusterInstanceGroupUrls = append([]string{instanceGroupHintResolved}, clusterInstanceGroupUrls...)
+	} else if instanceGroupHint != "" {
+		// Not expected. This will lead to a linear search in all instance groups in the cluster.
+		klog.Infof("hinted instance group %q not found in cluster.", instanceGroupHint)
+	}
+
+	var errors []error
+	for _, ig := range clusterInstanceGroupUrls {
+		igName, igLocation, err := parseInstanceGroupURL(ig)
+		if err != nil {
+			errors = append(errors, err)
+			continue
+		}
+
+		// InstanceGroups can be regional, igLocation can be either region
+		// or a zone. Match them to instanceZone by prefix to cover both.
+		if !strings.HasPrefix(instanceZone, igLocation) {
+			klog.V(2).Infof("instance group %q is in zone/region %q, node sending the CSR is in %q; skipping instance group", ig, igLocation, instanceZone)
+			continue
+		}
+
+		// Note: use igLocation here instead of instanceZone.
+		// InstanceGroups can be regional, instances are always zonal.
+		ok, err := groupHasInstance(ctx, igLocation, igName, instanceID)
+		if err != nil {
+			errors = append(errors, fmt.Errorf("checking that group %q contains instance %v: %v", igName, instanceID, err))
+			continue
+		}
+		if ok {
+			return true, nil
 		}
 	}
 

@@ -893,6 +893,14 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 		})
 	}
 
+	var computeMetadata = func(s string) *compute.Metadata {
+		return &compute.Metadata{
+			Items: []*compute.MetadataItems{
+				{Key: "created-by", Value: &s},
+			},
+		}
+	}
+
 	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		t.Logf("fakeGCPAPI request %q", req.URL.Path)
 		switch req.URL.Path {
@@ -901,6 +909,7 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 				Id:                1,
 				Name:              "i0",
 				Zone:              "z0",
+				Metadata:          computeMetadata("invalid-instance-group"),
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
 			})
 		case "/compute/v1/projects/p0:p1/zones/z0/instances/i0":
@@ -922,6 +931,7 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 				Id:                3,
 				Name:              "i0",
 				Zone:              "z0",
+				Metadata:          computeMetadata("invalid-instance-group-3"),
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
 			})
 		case "/compute/v1/projects/2/zones/r0-a/instances/i1":
@@ -929,6 +939,7 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 				Id:                4,
 				Name:              "i0",
 				Zone:              "r0-a",
+				Metadata:          computeMetadata("projects/2/zones/z0/instanceGroupManagers/ig1"),
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
 			})
 		case "/compute/beta/projects/2/zones/z0/instances/i0/getShieldedVmIdentity":
