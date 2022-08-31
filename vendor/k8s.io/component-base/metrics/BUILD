@@ -18,6 +18,7 @@ go_library(
         "processstarttime_windows.go",
         "registry.go",
         "summary.go",
+        "timing_histogram.go",
         "value.go",
         "version.go",
         "version_parser.go",
@@ -34,6 +35,7 @@ go_library(
         "//vendor/github.com/spf13/pflag:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/version:go_default_library",
+        "//vendor/k8s.io/component-base/metrics/prometheusextension:go_default_library",
         "//vendor/k8s.io/component-base/version:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",
     ] + select({

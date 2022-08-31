@@ -10,7 +10,7 @@ go_library(
     importpath = "k8s.io/kube-openapi/pkg/builder3",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/emicklei/go-restful:go_default_library",
+        "//vendor/github.com/emicklei/go-restful/v3:go_default_library",
         "//vendor/k8s.io/kube-openapi/pkg/builder3/util:go_default_library",
         "//vendor/k8s.io/kube-openapi/pkg/common:go_default_library",
         "//vendor/k8s.io/kube-openapi/pkg/common/restfuladapter:go_default_library",

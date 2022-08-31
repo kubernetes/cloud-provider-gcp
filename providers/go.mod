@@ -1,6 +1,6 @@
 module k8s.io/cloud-provider-gcp/providers
 
-go 1.17
+go 1.18
 
 require (
 	cloud.google.com/go v0.99.0

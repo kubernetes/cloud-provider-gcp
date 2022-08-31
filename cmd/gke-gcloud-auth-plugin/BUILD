@@ -17,7 +17,13 @@ go_binary(
 
 go_library(
     name = "go_default_library",
-    srcs = ["cred.go", "default_credentials_token_provider.go", "gcloud_edge_cloud_token_provider.go", "gcloud_token_provider.go", "token_provider.go"],
+    srcs = [
+        "cred.go",
+        "default_credentials_token_provider.go",
+        "gcloud_edge_cloud_token_provider.go",
+        "gcloud_token_provider.go",
+        "token_provider.go",
+    ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin",
     deps = [
         "//vendor/github.com/natefinch/atomic:go_default_library",

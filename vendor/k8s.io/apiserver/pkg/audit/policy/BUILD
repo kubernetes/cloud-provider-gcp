@@ -4,7 +4,6 @@ go_library(
     name = "go_default_library",
     srcs = [
         "checker.go",
-        "enforce.go",
         "reader.go",
         "util.go",
     ],

@@ -7,7 +7,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/endpoints/metrics",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/emicklei/go-restful:go_default_library",
+        "//vendor/github.com/emicklei/go-restful/v3:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1/validation:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",

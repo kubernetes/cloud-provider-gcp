@@ -25,6 +25,7 @@ go_library(
         "//vendor/k8s.io/client-go/tools/record:go_default_library",
         "//vendor/k8s.io/client-go/util/retry:go_default_library",
         "//vendor/k8s.io/cloud-provider:go_default_library",
+        "//vendor/k8s.io/component-base/metrics/prometheus/controllers:go_default_library",
         "//vendor/k8s.io/component-base/metrics/prometheus/ratelimiter:go_default_library",
         "//vendor/k8s.io/component-helpers/node/util:go_default_library",
         "//vendor/k8s.io/klog/v2:go_default_library",

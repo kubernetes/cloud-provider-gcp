@@ -34,7 +34,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/storage:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/cacher:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/errors:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/storage/etcd3:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/etcd3/metrics:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/storagebackend:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/storagebackend/factory:go_default_library",

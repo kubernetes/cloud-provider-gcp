@@ -8,7 +8,7 @@ go_library(
         "zz_generated.deepcopy.go",
         "zz_generated.register.go",
     ],
-    importpath = "k8s.io/cloud-provider-gcp/crd/apis/gcpfirewall/v1alpha1",
+    importpath = "k8s.io/cloud-provider-gcp/crd/apis/gcpfirewall/v1beta1",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
