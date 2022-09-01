@@ -56,8 +56,8 @@ genrule(
       image_tag=`echo $$image_tag | sed 's/+/-/g'`
       sed -i "s@:image\"@:$${image_tag}\"@g" manifest.json
       sed -i "s@\"image\"@\"$${image_tag}\"@g" repositories
-      sed -i "s@k8s.gcr.io/cmd/cloud-controller-manager:@k8s.gcr.io/cloud-controller-manager:@g" manifest.json
-      sed -i "s@k8s.gcr.io/cmd/cloud-controller-manager@k8s.gcr.io/cloud-controller-manager@g" repositories
+      sed -i "s@registry.k8s.io/cmd/cloud-controller-manager:@registry.k8s.io/cloud-controller-manager:@g" manifest.json
+      sed -i "s@registry.k8s.io/cmd/cloud-controller-manager@registry.k8s.io/cloud-controller-manager@g" repositories
       tar -c -T contents -f ../$@
       cd ..
     }''',
