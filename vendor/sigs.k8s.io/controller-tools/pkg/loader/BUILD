@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "loader",
     srcs = [
         "doc.go",
         "errors.go",
@@ -13,5 +13,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/sigs.k8s.io/controller-tools/pkg/loader",
     importpath = "sigs.k8s.io/controller-tools/pkg/loader",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/golang.org/x/tools/go/packages:go_default_library"],
+    deps = ["//vendor/golang.org/x/tools/go/packages"],
 )

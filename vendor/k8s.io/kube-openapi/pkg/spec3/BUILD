@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "spec3",
     srcs = [
         "component.go",
         "encoding.go",
@@ -23,7 +23,7 @@ go_library(
     importpath = "k8s.io/kube-openapi/pkg/spec3",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/go-openapi/swag:go_default_library",
-        "//vendor/k8s.io/kube-openapi/pkg/validation/spec:go_default_library",
+        "//vendor/github.com/go-openapi/swag",
+        "//vendor/k8s.io/kube-openapi/pkg/validation/spec",
     ],
 )

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "proto",
     srcs = [
         "clone.go",
         "custom_gogo.go",
@@ -18,6 +18,8 @@ go_library(
         "lib.go",
         "lib_gogo.go",
         "message_set.go",
+        "pointer_reflect.go",
+        "pointer_reflect_gogo.go",
         "pointer_unsafe.go",
         "pointer_unsafe_gogo.go",
         "properties.go",

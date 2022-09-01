@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "generator",
     srcs = [
         "default_generator.go",
         "default_package.go",
@@ -17,10 +17,10 @@ go_library(
     importpath = "k8s.io/gengo/generator",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/golang.org/x/tools/imports:go_default_library",
-        "//vendor/k8s.io/gengo/namer:go_default_library",
-        "//vendor/k8s.io/gengo/parser:go_default_library",
-        "//vendor/k8s.io/gengo/types:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/golang.org/x/tools/imports",
+        "//vendor/k8s.io/gengo/namer",
+        "//vendor/k8s.io/gengo/parser",
+        "//vendor/k8s.io/gengo/types",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

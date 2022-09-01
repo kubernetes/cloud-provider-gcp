@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "cobra",
     srcs = [
         "args.go",
         "bash_completions.go",
@@ -20,10 +20,10 @@ go_library(
     importpath = "github.com/spf13/cobra",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/spf13/pflag:go_default_library",
+        "//vendor/github.com/spf13/pflag",
     ] + select({
         "@io_bazel_rules_go//go/platform:windows": [
-            "//vendor/github.com/inconshreveable/mousetrap:go_default_library",
+            "//vendor/github.com/inconshreveable/mousetrap",
         ],
         "//conditions:default": [],
     }),

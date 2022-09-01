@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "storage",
     srcs = [
         "csidriver.go",
         "csinode.go",
@@ -14,9 +14,9 @@ go_library(
     importpath = "k8s.io/client-go/listers/storage/v1",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/api/storage/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
-        "//vendor/k8s.io/client-go/tools/cache:go_default_library",
+        "//vendor/k8s.io/api/storage/v1:storage",
+        "//vendor/k8s.io/apimachinery/pkg/api/errors",
+        "//vendor/k8s.io/apimachinery/pkg/labels",
+        "//vendor/k8s.io/client-go/tools/cache",
     ],
 )

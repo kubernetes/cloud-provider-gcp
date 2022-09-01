@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "prometheusextension",
     srcs = [
         "timing_histogram.go",
         "timing_histogram_vec.go",
@@ -12,7 +12,7 @@ go_library(
     importpath = "k8s.io/component-base/metrics/prometheusextension",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
-        "//vendor/github.com/prometheus/client_model/go:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus",
+        "//vendor/github.com/prometheus/client_model/go",
     ],
 )

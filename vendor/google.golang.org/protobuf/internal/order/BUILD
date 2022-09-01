@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "order",
     srcs = [
         "order.go",
         "range.go",
@@ -9,5 +9,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/protobuf/internal/order",
     importpath = "google.golang.org/protobuf/internal/order",
     visibility = ["//vendor/google.golang.org/protobuf:__subpackages__"],
-    deps = ["//vendor/google.golang.org/protobuf/reflect/protoreflect:go_default_library"],
+    deps = ["//vendor/google.golang.org/protobuf/reflect/protoreflect"],
 )

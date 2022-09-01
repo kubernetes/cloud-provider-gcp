@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "v1beta1",
     srcs = [
         "conversion.go",
         "defaults.go",
@@ -15,14 +15,14 @@ go_library(
     importpath = "k8s.io/kubernetes/pkg/apis/certificates/v1beta1",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/api/certificates/v1beta1:go_default_library",
-        "//vendor/k8s.io/api/core/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/conversion:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/apis/certificates:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/apis/core:go_default_library",
+        "//vendor/k8s.io/api/certificates/v1beta1",
+        "//vendor/k8s.io/api/core/v1:core",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/conversion",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/kubernetes/pkg/apis/certificates",
+        "//vendor/k8s.io/kubernetes/pkg/apis/core",
     ],
 )

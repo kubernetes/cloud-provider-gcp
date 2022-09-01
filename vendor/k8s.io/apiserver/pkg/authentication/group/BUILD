@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "group",
     srcs = [
         "authenticated_group_adder.go",
         "group_adder.go",
@@ -11,7 +11,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/authentication/group",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apiserver/pkg/authentication/authenticator:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/authentication/user:go_default_library",
+        "//vendor/k8s.io/apiserver/pkg/authentication/authenticator",
+        "//vendor/k8s.io/apiserver/pkg/authentication/user",
     ],
 )

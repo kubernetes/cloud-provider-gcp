@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "strategicpatch",
     srcs = [
         "errors.go",
         "meta.go",
@@ -12,10 +12,10 @@ go_library(
     importpath = "k8s.io/apimachinery/pkg/util/strategicpatch",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1/unstructured:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/json:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/mergepatch:go_default_library",
-        "//vendor/k8s.io/apimachinery/third_party/forked/golang/json:go_default_library",
-        "//vendor/k8s.io/kube-openapi/pkg/util/proto:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1/unstructured",
+        "//vendor/k8s.io/apimachinery/pkg/util/json",
+        "//vendor/k8s.io/apimachinery/pkg/util/mergepatch",
+        "//vendor/k8s.io/apimachinery/third_party/forked/golang/json",
+        "//vendor/k8s.io/kube-openapi/pkg/util/proto",
     ],
 )

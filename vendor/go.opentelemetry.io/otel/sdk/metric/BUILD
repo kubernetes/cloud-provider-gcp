@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "metric",
     srcs = [
         "atomicfields.go",
         "doc.go",
@@ -12,13 +12,13 @@ go_library(
     importpath = "go.opentelemetry.io/otel/sdk/metric",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/go.opentelemetry.io/otel:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/attribute:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/internal/metric:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/metric:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/metric/number:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/sdk/export/metric:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/sdk/metric/aggregator:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/sdk/resource:go_default_library",
+        "//vendor/go.opentelemetry.io/otel",
+        "//vendor/go.opentelemetry.io/otel/attribute",
+        "//vendor/go.opentelemetry.io/otel/internal/metric",
+        "//vendor/go.opentelemetry.io/otel/metric",
+        "//vendor/go.opentelemetry.io/otel/metric/number",
+        "//vendor/go.opentelemetry.io/otel/sdk/export/metric",
+        "//vendor/go.opentelemetry.io/otel/sdk/metric/aggregator",
+        "//vendor/go.opentelemetry.io/otel/sdk/resource",
     ],
 )

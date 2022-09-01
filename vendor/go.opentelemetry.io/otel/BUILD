@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "otel",
     srcs = [
         "doc.go",
         "error_handler.go",
@@ -14,8 +14,8 @@ go_library(
     importpath = "go.opentelemetry.io/otel",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/go.opentelemetry.io/otel/internal/global:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/propagation:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/trace:go_default_library",
+        "//vendor/go.opentelemetry.io/otel/internal/global",
+        "//vendor/go.opentelemetry.io/otel/propagation",
+        "//vendor/go.opentelemetry.io/otel/trace",
     ],
 )

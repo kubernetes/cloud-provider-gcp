@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "openapi",
     srcs = [
         "enablement.go",
         "proto.go",
@@ -10,12 +10,12 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/util/openapi",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/google/gnostic/openapiv2:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/features:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
-        "//vendor/k8s.io/kube-openapi/pkg/common:go_default_library",
-        "//vendor/k8s.io/kube-openapi/pkg/schemamutation:go_default_library",
-        "//vendor/k8s.io/kube-openapi/pkg/util/proto:go_default_library",
-        "//vendor/k8s.io/kube-openapi/pkg/validation/spec:go_default_library",
+        "//vendor/github.com/google/gnostic/openapiv2",
+        "//vendor/k8s.io/apiserver/pkg/features",
+        "//vendor/k8s.io/apiserver/pkg/util/feature",
+        "//vendor/k8s.io/kube-openapi/pkg/common",
+        "//vendor/k8s.io/kube-openapi/pkg/schemamutation",
+        "//vendor/k8s.io/kube-openapi/pkg/util/proto",
+        "//vendor/k8s.io/kube-openapi/pkg/validation/spec",
     ],
 )

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "klog",
     srcs = [
         "contextual.go",
         "exit.go",
@@ -17,11 +17,11 @@ go_library(
     importpath = "k8s.io/klog/v2",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/go-logr/logr:go_default_library",
-        "//vendor/k8s.io/klog/v2/internal/buffer:go_default_library",
-        "//vendor/k8s.io/klog/v2/internal/clock:go_default_library",
-        "//vendor/k8s.io/klog/v2/internal/dbg:go_default_library",
-        "//vendor/k8s.io/klog/v2/internal/serialize:go_default_library",
-        "//vendor/k8s.io/klog/v2/internal/severity:go_default_library",
+        "//vendor/github.com/go-logr/logr",
+        "//vendor/k8s.io/klog/v2/internal/buffer",
+        "//vendor/k8s.io/klog/v2/internal/clock",
+        "//vendor/k8s.io/klog/v2/internal/dbg",
+        "//vendor/k8s.io/klog/v2/internal/serialize",
+        "//vendor/k8s.io/klog/v2/internal/severity",
     ],
 )

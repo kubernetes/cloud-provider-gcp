@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "labels",
     srcs = [
         "doc.go",
         "labels.go",
@@ -12,11 +12,11 @@ go_library(
     importpath = "k8s.io/apimachinery/pkg/labels",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/selection:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/validation:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/validation/field:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
-        "//vendor/k8s.io/utils/strings/slices:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/selection",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/apimachinery/pkg/util/validation",
+        "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
+        "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/utils/strings/slices",
     ],
 )

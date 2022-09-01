@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "metric",
     srcs = [
         "config.go",
         "doc.go",
@@ -15,8 +15,8 @@ go_library(
     importpath = "go.opentelemetry.io/otel/metric",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/go.opentelemetry.io/otel/attribute:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/metric/number:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/unit:go_default_library",
+        "//vendor/go.opentelemetry.io/otel/attribute",
+        "//vendor/go.opentelemetry.io/otel/metric/number",
+        "//vendor/go.opentelemetry.io/otel/unit",
     ],
 )

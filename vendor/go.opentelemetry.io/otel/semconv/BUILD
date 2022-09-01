@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "semconv",
     srcs = [
         "doc.go",
         "exception.go",
@@ -13,7 +13,7 @@ go_library(
     importpath = "go.opentelemetry.io/otel/semconv",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/go.opentelemetry.io/otel/attribute:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/codes:go_default_library",
+        "//vendor/go.opentelemetry.io/otel/attribute",
+        "//vendor/go.opentelemetry.io/otel/codes",
     ],
 )

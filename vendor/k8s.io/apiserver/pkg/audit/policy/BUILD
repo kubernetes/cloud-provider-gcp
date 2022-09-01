@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "policy",
     srcs = [
         "checker.go",
         "reader.go",
@@ -11,13 +11,13 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/audit/policy",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/apis/audit:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/apis/audit/v1:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/apis/audit/validation:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/audit:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/authorization/authorizer:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/apiserver/pkg/apis/audit",
+        "//vendor/k8s.io/apiserver/pkg/apis/audit/v1:audit",
+        "//vendor/k8s.io/apiserver/pkg/apis/audit/validation",
+        "//vendor/k8s.io/apiserver/pkg/audit",
+        "//vendor/k8s.io/apiserver/pkg/authorization/authorizer",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

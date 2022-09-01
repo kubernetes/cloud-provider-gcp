@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "promhttp",
     srcs = [
         "delegator.go",
         "http.go",
@@ -13,8 +13,8 @@ go_library(
     importpath = "github.com/prometheus/client_golang/prometheus/promhttp",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
-        "//vendor/github.com/prometheus/client_model/go:go_default_library",
-        "//vendor/github.com/prometheus/common/expfmt:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus",
+        "//vendor/github.com/prometheus/client_model/go",
+        "//vendor/github.com/prometheus/common/expfmt",
     ],
 )

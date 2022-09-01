@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "pretty",
     srcs = [
         "doc.go",
         "help.go",
@@ -12,7 +12,7 @@ go_library(
     importpath = "sigs.k8s.io/controller-tools/pkg/genall/help/pretty",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/fatih/color:go_default_library",
-        "//vendor/sigs.k8s.io/controller-tools/pkg/genall/help:go_default_library",
+        "//vendor/github.com/fatih/color",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/genall/help",
     ],
 )

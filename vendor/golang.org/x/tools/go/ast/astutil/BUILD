@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "astutil",
     srcs = [
         "enclosing.go",
         "imports.go",
@@ -11,5 +11,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/go/ast/astutil",
     importpath = "golang.org/x/tools/go/ast/astutil",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/golang.org/x/tools/internal/typeparams:go_default_library"],
+    deps = ["//vendor/golang.org/x/tools/internal/typeparams"],
 )

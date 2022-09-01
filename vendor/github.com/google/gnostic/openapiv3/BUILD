@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "openapiv3",
     srcs = [
         "OpenAPIv3.go",
         "OpenAPIv3.pb.go",
@@ -11,10 +11,10 @@ go_library(
     importpath = "github.com/google/gnostic/openapiv3",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/google/gnostic/compiler:go_default_library",
-        "//vendor/google.golang.org/protobuf/reflect/protoreflect:go_default_library",
-        "//vendor/google.golang.org/protobuf/runtime/protoimpl:go_default_library",
-        "//vendor/google.golang.org/protobuf/types/known/anypb:go_default_library",
-        "//vendor/gopkg.in/yaml.v3:go_default_library",
+        "//vendor/github.com/google/gnostic/compiler",
+        "//vendor/google.golang.org/protobuf/reflect/protoreflect",
+        "//vendor/google.golang.org/protobuf/runtime/protoimpl",
+        "//vendor/google.golang.org/protobuf/types/known/anypb",
+        "//vendor/gopkg.in/yaml.v3:yaml_v3",
     ],
 )

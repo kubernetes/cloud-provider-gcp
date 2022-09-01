@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "go-restful",
     srcs = [
         "compress.go",
         "compressor_cache.go",
@@ -38,5 +38,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/emicklei/go-restful/v3",
     importpath = "github.com/emicklei/go-restful/v3",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/github.com/emicklei/go-restful/v3/log:go_default_library"],
+    deps = ["//vendor/github.com/emicklei/go-restful/v3/log"],
 )

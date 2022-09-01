@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "module",
     srcs = [
         "module.go",
         "pseudo.go",
@@ -10,7 +10,7 @@ go_library(
     importpath = "golang.org/x/mod/module",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/golang.org/x/mod/internal/lazyregexp:go_default_library",
-        "//vendor/golang.org/x/mod/semver:go_default_library",
+        "//vendor/golang.org/x/mod/internal/lazyregexp",
+        "//vendor/golang.org/x/mod/semver",
     ],
 )

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "reference",
     srcs = [
         "helpers.go",
         "normalize.go",
@@ -12,7 +12,7 @@ go_library(
     importpath = "github.com/docker/distribution/reference",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/docker/distribution/digestset:go_default_library",
-        "//vendor/github.com/opencontainers/go-digest:go_default_library",
+        "//vendor/github.com/docker/distribution/digestset",
+        "//vendor/github.com/opencontainers/go-digest",
     ],
 )

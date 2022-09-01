@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "tpm2",
     srcs = [
         "constants.go",
         "error.go",
@@ -15,10 +15,10 @@ go_library(
     importpath = "github.com/google/go-tpm/tpm2",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/google/go-tpm/tpmutil:go_default_library",
+        "//vendor/github.com/google/go-tpm/tpmutil",
     ] + select({
         "@io_bazel_rules_go//go/platform:windows": [
-            "//vendor/github.com/google/go-tpm/tpmutil/tbs:go_default_library",
+            "//vendor/github.com/google/go-tpm/tpmutil/tbs",
         ],
         "//conditions:default": [],
     }),

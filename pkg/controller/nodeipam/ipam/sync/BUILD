@@ -1,26 +1,26 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "sync",
     srcs = ["sync.go"],
     importpath = "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam/sync",
     visibility = ["//visibility:public"],
     deps = [
-        "//pkg/controller/nodeipam/ipam/cidrset:go_default_library",
-        "//vendor/k8s.io/api/core/v1:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//pkg/controller/nodeipam/ipam/cidrset",
+        "//vendor/k8s.io/api/core/v1:core",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )
 
 go_test(
-    name = "go_default_test",
+    name = "sync_test",
     srcs = ["sync_test.go"],
-    embed = [":go_default_library"],
+    embed = [":sync"],
     deps = [
-        "//pkg/controller/nodeipam/ipam/cidrset:go_default_library",
-        "//pkg/controller/nodeipam/ipam/test:go_default_library",
-        "//vendor/k8s.io/api/core/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//pkg/controller/nodeipam/ipam/cidrset",
+        "//pkg/controller/nodeipam/ipam/test",
+        "//vendor/k8s.io/api/core/v1:core",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

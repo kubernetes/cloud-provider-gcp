@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "typed",
     srcs = [
         "doc.go",
         "helpers.go",
@@ -18,9 +18,9 @@ go_library(
     importpath = "sigs.k8s.io/structured-merge-diff/v4/typed",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/gopkg.in/yaml.v2:go_default_library",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/fieldpath:go_default_library",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/schema:go_default_library",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/value:go_default_library",
+        "//vendor/gopkg.in/yaml.v2:yaml_v2",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v4/fieldpath",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v4/schema",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v4/value",
     ],
 )

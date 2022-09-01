@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "markers",
     srcs = [
         "crd.go",
         "doc.go",
@@ -15,7 +15,7 @@ go_library(
     importpath = "sigs.k8s.io/controller-tools/pkg/crd/markers",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1:go_default_library",
-        "//vendor/sigs.k8s.io/controller-tools/pkg/markers:go_default_library",
+        "//vendor/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1:apiextensions",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/markers",
     ],
 )

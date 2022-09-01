@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "poly1305",
     srcs = [
         "bits_compat.go",
         "bits_go1.13.go",
@@ -20,7 +20,7 @@ go_library(
     visibility = ["//vendor/golang.org/x/crypto:__subpackages__"],
     deps = select({
         "@io_bazel_rules_go//go/platform:s390x": [
-            "//vendor/golang.org/x/sys/cpu:go_default_library",
+            "//vendor/golang.org/x/sys/cpu",
         ],
         "//conditions:default": [],
     }),

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "admissionregistration",
     srcs = [
         "doc.go",
         "generated.pb.go",
@@ -14,9 +14,9 @@ go_library(
     importpath = "k8s.io/api/admissionregistration/v1",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/gogo/protobuf/proto:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
+        "//vendor/github.com/gogo/protobuf/proto",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
     ],
 )

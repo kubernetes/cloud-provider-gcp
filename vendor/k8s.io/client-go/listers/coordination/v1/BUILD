@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "coordination",
     srcs = [
         "expansion_generated.go",
         "lease.go",
@@ -10,9 +10,9 @@ go_library(
     importpath = "k8s.io/client-go/listers/coordination/v1",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/api/coordination/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
-        "//vendor/k8s.io/client-go/tools/cache:go_default_library",
+        "//vendor/k8s.io/api/coordination/v1:coordination",
+        "//vendor/k8s.io/apimachinery/pkg/api/errors",
+        "//vendor/k8s.io/apimachinery/pkg/labels",
+        "//vendor/k8s.io/client-go/tools/cache",
     ],
 )

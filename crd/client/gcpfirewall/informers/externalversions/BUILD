@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "externalversions",
     srcs = [
         "factory.go",
         "generic.go",
@@ -9,13 +9,13 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/crd/client/gcpfirewall/informers/externalversions",
     visibility = ["//visibility:public"],
     deps = [
-        "//crd/apis/gcpfirewall/v1beta1:go_default_library",
-        "//crd/client/gcpfirewall/clientset/versioned:go_default_library",
-        "//crd/client/gcpfirewall/informers/externalversions/gcpfirewall:go_default_library",
-        "//crd/client/gcpfirewall/informers/externalversions/internalinterfaces:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/client-go/tools/cache:go_default_library",
+        "//crd/apis/gcpfirewall/v1beta1",
+        "//crd/client/gcpfirewall/clientset/versioned",
+        "//crd/client/gcpfirewall/informers/externalversions/gcpfirewall",
+        "//crd/client/gcpfirewall/informers/externalversions/internalinterfaces",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/client-go/tools/cache",
     ],
 )

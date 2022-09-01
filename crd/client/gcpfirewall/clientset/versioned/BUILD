@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "versioned",
     srcs = [
         "clientset.go",
         "doc.go",
@@ -9,9 +9,9 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/crd/client/gcpfirewall/clientset/versioned",
     visibility = ["//visibility:public"],
     deps = [
-        "//crd/client/gcpfirewall/clientset/versioned/typed/gcpfirewall/v1beta1:go_default_library",
-        "//vendor/k8s.io/client-go/discovery:go_default_library",
-        "//vendor/k8s.io/client-go/rest:go_default_library",
-        "//vendor/k8s.io/client-go/util/flowcontrol:go_default_library",
+        "//crd/client/gcpfirewall/clientset/versioned/typed/gcpfirewall/v1beta1",
+        "//vendor/k8s.io/client-go/discovery",
+        "//vendor/k8s.io/client-go/rest",
+        "//vendor/k8s.io/client-go/util/flowcontrol",
     ],
 )

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "otlp",
     srcs = [
         "doc.go",
         "options.go",
@@ -13,13 +13,13 @@ go_library(
     importpath = "go.opentelemetry.io/otel/exporters/otlp",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/go.opentelemetry.io/otel:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/metric:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/sdk/export/metric:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/sdk/export/metric/aggregation:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/sdk/metric/controller/basic:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/sdk/metric/processor/basic:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/sdk/metric/selector/simple:go_default_library",
-        "//vendor/go.opentelemetry.io/otel/sdk/trace:go_default_library",
+        "//vendor/go.opentelemetry.io/otel",
+        "//vendor/go.opentelemetry.io/otel/metric",
+        "//vendor/go.opentelemetry.io/otel/sdk/export/metric",
+        "//vendor/go.opentelemetry.io/otel/sdk/export/metric/aggregation",
+        "//vendor/go.opentelemetry.io/otel/sdk/metric/controller/basic",
+        "//vendor/go.opentelemetry.io/otel/sdk/metric/processor/basic",
+        "//vendor/go.opentelemetry.io/otel/sdk/metric/selector/simple",
+        "//vendor/go.opentelemetry.io/otel/sdk/trace",
     ],
 )

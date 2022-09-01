@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "quantile",
     srcs = ["stream.go"],
     importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/beorn7/perks/quantile",
     importpath = "github.com/beorn7/perks/quantile",

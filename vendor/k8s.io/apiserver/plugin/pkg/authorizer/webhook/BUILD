@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "webhook",
     srcs = [
         "metrics.go",
         "webhook.go",
@@ -10,19 +10,19 @@ go_library(
     importpath = "k8s.io/apiserver/plugin/pkg/authorizer/webhook",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/api/authorization/v1:go_default_library",
-        "//vendor/k8s.io/api/authorization/v1beta1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/cache:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/authentication/user:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/authorization/authorizer:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/util/webhook:go_default_library",
-        "//vendor/k8s.io/client-go/kubernetes/scheme:go_default_library",
-        "//vendor/k8s.io/client-go/kubernetes/typed/authorization/v1:go_default_library",
-        "//vendor/k8s.io/client-go/rest:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/k8s.io/api/authorization/v1:authorization",
+        "//vendor/k8s.io/api/authorization/v1beta1",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/util/cache",
+        "//vendor/k8s.io/apimachinery/pkg/util/wait",
+        "//vendor/k8s.io/apiserver/pkg/authentication/user",
+        "//vendor/k8s.io/apiserver/pkg/authorization/authorizer",
+        "//vendor/k8s.io/apiserver/pkg/util/webhook",
+        "//vendor/k8s.io/client-go/kubernetes/scheme",
+        "//vendor/k8s.io/client-go/kubernetes/typed/authorization/v1:authorization",
+        "//vendor/k8s.io/client-go/rest",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

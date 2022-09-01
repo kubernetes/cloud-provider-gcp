@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "protojson",
     srcs = [
         "decode.go",
         "doc.go",
@@ -12,18 +12,18 @@ go_library(
     importpath = "google.golang.org/protobuf/encoding/protojson",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/google.golang.org/protobuf/internal/encoding/json:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/encoding/messageset:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/errors:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/filedesc:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/flags:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/genid:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/order:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/pragma:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/set:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/strs:go_default_library",
-        "//vendor/google.golang.org/protobuf/proto:go_default_library",
-        "//vendor/google.golang.org/protobuf/reflect/protoreflect:go_default_library",
-        "//vendor/google.golang.org/protobuf/reflect/protoregistry:go_default_library",
+        "//vendor/google.golang.org/protobuf/internal/encoding/json",
+        "//vendor/google.golang.org/protobuf/internal/encoding/messageset",
+        "//vendor/google.golang.org/protobuf/internal/errors",
+        "//vendor/google.golang.org/protobuf/internal/filedesc",
+        "//vendor/google.golang.org/protobuf/internal/flags",
+        "//vendor/google.golang.org/protobuf/internal/genid",
+        "//vendor/google.golang.org/protobuf/internal/order",
+        "//vendor/google.golang.org/protobuf/internal/pragma",
+        "//vendor/google.golang.org/protobuf/internal/set",
+        "//vendor/google.golang.org/protobuf/internal/strs",
+        "//vendor/google.golang.org/protobuf/proto",
+        "//vendor/google.golang.org/protobuf/reflect/protoreflect",
+        "//vendor/google.golang.org/protobuf/reflect/protoregistry",
     ],
 )

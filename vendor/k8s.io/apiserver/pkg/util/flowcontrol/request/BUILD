@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "request",
     srcs = [
         "config.go",
         "list_work_estimator.go",
@@ -14,14 +14,14 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/util/flowcontrol/request",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/endpoints/request:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/features:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/metrics:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
-        "//vendor/k8s.io/utils/clock:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/util/wait",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/request",
+        "//vendor/k8s.io/apiserver/pkg/features",
+        "//vendor/k8s.io/apiserver/pkg/util/feature",
+        "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/metrics",
+        "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/utils/clock",
     ],
 )

@@ -1,13 +1,13 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "dca",
     srcs = ["dca.go"],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/api/transport/internal/dca",
     importpath = "google.golang.org/api/transport/internal/dca",
     visibility = ["//vendor/google.golang.org/api/transport:__subpackages__"],
     deps = [
-        "//vendor/google.golang.org/api/internal:go_default_library",
-        "//vendor/google.golang.org/api/transport/cert:go_default_library",
+        "//vendor/google.golang.org/api/internal",
+        "//vendor/google.golang.org/api/transport/cert",
     ],
 )

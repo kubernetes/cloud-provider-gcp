@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "spec",
     srcs = [
         "contact_info.go",
         "external_docs.go",
@@ -26,8 +26,8 @@ go_library(
     importpath = "k8s.io/kube-openapi/pkg/validation/spec",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/go-openapi/jsonreference:go_default_library",
-        "//vendor/github.com/go-openapi/swag:go_default_library",
-        "//vendor/github.com/google/gnostic/openapiv2:go_default_library",
+        "//vendor/github.com/go-openapi/jsonreference",
+        "//vendor/github.com/go-openapi/swag",
+        "//vendor/github.com/google/gnostic/openapiv2",
     ],
 )

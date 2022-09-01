@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "fake",
     srcs = [
         "doc.go",
         "fake_priorityclass.go",
@@ -11,15 +11,15 @@ go_library(
     importpath = "k8s.io/client-go/kubernetes/typed/scheduling/v1/fake",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/api/scheduling/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/watch:go_default_library",
-        "//vendor/k8s.io/client-go/applyconfigurations/scheduling/v1:go_default_library",
-        "//vendor/k8s.io/client-go/kubernetes/typed/scheduling/v1:go_default_library",
-        "//vendor/k8s.io/client-go/rest:go_default_library",
-        "//vendor/k8s.io/client-go/testing:go_default_library",
+        "//vendor/k8s.io/api/scheduling/v1:scheduling",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/labels",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/types",
+        "//vendor/k8s.io/apimachinery/pkg/watch",
+        "//vendor/k8s.io/client-go/applyconfigurations/scheduling/v1:scheduling",
+        "//vendor/k8s.io/client-go/kubernetes/typed/scheduling/v1:scheduling",
+        "//vendor/k8s.io/client-go/rest",
+        "//vendor/k8s.io/client-go/testing",
     ],
 )

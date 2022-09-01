@@ -1,15 +1,15 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "scheduling",
     srcs = ["interface.go"],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/informers/scheduling",
     importpath = "k8s.io/client-go/informers/scheduling",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/client-go/informers/internalinterfaces:go_default_library",
-        "//vendor/k8s.io/client-go/informers/scheduling/v1:go_default_library",
-        "//vendor/k8s.io/client-go/informers/scheduling/v1alpha1:go_default_library",
-        "//vendor/k8s.io/client-go/informers/scheduling/v1beta1:go_default_library",
+        "//vendor/k8s.io/client-go/informers/internalinterfaces",
+        "//vendor/k8s.io/client-go/informers/scheduling/v1:scheduling",
+        "//vendor/k8s.io/client-go/informers/scheduling/v1alpha1",
+        "//vendor/k8s.io/client-go/informers/scheduling/v1beta1",
     ],
 )

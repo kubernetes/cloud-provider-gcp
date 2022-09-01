@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "json",
     srcs = [
         "doc.go",
         "json.go",
@@ -9,5 +9,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/sigs.k8s.io/json",
     importpath = "sigs.k8s.io/json",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/sigs.k8s.io/json/internal/golang/encoding/json:go_default_library"],
+    deps = ["//vendor/sigs.k8s.io/json/internal/golang/encoding/json"],
 )

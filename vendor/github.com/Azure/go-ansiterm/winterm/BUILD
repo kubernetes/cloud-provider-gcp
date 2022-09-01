@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "winterm",
     srcs = [
         "ansi.go",
         "api.go",
@@ -17,8 +17,8 @@ go_library(
     visibility = ["//visibility:public"],
     deps = select({
         "@io_bazel_rules_go//go/platform:windows": [
-            "//vendor/github.com/Azure/go-ansiterm:go_default_library",
-            "//vendor/golang.org/x/sys/windows:go_default_library",
+            "//vendor/github.com/Azure/go-ansiterm",
+            "//vendor/golang.org/x/sys/windows",
         ],
         "//conditions:default": [],
     }),

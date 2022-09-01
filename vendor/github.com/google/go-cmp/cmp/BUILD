@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "cmp",
     srcs = [
         "compare.go",
         "export_unsafe.go",
@@ -19,9 +19,9 @@ go_library(
     importpath = "github.com/google/go-cmp/cmp",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/google/go-cmp/cmp/internal/diff:go_default_library",
-        "//vendor/github.com/google/go-cmp/cmp/internal/flags:go_default_library",
-        "//vendor/github.com/google/go-cmp/cmp/internal/function:go_default_library",
-        "//vendor/github.com/google/go-cmp/cmp/internal/value:go_default_library",
+        "//vendor/github.com/google/go-cmp/cmp/internal/diff",
+        "//vendor/github.com/google/go-cmp/cmp/internal/flags",
+        "//vendor/github.com/google/go-cmp/cmp/internal/function",
+        "//vendor/github.com/google/go-cmp/cmp/internal/value",
     ],
 )

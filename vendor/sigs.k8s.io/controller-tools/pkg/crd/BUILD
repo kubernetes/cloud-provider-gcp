@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "crd",
     srcs = [
         "conv.go",
         "desc_visitor.go",
@@ -19,17 +19,17 @@ go_library(
     importpath = "sigs.k8s.io/controller-tools/pkg/crd",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/gobuffalo/flect:go_default_library",
-        "//vendor/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions:go_default_library",
-        "//vendor/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1:go_default_library",
-        "//vendor/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/sigs.k8s.io/controller-tools/pkg/crd/markers:go_default_library",
-        "//vendor/sigs.k8s.io/controller-tools/pkg/genall:go_default_library",
-        "//vendor/sigs.k8s.io/controller-tools/pkg/loader:go_default_library",
-        "//vendor/sigs.k8s.io/controller-tools/pkg/markers:go_default_library",
-        "//vendor/sigs.k8s.io/controller-tools/pkg/version:go_default_library",
+        "//vendor/github.com/gobuffalo/flect",
+        "//vendor/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions",
+        "//vendor/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1:apiextensions",
+        "//vendor/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/crd/markers",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/genall",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/loader",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/markers",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/version",
     ],
 )

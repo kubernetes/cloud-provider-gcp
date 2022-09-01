@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "net",
     srcs = [
         "http.go",
         "interface.go",
@@ -13,9 +13,9 @@ go_library(
     importpath = "k8s.io/apimachinery/pkg/util/net",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/golang.org/x/net/http2:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
-        "//vendor/k8s.io/utils/net:go_default_library",
+        "//vendor/golang.org/x/net/http2",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/utils/net",
     ],
 )
