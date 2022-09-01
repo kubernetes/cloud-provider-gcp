@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "fileutil",
     srcs = [
         "dir_unix.go",
         "dir_windows.go",
@@ -28,19 +28,19 @@ go_library(
     importpath = "go.etcd.io/etcd/client/pkg/v3/fileutil",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/go.uber.org/zap:go_default_library",
+        "//vendor/go.uber.org/zap",
     ] + select({
         "@io_bazel_rules_go//go/platform:android": [
-            "//vendor/golang.org/x/sys/unix:go_default_library",
+            "//vendor/golang.org/x/sys/unix",
         ],
         "@io_bazel_rules_go//go/platform:darwin": [
-            "//vendor/golang.org/x/sys/unix:go_default_library",
+            "//vendor/golang.org/x/sys/unix",
         ],
         "@io_bazel_rules_go//go/platform:ios": [
-            "//vendor/golang.org/x/sys/unix:go_default_library",
+            "//vendor/golang.org/x/sys/unix",
         ],
         "@io_bazel_rules_go//go/platform:linux": [
-            "//vendor/golang.org/x/sys/unix:go_default_library",
+            "//vendor/golang.org/x/sys/unix",
         ],
         "//conditions:default": [],
     }),

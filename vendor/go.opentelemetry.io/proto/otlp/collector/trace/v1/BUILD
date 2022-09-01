@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "trace",
     srcs = [
         "trace_config.pb.go",
         "trace_service.pb.go",
@@ -12,17 +12,17 @@ go_library(
     importpath = "go.opentelemetry.io/proto/otlp/collector/trace/v1",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/protobuf/descriptor:go_default_library",
-        "//vendor/github.com/golang/protobuf/proto:go_default_library",
-        "//vendor/github.com/grpc-ecosystem/grpc-gateway/runtime:go_default_library",
-        "//vendor/github.com/grpc-ecosystem/grpc-gateway/utilities:go_default_library",
-        "//vendor/go.opentelemetry.io/proto/otlp/trace/v1:go_default_library",
-        "//vendor/google.golang.org/grpc:go_default_library",
-        "//vendor/google.golang.org/grpc/codes:go_default_library",
-        "//vendor/google.golang.org/grpc/grpclog:go_default_library",
-        "//vendor/google.golang.org/grpc/metadata:go_default_library",
-        "//vendor/google.golang.org/grpc/status:go_default_library",
-        "//vendor/google.golang.org/protobuf/reflect/protoreflect:go_default_library",
-        "//vendor/google.golang.org/protobuf/runtime/protoimpl:go_default_library",
+        "//vendor/github.com/golang/protobuf/descriptor",
+        "//vendor/github.com/golang/protobuf/proto",
+        "//vendor/github.com/grpc-ecosystem/grpc-gateway/runtime",
+        "//vendor/github.com/grpc-ecosystem/grpc-gateway/utilities",
+        "//vendor/go.opentelemetry.io/proto/otlp/trace/v1:trace",
+        "//vendor/google.golang.org/grpc",
+        "//vendor/google.golang.org/grpc/codes",
+        "//vendor/google.golang.org/grpc/grpclog",
+        "//vendor/google.golang.org/grpc/metadata",
+        "//vendor/google.golang.org/grpc/status",
+        "//vendor/google.golang.org/protobuf/reflect/protoreflect",
+        "//vendor/google.golang.org/protobuf/runtime/protoimpl",
     ],
 )

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "plan9",
     srcs = [
         "asm.s",
         "asm_plan9_386.s",
@@ -28,7 +28,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = select({
         "@io_bazel_rules_go//go/platform:plan9": [
-            "//vendor/golang.org/x/sys/internal/unsafeheader:go_default_library",
+            "//vendor/golang.org/x/sys/internal/unsafeheader",
         ],
         "//conditions:default": [],
     }),

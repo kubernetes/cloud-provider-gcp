@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "salsa",
     srcs = [
         "hsalsa20.go",
         "salsa208.go",

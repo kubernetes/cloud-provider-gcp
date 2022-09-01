@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "generic",
     srcs = [
         "doc.go",
         "matcher.go",
@@ -12,14 +12,14 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/registry/generic",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/fields:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/storage:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/storage/storagebackend:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/storage/storagebackend/factory:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/request:go_default_library",
-        "//vendor/k8s.io/client-go/tools/cache:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/fields",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apiserver/pkg/storage",
+        "//vendor/k8s.io/apiserver/pkg/storage/storagebackend",
+        "//vendor/k8s.io/apiserver/pkg/storage/storagebackend/factory",
+        "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/request",
+        "//vendor/k8s.io/client-go/tools/cache",
     ],
 )

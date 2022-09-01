@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "client",
     srcs = [
         "client.go",
         "conn.go",
@@ -10,8 +10,8 @@ go_library(
     importpath = "sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/google.golang.org/grpc:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
-        "//vendor/sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client:go_default_library",
+        "//vendor/google.golang.org/grpc",
+        "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client",
     ],
 )

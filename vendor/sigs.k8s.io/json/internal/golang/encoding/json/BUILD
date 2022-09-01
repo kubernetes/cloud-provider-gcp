@@ -1,11 +1,12 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "json",
     srcs = [
         "decode.go",
         "encode.go",
         "fold.go",
+        "fuzz.go",
         "indent.go",
         "kubernetes_patch.go",
         "scanner.go",

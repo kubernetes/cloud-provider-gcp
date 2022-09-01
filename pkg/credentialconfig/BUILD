@@ -7,24 +7,24 @@ load(
 )
 
 go_library(
-    name = "go_default_library",
+    name = "credentialconfig",
     srcs = [
         "config.go",
         "provider.go",
     ],
     importpath = "k8s.io/cloud-provider-gcp/pkg/credentialconfig",
     deps = [
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )
 
 go_test(
-    name = "go_default_test",
+    name = "credentialconfig_test",
     srcs = [
         "config_test.go",
         "provider_test.go",
     ],
-    embed = [":go_default_library"],
+    embed = [":credentialconfig"],
 )
 
 filegroup(

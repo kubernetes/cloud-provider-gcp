@@ -1,13 +1,14 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "uuid",
     srcs = [
         "dce.go",
         "doc.go",
         "hash.go",
         "marshal.go",
         "node.go",
+        "node_js.go",
         "node_net.go",
         "sql.go",
         "time.go",

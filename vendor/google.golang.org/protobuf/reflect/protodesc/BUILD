@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "protodesc",
     srcs = [
         "desc.go",
         "desc_init.go",
@@ -13,17 +13,17 @@ go_library(
     importpath = "google.golang.org/protobuf/reflect/protodesc",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/google.golang.org/protobuf/encoding/protowire:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/encoding/defval:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/errors:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/filedesc:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/flags:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/genid:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/pragma:go_default_library",
-        "//vendor/google.golang.org/protobuf/internal/strs:go_default_library",
-        "//vendor/google.golang.org/protobuf/proto:go_default_library",
-        "//vendor/google.golang.org/protobuf/reflect/protoreflect:go_default_library",
-        "//vendor/google.golang.org/protobuf/reflect/protoregistry:go_default_library",
-        "//vendor/google.golang.org/protobuf/types/descriptorpb:go_default_library",
+        "//vendor/google.golang.org/protobuf/encoding/protowire",
+        "//vendor/google.golang.org/protobuf/internal/encoding/defval",
+        "//vendor/google.golang.org/protobuf/internal/errors",
+        "//vendor/google.golang.org/protobuf/internal/filedesc",
+        "//vendor/google.golang.org/protobuf/internal/flags",
+        "//vendor/google.golang.org/protobuf/internal/genid",
+        "//vendor/google.golang.org/protobuf/internal/pragma",
+        "//vendor/google.golang.org/protobuf/internal/strs",
+        "//vendor/google.golang.org/protobuf/proto",
+        "//vendor/google.golang.org/protobuf/reflect/protoreflect",
+        "//vendor/google.golang.org/protobuf/reflect/protoregistry",
+        "//vendor/google.golang.org/protobuf/types/descriptorpb",
     ],
 )

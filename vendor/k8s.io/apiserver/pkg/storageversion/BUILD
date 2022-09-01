@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "storageversion",
     srcs = [
         "manager.go",
         "updater.go",
@@ -10,15 +10,15 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/storageversion",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/api/apiserverinternal/v1alpha1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
-        "//vendor/k8s.io/client-go/kubernetes:go_default_library",
-        "//vendor/k8s.io/client-go/rest:go_default_library",
-        "//vendor/k8s.io/component-base/metrics/prometheus/workqueue:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/k8s.io/api/apiserverinternal/v1alpha1",
+        "//vendor/k8s.io/apimachinery/pkg/api/errors",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/client-go/kubernetes",
+        "//vendor/k8s.io/client-go/rest",
+        "//vendor/k8s.io/component-base/metrics/prometheus/workqueue",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

@@ -1,9 +1,10 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "typeparams",
     srcs = [
         "common.go",
+        "coretype.go",
         "enabled_go117.go",
         "enabled_go118.go",
         "normalize.go",

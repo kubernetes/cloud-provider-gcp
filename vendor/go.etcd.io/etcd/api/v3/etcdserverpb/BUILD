@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "etcdserverpb",
     srcs = [
         "etcdserver.pb.go",
         "raft_internal.pb.go",
@@ -12,14 +12,14 @@ go_library(
     importpath = "go.etcd.io/etcd/api/v3/etcdserverpb",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/gogo/protobuf/gogoproto:go_default_library",
-        "//vendor/github.com/golang/protobuf/proto:go_default_library",
-        "//vendor/go.etcd.io/etcd/api/v3/authpb:go_default_library",
-        "//vendor/go.etcd.io/etcd/api/v3/membershippb:go_default_library",
-        "//vendor/go.etcd.io/etcd/api/v3/mvccpb:go_default_library",
-        "//vendor/google.golang.org/genproto/googleapis/api/annotations:go_default_library",
-        "//vendor/google.golang.org/grpc:go_default_library",
-        "//vendor/google.golang.org/grpc/codes:go_default_library",
-        "//vendor/google.golang.org/grpc/status:go_default_library",
+        "//vendor/github.com/gogo/protobuf/gogoproto",
+        "//vendor/github.com/golang/protobuf/proto",
+        "//vendor/go.etcd.io/etcd/api/v3/authpb",
+        "//vendor/go.etcd.io/etcd/api/v3/membershippb",
+        "//vendor/go.etcd.io/etcd/api/v3/mvccpb",
+        "//vendor/google.golang.org/genproto/googleapis/api/annotations",
+        "//vendor/google.golang.org/grpc",
+        "//vendor/google.golang.org/grpc/codes",
+        "//vendor/google.golang.org/grpc/status",
     ],
 )

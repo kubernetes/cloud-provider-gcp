@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "color",
     srcs = [
         "color.go",
         "doc.go",
@@ -10,7 +10,7 @@ go_library(
     importpath = "github.com/fatih/color",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/mattn/go-colorable:go_default_library",
-        "//vendor/github.com/mattn/go-isatty:go_default_library",
+        "//vendor/github.com/mattn/go-colorable",
+        "//vendor/github.com/mattn/go-isatty",
     ],
 )

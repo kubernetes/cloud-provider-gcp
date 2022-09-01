@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "workqueue",
     srcs = [
         "default_rate_limiters.go",
         "delaying_queue.go",
@@ -15,8 +15,8 @@ go_library(
     importpath = "k8s.io/client-go/util/workqueue",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/golang.org/x/time/rate:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
-        "//vendor/k8s.io/utils/clock:go_default_library",
+        "//vendor/golang.org/x/time/rate",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/utils/clock",
     ],
 )

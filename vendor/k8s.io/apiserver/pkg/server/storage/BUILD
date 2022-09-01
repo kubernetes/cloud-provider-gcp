@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "storage",
     srcs = [
         "doc.go",
         "resource_config.go",
@@ -13,14 +13,14 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/server/storage",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/recognizer:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/features:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/storage/storagebackend:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/storage/value:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/recognizer",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/apiserver/pkg/features",
+        "//vendor/k8s.io/apiserver/pkg/storage/storagebackend",
+        "//vendor/k8s.io/apiserver/pkg/storage/value",
+        "//vendor/k8s.io/apiserver/pkg/util/feature",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

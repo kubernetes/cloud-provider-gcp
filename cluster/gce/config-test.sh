@@ -27,11 +27,10 @@ export REGION=${ZONE%-*}
 RELEASE_REGION_FALLBACK=${RELEASE_REGION_FALLBACK:-false}
 REGIONAL_KUBE_ADDONS=${REGIONAL_KUBE_ADDONS:-true}
 # TODO: Migrate to e2-standard machine family.
-NODE_SIZE=${NODE_SIZE:-n1-standard-4}
+NODE_SIZE=${NODE_SIZE:-n1-standard-2}
 NUM_NODES=${NUM_NODES:-3}
 NUM_WINDOWS_NODES=${NUM_WINDOWS_NODES:-0}
 # TODO: Migrate to e2-standard machine family.
-# (TODO/cloud-provider-gcp): Needs to be reverted when kubetest2 support node size override.
 MASTER_SIZE=${MASTER_SIZE:-n1-standard-$(get-master-size)}
 MASTER_MIN_CPU_ARCHITECTURE=${MASTER_MIN_CPU_ARCHITECTURE:-} # To allow choosing better architectures.
 export MASTER_DISK_TYPE=pd-ssd
@@ -100,7 +99,7 @@ ALLOWED_NOTREADY_NODES=${ALLOWED_NOTREADY_NODES:-$(($(get-num-nodes) / 100))}
 # you are updating the os image versions, update this variable.
 # Also please update corresponding image for node e2e at:
 # https://github.com/kubernetes/kubernetes/blob/master/test/e2e_node/jenkins/image-config.yaml
-GCI_VERSION=${KUBE_GCI_VERSION:-cos-85-13310-1308-1}
+GCI_VERSION=${KUBE_GCI_VERSION:-cos-97-16919-103-16}
 export MASTER_IMAGE=${KUBE_GCE_MASTER_IMAGE:-}
 export MASTER_IMAGE_PROJECT=${KUBE_GCE_MASTER_PROJECT:-cos-cloud}
 export NODE_IMAGE=${KUBE_GCE_NODE_IMAGE:-${GCI_VERSION}}
@@ -201,7 +200,7 @@ HEAPSTER_MACHINE_TYPE=${HEAPSTER_MACHINE_TYPE:-}
 NUM_ADDITIONAL_NODES=${NUM_ADDITIONAL_NODES:-}
 ADDITIONAL_MACHINE_TYPE=${ADDITIONAL_MACHINE_TYPE:-}
 
-# Set etcd image (e.g. k8s.gcr.io/etcd) and version (e.g. v3.5.1-0) if you need
+# Set etcd image (e.g. registry.k8s.io/etcd) and version (e.g. v3.5.1-0) if you need
 # non-default version.
 export ETCD_IMAGE=${TEST_ETCD_IMAGE:-}
 export ETCD_DOCKER_REPOSITORY=${TEST_ETCD_DOCKER_REPOSITORY:-}
@@ -237,7 +236,6 @@ if [[ "${MASTER_OS_DISTRIBUTION}" = 'gci' ]] || [[ "${MASTER_OS_DISTRIBUTION}" =
   MASTER_KUBELET_TEST_ARGS="${MASTER_KUBELET_TEST_ARGS:-} --kernel-memcg-notification=true"
 fi
 APISERVER_TEST_ARGS="${APISERVER_TEST_ARGS:-} --runtime-config=extensions/v1beta1,scheduling.k8s.io/v1alpha1 ${TEST_CLUSTER_DELETE_COLLECTION_WORKERS} ${TEST_CLUSTER_MAX_REQUESTS_INFLIGHT}"
-CLOUD_CONTROLLER_MANAGER_TEST_ARGS="${CONTROLLER_MANAGER_TEST_ARGS:-} ${TEST_CLUSTER_RESYNC_PERIOD} ${TEST_CLUSTER_API_CONTENT_TYPE}"
 CONTROLLER_MANAGER_TEST_ARGS="${CONTROLLER_MANAGER_TEST_ARGS:-} ${TEST_CLUSTER_RESYNC_PERIOD} ${TEST_CLUSTER_API_CONTENT_TYPE}"
 SCHEDULER_TEST_ARGS="${SCHEDULER_TEST_ARGS:-} ${TEST_CLUSTER_API_CONTENT_TYPE}"
 KUBEPROXY_TEST_ARGS="${KUBEPROXY_TEST_ARGS:-} ${TEST_CLUSTER_API_CONTENT_TYPE}"
@@ -413,9 +411,6 @@ CUSTOM_INGRESS_YAML=${CUSTOM_INGRESS_YAML:-}
 
 if [[ -z "${KUBE_ADMISSION_CONTROL:-}" ]]; then
   ADMISSION_CONTROL='NamespaceLifecycle,LimitRanger,ServiceAccount,PersistentVolumeLabel,DefaultStorageClass,DefaultTolerationSeconds,NodeRestriction,Priority,StorageObjectInUseProtection,PersistentVolumeClaimResize,RuntimeClass'
-  if [[ "${ENABLE_POD_SECURITY_POLICY:-}" = 'true' ]]; then
-    ADMISSION_CONTROL="${ADMISSION_CONTROL},PodSecurityPolicy"
-  fi
   # ResourceQuota must come last, or a creation is recorded, but the pod may be forbidden.
   ADMISSION_CONTROL="${ADMISSION_CONTROL},MutatingAdmissionWebhook,ValidatingAdmissionWebhook,ResourceQuota"
 else
@@ -458,13 +453,7 @@ EVICTION_HARD=${EVICTION_HARD:-memory.available<250Mi,nodefs.available<10%,nodef
 SCHEDULING_ALGORITHM_PROVIDER=${SCHEDULING_ALGORITHM_PROVIDER:-}
 
 # Optional: install a default StorageClass
-# ENABLE_DEFAULT_STORAGE_CLASS=${ENABLE_DEFAULT_STORAGE_CLASS:-false}
-# (TODO/cloud-provider-gcp): Revert to env when possible
-ENABLE_DEFAULT_STORAGE_CLASS=${ENABLE_DEFAULT_STORAGE_CLASS:-true}
-
-# (TODO/cloud-provider-gcp): Figure out how to add support for this
-# Optional: install pd csi driver
-ENABLE_PDCSI_DRIVER="${ENABLE_PDCSI_DRIVER:-true}"
+ENABLE_DEFAULT_STORAGE_CLASS=${ENABLE_DEFAULT_STORAGE_CLASS:-false}
 
 # Optional: install volume snapshot CRDs
 ENABLE_VOLUME_SNAPSHOTS=${ENABLE_VOLUME_SNAPSHOTS:-true}
@@ -608,6 +597,4 @@ export TLS_CIPHER_SUITES=""
 
 # CLOUD_PROVIDER_FLAG defines the cloud-provider value presented to KCM, apiserver,
 # and kubelet
-# (TODO/cloud-provider-gcp): Need to be added to kubetest2 as env
-# export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-gce}"
-export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-external}"
+export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-gce}"

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "path",
     srcs = [
         "doc.go",
         "path.go",
@@ -10,7 +10,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/authorization/path",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/authorization/authorizer:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/apiserver/pkg/authorization/authorizer",
     ],
 )

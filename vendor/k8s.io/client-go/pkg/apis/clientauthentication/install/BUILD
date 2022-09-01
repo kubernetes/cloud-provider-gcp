@@ -1,16 +1,16 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "install",
     srcs = ["install.go"],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/pkg/apis/clientauthentication/install",
     importpath = "k8s.io/client-go/pkg/apis/clientauthentication/install",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
-        "//vendor/k8s.io/client-go/pkg/apis/clientauthentication:go_default_library",
-        "//vendor/k8s.io/client-go/pkg/apis/clientauthentication/v1:go_default_library",
-        "//vendor/k8s.io/client-go/pkg/apis/clientauthentication/v1beta1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/client-go/pkg/apis/clientauthentication",
+        "//vendor/k8s.io/client-go/pkg/apis/clientauthentication/v1:clientauthentication",
+        "//vendor/k8s.io/client-go/pkg/apis/clientauthentication/v1beta1",
     ],
 )

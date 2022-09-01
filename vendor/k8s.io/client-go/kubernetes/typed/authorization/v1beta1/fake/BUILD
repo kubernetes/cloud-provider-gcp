@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "fake",
     srcs = [
         "doc.go",
         "fake_authorization_client.go",
@@ -14,11 +14,11 @@ go_library(
     importpath = "k8s.io/client-go/kubernetes/typed/authorization/v1beta1/fake",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/api/authorization/v1beta1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/client-go/kubernetes/typed/authorization/v1beta1:go_default_library",
-        "//vendor/k8s.io/client-go/rest:go_default_library",
-        "//vendor/k8s.io/client-go/testing:go_default_library",
+        "//vendor/k8s.io/api/authorization/v1beta1",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/client-go/kubernetes/typed/authorization/v1beta1",
+        "//vendor/k8s.io/client-go/rest",
+        "//vendor/k8s.io/client-go/testing",
     ],
 )

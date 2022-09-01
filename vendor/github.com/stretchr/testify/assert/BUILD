@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "assert",
     srcs = [
         "assertion_compare.go",
         "assertion_format.go",
@@ -17,8 +17,8 @@ go_library(
     importpath = "github.com/stretchr/testify/assert",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/davecgh/go-spew/spew:go_default_library",
-        "//vendor/github.com/pmezard/go-difflib/difflib:go_default_library",
-        "//vendor/gopkg.in/yaml.v3:go_default_library",
+        "//vendor/github.com/davecgh/go-spew/spew",
+        "//vendor/github.com/pmezard/go-difflib/difflib",
+        "//vendor/gopkg.in/yaml.v3:yaml_v3",
     ],
 )

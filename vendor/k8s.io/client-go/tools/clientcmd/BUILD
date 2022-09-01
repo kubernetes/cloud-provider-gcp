@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "clientcmd",
     srcs = [
         "auth_loaders.go",
         "client_config.go",
@@ -18,18 +18,18 @@ go_library(
     importpath = "k8s.io/client-go/tools/clientcmd",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/imdario/mergo:go_default_library",
-        "//vendor/github.com/spf13/pflag:go_default_library",
-        "//vendor/golang.org/x/term:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/validation:go_default_library",
-        "//vendor/k8s.io/client-go/rest:go_default_library",
-        "//vendor/k8s.io/client-go/tools/auth:go_default_library",
-        "//vendor/k8s.io/client-go/tools/clientcmd/api:go_default_library",
-        "//vendor/k8s.io/client-go/tools/clientcmd/api/latest:go_default_library",
-        "//vendor/k8s.io/client-go/util/homedir:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/github.com/imdario/mergo",
+        "//vendor/github.com/spf13/pflag",
+        "//vendor/golang.org/x/term",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/util/errors",
+        "//vendor/k8s.io/apimachinery/pkg/util/validation",
+        "//vendor/k8s.io/client-go/rest",
+        "//vendor/k8s.io/client-go/tools/auth",
+        "//vendor/k8s.io/client-go/tools/clientcmd/api",
+        "//vendor/k8s.io/client-go/tools/clientcmd/api/latest",
+        "//vendor/k8s.io/client-go/util/homedir",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

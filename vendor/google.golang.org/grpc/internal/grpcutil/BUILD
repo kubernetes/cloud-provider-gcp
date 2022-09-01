@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "grpcutil",
     srcs = [
         "encode_duration.go",
         "metadata.go",
@@ -12,7 +12,7 @@ go_library(
     importpath = "google.golang.org/grpc/internal/grpcutil",
     visibility = ["//vendor/google.golang.org/grpc:__subpackages__"],
     deps = [
-        "//vendor/google.golang.org/grpc/metadata:go_default_library",
-        "//vendor/google.golang.org/grpc/resolver:go_default_library",
+        "//vendor/google.golang.org/grpc/metadata",
+        "//vendor/google.golang.org/grpc/resolver",
     ],
 )

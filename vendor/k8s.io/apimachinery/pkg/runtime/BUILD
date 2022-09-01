@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "runtime",
     srcs = [
         "allocator.go",
         "codec.go",
@@ -29,16 +29,16 @@ go_library(
     importpath = "k8s.io/apimachinery/pkg/runtime",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/gogo/protobuf/proto:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/conversion:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/conversion/queryparams:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/json:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/naming:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/value:go_default_library",
+        "//vendor/github.com/gogo/protobuf/proto",
+        "//vendor/k8s.io/apimachinery/pkg/conversion",
+        "//vendor/k8s.io/apimachinery/pkg/conversion/queryparams",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/util/errors",
+        "//vendor/k8s.io/apimachinery/pkg/util/json",
+        "//vendor/k8s.io/apimachinery/pkg/util/naming",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v4/value",
     ],
 )

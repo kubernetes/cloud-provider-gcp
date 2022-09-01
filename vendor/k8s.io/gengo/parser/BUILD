@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "parser",
     srcs = [
         "doc.go",
         "parse.go",
@@ -10,7 +10,7 @@ go_library(
     importpath = "k8s.io/gengo/parser",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/gengo/types:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/k8s.io/gengo/types",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

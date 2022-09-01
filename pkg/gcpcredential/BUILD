@@ -6,12 +6,12 @@ load(
 )
 
 go_library(
-    name = "go_default_library",
+    name = "gcpcredential",
     srcs = ["gcpcredential.go"],
     importpath = "k8s.io/cloud-provider-gcp/pkg/gcpcredential",
     deps = [
-        "//pkg/credentialconfig:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//pkg/credentialconfig",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )
 

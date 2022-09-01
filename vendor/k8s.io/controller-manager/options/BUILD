@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "options",
     srcs = [
         "debugging.go",
         "generic.go",
@@ -10,12 +10,12 @@ go_library(
     importpath = "k8s.io/controller-manager/options",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/spf13/pflag:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
-        "//vendor/k8s.io/component-base/cli/flag:go_default_library",
-        "//vendor/k8s.io/component-base/config:go_default_library",
-        "//vendor/k8s.io/component-base/config/options:go_default_library",
-        "//vendor/k8s.io/controller-manager/config:go_default_library",
-        "//vendor/k8s.io/controller-manager/pkg/leadermigration/options:go_default_library",
+        "//vendor/github.com/spf13/pflag",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/component-base/cli/flag",
+        "//vendor/k8s.io/component-base/config",
+        "//vendor/k8s.io/component-base/config/options",
+        "//vendor/k8s.io/controller-manager/config",
+        "//vendor/k8s.io/controller-manager/pkg/leadermigration/options",
     ],
 )

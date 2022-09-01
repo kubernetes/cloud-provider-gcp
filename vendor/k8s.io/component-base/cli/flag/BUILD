@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "flag",
     srcs = [
         "ciphersuites_flag.go",
         "colon_separated_multimap_string_string.go",
@@ -22,9 +22,9 @@ go_library(
     importpath = "k8s.io/component-base/cli/flag",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/spf13/cobra:go_default_library",
-        "//vendor/github.com/spf13/pflag:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/github.com/spf13/cobra",
+        "//vendor/github.com/spf13/pflag",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

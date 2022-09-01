@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "json",
     srcs = [
         "json.go",
         "meta.go",
@@ -10,13 +10,13 @@ go_library(
     importpath = "k8s.io/apimachinery/pkg/runtime/serializer/json",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/recognizer:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/framer:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/yaml:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
-        "//vendor/sigs.k8s.io/json:go_default_library",
-        "//vendor/sigs.k8s.io/yaml:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/recognizer",
+        "//vendor/k8s.io/apimachinery/pkg/util/framer",
+        "//vendor/k8s.io/apimachinery/pkg/util/yaml",
+        "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/sigs.k8s.io/json",
+        "//vendor/sigs.k8s.io/yaml",
     ],
 )

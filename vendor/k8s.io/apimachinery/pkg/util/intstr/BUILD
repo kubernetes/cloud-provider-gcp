@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "intstr",
     srcs = [
         "generated.pb.go",
         "instr_fuzz.go",
@@ -11,8 +11,8 @@ go_library(
     importpath = "k8s.io/apimachinery/pkg/util/intstr",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/gogo/protobuf/proto:go_default_library",
-        "//vendor/github.com/google/gofuzz:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/github.com/gogo/protobuf/proto",
+        "//vendor/github.com/google/gofuzz",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "certificates",
     srcs = [
         "certificate_controller.go",
         "certificate_controller_utils.go",
@@ -10,20 +10,18 @@ go_library(
     importpath = "k8s.io/kubernetes/pkg/controller/certificates",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/golang.org/x/time/rate:go_default_library",
-        "//vendor/k8s.io/api/certificates/v1:go_default_library",
-        "//vendor/k8s.io/api/core/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
-        "//vendor/k8s.io/client-go/informers/certificates/v1:go_default_library",
-        "//vendor/k8s.io/client-go/kubernetes:go_default_library",
-        "//vendor/k8s.io/client-go/kubernetes/typed/core/v1:go_default_library",
-        "//vendor/k8s.io/client-go/listers/certificates/v1:go_default_library",
-        "//vendor/k8s.io/client-go/tools/cache:go_default_library",
-        "//vendor/k8s.io/client-go/tools/record:go_default_library",
-        "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
-        "//vendor/k8s.io/kubernetes/pkg/controller:go_default_library",
+        "//vendor/golang.org/x/time/rate",
+        "//vendor/k8s.io/api/certificates/v1:certificates",
+        "//vendor/k8s.io/api/core/v1:core",
+        "//vendor/k8s.io/apimachinery/pkg/api/errors",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/util/wait",
+        "//vendor/k8s.io/client-go/informers/certificates/v1:certificates",
+        "//vendor/k8s.io/client-go/kubernetes",
+        "//vendor/k8s.io/client-go/listers/certificates/v1:certificates",
+        "//vendor/k8s.io/client-go/tools/cache",
+        "//vendor/k8s.io/client-go/util/workqueue",
+        "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/kubernetes/pkg/controller",
     ],
 )

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "discovery",
     srcs = [
         "addresses.go",
         "group.go",
@@ -15,13 +15,13 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/endpoints/discovery",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/emicklei/go-restful:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/net:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/negotiation:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/responsewriters:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/github.com/emicklei/go-restful/v3:go-restful",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/util/net",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/negotiation",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/responsewriters",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

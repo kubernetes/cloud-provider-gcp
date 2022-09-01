@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "expfmt",
     srcs = [
         "decode.go",
         "encode.go",
@@ -14,11 +14,11 @@ go_library(
     importpath = "github.com/prometheus/common/expfmt",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/protobuf/proto:go_default_library",
-        "//vendor/github.com/golang/protobuf/ptypes:go_default_library",
-        "//vendor/github.com/matttproud/golang_protobuf_extensions/pbutil:go_default_library",
-        "//vendor/github.com/prometheus/client_model/go:go_default_library",
-        "//vendor/github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg:go_default_library",
-        "//vendor/github.com/prometheus/common/model:go_default_library",
+        "//vendor/github.com/golang/protobuf/proto",
+        "//vendor/github.com/golang/protobuf/ptypes",
+        "//vendor/github.com/matttproud/golang_protobuf_extensions/pbutil",
+        "//vendor/github.com/prometheus/client_model/go",
+        "//vendor/github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg",
+        "//vendor/github.com/prometheus/common/model",
     ],
 )

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "protobuf",
     srcs = [
         "doc.go",
         "protobuf.go",
@@ -10,12 +10,12 @@ go_library(
     importpath = "k8s.io/apimachinery/pkg/runtime/serializer/protobuf",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/gogo/protobuf/proto:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/recognizer:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/framer:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/github.com/gogo/protobuf/proto",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/recognizer",
+        "//vendor/k8s.io/apimachinery/pkg/util/framer",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

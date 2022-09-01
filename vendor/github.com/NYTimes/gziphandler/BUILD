@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "gziphandler",
     srcs = [
         "gzip.go",
         "gzip_go18.go",

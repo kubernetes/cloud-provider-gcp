@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "buffered",
     srcs = [
         "buffered.go",
         "doc.go",
@@ -10,10 +10,10 @@ go_library(
     importpath = "k8s.io/apiserver/plugin/pkg/audit/buffered",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/apis/audit:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/audit:go_default_library",
-        "//vendor/k8s.io/client-go/util/flowcontrol:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/util/wait",
+        "//vendor/k8s.io/apiserver/pkg/apis/audit",
+        "//vendor/k8s.io/apiserver/pkg/audit",
+        "//vendor/k8s.io/client-go/util/flowcontrol",
     ],
 )

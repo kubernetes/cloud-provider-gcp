@@ -1,12 +1,13 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "meta",
     srcs = [
         "condition.go",
         "deleteoptions.go",
         "labelselector.go",
         "labelselectorrequirement.go",
+        "listmeta.go",
         "managedfieldsentry.go",
         "objectmeta.go",
         "ownerreference.go",
@@ -18,13 +19,13 @@ go_library(
     importpath = "k8s.io/client-go/applyconfigurations/meta/v1",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1/unstructured:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/managedfields:go_default_library",
-        "//vendor/k8s.io/client-go/discovery:go_default_library",
-        "//vendor/k8s.io/kube-openapi/pkg/util/proto:go_default_library",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/typed:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1/unstructured",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/types",
+        "//vendor/k8s.io/apimachinery/pkg/util/managedfields",
+        "//vendor/k8s.io/client-go/discovery",
+        "//vendor/k8s.io/kube-openapi/pkg/util/proto",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v4/typed",
     ],
 )

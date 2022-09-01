@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "serializer",
     srcs = [
         "codec_factory.go",
         "negotiated_codec.go",
@@ -10,11 +10,11 @@ go_library(
     importpath = "k8s.io/apimachinery/pkg/runtime/serializer",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/json:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/protobuf:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/recognizer:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/versioning:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/json",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/protobuf",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/recognizer",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/versioning",
     ],
 )

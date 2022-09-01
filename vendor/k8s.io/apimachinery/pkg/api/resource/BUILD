@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "resource",
     srcs = [
         "amount.go",
         "generated.pb.go",
@@ -16,7 +16,7 @@ go_library(
     importpath = "k8s.io/apimachinery/pkg/api/resource",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/gogo/protobuf/proto:go_default_library",
-        "//vendor/gopkg.in/inf.v0:go_default_library",
+        "//vendor/github.com/gogo/protobuf/proto",
+        "//vendor/gopkg.in/inf.v0:inf_v0",
     ],
 )

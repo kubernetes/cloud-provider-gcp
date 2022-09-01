@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "mergepatch",
     srcs = [
         "errors.go",
         "util.go",
@@ -10,7 +10,7 @@ go_library(
     importpath = "k8s.io/apimachinery/pkg/util/mergepatch",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/davecgh/go-spew/spew:go_default_library",
-        "//vendor/sigs.k8s.io/yaml:go_default_library",
+        "//vendor/github.com/davecgh/go-spew/spew",
+        "//vendor/sigs.k8s.io/yaml",
     ],
 )

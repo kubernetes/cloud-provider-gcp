@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "value",
     srcs = [
         "allocator.go",
         "doc.go",
@@ -24,7 +24,7 @@ go_library(
     importpath = "sigs.k8s.io/structured-merge-diff/v4/value",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/json-iterator/go:go_default_library",
-        "//vendor/gopkg.in/yaml.v2:go_default_library",
+        "//vendor/github.com/json-iterator/go",
+        "//vendor/gopkg.in/yaml.v2:yaml_v2",
     ],
 )

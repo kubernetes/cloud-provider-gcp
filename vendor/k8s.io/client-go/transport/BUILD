@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "transport",
     srcs = [
         "cache.go",
         "cert_rotation.go",
@@ -14,12 +14,12 @@ go_library(
     importpath = "k8s.io/client-go/transport",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/golang.org/x/oauth2:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/net:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
-        "//vendor/k8s.io/client-go/util/connrotation:go_default_library",
-        "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//vendor/golang.org/x/oauth2",
+        "//vendor/k8s.io/apimachinery/pkg/util/net",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/util/wait",
+        "//vendor/k8s.io/client-go/util/connrotation",
+        "//vendor/k8s.io/client-go/util/workqueue",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

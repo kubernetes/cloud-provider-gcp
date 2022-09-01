@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "fieldpath",
     srcs = [
         "doc.go",
         "element.go",
@@ -17,8 +17,8 @@ go_library(
     importpath = "sigs.k8s.io/structured-merge-diff/v4/fieldpath",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/json-iterator/go:go_default_library",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/schema:go_default_library",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/value:go_default_library",
+        "//vendor/github.com/json-iterator/go",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v4/schema",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v4/value",
     ],
 )
