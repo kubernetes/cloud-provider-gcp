@@ -118,12 +118,11 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 				}
 				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: internalIP})
 
-				if g.stackType == NetworkStackDualStack {
-					// Both internal and external IPv6 addresses are written to this array
-					ipv6s, err := metadata.Get(fmt.Sprintf(networkInterfaceIPV6, nic))
-					if err != nil {
-						return nil, fmt.Errorf("couldn't get internal IPV6 addresses for node %v: %v", nodeName, err)
-					}
+				// Both internal and external IPv6 addresses are written to this array
+				ipv6s, err := metadata.Get(fmt.Sprintf(networkInterfaceIPV6, nic))
+				if err != nil || ipv6s == "" {
+					klog.Infof("no internal IPV6 addresses found for node %v: %v", nodeName, err)
+				} else {
 					ipv6Arr := strings.Split(ipv6s, "/\n")
 					var internalIPV6 string
 					for _, ip := range ipv6Arr {
@@ -139,6 +138,7 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 						klog.Warningf("internal IPV6 range is empty for node %v", nodeName)
 					}
 				}
+
 				acs, err := metadata.Get(fmt.Sprintf(networkInterfaceAccessConfigs, nic))
 				if err != nil {
 					return nil, fmt.Errorf("couldn't get access configs: %v", err)
@@ -182,15 +182,6 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 		return nil, fmt.Errorf("couldn't get instance details: %v", err)
 	}
 
-	if g.stackType == NetworkStackDualStack {
-		instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(instanceObj.Name), instanceObj.Zone))
-		if err != nil {
-			return nil, fmt.Errorf("error while querying for instance: %v", err)
-		}
-
-		return g.nodeAddressesFromInstance(instance)
-	}
-
 	instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(instanceObj.Name), instanceObj.Zone))
 	if err != nil {
 		return nil, fmt.Errorf("error while querying for instance: %v", err)
@@ -208,15 +199,6 @@ func (g *Cloud) NodeAddressesByProviderID(ctx context.Context, providerID string
 	_, zone, name, err := splitProviderID(providerID)
 	if err != nil {
 		return []v1.NodeAddress{}, err
-	}
-
-	if g.stackType == NetworkStackDualStack {
-		instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
-		if err != nil {
-			return []v1.NodeAddress{}, fmt.Errorf("error while querying for providerID %q: %v", providerID, err)
-		}
-
-		return g.nodeAddressesFromInstance(instance)
 	}
 
 	instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
@@ -266,11 +248,9 @@ func (g *Cloud) nodeAddressesFromInstance(instance *compute.Instance) ([]v1.Node
 		for _, config := range nic.AccessConfigs {
 			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: config.NatIP})
 		}
-		if g.stackType == NetworkStackDualStack {
-			ipv6Addr := getIPV6AddressFromInterface(nic)
-			if ipv6Addr != "" {
-				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: ipv6Addr})
-			}
+		ipv6Addr := getIPV6AddressFromInterface(nic)
+		if ipv6Addr != "" {
+			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: ipv6Addr})
 		}
 	}
 
@@ -571,15 +551,14 @@ func (g *Cloud) AliasRangesByProviderID(providerID string) (cidrs []string, err 
 		for _, r := range networkInterface.AliasIpRanges {
 			cidrs = append(cidrs, r.IpCidrRange)
 		}
-		if g.stackType == NetworkStackDualStack {
-			ipv6Addr := getIPV6AddressFromInterface(networkInterface)
-			if ipv6Addr == "" {
-				return nil, fmt.Errorf("IPV6 address not found for %s", providerID)
-			}
+		ipv6Addr := getIPV6AddressFromInterface(networkInterface)
+		if ipv6Addr != "" {
 			// The podCIDR range is the first /112 subrange from the /96 assigned to
 			// the node
 			ipv6PodCIDR := fmt.Sprintf("%s/112", ipv6Addr)
 			cidrs = append(cidrs, ipv6PodCIDR)
+		} else {
+			klog.Infof("No IPv6 addresses found for %s", providerID)
 		}
 	}
 	return
