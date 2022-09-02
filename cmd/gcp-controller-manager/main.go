@@ -78,9 +78,10 @@ var (
 )
 
 func main() {
-	logs.InitLogs()
 
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+
+	logs.AddFlags(pflag.CommandLine)
 
 	leConfig := &componentbaseconfig.LeaderElectionConfiguration{
 		LeaderElect:   true,
@@ -94,6 +95,9 @@ func main() {
 
 	pflag.Parse()
 	verflag.PrintAndExitIfRequested()
+
+	// InitLogs should be called after parsing flags.
+	logs.InitLogs()
 
 	s := &controllerManager{
 		clusterSigningGKEKubeconfig:        *clusterSigningGKEKubeconfig,
