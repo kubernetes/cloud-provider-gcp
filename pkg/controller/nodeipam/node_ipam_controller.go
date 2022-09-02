@@ -33,6 +33,7 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
+	controllersmetrics "k8s.io/component-base/metrics/prometheus/controllers"
 	"k8s.io/component-base/metrics/prometheus/ratelimiter"
 )
 
@@ -148,11 +149,13 @@ func NewNodeIpamController(
 }
 
 // Run starts an asynchronous loop that monitors the status of cluster nodes.
-func (nc *Controller) Run(stopCh <-chan struct{}) {
+func (nc *Controller) Run(stopCh <-chan struct{}, controllerManagerMetrics *controllersmetrics.ControllerManagerMetrics) {
 	defer utilruntime.HandleCrash()
 
 	klog.Infof("Starting ipam controller")
 	defer klog.Infof("Shutting down ipam controller")
+	controllerManagerMetrics.ControllerStarted("nodeipam")
+	defer controllerManagerMetrics.ControllerStopped("nodeipam")
 
 	if !cache.WaitForNamedCacheSync("node", stopCh, nc.nodeInformerSynced) {
 		return

@@ -2278,6 +2278,8 @@ function start-cloud-controller-manager {
   params+=" --use-service-account-credentials"
   params+=" --cloud-provider=gce"
   params+=" --kubeconfig=/etc/srv/kubernetes/cloud-controller-manager/kubeconfig"
+  params+=" --authorization-kubeconfig=/etc/srv/kubernetes/cloud-controller-manager/kubeconfig"
+  params+=" --authentication-kubeconfig=/etc/srv/kubernetes/cloud-controller-manager/kubeconfig"
   if [[ -n "${INSTANCE_PREFIX:-}" ]]; then
     params+=" --cluster-name=${INSTANCE_PREFIX}"
   fi

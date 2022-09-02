@@ -20,6 +20,7 @@ go_library(
         "//vendor/k8s.io/client-go/tools/cache",
         "//vendor/k8s.io/client-go/tools/record",
         "//vendor/k8s.io/cloud-provider",
+        "//vendor/k8s.io/component-base/metrics/prometheus/controllers",
         "//vendor/k8s.io/component-base/metrics/prometheus/ratelimiter",
         "//vendor/k8s.io/klog/v2:klog",
     ],
