@@ -23,13 +23,14 @@ type gcloudConfiguration struct {
 
 // gcloudTokenProvider provides gcloud OAth 2.0 tokens.
 type gcloudTokenProvider struct {
-	readGcloudConfigRaw func() ([]byte, error)
-	readFile            func(filename string) ([]byte, error)
+	readGcloudConfigRaw       func(impersonateServiceAccount string) ([]byte, error)
+	readFile                  func(filename string) ([]byte, error)
+	impersonateServiceAccount string
 }
 
 // readGcloudConfig returns an object which represents gcloud config output
 func (p *gcloudTokenProvider) readGcloudConfig() (*gcloudConfiguration, error) {
-	gcloudConfigBytes, err := p.readGcloudConfigRaw()
+	gcloudConfigBytes, err := p.readGcloudConfigRaw(p.impersonateServiceAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -71,6 +72,10 @@ func (p *gcloudTokenProvider) token() (string, *time.Time, error) {
 
 func (p *gcloudTokenProvider) useCache() bool { return true }
 
-func readGcloudConfigRaw() ([]byte, error) {
-	return executeCommand("gcloud", "config", "config-helper", "--format=json")
+func readGcloudConfigRaw(impersonateServiceAccount string) ([]byte, error) {
+	args := []string{"config", "config-helper", "--format=json"}
+	if impersonateServiceAccount != "" {
+		args = append(args, "--impersonate-service-account", impersonateServiceAccount)
+	}
+	return executeCommand("gcloud", args...)
 }

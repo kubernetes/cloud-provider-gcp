@@ -58,27 +58,31 @@ type cache struct {
 	AccessToken string `json:"access_token"`
 	// TokenExpiry is gcloud access token's expiry.
 	TokenExpiry string `json:"token_expiry"`
+	// ImpersonateServiceAccount is the service account to impersonate.
+	ImpersonateServiceAccount string `json:"impersonate_service_account"`
 }
 
 // plugin holds data to be passed around (eg: useApplicationDefaultCredentials)
 // as well as methods that may needs to be mocked in test scenarios.
 type plugin struct {
-	k8sStartingConfig func() (*clientcmdapi.Config, error)
-	readFile          func(filename string) ([]byte, error)
-	writeCacheFile    func(content string) error
-	getCacheFilePath  func() string
-	timeNow           func() time.Time
-	tokenProvider     tokenProvider
+	k8sStartingConfig         func() (*clientcmdapi.Config, error)
+	readFile                  func(filename string) ([]byte, error)
+	writeCacheFile            func(content string) error
+	getCacheFilePath          func() string
+	timeNow                   func() time.Time
+	tokenProvider             tokenProvider
+	impersonateServiceAccount string
 }
 
 func newPlugin(tokenProvider tokenProvider) *plugin {
 	return &plugin{
-		k8sStartingConfig: k8sStartingConfig,
-		readFile:          readFile,
-		writeCacheFile:    writeCacheFile,
-		getCacheFilePath:  getCacheFilePath,
-		timeNow:           timeNow,
-		tokenProvider:     tokenProvider,
+		k8sStartingConfig:         k8sStartingConfig,
+		readFile:                  readFile,
+		writeCacheFile:            writeCacheFile,
+		getCacheFilePath:          getCacheFilePath,
+		timeNow:                   timeNow,
+		tokenProvider:             tokenProvider,
+		impersonateServiceAccount: *impersonateServiceAccount,
 	}
 }
 
@@ -87,6 +91,7 @@ var (
 	useEdgeCloud                     = pflag.Bool("use_edge_cloud", false, "Output is an ExecCredential for an Edge Cloud cluster.")
 	location                         = pflag.String("location", "", "Location of the Cluster.")
 	cluster                          = pflag.String("cluster", "", "Name of the Cluster.")
+	impersonateServiceAccount        = pflag.String("impersonate_service_account", "", "Impersonate the given service account.")
 )
 
 func main() {
@@ -114,8 +119,9 @@ func main() {
 		}
 	} else {
 		tokenProvider = &gcloudTokenProvider{
-			readGcloudConfigRaw: readGcloudConfigRaw,
-			readFile:            readFile,
+			readGcloudConfigRaw:       readGcloudConfigRaw,
+			readFile:                  readFile,
+			impersonateServiceAccount: *impersonateServiceAccount,
 		}
 	}
 
@@ -216,9 +222,10 @@ func (p *plugin) writeGcloudAccessTokenToCache(accessToken string, expiry time.T
 	}
 
 	c := cache{
-		CurrentContext: startingConfig.CurrentContext,
-		AccessToken:    accessToken,
-		TokenExpiry:    expiry.Format(time.RFC3339Nano),
+		CurrentContext:            startingConfig.CurrentContext,
+		AccessToken:               accessToken,
+		TokenExpiry:               expiry.Format(time.RFC3339Nano),
+		ImpersonateServiceAccount: p.impersonateServiceAccount,
 	}
 
 	formatted, err := formatToJSON(c)
@@ -264,6 +271,10 @@ func (p *plugin) getCachedGcloudAccessToken() (string, *metav1.Time, error) {
 		return "", nil, fmt.Errorf("cache is invalid as the k8s starting config changed")
 	}
 
+	if c.ImpersonateServiceAccount != p.impersonateServiceAccount {
+		return "", nil, fmt.Errorf("cache is invalid as the impersonated service account changed")
+	}
+
 	return c.AccessToken, &metav1.Time{Time: expiryTimeStamp}, nil
 }
 
@@ -297,7 +308,7 @@ func executeCommand(name string, arg ...string) ([]byte, error) {
 	cmd.Stderr = &stderrBuffer
 	err := cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf("failure while executing %s, with args %v: %w", name, arg, err)
+		return nil, fmt.Errorf("failure while executing %s, with args %v: %w\n%s", name, arg, err, stderrBuffer.String())
 	}
 	return stdoutBuffer.Bytes(), nil
 }
