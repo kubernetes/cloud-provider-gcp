@@ -30,6 +30,7 @@ go_library(
         "//vendor/github.com/spf13/pflag",
         "//vendor/golang.org/x/oauth2",
         "//vendor/golang.org/x/oauth2/google",
+        "//vendor/google.golang.org/api/impersonate",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/client-go/pkg/apis/clientauthentication/v1beta1",
         "//vendor/k8s.io/client-go/tools/clientcmd",

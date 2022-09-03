@@ -6,22 +6,24 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
+	"google.golang.org/api/impersonate"
 	"k8s.io/client-go/util/retry"
 )
 
-var (
-	// defaultScopes:
-	// - cloud-platform is the base scope to authenticate to GCP.
-	// - userinfo.email is used to authenticate to GKE APIs with gserviceaccount
-	//   email instead of numeric uniqueID.
-	defaultScopes = []string{
-		"https://www.googleapis.com/auth/cloud-platform",
-		"https://www.googleapis.com/auth/userinfo.email"}
-)
+// defaultScopes:
+//   - cloud-platform is the base scope to authenticate to GCP.
+//   - userinfo.email is used to authenticate to GKE APIs with gserviceaccount
+//     email instead of numeric uniqueID.
+var defaultScopes = []string{
+	"https://www.googleapis.com/auth/cloud-platform",
+	"https://www.googleapis.com/auth/userinfo.email",
+}
+
+type defaultTokenSourceFunc func(ctx context.Context, scope ...string) (oauth2.TokenSource, error)
 
 // defaultCredentialsTokenProvider provides default credential tokens.
 type defaultCredentialsTokenProvider struct {
-	googleDefaultTokenSource func(ctx context.Context, scope ...string) (oauth2.TokenSource, error)
+	googleDefaultTokenSource defaultTokenSourceFunc
 }
 
 func (p *defaultCredentialsTokenProvider) token() (string, *time.Time, error) {
@@ -46,6 +48,18 @@ func (p *defaultCredentialsTokenProvider) token() (string, *time.Time, error) {
 	}
 
 	return tok.AccessToken, &tok.Expiry, nil
+}
+
+// impersonatedAccountDefaultTokenSource wraps impersonate.CredentialsTokenSource() to provide
+// a signature similar to google.DefaultTokenSource().
+func impersonatedAccountDefaultTokenSource(account string) defaultTokenSourceFunc {
+	return func(ctx context.Context, scope ...string) (oauth2.TokenSource, error) {
+		ts, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
+			TargetPrincipal: account,
+			Scopes:          scope,
+		})
+		return ts, err
+	}
 }
 
 func (p *defaultCredentialsTokenProvider) useCache() bool { return false }

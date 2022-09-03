@@ -114,8 +114,14 @@ func main() {
 			getTokenRaw: getGcloudEdgeCloudTokenRaw,
 		}
 	} else if *useApplicationDefaultCredentials {
-		tokenProvider = &defaultCredentialsTokenProvider{
-			googleDefaultTokenSource: google.DefaultTokenSource,
+		if *impersonateServiceAccount != "" {
+			tokenProvider = &defaultCredentialsTokenProvider{
+				googleDefaultTokenSource: impersonatedAccountDefaultTokenSource(*impersonateServiceAccount),
+			}
+		} else {
+			tokenProvider = &defaultCredentialsTokenProvider{
+				googleDefaultTokenSource: google.DefaultTokenSource,
+			}
 		}
 	} else {
 		tokenProvider = &gcloudTokenProvider{
