@@ -529,7 +529,7 @@ func validateTPMAttestation(ctx *controllerContext, csr *capi.CertificateSigning
 		// the metadata is user controlled, clusterHasInstance verifies
 		// that the group is indeed part of the cluster.
 		instanceGroupHint := getInstanceMetadata(inst, createdByInstanceMetadataKey)
-		klog.V(3).Infof("inst[%q] has instanceGroupHint [%q]", inst.Id, instanceGroupHint)
+		klog.V(3).Infof("inst[%d] has instanceGroupHint [%q]", inst.Id, instanceGroupHint)
 		ok, err := clusterHasInstance(ctx, inst.Zone, inst.Id, instanceGroupHint)
 		if err != nil {
 			return false, fmt.Errorf("checking VM membership in cluster: %v", err)
@@ -635,12 +635,8 @@ func parsePEMBlocks(raw []byte) (map[string]*pem.Block, error) {
 }
 
 // getClusterInstanceGroupUrls returns a list of instance groups for all node pools in the cluster.
-func getClusterInstanceGroupUrls(ctx *controllerContext, instanceZone string) ([]string, error) {
+func getClusterInstanceGroupUrls(ctx *controllerContext) ([]string, error) {
 	var instanceGroupUrls []string
-	// instanceZone looks like
-	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
-	// Convert it to just "us-central1-c".
-	instanceZone = path.Base(instanceZone)
 	clusterName := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", ctx.gcpCfg.ProjectID, ctx.gcpCfg.Location, ctx.gcpCfg.ClusterName)
 
 	recordMetric := csrmetrics.OutboundRPCStartRecorder("container.ProjectsLocationsClustersService.Get")
@@ -657,40 +653,64 @@ func getClusterInstanceGroupUrls(ctx *controllerContext, instanceZone string) ([
 	return instanceGroupUrls, nil
 }
 
+// InstanceGroupHint is the name of the instancegroup obtained from the instance metadata.
+// Since this is user-modifiable, we should still verify membership.
+// However, we can avoid some GCE API ListManagedInstanceGroupInstances calls using the hint.
+
+// Verify that the instanceGroupHint is in fact
+// part of the cluster's known instance groups
+//
+// if it is: return the resolved instanceGroup
+// else: ""
+func validateInstanceGroupHint(instanceGroupUrls []string, instanceGroupHint string) (string, error) {
+	if instanceGroupHint == "" {
+		return "", fmt.Errorf("validateInstanceGroupHint: hint is empty")
+	}
+
+	location, igName, err := parseInstanceGroupURL(instanceGroupHint)
+	if err != nil {
+		return "", err
+	}
+
+	var resolved string
+	for _, g := range instanceGroupUrls {
+		gl, gn, err := parseInstanceGroupURL(g)
+		if err != nil {
+			return "", err
+		}
+		if gl == location && gn == igName {
+			resolved = g
+		}
+	}
+
+	if resolved == "" {
+		return "", fmt.Errorf("hinted instance group %q not found in cluster", instanceGroupHint)
+	}
+
+	return resolved, nil
+}
+
 func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID uint64, instanceGroupHint string) (bool, error) {
-	clusterInstanceGroupUrls, err := getClusterInstanceGroupUrls(ctx, instanceZone)
+	clusterInstanceGroupUrls, err := getClusterInstanceGroupUrls(ctx)
 	if err != nil {
 		return false, err
 	}
 
-	// InstanceGroupHint is the name of the instancegroup obtained from the instance metadata.
-	// Since this is user-modifiable, we should still verify membership.
-	// However, we can avoid some GCE API ListManagedInstanceGroupInstances calls using the hint.
-
-	// verify that the instanceGroupHint is in fact
-	// part of the cluster's known instance groups
-	var instanceGroupHintValid = false
-	var instanceGroupHintResolved = ""
-	for _, g := range clusterInstanceGroupUrls {
-		// perform a suffix match.
-		// instanceGroupHint is of the form project/p0/zones/z0/instanceGroup...
-		// g includes the hostname: https://www.googleapis.com/compute/v1/project/...
-		if strings.HasSuffix(g, instanceGroupHint) {
-			instanceGroupHintValid = true
-			instanceGroupHintResolved = g
-		}
+	validatedInstanceGroupHint, err := validateInstanceGroupHint(clusterInstanceGroupUrls, instanceGroupHint)
+	if err != nil {
+		klog.Warningf("error validating instance group: %v", err)
+	} else {
+		clusterInstanceGroupUrls = append([]string{validatedInstanceGroupHint}, clusterInstanceGroupUrls...)
 	}
 
-	// If the instanceGroupHint points is verified to be part of the cluster,
-	// insert the hinted group at the beginning of the cluster instancegroup list
-	if instanceGroupHintValid {
-		clusterInstanceGroupUrls = append([]string{instanceGroupHintResolved}, clusterInstanceGroupUrls...)
-	} else if instanceGroupHint != "" {
-		// Not expected. This will lead to a linear search in all instance groups in the cluster.
-		klog.Infof("hinted instance group %q not found in cluster.", instanceGroupHint)
-	}
+	klog.V(3).Infof("clusterInstanceGroupUrls %+v", clusterInstanceGroupUrls)
 
 	var errors []error
+	// instanceZone looks like
+	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
+	// Extract the bare zone name just "us-central1-c".
+	instanceZoneName := path.Base(instanceZone)
+
 	for _, ig := range clusterInstanceGroupUrls {
 		igName, igLocation, err := parseInstanceGroupURL(ig)
 		if err != nil {
@@ -700,7 +720,7 @@ func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID 
 
 		// InstanceGroups can be regional, igLocation can be either region
 		// or a zone. Match them to instanceZone by prefix to cover both.
-		if !strings.HasPrefix(instanceZone, igLocation) {
+		if !strings.HasPrefix(instanceZoneName, igLocation) {
 			klog.V(2).Infof("instance group %q is in zone/region %q, node sending the CSR is in %q; skipping instance group", ig, igLocation, instanceZone)
 			continue
 		}
