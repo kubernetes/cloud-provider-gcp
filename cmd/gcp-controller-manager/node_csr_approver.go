@@ -529,7 +529,7 @@ func validateTPMAttestation(ctx *controllerContext, csr *capi.CertificateSigning
 		// the metadata is user controlled, clusterHasInstance verifies
 		// that the group is indeed part of the cluster.
 		instanceGroupHint := getInstanceMetadata(inst, createdByInstanceMetadataKey)
-		klog.V(3).Infof("inst[%d] has instanceGroupHint [%q]", inst.Id, instanceGroupHint)
+		klog.V(3).Infof("inst[%d] has instanceGroupHint %q", inst.Id, instanceGroupHint)
 		ok, err := clusterHasInstance(ctx, inst.Zone, inst.Id, instanceGroupHint)
 		if err != nil {
 			return false, fmt.Errorf("checking VM membership in cluster: %v", err)
