@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"path"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +44,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
@@ -808,7 +810,26 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 	node, err := ctx.client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		recordMetric(csrmetrics.OutboundRPCStatusNotFound)
-		// if there is no existing Node object, return success
+		// GCE MIGs currently reuse the instance name on new VMs. For example,
+		// after GCE Preemptible/Spot VM is preempted, the instance started by
+		// MIG will have the same instance name. This can result in old "stale"
+		// pods still bound to the node to exist after a node is preempted. In
+		// some cases, during preemption, the GCE instance is deleted and cloud
+		// controller will sync with k8s and the underlying k8s node object will
+		// be deleted
+		// (https://github.com/kubernetes/kubernetes/blob/44e403f5bbc71eb5f577da6ac8a2e29875ac1d28/staging/src/k8s.io/cloud-provider/controllers/nodelifecycle/node_lifecycle_controller.go#L147-L153).
+		// However it is possible that the pods bound to this node will not be
+		// garbage collected as the orphaned pods
+		// (https://github.com/kubernetes/kubernetes/blob/1ab40212a4e6cb10b3ae88c2e6c912a9fc1b1605/pkg/controller/podgc/gc_controller.go#L220-L255)
+		// will only be cleared periodically every 20 seconds. The 20 seconds
+		// check can race with the time the new node is started. If the new node
+		// is started before the pod GC will run, the pods from the previous
+		// node will not be cleared. To avoid this situation, explicitly delete
+		// all pods bound to the node name, even if the node object does not
+		// exist.
+		if err := deleteAllPodsBoundToNode(ctx, nodeName); err != nil {
+			klog.Warningf("Failed to delete all pods bound to node %q: %v", nodeName, err)
+		}
 		return nil
 	}
 	if err != nil {
@@ -832,6 +853,18 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 
 	recordMetric = csrmetrics.OutboundRPCStartRecorder("k8s.Nodes.delete")
 	err = ctx.client.CoreV1().Nodes().Delete(context.TODO(), nodeName, metav1.DeleteOptions{Preconditions: metav1.NewUIDPreconditions(string(node.UID))})
+	// Pod Deletion is best effort, do not block CSR approval during node
+	// registration if there was an issue deleting pods on the node object GCE
+	// MIGs currently reuse the instance name on new VMs. For example, after GCE
+	// Preemptible/Spot VM is preempted, the instance started by MIG will have
+	// the same instance name. This can result in old "stale" pods still bound
+	// to the node to exist after a node is preempted. In the case that a GCE
+	// node is preempted and new GCE instance is created with the same name,
+	// explicitly delete all bounds to the old node.
+	if err := deleteAllPodsBoundToNode(ctx, nodeName); err != nil {
+		klog.Warningf("Failed to delete all pods bound to node %q: %v", nodeName, err)
+	}
+
 	if apierrors.IsNotFound(err) {
 		recordMetric(csrmetrics.OutboundRPCStatusNotFound)
 		// If we wanted to delete and the node is gone, this counts as success
@@ -850,11 +883,6 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 var errInstanceNotFound = errors.New("instance not found")
 
 func shouldDeleteNode(ctx *controllerContext, node *v1.Node, getInstance func(*controllerContext, string) (*compute.Instance, error)) (bool, error) {
-	// Newly created node might not have pod CIDR allocated yet.
-	if node.Spec.PodCIDR == "" {
-		klog.V(2).Infof("Node %q has empty podCIDR.", node.Name)
-		return false, nil
-	}
 	inst, err := getInstance(ctx, node.Name)
 	if err != nil {
 		if err == errInstanceNotFound {
@@ -863,6 +891,18 @@ func shouldDeleteNode(ctx *controllerContext, node *v1.Node, getInstance func(*c
 		}
 		klog.Errorf("Error retrieving instance %q: %v", node.Name, err)
 		return false, err
+	}
+	oldInstanceID := node.ObjectMeta.Annotations[InstanceIDAnnotationKey]
+	newInstanceID := strconv.FormatUint(inst.Id, 10)
+	// Even if a GCE Instance reuses the instance name, the underlying GCE instance will change (for example on Preemptible / Spot VMs during preemption).
+	if oldInstanceID != "" && newInstanceID != "" && oldInstanceID != newInstanceID {
+		klog.Infof("Detected change in instance ID on node %q - Old Instance ID: %q ; New Instance ID: %q", inst.Name, oldInstanceID, newInstanceID)
+		return true, nil
+	}
+	// Newly created node might not have pod CIDR allocated yet.
+	if node.Spec.PodCIDR == "" {
+		klog.V(2).Infof("Node %q has empty podCIDR.", node.Name)
+		return false, nil
 	}
 	var unmatchedRanges []string
 	for _, networkInterface := range inst.NetworkInterfaces {
@@ -881,6 +921,29 @@ func shouldDeleteNode(ctx *controllerContext, node *v1.Node, getInstance func(*c
 	// Instance with no alias range is route based, for which node object deletion is unnecessary.
 	klog.V(2).Infof("Instance %q has no alias range.", inst.Name)
 	return false, nil
+}
+
+func deleteAllPodsBoundToNode(ctx *controllerContext, nodeName string) error {
+	errs := []error{}
+	deletedPods := []string{}
+
+	podList, err := ctx.client.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{FieldSelector: "spec.nodeName=" + nodeName})
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	for _, pod := range podList.Items {
+		err := ctx.client.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, *metav1.NewDeleteOptions(0))
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		deletedPods = append(deletedPods, pod.Name)
+	}
+	if len(deletedPods) > 0 {
+		klog.Infof("Pods %s bound to node %s were deleted.", strings.Join(deletedPods[:], ", "), nodeName)
+	}
+	return utilerrors.NewAggregate(errs)
 }
 
 func getInstanceByName(ctx *controllerContext, instanceName string) (*compute.Instance, error) {

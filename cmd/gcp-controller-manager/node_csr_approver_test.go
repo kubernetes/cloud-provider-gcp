@@ -1193,6 +1193,7 @@ func TestShouldDeleteNode(t *testing.T) {
 					Name: "node-test",
 				},
 			},
+			instance: &compute.Instance{},
 		},
 		{
 			desc: "instance not found",
@@ -1219,6 +1220,24 @@ func TestShouldDeleteNode(t *testing.T) {
 			},
 			getInstanceErr: testErr,
 			expectedErr:    testErr,
+		},
+		{
+			desc: "node with different instance id",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-test",
+					Annotations: map[string]string{
+						InstanceIDAnnotationKey: "1234567890123456789",
+					},
+				},
+				Spec: v1.NodeSpec{
+					PodCIDR: "10.0.0.1/24",
+				},
+			},
+			instance: &compute.Instance{
+				Id: 0,
+			},
+			shouldDelete: true,
 		},
 	}
 	for _, c := range cases {
