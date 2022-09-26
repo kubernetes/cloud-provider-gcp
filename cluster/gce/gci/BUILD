@@ -100,7 +100,7 @@ go_test(
         "audit_policy_test.go",
         "configure_helper_test.go",
     ],
-    data = ["//cluster/gce/manifests"] + glob(["testdata/**"])+ glob(["*.sh"]),
+    data = ["//cluster/gce/manifests"] + glob(["testdata/**"]) + glob(["*.sh"]),
     deps = [
         "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/github.com/stretchr/testify/assert",
