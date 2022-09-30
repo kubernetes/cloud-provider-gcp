@@ -130,6 +130,8 @@ func processCSR(client clientset.Interface, privateKeyData []byte, hostname stri
 	csrData = append(csrData, attestData...)
 	klog.Info("added TPM attestation")
 
+	// TODO(liggitt): only add this key usage for RSA private keys once the minimum supported control plane is 1.25.
+	// see https://issue.k8s.io/109077
 	usages := []apicertificates.KeyUsage{
 		apicertificates.UsageDigitalSignature,
 		apicertificates.UsageKeyEncipherment,

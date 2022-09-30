@@ -18,7 +18,7 @@ spec:
     singular: gcpfirewall
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - name: v1beta1
     schema:
       openAPIV3Schema:
         description: GCPFirewall describes a GCP firewall spec that can be used to

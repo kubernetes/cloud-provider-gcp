@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"path"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +44,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
@@ -56,6 +58,8 @@ const (
 	tpmKubeletUsername    = "kubelet-bootstrap"
 
 	authFlowLabelNone = "unknown"
+
+	createdByInstanceMetadataKey = "created-by"
 )
 
 var (
@@ -295,8 +299,21 @@ var (
 		capi.UsageDigitalSignature,
 		capi.UsageClientAuth,
 	}
+
+	// see https://issue.k8s.io/109077
+	kubeletClientUsagesNoEncipherment = []capi.KeyUsage{
+		capi.UsageDigitalSignature,
+		capi.UsageClientAuth,
+	}
+
 	kubeletServerUsages = []capi.KeyUsage{
 		capi.UsageKeyEncipherment,
+		capi.UsageDigitalSignature,
+		capi.UsageServerAuth,
+	}
+
+	// see https://issue.k8s.io/109077
+	kubeletServerUsagesNoEncipherment = []capi.KeyUsage{
 		capi.UsageDigitalSignature,
 		capi.UsageServerAuth,
 	}
@@ -322,7 +339,7 @@ func isNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 	if len(x509cr.DNSNames) > 0 || len(x509cr.IPAddresses) > 0 {
 		return false
 	}
-	return hasExactUsages(csr, kubeletClientUsages)
+	return hasExactUsages(csr, kubeletClientUsagesNoEncipherment) || hasExactUsages(csr, kubeletClientUsages)
 }
 
 func isLegacyNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
@@ -339,7 +356,7 @@ func isNodeServerCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 	if csr.Spec.SignerName != certsv1.KubeletServingSignerName {
 		return false
 	}
-	if !hasExactUsages(csr, kubeletServerUsages) {
+	if !hasExactUsages(csr, kubeletServerUsagesNoEncipherment) && !hasExactUsages(csr, kubeletServerUsages) {
 		return false
 	}
 	return csr.Spec.Username == x509cr.Subject.CommonName
@@ -453,6 +470,19 @@ func isNodeClientCertWithAttestation(csr *capi.CertificateSigningRequest, x509cr
 	return true
 }
 
+func getInstanceMetadata(inst *compute.Instance, key string) string {
+	if inst == nil || inst.Metadata == nil || inst.Metadata.Items == nil {
+		return ""
+	}
+
+	for _, item := range inst.Metadata.Items {
+		if item.Key == key && item.Value != nil {
+			return *item.Value
+		}
+	}
+	return ""
+}
+
 func validateTPMAttestation(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
 	blocks, err := parsePEMBlocks(csr.Spec.Request)
 	if err != nil {
@@ -497,7 +527,12 @@ func validateTPMAttestation(ctx *controllerContext, csr *capi.CertificateSigning
 	}
 	recordMetric(csrmetrics.OutboundRPCStatusOK)
 	if ctx.csrApproverVerifyClusterMembership {
-		ok, err := clusterHasInstance(ctx, inst.Zone, inst.Id)
+		// get the instance group of this instance from the metadata.
+		// the metadata is user controlled, clusterHasInstance verifies
+		// that the group is indeed part of the cluster.
+		instanceGroupHint := getInstanceMetadata(inst, createdByInstanceMetadataKey)
+		klog.V(3).Infof("inst[%d] has instanceGroupHint %q", inst.Id, instanceGroupHint)
+		ok, err := clusterHasInstance(ctx, inst.Zone, inst.Id, instanceGroupHint)
 		if err != nil {
 			return false, fmt.Errorf("checking VM membership in cluster: %v", err)
 		}
@@ -601,45 +636,106 @@ func parsePEMBlocks(raw []byte) (map[string]*pem.Block, error) {
 	return blocks, nil
 }
 
-func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID uint64) (bool, error) {
-	// instanceZone looks like
-	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
-	// Convert it to just "us-central1-c".
-	instanceZone = path.Base(instanceZone)
-
+// getClusterInstanceGroupUrls returns a list of instance groups for all node pools in the cluster.
+func getClusterInstanceGroupUrls(ctx *controllerContext) ([]string, error) {
+	var instanceGroupUrls []string
 	clusterName := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", ctx.gcpCfg.ProjectID, ctx.gcpCfg.Location, ctx.gcpCfg.ClusterName)
+
 	recordMetric := csrmetrics.OutboundRPCStartRecorder("container.ProjectsLocationsClustersService.Get")
 	cluster, err := container.NewProjectsLocationsClustersService(ctx.gcpCfg.Container).Get(clusterName).Do()
 	if err != nil {
 		recordMetric(csrmetrics.OutboundRPCStatusError)
-		return false, fmt.Errorf("fetching cluster info: %v", err)
+		return nil, fmt.Errorf("fetching cluster info: %v", err)
 	}
-	recordMetric(csrmetrics.OutboundRPCStatusOK)
-	var errors []error
-	for _, np := range cluster.NodePools {
-		for _, ig := range np.InstanceGroupUrls {
-			igName, igLocation, err := parseInstanceGroupURL(ig)
-			if err != nil {
-				errors = append(errors, err)
-				continue
-			}
-			// InstanceGroups can be regional, igLocation can be either region
-			// or a zone. Match them to instanceZone by prefix to cover both.
-			if !strings.HasPrefix(instanceZone, igLocation) {
-				klog.V(2).Infof("instance group %q is in zone/region %q, node sending the CSR is in %q; skipping instance group", ig, igLocation, instanceZone)
-				continue
-			}
 
-			// Note: use igLocation here instead of instanceZone.
-			// InstanceGroups can be regional, instances are always zonal.
-			ok, err := groupHasInstance(ctx, igLocation, igName, instanceID)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("checking that group %q contains instance %v: %v", igName, instanceID, err))
-				continue
-			}
-			if ok {
-				return true, nil
-			}
+	recordMetric(csrmetrics.OutboundRPCStatusOK)
+	for _, np := range cluster.NodePools {
+		instanceGroupUrls = append(instanceGroupUrls, np.InstanceGroupUrls...)
+	}
+	return instanceGroupUrls, nil
+}
+
+// InstanceGroupHint is the name of the instancegroup obtained from the instance metadata.
+// Since this is user-modifiable, we should still verify membership.
+// However, we can avoid some GCE API ListManagedInstanceGroupInstances calls using the hint.
+
+// Verify that the instanceGroupHint is in fact
+// part of the cluster's known instance groups
+//
+// if it is: return the resolved instanceGroup
+// else: ""
+func validateInstanceGroupHint(instanceGroupUrls []string, instanceGroupHint string) (string, error) {
+	if instanceGroupHint == "" {
+		return "", fmt.Errorf("validateInstanceGroupHint: hint is empty")
+	}
+
+	location, igName, err := parseInstanceGroupURL(instanceGroupHint)
+	if err != nil {
+		return "", err
+	}
+
+	var resolved string
+	for _, g := range instanceGroupUrls {
+		gl, gn, err := parseInstanceGroupURL(g)
+		if err != nil {
+			return "", err
+		}
+		if gl == location && gn == igName {
+			resolved = g
+		}
+	}
+
+	if resolved == "" {
+		return "", fmt.Errorf("hinted instance group %q not found in cluster", instanceGroupHint)
+	}
+
+	return resolved, nil
+}
+
+func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID uint64, instanceGroupHint string) (bool, error) {
+	clusterInstanceGroupUrls, err := getClusterInstanceGroupUrls(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	validatedInstanceGroupHint, err := validateInstanceGroupHint(clusterInstanceGroupUrls, instanceGroupHint)
+	if err != nil {
+		klog.Warningf("error validating instance group: %v", err)
+	} else {
+		clusterInstanceGroupUrls = append([]string{validatedInstanceGroupHint}, clusterInstanceGroupUrls...)
+	}
+
+	klog.V(3).Infof("clusterInstanceGroupUrls %+v", clusterInstanceGroupUrls)
+
+	var errors []error
+	// instanceZone looks like
+	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
+	// Extract the bare zone name just "us-central1-c".
+	instanceZoneName := path.Base(instanceZone)
+
+	for _, ig := range clusterInstanceGroupUrls {
+		igName, igLocation, err := parseInstanceGroupURL(ig)
+		if err != nil {
+			errors = append(errors, err)
+			continue
+		}
+
+		// InstanceGroups can be regional, igLocation can be either region
+		// or a zone. Match them to instanceZone by prefix to cover both.
+		if !strings.HasPrefix(instanceZoneName, igLocation) {
+			klog.V(2).Infof("instance group %q is in zone/region %q, node sending the CSR is in %q; skipping instance group", ig, igLocation, instanceZone)
+			continue
+		}
+
+		// Note: use igLocation here instead of instanceZone.
+		// InstanceGroups can be regional, instances are always zonal.
+		ok, err := groupHasInstance(ctx, igLocation, igName, instanceID)
+		if err != nil {
+			errors = append(errors, fmt.Errorf("checking that group %q contains instance %v: %v", igName, instanceID, err))
+			continue
+		}
+		if ok {
+			return true, nil
 		}
 	}
 
@@ -714,7 +810,26 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 	node, err := ctx.client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		recordMetric(csrmetrics.OutboundRPCStatusNotFound)
-		// if there is no existing Node object, return success
+		// GCE MIGs currently reuse the instance name on new VMs. For example,
+		// after GCE Preemptible/Spot VM is preempted, the instance started by
+		// MIG will have the same instance name. This can result in old "stale"
+		// pods still bound to the node to exist after a node is preempted. In
+		// some cases, during preemption, the GCE instance is deleted and cloud
+		// controller will sync with k8s and the underlying k8s node object will
+		// be deleted
+		// (https://github.com/kubernetes/kubernetes/blob/44e403f5bbc71eb5f577da6ac8a2e29875ac1d28/staging/src/k8s.io/cloud-provider/controllers/nodelifecycle/node_lifecycle_controller.go#L147-L153).
+		// However it is possible that the pods bound to this node will not be
+		// garbage collected as the orphaned pods
+		// (https://github.com/kubernetes/kubernetes/blob/1ab40212a4e6cb10b3ae88c2e6c912a9fc1b1605/pkg/controller/podgc/gc_controller.go#L220-L255)
+		// will only be cleared periodically every 20 seconds. The 20 seconds
+		// check can race with the time the new node is started. If the new node
+		// is started before the pod GC will run, the pods from the previous
+		// node will not be cleared. To avoid this situation, explicitly delete
+		// all pods bound to the node name, even if the node object does not
+		// exist.
+		if err := deleteAllPodsBoundToNode(ctx, nodeName); err != nil {
+			klog.Warningf("Failed to delete all pods bound to node %q: %v", nodeName, err)
+		}
 		return nil
 	}
 	if err != nil {
@@ -738,6 +853,18 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 
 	recordMetric = csrmetrics.OutboundRPCStartRecorder("k8s.Nodes.delete")
 	err = ctx.client.CoreV1().Nodes().Delete(context.TODO(), nodeName, metav1.DeleteOptions{Preconditions: metav1.NewUIDPreconditions(string(node.UID))})
+	// Pod Deletion is best effort, do not block CSR approval during node
+	// registration if there was an issue deleting pods on the node object GCE
+	// MIGs currently reuse the instance name on new VMs. For example, after GCE
+	// Preemptible/Spot VM is preempted, the instance started by MIG will have
+	// the same instance name. This can result in old "stale" pods still bound
+	// to the node to exist after a node is preempted. In the case that a GCE
+	// node is preempted and new GCE instance is created with the same name,
+	// explicitly delete all bounds to the old node.
+	if err := deleteAllPodsBoundToNode(ctx, nodeName); err != nil {
+		klog.Warningf("Failed to delete all pods bound to node %q: %v", nodeName, err)
+	}
+
 	if apierrors.IsNotFound(err) {
 		recordMetric(csrmetrics.OutboundRPCStatusNotFound)
 		// If we wanted to delete and the node is gone, this counts as success
@@ -756,11 +883,6 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 var errInstanceNotFound = errors.New("instance not found")
 
 func shouldDeleteNode(ctx *controllerContext, node *v1.Node, getInstance func(*controllerContext, string) (*compute.Instance, error)) (bool, error) {
-	// Newly created node might not have pod CIDR allocated yet.
-	if node.Spec.PodCIDR == "" {
-		klog.V(2).Infof("Node %q has empty podCIDR.", node.Name)
-		return false, nil
-	}
 	inst, err := getInstance(ctx, node.Name)
 	if err != nil {
 		if err == errInstanceNotFound {
@@ -769,6 +891,18 @@ func shouldDeleteNode(ctx *controllerContext, node *v1.Node, getInstance func(*c
 		}
 		klog.Errorf("Error retrieving instance %q: %v", node.Name, err)
 		return false, err
+	}
+	oldInstanceID := node.ObjectMeta.Annotations[InstanceIDAnnotationKey]
+	newInstanceID := strconv.FormatUint(inst.Id, 10)
+	// Even if a GCE Instance reuses the instance name, the underlying GCE instance will change (for example on Preemptible / Spot VMs during preemption).
+	if oldInstanceID != "" && newInstanceID != "" && oldInstanceID != newInstanceID {
+		klog.Infof("Detected change in instance ID on node %q - Old Instance ID: %q ; New Instance ID: %q", inst.Name, oldInstanceID, newInstanceID)
+		return true, nil
+	}
+	// Newly created node might not have pod CIDR allocated yet.
+	if node.Spec.PodCIDR == "" {
+		klog.V(2).Infof("Node %q has empty podCIDR.", node.Name)
+		return false, nil
 	}
 	var unmatchedRanges []string
 	for _, networkInterface := range inst.NetworkInterfaces {
@@ -787,6 +921,29 @@ func shouldDeleteNode(ctx *controllerContext, node *v1.Node, getInstance func(*c
 	// Instance with no alias range is route based, for which node object deletion is unnecessary.
 	klog.V(2).Infof("Instance %q has no alias range.", inst.Name)
 	return false, nil
+}
+
+func deleteAllPodsBoundToNode(ctx *controllerContext, nodeName string) error {
+	errs := []error{}
+	deletedPods := []string{}
+
+	podList, err := ctx.client.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{FieldSelector: "spec.nodeName=" + nodeName})
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	for _, pod := range podList.Items {
+		err := ctx.client.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, *metav1.NewDeleteOptions(0))
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		deletedPods = append(deletedPods, pod.Name)
+	}
+	if len(deletedPods) > 0 {
+		klog.Infof("Pods %s bound to node %s were deleted.", strings.Join(deletedPods[:], ", "), nodeName)
+	}
+	return utilerrors.NewAggregate(errs)
 }
 
 func getInstanceByName(ctx *controllerContext, instanceName string) (*compute.Instance, error) {

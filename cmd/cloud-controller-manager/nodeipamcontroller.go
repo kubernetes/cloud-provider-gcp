@@ -159,7 +159,7 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 	if err != nil {
 		return nil, false, err
 	}
-	go nodeIpamController.Run(ctx.Stop)
+	go nodeIpamController.Run(ctx.Stop, ctx.ControllerManagerMetrics)
 	return nil, true, nil
 }
 

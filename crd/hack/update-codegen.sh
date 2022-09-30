@@ -103,4 +103,4 @@ codegen_for () {
           ${COMMON_FLAGS}
 }
 
-codegen_for gcpfirewall v1alpha1
+codegen_for gcpfirewall v1beta1

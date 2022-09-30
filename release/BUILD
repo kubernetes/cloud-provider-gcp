@@ -9,10 +9,10 @@ load("@io_k8s_repo_infra//defs:pkg.bzl", "pkg_tar")
 pkg_tar(
     name = "kubernetes-server-linux-amd64",
     srcs = [
+        ":rename_ccm_image",
         "//cmd/auth-provider-gcp",
         "//cmd/cloud-controller-manager",
         "//cmd/cloud-controller-manager:cloud-controller-manager.docker_tag",
-        ":rename_ccm_image",
     ],
     extension = "tar.gz",
     remap_paths = {
@@ -22,8 +22,8 @@ pkg_tar(
         "/cloud-controller-manager": "kubernetes/server/bin/cloud-controller-manager",
     },
     deps = [
-        "@io_k8s_release//:kubernetes-server-linux-amd64",
         ":rename_ccm_image",
+        "@io_k8s_release//:kubernetes-server-linux-amd64",
     ],
 )
 
@@ -45,8 +45,6 @@ genrule(
     name = "rename_ccm_image",
     srcs = ["//cmd/cloud-controller-manager:image.tar"],
     outs = ["cmd/cloud-controller-manager/cloud-controller-manager.tar"],
-    output_to_bindir = 1,
-    stamp = 1,
     cmd = '''
     {
       mkdir archive
@@ -58,11 +56,13 @@ genrule(
       image_tag=`echo $$image_tag | sed 's/+/-/g'`
       sed -i "s@:image\"@:$${image_tag}\"@g" manifest.json
       sed -i "s@\"image\"@\"$${image_tag}\"@g" repositories
-      sed -i "s@k8s.gcr.io/cmd/cloud-controller-manager:@k8s.gcr.io/cloud-controller-manager:@g" manifest.json
-      sed -i "s@k8s.gcr.io/cmd/cloud-controller-manager@k8s.gcr.io/cloud-controller-manager@g" repositories
+      sed -i "s@registry.k8s.io/cmd/cloud-controller-manager:@registry.k8s.io/cloud-controller-manager:@g" manifest.json
+      sed -i "s@registry.k8s.io/cmd/cloud-controller-manager@registry.k8s.io/cloud-controller-manager@g" repositories
       tar -c -T contents -f ../$@
       cd ..
     }''',
+    output_to_bindir = 1,
+    stamp = 1,
 )
 
 genrule(
@@ -73,8 +73,8 @@ genrule(
     outs = [
         ":kubernetes-server-linux-amd64.tar.gz.sha512",
     ],
-    output_to_bindir = 1,
     cmd = "shasum -a512 $< > $<.sha512",
+    output_to_bindir = 1,
 )
 
 genrule(
@@ -85,8 +85,8 @@ genrule(
     outs = [
         ":kubernetes-manifests.tar.gz.sha512",
     ],
-    output_to_bindir = 1,
     cmd = "shasum -a512 $< > $<.sha512",
+    output_to_bindir = 1,
 )
 
 genrule(
@@ -97,17 +97,17 @@ genrule(
     outs = [
         ":kubernetes-node-windows-amd64.tar.gz.sha512",
     ],
-    output_to_bindir = 1,
     cmd = "shasum -a512 $< > $<.sha512",
+    output_to_bindir = 1,
 )
 
 pkg_tar(
     name = "kubernetes-manifests",
     extension = "tar.gz",
     deps = [
+        "//cluster:manifests",
         "//deploy:addon",
         "//deploy:manifest",
-        "//cluster:manifests",
         "@io_k8s_release//:kubernetes-manifests",
     ],
 )

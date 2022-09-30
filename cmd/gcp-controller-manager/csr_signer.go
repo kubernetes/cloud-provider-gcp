@@ -61,7 +61,6 @@ func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	webhook, err := webhook.NewGenericWebhook(legacyscheme.Scheme, legacyscheme.Codecs, clientConfig, groupVersions, *ClusterSigningGKERetryBackoff)
 	if err != nil {
 		return nil, err
@@ -75,7 +74,7 @@ func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
 }
 
 // handle is called by the generic Kubernetes certificate controller.
-func (s *gkeSigner) handle(ctx context.Context, csr *capi.CertificateSigningRequest) error {
+func (s *gkeSigner) handle(_ context.Context, csr *capi.CertificateSigningRequest) error {
 	_, _, err := s.handleInternal(csr)
 	return err
 }
