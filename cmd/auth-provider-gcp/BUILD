@@ -9,18 +9,18 @@ load("//defs:version.bzl", "version_x_defs")
 
 go_binary(
     name = "auth-provider-gcp",
-    embed = [":go_default_library"],
+    embed = [":auth-provider-gcp_lib"],
 )
 
 go_library(
-    name = "go_default_library",
+    name = "auth-provider-gcp_lib",
     srcs = ["main.go"],
     importpath = "k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp",
     deps = [
-        "//cmd/auth-provider-gcp/app:go_default_library",
-        "//providers/gce/gcpcredential:go_default_library",
-        "//vendor/github.com/spf13/cobra:go_default_library",
-        "//vendor/github.com/spf13/pflag:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
+        "//cmd/auth-provider-gcp/app",
+        "//providers/gce/gcpcredential",
+        "//vendor/github.com/spf13/cobra",
+        "//vendor/github.com/spf13/pflag",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

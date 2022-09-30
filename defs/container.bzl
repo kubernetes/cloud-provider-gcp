@@ -17,7 +17,7 @@ def image(binary, visibility = ["//visibility:public"]):
     name = binary[1:]
     container_image(
         name = "image",
-        repository = "k8s.gcr.io",
+        repository = "registry.k8s.io",
         cmd = ["/" + name],
         files = [binary],
         stamp = True,

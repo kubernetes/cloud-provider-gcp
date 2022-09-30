@@ -77,8 +77,9 @@ type DockerConfigURLKeyProvider struct {
 }
 
 // ContainerRegistryProvider is a DockerConfigProvider that provides a dockercfg with:
-//    Username: "_token"
-//    Password: "{access token from metadata}"
+//
+//	Username: "_token"
+//	Password: "{access token from metadata}"
 type ContainerRegistryProvider struct {
 	MetadataProvider
 }

@@ -100,7 +100,7 @@ func (ns *nodeSyncer) enqueue(obj interface{}) {
 		klog.Errorf("internal error. Couldn't get key for Pod %+v: %v", obj, err)
 		return
 	}
-	ns.queue.AddRateLimited(key)
+	ns.queue.Add(key)
 }
 
 func (ns *nodeSyncer) Run(workers int, stopCh <-chan struct{}) {

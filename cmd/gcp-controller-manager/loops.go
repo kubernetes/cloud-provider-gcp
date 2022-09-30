@@ -35,7 +35,6 @@ type controllerContext struct {
 	csrApproverVerifyClusterMembership bool
 	csrApproverAllowLegacyKubelet      bool
 	verifiedSAs                        *saMap
-	context                            context.Context
 	hmsAuthorizeSAMappingURL           string
 	hmsSyncNodeURL                     string
 	delayDirectPathGSARemove           bool
@@ -44,97 +43,97 @@ type controllerContext struct {
 // loops returns all the control loops that the GCPControllerManager can start.
 // We append GCP to all of these to disambiguate them in API server and audit
 // logs. These loops are intentionally started in a random order.
-func loops() map[string]func(*controllerContext) error {
-	ll := map[string]func(*controllerContext) error{
-		"node-certificate-approver": func(ctx *controllerContext) error {
-			approver := newNodeApprover(ctx)
+func loops() map[string]func(context.Context, *controllerContext) error {
+	ll := map[string]func(context.Context, *controllerContext) error{
+		"node-certificate-approver": func(ctx context.Context, controllerCtx *controllerContext) error {
+			approver := newNodeApprover(controllerCtx)
 			approveController := certificates.NewCertificateController(
 				"node-certificate-approver",
-				ctx.client,
-				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
+				controllerCtx.client,
+				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
 				approver.handle,
 			)
-			go approveController.Run(ctx.context, 20)
+			go approveController.Run(ctx, 20)
 			return nil
 		},
-		"istiod-certificate-approver": func(ctx *controllerContext) error {
-			approver := newIstiodApprover(ctx)
+		"istiod-certificate-approver": func(ctx context.Context, controllerCtx *controllerContext) error {
+			approver := newIstiodApprover(controllerCtx)
 			approveController := certificates.NewCertificateController(
 				"istiod-certificate-approver",
-				ctx.client,
-				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
+				controllerCtx.client,
+				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
 				approver.handle,
 			)
-			go approveController.Run(ctx.context, 20)
+			go approveController.Run(ctx, 20)
 			return nil
 		},
-		"oidc-certificate-approver": func(ctx *controllerContext) error {
-			approver := newOIDCApprover(ctx)
+		"oidc-certificate-approver": func(ctx context.Context, controllerCtx *controllerContext) error {
+			approver := newOIDCApprover(controllerCtx)
 			approveController := certificates.NewCertificateController(
 				"oidc-certificate-approver",
-				ctx.client,
-				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
+				controllerCtx.client,
+				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
 				approver.handle,
 			)
-			go approveController.Run(ctx.context, 20)
+			go approveController.Run(ctx, 20)
 			return nil
 		},
-		"certificate-signer": func(ctx *controllerContext) error {
-			signer, err := newGKESigner(ctx)
+		"certificate-signer": func(ctx context.Context, controllerCtx *controllerContext) error {
+			signer, err := newGKESigner(controllerCtx)
 			if err != nil {
 				return err
 			}
 			signController := certificates.NewCertificateController(
 				"signer",
-				ctx.client,
-				ctx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
+				controllerCtx.client,
+				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
 				signer.handle,
 			)
 
-			go signController.Run(ctx.context, 20)
+			go signController.Run(ctx, 20)
 			return nil
 		},
-		"node-annotator": func(ctx *controllerContext) error {
+		"node-annotator": func(ctx context.Context, controllerCtx *controllerContext) error {
 			nodeAnnotateController, err := newNodeAnnotator(
-				ctx.client,
-				ctx.sharedInformers.Core().V1().Nodes(),
-				ctx.gcpCfg.Compute,
+				controllerCtx.client,
+				controllerCtx.sharedInformers.Core().V1().Nodes(),
+				controllerCtx.gcpCfg.Compute,
 			)
 			if err != nil {
 				return err
 			}
-			go nodeAnnotateController.Run(5, ctx.context.Done())
+			go nodeAnnotateController.Run(20, ctx.Done())
 			return nil
 		},
 	}
 	if *directPath {
-		ll[saVerifierControlLoopName] = func(ctx *controllerContext) error {
+		ll[saVerifierControlLoopName] = func(ctx context.Context, controllerCtx *controllerContext) error {
 			serviceAccountVerifier, err := newServiceAccountVerifier(
-				ctx.client,
-				ctx.sharedInformers.Core().V1().ServiceAccounts(),
-				ctx.sharedInformers.Core().V1().ConfigMaps(),
-				ctx.gcpCfg.Compute,
-				ctx.verifiedSAs,
-				ctx.hmsAuthorizeSAMappingURL,
+				controllerCtx.client,
+				controllerCtx.sharedInformers.Core().V1().ServiceAccounts(),
+				controllerCtx.sharedInformers.Core().V1().ConfigMaps(),
+				controllerCtx.gcpCfg.Compute,
+				controllerCtx.verifiedSAs,
+				controllerCtx.hmsAuthorizeSAMappingURL,
 			)
 			if err != nil {
 				return err
 			}
-			go serviceAccountVerifier.Run(3, ctx.context.Done())
+			go serviceAccountVerifier.Run(20, ctx.Done())
 			return nil
 		}
-		ll[nodeSyncerControlLoopName] = func(ctx *controllerContext) error {
+		ll[nodeSyncerControlLoopName] = func(ctx context.Context, controllerCtx *controllerContext) error {
 			nodeSyncer, err := newNodeSyncer(
-				ctx.sharedInformers.Core().V1().Pods(),
-				ctx.verifiedSAs,
-				ctx.hmsSyncNodeURL,
-				ctx.client,
-				ctx.delayDirectPathGSARemove,
+				controllerCtx.sharedInformers.Core().V1().Pods(),
+				controllerCtx.verifiedSAs,
+				controllerCtx.hmsSyncNodeURL,
+				controllerCtx.client,
+				controllerCtx.delayDirectPathGSARemove,
 			)
 			if err != nil {
 				return err
 			}
-			go nodeSyncer.Run(10, ctx.context.Done())
+			go nodeSyncer.Run(20, ctx.Done())
 			return nil
 		}
 	}

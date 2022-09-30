@@ -78,9 +78,10 @@ var (
 )
 
 func main() {
-	logs.InitLogs()
 
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+
+	logs.AddFlags(pflag.CommandLine)
 
 	leConfig := &componentbaseconfig.LeaderElectionConfiguration{
 		LeaderElect:   true,
@@ -94,6 +95,9 @@ func main() {
 
 	pflag.Parse()
 	verflag.PrintAndExitIfRequested()
+
+	// InitLogs should be called after parsing flags.
+	logs.InitLogs()
 
 	s := &controllerManager{
 		clusterSigningGKEKubeconfig:        *clusterSigningGKEKubeconfig,
@@ -216,7 +220,7 @@ func run(s *controllerManager) error {
 			if err != nil {
 				klog.Fatalf("failed to start client for %q: %v", name, err)
 			}
-			if err := loop(&controllerContext{
+			if err := loop(ctx, &controllerContext{
 				client:          loopClient,
 				sharedInformers: sharedInformers,
 				recorder: eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
@@ -227,7 +231,6 @@ func run(s *controllerManager) error {
 				csrApproverVerifyClusterMembership: s.csrApproverVerifyClusterMembership,
 				csrApproverAllowLegacyKubelet:      s.csrApproverAllowLegacyKubelet,
 				verifiedSAs:                        verifiedSAs,
-				context:                            ctx,
 				hmsAuthorizeSAMappingURL:           s.hmsAuthorizeSAMappingURL,
 				hmsSyncNodeURL:                     s.hmsSyncNodeURL,
 				delayDirectPathGSARemove:           s.delayDirectPathGSARemove,

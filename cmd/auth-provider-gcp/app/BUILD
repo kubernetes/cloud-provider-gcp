@@ -8,21 +8,21 @@ load(
 load("//defs:version.bzl", "version_x_defs")
 
 go_library(
-    name = "go_default_library",
+    name = "app",
     srcs = ["getcredentials.go"],
     importpath = "k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/app",
     deps = [
-        "//cmd/auth-provider-gcp/provider:go_default_library",
-        "//pkg/credentialconfig:go_default_library",
-        "//vendor/github.com/spf13/cobra:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/util/net:go_default_library",
-        "//vendor/k8s.io/klog/v2:go_default_library",
-        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1:go_default_library",
+        "//cmd/auth-provider-gcp/provider",
+        "//pkg/credentialconfig",
+        "//vendor/github.com/spf13/cobra",
+        "//vendor/k8s.io/apimachinery/pkg/util/net",
+        "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1",
     ],
 )
 
 go_test(
-    name = "go_default_test",
+    name = "app_test",
     srcs = ["getcredentials_test.go"],
-    embed = [":go_default_library"],
+    embed = [":app"],
 )

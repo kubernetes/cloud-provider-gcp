@@ -893,6 +893,18 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 		})
 	}
 
+	var computeMetadata = func(s string) *compute.Metadata {
+		return &compute.Metadata{
+			Items: []*compute.MetadataItems{
+				{Key: "created-by", Value: &s},
+			},
+		}
+	}
+
+	var formatInstanceZone = func(prj string, zone string) string {
+		return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s", prj, zone)
+	}
+
 	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		t.Logf("fakeGCPAPI request %q", req.URL.Path)
 		switch req.URL.Path {
@@ -900,35 +912,38 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 			json.NewEncoder(rw).Encode(compute.Instance{
 				Id:                1,
 				Name:              "i0",
-				Zone:              "z0",
+				Zone:              formatInstanceZone("p0", "z0"),
+				Metadata:          computeMetadata("invalid-instance-group"),
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
 			})
 		case "/compute/v1/projects/p0:p1/zones/z0/instances/i0":
 			json.NewEncoder(rw).Encode(compute.Instance{
 				Id:                1,
 				Name:              "i0",
-				Zone:              "z0",
+				Zone:              formatInstanceZone("p0", "z0"),
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
 			})
 		case "/compute/v1/projects/p0/zones/z0/instances/i1":
 			json.NewEncoder(rw).Encode(compute.Instance{
 				Id:                2,
 				Name:              "i1",
-				Zone:              "z0",
+				Zone:              formatInstanceZone("p0", "z0"),
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.5"}},
 			})
 		case "/compute/v1/projects/2/zones/z0/instances/i0":
 			json.NewEncoder(rw).Encode(compute.Instance{
 				Id:                3,
 				Name:              "i0",
-				Zone:              "z0",
+				Zone:              formatInstanceZone("2", "z0"),
+				Metadata:          computeMetadata("invalid-instance-group-3"),
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
 			})
 		case "/compute/v1/projects/2/zones/r0-a/instances/i1":
 			json.NewEncoder(rw).Encode(compute.Instance{
 				Id:                4,
 				Name:              "i0",
-				Zone:              "r0-a",
+				Zone:              formatInstanceZone("2", "r0-a"),
+				Metadata:          computeMetadata("projects/2/zones/r0-a/instanceGroupManagers/ig1"),
 				NetworkInterfaces: []*compute.NetworkInterface{{NetworkIP: "1.2.3.4"}},
 			})
 		case "/compute/beta/projects/2/zones/z0/instances/i0/getShieldedVmIdentity":
@@ -1178,6 +1193,7 @@ func TestShouldDeleteNode(t *testing.T) {
 					Name: "node-test",
 				},
 			},
+			instance: &compute.Instance{},
 		},
 		{
 			desc: "instance not found",
@@ -1205,6 +1221,24 @@ func TestShouldDeleteNode(t *testing.T) {
 			getInstanceErr: testErr,
 			expectedErr:    testErr,
 		},
+		{
+			desc: "node with different instance id",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-test",
+					Annotations: map[string]string{
+						InstanceIDAnnotationKey: "1234567890123456789",
+					},
+				},
+				Spec: v1.NodeSpec{
+					PodCIDR: "10.0.0.1/24",
+				},
+			},
+			instance: &compute.Instance{
+				Id: 0,
+			},
+			shouldDelete: true,
+		},
 	}
 	for _, c := range cases {
 		fakeGetInstance := func(_ *controllerContext, _ string) (*compute.Instance, error) {
@@ -1214,5 +1248,148 @@ func TestShouldDeleteNode(t *testing.T) {
 		if err != c.expectedErr || shouldDelete != c.shouldDelete {
 			t.Errorf("%s: shouldDeleteNode=(%v, %v), want (%v, %v)", c.desc, shouldDelete, err, c.shouldDelete, c.expectedErr)
 		}
+	}
+}
+
+func TestValidateInstanceGroupHint(t *testing.T) {
+	cgr := []string{
+		"https://www.googleapis.com/compute/v1/projects/1/zones/r0-a/instanceGroupManagers/rg1",
+		"https://www.googleapis.com/compute/v1/projects/1/zones/r0/instanceGroupManagers/rg1",
+		"https://www.googleapis.com/compute/v1/projects/2/zones/r0-a/instanceGroupManagers/rga2",
+		"https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroupManagers/zg2",
+	}
+	for _, tc := range []struct {
+		desc          string
+		clusterGroups []string
+		hintURL       string
+		wantResolved  string
+		wantError     bool
+	}{
+		{
+			desc:          "hint has project number",
+			hintURL:       "projects/1/zones/r0-a/instanceGroupManagers/rg1",
+			clusterGroups: cgr,
+			wantResolved:  cgr[0],
+		}, {
+			desc:          "hint has project id",
+			hintURL:       "projects/p0/zones/r0-a/instanceGroupManagers/rg1",
+			clusterGroups: cgr,
+			wantResolved:  cgr[0],
+		}, {
+			desc:          "missing zone and ig name",
+			hintURL:       "projects/p0",
+			clusterGroups: cgr,
+			wantResolved:  cgr[0],
+			wantError:     true,
+		}, {
+			desc:          "hint not in clustergroups",
+			hintURL:       "projects/p0/zones/r0-a/instanceGroupManagers/inv1",
+			clusterGroups: cgr,
+			wantError:     true,
+		}, {
+			desc:          "regional mig",
+			hintURL:       "projects/4/zones/r0/instanceGroupManagers/rg1",
+			clusterGroups: cgr,
+			wantResolved:  cgr[1],
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			gotResolved, err := validateInstanceGroupHint(tc.clusterGroups, tc.hintURL)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("unexpected error: got: %v, want: %t", err, tc.wantError)
+				return
+			}
+
+			if err != nil {
+				return
+			}
+
+			if gotResolved != tc.wantResolved {
+				t.Fatalf("unexpected resolved url, got: %v, want: %v", gotResolved, tc.wantResolved)
+			}
+		})
+	}
+}
+
+func TestParseInstanceGroupURL(t *testing.T) {
+	for _, tc := range []struct {
+		desc           string
+		igURL          string
+		wantIgLocation string
+		wantIgName     string
+		wantError      bool
+	}{
+		{
+			desc:           "partial MIG url with project number",
+			igURL:          "projects/2/zones/r0-a/instanceGroupManagers/ig1",
+			wantIgLocation: "r0-a",
+			wantIgName:     "ig1",
+		},
+		{
+			desc:           "absolute zonal MIG url",
+			igURL:          "https://www.googleapis.com/compute/v1/projects/2/zones/r0-a/instanceGroupManagers/ig1",
+			wantIgLocation: "r0-a",
+			wantIgName:     "ig1",
+		},
+		{
+			desc:           "absolute regional MIG url",
+			igURL:          "https://www.googleapis.com/compute/v1/projects/p0/regions/r0/instanceGroupManagers/ig2",
+			wantIgLocation: "r0",
+			wantIgName:     "ig2",
+		},
+		{
+			desc:           "no protocol or hostname in MIG url",
+			igURL:          "//compute/v1/projects/p0/regions/r0/instanceGroupManagers/ig2",
+			wantIgLocation: "r0",
+			wantIgName:     "ig2",
+		},
+		{
+			desc:           "just MIG url path",
+			igURL:          "/projects/p0/regions/r0/instanceGroupManagers/ig2",
+			wantIgLocation: "r0",
+			wantIgName:     "ig2",
+		},
+		{
+			desc:           "zonal MIG url path",
+			igURL:          "/projects/p0/zones/z0/instanceGroupManagers/ig3",
+			wantIgLocation: "z0",
+			wantIgName:     "ig3",
+		},
+		{
+			desc:           "tail MIG url with location and name",
+			igURL:          "zones/z0/instanceGroupManagers/ig3",
+			wantIgLocation: "z0",
+			wantIgName:     "ig3",
+		},
+		{
+			desc:      "too few slashes",
+			igURL:     "z0/instanceGroupManagers/ig3",
+			wantError: true,
+		},
+		{
+			desc:      "bare string with no slashes",
+			igURL:     "z0",
+			wantError: true,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			gotIgName, gotIgLocation, err := parseInstanceGroupURL(tc.igURL)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("unexpected error: got: %v, want: %t", err, tc.wantError)
+				return
+			}
+
+			if err != nil {
+				return
+			}
+
+			if gotIgLocation != tc.wantIgLocation {
+				t.Fatalf("unexpected igLocation, got: %v, want: %v", gotIgLocation, tc.wantIgLocation)
+			}
+
+			if gotIgName != tc.wantIgName {
+				t.Fatalf("unexpected igName, got: %v, want: %v", gotIgName, tc.wantIgName)
+			}
+		})
 	}
 }
