@@ -32,15 +32,15 @@ get_version_vars
 # IMPORTANT: the camelCase vars should match the lists in version.sh
 # and pkg/version/def.bzl.
 cat <<EOF
-STABLE_IMAGE_REGISTRY ${IMAGE_REGISTRY:-registry.k8s.io}
-STABLE_IMAGE_REPO ${IMAGE_REPO:-k8s-image-staging}
-STABLE_IMAGE_TAG ${IMAGE_TAG:-${KUBE_GIT_VERSION/+/_}}
-gitCommit ${KUBE_GIT_COMMIT-}
-gitTreeState ${KUBE_GIT_TREE_STATE-}
-gitVersion ${KUBE_GIT_VERSION-}
-gitMajor ${KUBE_GIT_MAJOR-}
-gitMinor ${KUBE_GIT_MINOR-}
-buildDate $(date \
+STABLE_IMAGE_REGISTRY=${IMAGE_REGISTRY:-registry.k8s.io}
+STABLE_IMAGE_REPO=${IMAGE_REPO:-k8s-image-staging}
+STABLE_IMAGE_TAG=${IMAGE_TAG:-${KUBE_GIT_VERSION/+/_}}
+gitCommit=${KUBE_GIT_COMMIT-}
+gitTreeState=${KUBE_GIT_TREE_STATE-}
+gitVersion=${KUBE_GIT_VERSION-}
+gitMajor=${KUBE_GIT_MAJOR-}
+gitMinor=${KUBE_GIT_MINOR-}
+buildDate=$(date \
   ${SOURCE_DATE_EPOCH:+"--date=@${SOURCE_DATE_EPOCH}"} \
    -u +'%Y-%m-%dT%H:%M:%SZ')
 EOF

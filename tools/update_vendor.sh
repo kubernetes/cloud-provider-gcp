@@ -38,6 +38,3 @@ go mod tidy
 # This lets other packages and tools use the local staging components as if they were vendored.
 rm -fr "${KUBE_ROOT}/vendor/k8s.io/cloud-provider-gcp/providers"
 ln -s "../../../providers" "${KUBE_ROOT}/vendor/k8s.io/cloud-provider-gcp/providers"
-
-# restore BUILD files in vendor/
-bazel run //:gazelle
