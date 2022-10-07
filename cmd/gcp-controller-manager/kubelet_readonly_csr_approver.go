@@ -228,7 +228,7 @@ func validatePodAnnotation(request kubeletReadonlyCSRRequest) kubeletReadonlyCSR
 		return kubeletReadonlyCSRResponse{
 			result:  true,
 			err:     nil,
-			message: fmt.Sprintf("Cluster is not an GKE Autopilot cluster, Annotation validation bypass"),
+			message: fmt.Sprintf("Bypassing annotation validation because cluster is not a GKE Autopilot cluster."),
 		}
 	}
 	if request.csr == nil || len(request.csr.Spec.Extra) == 0 {
@@ -256,8 +256,8 @@ func validatePodAnnotation(request kubeletReadonlyCSRRequest) kubeletReadonlyCSR
 			klog.Errorf("error when get pod %s, error: %v", podName, err)
 			return kubeletReadonlyCSRResponse{
 				result:  false,
-				err:     fmt.Errorf("get pod %s failed, error: %v", podName, err),
-				message: fmt.Sprintf("get pod %s failed, error: %v", podName, err),
+				err:     fmt.Errorf("get pod %s failed: %v", podName, err),
+				message: fmt.Sprintf("get pod %s failed: %v", podName, err),
 			}
 		}
 
@@ -304,11 +304,11 @@ func validateRbac(request kubeletReadonlyCSRRequest) kubeletReadonlyCSRResponse 
 	}
 	sar, err := request.controllerContext.client.AuthorizationV1().SubjectAccessReviews().Create(request.context, sar, metav1.CreateOptions{})
 	if err != nil {
-		klog.Errorf("subject access review request failed, error: %v", err)
+		klog.Errorf("subject access review request failed: %v", err)
 		return kubeletReadonlyCSRResponse{
 			result:  false,
 			err:     err,
-			message: fmt.Sprintf("subject access review request failed, error: %v", err),
+			message: fmt.Sprintf("subject access review request failed: %v", err),
 		}
 	}
 

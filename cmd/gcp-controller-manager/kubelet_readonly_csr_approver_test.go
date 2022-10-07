@@ -280,7 +280,7 @@ func TestValidatePodAnnotation(t *testing.T) {
 			expectResult: kubeletReadonlyCSRResponse{
 				result:  true,
 				err:     nil,
-				message: "Cluster is not an GKE Autopilot cluster, Annotation validation bypass",
+				message: "Bypassing annotation validation because cluster is not a GKE Autopilot cluster.",
 			},
 		},
 	}
