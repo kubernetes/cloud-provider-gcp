@@ -69,7 +69,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
 				Reason:  "AutoDenied",
-				Message: "csr usage any is not allowed, only allow any of [\"key encipherment\",\"digital signature\",\"client auth\"]",
+				Message: "csr usage any is not allowed, allowed usages: [\"key encipherment\",\"digital signature\",\"client auth\"]",
 				Status:  v1.ConditionTrue,
 			},
 		},
@@ -108,7 +108,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
 				Reason:  "AutoDenied",
-				Message: "csr usage any is not allowed, only allow any of [\"key encipherment\",\"digital signature\",\"client auth\"]",
+				Message: "csr usage any is not allowed, allowed usages: [\"key encipherment\",\"digital signature\",\"client auth\"]",
 				Status:  v1.ConditionTrue,
 			},
 		},
@@ -222,14 +222,14 @@ func TestValidateCSRUsage(t *testing.T) {
 				request      kubeletReadonlyCSRRequest
 				expectResult kubeletReadonlyCSRResponse
 			}{
-				name: fmt.Sprintf("csr usage %v is not allowed, only allow any of [\"key encipherment\",\"digital signature\",\"client auth\"]", usage),
+				name: fmt.Sprintf("csr usage %v is not allowed, allowed usages: [\"key encipherment\",\"digital signature\",\"client auth\"]", usage),
 				request: generateTestRequestByUsage(t, []capi.KeyUsage{
 					usage,
 				}),
 				expectResult: kubeletReadonlyCSRResponse{
 					result:  false,
 					err:     nil,
-					message: fmt.Sprintf("csr usage %v is not allowed, only allow any of [\"key encipherment\",\"digital signature\",\"client auth\"]", usage),
+					message: fmt.Sprintf("csr usage %v is not allowed, allowed usages: [\"key encipherment\",\"digital signature\",\"client auth\"]", usage),
 				},
 			})
 		}
@@ -259,7 +259,7 @@ func TestValidatePodAnnotation(t *testing.T) {
 			expectResult: kubeletReadonlyCSRResponse{
 				result:  false,
 				err:     nil,
-				message: "Pod test-default not have annotation autopilot.gke.io/kubelet-api-limited-reader or annotation is not \"true\"",
+				message: "pod test-default does not have annotation with key autopilot.gke.io/kubelet-api-limited-reader or the value is not \"true\"",
 			},
 		},
 		{
@@ -270,7 +270,7 @@ func TestValidatePodAnnotation(t *testing.T) {
 			expectResult: kubeletReadonlyCSRResponse{
 				result:  true,
 				err:     nil,
-				message: fmt.Sprintf("Annotation validation pass"),
+				message: fmt.Sprintf("Annotation validation passed."),
 			},
 		},
 		{

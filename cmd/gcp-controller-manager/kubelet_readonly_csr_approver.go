@@ -113,7 +113,6 @@ func (approver *kubeletReadonlyCSRApprover) handle(ctx context.Context, csr *cap
 			return approver.updateCSR(csr, false, response.message)
 		case response.result == true:
 			klog.Infof("validator %q: approved CSR %q", validator.name, csr.Name)
-			// Unique flow label will be logged
 			recordValidatorMetric(csrmetrics.ApprovalStatusApprove)
 		}
 	}
@@ -202,18 +201,18 @@ func validateCSRUsage(request kubeletReadonlyCSRRequest) kubeletReadonlyCSRRespo
 		if _, ok := usageMap[usage]; !ok {
 			allowListString, err := json.Marshal(kubeletReadonlyUsageAllowList)
 			if err != nil {
-				klog.Errorf("error when marshal allowlist, error: %v", err)
+				klog.Errorf("error marshaling allowlist, error: %v", err)
 				return kubeletReadonlyCSRResponse{
 					result:  false,
 					err:     err,
-					message: fmt.Sprintf("error when marshal allowlist, error: %v", err),
+					message: fmt.Sprintf("error marshaling allowlist, error: %v", err),
 				}
 			}
-			klog.Errorf("csr usage %v is not allowed, only allow any of %v", usage, string(allowListString))
+			klog.Errorf("csr usage %v is not allowed, allowed usages: %v", usage, string(allowListString))
 			return kubeletReadonlyCSRResponse{
 				result:  false,
 				err:     nil,
-				message: fmt.Sprintf("csr usage %v is not allowed, only allow any of %v", usage, string(allowListString)),
+				message: fmt.Sprintf("csr usage %v is not allowed, allowed usages: %v", usage, string(allowListString)),
 			}
 		}
 	}
@@ -243,10 +242,10 @@ func validatePodAnnotation(request kubeletReadonlyCSRRequest) kubeletReadonlyCSR
 
 	podNames, ok := request.csr.Spec.Extra[podNameKey]
 	if !ok {
-		klog.Errorf("csr does not have pod name attached")
+		klog.Errorf("csr does not have an attached pod name")
 		return kubeletReadonlyCSRResponse{
 			result:  false,
-			err:     fmt.Errorf("csr does not have pod name attached"),
+			err:     fmt.Errorf("csr does not have an attached pod name"),
 			message: "csr does not have pod name attached",
 		}
 	}
@@ -257,26 +256,26 @@ func validatePodAnnotation(request kubeletReadonlyCSRRequest) kubeletReadonlyCSR
 			klog.Errorf("error when get pod %s, error: %v", podName, err)
 			return kubeletReadonlyCSRResponse{
 				result:  false,
-				err:     fmt.Errorf("error when get pod %s, error: %v", podName, err),
-				message: fmt.Sprintf("error when get pod %s, error: %v", podName, err),
+				err:     fmt.Errorf("get pod %s failed, error: %v", podName, err),
+				message: fmt.Sprintf("get pod %s failed, error: %v", podName, err),
 			}
 		}
 
 		if pod.Annotations[kubeletAPILimitedReaderAnnotationKey] != "true" {
-			klog.Errorf("Pod %s not have annotation %s or annotation is not \"true\" ", podName, kubeletAPILimitedReaderAnnotationKey)
+			klog.Errorf("pod %s does not have annotation with key %s or the value is not \"true\"", podName, kubeletAPILimitedReaderAnnotationKey)
 			return kubeletReadonlyCSRResponse{
 				result:  false,
 				err:     nil,
-				message: fmt.Sprintf("Pod %s not have annotation %s or annotation is not \"true\"", podName, kubeletAPILimitedReaderAnnotationKey),
+				message: fmt.Sprintf("pod %s does not have annotation with key %s or the value is not \"true\"", podName, kubeletAPILimitedReaderAnnotationKey),
 			}
 		}
-		klog.Infof("Pod %s have annotation %s set to \"true\"", podName, kubeletAPILimitedReaderAnnotationKey)
+		klog.Infof("pod %s does not have annotation with key %s or the value is not \"true\"", podName, kubeletAPILimitedReaderAnnotationKey)
 	}
 
 	return kubeletReadonlyCSRResponse{
 		result:  true,
 		err:     nil,
-		message: fmt.Sprintf("Annotation validation pass"),
+		message: fmt.Sprintf("Annotation validation passed."),
 	}
 }
 
@@ -305,11 +304,11 @@ func validateRbac(request kubeletReadonlyCSRRequest) kubeletReadonlyCSRResponse 
 	}
 	sar, err := request.controllerContext.client.AuthorizationV1().SubjectAccessReviews().Create(request.context, sar, metav1.CreateOptions{})
 	if err != nil {
-		klog.Errorf("error when make subject access review, error: %v", err)
+		klog.Errorf("subject access review request failed, error: %v", err)
 		return kubeletReadonlyCSRResponse{
 			result:  false,
 			err:     err,
-			message: fmt.Sprintf("error when make subject access review, error: %v", err),
+			message: fmt.Sprintf("subject access review request failed, error: %v", err),
 		}
 	}
 
