@@ -24,6 +24,7 @@ go_library(
         "gcp_config.go",
         "hms.go",
         "istiod_csr_approver.go",
+        "kubelet_readonly_csr_approver.go",
         "loops.go",
         "main.go",
         "node_annotator.go",
@@ -108,6 +109,7 @@ go_test(
         "csr_signer_test.go",
         "gcp_config_test.go",
         "istiod_csr_approver_test.go",
+        "kubelet_readonly_csr_approver_test.go",
         "node_annotator_test.go",
         "node_csr_approver_test.go",
         "node_syncer_test.go",
@@ -118,6 +120,7 @@ go_test(
     deps = [
         "//pkg/nodeidentity",
         "//pkg/tpmattest",
+        "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/github.com/google/go-tpm/tpm2",
         "//vendor/google.golang.org/api/compute/v0.beta:v0_beta",
         "//vendor/google.golang.org/api/compute/v1:compute",

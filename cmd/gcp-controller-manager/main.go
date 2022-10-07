@@ -75,6 +75,8 @@ var (
 	delayDirectPathGSARemove           = pflag.Bool("delay-direct-path-gsa-remove", false, "Delay removal of deleted Direct Path workloads' Google Service Accounts.")
 	hmsAuthorizeSAMappingURL           = pflag.String("hms-authorize-sa-mapping-url", "", "URL for reaching the Hosted Master Service AuthorizeSAMapping API.")
 	hmsSyncNodeURL                     = pflag.String("hms-sync-node-url", "", "URL for reaching the Hosted Master Service SyncNode API.")
+	kubeletReadOnlyCSRApprover         = pflag.Bool("kubelet-read-only-csr-approver", false, "Enable kubelet readonly csr approver or not")
+	autopilotEnabled                   = pflag.Bool("autopilot", false, "Is this a GKE Autopilot cluster.")
 )
 
 func main() {
@@ -111,6 +113,8 @@ func main() {
 		hmsSyncNodeURL:                     *hmsSyncNodeURL,
 		healthz:                            healthz.NewHandler(),
 		delayDirectPathGSARemove:           *delayDirectPathGSARemove,
+		kubeletReadOnlyCSRApprover:         *kubeletReadOnlyCSRApprover,
+		autopilotEnabled:                   *autopilotEnabled,
 	}
 	var err error
 	s.informerKubeconfig, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
@@ -167,6 +171,10 @@ type controllerManager struct {
 	hmsAuthorizeSAMappingURL           string
 	hmsSyncNodeURL                     string
 	delayDirectPathGSARemove           bool
+	autopilotEnabled                   bool
+
+	// Kubelet Readonly CSR Approver
+	kubeletReadOnlyCSRApprover bool
 
 	// Fields initialized from other sources.
 	gcpConfig            gcpConfig

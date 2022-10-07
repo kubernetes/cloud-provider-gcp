@@ -137,6 +137,19 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 			return nil
 		}
 	}
+	if *kubeletReadOnlyCSRApprover {
+		ll["kubelet-readonly-approver"] = func(ctx context.Context, controllerCtx *controllerContext) error {
+			approver := newKubeletReadonlyCSRApprover(controllerCtx)
+			approveController := certificates.NewCertificateController(
+				"kubelet-readonly-approver",
+				controllerCtx.client,
+				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
+				approver.handle,
+			)
+			go approveController.Run(ctx, 20)
+			return nil
+		}
+	}
 	return ll
 }
 
