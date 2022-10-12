@@ -105,8 +105,8 @@ func (approver *kubeletReadonlyCSRApprover) handle(ctx context.Context, csr *cap
 
 		switch {
 		case response.err != nil:
-			klog.Errorf("validating CSR %q: %v", csr.Name, err)
-			return fmt.Errorf("validating CSR %q: %v", csr.Name, err)
+			klog.Errorf("validating CSR %q failed: validator %q has error %v", csr.Name, validator.name, response.err)
+			return fmt.Errorf("validating CSR %q failed: validator %q has error %v", csr.Name, validator.name, response.err)
 		case response.result == false:
 			klog.Infof("validator %q: denied CSR %q", validator.name, csr.Name)
 			recordValidatorMetric(csrmetrics.ApprovalStatusDeny)
