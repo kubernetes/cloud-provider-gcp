@@ -1,0 +1,33 @@
+# See https://cloud.google.com/cloud-build/docs/build-config
+# For more information about Image pushing refer to https://github.com/kubernetes/test-infra/blob/master/config/jobs/image-pushing/README.md
+timeout: 3600s
+
+options:
+  substitution_option: ALLOW_LOOSE
+
+steps:
+  - name: 'gcr.io/k8s-staging-test-infra/kubekins-e2e:v20221010-3da4a9c21a-master'
+    entrypoint: runner.sh
+    env:
+    - IMAGE_REGISTRY=gcr.io
+    - IMAGE_REPO=k8s-staging-cloud-provider-gcp
+    - IMAGE_TAG=${_PULL_BASE_REF}
+    # default cloudbuild has HOME=/builder/home and docker buildx is in /root/.docker/cli-plugins/docker-buildx
+    # set the home to /root explicitly to if using docker buildx
+    - HOME=/root
+    args:
+      - "/bin/bash"
+      - "-c"
+      - export BAZEL_VERSION=5.3.0;
+        /workspace/test-infra/images/kubekins-e2e/install-bazel.sh;
+        bazel run //cmd/cloud-controller-manager:bundle
+        gcloud auth configure-docker
+        docker push ${IMAGE_REGISTRY}/${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}
+
+substitutions:
+  _STAGING_PROJECT: 'k8s-staging-cloud-provider-gcp'
+  _PULL_BASE_REF: 'master'
+
+tags:
+- 'cloud-provider-gcp'
+- ${_PULL_BASE_REF}
