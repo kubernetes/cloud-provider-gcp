@@ -11,7 +11,7 @@ require (
 	github.com/prometheus/client_golang v1.12.1
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.8.0
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	google.golang.org/api v0.63.0
 	gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
@@ -127,7 +127,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.24.2 // indirect
 	k8s.io/gengo v0.0.0-20211129171323-c02415ce4185 // indirect
 	k8s.io/kube-openapi v0.0.0-20220803162953-67bda5d908f1 // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.32 // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.33 // indirect
 	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
@@ -187,3 +187,7 @@ replace (
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.25.2
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.25.2
 )
+
+// https://github.com/kubernetes/kubernetes/issues/112793
+// Remove after k8s.io/cloud-provider v0.25.3 will be released, updated upstream and rebased.
+replace k8s.io/cloud-provider v0.25.2 => github.com/openshift/kubernetes-cloud-provider v0.0.0-20221007081959-e07817829a38
