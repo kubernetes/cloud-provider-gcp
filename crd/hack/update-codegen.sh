@@ -49,6 +49,21 @@ fi
 
 readonly COMMON_FLAGS="${VERIFY_FLAG:-} --go-header-file ${SCRIPT_ROOT}/hack/boilerplate.go.txt"
 
+generate_config() {
+  local crd_name version apis_pkg
+  crd_name=${1}
+  version=${2}
+  apis_pkg=${APIS_BASE_PKG}/${1}/${2}
+
+  echo "Performing code generation for ${crd_name} CRD"
+  echo "Generating deepcopy functions and CRD artifacts"
+  go run sigs.k8s.io/controller-tools/cmd/controller-gen \
+          object:headerFile=${SCRIPT_ROOT}/hack/boilerplate.go.txt \
+          crd:crdVersions=$version \
+          paths=${apis_pkg}/... \
+          output:crd:artifacts:config=${SCRIPT_ROOT}/config/crds
+}
+
 codegen_for () {
   local crd_name version apis_pkg output_pkg
 
@@ -64,13 +79,7 @@ codegen_for () {
   output_pkg=${OUTPUT_BASE_PKG}/${1}
   apis_pkg=${APIS_BASE_PKG}/${1}/${2}
 
-  echo "Performing code generation for ${crd_name} CRD"
-  echo "Generating deepcopy functions and CRD artifacts"
-  go run sigs.k8s.io/controller-tools/cmd/controller-gen \
-          object:headerFile=${SCRIPT_ROOT}/hack/boilerplate.go.txt \
-          crd:crdVersions=v1 \
-          paths=${apis_pkg}/... \
-          output:crd:artifacts:config=${SCRIPT_ROOT}/config/crds
+  generate_config $crd_name $version
 
   echo "Generating clientset at ${output_pkg}/${CLIENTSET_PKG_NAME}"
   echo "apis_pkg ${apis_pkg}"
@@ -104,3 +113,4 @@ codegen_for () {
 }
 
 codegen_for gcpfirewall v1beta1
+generate_config network v1
