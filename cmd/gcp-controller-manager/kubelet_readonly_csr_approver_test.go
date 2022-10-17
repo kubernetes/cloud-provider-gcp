@@ -32,7 +32,9 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 	testCases := []struct {
 		name                                                             string
 		sarAllowed, podAnnotationAllowed, usageAllowed, autopilotEnabled bool
+		sarWantError, podAnnotationWantError                             bool
 		expectCondition                                                  capi.CertificateSigningRequestCondition
+		expectError                                                      error
 	}{
 		{
 			name:                 "success when all valid",
@@ -48,11 +50,9 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			},
 		},
 		{
-			name:                 "success when all valid but annotation bypassed",
-			sarAllowed:           true,
-			podAnnotationAllowed: false,
-			usageAllowed:         true,
-			autopilotEnabled:     false,
+			name:         "success when all valid but annotation bypassed",
+			sarAllowed:   true,
+			usageAllowed: true,
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateApproved,
 				Reason:  "AutoApproved",
@@ -61,11 +61,8 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			},
 		},
 		{
-			name:                 "fail by all validation fail",
-			sarAllowed:           false,
-			podAnnotationAllowed: false,
-			usageAllowed:         false,
-			autopilotEnabled:     true,
+			name:             "fail by all validation fail",
+			autopilotEnabled: true,
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
 				Reason:  "AutoDenied",
@@ -75,7 +72,6 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 		},
 		{
 			name:                 "fail by sar validation fail",
-			sarAllowed:           false,
 			podAnnotationAllowed: true,
 			usageAllowed:         true,
 			autopilotEnabled:     true,
@@ -87,11 +83,10 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			},
 		},
 		{
-			name:                 "fail by pod annotation validation fail",
-			sarAllowed:           true,
-			podAnnotationAllowed: false,
-			usageAllowed:         true,
-			autopilotEnabled:     true,
+			name:             "fail by pod annotation validation fail",
+			sarAllowed:       true,
+			usageAllowed:     true,
+			autopilotEnabled: true,
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
 				Reason:  "AutoDenied",
@@ -103,8 +98,37 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			name:                 "fail by usage validation fail",
 			sarAllowed:           true,
 			podAnnotationAllowed: true,
-			usageAllowed:         false,
 			autopilotEnabled:     true,
+			expectCondition: capi.CertificateSigningRequestCondition{
+				Type:    capi.CertificateDenied,
+				Reason:  "AutoDenied",
+				Message: "csr usage any is not allowed, allowed usages: [\"key encipherment\",\"digital signature\",\"client auth\"]",
+				Status:  v1.ConditionTrue,
+			},
+		},
+		{
+			name:                 "fail by sar validation error",
+			sarAllowed:           true,
+			podAnnotationAllowed: true,
+			usageAllowed:         true,
+			autopilotEnabled:     true,
+			sarWantError:         true,
+			expectError:          fmt.Errorf("validating CSR \"fail by sar validation error\" failed: validator \"rbac validator\" has error failed to get subject access review"),
+			expectCondition: capi.CertificateSigningRequestCondition{
+				Type:    capi.CertificateDenied,
+				Reason:  "AutoDenied",
+				Message: "csr usage any is not allowed, allowed usages: [\"key encipherment\",\"digital signature\",\"client auth\"]",
+				Status:  v1.ConditionTrue,
+			},
+		},
+		{
+			name:                   "fail by pod annotation validation error",
+			sarAllowed:             true,
+			podAnnotationAllowed:   true,
+			usageAllowed:           true,
+			autopilotEnabled:       true,
+			podAnnotationWantError: true,
+			expectError:            fmt.Errorf("validating CSR \"fail by pod annotation validation error\" failed: validator \"pod annotation validator\" has error get pod test failed: failed to get pod"),
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
 				Reason:  "AutoDenied",
@@ -116,18 +140,24 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprint(testCase.name), func(t *testing.T) {
-			request := generateTestRequest(t, testCase.sarAllowed, testCase.podAnnotationAllowed, testCase.usageAllowed, testCase.autopilotEnabled)
+			request := generateTestRequest(t, testCase.sarAllowed, testCase.podAnnotationAllowed, testCase.usageAllowed, testCase.autopilotEnabled,
+				testCase.sarWantError, testCase.podAnnotationWantError)
+			request.csr.Name = testCase.name
 			request.csr.Spec.SignerName = kubeletReadonlyCSRSignerName
 			approver := newKubeletReadonlyCSRApprover(request.controllerContext)
 			*autopilotEnabled = testCase.autopilotEnabled
 			err := approver.handle(request.context, request.csr)
-			if err != nil {
-				t.Fatalf("error when handle approver, error: %v", err)
-			}
-			if diff := cmp.Diff(request.csr.Status.Conditions[0], testCase.expectCondition, cmp.Comparer(func(x, y capi.CertificateSigningRequestCondition) bool {
-				return x.Type == y.Type && x.Reason == y.Reason && x.Message == y.Message && x.Status == y.Status
-			})); diff != "" {
-				t.Fatalf("condition don't match, diff -want +got\n%s", diff)
+			switch {
+			case testCase.expectError == nil && err == nil:
+				if diff := cmp.Diff(request.csr.Status.Conditions[0], testCase.expectCondition, cmp.Comparer(func(x, y capi.CertificateSigningRequestCondition) bool {
+					return x.Type == y.Type && x.Reason == y.Reason && x.Message == y.Message && x.Status == y.Status
+				})); diff != "" {
+					t.Fatalf("condition don't match, diff -want +got\n%s", diff)
+				}
+			case testCase.expectError != nil && err == nil ||
+				err != nil && testCase.expectError == nil ||
+				err.Error() != testCase.expectError.Error():
+				t.Fatalf("error not match, got: %v, expect: %v", err, testCase.expectError)
 			}
 		})
 	}
@@ -162,6 +192,7 @@ func TestValidateCSRUsage(t *testing.T) {
 
 	testCases := []struct {
 		name         string
+		wantError    bool
 		request      kubeletReadonlyCSRRequest
 		expectResult kubeletReadonlyCSRResponse
 	}{
@@ -203,6 +234,7 @@ func TestValidateCSRUsage(t *testing.T) {
 		if allowed {
 			testCases = append(testCases, struct {
 				name         string
+				wantError    bool
 				request      kubeletReadonlyCSRRequest
 				expectResult kubeletReadonlyCSRResponse
 			}{
@@ -219,6 +251,7 @@ func TestValidateCSRUsage(t *testing.T) {
 		} else {
 			testCases = append(testCases, struct {
 				name         string
+				wantError    bool
 				request      kubeletReadonlyCSRRequest
 				expectResult kubeletReadonlyCSRResponse
 			}{
@@ -250,6 +283,7 @@ func TestValidatePodAnnotation(t *testing.T) {
 		annotation       string
 		autopilotEnabled bool
 		podName          string
+		wantError        bool
 		expectResult     kubeletReadonlyCSRResponse
 	}{
 		{
@@ -274,13 +308,23 @@ func TestValidatePodAnnotation(t *testing.T) {
 			},
 		},
 		{
-			name:             "not auto pilot cluster",
-			podName:          "test-default",
-			autopilotEnabled: false,
+			name:    "not auto pilot cluster",
+			podName: "test-autopilot-not-enabled",
 			expectResult: kubeletReadonlyCSRResponse{
 				result:  true,
 				err:     nil,
 				message: "Bypassing annotation validation because cluster is not a GKE Autopilot cluster.",
+			},
+		},
+		{
+			name:             "error when get pod",
+			podName:          "test-get-pod-fail",
+			wantError:        true,
+			annotation:       kubeletAPILimitedReaderAnnotationKey,
+			autopilotEnabled: true,
+			expectResult: kubeletReadonlyCSRResponse{
+				err:     fmt.Errorf("get pod test-get-pod-fail failed: failed to get pod"),
+				message: "get pod test-get-pod-fail failed: failed to get pod",
 			},
 		},
 	}
@@ -288,9 +332,7 @@ func TestValidatePodAnnotation(t *testing.T) {
 		t.Run(fmt.Sprint(testCase.name), func(t *testing.T) {
 			request := generateTestRequestByPodName(t, testCase.podName)
 			request.autopilotEnabled = testCase.autopilotEnabled
-			if len(testCase.annotation) != 0 {
-				createPodWithAnnotation(testCase.podName, testCase.annotation, *request.controllerContext)
-			}
+			createPodWithAnnotation(testCase.podName, testCase.annotation, testCase.wantError, *request.controllerContext)
 			response := validatePodAnnotation(request)
 			compareKubeletReadonlyCSRRequestResult(response, testCase.expectResult, t)
 		})
@@ -301,11 +343,11 @@ func TestValidateRbac(t *testing.T) {
 	testCases := []struct {
 		name         string
 		allowed      bool
+		wantError    bool
 		expectResult kubeletReadonlyCSRResponse
 	}{
 		{
-			name:    "not allow to create csr",
-			allowed: false,
+			name: "not allow to create csr",
 			expectResult: kubeletReadonlyCSRResponse{
 				result:  false,
 				err:     nil,
@@ -321,10 +363,20 @@ func TestValidateRbac(t *testing.T) {
 				message: "user test is allowed to create a CSR",
 			},
 		},
+		{
+			name:      "error to create csr",
+			allowed:   true,
+			wantError: true,
+			expectResult: kubeletReadonlyCSRResponse{
+				result:  false,
+				err:     fmt.Errorf("failed to get subject access review"),
+				message: "subject access review request failed: failed to get subject access review",
+			},
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprint(testCase.name), func(t *testing.T) {
-			request := generateTestRequestBySubjectAccessReview(t, testCase.allowed)
+			request := generateTestRequestBySubjectAccessReview(t, testCase.allowed, testCase.wantError)
 			request.csr.Spec.Username = "test"
 			response := validateRbac(request)
 			compareKubeletReadonlyCSRRequestResult(response, testCase.expectResult, t)
@@ -356,7 +408,7 @@ func generateTestRequestByUsage(t *testing.T, usage []capi.KeyUsage) kubeletRead
 	return request
 }
 
-func createPodWithAnnotation(podName, annotation string, controllerContext controllerContext) {
+func createPodWithAnnotation(podName, annotation string, wantError bool, controllerContext controllerContext) {
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "default",
@@ -380,13 +432,20 @@ func createPodWithAnnotation(podName, annotation string, controllerContext contr
 		},
 	}
 	client := controllerContext.client.(*fake.Clientset)
-	client.AddReactor("get", "pods", func(action testclient.Action) (handled bool, ret runtime.Object, err error) {
-		return true, pod, nil
-	})
+	if !wantError {
+		client.PrependReactor("get", "pods", func(action testclient.Action) (handled bool, ret runtime.Object, err error) {
+			return true, pod, nil
+		})
+	} else {
+		client.PrependReactor("get", "pods", func(action testclient.Action) (handled bool, ret runtime.Object, err error) {
+			return true, nil, fmt.Errorf("failed to get pod")
+		})
+	}
 }
 
-func generateTestRequest(t *testing.T, sarAllowed, podAnnotationAllowed, usageAllowed, autopilotEnabled bool) kubeletReadonlyCSRRequest {
-	request := generateTestRequestBySubjectAccessReview(t, sarAllowed)
+func generateTestRequest(t *testing.T, sarAllowed, podAnnotationAllowed, usageAllowed, autopilotEnabled,
+	sarWantError, podAnnotationWantError bool) kubeletReadonlyCSRRequest {
+	request := generateTestRequestBySubjectAccessReview(t, sarAllowed, sarWantError)
 	request.csr.Spec.Username = "test"
 	request.csr.Spec.Extra = map[string]capi.ExtraValue{}
 	request.autopilotEnabled = autopilotEnabled
@@ -394,7 +453,7 @@ func generateTestRequest(t *testing.T, sarAllowed, podAnnotationAllowed, usageAl
 		request.csr.Spec.Extra = map[string]capi.ExtraValue{
 			podNameKey: []string{"test"},
 		}
-		createPodWithAnnotation("test", kubeletAPILimitedReaderAnnotationKey, *request.controllerContext)
+		createPodWithAnnotation("test", kubeletAPILimitedReaderAnnotationKey, podAnnotationWantError, *request.controllerContext)
 	}
 	if usageAllowed {
 		request.csr.Spec.Usages = []capi.KeyUsage{
@@ -413,21 +472,30 @@ func generateTestRequest(t *testing.T, sarAllowed, podAnnotationAllowed, usageAl
 func generateTestRequestByPodName(t *testing.T, podName string) kubeletReadonlyCSRRequest {
 	request := generateTestKubeletReadonlyCSRRequest(t)
 	request.csr.Spec.Extra = map[string]capi.ExtraValue{
-		podNameKey: []string{podName},
+		"annotations": []string{"test"},
+	}
+	if len(podName) != 0 {
+		request.csr.Spec.Extra[podNameKey] = []string{podName}
 	}
 	return request
 }
 
-func generateTestRequestBySubjectAccessReview(t *testing.T, allowed bool) kubeletReadonlyCSRRequest {
+func generateTestRequestBySubjectAccessReview(t *testing.T, allowed, wantError bool) kubeletReadonlyCSRRequest {
 	request := generateTestKubeletReadonlyCSRRequest(t)
 	client := request.controllerContext.client.(*fake.Clientset)
-	client.AddReactor("create", "subjectaccessreviews", func(action testclient.Action) (handled bool, ret runtime.Object, err error) {
-		return true, &authorization.SubjectAccessReview{
-			Status: authorization.SubjectAccessReviewStatus{
-				Allowed: allowed,
-			},
-		}, nil
-	})
+	if !wantError {
+		client.PrependReactor("create", "subjectaccessreviews", func(action testclient.Action) (handled bool, ret runtime.Object, err error) {
+			return true, &authorization.SubjectAccessReview{
+				Status: authorization.SubjectAccessReviewStatus{
+					Allowed: allowed,
+				},
+			}, nil
+		})
+	} else {
+		client.PrependReactor("create", "subjectaccessreviews", func(action testclient.Action) (handled bool, ret runtime.Object, err error) {
+			return true, nil, fmt.Errorf("failed to get subject access review")
+		})
+	}
 	return request
 }
 
