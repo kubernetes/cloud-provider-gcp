@@ -18,6 +18,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	authorization "k8s.io/api/authorization/v1"
 	capi "k8s.io/api/certificates/v1"
@@ -34,6 +35,7 @@ const (
 	kubeletReadonlyCSRRequestMetrics     = "kubelet_readonly_csr_request"
 	podNameKey                           = "authentication.kubernetes.io/pod-name"
 	kubeletAPILimitedReaderAnnotationKey = "autopilot.gke.io/kubelet-api-limited-reader"
+	kubeletReadonlyCRCommonName          = "kubelet-ro-client:"
 )
 
 var (
@@ -177,6 +179,11 @@ func newKubeletReadonlyCsrValidator() []kubeletReadonlyCsrValidator {
 			name:          "rbac validator",
 			authFlowLabel: "kubelet_readonly_rbac_exist",
 			validate:      validateRbac,
+		},
+		{
+			name:          "common name validator",
+			authFlowLabel: "kubelet_readonly_common_name_match",
+			validate:      validateCommonName,
 		},
 	}
 }
@@ -325,5 +332,30 @@ func validateRbac(request kubeletReadonlyCSRRequest) kubeletReadonlyCSRResponse 
 		result:  true,
 		err:     nil,
 		message: fmt.Sprintf("user %s is allowed to create a CSR", csr.Spec.Username),
+	}
+}
+
+// validateCommonName will make sure the common name for x509 has kubelet-ro-client
+func validateCommonName(request kubeletReadonlyCSRRequest) kubeletReadonlyCSRResponse {
+	x509cr := request.x509cr
+	if x509cr == nil || len(x509cr.Subject.CommonName) == 0 {
+		return kubeletReadonlyCSRResponse{
+			result:  false,
+			err:     nil,
+			message: fmt.Sprintf("x509cr or CommonName is empty"),
+		}
+	}
+
+	if !strings.HasPrefix(x509cr.Subject.CommonName, kubeletReadonlyCRCommonName) {
+		return kubeletReadonlyCSRResponse{
+			result:  false,
+			err:     nil,
+			message: fmt.Sprintf("x509 common name should start with %s", kubeletReadonlyCRCommonName),
+		}
+	}
+	return kubeletReadonlyCSRResponse{
+		result:  true,
+		err:     nil,
+		message: fmt.Sprintf("x509 common name starts with %s", kubeletReadonlyCRCommonName),
 	}
 }

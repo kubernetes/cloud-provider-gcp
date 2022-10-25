@@ -14,8 +14,15 @@ limitations under the License.
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -33,6 +40,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 		name                                                             string
 		sarAllowed, podAnnotationAllowed, usageAllowed, autopilotEnabled bool
 		sarWantError, podAnnotationWantError                             bool
+		commonName                                                       string
 		expectCondition                                                  capi.CertificateSigningRequestCondition
 		expectError                                                      error
 	}{
@@ -42,6 +50,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			podAnnotationAllowed: true,
 			usageAllowed:         true,
 			autopilotEnabled:     true,
+			commonName:           kubeletReadonlyCRCommonName,
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateApproved,
 				Reason:  "AutoApproved",
@@ -50,9 +59,24 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			},
 		},
 		{
+			name:                 fmt.Sprintf("fail when common name is not %s", kubeletReadonlyCRCommonName),
+			sarAllowed:           true,
+			podAnnotationAllowed: true,
+			usageAllowed:         true,
+			autopilotEnabled:     true,
+			commonName:           "test fail",
+			expectCondition: capi.CertificateSigningRequestCondition{
+				Type:    capi.CertificateDenied,
+				Reason:  "AutoDenied",
+				Message: "x509 common name should start with kubelet-ro-client:",
+				Status:  v1.ConditionTrue,
+			},
+		},
+		{
 			name:         "success when all valid but annotation bypassed",
 			sarAllowed:   true,
 			usageAllowed: true,
+			commonName:   kubeletReadonlyCRCommonName,
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateApproved,
 				Reason:  "AutoApproved",
@@ -63,6 +87,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 		{
 			name:             "fail by all validation fail",
 			autopilotEnabled: true,
+			commonName:       "test fail",
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
 				Reason:  "AutoDenied",
@@ -75,6 +100,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			podAnnotationAllowed: true,
 			usageAllowed:         true,
 			autopilotEnabled:     true,
+			commonName:           kubeletReadonlyCRCommonName,
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
 				Reason:  "AutoDenied",
@@ -87,6 +113,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			sarAllowed:       true,
 			usageAllowed:     true,
 			autopilotEnabled: true,
+			commonName:       kubeletReadonlyCRCommonName,
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
 				Reason:  "AutoDenied",
@@ -99,6 +126,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			sarAllowed:           true,
 			podAnnotationAllowed: true,
 			autopilotEnabled:     true,
+			commonName:           kubeletReadonlyCRCommonName,
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
 				Reason:  "AutoDenied",
@@ -113,6 +141,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			usageAllowed:         true,
 			autopilotEnabled:     true,
 			sarWantError:         true,
+			commonName:           kubeletReadonlyCRCommonName,
 			expectError:          fmt.Errorf("validating CSR \"fail by sar validation error\" failed: validator \"rbac validator\" has error failed to get subject access review"),
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
@@ -128,6 +157,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			usageAllowed:           true,
 			autopilotEnabled:       true,
 			podAnnotationWantError: true,
+			commonName:             kubeletReadonlyCRCommonName,
 			expectError:            fmt.Errorf("validating CSR \"fail by pod annotation validation error\" failed: validator \"pod annotation validator\" has error get pod test failed: failed to get pod"),
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
@@ -140,8 +170,15 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprint(testCase.name), func(t *testing.T) {
-			request := generateTestRequest(t, testCase.sarAllowed, testCase.podAnnotationAllowed, testCase.usageAllowed, testCase.autopilotEnabled,
-				testCase.sarWantError, testCase.podAnnotationWantError)
+			request := generateTestRequest(t, &kubeletReadonlyTestRequestBuilder{
+				sarAllowed:             testCase.sarAllowed,
+				podAnnotationAllowed:   testCase.podAnnotationAllowed,
+				usageAllowed:           testCase.usageAllowed,
+				autopilotEnabled:       testCase.autopilotEnabled,
+				podAnnotationWantError: testCase.podAnnotationWantError,
+				sarWantError:           testCase.sarWantError,
+				commonName:             testCase.commonName,
+			})
 			request.csr.Name = testCase.name
 			request.csr.Spec.SignerName = kubeletReadonlyCSRSignerName
 			approver := newKubeletReadonlyCSRApprover(request.controllerContext)
@@ -384,6 +421,73 @@ func TestValidateRbac(t *testing.T) {
 	}
 }
 
+func TestValidateCommonName(t *testing.T) {
+	testCases := []struct {
+		name         string
+		x509cr       *x509.CertificateRequest
+		expectResult kubeletReadonlyCSRResponse
+	}{
+		{
+			name: fmt.Sprintf("x509cr has prefix %s", kubeletReadonlyCRCommonName),
+			x509cr: &x509.CertificateRequest{
+				Subject: pkix.Name{
+					CommonName:   kubeletReadonlyCRCommonName,
+					Organization: []string{"testOrg"},
+				},
+			},
+			expectResult: kubeletReadonlyCSRResponse{
+				result:  true,
+				err:     nil,
+				message: fmt.Sprintf("x509 common name starts with %s", kubeletReadonlyCRCommonName),
+			},
+		},
+		{
+			name: fmt.Sprintf("x509cr does not has prefix %s", kubeletReadonlyCRCommonName),
+			x509cr: &x509.CertificateRequest{
+				Subject: pkix.Name{
+					CommonName:   "test",
+					Organization: []string{"testOrg"},
+				},
+			},
+			expectResult: kubeletReadonlyCSRResponse{
+				result:  false,
+				err:     nil,
+				message: fmt.Sprintf("x509 common name should start with %s", kubeletReadonlyCRCommonName),
+			},
+		},
+		{
+			name: "x509cr  has empty common name",
+			x509cr: &x509.CertificateRequest{
+				Subject: pkix.Name{
+					CommonName:   "",
+					Organization: []string{"testOrg"},
+				},
+			},
+			expectResult: kubeletReadonlyCSRResponse{
+				result:  false,
+				err:     nil,
+				message: "x509cr or CommonName is empty",
+			},
+		},
+		{
+			name: "x509 is empty",
+			expectResult: kubeletReadonlyCSRResponse{
+				result:  false,
+				err:     nil,
+				message: fmt.Sprintf("x509cr or CommonName is empty"),
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprint(testCase.name), func(t *testing.T) {
+			request := generateTestKubeletReadonlyCSRRequest(t)
+			request.x509cr = testCase.x509cr
+			response := validateCommonName(request)
+			compareKubeletReadonlyCSRRequestResult(response, testCase.expectResult, t)
+		})
+	}
+}
+
 func compareKubeletReadonlyCSRRequestResult(response kubeletReadonlyCSRResponse, targetResult kubeletReadonlyCSRResponse, t *testing.T) {
 	if diff := cmp.Diff(response, targetResult, cmp.Comparer(func(x, y kubeletReadonlyCSRResponse) bool {
 		if x.err != nil {
@@ -443,19 +547,29 @@ func createPodWithAnnotation(podName, annotation string, wantError bool, control
 	}
 }
 
-func generateTestRequest(t *testing.T, sarAllowed, podAnnotationAllowed, usageAllowed, autopilotEnabled,
-	sarWantError, podAnnotationWantError bool) kubeletReadonlyCSRRequest {
-	request := generateTestRequestBySubjectAccessReview(t, sarAllowed, sarWantError)
+type kubeletReadonlyTestRequestBuilder struct {
+	sarAllowed             bool
+	podAnnotationAllowed   bool
+	usageAllowed           bool
+	autopilotEnabled       bool
+	sarWantError           bool
+	podAnnotationWantError bool
+	commonName             string
+}
+
+func generateTestRequest(t *testing.T, builder *kubeletReadonlyTestRequestBuilder) kubeletReadonlyCSRRequest {
+
+	request := generateTestRequestBySubjectAccessReview(t, builder.sarAllowed, builder.sarWantError)
 	request.csr.Spec.Username = "test"
 	request.csr.Spec.Extra = map[string]capi.ExtraValue{}
-	request.autopilotEnabled = autopilotEnabled
-	if podAnnotationAllowed {
+	request.autopilotEnabled = builder.autopilotEnabled
+	if builder.podAnnotationAllowed {
 		request.csr.Spec.Extra = map[string]capi.ExtraValue{
 			podNameKey: []string{"test"},
 		}
-		createPodWithAnnotation("test", kubeletAPILimitedReaderAnnotationKey, podAnnotationWantError, *request.controllerContext)
+		createPodWithAnnotation("test", kubeletAPILimitedReaderAnnotationKey, builder.podAnnotationWantError, *request.controllerContext)
 	}
-	if usageAllowed {
+	if builder.usageAllowed {
 		request.csr.Spec.Usages = []capi.KeyUsage{
 			capi.UsageKeyEncipherment,
 			capi.UsageDigitalSignature,
@@ -466,6 +580,23 @@ func generateTestRequest(t *testing.T, sarAllowed, podAnnotationAllowed, usageAl
 			capi.UsageAny,
 		}
 	}
+	pk, err := ecdsa.GenerateKey(elliptic.P224(), insecureRand)
+	if err != nil {
+		t.Fatalf("failed to generate public key, error: %v", err)
+	}
+	csrb, err := x509.CreateCertificateRequest(rand.New(rand.NewSource(0)), &x509.CertificateRequest{
+		Subject: pkix.Name{
+			CommonName:   builder.commonName,
+			Organization: []string{"testOrg"},
+		},
+	}, pk)
+	if err != nil {
+		t.Fatalf("failed to generate CreateCertificateRequest, error: %v", err)
+	}
+	blocks := [][]byte{pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrb})}
+
+	request.csr.Spec.Request = bytes.TrimSpace(bytes.Join(blocks, nil))
+
 	return request
 }
 
