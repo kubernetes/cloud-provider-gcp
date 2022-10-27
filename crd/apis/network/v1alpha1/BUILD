@@ -21,12 +21,9 @@ go_library(
 
 go_test(
     name = "v1alpha1_test",
+    srcs = ["annotations_test.go"],
     embed = [":v1alpha1"],
-    srcs = [
-        "annotations_test.go",
-    ],
     deps = [
         "//vendor/github.com/google/go-cmp/cmp",
     ],
 )
-

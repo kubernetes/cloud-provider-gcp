@@ -21,12 +21,16 @@ go_library(
 
 go_test(
     name = "v1_test",
+    srcs = ["annotations_test.go"],
     embed = [":v1"],
-    srcs = [
-        "annotations_test.go",
-    ],
     deps = [
         "//vendor/github.com/google/go-cmp/cmp",
     ],
 )
 
+go_test(
+    name = "network_test",
+    srcs = ["annotations_test.go"],
+    embed = [":network"],
+    deps = ["//vendor/github.com/google/go-cmp/cmp"],
+)
