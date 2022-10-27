@@ -14,7 +14,6 @@ Manual instruction how to update `cloud-provider-gcp` repository.
     1. Selectively re-applies direct contributions made to the /cluster directory of cloud-provider-gcp that are clobbered by the rebase of the /cluster directory. (see reference in the end of this documentation)
     1. Remove any changes regarding OWNERS files.
     * Note: Use `tools/bump_cluster.sh` to automate part of this process.
-1. Update test library version [here](https://github.com/kubernetes/test-infra/blob/76eeb12d9aa94f8507714ab2ce4d179b162dc5b9/config/jobs/kubernetes/cloud-provider-gcp/cloud-provider-gcp-periodics.yaml#L50) to the desired version for conformance test and e2e test.
 1. Testing:
     1. Build `cloud-provider-gcp` with command `bazel clean && bazel build //release:release-tars`.
     1. Bring the cluster up with `kubetest2 gce -v 2 --repo-root $REPO\_ROOT --build --up`
