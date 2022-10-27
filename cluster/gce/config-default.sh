@@ -399,7 +399,7 @@ EVICTION_HARD="${EVICTION_HARD:-memory.available<250Mi,nodefs.available<10%,node
 # Optional: custom scheduling algorithm
 SCHEDULING_ALGORITHM_PROVIDER="${SCHEDULING_ALGORITHM_PROVIDER:-}"
 
- # Optional: install a default StorageClass
+# Optional: install a default StorageClass
 # (TODO/cloud-provider-gcp): This should be reverted when we add ENABLE_DEFAULT_STORAGE_CLASS to kubetest2 parsed argument
 # ENABLE_DEFAULT_STORAGE_CLASS="${ENABLE_DEFAULT_STORAGE_CLASS:-false}"
 ENABLE_DEFAULT_STORAGE_CLASS="${ENABLE_DEFAULT_STORAGE_CLASS:-true}"
