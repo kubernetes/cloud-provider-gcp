@@ -5,7 +5,7 @@ Manual instruction how to update `cloud-provider-gcp` repository.
 ## Workflow
 
 1. Update library to the desired version.
-    * [go.mod](https://github.com/kubernetes/cloud-provider-gcp/blob/master/go.mod) and [providers/go.mod](https://github.com/kubernetes/cloud-provider-gcp/blob/master/providers/go.mod) describe the required libraries. Update the version of each dependency to the desired Kubernetes release version. Run `go mod tidy` after update.
+    * [ginko-test-package-version.env](https://github.com/kubernetes/cloud-provider-gcp/blob/master/ginko-test-package-version.env), [go.mod](https://github.com/kubernetes/cloud-provider-gcp/blob/master/go.mod) and [providers/go.mod](https://github.com/kubernetes/cloud-provider-gcp/blob/master/providers/go.mod) describe the required libraries. Update the version of each dependency to the desired Kubernetes release version. Run `go mod tidy` after update. First in `/providers`, then in a root path.
 1. In [WORKSPACE](https://github.com/kubernetes/cloud-provider-gcp/blob/master/WORKSPACE), update kube-release sha and version to the desired release version.
     * Note: The current Kubernetes release is using sha512 hash while cloud-provider-gcp is using sha256. Re-sha with command `sha256sum` if needed.
 1. Update `KUBE_GIT_VERSION `in `https://github.com/kubernetes/cloud-provider-gcp/blob/9f5cdad672954777791e722baa607ee2a3912002/tools/version.sh#L77` with the right tag.
