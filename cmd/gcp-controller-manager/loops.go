@@ -38,6 +38,7 @@ type controllerContext struct {
 	hmsAuthorizeSAMappingURL           string
 	hmsSyncNodeURL                     string
 	delayDirectPathGSARemove           bool
+	clearStalePodsOnNodeRegistration   bool
 }
 
 // loops returns all the control loops that the GCPControllerManager can start.

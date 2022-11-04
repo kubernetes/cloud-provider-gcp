@@ -1098,6 +1098,7 @@ func TestShouldDeleteNode(t *testing.T) {
 	testErr := fmt.Errorf("intended error")
 	cases := []struct {
 		desc           string
+		ctx            *controllerContext
 		node           *v1.Node
 		instance       *compute.Instance
 		shouldDelete   bool
@@ -1106,6 +1107,7 @@ func TestShouldDeleteNode(t *testing.T) {
 	}{
 		{
 			desc: "instance with 1 alias range and matches podCIDR",
+			ctx:  &controllerContext{},
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node-test",
@@ -1128,6 +1130,7 @@ func TestShouldDeleteNode(t *testing.T) {
 		},
 		{
 			desc: "instance with 1 alias range doesn't match podCIDR",
+			ctx:  &controllerContext{},
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node-test",
@@ -1151,6 +1154,7 @@ func TestShouldDeleteNode(t *testing.T) {
 		},
 		{
 			desc: "instance with 2 alias range and 1 matches podCIDR",
+			ctx:  &controllerContext{},
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node-test",
@@ -1176,6 +1180,7 @@ func TestShouldDeleteNode(t *testing.T) {
 		},
 		{
 			desc: "instance with 0 alias range",
+			ctx:  &controllerContext{},
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node-test",
@@ -1188,6 +1193,7 @@ func TestShouldDeleteNode(t *testing.T) {
 		},
 		{
 			desc: "node with empty podCIDR",
+			ctx:  &controllerContext{},
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node-test",
@@ -1197,6 +1203,7 @@ func TestShouldDeleteNode(t *testing.T) {
 		},
 		{
 			desc: "instance not found",
+			ctx:  &controllerContext{},
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node-test",
@@ -1210,6 +1217,7 @@ func TestShouldDeleteNode(t *testing.T) {
 		},
 		{
 			desc: "error gettting instance",
+			ctx:  &controllerContext{},
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node-test",
@@ -1223,6 +1231,9 @@ func TestShouldDeleteNode(t *testing.T) {
 		},
 		{
 			desc: "node with different instance id",
+			ctx: &controllerContext{
+				clearStalePodsOnNodeRegistration: true,
+			},
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node-test",
@@ -1244,7 +1255,7 @@ func TestShouldDeleteNode(t *testing.T) {
 		fakeGetInstance := func(_ *controllerContext, _ string) (*compute.Instance, error) {
 			return c.instance, c.getInstanceErr
 		}
-		shouldDelete, err := shouldDeleteNode(&controllerContext{}, c.node, fakeGetInstance)
+		shouldDelete, err := shouldDeleteNode(c.ctx, c.node, fakeGetInstance)
 		if err != c.expectedErr || shouldDelete != c.shouldDelete {
 			t.Errorf("%s: shouldDeleteNode=(%v, %v), want (%v, %v)", c.desc, shouldDelete, err, c.shouldDelete, c.expectedErr)
 		}

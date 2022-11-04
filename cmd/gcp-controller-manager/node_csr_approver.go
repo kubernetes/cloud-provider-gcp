@@ -827,8 +827,10 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 		// node will not be cleared. To avoid this situation, explicitly delete
 		// all pods bound to the node name, even if the node object does not
 		// exist.
-		if err := deleteAllPodsBoundToNode(ctx, nodeName); err != nil {
-			klog.Warningf("Failed to delete all pods bound to node %q: %v", nodeName, err)
+		if ctx.clearStalePodsOnNodeRegistration {
+			if err := deleteAllPodsBoundToNode(ctx, nodeName); err != nil {
+				klog.Warningf("Failed to delete all pods bound to node %q: %v", nodeName, err)
+			}
 		}
 		return nil
 	}
@@ -861,8 +863,10 @@ func ensureNodeMatchesMetadataOrDelete(ctx *controllerContext, csr *capi.Certifi
 	// to the node to exist after a node is preempted. In the case that a GCE
 	// node is preempted and new GCE instance is created with the same name,
 	// explicitly delete all bounds to the old node.
-	if err := deleteAllPodsBoundToNode(ctx, nodeName); err != nil {
-		klog.Warningf("Failed to delete all pods bound to node %q: %v", nodeName, err)
+	if ctx.clearStalePodsOnNodeRegistration {
+		if err := deleteAllPodsBoundToNode(ctx, nodeName); err != nil {
+			klog.Warningf("Failed to delete all pods bound to node %q: %v", nodeName, err)
+		}
 	}
 
 	if apierrors.IsNotFound(err) {
@@ -892,12 +896,14 @@ func shouldDeleteNode(ctx *controllerContext, node *v1.Node, getInstance func(*c
 		klog.Errorf("Error retrieving instance %q: %v", node.Name, err)
 		return false, err
 	}
-	oldInstanceID := node.ObjectMeta.Annotations[InstanceIDAnnotationKey]
-	newInstanceID := strconv.FormatUint(inst.Id, 10)
-	// Even if a GCE Instance reuses the instance name, the underlying GCE instance will change (for example on Preemptible / Spot VMs during preemption).
-	if oldInstanceID != "" && newInstanceID != "" && oldInstanceID != newInstanceID {
-		klog.Infof("Detected change in instance ID on node %q - Old Instance ID: %q ; New Instance ID: %q", inst.Name, oldInstanceID, newInstanceID)
-		return true, nil
+	if ctx.clearStalePodsOnNodeRegistration {
+		oldInstanceID := node.ObjectMeta.Annotations[InstanceIDAnnotationKey]
+		newInstanceID := strconv.FormatUint(inst.Id, 10)
+		// Even if a GCE Instance reuses the instance name, the underlying GCE instance will change (for example on Preemptible / Spot VMs during preemption).
+		if oldInstanceID != "" && newInstanceID != "" && oldInstanceID != newInstanceID {
+			klog.Infof("Detected change in instance ID on node %q - Old Instance ID: %q ; New Instance ID: %q", inst.Name, oldInstanceID, newInstanceID)
+			return true, nil
+		}
 	}
 	// Newly created node might not have pod CIDR allocated yet.
 	if node.Spec.PodCIDR == "" {

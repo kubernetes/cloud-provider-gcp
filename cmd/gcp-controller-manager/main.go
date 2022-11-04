@@ -77,6 +77,7 @@ var (
 	hmsSyncNodeURL                     = pflag.String("hms-sync-node-url", "", "URL for reaching the Hosted Master Service SyncNode API.")
 	kubeletReadOnlyCSRApprover         = pflag.Bool("kubelet-read-only-csr-approver", false, "Enable kubelet readonly csr approver or not")
 	autopilotEnabled                   = pflag.Bool("autopilot", false, "Is this a GKE Autopilot cluster.")
+	clearStalePodsOnNodeRegistration   = pflag.Bool("clearStalePodsOnNodeRegistration", false, "If true, after node registration, delete pods bound to old node.")
 )
 
 func main() {
@@ -115,6 +116,7 @@ func main() {
 		delayDirectPathGSARemove:           *delayDirectPathGSARemove,
 		kubeletReadOnlyCSRApprover:         *kubeletReadOnlyCSRApprover,
 		autopilotEnabled:                   *autopilotEnabled,
+		clearStalePodsOnNodeRegistration:   *clearStalePodsOnNodeRegistration,
 	}
 	var err error
 	s.informerKubeconfig, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
@@ -172,6 +174,7 @@ type controllerManager struct {
 	hmsSyncNodeURL                     string
 	delayDirectPathGSARemove           bool
 	autopilotEnabled                   bool
+	clearStalePodsOnNodeRegistration   bool
 
 	// Kubelet Readonly CSR Approver
 	kubeletReadOnlyCSRApprover bool
@@ -242,6 +245,7 @@ func run(s *controllerManager) error {
 				hmsAuthorizeSAMappingURL:           s.hmsAuthorizeSAMappingURL,
 				hmsSyncNodeURL:                     s.hmsSyncNodeURL,
 				delayDirectPathGSARemove:           s.delayDirectPathGSARemove,
+				clearStalePodsOnNodeRegistration:   s.clearStalePodsOnNodeRegistration,
 			}); err != nil {
 				klog.Fatalf("Failed to start %q: %v", name, err)
 			}
