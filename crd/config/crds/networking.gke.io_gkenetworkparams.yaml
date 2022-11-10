@@ -1,0 +1,99 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.0
+  creationTimestamp: null
+  name: gkenetworkparams.networking.gke.io
+spec:
+  group: networking.gke.io
+  names:
+    kind: GKENetworkParams
+    listKind: GKENetworkParamsList
+    plural: gkenetworkparams
+    singular: gkenetworkparams
+  scope: Cluster
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: GKENetworkParams represent GKE specific parameters for the network.
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: GKENetworkParamsSpec contains the specifications for network
+              object
+            properties:
+              deviceMode:
+                description: DeviceMode indicates the mode in which the devices will
+                  be used by the Pod. This field is required and valid only for "Device"
+                  typed network
+                enum:
+                - DPDKUIO
+                - DPDKVFIO
+                - NetDevice
+                type: string
+              podIPv4Ranges:
+                description: PodIPv4Ranges specify the names of the secondary ranges
+                  of the VPC subnet used to allocate pod IPs for the network. This
+                  field is required and valid only for L3 typed network
+                properties:
+                  rangeNames:
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                required:
+                - rangeNames
+                type: object
+              vpc:
+                description: VPC speficies the VPC to which the network belongs.
+                type: string
+              vpcSubnet:
+                description: VPCSubnet is the path of the VPC subnet
+                type: string
+            required:
+            - vpc
+            - vpcSubnet
+            type: object
+          status:
+            description: GKENetworkParamsStatus contains the status information related
+              to the network.
+            properties:
+              podCIDRs:
+                description: PodCIDRs specifies the CIDRs from which IPs will be used
+                  for Pod interfaces
+                properties:
+                  cidrBlocks:
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                required:
+                - cidrBlocks
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
