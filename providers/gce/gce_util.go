@@ -391,24 +391,6 @@ func removeString(slice []string, s string) []string {
 	return newSlice
 }
 
-// AssignStaticIPToLoadBalancer assign Public IP to the load balancer
-func AssignStaticIPToLoadBalancer(svc *v1.Service, ip string) {
-
-	if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
-		return
-	}
-
-	if ip == "" {
-		delete(svc.Annotations, ServiceAnnotationLBIPv4)
-	} else {
-		svc.Annotations[ServiceAnnotationLBIPv4] = ip
-	}
-
-	if v := reflect.ValueOf(&svc.Spec).Elem().FieldByName("LoadBalancerIP"); v.IsValid() && v.CanSet() {
-		v.SetString(ip)
-	}
-}
-
 // GetStaticIPFromLoadBalancer get Public IP from the load balancer
 func GetStaticIPFromLoadBalancer(svc *v1.Service) string {
 

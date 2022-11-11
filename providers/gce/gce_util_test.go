@@ -21,11 +21,13 @@ package gce
 
 import (
 	"context"
+	"github.com/stretchr/testify/assert"
 	"net"
 	"reflect"
 	"testing"
 
 	compute "google.golang.org/api/compute/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -155,5 +157,87 @@ func TestAddRemoveFinalizer(t *testing.T) {
 	}
 	if hasFinalizer(svc, ILBFinalizerV1) {
 		t.Errorf("Failed to remove finalizer '%s' in service %s", ILBFinalizerV1, svc.Name)
+	}
+}
+
+// TestGetStaticIPFromLoadBalancer test for getting static IP from load balancer
+func TestGetStaticIPFromLoadBalancer(t *testing.T) {
+	type args struct {
+		svc *v1.Service
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "load balancer have the annotation about static IP",
+			args: args{
+				svc: &v1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{
+							ServiceAnnotationLBIPv4: "10.10.10.10",
+						},
+					},
+					Spec: v1.ServiceSpec{
+						Type: v1.ServiceTypeLoadBalancer,
+					},
+				},
+			},
+			want: "10.10.10.10"},
+		{
+			name: "load balancer have the annotation about static IP and deprecated spec field LoadBalancerIP",
+			args: args{
+				svc: &v1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{ServiceAnnotationLBIPv4: "10.10.10.10"},
+					},
+					Spec: v1.ServiceSpec{
+						Type:           v1.ServiceTypeLoadBalancer,
+						LoadBalancerIP: "10.10.10.11",
+					},
+				},
+			},
+			want: "10.10.10.10",
+		},
+		{
+			name: "load balancer only have the deprecated spec field LoadBalancerIP",
+			args: args{
+				svc: &v1.Service{
+					Spec: v1.ServiceSpec{
+						Type:           v1.ServiceTypeLoadBalancer,
+						LoadBalancerIP: "10.10.10.11",
+					},
+				},
+			},
+			want: "10.10.10.11",
+		},
+		{
+			name: "load balancer without static IP",
+			args: args{
+				svc: &v1.Service{
+					Spec: v1.ServiceSpec{
+						Type: v1.ServiceTypeLoadBalancer,
+					},
+				},
+			},
+			want: "",
+		},
+		{
+			name: "not load balancer",
+			args: args{
+				svc: &v1.Service{
+					Spec: v1.ServiceSpec{
+						Type: v1.ServiceTypeClusterIP,
+					},
+				},
+			},
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, GetStaticIPFromLoadBalancer(tt.args.svc), "GetStaticIPFromLoadBalancer(%v)", tt.args.svc)
+		})
 	}
 }
