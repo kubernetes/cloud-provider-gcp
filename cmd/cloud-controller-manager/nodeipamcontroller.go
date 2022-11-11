@@ -161,7 +161,7 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 	nodeIpamController, err := nodeipamcontroller.NewNodeIpamController(
 		ctx.InformerFactory.Core().V1().Nodes(),
 		cloud,
-		ctx.ClientBuilder.ClientOrDie("node-controller"),
+		ccmConfig.ClientBuilder.ClientOrDie("node-controller"),
 		nwInformer,
 		gnpInformer,
 		clusterCIDRs,
