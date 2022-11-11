@@ -51,6 +51,9 @@ const (
 	// ALPHA feature - this may be removed in a future release.
 	ServiceAnnotationILBBackendShare = "alpha.cloud.google.com/load-balancer-backend-share"
 
+	// ServiceAnnotationLBIPv4 aim to instead of the deprecated spec field LoadBalancerIP from v1.24
+	ServiceAnnotationLBIPv4 = "service.beta.kubernetes.io/gcp-load-balancer-eip"
+
 	// This annotation did not correctly specify "alpha", so both annotations will be checked.
 	deprecatedServiceAnnotationILBBackendShare = "cloud.google.com/load-balancer-backend-share"
 

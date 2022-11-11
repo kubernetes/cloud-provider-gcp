@@ -63,7 +63,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	}
 
 	loadBalancerName := g.GetLoadBalancerName(context.TODO(), clusterName, apiService)
-	requestedIP := apiService.Spec.LoadBalancerIP
+	requestedIP := GetStaticIPFromLoadBalancer(apiService)
 	ports := apiService.Spec.Ports
 	portStr := []string{}
 	for _, p := range apiService.Spec.Ports {

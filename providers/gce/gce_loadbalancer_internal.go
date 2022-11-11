@@ -900,8 +900,8 @@ func getNameFromLink(link string) string {
 // specified by the user, that is used. If there is an existing ForwardingRule, the ip address from
 // that is reused. In case a subnetwork change is requested, the existing ForwardingRule IP is ignored.
 func ilbIPToUse(svc *v1.Service, fwdRule *compute.ForwardingRule, requestedSubnet string) string {
-	if svc.Spec.LoadBalancerIP != "" {
-		return svc.Spec.LoadBalancerIP
+	if ip := GetStaticIPFromLoadBalancer(svc); ip != "" {
+		return ip
 	}
 	if fwdRule == nil {
 		return ""

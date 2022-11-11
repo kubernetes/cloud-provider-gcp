@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -388,4 +389,40 @@ func removeString(slice []string, s string) []string {
 		}
 	}
 	return newSlice
+}
+
+// AssignStaticIPToLoadBalancer assign Public IP to the load balancer
+func AssignStaticIPToLoadBalancer(svc *v1.Service, ip string) {
+
+	if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
+		return
+	}
+
+	if ip == "" {
+		delete(svc.Annotations, ServiceAnnotationLBIPv4)
+	} else {
+		svc.Annotations[ServiceAnnotationLBIPv4] = ip
+	}
+
+	if v := reflect.ValueOf(&svc.Spec).Elem().FieldByName("LoadBalancerIP"); v.IsValid() && v.CanSet() {
+		v.SetString(ip)
+	}
+}
+
+// GetStaticIPFromLoadBalancer get Public IP from the load balancer
+func GetStaticIPFromLoadBalancer(svc *v1.Service) string {
+
+	//if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
+	//	return ""
+	//}
+
+	if ip, ok := svc.Annotations[ServiceAnnotationLBIPv4]; ok && ip != "" {
+		return ip
+	}
+
+	if v := reflect.ValueOf(&svc.Spec).Elem().FieldByName("LoadBalancerIP"); v.IsValid() {
+		return v.String()
+	}
+
+	return ""
 }
