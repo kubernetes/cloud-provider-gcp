@@ -172,6 +172,15 @@ type L2NetworkConfig struct {
 	// +kubebuilder:validation:Maximum=4094
 	// +kubebuilder:validation:Minimum=1
 	VlanID *int32 `json:"vlanID,omitempty"`
+	// PrefixLength4 denotes the IPv4 prefix length of the range
+	// corresponding to the network. It is used to assign IPs to the pods for
+	// multi-networking. This field is required when IPAM is handled internally and dynamically
+	// via CCC. It's disallowed for other cases. For static IP, the prefix length is set as
+	// part of the address in NetworkInterface object.
+	// +optional
+	// +kubebuilder:validation:Maximum=32
+	// +kubebuilder:validation:Minimum=1
+	PrefixLength4 *int32 `json:"prefixLength4,omitempty"`
 }
 
 // +genclient
