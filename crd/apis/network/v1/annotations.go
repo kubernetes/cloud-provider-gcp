@@ -37,6 +37,8 @@ const (
 	AutoGenAnnotationKey = "networking.gke.io/auto-generated"
 	// AutoGenAnnotationValTrue is the value to be set for auto-generated objects.
 	AutoGenAnnotationValTrue = "true"
+	// NorthInterfacesAnnotationKey is the annotation key used to hold interfaces data per node.
+	NorthInterfacesAnnotationKey = "networking.gke.io/north-interfaces"
 )
 
 // InterfaceAnnotation is the value of the interface annotation.
@@ -85,6 +87,10 @@ type PodIPsAnnotation []PodIP
 // +kubebuilder:object:generate:=false
 type MultiNetworkAnnotation []NodeNetwork
 
+// NorthInterfacesAnnotation is the value of north-interfaces annotation.
+// +kubebuilder:object:generate:=false
+type NorthInterfacesAnnotation []NorthInterface
+
 // NodeNetworkStatus specifies the status of a network.
 // +kubebuilder:object:generate:=false
 type NodeNetworkStatus struct {
@@ -120,6 +126,15 @@ type NodeNetwork struct {
 	Scope string `json:"scope"`
 }
 
+// NorthInterface specifies interface data on a node.
+// +kubebuilder:object:generate:=false
+type NorthInterface struct {
+	// Name of the network an interface on node is connected to.
+	Network string `json:"network"`
+	// IP address of the interface.
+	IpAddress string `json:"ipAddress"`
+}
+
 // ParseNodeNetworkAnnotation parses the given annotation to NodeNetworkAnnotation.
 func ParseNodeNetworkAnnotation(annotation string) (NodeNetworkAnnotation, error) {
 	ret := &NodeNetworkAnnotation{}
@@ -141,7 +156,19 @@ func ParseMultiNetworkAnnotation(annotation string) (MultiNetworkAnnotation, err
 	return *ret, err
 }
 
+// ParseNorthInterfacesAnnotation parses given annotation to NorthInterfacesAnnotation.
+func ParseNorthInterfacesAnnotation(annotation string) (NorthInterfacesAnnotation, error) {
+	ret := &NorthInterfacesAnnotation{}
+	err := json.Unmarshal([]byte(annotation), ret)
+	return *ret, err
+}
+
 // MarshalNodeNetworkAnnotation marshals a NodeNetworkAnnotation into string.
 func MarshalNodeNetworkAnnotation(a NodeNetworkAnnotation) (string, error) {
+	return MarshalAnnotation(a)
+}
+
+// MarshalNorthInterfacesAnnotation marshals a NorthInterfacesAnnotation into string.
+func MarshalNorthInterfacesAnnotation(a NorthInterfacesAnnotation) (string, error) {
 	return MarshalAnnotation(a)
 }
