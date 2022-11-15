@@ -42,8 +42,8 @@ spec:
                   be used by the Pod. This field is required and valid only for "Device"
                   typed network
                 enum:
-                - DPDKUIO
-                - DPDKVFIO
+                - DPDK-UIO
+                - DPDK-VFIO
                 - NetDevice
                 type: string
               podIPv4Ranges:
