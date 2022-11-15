@@ -171,3 +171,51 @@ func TestParseMultiNetworkAnnotation(t *testing.T) {
 		})
 	}
 }
+
+func TestParseNorthInterfacesAnnotation(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    NorthInterfacesAnnotation
+		expected string
+	}{
+		{
+			name:     "nil",
+			input:    nil,
+			expected: "null",
+		},
+		{
+			name:     "empty list",
+			input:    NorthInterfacesAnnotation{},
+			expected: "[]",
+		},
+		{
+			name: "list with items",
+			input: NorthInterfacesAnnotation{
+				{Network: "network-a", IpAddress: "10.0.0.1"},
+				{Network: "network-b", IpAddress: "20.0.0.1"},
+			},
+			expected: `[{"network":"network-a","ipAddress":"10.0.0.1"},{"network":"network-b","ipAddress":"20.0.0.1"}]`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			marshalled, err := MarshalAnnotation(tc.input)
+			if err != nil {
+				t.Fatalf("MarshalAnnotation(%+v) failed with error: %v", tc.input, err)
+			}
+			if marshalled != tc.expected {
+				t.Fatalf("MarshalAnnotation(%+v) returns %q but want %q", tc.input, marshalled, tc.expected)
+			}
+
+			parsed, err := ParseNorthInterfacesAnnotation(marshalled)
+			if err != nil {
+				t.Fatalf("ParseNorthInterfacesAnnotation(%s) failed with error: %v", marshalled, err)
+			}
+
+			if diff := cmp.Diff(parsed, tc.input); diff != "" {
+				t.Fatalf("ParseNorthInterfacesAnnotation(%s) returns diff: (-got +want): %s", marshalled, diff)
+			}
+		})
+	}
+}
