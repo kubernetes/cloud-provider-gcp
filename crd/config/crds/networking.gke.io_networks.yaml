@@ -69,6 +69,17 @@ spec:
                 description: L2NetworkConfig includes all the network config related
                   to L2 type network
                 properties:
+                  prefixLength4:
+                    description: PrefixLength4 denotes the IPv4 prefix length of the
+                      range corresponding to the network. It is used to assign IPs
+                      to the pods for multi-networking. This field is required when
+                      IPAM is handled internally and dynamically via CCC. It's disallowed
+                      for other cases. For static IP, the prefix length is set as
+                      part of the address in NetworkInterface object.
+                    format: int32
+                    maximum: 32
+                    minimum: 1
+                    type: integer
                   vlanID:
                     description: VlanID is the vlan ID used for the network. If unspecified,
                       vlan tagging is not enabled.
