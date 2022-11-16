@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -398,9 +397,5 @@ func GetStaticIPFromLoadBalancer(svc *v1.Service) string {
 		return ip
 	}
 
-	if v := reflect.ValueOf(&svc.Spec).Elem().FieldByName("LoadBalancerIP"); v.IsValid() {
-		return v.String()
-	}
-
-	return ""
+	return svc.Spec.LoadBalancerIP
 }

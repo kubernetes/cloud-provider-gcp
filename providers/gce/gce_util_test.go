@@ -171,7 +171,7 @@ func TestGetStaticIPFromLoadBalancer(t *testing.T) {
 		want string
 	}{
 		{
-			name: "load balancer have the annotation about static IP",
+			name: "load balancer has the annotation of static IP",
 			args: args{
 				svc: &v1.Service{
 					ObjectMeta: metav1.ObjectMeta{
@@ -186,7 +186,7 @@ func TestGetStaticIPFromLoadBalancer(t *testing.T) {
 			},
 			want: "10.10.10.10"},
 		{
-			name: "load balancer have the annotation about static IP and deprecated spec field LoadBalancerIP",
+			name: "load balancer has the annotation of static IP and spec field LoadBalancerIP",
 			args: args{
 				svc: &v1.Service{
 					ObjectMeta: metav1.ObjectMeta{
@@ -201,7 +201,7 @@ func TestGetStaticIPFromLoadBalancer(t *testing.T) {
 			want: "10.10.10.10",
 		},
 		{
-			name: "load balancer only have the deprecated spec field LoadBalancerIP",
+			name: "load balancer only has the spec field LoadBalancerIP",
 			args: args{
 				svc: &v1.Service{
 					Spec: v1.ServiceSpec{
@@ -224,7 +224,7 @@ func TestGetStaticIPFromLoadBalancer(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "not load balancer",
+			name: "not a load balancer",
 			args: args{
 				svc: &v1.Service{
 					Spec: v1.ServiceSpec{
