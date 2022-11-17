@@ -618,6 +618,8 @@ function install-kube-binary-config {
     log-wrap "LoadDockerImages" load-docker-images
     mv "${src_dir}/kubelet" "${KUBE_BIN}"
     mv "${src_dir}/kubectl" "${KUBE_BIN}"
+    # (TODO/cloud-provider-gcp): Figure out how to inject
+    mv "${src_dir}/auth-provider-gcp" "${KUBE_BIN}"
 
     # Some older images have LICENSES baked-in as a file. Presumably they will
     # have the directory baked-in eventually.
