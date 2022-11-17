@@ -329,3 +329,80 @@ func TestAliasRangesByProviderID(t *testing.T) {
 		})
 	}
 }
+
+func TestNodeNetworkInterfacesByProviderID(t *testing.T) {
+	gce, err := fakeGCECloud(DefaultTestClusterValues())
+	require.NoError(t, err)
+
+	instanceMap := make(map[string]*ga.Instance)
+	interfaces := []*ga.NetworkInterface{
+		{
+			AliasIpRanges: []*ga.AliasIpRange{
+				{IpCidrRange: "10.11.1.0/24", SubnetworkRangeName: "range-A"},
+			},
+			NetworkIP:  "10.1.1.1",
+			Network:    "network-A",
+			Subnetwork: "subnetwork-A",
+		},
+		{
+			AliasIpRanges: []*ga.AliasIpRange{
+				{IpCidrRange: "20.11.1.0/24", SubnetworkRangeName: "range-B"},
+			},
+			NetworkIP:  "20.1.1.1",
+			Network:    "network-B",
+			Subnetwork: "subnetwork-B",
+		},
+	}
+	// n1 is instance with 2 network interfaces
+	instance := &ga.Instance{
+		Name:              "n1",
+		Zone:              "us-central1-b",
+		NetworkInterfaces: interfaces,
+	}
+	instanceMap["n1"] = instance
+
+	mockGCE := gce.c.(*cloud.MockGCE)
+	mai := mockGCE.Instances().(*cloud.MockInstances)
+	mai.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances) (bool, *ga.Instance, error) {
+		ret, ok := instanceMap[key.Name]
+		if !ok {
+			return true, nil, fmt.Errorf("instance not found")
+		}
+		return true, ret, nil
+	}
+
+	testcases := []struct {
+		name           string
+		providerId     string
+		wantErr        string
+		wantInterfaces []*ga.NetworkInterface
+	}{
+		{
+			name:       "invalid provider id",
+			providerId: "gce://p1/x1",
+			wantErr:    "error splitting providerID",
+		},
+		{
+			name:       "instance not found",
+			providerId: "gce://p1/us-central1-b/x1",
+			wantErr:    "instance not found",
+		},
+		{
+			name:           "instance with multiple interfaces",
+			providerId:     "gce://p1/us-central1-b/n1",
+			wantInterfaces: interfaces,
+		},
+	}
+
+	for _, test := range testcases {
+		t.Run(test.name, func(t *testing.T) {
+			gotInterfaces, err := gce.NodeNetworkInterfacesByProviderID(test.providerId)
+			if err != nil && (test.wantErr == "" || !strings.Contains(err.Error(), test.wantErr)) {
+				t.Errorf("gce.NodeNetworkInterfacesByProviderID. Want err: %v, got: %v", test.wantErr, err)
+			} else if err == nil && test.wantErr != "" {
+				t.Errorf("gce.NodeNetworkInterfacesByProviderID. Want err: %v, got: %v, gotInterfaces: %v", test.wantErr, err, gotInterfaces)
+			}
+			assert.Equal(t, test.wantInterfaces, gotInterfaces)
+		})
+	}
+}
