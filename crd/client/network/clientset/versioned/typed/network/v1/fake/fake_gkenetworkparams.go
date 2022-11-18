@@ -32,13 +32,13 @@ import (
 
 // FakeGKENetworkParamses implements GKENetworkParamsInterface
 type FakeGKENetworkParamses struct {
-	Fake *FakeNetworkV1
+	Fake *FakeNetworkingV1
 	ns   string
 }
 
-var gkenetworkparamsesResource = schema.GroupVersionResource{Group: "network", Version: "v1", Resource: "gkenetworkparamses"}
+var gkenetworkparamsesResource = schema.GroupVersionResource{Group: "networking.gke.io", Version: "v1", Resource: "gkenetworkparamses"}
 
-var gkenetworkparamsesKind = schema.GroupVersionKind{Group: "network", Version: "v1", Kind: "GKENetworkParams"}
+var gkenetworkparamsesKind = schema.GroupVersionKind{Group: "networking.gke.io", Version: "v1", Kind: "GKENetworkParams"}
 
 // Get takes name of the gKENetworkParams, and returns the corresponding gKENetworkParams object, and an error if there is any.
 func (c *FakeGKENetworkParamses) Get(ctx context.Context, name string, options v1.GetOptions) (result *networkv1.GKENetworkParams, err error) {
@@ -117,7 +117,7 @@ func (c *FakeGKENetworkParamses) UpdateStatus(ctx context.Context, gKENetworkPar
 // Delete takes name of the gKENetworkParams and deletes it. Returns an error if one occurs.
 func (c *FakeGKENetworkParamses) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(gkenetworkparamsesResource, c.ns, name, opts), &networkv1.GKENetworkParams{})
+		Invokes(testing.NewDeleteAction(gkenetworkparamsesResource, c.ns, name), &networkv1.GKENetworkParams{})
 
 	return err
 }

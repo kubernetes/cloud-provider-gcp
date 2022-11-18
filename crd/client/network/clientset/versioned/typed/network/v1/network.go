@@ -56,7 +56,7 @@ type networks struct {
 }
 
 // newNetworks returns a Networks
-func newNetworks(c *NetworkV1Client) *networks {
+func newNetworks(c *NetworkingV1Client) *networks {
 	return &networks{
 		client: c.RESTClient(),
 	}

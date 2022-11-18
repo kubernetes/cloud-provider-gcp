@@ -29,12 +29,12 @@ import (
 
 // FakeNetworkLists implements NetworkListInterface
 type FakeNetworkLists struct {
-	Fake *FakeNetworkV1
+	Fake *FakeNetworkingV1
 }
 
-var networklistsResource = schema.GroupVersionResource{Group: "network", Version: "v1", Resource: "networklists"}
+var networklistsResource = schema.GroupVersionResource{Group: "networking.gke.io", Version: "v1", Resource: "networklists"}
 
-var networklistsKind = schema.GroupVersionKind{Group: "network", Version: "v1", Kind: "NetworkList"}
+var networklistsKind = schema.GroupVersionKind{Group: "networking.gke.io", Version: "v1", Kind: "NetworkList"}
 
 // Get takes name of the networkList, and returns the corresponding networkList object, and an error if there is any.
 func (c *FakeNetworkLists) Get(ctx context.Context, name string, options v1.GetOptions) (result *networkv1.NetworkList, err error) {

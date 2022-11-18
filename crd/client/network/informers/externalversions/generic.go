@@ -52,13 +52,13 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=network, Version=v1
+	// Group=networking.gke.io, Version=v1
 	case v1.SchemeGroupVersion.WithResource("gkenetworkparamses"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Network().V1().GKENetworkParamses().Informer()}, nil
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1().GKENetworkParamses().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("networks"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Network().V1().Networks().Informer()}, nil
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1().Networks().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("networkinterfaces"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Network().V1().NetworkInterfaces().Informer()}, nil
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1().NetworkInterfaces().Informer()}, nil
 
 	}
 

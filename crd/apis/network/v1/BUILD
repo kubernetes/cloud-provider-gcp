@@ -4,8 +4,8 @@ go_library(
     name = "v1",
     srcs = [
         "annotations.go",
+        "doc.go",
         "gkenetworkparams_types.go",
-        "groupversion_info.go",
         "network.go",
         "network_types.go",
         "networkinterface_types.go",

@@ -25,8 +25,8 @@ import (
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/testing"
 	clientset "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned"
-	networkv1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1"
-	fakenetworkv1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1/fake"
+	networkingv1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1"
+	fakenetworkingv1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
@@ -74,12 +74,9 @@ func (c *Clientset) Tracker() testing.ObjectTracker {
 	return c.tracker
 }
 
-var (
-	_ clientset.Interface = &Clientset{}
-	_ testing.FakeClient  = &Clientset{}
-)
+var _ clientset.Interface = &Clientset{}
 
-// NetworkV1 retrieves the NetworkV1Client
-func (c *Clientset) NetworkV1() networkv1.NetworkV1Interface {
-	return &fakenetworkv1.FakeNetworkV1{Fake: &c.Fake}
+// NetworkingV1 retrieves the NetworkingV1Client
+func (c *Clientset) NetworkingV1() networkingv1.NetworkingV1Interface {
+	return &fakenetworkingv1.FakeNetworkingV1{Fake: &c.Fake}
 }

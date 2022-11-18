@@ -32,13 +32,13 @@ import (
 
 // FakeNetworkInterfaces implements NetworkInterfaceInterface
 type FakeNetworkInterfaces struct {
-	Fake *FakeNetworkV1
+	Fake *FakeNetworkingV1
 	ns   string
 }
 
-var networkinterfacesResource = schema.GroupVersionResource{Group: "network", Version: "v1", Resource: "networkinterfaces"}
+var networkinterfacesResource = schema.GroupVersionResource{Group: "networking.gke.io", Version: "v1", Resource: "networkinterfaces"}
 
-var networkinterfacesKind = schema.GroupVersionKind{Group: "network", Version: "v1", Kind: "NetworkInterface"}
+var networkinterfacesKind = schema.GroupVersionKind{Group: "networking.gke.io", Version: "v1", Kind: "NetworkInterface"}
 
 // Get takes name of the networkInterface, and returns the corresponding networkInterface object, and an error if there is any.
 func (c *FakeNetworkInterfaces) Get(ctx context.Context, name string, options v1.GetOptions) (result *networkv1.NetworkInterface, err error) {
@@ -117,7 +117,7 @@ func (c *FakeNetworkInterfaces) UpdateStatus(ctx context.Context, networkInterfa
 // Delete takes name of the networkInterface and deletes it. Returns an error if one occurs.
 func (c *FakeNetworkInterfaces) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(networkinterfacesResource, c.ns, name, opts), &networkv1.NetworkInterface{})
+		Invokes(testing.NewDeleteAction(networkinterfacesResource, c.ns, name), &networkv1.NetworkInterface{})
 
 	return err
 }

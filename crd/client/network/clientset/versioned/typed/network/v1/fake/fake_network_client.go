@@ -24,33 +24,33 @@ import (
 	v1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1"
 )
 
-type FakeNetworkV1 struct {
+type FakeNetworkingV1 struct {
 	*testing.Fake
 }
 
-func (c *FakeNetworkV1) GKENetworkParamses(namespace string) v1.GKENetworkParamsInterface {
+func (c *FakeNetworkingV1) GKENetworkParamses(namespace string) v1.GKENetworkParamsInterface {
 	return &FakeGKENetworkParamses{c, namespace}
 }
 
-func (c *FakeNetworkV1) Networks() v1.NetworkInterface {
+func (c *FakeNetworkingV1) Networks() v1.NetworkInterface {
 	return &FakeNetworks{c}
 }
 
-func (c *FakeNetworkV1) NetworkInterfaces(namespace string) v1.NetworkInterfaceInterface {
+func (c *FakeNetworkingV1) NetworkInterfaces(namespace string) v1.NetworkInterfaceInterface {
 	return &FakeNetworkInterfaces{c, namespace}
 }
 
-func (c *FakeNetworkV1) NetworkInterfaceLists(namespace string) v1.NetworkInterfaceListInterface {
+func (c *FakeNetworkingV1) NetworkInterfaceLists(namespace string) v1.NetworkInterfaceListInterface {
 	return &FakeNetworkInterfaceLists{c, namespace}
 }
 
-func (c *FakeNetworkV1) NetworkLists() v1.NetworkListInterface {
+func (c *FakeNetworkingV1) NetworkLists() v1.NetworkListInterface {
 	return &FakeNetworkLists{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *FakeNetworkV1) RESTClient() rest.Interface {
+func (c *FakeNetworkingV1) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret
 }

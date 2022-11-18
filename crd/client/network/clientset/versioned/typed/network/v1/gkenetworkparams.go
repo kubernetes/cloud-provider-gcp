@@ -57,7 +57,7 @@ type gKENetworkParamses struct {
 }
 
 // newGKENetworkParamses returns a GKENetworkParamses
-func newGKENetworkParamses(c *NetworkV1Client, namespace string) *gKENetworkParamses {
+func newGKENetworkParamses(c *NetworkingV1Client, namespace string) *gKENetworkParamses {
 	return &gKENetworkParamses{
 		client: c.RESTClient(),
 		ns:     namespace,

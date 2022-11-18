@@ -29,13 +29,13 @@ import (
 
 // FakeNetworkInterfaceLists implements NetworkInterfaceListInterface
 type FakeNetworkInterfaceLists struct {
-	Fake *FakeNetworkV1
+	Fake *FakeNetworkingV1
 	ns   string
 }
 
-var networkinterfacelistsResource = schema.GroupVersionResource{Group: "network", Version: "v1", Resource: "networkinterfacelists"}
+var networkinterfacelistsResource = schema.GroupVersionResource{Group: "networking.gke.io", Version: "v1", Resource: "networkinterfacelists"}
 
-var networkinterfacelistsKind = schema.GroupVersionKind{Group: "network", Version: "v1", Kind: "NetworkInterfaceList"}
+var networkinterfacelistsKind = schema.GroupVersionKind{Group: "networking.gke.io", Version: "v1", Kind: "NetworkInterfaceList"}
 
 // Get takes name of the networkInterfaceList, and returns the corresponding networkInterfaceList object, and an error if there is any.
 func (c *FakeNetworkInterfaceLists) Get(ctx context.Context, name string, options v1.GetOptions) (result *networkv1.NetworkInterfaceList, err error) {

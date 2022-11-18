@@ -20,29 +20,28 @@ package versioned
 
 import (
 	"fmt"
-	"net/http"
 
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
-	networkv1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1"
+	networkingv1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1"
 )
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	NetworkV1() networkv1.NetworkV1Interface
+	NetworkingV1() networkingv1.NetworkingV1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	networkV1 *networkv1.NetworkV1Client
+	networkingV1 *networkingv1.NetworkingV1Client
 }
 
-// NetworkV1 retrieves the NetworkV1Client
-func (c *Clientset) NetworkV1() networkv1.NetworkV1Interface {
-	return c.networkV1
+// NetworkingV1 retrieves the NetworkingV1Client
+func (c *Clientset) NetworkingV1() networkingv1.NetworkingV1Interface {
+	return c.networkingV1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -56,29 +55,7 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 // NewForConfig creates a new Clientset for the given config.
 // If config's RateLimiter is not set and QPS and Burst are acceptable,
 // NewForConfig will generate a rate-limiter in configShallowCopy.
-// NewForConfig is equivalent to NewForConfigAndClient(c, httpClient),
-// where httpClient was generated with rest.HTTPClientFor(c).
 func NewForConfig(c *rest.Config) (*Clientset, error) {
-	configShallowCopy := *c
-
-	if configShallowCopy.UserAgent == "" {
-		configShallowCopy.UserAgent = rest.DefaultKubernetesUserAgent()
-	}
-
-	// share the transport between all clients
-	httpClient, err := rest.HTTPClientFor(&configShallowCopy)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewForConfigAndClient(&configShallowCopy, httpClient)
-}
-
-// NewForConfigAndClient creates a new Clientset for the given config and http client.
-// Note the http client provided takes precedence over the configured transport values.
-// If config's RateLimiter is not set and QPS and Burst are acceptable,
-// NewForConfigAndClient will generate a rate-limiter in configShallowCopy.
-func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset, error) {
 	configShallowCopy := *c
 	if configShallowCopy.RateLimiter == nil && configShallowCopy.QPS > 0 {
 		if configShallowCopy.Burst <= 0 {
@@ -86,15 +63,14 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 		}
 		configShallowCopy.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(configShallowCopy.QPS, configShallowCopy.Burst)
 	}
-
 	var cs Clientset
 	var err error
-	cs.networkV1, err = networkv1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	cs.networkingV1, err = networkingv1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
 	}
 
-	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfigAndClient(&configShallowCopy, httpClient)
+	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -104,17 +80,17 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 // NewForConfigOrDie creates a new Clientset for the given config and
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
-	cs, err := NewForConfig(c)
-	if err != nil {
-		panic(err)
-	}
-	return cs
+	var cs Clientset
+	cs.networkingV1 = networkingv1.NewForConfigOrDie(c)
+
+	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
+	return &cs
 }
 
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.networkV1 = networkv1.New(c)
+	cs.networkingV1 = networkingv1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

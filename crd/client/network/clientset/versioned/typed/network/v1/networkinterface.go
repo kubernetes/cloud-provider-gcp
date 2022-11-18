@@ -57,7 +57,7 @@ type networkInterfaces struct {
 }
 
 // newNetworkInterfaces returns a NetworkInterfaces
-func newNetworkInterfaces(c *NetworkV1Client, namespace string) *networkInterfaces {
+func newNetworkInterfaces(c *NetworkingV1Client, namespace string) *networkInterfaces {
 	return &networkInterfaces{
 		client: c.RESTClient(),
 		ns:     namespace,

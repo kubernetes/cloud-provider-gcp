@@ -19,14 +19,12 @@ limitations under the License.
 package v1
 
 import (
-	"net/http"
-
 	rest "k8s.io/client-go/rest"
 	v1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	"k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/scheme"
 )
 
-type NetworkV1Interface interface {
+type NetworkingV1Interface interface {
 	RESTClient() rest.Interface
 	GKENetworkParamsesGetter
 	NetworksGetter
@@ -35,63 +33,47 @@ type NetworkV1Interface interface {
 	NetworkListsGetter
 }
 
-// NetworkV1Client is used to interact with features provided by the network group.
-type NetworkV1Client struct {
+// NetworkingV1Client is used to interact with features provided by the networking.gke.io group.
+type NetworkingV1Client struct {
 	restClient rest.Interface
 }
 
-func (c *NetworkV1Client) GKENetworkParamses(namespace string) GKENetworkParamsInterface {
+func (c *NetworkingV1Client) GKENetworkParamses(namespace string) GKENetworkParamsInterface {
 	return newGKENetworkParamses(c, namespace)
 }
 
-func (c *NetworkV1Client) Networks() NetworkInterface {
+func (c *NetworkingV1Client) Networks() NetworkInterface {
 	return newNetworks(c)
 }
 
-func (c *NetworkV1Client) NetworkInterfaces(namespace string) NetworkInterfaceInterface {
+func (c *NetworkingV1Client) NetworkInterfaces(namespace string) NetworkInterfaceInterface {
 	return newNetworkInterfaces(c, namespace)
 }
 
-func (c *NetworkV1Client) NetworkInterfaceLists(namespace string) NetworkInterfaceListInterface {
+func (c *NetworkingV1Client) NetworkInterfaceLists(namespace string) NetworkInterfaceListInterface {
 	return newNetworkInterfaceLists(c, namespace)
 }
 
-func (c *NetworkV1Client) NetworkLists() NetworkListInterface {
+func (c *NetworkingV1Client) NetworkLists() NetworkListInterface {
 	return newNetworkLists(c)
 }
 
-// NewForConfig creates a new NetworkV1Client for the given config.
-// NewForConfig is equivalent to NewForConfigAndClient(c, httpClient),
-// where httpClient was generated with rest.HTTPClientFor(c).
-func NewForConfig(c *rest.Config) (*NetworkV1Client, error) {
+// NewForConfig creates a new NetworkingV1Client for the given config.
+func NewForConfig(c *rest.Config) (*NetworkingV1Client, error) {
 	config := *c
 	if err := setConfigDefaults(&config); err != nil {
 		return nil, err
 	}
-	httpClient, err := rest.HTTPClientFor(&config)
+	client, err := rest.RESTClientFor(&config)
 	if err != nil {
 		return nil, err
 	}
-	return NewForConfigAndClient(&config, httpClient)
+	return &NetworkingV1Client{client}, nil
 }
 
-// NewForConfigAndClient creates a new NetworkV1Client for the given config and http client.
-// Note the http client provided takes precedence over the configured transport values.
-func NewForConfigAndClient(c *rest.Config, h *http.Client) (*NetworkV1Client, error) {
-	config := *c
-	if err := setConfigDefaults(&config); err != nil {
-		return nil, err
-	}
-	client, err := rest.RESTClientForConfigAndClient(&config, h)
-	if err != nil {
-		return nil, err
-	}
-	return &NetworkV1Client{client}, nil
-}
-
-// NewForConfigOrDie creates a new NetworkV1Client for the given config and
+// NewForConfigOrDie creates a new NetworkingV1Client for the given config and
 // panics if there is an error in the config.
-func NewForConfigOrDie(c *rest.Config) *NetworkV1Client {
+func NewForConfigOrDie(c *rest.Config) *NetworkingV1Client {
 	client, err := NewForConfig(c)
 	if err != nil {
 		panic(err)
@@ -99,9 +81,9 @@ func NewForConfigOrDie(c *rest.Config) *NetworkV1Client {
 	return client
 }
 
-// New creates a new NetworkV1Client for the given RESTClient.
-func New(c rest.Interface) *NetworkV1Client {
-	return &NetworkV1Client{c}
+// New creates a new NetworkingV1Client for the given RESTClient.
+func New(c rest.Interface) *NetworkingV1Client {
+	return &NetworkingV1Client{c}
 }
 
 func setConfigDefaults(config *rest.Config) error {
@@ -119,7 +101,7 @@ func setConfigDefaults(config *rest.Config) error {
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *NetworkV1Client) RESTClient() rest.Interface {
+func (c *NetworkingV1Client) RESTClient() rest.Interface {
 	if c == nil {
 		return nil
 	}

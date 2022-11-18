@@ -32,12 +32,12 @@ import (
 
 // FakeNetworks implements NetworkInterface
 type FakeNetworks struct {
-	Fake *FakeNetworkV1
+	Fake *FakeNetworkingV1
 }
 
-var networksResource = schema.GroupVersionResource{Group: "network", Version: "v1", Resource: "networks"}
+var networksResource = schema.GroupVersionResource{Group: "networking.gke.io", Version: "v1", Resource: "networks"}
 
-var networksKind = schema.GroupVersionKind{Group: "network", Version: "v1", Kind: "Network"}
+var networksKind = schema.GroupVersionKind{Group: "networking.gke.io", Version: "v1", Kind: "Network"}
 
 // Get takes name of the network, and returns the corresponding network object, and an error if there is any.
 func (c *FakeNetworks) Get(ctx context.Context, name string, options v1.GetOptions) (result *networkv1.Network, err error) {
@@ -110,7 +110,7 @@ func (c *FakeNetworks) UpdateStatus(ctx context.Context, network *networkv1.Netw
 // Delete takes name of the network and deletes it. Returns an error if one occurs.
 func (c *FakeNetworks) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteActionWithOptions(networksResource, name, opts), &networkv1.Network{})
+		Invokes(testing.NewRootDeleteAction(networksResource, name), &networkv1.Network{})
 	return err
 }
 
