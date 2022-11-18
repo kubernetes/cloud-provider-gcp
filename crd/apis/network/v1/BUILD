@@ -10,6 +10,7 @@ go_library(
         "network_types.go",
         "networkinterface_types.go",
         "zz_generated.deepcopy.go",
+        "zz_generated.register.go",
     ],
     importpath = "k8s.io/cloud-provider-gcp/crd/apis/network/v1",
     visibility = ["//visibility:public"],
@@ -29,3 +30,9 @@ go_test(
     ],
 )
 
+go_test(
+    name = "network_test",
+    srcs = ["annotations_test.go"],
+    embed = [":network"],
+    deps = ["//vendor/github.com/google/go-cmp/cmp"],
+)
