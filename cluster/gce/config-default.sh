@@ -557,9 +557,9 @@ export TLS_CIPHER_SUITES=""
 export ENABLE_CREDENTIAL_SIDECAR="${KUBE_ENABLE_CREDENTIAL_SIDECAR:-true}"
 if [[ ${ENABLE_CREDENTIAL_SIDECAR:-true} == "true" ]]; then
    if [[ -z "${FEATURE_GATES:-}" ]]; then
-        FEATURE_GATES="KubeletCredentialProviders=true"
+        FEATURE_GATES="KubeletCredentialProviders=true,DisableKubeletCloudCredentialProviders=true,DisableCloudProviders=true"
     else
-        FEATURE_GATES="${FEATURE_GATES},KubeletCredentialProviders=true"
+        FEATURE_GATES="${FEATURE_GATES},KubeletCredentialProviders=true,DisableKubeletCloudCredentialProviders=true,DisableCloudProviders=true"
     fi
 fi
 
