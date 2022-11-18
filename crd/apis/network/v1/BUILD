@@ -29,10 +29,3 @@ go_test(
         "//vendor/github.com/google/go-cmp/cmp",
     ],
 )
-
-go_test(
-    name = "network_test",
-    srcs = ["annotations_test.go"],
-    embed = [":network"],
-    deps = ["//vendor/github.com/google/go-cmp/cmp"],
-)
