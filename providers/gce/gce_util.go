@@ -393,6 +393,10 @@ func removeString(slice []string, s string) []string {
 // GetStaticIPFromLoadBalancer get Public IP from the load balancer
 func GetStaticIPFromLoadBalancer(svc *v1.Service) string {
 
+	if svc == nil {
+		return ""
+	}
+
 	if ip, ok := svc.Annotations[ServiceAnnotationLBIPv4]; ok && ip != "" {
 		return ip
 	}

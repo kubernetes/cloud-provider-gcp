@@ -52,6 +52,11 @@ const (
 	ServiceAnnotationILBBackendShare = "alpha.cloud.google.com/load-balancer-backend-share"
 
 	// ServiceAnnotationLBIPv4 aim to instead of the deprecated spec field LoadBalancerIP from v1.24
+	// BETA feature - Priority Description:
+	//  load balancer has this annotation and spec-field LoadBalancerIP,
+	//     the external IP address from this annotation is preferred for reconciling the load balancer.
+	//  meanwhile, load balancer has spec-field LoadBalancerIP without this annotation,
+	//     the load balancer's external IP address will be from the field LoadBalancerIP.
 	ServiceAnnotationLBIPv4 = "service.beta.kubernetes.io/gcp-load-balancer-eip"
 
 	// This annotation did not correctly specify "alpha", so both annotations will be checked.
