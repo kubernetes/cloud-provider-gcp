@@ -114,7 +114,7 @@ func (approver *kubeletReadonlyCSRApprover) handle(ctx context.Context, csr *cap
 			recordValidatorMetric(csrmetrics.ApprovalStatusDeny)
 			return approver.updateCSR(csr, false, response.message)
 		case response.result == true:
-			klog.Infof("validator %q: approved CSR %q, with message: %s", validator.name, csr.Name, response.message)
+			klog.Infof("validator %q: approved CSR %q with message: %s", validator.name, csr.Name, response.message)
 			recordValidatorMetric(csrmetrics.ApprovalStatusApprove)
 		}
 	}
