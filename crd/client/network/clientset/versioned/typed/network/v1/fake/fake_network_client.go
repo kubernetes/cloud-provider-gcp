@@ -32,6 +32,10 @@ func (c *FakeNetworkingV1) GKENetworkParamses(namespace string) v1.GKENetworkPar
 	return &FakeGKENetworkParamses{c, namespace}
 }
 
+func (c *FakeNetworkingV1) GKENetworkParamsLists() v1.GKENetworkParamsListInterface {
+	return &FakeGKENetworkParamsLists{c}
+}
+
 func (c *FakeNetworkingV1) Networks() v1.NetworkInterface {
 	return &FakeNetworks{c}
 }

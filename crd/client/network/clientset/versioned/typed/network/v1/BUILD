@@ -6,6 +6,7 @@ go_library(
         "doc.go",
         "generated_expansion.go",
         "gkenetworkparams.go",
+        "gkenetworkparamslist.go",
         "network.go",
         "network_client.go",
         "networkinterface.go",

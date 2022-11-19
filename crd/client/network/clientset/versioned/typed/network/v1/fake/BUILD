@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "doc.go",
         "fake_gkenetworkparams.go",
+        "fake_gkenetworkparamslist.go",
         "fake_network.go",
         "fake_network_client.go",
         "fake_networkinterface.go",
