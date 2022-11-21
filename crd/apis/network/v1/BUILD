@@ -4,12 +4,13 @@ go_library(
     name = "v1",
     srcs = [
         "annotations.go",
+        "doc.go",
         "gkenetworkparams_types.go",
-        "groupversion_info.go",
         "network.go",
         "network_types.go",
         "networkinterface_types.go",
         "zz_generated.deepcopy.go",
+        "zz_generated.register.go",
     ],
     importpath = "k8s.io/cloud-provider-gcp/crd/apis/network/v1",
     visibility = ["//visibility:public"],
@@ -28,4 +29,3 @@ go_test(
         "//vendor/github.com/google/go-cmp/cmp",
     ],
 )
-

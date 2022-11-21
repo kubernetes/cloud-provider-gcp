@@ -71,3 +71,18 @@ type GKENetworkParamsStatus struct {
 	// +optional
 	PodCIDRs *NetworkRanges `json:"podCIDRs,omitempty"`
 }
+
+// +genclient
+// +genclient:nonNamespaced
+// +genclient:onlyVerbs=get
+// +kubebuilder:object:root=true
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// GKENetworkParamsList contains a list of GKENetworkParams resources.
+type GKENetworkParamsList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+
+	// Items is a slice of GKENetworkParams resources.
+	Items []GKENetworkParams `json:"items"`
+}

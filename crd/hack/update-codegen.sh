@@ -112,5 +112,5 @@ codegen_for () {
           ${COMMON_FLAGS}
 }
 
+codegen_for network v1
 codegen_for gcpfirewall v1beta1
-generate_config network v1
