@@ -19,7 +19,7 @@ type GKENetworkParams struct {
 }
 
 // DeviceModeType defines mode in which the devices will be used by the Pod
-// +kubebuilder:validation:Enum=DPDKUIO;DPDKVFIO;NetDevice
+// +kubebuilder:validation:Enum=DPDK-UIO;DPDK-VFIO;NetDevice
 type DeviceModeType string
 
 const (
