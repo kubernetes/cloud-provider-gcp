@@ -119,9 +119,11 @@ release_filegroup(
             ":kubernetes-manifests.tar.gz.sha512",
             ":kubernetes-server-linux-amd64.tar.gz.sha512",
             "@io_k8s_release//:kubernetes-node-linux-amd64",
+            "@io_k8s_release//:kubernetes-node-windows-amd64",
         ],
         "@io_bazel_rules_go//go/platform:windows_amd64": [
             ":kubernetes-node-windows-amd64.tar.gz.sha512",
+            "@io_k8s_release//:kubernetes-node-linux-amd64",
             "@io_k8s_release//:kubernetes-node-windows-amd64",
         ],
     },
