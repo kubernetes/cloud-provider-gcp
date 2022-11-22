@@ -24,6 +24,7 @@ import (
 	capi "k8s.io/api/certificates/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/klog/v2"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
@@ -34,6 +35,7 @@ const (
 	kubeletReadonlyCSRSignerName         = "gke.io/kubelet-readonly-client"
 	kubeletReadonlyCSRRequestMetrics     = "kubelet_readonly_csr_request"
 	podNameKey                           = "authentication.kubernetes.io/pod-name"
+	podUIDKey                            = "authentication.kubernetes.io/pod-uid"
 	kubeletAPILimitedReaderAnnotationKey = "autopilot.gke.io/kubelet-api-limited-reader"
 	kubeletReadonlyCRCommonName          = "kubelet-ro-client:"
 )
@@ -252,22 +254,58 @@ func validatePodAnnotation(request kubeletReadonlyCSRRequest) kubeletReadonlyCSR
 		klog.Errorf("csr does not have an attached pod name")
 		return kubeletReadonlyCSRResponse{
 			result:  false,
-			err:     fmt.Errorf("csr does not have an attached pod name"),
+			err:     nil,
 			message: "csr does not have pod name attached",
 		}
 	}
 
+	podUIDs, ok := request.csr.Spec.Extra[podUIDKey]
+	if !ok {
+		klog.Errorf("csr does not have an attached pod UID")
+		return kubeletReadonlyCSRResponse{
+			result:  false,
+			err:     nil,
+			message: "csr does not have pod UID attached",
+		}
+	}
+
+	if len(podNames) != len(podUIDs) {
+		return kubeletReadonlyCSRResponse{
+			result:  false,
+			err:     nil,
+			message: "bad request: length of pod name and UID are not equal",
+		}
+	}
+
+	username := request.csr.Spec.Username
+	if len(username) == 0 {
+		return kubeletReadonlyCSRResponse{
+			result:  false,
+			err:     nil,
+			message: "username is missing",
+		}
+	}
+	// Get the namespace from service account. Username format for service accounts is system:serviceaccount:$namespace:$name.
+	namespace, _, err := serviceaccount.SplitUsername(username)
+	if err != nil {
+		return kubeletReadonlyCSRResponse{
+			result:  false,
+			err:     err,
+			message: fmt.Sprintf("failed to get namespace from username %s, err: %v", username, err),
+		}
+	}
+
 	for _, podName := range podNames {
-		pod, err := request.controllerContext.client.CoreV1().Pods("").Get(request.context, podName, metav1.GetOptions{})
+		klog.Infof("start finding pod %s/%s", namespace, podName)
+		pod, err := request.controllerContext.client.CoreV1().Pods(namespace).Get(request.context, podName, metav1.GetOptions{})
 		if err != nil {
-			klog.Errorf("error when get pod %s, error: %v", podName, err)
+			klog.Errorf("failed to get pods, error: %v", err)
 			return kubeletReadonlyCSRResponse{
 				result:  false,
-				err:     fmt.Errorf("get pod %s failed: %v", podName, err),
-				message: fmt.Sprintf("get pod %s failed: %v", podName, err),
+				err:     fmt.Errorf("failed to get pods, error: %v", err),
+				message: fmt.Sprintf("failed to get pods, error: %v", err),
 			}
 		}
-
 		if pod.Annotations[kubeletAPILimitedReaderAnnotationKey] != "true" {
 			klog.Errorf("pod %s does not have annotation with key %s or the value is not \"true\"", podName, kubeletAPILimitedReaderAnnotationKey)
 			return kubeletReadonlyCSRResponse{
@@ -276,7 +314,7 @@ func validatePodAnnotation(request kubeletReadonlyCSRRequest) kubeletReadonlyCSR
 				message: fmt.Sprintf("pod %s does not have annotation with key %s or the value is not \"true\"", podName, kubeletAPILimitedReaderAnnotationKey),
 			}
 		}
-		klog.Infof("pod %s does not have annotation with key %s or the value is not \"true\"", podName, kubeletAPILimitedReaderAnnotationKey)
+		klog.Infof("pod %q has annotation with key %q and the value is \"true\"", podName, kubeletAPILimitedReaderAnnotationKey)
 	}
 
 	return kubeletReadonlyCSRResponse{

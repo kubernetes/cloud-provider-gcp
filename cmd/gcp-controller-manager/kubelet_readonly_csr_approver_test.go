@@ -31,6 +31,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 	testclient "k8s.io/client-go/testing"
 )
@@ -104,7 +105,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			expectCondition: capi.CertificateSigningRequestCondition{
 				Type:    capi.CertificateDenied,
 				Reason:  "AutoDenied",
-				Message: "user test is not allowed to create a CSR",
+				Message: "user system:serviceaccount:default:test is not allowed to create a CSR",
 				Status:  v1.ConditionTrue,
 			},
 		},
@@ -143,12 +144,6 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			sarWantError:         true,
 			commonName:           kubeletReadonlyCRCommonName,
 			expectError:          fmt.Errorf("validating CSR \"fail by sar validation error\" failed: validator \"rbac validator\" has error failed to get subject access review"),
-			expectCondition: capi.CertificateSigningRequestCondition{
-				Type:    capi.CertificateDenied,
-				Reason:  "AutoDenied",
-				Message: "csr usage any is not allowed, allowed usages: [\"key encipherment\",\"digital signature\",\"client auth\"]",
-				Status:  v1.ConditionTrue,
-			},
 		},
 		{
 			name:                   "fail by pod annotation validation error",
@@ -158,13 +153,7 @@ func TestKubeletReadonlyApprover(t *testing.T) {
 			autopilotEnabled:       true,
 			podAnnotationWantError: true,
 			commonName:             kubeletReadonlyCRCommonName,
-			expectError:            fmt.Errorf("validating CSR \"fail by pod annotation validation error\" failed: validator \"pod annotation validator\" has error get pod test failed: failed to get pod"),
-			expectCondition: capi.CertificateSigningRequestCondition{
-				Type:    capi.CertificateDenied,
-				Reason:  "AutoDenied",
-				Message: "csr usage any is not allowed, allowed usages: [\"key encipherment\",\"digital signature\",\"client auth\"]",
-				Status:  v1.ConditionTrue,
-			},
+			expectError:            fmt.Errorf("validating CSR \"fail by pod annotation validation error\" failed: validator \"pod annotation validator\" has error failed to get pods, error: failed to get pod"),
 		},
 	}
 
@@ -319,13 +308,19 @@ func TestValidatePodAnnotation(t *testing.T) {
 		name             string
 		annotation       string
 		autopilotEnabled bool
-		podName          string
+		podNames         []string
+		podUIDs          []string
+		namespace        string
+		username         string
 		wantError        bool
 		expectResult     kubeletReadonlyCSRResponse
 	}{
 		{
 			name:             "fail by default",
-			podName:          "test-default",
+			podNames:         []string{"test-default"},
+			podUIDs:          []string{"test-default-uid"},
+			namespace:        "default",
+			username:         "system:serviceaccount:default:test-default",
 			autopilotEnabled: true,
 			expectResult: kubeletReadonlyCSRResponse{
 				result:  false,
@@ -336,7 +331,10 @@ func TestValidatePodAnnotation(t *testing.T) {
 		{
 			name:             "pod with annotation exists",
 			annotation:       kubeletAPILimitedReaderAnnotationKey,
-			podName:          "test-pod-annotation-exists",
+			podNames:         []string{"test-pod-annotation-exists"},
+			podUIDs:          []string{"test-pod-annotation-exists-uid"},
+			namespace:        "default",
+			username:         "system:serviceaccount:default:test-pod-annotation-exists",
 			autopilotEnabled: true,
 			expectResult: kubeletReadonlyCSRResponse{
 				result:  true,
@@ -345,8 +343,11 @@ func TestValidatePodAnnotation(t *testing.T) {
 			},
 		},
 		{
-			name:    "not auto pilot cluster",
-			podName: "test-autopilot-not-enabled",
+			name:      "not auto pilot cluster",
+			podNames:  []string{"test-autopilot-not-enabled"},
+			podUIDs:   []string{"test-autopilot-not-enabled-uid"},
+			namespace: "default",
+			username:  "system:serviceaccount:default:test-autopilot-not-enabled",
 			expectResult: kubeletReadonlyCSRResponse{
 				result:  true,
 				err:     nil,
@@ -355,21 +356,75 @@ func TestValidatePodAnnotation(t *testing.T) {
 		},
 		{
 			name:             "error when get pod",
-			podName:          "test-get-pod-fail",
+			podNames:         []string{"test-get-pod-fail"},
+			podUIDs:          []string{"test-get-pod-fail-uid"},
+			namespace:        "default",
+			username:         "system:serviceaccount:default:test-get-pod-fail",
 			wantError:        true,
 			annotation:       kubeletAPILimitedReaderAnnotationKey,
 			autopilotEnabled: true,
 			expectResult: kubeletReadonlyCSRResponse{
-				err:     fmt.Errorf("get pod test-get-pod-fail failed: failed to get pod"),
-				message: "get pod test-get-pod-fail failed: failed to get pod",
+				err:     fmt.Errorf("failed to get pods, error: failed to get pod"),
+				message: "failed to get pods, error: failed to get pod",
+			},
+		},
+		{
+			name:             "missing pod name",
+			podUIDs:          []string{"test-missing-pod-name-UID"},
+			namespace:        "default",
+			username:         "system:serviceaccount:default:test-missing-pod-name-UID",
+			wantError:        true,
+			annotation:       kubeletAPILimitedReaderAnnotationKey,
+			autopilotEnabled: true,
+			expectResult: kubeletReadonlyCSRResponse{
+				message: "csr does not have pod name attached",
+			},
+		},
+		{
+			name:             "missing pod uid",
+			podNames:         []string{"test-missing-pod-uid"},
+			namespace:        "default",
+			username:         "system:serviceaccount:default:test-missing-pod-uid",
+			wantError:        true,
+			annotation:       kubeletAPILimitedReaderAnnotationKey,
+			autopilotEnabled: true,
+			expectResult: kubeletReadonlyCSRResponse{
+				message: "csr does not have pod UID attached",
+			},
+		},
+		{
+			name:             "username invalid",
+			podNames:         []string{"test-username-invalid"},
+			podUIDs:          []string{"test-username-invalid-UID"},
+			namespace:        "default",
+			username:         "default",
+			wantError:        true,
+			annotation:       kubeletAPILimitedReaderAnnotationKey,
+			autopilotEnabled: true,
+			expectResult: kubeletReadonlyCSRResponse{
+				err:     fmt.Errorf("Username must be in the form system:serviceaccount:namespace:name"),
+				message: "failed to get namespace from username default, err: Username must be in the form system:serviceaccount:namespace:name",
+			},
+		},
+		{
+			name:             "length of pod name array and UID array do not match",
+			podNames:         []string{"test-len-not-match", "test-len-not-match2"},
+			podUIDs:          []string{"test-len-not-match-UID"},
+			namespace:        "default",
+			username:         "system:serviceaccount:default:test-len-not-match",
+			wantError:        true,
+			annotation:       kubeletAPILimitedReaderAnnotationKey,
+			autopilotEnabled: true,
+			expectResult: kubeletReadonlyCSRResponse{
+				message: "bad request: length of pod name and UID are not equal",
 			},
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprint(testCase.name), func(t *testing.T) {
-			request := generateTestRequestByPodName(t, testCase.podName)
+			request := generateTestRequestByPodName(t, testCase.podNames, testCase.podUIDs, testCase.username)
 			request.autopilotEnabled = testCase.autopilotEnabled
-			createPodWithAnnotation(testCase.podName, testCase.annotation, testCase.wantError, *request.controllerContext)
+			createPodWithAnnotation(testCase.podNames, testCase.podUIDs, testCase.namespace, testCase.annotation, testCase.wantError, *request.controllerContext)
 			response := validatePodAnnotation(request)
 			compareKubeletReadonlyCSRRequestResult(response, testCase.expectResult, t)
 		})
@@ -512,33 +567,41 @@ func generateTestRequestByUsage(t *testing.T, usage []capi.KeyUsage) kubeletRead
 	return request
 }
 
-func createPodWithAnnotation(podName, annotation string, wantError bool, controllerContext controllerContext) {
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
-			Name:      podName,
-			Annotations: map[string]string{
-				annotation: "true",
+func createPodWithAnnotation(podNames, podUIDs []string, namespace, annotation string, wantError bool, controllerContext controllerContext) {
+	if len(podNames) != len(podUIDs) {
+		return
+	}
+	podsMap := map[string]*v1.Pod{}
+	for index, podName := range podNames {
+		podsMap[podName] = &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: namespace,
+				Name:      podName,
+				UID:       types.UID(podUIDs[index]),
+				Annotations: map[string]string{
+					annotation: "true",
+				},
 			},
-		},
-		Spec: v1.PodSpec{
-			Containers: []v1.Container{
-				{
-					Name:  "nginx",
-					Image: "nginx:1.14.2",
-					Ports: []v1.ContainerPort{
-						{
-							ContainerPort: 80,
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{
+						Name:  "nginx",
+						Image: "nginx:1.14.2",
+						Ports: []v1.ContainerPort{
+							{
+								ContainerPort: 80,
+							},
 						},
 					},
 				},
 			},
-		},
+		}
 	}
 	client := controllerContext.client.(*fake.Clientset)
 	if !wantError {
 		client.PrependReactor("get", "pods", func(action testclient.Action) (handled bool, ret runtime.Object, err error) {
-			return true, pod, nil
+
+			return true, podsMap[action.(testclient.GetAction).GetName()], nil
 		})
 	} else {
 		client.PrependReactor("get", "pods", func(action testclient.Action) (handled bool, ret runtime.Object, err error) {
@@ -560,14 +623,15 @@ type kubeletReadonlyTestRequestBuilder struct {
 func generateTestRequest(t *testing.T, builder *kubeletReadonlyTestRequestBuilder) kubeletReadonlyCSRRequest {
 
 	request := generateTestRequestBySubjectAccessReview(t, builder.sarAllowed, builder.sarWantError)
-	request.csr.Spec.Username = "test"
+	request.csr.Spec.Username = "system:serviceaccount:default:test"
 	request.csr.Spec.Extra = map[string]capi.ExtraValue{}
 	request.autopilotEnabled = builder.autopilotEnabled
 	if builder.podAnnotationAllowed {
 		request.csr.Spec.Extra = map[string]capi.ExtraValue{
 			podNameKey: []string{"test"},
+			podUIDKey:  []string{"test-UID"},
 		}
-		createPodWithAnnotation("test", kubeletAPILimitedReaderAnnotationKey, builder.podAnnotationWantError, *request.controllerContext)
+		createPodWithAnnotation([]string{"test"}, []string{"test-UID"}, "default", kubeletAPILimitedReaderAnnotationKey, builder.podAnnotationWantError, *request.controllerContext)
 	}
 	if builder.usageAllowed {
 		request.csr.Spec.Usages = []capi.KeyUsage{
@@ -600,13 +664,21 @@ func generateTestRequest(t *testing.T, builder *kubeletReadonlyTestRequestBuilde
 	return request
 }
 
-func generateTestRequestByPodName(t *testing.T, podName string) kubeletReadonlyCSRRequest {
+func generateTestRequestByPodName(t *testing.T, podNames, podUIDs []string, username string) kubeletReadonlyCSRRequest {
 	request := generateTestKubeletReadonlyCSRRequest(t)
 	request.csr.Spec.Extra = map[string]capi.ExtraValue{
 		"annotations": []string{"test"},
 	}
-	if len(podName) != 0 {
-		request.csr.Spec.Extra[podNameKey] = []string{podName}
+	if len(podNames) != 0 {
+		request.csr.Spec.Extra[podNameKey] = podNames
+	}
+
+	if len(podUIDs) != 0 {
+		request.csr.Spec.Extra[podUIDKey] = podUIDs
+	}
+
+	if len(username) != 0 {
+		request.csr.Spec.Username = username
 	}
 	return request
 }
