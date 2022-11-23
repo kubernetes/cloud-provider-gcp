@@ -71,6 +71,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
+        "//vendor/k8s.io/apiserver/pkg/authentication/serviceaccount",
         "//vendor/k8s.io/apiserver/pkg/server/options",
         "//vendor/k8s.io/apiserver/pkg/util/webhook",
         "//vendor/k8s.io/client-go/informers",
