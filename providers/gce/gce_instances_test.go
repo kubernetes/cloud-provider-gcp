@@ -330,7 +330,7 @@ func TestAliasRangesByProviderID(t *testing.T) {
 	}
 }
 
-func TestNodeNetworkInterfacesByProviderID(t *testing.T) {
+func TestInstanceByProviderID(t *testing.T) {
 	gce, err := fakeGCECloud(DefaultTestClusterValues())
 	require.NoError(t, err)
 
@@ -372,10 +372,10 @@ func TestNodeNetworkInterfacesByProviderID(t *testing.T) {
 	}
 
 	testcases := []struct {
-		name           string
-		providerId     string
-		wantErr        string
-		wantInterfaces []*ga.NetworkInterface
+		name         string
+		providerId   string
+		wantErr      string
+		wantInstance *ga.Instance
 	}{
 		{
 			name:       "invalid provider id",
@@ -388,21 +388,21 @@ func TestNodeNetworkInterfacesByProviderID(t *testing.T) {
 			wantErr:    "instance not found",
 		},
 		{
-			name:           "instance with multiple interfaces",
-			providerId:     "gce://p1/us-central1-b/n1",
-			wantInterfaces: interfaces,
+			name:         "instance with multiple interfaces",
+			providerId:   "gce://p1/us-central1-b/n1",
+			wantInstance: instance,
 		},
 	}
 
 	for _, test := range testcases {
 		t.Run(test.name, func(t *testing.T) {
-			gotInterfaces, err := gce.NodeNetworkInterfacesByProviderID(test.providerId)
+			gotInstance, err := gce.InstanceByProviderID(test.providerId)
 			if err != nil && (test.wantErr == "" || !strings.Contains(err.Error(), test.wantErr)) {
-				t.Errorf("gce.NodeNetworkInterfacesByProviderID. Want err: %v, got: %v", test.wantErr, err)
+				t.Errorf("gce.InstanceByProviderID. Want err: %v, got: %v", test.wantErr, err)
 			} else if err == nil && test.wantErr != "" {
-				t.Errorf("gce.NodeNetworkInterfacesByProviderID. Want err: %v, got: %v, gotInterfaces: %v", test.wantErr, err, gotInterfaces)
+				t.Errorf("gce.InstanceByProviderID. Want err: %v, got: %v, gotInstances: %v", test.wantErr, err, gotInstance)
 			}
-			assert.Equal(t, test.wantInterfaces, gotInterfaces)
+			assert.Equal(t, test.wantInstance, gotInstance)
 		})
 	}
 }

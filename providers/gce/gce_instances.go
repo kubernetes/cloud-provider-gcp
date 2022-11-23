@@ -858,7 +858,7 @@ func (g *Cloud) GetNodeTags(nodeNames []string) ([]string, error) {
 }
 
 // NodeNetworkInterfacesByProviderID returns a list of node interfaces that exist on the node.
-func (g *Cloud) NodeNetworkInterfacesByProviderID(providerID string) (interfaces []*compute.NetworkInterface, err error) {
+func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, err error) {
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -867,10 +867,9 @@ func (g *Cloud) NodeNetworkInterfacesByProviderID(providerID string) (interfaces
 		return nil, err
 	}
 
-	var res *compute.Instance
 	res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
 	if err != nil {
 		return nil, err
 	}
-	return res.NetworkInterfaces, nil
+	return res, nil
 }
