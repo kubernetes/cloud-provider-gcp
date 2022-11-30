@@ -532,7 +532,7 @@ func validateTPMAttestation(ctx *controllerContext, csr *capi.CertificateSigning
 		// that the group is indeed part of the cluster.
 		instanceGroupHint := getInstanceMetadata(inst, createdByInstanceMetadataKey)
 		klog.V(3).Infof("inst[%d] has instanceGroupHint %q", inst.Id, instanceGroupHint)
-		ok, err := clusterHasInstance(ctx, inst.Zone, inst.Id, instanceGroupHint)
+		ok, err := clusterHasInstance(ctx, inst, instanceGroupHint)
 		if err != nil {
 			return false, fmt.Errorf("checking VM membership in cluster: %v", err)
 		}
@@ -692,10 +692,49 @@ func validateInstanceGroupHint(instanceGroupUrls []string, instanceGroupHint str
 	return resolved, nil
 }
 
-func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID uint64, instanceGroupHint string) (bool, error) {
+func clusterHasInstance(ctx *controllerContext, instance *compute.Instance, instanceGroupHint string) (bool, error) {
 	clusterInstanceGroupUrls, err := getClusterInstanceGroupUrls(ctx)
 	if err != nil {
 		return false, err
+	}
+
+	// instanceZone looks like
+	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
+	// Extract the bare zone name just "us-central1-c".
+	instanceZoneName := path.Base(instance.Zone)
+
+	if ctx.csrApproverUseGCEInstanceListReferrers {
+		clusterInstanceGroupUrlsMap := map[string]bool{}
+		for _, ig := range clusterInstanceGroupUrls {
+			clusterInstanceGroupUrlsMap[strings.ToLower(ig)] = true
+		}
+
+		filter := func(referres *compute.InstanceListReferrers) error {
+			for _, referrer := range referres.Items {
+				if clusterInstanceGroupUrlsMap[strings.ToLower(referrer.Referrer)] {
+					return &foundError{}
+				}
+			}
+			return nil
+		}
+
+		klog.V(3).Infof("using ListReferrers to verify cluster membership of instance: %q", instance.Name)
+		recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.ListReferrers")
+
+		err := compute.NewInstancesService(ctx.gcpCfg.Compute).ListReferrers(ctx.gcpCfg.ProjectID, instanceZoneName, instance.Name).Pages(context.TODO(), filter)
+		if err != nil {
+			switch err.(type) {
+			case *foundError:
+				recordMetric(csrmetrics.OutboundRPCStatusOK)
+				return true, nil
+			default:
+				recordMetric(csrmetrics.OutboundRPCStatusError)
+				return false, err
+			}
+		}
+
+		recordMetric(csrmetrics.OutboundRPCStatusOK)
+		klog.Warningf("could not determine cluster membership of instance %q using compute.InstancesService.ListReferrers; falling back to checking all instance groups")
 	}
 
 	validatedInstanceGroupHint, err := validateInstanceGroupHint(clusterInstanceGroupUrls, instanceGroupHint)
@@ -708,10 +747,6 @@ func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID 
 	klog.V(3).Infof("clusterInstanceGroupUrls %+v", clusterInstanceGroupUrls)
 
 	var errors []error
-	// instanceZone looks like
-	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
-	// Extract the bare zone name just "us-central1-c".
-	instanceZoneName := path.Base(instanceZone)
 
 	for _, ig := range clusterInstanceGroupUrls {
 		igName, igLocation, err := parseInstanceGroupURL(ig)
@@ -723,15 +758,15 @@ func clusterHasInstance(ctx *controllerContext, instanceZone string, instanceID 
 		// InstanceGroups can be regional, igLocation can be either region
 		// or a zone. Match them to instanceZone by prefix to cover both.
 		if !strings.HasPrefix(instanceZoneName, igLocation) {
-			klog.V(2).Infof("instance group %q is in zone/region %q, node sending the CSR is in %q; skipping instance group", ig, igLocation, instanceZone)
+			klog.V(2).Infof("instance group %q is in zone/region %q, node sending the CSR is in %q; skipping instance group", ig, igLocation, instanceZoneName)
 			continue
 		}
 
 		// Note: use igLocation here instead of instanceZone.
 		// InstanceGroups can be regional, instances are always zonal.
-		ok, err := groupHasInstance(ctx, igLocation, igName, instanceID)
+		ok, err := groupHasInstance(ctx, igLocation, igName, instance.Id)
 		if err != nil {
-			errors = append(errors, fmt.Errorf("checking that group %q contains instance %v: %v", igName, instanceID, err))
+			errors = append(errors, fmt.Errorf("checking that group %q contains instance %v: %v", igName, instance.Id, err))
 			continue
 		}
 		if ok {
