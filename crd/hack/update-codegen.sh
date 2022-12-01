@@ -88,6 +88,7 @@ codegen_for () {
           --input-base "" \
           --input "${apis_pkg}" \
           --clientset-name "${CLIENTSET_NAME}" \
+          --plural-exceptions="GKENetworkParams:GKENetworkParams" \
           --output-package "${output_pkg}/${CLIENTSET_PKG_NAME}" \
           ${COMMON_FLAGS}
 
