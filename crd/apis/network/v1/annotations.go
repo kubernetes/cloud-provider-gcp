@@ -12,6 +12,11 @@ const (
 	DisableSourceIPValidationAnnotationKey = "networking.gke.io/disable-source-ip-validation"
 	// DisableSourceValidationAnnotationValTrue is the value to disable source IP validation for the pod.
 	DisableSourceIPValidationAnnotationValTrue = "true"
+	// EnableMulticastAnnotationKey is the annotation on pod to enable multicast on L2 interfaces.
+	// It's also used to enable IGMP protocol for L2 interfaces.
+	EnableMulticastAnnotationKey = "networking.gke.io/enable-multicast"
+	// EnableMulticastAnnotationValTrue is the value to enable multicast for the pod.
+	EnableMulticastAnnotationValTrue = "true"
 	// DefaultInterfaceAnnotationKey specifies the default route interface with interface name in pod.
 	// The IP of the gateway comes from network CRs.
 	DefaultInterfaceAnnotationKey = "networking.gke.io/default-interface"
