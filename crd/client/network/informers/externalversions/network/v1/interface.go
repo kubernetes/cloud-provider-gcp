@@ -24,8 +24,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// GKENetworkParamses returns a GKENetworkParamsInformer.
-	GKENetworkParamses() GKENetworkParamsInformer
+	// GKENetworkParams returns a GKENetworkParamsInformer.
+	GKENetworkParams() GKENetworkParamsInformer
 	// Networks returns a NetworkInformer.
 	Networks() NetworkInformer
 	// NetworkInterfaces returns a NetworkInterfaceInformer.
@@ -43,8 +43,8 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// GKENetworkParamses returns a GKENetworkParamsInformer.
-func (v *version) GKENetworkParamses() GKENetworkParamsInformer {
+// GKENetworkParams returns a GKENetworkParamsInformer.
+func (v *version) GKENetworkParams() GKENetworkParamsInformer {
 	return &gKENetworkParamsInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
