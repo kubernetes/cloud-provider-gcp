@@ -26,7 +26,7 @@ import (
 
 type NetworkingV1Interface interface {
 	RESTClient() rest.Interface
-	GKENetworkParamsesGetter
+	GKENetworkParamsGetter
 	GKENetworkParamsListsGetter
 	NetworksGetter
 	NetworkInterfacesGetter
@@ -39,8 +39,8 @@ type NetworkingV1Client struct {
 	restClient rest.Interface
 }
 
-func (c *NetworkingV1Client) GKENetworkParamses(namespace string) GKENetworkParamsInterface {
-	return newGKENetworkParamses(c, namespace)
+func (c *NetworkingV1Client) GKENetworkParams(namespace string) GKENetworkParamsInterface {
+	return newGKENetworkParams(c, namespace)
 }
 
 func (c *NetworkingV1Client) GKENetworkParamsLists() GKENetworkParamsListInterface {

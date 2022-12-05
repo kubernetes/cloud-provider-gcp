@@ -48,6 +48,7 @@ if [[ "${VERIFY_CODEGEN:-}" == "true" ]]; then
 fi
 
 readonly COMMON_FLAGS="${VERIFY_FLAG:-} --go-header-file ${SCRIPT_ROOT}/hack/boilerplate.go.txt"
+readonly PLURAL_EXCEPTIONS="--plural-exceptions=GKENetworkParams:GKENetworkParams"
 
 generate_config() {
   local crd_name version apis_pkg
@@ -89,12 +90,14 @@ codegen_for () {
           --input "${apis_pkg}" \
           --clientset-name "${CLIENTSET_NAME}" \
           --output-package "${output_pkg}/${CLIENTSET_PKG_NAME}" \
+          ${PLURAL_EXCEPTIONS} \
           ${COMMON_FLAGS}
 
   echo "Generating listers at ${output_pkg}/listers"
   go run k8s.io/code-generator/cmd/lister-gen \
           --input-dirs "${apis_pkg}" \
           --output-package "${output_pkg}/listers" \
+          ${PLURAL_EXCEPTIONS} \
           ${COMMON_FLAGS}
 
   echo "Generating informers at ${output_pkg}/informers"
@@ -103,6 +106,7 @@ codegen_for () {
            --versioned-clientset-package "${output_pkg}/${CLIENTSET_PKG_NAME}/${CLIENTSET_NAME}" \
            --listers-package "${output_pkg}/listers" \
            --output-package "${output_pkg}/informers" \
+           ${PLURAL_EXCEPTIONS} \
            ${COMMON_FLAGS}
 
   echo "Generating register at ${apis_pkg}"
