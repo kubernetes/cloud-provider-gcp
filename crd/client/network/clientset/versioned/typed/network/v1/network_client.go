@@ -39,8 +39,8 @@ type NetworkingV1Client struct {
 	restClient rest.Interface
 }
 
-func (c *NetworkingV1Client) GKENetworkParams(namespace string) GKENetworkParamsInterface {
-	return newGKENetworkParams(c, namespace)
+func (c *NetworkingV1Client) GKENetworkParams() GKENetworkParamsInterface {
+	return newGKENetworkParams(c)
 }
 
 func (c *NetworkingV1Client) GKENetworkParamsLists() GKENetworkParamsListInterface {

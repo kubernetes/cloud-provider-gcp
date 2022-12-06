@@ -31,8 +31,9 @@ type GKENetworkParamsLister interface {
 	// List lists all GKENetworkParams in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.GKENetworkParams, err error)
-	// GKENetworkParams returns an object that can list and get GKENetworkParams.
-	GKENetworkParams(namespace string) GKENetworkParamsNamespaceLister
+	// Get retrieves the GKENetworkParams from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	Get(name string) (*v1.GKENetworkParams, error)
 	GKENetworkParamsListerExpansion
 }
 
@@ -54,41 +55,9 @@ func (s *gKENetworkParamsLister) List(selector labels.Selector) (ret []*v1.GKENe
 	return ret, err
 }
 
-// GKENetworkParams returns an object that can list and get GKENetworkParams.
-func (s *gKENetworkParamsLister) GKENetworkParams(namespace string) GKENetworkParamsNamespaceLister {
-	return gKENetworkParamsNamespaceLister{indexer: s.indexer, namespace: namespace}
-}
-
-// GKENetworkParamsNamespaceLister helps list and get GKENetworkParams.
-// All objects returned here must be treated as read-only.
-type GKENetworkParamsNamespaceLister interface {
-	// List lists all GKENetworkParams in the indexer for a given namespace.
-	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.GKENetworkParams, err error)
-	// Get retrieves the GKENetworkParams from the indexer for a given namespace and name.
-	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.GKENetworkParams, error)
-	GKENetworkParamsNamespaceListerExpansion
-}
-
-// gKENetworkParamsNamespaceLister implements the GKENetworkParamsNamespaceLister
-// interface.
-type gKENetworkParamsNamespaceLister struct {
-	indexer   cache.Indexer
-	namespace string
-}
-
-// List lists all GKENetworkParams in the indexer for a given namespace.
-func (s gKENetworkParamsNamespaceLister) List(selector labels.Selector) (ret []*v1.GKENetworkParams, err error) {
-	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.GKENetworkParams))
-	})
-	return ret, err
-}
-
-// Get retrieves the GKENetworkParams from the indexer for a given namespace and name.
-func (s gKENetworkParamsNamespaceLister) Get(name string) (*v1.GKENetworkParams, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
+// Get retrieves the GKENetworkParams from the index for a given name.
+func (s *gKENetworkParamsLister) Get(name string) (*v1.GKENetworkParams, error) {
+	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
 	}

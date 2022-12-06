@@ -33,7 +33,7 @@ import (
 // GKENetworkParamsGetter has a method to return a GKENetworkParamsInterface.
 // A group's client should implement this interface.
 type GKENetworkParamsGetter interface {
-	GKENetworkParams(namespace string) GKENetworkParamsInterface
+	GKENetworkParams() GKENetworkParamsInterface
 }
 
 // GKENetworkParamsInterface has methods to work with GKENetworkParams resources.
@@ -53,14 +53,12 @@ type GKENetworkParamsInterface interface {
 // gKENetworkParams implements GKENetworkParamsInterface
 type gKENetworkParams struct {
 	client rest.Interface
-	ns     string
 }
 
 // newGKENetworkParams returns a GKENetworkParams
-func newGKENetworkParams(c *NetworkingV1Client, namespace string) *gKENetworkParams {
+func newGKENetworkParams(c *NetworkingV1Client) *gKENetworkParams {
 	return &gKENetworkParams{
 		client: c.RESTClient(),
-		ns:     namespace,
 	}
 }
 
@@ -68,7 +66,6 @@ func newGKENetworkParams(c *NetworkingV1Client, namespace string) *gKENetworkPar
 func (c *gKENetworkParams) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.GKENetworkParams, err error) {
 	result = &v1.GKENetworkParams{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("gkenetworkparams").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
@@ -85,7 +82,6 @@ func (c *gKENetworkParams) List(ctx context.Context, opts metav1.ListOptions) (r
 	}
 	result = &v1.GKENetworkParamsList{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("gkenetworkparams").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -102,7 +98,6 @@ func (c *gKENetworkParams) Watch(ctx context.Context, opts metav1.ListOptions) (
 	}
 	opts.Watch = true
 	return c.client.Get().
-		Namespace(c.ns).
 		Resource("gkenetworkparams").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -113,7 +108,6 @@ func (c *gKENetworkParams) Watch(ctx context.Context, opts metav1.ListOptions) (
 func (c *gKENetworkParams) Create(ctx context.Context, gKENetworkParams *v1.GKENetworkParams, opts metav1.CreateOptions) (result *v1.GKENetworkParams, err error) {
 	result = &v1.GKENetworkParams{}
 	err = c.client.Post().
-		Namespace(c.ns).
 		Resource("gkenetworkparams").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(gKENetworkParams).
@@ -126,7 +120,6 @@ func (c *gKENetworkParams) Create(ctx context.Context, gKENetworkParams *v1.GKEN
 func (c *gKENetworkParams) Update(ctx context.Context, gKENetworkParams *v1.GKENetworkParams, opts metav1.UpdateOptions) (result *v1.GKENetworkParams, err error) {
 	result = &v1.GKENetworkParams{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("gkenetworkparams").
 		Name(gKENetworkParams.Name).
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -141,7 +134,6 @@ func (c *gKENetworkParams) Update(ctx context.Context, gKENetworkParams *v1.GKEN
 func (c *gKENetworkParams) UpdateStatus(ctx context.Context, gKENetworkParams *v1.GKENetworkParams, opts metav1.UpdateOptions) (result *v1.GKENetworkParams, err error) {
 	result = &v1.GKENetworkParams{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("gkenetworkparams").
 		Name(gKENetworkParams.Name).
 		SubResource("status").
@@ -155,7 +147,6 @@ func (c *gKENetworkParams) UpdateStatus(ctx context.Context, gKENetworkParams *v
 // Delete takes name of the gKENetworkParams and deletes it. Returns an error if one occurs.
 func (c *gKENetworkParams) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("gkenetworkparams").
 		Name(name).
 		Body(&opts).
@@ -170,7 +161,6 @@ func (c *gKENetworkParams) DeleteCollection(ctx context.Context, opts metav1.Del
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("gkenetworkparams").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -183,7 +173,6 @@ func (c *gKENetworkParams) DeleteCollection(ctx context.Context, opts metav1.Del
 func (c *gKENetworkParams) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.GKENetworkParams, err error) {
 	result = &v1.GKENetworkParams{}
 	err = c.client.Patch(pt).
-		Namespace(c.ns).
 		Resource("gkenetworkparams").
 		Name(name).
 		SubResource(subresources...).
