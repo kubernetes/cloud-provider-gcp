@@ -42,33 +42,32 @@ type GKENetworkParamsInformer interface {
 type gKENetworkParamsInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
-	namespace        string
 }
 
 // NewGKENetworkParamsInformer constructs a new informer for GKENetworkParams type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewGKENetworkParamsInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredGKENetworkParamsInformer(client, namespace, resyncPeriod, indexers, nil)
+func NewGKENetworkParamsInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredGKENetworkParamsInformer(client, resyncPeriod, indexers, nil)
 }
 
 // NewFilteredGKENetworkParamsInformer constructs a new informer for GKENetworkParams type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredGKENetworkParamsInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredGKENetworkParamsInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.NetworkingV1().GKENetworkParams(namespace).List(context.TODO(), options)
+				return client.NetworkingV1().GKENetworkParams().List(context.TODO(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.NetworkingV1().GKENetworkParams(namespace).Watch(context.TODO(), options)
+				return client.NetworkingV1().GKENetworkParams().Watch(context.TODO(), options)
 			},
 		},
 		&networkv1.GKENetworkParams{},
@@ -78,7 +77,7 @@ func NewFilteredGKENetworkParamsInformer(client versioned.Interface, namespace s
 }
 
 func (f *gKENetworkParamsInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredGKENetworkParamsInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+	return NewFilteredGKENetworkParamsInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
 func (f *gKENetworkParamsInformer) Informer() cache.SharedIndexInformer {

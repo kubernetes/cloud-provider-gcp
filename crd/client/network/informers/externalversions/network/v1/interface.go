@@ -45,7 +45,7 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 
 // GKENetworkParams returns a GKENetworkParamsInformer.
 func (v *version) GKENetworkParams() GKENetworkParamsInformer {
-	return &gKENetworkParamsInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+	return &gKENetworkParamsInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // Networks returns a NetworkInformer.

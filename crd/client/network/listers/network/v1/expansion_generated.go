@@ -22,10 +22,6 @@ package v1
 // GKENetworkParamsLister.
 type GKENetworkParamsListerExpansion interface{}
 
-// GKENetworkParamsNamespaceListerExpansion allows custom methods to be added to
-// GKENetworkParamsNamespaceLister.
-type GKENetworkParamsNamespaceListerExpansion interface{}
-
 // NetworkListerExpansion allows custom methods to be added to
 // NetworkLister.
 type NetworkListerExpansion interface{}
