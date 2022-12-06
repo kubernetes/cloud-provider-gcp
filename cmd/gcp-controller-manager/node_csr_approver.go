@@ -45,12 +45,15 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
 	"k8s.io/klog/v2"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
 	"k8s.io/kubernetes/pkg/controller/certificates"
+	"k8s.io/kubernetes/pkg/features"
 )
 
 const (
@@ -985,16 +988,24 @@ func shouldDeleteNode(ctx *controllerContext, node *v1.Node, getInstance func(*c
 }
 
 func deleteAllPodsBoundToNode(ctx *controllerContext, nodeName string) error {
-	errs := []error{}
 	deletedPods := []string{}
 
-	podList, err := ctx.client.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{FieldSelector: "spec.nodeName=" + nodeName})
+	podList, err := ctx.client.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(),
+		metav1.ListOptions{
+			FieldSelector: "spec.nodeName=" + nodeName,
+			// Note: We pass ResourceVersion=0, to ensure that pod list is fetched from the api-server cache as opposed to going to etcd.
+			// xref: https://github.com/kubernetes/kubernetes/blob/ef8c4fbca8e5bed1e7edc162b95c412a7f1a758e/staging/src/k8s.io/apiserver/pkg/storage/cacher/cacher.go#L621
+			// This results in lower resource usage on the api-server when many nodes are registering in parallel.
+			ResourceVersion: "0",
+		},
+	)
 	if err != nil {
-		errs = append(errs, err)
+		return fmt.Errorf("failed to list pods on node: %v: %v", nodeName, err)
 	}
 
+	var errs []error
 	for _, pod := range podList.Items {
-		err := ctx.client.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, *metav1.NewDeleteOptions(0))
+		err := markFailedAndDeletePodWithCondition(ctx, &pod)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -1005,6 +1016,38 @@ func deleteAllPodsBoundToNode(ctx *controllerContext, nodeName string) error {
 		klog.Infof("Pods %s bound to node %s were deleted.", strings.Join(deletedPods[:], ", "), nodeName)
 	}
 	return utilerrors.NewAggregate(errs)
+}
+
+func markFailedAndDeletePodWithCondition(ctx *controllerContext, pod *v1.Pod) error {
+	// Based on pod gc controller (https://github.com/kubernetes/kubernetes/blob/3833c0c349b53f08b4e063065d848854837b743c/pkg/controller/podgc/gc_controller.go)
+
+	const fieldManager = "GCPControllerManager"
+	if utilfeature.DefaultFeatureGate.Enabled(features.PodDisruptionConditions) {
+		// Mark the pod as failed - this is especially important in case the pod
+		// is orphaned, in which case the pod would remain in the Running phase
+		// forever as there is no kubelet running to change the phase.
+		if pod.Status.Phase != v1.PodSucceeded && pod.Status.Phase != v1.PodFailed {
+			podApply := corev1apply.Pod(pod.Name, pod.Namespace).WithStatus(corev1apply.PodStatus())
+			// we don't need to extract the pod apply configuration and can send
+			// only phase and the DisruptionTarget condition as GCPControllerManager would not
+			// own other fields. If the DisruptionTarget condition is owned by
+			// GCPControllerManager it means that it is in the Failed phase, so sending the
+			// condition will not be re-attempted.
+			podApply.Status.WithPhase(v1.PodFailed)
+			podApply.Status.WithConditions(
+				corev1apply.PodCondition().
+					WithType(v1.DisruptionTarget).
+					WithStatus(v1.ConditionTrue).
+					WithReason("DeletionByGCPControllerManager").
+					WithMessage(fmt.Sprintf("%s: node no longer exists", fieldManager)).
+					WithLastTransitionTime(metav1.Now()))
+
+			if _, err := ctx.client.CoreV1().Pods(pod.Namespace).ApplyStatus(context.TODO(), podApply, metav1.ApplyOptions{FieldManager: fieldManager, Force: true}); err != nil {
+				return err
+			}
+		}
+	}
+	return ctx.client.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, *metav1.NewDeleteOptions(0))
 }
 
 func getInstanceByName(ctx *controllerContext, instanceName string) (*compute.Instance, error) {

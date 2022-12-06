@@ -74,7 +74,9 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apiserver/pkg/authentication/serviceaccount",
         "//vendor/k8s.io/apiserver/pkg/server/options",
+        "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/apiserver/pkg/util/webhook",
+        "//vendor/k8s.io/client-go/applyconfigurations/core/v1:core",
         "//vendor/k8s.io/client-go/informers",
         "//vendor/k8s.io/client-go/informers/core/v1:core",
         "//vendor/k8s.io/client-go/kubernetes",
@@ -99,6 +101,7 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1:certificates",
         "//vendor/k8s.io/kubernetes/pkg/controller",
         "//vendor/k8s.io/kubernetes/pkg/controller/certificates",
+        "//vendor/k8s.io/kubernetes/pkg/features",
         "//vendor/k8s.io/kubernetes/pkg/util/taints",
     ],
 )
