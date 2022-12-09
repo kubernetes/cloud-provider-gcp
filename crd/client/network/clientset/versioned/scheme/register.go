@@ -25,12 +25,14 @@ import (
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	networkingv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
+	networkingv1alpha1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1"
 )
 
 var Scheme = runtime.NewScheme()
 var Codecs = serializer.NewCodecFactory(Scheme)
 var ParameterCodec = runtime.NewParameterCodec(Scheme)
 var localSchemeBuilder = runtime.SchemeBuilder{
+	networkingv1alpha1.AddToScheme,
 	networkingv1.AddToScheme,
 }
 

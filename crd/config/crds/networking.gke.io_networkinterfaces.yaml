@@ -135,6 +135,125 @@ spec:
     storage: true
     subresources:
       status: {}
+  - additionalPrinterColumns:
+    - description: The age of this resource
+      jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    - description: IP address assigned to this interface
+      jsonPath: .status.ipAddresses[0]
+      name: IP
+      type: string
+    - description: MAC address assigned to this interface
+      jsonPath: .status.macAddress
+      name: MAC
+      type: string
+    - description: The Network this interface connects to
+      jsonPath: .spec.networkName
+      name: NETWORK
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: NetworkInterface defines the network interface for a pod to connect
+          to a network.
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: NetworkInterfaceSpec is the specification for the NetworkInterface
+              resource.
+            properties:
+              ipAddresses:
+                description: IpAddresses specifies the static IP addresses on this
+                  NetworkInterface. Each IPAddress may contain subnet mask. If subnet
+                  mask is not included, /32 is taken as default. For example, IPAddress
+                  input 1.2.3.4 will be taken as 1.2.3.4/32. Alternatively, the input
+                  can be 1.2.3.4/24 with subnet mask of /24.
+                items:
+                  type: string
+                type: array
+              macAddress:
+                description: Macddress specifies the static MAC address on this NetworkInterface.
+                type: string
+              networkName:
+                description: NetworkName refers to a network object that this NetworkInterface
+                  is connected.
+                minLength: 1
+                type: string
+            required:
+            - networkName
+            type: object
+          status:
+            description: NetworkInterfaceStatus is the status for the NetworkInterface
+              resource.
+            properties:
+              dnsConfig:
+                description: Specifies the DNS configuration of the network this interface
+                  connects to.
+                properties:
+                  nameservers:
+                    description: A list of nameserver IP addresses. Duplicated nameservers
+                      will be removed.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  searches:
+                    description: A list of DNS search domains for host-name lookup.
+                      Duplicated search paths will be removed.
+                    items:
+                      type: string
+                    type: array
+                required:
+                - nameservers
+                type: object
+              gateway4:
+                description: Gateway4 defines the gateway IPv4 address for the network
+                  this interface connects to.
+                type: string
+              ipAddresses:
+                description: IpAddresses are the IP addresses assigned to the NetworkInterface.
+                items:
+                  type: string
+                type: array
+              macAddress:
+                description: MacAddress is the MAC address assigned to the NetworkInterface.
+                type: string
+              podName:
+                description: PodName specifies the current pod name this interface
+                  is connected to
+                type: string
+              routes:
+                description: Routes contains a list of routes for the network this
+                  interface connects to.
+                items:
+                  description: Route defines a routing table entry to a specific subnetwork.
+                  properties:
+                    to:
+                      description: To defines a destination IPv4 block in CIDR annotation.
+                        e.g. 192.168.0.0/24. The CIDR 0.0.0.0/0 will be rejected.
+                      type: string
+                  required:
+                  - to
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
 status:
   acceptedNames:
     kind: ""

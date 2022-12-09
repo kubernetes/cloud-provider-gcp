@@ -11,9 +11,12 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//crd/apis/network/v1",
+        "//crd/apis/network/v1alpha1",
         "//crd/client/network/clientset/versioned",
         "//crd/client/network/clientset/versioned/typed/network/v1:network",
         "//crd/client/network/clientset/versioned/typed/network/v1/fake",
+        "//crd/client/network/clientset/versioned/typed/network/v1alpha1",
+        "//crd/client/network/clientset/versioned/typed/network/v1alpha1/fake",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",

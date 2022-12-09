@@ -25,10 +25,12 @@ import (
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 	networkingv1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1"
+	networkingv1alpha1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1alpha1"
 )
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
+	NetworkingV1alpha1() networkingv1alpha1.NetworkingV1alpha1Interface
 	NetworkingV1() networkingv1.NetworkingV1Interface
 }
 
@@ -36,7 +38,13 @@ type Interface interface {
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	networkingV1 *networkingv1.NetworkingV1Client
+	networkingV1alpha1 *networkingv1alpha1.NetworkingV1alpha1Client
+	networkingV1       *networkingv1.NetworkingV1Client
+}
+
+// NetworkingV1alpha1 retrieves the NetworkingV1alpha1Client
+func (c *Clientset) NetworkingV1alpha1() networkingv1alpha1.NetworkingV1alpha1Interface {
+	return c.networkingV1alpha1
 }
 
 // NetworkingV1 retrieves the NetworkingV1Client
@@ -65,6 +73,10 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	}
 	var cs Clientset
 	var err error
+	cs.networkingV1alpha1, err = networkingv1alpha1.NewForConfig(&configShallowCopy)
+	if err != nil {
+		return nil, err
+	}
 	cs.networkingV1, err = networkingv1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
@@ -81,6 +93,7 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
+	cs.networkingV1alpha1 = networkingv1alpha1.NewForConfigOrDie(c)
 	cs.networkingV1 = networkingv1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
@@ -90,6 +103,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
+	cs.networkingV1alpha1 = networkingv1alpha1.New(c)
 	cs.networkingV1 = networkingv1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)

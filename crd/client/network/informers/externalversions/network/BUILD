@@ -8,5 +8,6 @@ go_library(
     deps = [
         "//crd/client/network/informers/externalversions/internalinterfaces",
         "//crd/client/network/informers/externalversions/network/v1:network",
+        "//crd/client/network/informers/externalversions/network/v1alpha1",
     ],
 )

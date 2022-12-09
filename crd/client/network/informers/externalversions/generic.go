@@ -24,6 +24,7 @@ import (
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 	v1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
+	v1alpha1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1"
 )
 
 // GenericInformer is type of SharedIndexInformer which will locate and delegate to other
@@ -53,12 +54,18 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=networking.gke.io, Version=v1
-	case v1.SchemeGroupVersion.WithResource("gkenetworkparams"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1().GKENetworkParams().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("networks"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1().Networks().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("networkinterfaces"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1().NetworkInterfaces().Informer()}, nil
+
+		// Group=networking.gke.io, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithResource("gkenetworkparamsets"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1alpha1().GKENetworkParamSets().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("networks"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1alpha1().Networks().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("networkinterfaces"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1alpha1().NetworkInterfaces().Informer()}, nil
 
 	}
 
