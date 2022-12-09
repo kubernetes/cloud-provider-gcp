@@ -30,6 +30,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	networkfake "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/fake"
+	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
 	"k8s.io/cloud-provider-gcp/pkg/controller/testutil"
 	"k8s.io/cloud-provider-gcp/providers/gce"
@@ -52,10 +54,13 @@ func newTestNodeIpamController(clusterCIDR []*net.IPNet, serviceCIDR *net.IPNet,
 	for _, node := range fakeNodeHandler.Existing {
 		fakeNodeInformer.Informer().GetStore().Add(node)
 	}
-
+	networkFakeClient := &networkfake.Clientset{}
+	fakeNwInformerFactory := networkinformers.NewSharedInformerFactory(networkFakeClient, controller.NoResyncPeriodFunc())
+	fakeNwInformer := fakeNwInformerFactory.Networking().V1().Networks()
+	fakeGNPInformer := fakeNwInformerFactory.Networking().V1alpha1().GKENetworkParamSets()
 	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
 	return NewNodeIpamController(
-		fakeNodeInformer, fakeGCE, clientSet,
+		fakeNodeInformer, fakeGCE, clientSet, fakeNwInformer, fakeGNPInformer,
 		clusterCIDR, serviceCIDR, secondaryServiceCIDR, nodeCIDRMaskSizes, allocatorType,
 	)
 }
