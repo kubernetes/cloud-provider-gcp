@@ -56,7 +56,7 @@ generate_config() {
   crd_version="$3"
   apis_pkg="${APIS_BASE_PKG}/${1}/${2}/..."
 
-  if [[ $# == 4 ]]; then
+  if [[ $# -eq 4 ]]; then
     apis_pkg="{${apis_pkg},${APIS_BASE_PKG}/${1}/${4}/...}"
   fi
 
@@ -72,7 +72,7 @@ generate_config() {
 codegen_for () {
   local crd_name version crd_version extra_version apis_pkg output_pkg
 
-  if [[ $# != 3 ]] && [[ $# != 4 ]]; then
+  if [[ $# -ne 3 ]] && [[ $# -ne 4 ]]; then
     echo "Usage: codegen_for CRD-NAME VERSION CRDSPEC-VERSION optional:EXTRA-VERSION" >&2
     echo "" >&2
     echo "This writes auto generated client methods for CRD-NAME/VERSIONs" >&2
@@ -85,7 +85,7 @@ codegen_for () {
   output_pkg="${OUTPUT_BASE_PKG}/${1}"
   apis_pkg="${APIS_BASE_PKG}/${1}/${2}"
 
-  if [[ $# == 4 ]]; then
+  if [[ $# -eq 4 ]]; then
     extra_version="$4"
     apis_pkg="${apis_pkg},${APIS_BASE_PKG}/${1}/${extra_version}"
     generate_config "$crd_name" "$version" "$crd_version" "$extra_version"
