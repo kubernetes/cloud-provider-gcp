@@ -27,6 +27,8 @@ import (
 	clientset "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned"
 	networkingv1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1"
 	fakenetworkingv1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1/fake"
+	networkingv1alpha1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1alpha1"
+	fakenetworkingv1alpha1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1alpha1/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
@@ -75,6 +77,11 @@ func (c *Clientset) Tracker() testing.ObjectTracker {
 }
 
 var _ clientset.Interface = &Clientset{}
+
+// NetworkingV1alpha1 retrieves the NetworkingV1alpha1Client
+func (c *Clientset) NetworkingV1alpha1() networkingv1alpha1.NetworkingV1alpha1Interface {
+	return &fakenetworkingv1alpha1.FakeNetworkingV1alpha1{Fake: &c.Fake}
+}
 
 // NetworkingV1 retrieves the NetworkingV1Client
 func (c *Clientset) NetworkingV1() networkingv1.NetworkingV1Interface {

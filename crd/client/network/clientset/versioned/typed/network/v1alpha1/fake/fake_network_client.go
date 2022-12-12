@@ -21,32 +21,40 @@ package fake
 import (
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
-	v1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1"
+	v1alpha1 "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1alpha1"
 )
 
-type FakeNetworkingV1 struct {
+type FakeNetworkingV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeNetworkingV1) Networks() v1.NetworkInterface {
+func (c *FakeNetworkingV1alpha1) GKENetworkParamSets() v1alpha1.GKENetworkParamSetInterface {
+	return &FakeGKENetworkParamSets{c}
+}
+
+func (c *FakeNetworkingV1alpha1) GKENetworkParamSetLists() v1alpha1.GKENetworkParamSetListInterface {
+	return &FakeGKENetworkParamSetLists{c}
+}
+
+func (c *FakeNetworkingV1alpha1) Networks() v1alpha1.NetworkInterface {
 	return &FakeNetworks{c}
 }
 
-func (c *FakeNetworkingV1) NetworkInterfaces(namespace string) v1.NetworkInterfaceInterface {
+func (c *FakeNetworkingV1alpha1) NetworkInterfaces(namespace string) v1alpha1.NetworkInterfaceInterface {
 	return &FakeNetworkInterfaces{c, namespace}
 }
 
-func (c *FakeNetworkingV1) NetworkInterfaceLists(namespace string) v1.NetworkInterfaceListInterface {
+func (c *FakeNetworkingV1alpha1) NetworkInterfaceLists(namespace string) v1alpha1.NetworkInterfaceListInterface {
 	return &FakeNetworkInterfaceLists{c, namespace}
 }
 
-func (c *FakeNetworkingV1) NetworkLists() v1.NetworkListInterface {
+func (c *FakeNetworkingV1alpha1) NetworkLists() v1alpha1.NetworkListInterface {
 	return &FakeNetworkLists{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *FakeNetworkingV1) RESTClient() rest.Interface {
+func (c *FakeNetworkingV1alpha1) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret
 }

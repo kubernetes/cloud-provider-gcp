@@ -6,20 +6,21 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.6.0
   creationTimestamp: null
-  name: gkenetworkparams.networking.gke.io
+  name: gkenetworkparamsets.networking.gke.io
 spec:
   group: networking.gke.io
   names:
-    kind: GKENetworkParams
-    listKind: GKENetworkParamsList
-    plural: gkenetworkparams
-    singular: gkenetworkparams
+    kind: GKENetworkParamSet
+    listKind: GKENetworkParamSetList
+    plural: gkenetworkparamsets
+    singular: gkenetworkparamset
   scope: Cluster
   versions:
-  - name: v1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GKENetworkParams represent GKE specific parameters for the network.
+        description: GKENetworkParamSet represent GKE specific parameters for the
+          network.
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -34,7 +35,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: GKENetworkParamsSpec contains the specifications for network
+            description: GKENetworkParamSetSpec contains the specifications for network
               object
             properties:
               deviceMode:
@@ -70,8 +71,8 @@ spec:
             - vpcSubnet
             type: object
           status:
-            description: GKENetworkParamsStatus contains the status information related
-              to the network.
+            description: GKENetworkParamSetStatus contains the status information
+              related to the network.
             properties:
               podCIDRs:
                 description: PodCIDRs specifies the CIDRs from which IPs will be used
