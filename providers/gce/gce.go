@@ -173,6 +173,10 @@ type Cloud struct {
 	s *cloud.Service
 
 	metricsCollector loadbalancerMetricsCollector
+
+	// the compute API endpoint with the `projects/` element.
+	projectsBasePath string
+
 	// stackType indicates whether the cluster is a single stack IPv4, single
 	// stack IPv6 or a dual stack cluster
 	stackType StackType
@@ -404,10 +408,6 @@ func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 		cloudConfig.SecondaryRangeName = configFile.Global.SecondaryRangeName
 	}
 
-	if configFile != nil {
-		cloudConfig.StackType = configFile.Global.StackType
-	}
-
 	return cloudConfig, err
 }
 
@@ -452,9 +452,15 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 	// For example,
 	// staging API endpoint: https://www.googleapis.com/compute/staging_v1/
 	if config.APIEndpoint != "" {
-		service.BasePath = config.APIEndpoint
-		serviceBeta.BasePath = strings.Replace(config.APIEndpoint, "v1", "beta", -1)
-		serviceAlpha.BasePath = strings.Replace(config.APIEndpoint, "v1", "alpha", -1)
+		if strings.HasSuffix(service.BasePath, "/projects/") {
+			service.BasePath = getProjectsBasePath(config.APIEndpoint)
+			serviceBeta.BasePath = getProjectsBasePath(strings.Replace(config.APIEndpoint, "v1", "beta", -1))
+			serviceAlpha.BasePath = getProjectsBasePath(strings.Replace(config.APIEndpoint, "v1", "alpha", -1))
+		} else {
+			service.BasePath = config.APIEndpoint
+			serviceBeta.BasePath = strings.Replace(config.APIEndpoint, "v1", "beta", -1)
+			serviceAlpha.BasePath = strings.Replace(config.APIEndpoint, "v1", "alpha", -1)
+		}
 	}
 
 	// Previously "projects/" was a part of BasePath, but recent changes in Google Cloud SDK removed it from there.
@@ -546,6 +552,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		AlphaFeatureGate:         config.AlphaFeatureGate,
 		nodeZones:                map[string]sets.String{},
 		metricsCollector:         newLoadBalancerMetrics(),
+		projectsBasePath:         getProjectsBasePath(service.BasePath),
 		stackType:                StackType(config.StackType),
 	}
 
@@ -814,6 +821,18 @@ func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
 // HasClusterID returns true if the cluster has a clusterID
 func (g *Cloud) HasClusterID() bool {
 	return true
+}
+
+// getProjectsBasePath returns the compute API endpoint with the `projects/` element.
+// The suffix must be added when generating compute resource urls.
+func getProjectsBasePath(basePath string) string {
+	if !strings.HasSuffix(basePath, "/") {
+		basePath += "/"
+	}
+	if !strings.HasSuffix(basePath, "/projects/") {
+		basePath += "projects/"
+	}
+	return basePath
 }
 
 // Project IDs cannot have a digit for the first characeter. If the id contains a digit,
