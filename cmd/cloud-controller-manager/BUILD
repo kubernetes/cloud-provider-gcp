@@ -31,6 +31,8 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/cloud-provider",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions",
         "//vendor/k8s.io/cloud-provider/app",
         "//vendor/k8s.io/cloud-provider/app/config",
         "//vendor/k8s.io/cloud-provider/options",
