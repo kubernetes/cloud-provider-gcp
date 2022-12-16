@@ -43,6 +43,11 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
+	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
+	networkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
+	alphanetworkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1"
+	networklister "k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1"
+	alphanetworklister "k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1alpha1"
 	nodeutil "k8s.io/cloud-provider-gcp/pkg/util"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	utiltaints "k8s.io/cloud-provider-gcp/pkg/util/taints"
@@ -62,7 +67,12 @@ type nodeProcessingInfo struct {
 type cloudCIDRAllocator struct {
 	client clientset.Interface
 	cloud  *gce.Cloud
-
+	// networksLister is able to list/get networks and is populated by the shared network informer passed to
+	// NewCloudCIDRAllocator.
+	networksLister networklister.NetworkLister
+	// gnpLister is able to list/get GKENetworkParamSet and is populated by the shared GKENewtorkParamSet informer passed to
+	// NewCloudCIDRAllocator.
+	gnpLister alphanetworklister.GKENetworkParamSetLister
 	// nodeLister is able to list/get nodes and is populated by the shared informer passed to
 	// NewCloudCIDRAllocator.
 	nodeLister corelisters.NodeLister
@@ -84,7 +94,7 @@ type cloudCIDRAllocator struct {
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
 
 // NewCloudCIDRAllocator creates a new cloud CIDR allocator.
-func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nodeInformer informers.NodeInformer) (CIDRAllocator, error) {
+func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer alphanetworkinformer.GKENetworkParamSetInformer, nodeInformer informers.NodeInformer) (CIDRAllocator, error) {
 	if client == nil {
 		klog.Fatalf("kubeClient is nil when starting NodeController")
 	}
@@ -100,10 +110,11 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		err := fmt.Errorf("cloudCIDRAllocator does not support %v provider", cloud.ProviderName())
 		return nil, err
 	}
-
 	ca := &cloudCIDRAllocator{
 		client:            client,
 		cloud:             gceCloud,
+		networksLister:    nwInformer.Lister(),
+		gnpLister:         gnpInformer.Lister(),
 		nodeLister:        nodeInformer.Lister(),
 		nodesSynced:       nodeInformer.Informer().HasSynced,
 		nodeUpdateChannel: make(chan string, cidrUpdateQueueSize),
@@ -255,11 +266,34 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 	if node.Spec.ProviderID == "" {
 		return fmt.Errorf("node %s doesn't have providerID", nodeName)
 	}
-
-	cidrStrings, err := ca.cloud.AliasRangesByProviderID(node.Spec.ProviderID)
+	instance, err := ca.cloud.InstanceByProviderID(node.Spec.ProviderID)
 	if err != nil {
 		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
-		return fmt.Errorf("failed to get cidr(s) from provider: %v", err)
+		return fmt.Errorf("failed to get instance from provider: %v", err)
+	}
+
+	cidrStrings := make([]string, 0)
+	var northInterfaces networkv1.NorthInterfacesAnnotation
+	var additionalNodeNetworks networkv1.MultiNetworkAnnotation
+
+	if len(instance.NetworkInterfaces) == 0 || (len(instance.NetworkInterfaces) == 1 && len(instance.NetworkInterfaces[0].AliasIpRanges) == 0) {
+		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
+		return fmt.Errorf("failed to allocate cidr: Node %v has no ranges from which CIDRs can be allocated", node.Name)
+	}
+	// nodes in clusters WITHOUT multi-networking are expected to have only 1 network-interface with 1 alias IP range.
+	if len(instance.NetworkInterfaces) == 1 && len(instance.NetworkInterfaces[0].AliasIpRanges) == 1 {
+		cidrStrings = append(cidrStrings, instance.NetworkInterfaces[0].AliasIpRanges[0].IpCidrRange)
+		ipv6Addr := ca.cloud.GetIPV6Address(instance.NetworkInterfaces[0])
+		if ipv6Addr != nil {
+			cidrStrings = append(cidrStrings, ipv6Addr.String())
+		}
+	} else {
+		// multi-networking enabled clusters
+		cidrStrings, northInterfaces, additionalNodeNetworks, err = ca.PerformMultiNetworkCIDRAllocation(node, instance.NetworkInterfaces)
+		if err != nil {
+			nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
+			return fmt.Errorf("failed to get cidr(s) from provider: %v", err)
+		}
 	}
 	if len(cidrStrings) == 0 {
 		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
@@ -302,6 +336,9 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		return err
 	}
 
+	if northInterfaces != nil || additionalNodeNetworks != nil {
+		// TODO(shouri007): perform IP capacity and annotation updates
+	}
 	err = utilnode.SetNodeCondition(ca.client, types.NodeName(node.Name), v1.NodeCondition{
 		Type:               v1.NodeNetworkUnavailable,
 		Status:             v1.ConditionFalse,

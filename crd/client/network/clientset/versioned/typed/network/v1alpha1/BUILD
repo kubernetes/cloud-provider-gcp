@@ -16,11 +16,11 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1alpha1",
     visibility = ["//visibility:public"],
     deps = [
-        "//crd/apis/network/v1alpha1",
-        "//crd/client/network/clientset/versioned/scheme",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/types",
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/rest",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/scheme",
     ],
 )

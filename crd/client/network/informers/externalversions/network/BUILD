@@ -6,8 +6,8 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network",
     visibility = ["//visibility:public"],
     deps = [
-        "//crd/client/network/informers/externalversions/internalinterfaces",
-        "//crd/client/network/informers/externalversions/network/v1:network",
-        "//crd/client/network/informers/externalversions/network/v1alpha1",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/internalinterfaces",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1:network",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1",
     ],
 )

@@ -10,9 +10,9 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1",
     visibility = ["//visibility:public"],
     deps = [
-        "//crd/apis/network/v1",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/labels",
         "//vendor/k8s.io/client-go/tools/cache",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1:network",
     ],
 )
