@@ -120,7 +120,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 			if err != nil {
 				return err
 			}
-			go serviceAccountVerifier.Run(20, ctx.Done())
+			go serviceAccountVerifier.Run(3, ctx.Done())
 			return nil
 		}
 		ll[nodeSyncerControlLoopName] = func(ctx context.Context, controllerCtx *controllerContext) error {
@@ -134,7 +134,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 			if err != nil {
 				return err
 			}
-			go nodeSyncer.Run(20, ctx.Done())
+			go nodeSyncer.Run(30, ctx.Done())
 			return nil
 		}
 	}
