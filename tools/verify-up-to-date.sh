@@ -29,5 +29,6 @@ get_version_vars
 
 if [[ "${KUBE_GIT_TREE_STATE}" != "clean" ]]; then
     echo "Repository is in state ${KUBE_GIT_TREE_STATE}!"
+    git status
     exit 1
 fi
