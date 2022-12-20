@@ -14,16 +14,6 @@ steps:
     args:
       - run
       - //cmd/cloud-controller-manager:publish
-  # TODO: use a better way to publish the same image
-  # using two tags: current SHA and :latest
-  - name: 'gcr.io/cloud-builders/bazel'
-    env:
-    - IMAGE_REGISTRY=gcr.io
-    - IMAGE_REPO=k8s-staging-cloud-provider-gcp
-    - IMAGE_TAG=latest
-    args:
-      - run
-      - //cmd/cloud-controller-manager:publish
 
 substitutions:
   _GIT_TAG: '12345'
