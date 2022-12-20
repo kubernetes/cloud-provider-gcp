@@ -20,9 +20,12 @@ limitations under the License.
 package ipam
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +34,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -337,7 +341,9 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 	}
 
 	if northInterfaces != nil || additionalNodeNetworks != nil {
-		// TODO(shouri007): perform IP capacity and annotation updates
+		if err := ca.updateMultiNetworkAnnotations(node, northInterfaces, additionalNodeNetworks); err != nil {
+			return err
+		}
 	}
 	err = utilnode.SetNodeCondition(ca.client, types.NodeName(node.Name), v1.NodeCondition{
 		Type:               v1.NodeNetworkUnavailable,
@@ -394,4 +400,78 @@ func (ca *cloudCIDRAllocator) ReleaseCIDR(node *v1.Node) error {
 	klog.V(2).Infof("Node %v PodCIDR (%v) will be released by external cloud provider (not managed by controller)",
 		node.Name, node.Spec.PodCIDR)
 	return nil
+}
+
+func (ca *cloudCIDRAllocator) updateMultiNetworkAnnotations(node *v1.Node, northInterfaces networkv1.NorthInterfacesAnnotation, additionalNodeNetworks networkv1.MultiNetworkAnnotation) error {
+	northInterfaceAnn, err := networkv1.MarshalNorthInterfacesAnnotation(northInterfaces)
+	if err != nil {
+		klog.ErrorS(err, "Failed to marshal the north interfaces annotation for multi-networking", "nodeName", node.Name)
+		return err
+	}
+	additionalNodeNwAnn, err := networkv1.MarshalAnnotation(additionalNodeNetworks)
+	if err != nil {
+		klog.ErrorS(err, "Failed to marshal the additional node networks annotation for multi-networking", "nodeName", node.Name)
+		return err
+	}
+	if node.Annotations == nil {
+		node.Annotations = make(map[string]string)
+	}
+	node.Annotations[networkv1.NorthInterfacesAnnotationKey] = northInterfaceAnn
+	node.Annotations[networkv1.MultiNetworkAnnotationKey] = additionalNodeNwAnn
+	node.Status.Capacity, err = allocateIPCapacity(node, additionalNodeNetworks)
+	if err != nil {
+		return err
+	}
+	// Prepare patch bytes for the node update.
+	patchBytes, err := json.Marshal([]interface{}{
+		map[string]interface{}{
+			"op":    "replace",
+			"path":  "/metadata/annotations",
+			"value": node.Annotations,
+		},
+		map[string]interface{}{
+			"op":    "add",
+			"path":  "/status/capacity",
+			"value": node.Status.Capacity,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to build patch bytes for multi-networking: %v", err)
+	}
+	// Since dynamic network addition/deletion is a use case to be supported, we aspire to build these annotations and IP capacities every time from scratch.
+	// Hence we are using a JSON patch merge strategy instead of strategic merge strategy on the node during update.
+	if _, err = ca.client.CoreV1().Nodes().Patch(context.TODO(), node.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{}, "status"); err != nil {
+		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRAssignmentFailed")
+		klog.ErrorS(err, "Failed to update the node annotations and capacity for multi-networking", "nodeName", node.Name)
+		return err
+	}
+	return nil
+}
+
+// allocateIPCapacity updates the extended IP resource capacity for every non-default network on the node.
+func allocateIPCapacity(node *v1.Node, nodeNetworks networkv1.MultiNetworkAnnotation) (v1.ResourceList, error) {
+	resourceList := node.Status.Capacity
+	if resourceList == nil {
+		resourceList = make(v1.ResourceList)
+	}
+	// Rebuild the IP capacity for all the networks on the node by deleting the existing IP capacities first.
+	for name := range resourceList {
+		if strings.HasPrefix(name.String(), networkv1.NetworkResourceKeyPrefix) {
+			delete(resourceList, name)
+		}
+	}
+	for _, nw := range nodeNetworks {
+		_, ipNet, err := net.ParseCIDR(nw.Cidrs[0])
+		if err != nil {
+			return nil, err
+		}
+		var ipCount int64 = 1
+		size := netutils.RangeSize(ipNet)
+		if size > 1 {
+			// The number of IPs supported are halved and returned for overprovisioning purposes.
+			ipCount = size >> 1
+		}
+		resourceList[v1.ResourceName(networkv1.NetworkResourceKeyPrefix+nw.Name+".IP")] = *resource.NewQuantity(int64(ipCount), resource.DecimalSI)
+	}
+	return resourceList, nil
 }
