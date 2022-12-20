@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+
+# Copyright 2022 The Kubernetes Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -e
+set -x
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd ${REPO_ROOT}
+cd ..
+WORKSPACE=$(pwd)
+
+# Create bindir
+BINDIR=${WORKSPACE}/bin
+export PATH=${BINDIR}:${PATH}
+mkdir -p "${BINDIR}"
+
+# Build kOps & kubetest-2 kOps support
+pushd ${WORKSPACE}/kops
+GOBIN=${BINDIR} go install k8s.io/kops/cmd/kops
+GOBIN=${BINDIR} make test-e2e-install
+popd
+
+if [[ -z "${K8S_VERSION:-}" ]]; then
+  K8S_VERSION="$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)"
+fi
+
+CLOUD_PROVIDER="gce"
+echo "CLOUD_PROVIDER=${CLOUD_PROVIDER}"
+
+if [[ -z "${CLUSTER_NAME:-}" ]]; then
+  SCRIPT_NAME=$(basename $0 .sh)
+  CLUSTER_NAME="${SCRIPT_NAME}.k8s.local"
+fi
+echo "CLUSTER_NAME=${CLUSTER_NAME}"
+
+if [[ -z "${WORKDIR:-}" ]]; then
+  WORKDIR="${WORKSPACE}/clusters/${CLUSTER_NAME}"
+fi
+mkdir -p "${WORKDIR}"
+
+if [[ -z "${GCP_PROJECT}" ]]; then
+  GCP_PROJECT=$(gcloud config get project)
+fi
+echo "GCP_PROJECT=${GCP_PROJECT}"
+
+if [[ -z "${KOPS_STATE_STORE}" ]]; then
+  KOPS_STATE_STORE="gs://kops-state-${GCP_PROJECT}"
+fi
+echo "KOPS_STATE_STORE=${KOPS_STATE_STORE}"
+export KOPS_STATE_STORE
+
+if [[ -z "${IMAGE_REPO}" ]]; then
+  IMAGE_REPO="gcr.io/${GCP_PROJECT}"
+fi
+echo "IMAGE_REPO=${IMAGE_REPO}"
+
+cd ${REPO_ROOT}
+if [[ -z "${IMAGE_TAG}" ]]; then
+  IMAGE_TAG=$(git rev-parse --short HEAD)-$(date +%Y%m%dT%H%M%S)
+fi
+echo "IMAGE_TAG=${IMAGE_REPO}"
+
+# Build and push cloud-controller-manager
+cd ${REPO_ROOT}
+export KO_DOCKER_REPO="${IMAGE_REPO}"
+ko build --tags ${IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
+
+# TODO: Only if running in a test project?
+gsutil iam ch allAuthenticatedUsers:objectViewer gs://artifacts.${GCP_PROJECT}.appspot.com
+
+if [[ -z "${ADMIN_ACCESS}" ]]; then
+  ADMIN_ACCESS="0.0.0.0/0" # Or use your IPv4 with /32
+fi
+echo "ADMIN_ACCESS=${ADMIN_ACCESS}"
+
+create_args="--networking gce"
+if [[ -n "${ZONES:-}" ]]; then
+    create_args="${create_args} --zones=${ZONES}"
+fi
+
+cp "${REPO_ROOT}/packages/manifests/direct/manifest.yaml" "${WORKDIR}/cloud-provider-gcp.yaml"
+sed -i -e "s@k8scloudprovidergcp/cloud-controller-manager:latest@${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}@g" "${WORKDIR}/cloud-provider-gcp.yaml"
+create_args="${create_args} --add=${WORKDIR}/cloud-provider-gcp.yaml"
+
+
+# Enable cluster addons, this enables us to replace the built-in manifest
+KOPS_FEATURE_FLAGS="ClusterAddons,${KOPS_FEATURE_FLAGS}"
+echo "KOPS_FEATURE_FLAGS=${KOPS_FEATURE_FLAGS}"
+
+# Note that these arguments for kubetest2 and kOps, not (for example) the arguments passed to the cloud-provider-gcp
+KUBETEST2_ARGS="kops --kops-binary-path=${BINDIR}/kops"
+KUBETEST2_ARGS="${KUBETEST2_ARGS} -v=2 --cloud-provider=${CLOUD_PROVIDER}"
+KUBETEST2_ARGS="${KUBETEST2_ARGS} --cluster-name=${CLUSTER_NAME:-} --kops-root=${REPO_ROOT}"
+KUBETEST2_ARGS="${KUBETEST2_ARGS} --admin-access=${ADMIN_ACCESS:-} --env=KOPS_FEATURE_FLAGS=${KOPS_FEATURE_FLAGS}"
+
+if [[ -n "${GCP_PROJECT:-}" ]]; then
+  KUBETEST2_ARGS="${KUBETEST2_ARGS} --gcp-project=${GCP_PROJECT}"
+fi
+
+function delete-cluster {
+    # shellcheck disable=SC2153
+  if [[ "${DELETE_CLUSTER:-}" == "true" ]]; then
+      kubetest2 ${KUBETEST2_ARGS} --down || echo "kubetest2 down failed"
+  fi
+}
+trap delete-cluster EXIT
+
+# The caller can set DELETE_CLUSTER=false to stop us deleting the cluster
+if [[ -z "${DELETE_CLUSTER:-}" ]]; then
+  DELETE_CLUSTER="true"
+fi
+
+kubetest2 ${KUBETEST2_ARGS} \
+  --up \
+   \
+  --kubernetes-version="${K8S_VERSION}" \
+  --create-args="${create_args}" \
+  --control-plane-size="${KOPS_CONTROL_PLANE_SIZE:-1}" \
+  --template-path="${KOPS_TEMPLATE:-}"
+
+
+kubetest2 ${KUBETEST2_ARGS} \
+  --test=kops \
+  -- \
+  --test-package-version="${K8S_VERSION}" \
+  --parallel=25 \
+  --skip-regex="\[Serial\]" \
+  --focus-regex="\[Conformance\]"
+
+if [[ "${DELETE_CLUSTER:-}" == "true" ]]; then
+  kubetest2 ${KUBETEST2_ARGS} --down
+  DELETE_CLUSTER=false # Don't delete again in trap
+fi
