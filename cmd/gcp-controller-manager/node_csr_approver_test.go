@@ -774,6 +774,140 @@ func TestValidators(t *testing.T) {
 		}
 		testValidator(t, "error", errorCases, validateTPMAttestation, false, true)
 	})
+
+	t.Run("validateTPMAttestation with API ListReferrers", func(t *testing.T) {
+		validKey, err := rsa.GenerateKey(insecureRand, 2048)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gceClient, gceSrv := fakeGCPAPI(t, &validKey.PublicKey)
+		defer gceSrv.Close()
+		gkeClient, gkeSrv := fakeGKEAPI(t)
+		defer gkeSrv.Close()
+
+		goodCase := func(b *csrBuilder, c *controllerContext) {
+			c.csrApproverVerifyClusterMembership = true
+			c.csrApproverUseGCEInstanceListReferrers = true
+
+			cs, err := compute.New(gceClient)
+			if err != nil {
+				t.Fatalf("creating GCE API client: %v", err)
+			}
+			c.gcpCfg.Compute = cs
+			bcs, err := betacompute.New(gceClient)
+			if err != nil {
+				t.Fatalf("creating GCE Beta API client: %v", err)
+			}
+			c.gcpCfg.BetaCompute = bcs
+			ks, err := container.New(gkeClient)
+			if err != nil {
+				t.Fatalf("creating GKE API client: %v", err)
+			}
+			c.gcpCfg.Container = ks
+
+			c.gcpCfg.ClusterName = "c0"
+			c.gcpCfg.ProjectID = "p0"
+			c.gcpCfg.Location = "z0"
+			b.requestor = tpmKubeletUsername
+			b.cn = "system:node:i0"
+
+			nodeID := nodeidentity.Identity{Zone: "z0", ID: 1, Name: "i0", ProjectID: 2, ProjectName: "p0"}
+			b.extraPEM["VM IDENTITY"], err = json.Marshal(nodeID)
+			if err != nil {
+				t.Fatalf("marshaling nodeID: %v", err)
+			}
+
+			attestData, attestSig := makeAttestationDataAndSignature(t, b.key, validKey)
+			b.extraPEM["ATTESTATION DATA"] = attestData
+			b.extraPEM["ATTESTATION SIGNATURE"] = attestSig
+		}
+		goodCases := []func(*csrBuilder, *controllerContext){
+			goodCase,
+		}
+		testValidator(t, "good", goodCases, validateTPMAttestation, true, false)
+
+		badCases := []func(*csrBuilder, *controllerContext){
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// Invalid CN format.
+				b.cn = "awly"
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// CN valid but doesn't match name in ATTESTATION CERTIFICATE.
+				b.cn = "system:node:i2"
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// ProjectID mismatch in nodeidentity
+				c.gcpCfg.ProjectID = "p1"
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// Invalid attestation signature
+				b.extraPEM["ATTESTATION SIGNATURE"] = []byte("invalid")
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// Attestation signature using wrong key
+				key, err := rsa.GenerateKey(insecureRand, 2048)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, attestSig := makeAttestationDataAndSignature(t, b.key, key)
+				b.extraPEM["ATTESTATION SIGNATURE"] = attestSig
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// Invalid attestation data
+				b.extraPEM["ATTESTATION DATA"] = []byte("invalid")
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// Attestation data for wrong key
+				key, err := ecdsa.GenerateKey(elliptic.P224(), insecureRand)
+				if err != nil {
+					t.Fatal(err)
+				}
+				attestData, _ := makeAttestationDataAndSignature(t, key, validKey)
+				b.extraPEM["ATTESTATION DATA"] = attestData
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// VM doesn't belong to cluster NodePool.
+				c.gcpCfg.ClusterName = "c1"
+			},
+		}
+		testValidator(t, "bad", badCases, validateTPMAttestation, false, false)
+
+		errorCases := []func(*csrBuilder, *controllerContext){
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// Invalid VM identity
+				b.extraPEM["VM IDENTITY"] = []byte("invalid")
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// VM from nodeidentity doesn't exist
+				nodeID := nodeidentity.Identity{Zone: "z0", ID: 1, Name: "i9", ProjectID: 2, ProjectName: "p0"}
+				b.extraPEM["VM IDENTITY"], err = json.Marshal(nodeID)
+				if err != nil {
+					t.Fatalf("marshaling nodeID: %v", err)
+				}
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// Cluster fetch fails due to cluster name.
+				c.gcpCfg.ClusterName = "unknown"
+			},
+			func(b *csrBuilder, c *controllerContext) {
+				goodCase(b, c)
+				// Cluster fetch fails due to cluster location.
+				c.gcpCfg.Location = "unknown"
+			},
+		}
+		testValidator(t, "error", errorCases, validateTPMAttestation, false, true)
+	})
 }
 
 func testRecognizer(t *testing.T, desc string, cases []func(b *csrBuilder, c *controllerContext), recognize recognizeFunc, want bool) {
@@ -996,6 +1130,14 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 								ExternalIpv6: "2600:1900:1:1:0:5::",
 							},
 						},
+					},
+				},
+			})
+		case "/compute/v1/projects/p0/zones/z0/instances/i0/referrers":
+			json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+				Items: []*compute.Reference{
+					{
+						Referrer: "https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroupManagers/ig0",
 					},
 				},
 			})
