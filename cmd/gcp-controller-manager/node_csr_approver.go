@@ -692,49 +692,63 @@ func validateInstanceGroupHint(instanceGroupUrls []string, instanceGroupHint str
 	return resolved, nil
 }
 
+func checkInstanceReferrers(ctx *controllerContext, instance *compute.Instance, clusterInstanceGroupUrls []string) (bool, error) {
+	// instanceZone looks like
+	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
+	// Extract the bare zone name just "us-central1-c".
+	instanceZoneName := path.Base(instance.Zone)
+	clusterInstanceGroupMap := map[string]bool{}
+	for _, ig := range clusterInstanceGroupUrls {
+		// GKE's cluster.NodePools[].instanceGroupUrls are of the form:
+		// https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/instanceGroupManagers/instance-group-1.
+		// Where as instance referrers are of the form:
+		// https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/instanceGroups/instance-group-1.
+		// With the string replace below we convert them to the same form.
+		clusterInstanceGroupMap[strings.Replace(ig, "/instanceGroupManagers/", "/instanceGroups/", 1)] = true
+	}
+
+	filter := func(referres *compute.InstanceListReferrers) error {
+		for _, referrer := range referres.Items {
+			if clusterInstanceGroupMap[referrer.Referrer] {
+				return &foundError{}
+			}
+		}
+		return nil
+	}
+
+	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.ListReferrers")
+	err := compute.NewInstancesService(ctx.gcpCfg.Compute).ListReferrers(ctx.gcpCfg.ProjectID, instanceZoneName, instance.Name).Pages(context.TODO(), filter)
+	if err != nil {
+		switch err.(type) {
+		case *foundError:
+			recordMetric(csrmetrics.OutboundRPCStatusOK)
+			return true, nil
+		default:
+			recordMetric(csrmetrics.OutboundRPCStatusError)
+			return false, err
+		}
+	}
+
+	recordMetric(csrmetrics.OutboundRPCStatusOK)
+	return false, nil
+}
+
 func clusterHasInstance(ctx *controllerContext, instance *compute.Instance, instanceGroupHint string) (bool, error) {
 	clusterInstanceGroupUrls, err := getClusterInstanceGroupUrls(ctx)
 	if err != nil {
 		return false, err
 	}
 
-	// instanceZone looks like
-	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
-	// Extract the bare zone name just "us-central1-c".
-	instanceZoneName := path.Base(instance.Zone)
-
 	if ctx.csrApproverUseGCEInstanceListReferrers {
-		clusterInstanceGroupUrlsMap := map[string]bool{}
-		for _, ig := range clusterInstanceGroupUrls {
-			clusterInstanceGroupUrlsMap[strings.ToLower(ig)] = true
-		}
-
-		filter := func(referres *compute.InstanceListReferrers) error {
-			for _, referrer := range referres.Items {
-				if clusterInstanceGroupUrlsMap[strings.ToLower(referrer.Referrer)] {
-					return &foundError{}
-				}
-			}
-			return nil
-		}
-
 		klog.V(3).Infof("using ListReferrers to verify cluster membership of instance: %q", instance.Name)
-		recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.ListReferrers")
-
-		err := compute.NewInstancesService(ctx.gcpCfg.Compute).ListReferrers(ctx.gcpCfg.ProjectID, instanceZoneName, instance.Name).Pages(context.TODO(), filter)
+		ok, err := checkInstanceReferrers(ctx, instance, clusterInstanceGroupUrls)
 		if err != nil {
-			switch err.(type) {
-			case *foundError:
-				recordMetric(csrmetrics.OutboundRPCStatusOK)
-				return true, nil
-			default:
-				recordMetric(csrmetrics.OutboundRPCStatusError)
-				return false, err
-			}
+			return false, err
 		}
-
-		recordMetric(csrmetrics.OutboundRPCStatusOK)
-		klog.Warningf("could not determine cluster membership of instance %q using compute.InstancesService.ListReferrers; falling back to checking all instance groups")
+		if ok {
+			return true, nil
+		}
+		klog.Warningf("could not determine cluster membership of instance %q using compute.InstancesService.ListReferrers; falling back to checking all instance groups", instance.Name)
 	}
 
 	validatedInstanceGroupHint, err := validateInstanceGroupHint(clusterInstanceGroupUrls, instanceGroupHint)
@@ -745,6 +759,11 @@ func clusterHasInstance(ctx *controllerContext, instance *compute.Instance, inst
 	}
 
 	klog.V(3).Infof("clusterInstanceGroupUrls %+v", clusterInstanceGroupUrls)
+
+	// instanceZone looks like
+	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
+	// Extract the bare zone name just "us-central1-c".
+	instanceZoneName := path.Base(instance.Zone)
 
 	var errors []error
 

@@ -1137,7 +1137,7 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 			json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
 				Items: []*compute.Reference{
 					{
-						Referrer: "https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroupManagers/ig0",
+						Referrer: "https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroups/ig0",
 					},
 				},
 			})
@@ -1459,6 +1459,100 @@ func TestValidateInstanceGroupHint(t *testing.T) {
 
 			if gotResolved != tc.wantResolved {
 				t.Fatalf("unexpected resolved url, got: %v, want: %v", gotResolved, tc.wantResolved)
+			}
+		})
+	}
+}
+
+func TestCheckInstanceReferrers(t *testing.T) {
+	for _, tc := range []struct {
+		desc                     string
+		clusterInstanceGroupUrls []string
+		instance                 *compute.Instance
+		gceClientHandler         func(rw http.ResponseWriter, req *http.Request)
+		projectID                string
+		wantOK                   bool
+		wantErr                  bool
+	}{
+		{
+			desc: "match found",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func(rw http.ResponseWriter, req *http.Request) {
+				json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+					Items: []*compute.Reference{
+						{
+							Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+						},
+					},
+				})
+			},
+			wantOK: true,
+		},
+		{
+			desc: "match not found",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func(rw http.ResponseWriter, req *http.Request) {
+				json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+					Items: []*compute.Reference{
+						{
+							Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig2",
+						},
+					},
+				})
+			},
+			wantOK: false,
+		},
+		{
+			desc: "error",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func(rw http.ResponseWriter, req *http.Request) {
+				http.Error(rw, "not found", http.StatusNotFound)
+			},
+			wantErr: true,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(tc.gceClientHandler))
+			defer srv.Close()
+			cl := srv.Client()
+			cl.Transport = fakeTransport{srv.URL}
+			cs, err := compute.New(cl)
+			if err != nil {
+				t.Fatalf("failed to created compute service")
+			}
+			ctx := &controllerContext{
+				gcpCfg: gcpConfig{
+					ProjectID: tc.projectID,
+					Compute:   cs,
+				},
+			}
+			gotOK, err := checkInstanceReferrers(ctx, tc.instance, tc.clusterInstanceGroupUrls)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("got error: %v; want error: %v", err, tc.wantErr)
+			}
+			if gotOK != tc.wantOK {
+				t.Errorf("got: %v; want: %v", gotOK, tc.wantOK)
 			}
 		})
 	}
