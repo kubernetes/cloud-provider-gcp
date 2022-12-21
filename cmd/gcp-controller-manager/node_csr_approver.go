@@ -669,14 +669,14 @@ func validateInstanceGroupHint(instanceGroupUrls []string, instanceGroupHint str
 		return "", fmt.Errorf("validateInstanceGroupHint: hint is empty")
 	}
 
-	location, igName, err := parseInstanceGroupURL(instanceGroupHint)
+	igName, location, err := parseInstanceGroupURL(instanceGroupHint)
 	if err != nil {
 		return "", err
 	}
 
 	var resolved string
 	for _, g := range instanceGroupUrls {
-		gl, gn, err := parseInstanceGroupURL(g)
+		gn, gl, err := parseInstanceGroupURL(g)
 		if err != nil {
 			return "", err
 		}
