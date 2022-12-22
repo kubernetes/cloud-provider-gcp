@@ -7,6 +7,7 @@ go_library(
     importpath = "k8s.io/apiserver/plugin/pkg/audit/webhook",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/util/net",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
@@ -15,6 +16,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/audit",
         "//vendor/k8s.io/apiserver/pkg/util/webhook",
         "//vendor/k8s.io/client-go/rest",
-        "//vendor/k8s.io/utils/trace",
+        "//vendor/k8s.io/component-base/tracing",
     ],
 )

@@ -11,7 +11,9 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/audit/policy",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apiserver/pkg/apis/audit",
         "//vendor/k8s.io/apiserver/pkg/apis/audit/v1:audit",

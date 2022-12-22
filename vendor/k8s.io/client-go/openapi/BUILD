@@ -10,8 +10,6 @@ go_library(
     importpath = "k8s.io/client-go/openapi",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/google/gnostic/openapiv3",
-        "//vendor/google.golang.org/protobuf/proto",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/kube-openapi/pkg/handler3",
     ],

@@ -9,9 +9,10 @@ go_library(
     deps = [
         "//vendor/k8s.io/api/coordination/v1:coordination",
         "//vendor/k8s.io/api/core/v1:core",
-        "//vendor/k8s.io/api/flowcontrol/v1beta2",
+        "//vendor/k8s.io/api/flowcontrol/v1beta3",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apiserver/pkg/authentication/serviceaccount",
         "//vendor/k8s.io/apiserver/pkg/authentication/user",
+        "//vendor/k8s.io/utils/pointer",
     ],
 )

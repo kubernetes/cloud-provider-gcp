@@ -9,6 +9,8 @@ go_library(
         "int.go",
         "int32.go",
         "int64.go",
+        "ordered.go",
+        "set.go",
         "string.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apimachinery/pkg/util/sets",

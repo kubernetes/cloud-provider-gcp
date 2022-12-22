@@ -18,6 +18,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/apis/audit",
         "//vendor/k8s.io/apiserver/pkg/audit",
         "//vendor/k8s.io/apiserver/pkg/authentication/authenticator",
+        "//vendor/k8s.io/apiserver/pkg/warning",
         "//vendor/k8s.io/component-base/metrics",
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/klog/v2:klog",

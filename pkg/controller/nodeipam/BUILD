@@ -23,7 +23,6 @@ go_library(
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1:network",
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1",
         "//vendor/k8s.io/component-base/metrics/prometheus/controllers",
-        "//vendor/k8s.io/component-base/metrics/prometheus/ratelimiter",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )

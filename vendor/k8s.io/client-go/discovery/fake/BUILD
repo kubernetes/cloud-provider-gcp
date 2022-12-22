@@ -12,6 +12,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/version",
+        "//vendor/k8s.io/client-go/discovery",
         "//vendor/k8s.io/client-go/openapi",
         "//vendor/k8s.io/client-go/pkg/version",
         "//vendor/k8s.io/client-go/rest",

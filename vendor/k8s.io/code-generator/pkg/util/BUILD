@@ -9,5 +9,4 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/code-generator/pkg/util",
     importpath = "k8s.io/code-generator/pkg/util",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/golang.org/x/tools/go/packages"],
 )

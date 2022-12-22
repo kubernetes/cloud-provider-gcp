@@ -7,8 +7,8 @@ go_library(
     importpath = "golang.org/x/crypto/nacl/secretbox",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/golang.org/x/crypto/internal/alias",
         "//vendor/golang.org/x/crypto/internal/poly1305",
-        "//vendor/golang.org/x/crypto/internal/subtle",
         "//vendor/golang.org/x/crypto/salsa20/salsa",
     ],
 )

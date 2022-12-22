@@ -12,8 +12,7 @@ go_library(
     importpath = "go.opentelemetry.io/otel/propagation",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/go.opentelemetry.io/otel/attribute",
-        "//vendor/go.opentelemetry.io/otel/internal/baggage",
+        "//vendor/go.opentelemetry.io/otel/baggage",
         "//vendor/go.opentelemetry.io/otel/trace",
     ],
 )

@@ -13,6 +13,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/evanphx/json-patch",
+        "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/k8s.io/api/admission/v1:admission",
         "//vendor/k8s.io/api/admissionregistration/v1:admissionregistration",
         "//vendor/k8s.io/apimachinery/pkg/api/equality",
@@ -34,7 +35,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/apiserver/pkg/util/webhook",
         "//vendor/k8s.io/apiserver/pkg/warning",
+        "//vendor/k8s.io/component-base/tracing",
         "//vendor/k8s.io/klog/v2:klog",
-        "//vendor/k8s.io/utils/trace",
     ],
 )

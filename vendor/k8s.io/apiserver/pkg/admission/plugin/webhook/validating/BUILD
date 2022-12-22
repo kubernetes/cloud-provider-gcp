@@ -11,6 +11,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/admission/plugin/webhook/validating",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/k8s.io/api/admissionregistration/v1:admissionregistration",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
@@ -25,7 +26,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/apiserver/pkg/util/webhook",
         "//vendor/k8s.io/apiserver/pkg/warning",
+        "//vendor/k8s.io/component-base/tracing",
         "//vendor/k8s.io/klog/v2:klog",
-        "//vendor/k8s.io/utils/trace",
     ],
 )

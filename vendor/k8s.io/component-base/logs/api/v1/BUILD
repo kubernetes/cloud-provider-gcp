@@ -21,6 +21,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
         "//vendor/k8s.io/component-base/cli/flag",
         "//vendor/k8s.io/component-base/featuregate",
+        "//vendor/k8s.io/component-base/logs/klogflags",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )

@@ -9,7 +9,6 @@ go_library(
     deps = [
         "//vendor/github.com/spf13/pflag",
         "//vendor/k8s.io/code-generator/cmd/deepcopy-gen/args",
-        "//vendor/k8s.io/code-generator/pkg/util",
         "//vendor/k8s.io/gengo/examples/deepcopy-gen/generators",
         "//vendor/k8s.io/klog/v2:klog",
     ],

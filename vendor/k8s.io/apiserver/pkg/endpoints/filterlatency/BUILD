@@ -7,6 +7,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/endpoints/filterlatency",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/go.opentelemetry.io/otel/trace",
         "//vendor/k8s.io/apiserver/pkg/endpoints/metrics",
         "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/apiserver/pkg/server/httplog",

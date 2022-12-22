@@ -31,7 +31,6 @@ go_library(
         "//vendor/k8s.io/component-base/metrics",
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/component-base/metrics/prometheus/controllers",
-        "//vendor/k8s.io/component-base/metrics/prometheus/ratelimiter",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )

@@ -9,6 +9,7 @@ go_library(
     deps = [
         "//vendor/github.com/spf13/pflag",
         "//vendor/k8s.io/component-base/logs/api/v1:api",
+        "//vendor/k8s.io/component-base/logs/klogflags",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )

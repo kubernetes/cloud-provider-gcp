@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "metrics",
     srcs = [
+        "buckets.go",
         "collector.go",
         "counter.go",
         "desc.go",

@@ -4,6 +4,7 @@ go_library(
     name = "fastwalk",
     srcs = [
         "fastwalk.go",
+        "fastwalk_darwin.go",
         "fastwalk_dirent_fileno.go",
         "fastwalk_dirent_ino.go",
         "fastwalk_dirent_namlen_bsd.go",
@@ -11,6 +12,7 @@ go_library(
         "fastwalk_portable.go",
         "fastwalk_unix.go",
     ],
+    cgo = True,
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/internal/fastwalk",
     importpath = "golang.org/x/tools/internal/fastwalk",
     visibility = ["//vendor/golang.org/x/tools:__subpackages__"],

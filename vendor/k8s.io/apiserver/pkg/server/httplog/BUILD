@@ -10,6 +10,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/server/httplog",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/apiserver/pkg/audit",
         "//vendor/k8s.io/apiserver/pkg/endpoints/metrics",
         "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/apiserver/pkg/endpoints/responsewriter",

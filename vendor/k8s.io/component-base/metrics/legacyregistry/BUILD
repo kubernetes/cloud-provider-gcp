@@ -8,6 +8,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/prometheus/client_golang/prometheus",
+        "//vendor/github.com/prometheus/client_golang/prometheus/collectors",
         "//vendor/github.com/prometheus/client_golang/prometheus/promhttp",
         "//vendor/k8s.io/component-base/metrics",
     ],
