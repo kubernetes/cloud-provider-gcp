@@ -207,8 +207,8 @@ github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 ## explicit
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/client_golang v1.14.0 => github.com/prometheus/client_golang v1.12.1
-## explicit; go 1.13
+# github.com/prometheus/client_golang v1.14.0
+## explicit; go 1.17
 github.com/prometheus/client_golang/prometheus
 github.com/prometheus/client_golang/prometheus/collectors
 github.com/prometheus/client_golang/prometheus/internal
@@ -1191,7 +1191,7 @@ k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/
 k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1
 k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1alpha1
 # k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000 => ./providers
-## explicit; go 1.18
+## explicit; go 1.19
 k8s.io/cloud-provider-gcp/providers/gce
 k8s.io/cloud-provider-gcp/providers/gce/gcpcredential
 # k8s.io/code-generator v0.26.0 => k8s.io/code-generator v0.26.0
@@ -1407,7 +1407,6 @@ sigs.k8s.io/yaml
 # github.com/mrunalp/fileutils => github.com/mrunalp/fileutils v0.5.0
 # github.com/onsi/ginkgo => github.com/onsi/ginkgo v1.14.1
 # github.com/onsi/gomega v1.10.3 => github.com/onsi/gomega v1.10.3
-# github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.12.1
 # github.com/spf13/cobra => github.com/spf13/cobra v1.4.0
 # github.com/spf13/pflag => github.com/spf13/pflag v1.0.5
 # github.com/stretchr/testify => github.com/stretchr/testify v1.7.0

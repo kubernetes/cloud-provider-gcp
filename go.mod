@@ -1,6 +1,6 @@
 module k8s.io/cloud-provider-gcp
 
-go 1.18
+go 1.19
 
 require (
 	cloud.google.com/go v0.99.0
@@ -148,7 +148,6 @@ replace (
 	github.com/mrunalp/fileutils => github.com/mrunalp/fileutils v0.5.0
 	github.com/onsi/ginkgo => github.com/onsi/ginkgo v1.14.1 // indirect
 	github.com/onsi/gomega v1.10.3 => github.com/onsi/gomega v1.10.3 // indirect
-	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.12.1
 	github.com/spf13/cobra => github.com/spf13/cobra v1.4.0
 	github.com/spf13/pflag => github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
