@@ -12,6 +12,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/endpoints/handlers/responsewriters",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
@@ -28,6 +29,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/apiserver/pkg/util/flushwriter",
         "//vendor/k8s.io/apiserver/pkg/util/wsstream",
-        "//vendor/k8s.io/utils/trace",
+        "//vendor/k8s.io/component-base/tracing",
     ],
 )

@@ -9,6 +9,7 @@ go_library(
         "nonrecording.go",
         "noop.go",
         "trace.go",
+        "tracestate.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/go.opentelemetry.io/otel/trace",
     importpath = "go.opentelemetry.io/otel/trace",

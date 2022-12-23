@@ -11,6 +11,8 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/runtime/serializer",
         "//vendor/k8s.io/apimachinery/pkg/util/errors",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apiserver/pkg/apis/config",
         "//vendor/k8s.io/apiserver/pkg/apis/config/v1:config",
         "//vendor/k8s.io/apiserver/pkg/apis/config/validation",

@@ -26,7 +26,6 @@ go_library(
         "//vendor/k8s.io/client-go/util/retry",
         "//vendor/k8s.io/cloud-provider",
         "//vendor/k8s.io/component-base/metrics/prometheus/controllers",
-        "//vendor/k8s.io/component-base/metrics/prometheus/ratelimiter",
         "//vendor/k8s.io/component-helpers/node/util",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/net",

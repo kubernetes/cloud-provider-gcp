@@ -10,6 +10,7 @@ go_library(
     importpath = "github.com/prometheus/client_golang/prometheus/testutil",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/davecgh/go-spew/spew",
         "//vendor/github.com/prometheus/client_golang/prometheus",
         "//vendor/github.com/prometheus/client_golang/prometheus/internal",
         "//vendor/github.com/prometheus/client_golang/prometheus/testutil/promlint",

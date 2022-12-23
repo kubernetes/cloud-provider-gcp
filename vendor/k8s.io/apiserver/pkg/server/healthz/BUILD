@@ -14,6 +14,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apiserver/pkg/endpoints/metrics",
         "//vendor/k8s.io/apiserver/pkg/server/httplog",
+        "//vendor/k8s.io/component-base/metrics/prometheus/slis",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )

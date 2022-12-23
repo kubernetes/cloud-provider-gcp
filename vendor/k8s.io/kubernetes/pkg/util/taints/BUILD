@@ -8,7 +8,6 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/core/v1:core",
-        "//vendor/k8s.io/apimachinery/pkg/util/errors",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/util/validation",
         "//vendor/k8s.io/kubernetes/pkg/apis/core/helper",

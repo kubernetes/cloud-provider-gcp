@@ -10,6 +10,7 @@ go_library(
         "//vendor/k8s.io/client-go/informers/flowcontrol/v1alpha1",
         "//vendor/k8s.io/client-go/informers/flowcontrol/v1beta1",
         "//vendor/k8s.io/client-go/informers/flowcontrol/v1beta2",
+        "//vendor/k8s.io/client-go/informers/flowcontrol/v1beta3",
         "//vendor/k8s.io/client-go/informers/internalinterfaces",
     ],
 )

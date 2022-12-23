@@ -10,6 +10,8 @@ go_library(
         "//vendor/k8s.io/api/admissionregistration/v1:admissionregistration",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/labels",
+        "//vendor/k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/namespace",
+        "//vendor/k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/object",
         "//vendor/k8s.io/apiserver/pkg/util/webhook",
         "//vendor/k8s.io/client-go/rest",
     ],

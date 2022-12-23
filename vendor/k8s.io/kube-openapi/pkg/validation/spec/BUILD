@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "contact_info.go",
         "external_docs.go",
+        "fuzz.go",
         "gnostic.go",
         "header.go",
         "info.go",
@@ -29,5 +30,9 @@ go_library(
         "//vendor/github.com/go-openapi/jsonreference",
         "//vendor/github.com/go-openapi/swag",
         "//vendor/github.com/google/gnostic/openapiv2",
+        "//vendor/github.com/google/go-cmp/cmp",
+        "//vendor/github.com/google/gofuzz",
+        "//vendor/k8s.io/kube-openapi/pkg/internal",
+        "//vendor/k8s.io/kube-openapi/pkg/internal/third_party/go-json-experiment/json",
     ],
 )

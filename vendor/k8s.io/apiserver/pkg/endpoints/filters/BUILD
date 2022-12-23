@@ -4,7 +4,7 @@ go_library(
     name = "filters",
     srcs = [
         "audit.go",
-        "audit_annotations.go",
+        "audit_init.go",
         "authentication.go",
         "authn_audit.go",
         "authorization.go",
@@ -20,7 +20,6 @@ go_library(
         "traces.go",
         "warning.go",
         "webhook_duration.go",
-        "with_auditid.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/endpoints/filters",
     importpath = "k8s.io/apiserver/pkg/endpoints/filters",

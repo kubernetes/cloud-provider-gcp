@@ -9,8 +9,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/openapi/cached",
     importpath = "k8s.io/client-go/openapi/cached",
     visibility = ["//visibility:public"],
-    deps = [
-        "//vendor/github.com/google/gnostic/openapiv3",
-        "//vendor/k8s.io/client-go/openapi",
-    ],
+    deps = ["//vendor/k8s.io/client-go/openapi"],
 )

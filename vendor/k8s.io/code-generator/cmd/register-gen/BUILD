@@ -10,7 +10,6 @@ go_library(
         "//vendor/github.com/spf13/pflag",
         "//vendor/k8s.io/code-generator/cmd/register-gen/args",
         "//vendor/k8s.io/code-generator/cmd/register-gen/generators",
-        "//vendor/k8s.io/code-generator/pkg/util",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )

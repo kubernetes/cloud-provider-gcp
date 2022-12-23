@@ -6,6 +6,7 @@ go_library(
         "dir_unix.go",
         "dir_windows.go",
         "doc.go",
+        "filereader.go",
         "fileutil.go",
         "lock.go",
         "lock_flock.go",

@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "condition.go",
         "deleteoptions.go",
+        "groupversionkind.go",
         "labelselector.go",
         "labelselectorrequirement.go",
         "listmeta.go",
@@ -12,6 +13,9 @@ go_library(
         "objectmeta.go",
         "ownerreference.go",
         "preconditions.go",
+        "status.go",
+        "statuscause.go",
+        "statusdetails.go",
         "typemeta.go",
         "unstructured.go",
     ],

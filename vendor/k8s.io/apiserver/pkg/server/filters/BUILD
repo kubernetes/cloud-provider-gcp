@@ -21,7 +21,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/core/v1:core",
-        "//vendor/k8s.io/api/flowcontrol/v1beta2",
+        "//vendor/k8s.io/api/flowcontrol/v1beta3",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/types",
@@ -29,6 +29,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apimachinery/pkg/util/waitgroup",
+        "//vendor/k8s.io/apiserver/pkg/audit",
         "//vendor/k8s.io/apiserver/pkg/authentication/user",
         "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/responsewriters",
         "//vendor/k8s.io/apiserver/pkg/endpoints/metrics",

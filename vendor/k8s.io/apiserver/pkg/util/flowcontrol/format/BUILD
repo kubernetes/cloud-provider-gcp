@@ -7,7 +7,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/util/flowcontrol/format",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/api/flowcontrol/v1beta2",
+        "//vendor/k8s.io/api/flowcontrol/v1beta3",
         "//vendor/k8s.io/apiserver/pkg/authentication/user",
         "//vendor/k8s.io/apiserver/pkg/endpoints/request",
     ],

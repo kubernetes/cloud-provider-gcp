@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "discovery",
     srcs = [
+        "aggregated_discovery.go",
         "discovery_client.go",
         "doc.go",
         "helper.go",
@@ -13,6 +14,7 @@ go_library(
     deps = [
         "//vendor/github.com/golang/protobuf/proto",
         "//vendor/github.com/google/gnostic/openapiv2",
+        "//vendor/k8s.io/api/apidiscovery/v2beta1",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",

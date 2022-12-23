@@ -10,6 +10,7 @@ go_library(
         "//vendor/github.com/google/gnostic/openapiv2",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apimachinery/pkg/version",
         "//vendor/k8s.io/client-go/discovery",

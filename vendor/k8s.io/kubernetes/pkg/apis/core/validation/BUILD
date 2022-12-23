@@ -3,7 +3,6 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "validation",
     srcs = [
-        "conditional_validation.go",
         "doc.go",
         "events.go",
         "validation.go",

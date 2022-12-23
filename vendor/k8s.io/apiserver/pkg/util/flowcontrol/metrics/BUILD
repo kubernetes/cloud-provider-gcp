@@ -6,6 +6,7 @@ go_library(
         "interface.go",
         "metrics.go",
         "timing_ratio_histogram.go",
+        "union_gauge.go",
         "vec_element_pair.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/util/flowcontrol/metrics",

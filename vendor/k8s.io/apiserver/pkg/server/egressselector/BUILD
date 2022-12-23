@@ -10,6 +10,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/server/egressselector",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/google.golang.org/grpc",
         "//vendor/google.golang.org/grpc/credentials/insecure",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
@@ -20,9 +21,9 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver/install",
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver/v1beta1",
         "//vendor/k8s.io/apiserver/pkg/server/egressselector/metrics",
+        "//vendor/k8s.io/component-base/tracing",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/path",
-        "//vendor/k8s.io/utils/trace",
         "//vendor/sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client",
         "//vendor/sigs.k8s.io/yaml",
     ],

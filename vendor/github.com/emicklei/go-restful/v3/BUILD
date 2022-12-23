@@ -17,6 +17,7 @@ go_library(
         "entity_accessors.go",
         "extensions.go",
         "filter.go",
+        "filter_adapter.go",
         "json.go",
         "jsr311.go",
         "logger.go",
