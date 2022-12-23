@@ -721,6 +721,7 @@ func checkInstanceReferrers(ctx *controllerContext, instance *compute.Instance, 
 	if err != nil {
 		switch err.(type) {
 		case *foundError:
+			klog.Infof("found matching instance group using compute.InstancesService.ListReferrers for instance %q", instance.Name)
 			recordMetric(csrmetrics.OutboundRPCStatusOK)
 			return true, nil
 		default:
@@ -740,7 +741,7 @@ func clusterHasInstance(ctx *controllerContext, instance *compute.Instance, inst
 	}
 
 	if ctx.csrApproverUseGCEInstanceListReferrers {
-		klog.V(3).Infof("using ListReferrers to verify cluster membership of instance: %q", instance.Name)
+		klog.Infof("using compute.InstancesService.ListReferrers to verify cluster membership of instance %q", instance.Name)
 		ok, err := checkInstanceReferrers(ctx, instance, clusterInstanceGroupUrls)
 		if err != nil {
 			return false, err
