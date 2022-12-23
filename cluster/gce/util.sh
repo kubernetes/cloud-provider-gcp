@@ -239,10 +239,8 @@ function copy-to-staging() {
 
   # (TODO/cloud-provider-gcp): Figure out how to remove this ugly hack (probably we will need to stop doing bazel) 
   # echo "${hash}" > "${tar}.sha512"
-  set +x
   gsutil -m -q -h "Cache-Control:private, max-age=0" cp "${tar}" "${tar}.sha512" "${staging_path}"
   gsutil -m acl ch -g all:R "${gs_url}" "${gs_url}.sha512" >/dev/null 2>&1 || true
-  set -x
   echo "+++ ${basename_tar} uploaded (sha512 = ${hash})"
 }
 
