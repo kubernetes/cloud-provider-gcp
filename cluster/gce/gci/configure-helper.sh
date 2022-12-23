@@ -3602,7 +3602,6 @@ function main() {
       log-wrap 'StartKonnectivityServer' start-konnectivity-server
     fi
     log-wrap 'StartKubeControllerManager' start-kube-controller-manager
-    # (TODO/cloud-provider-gcp): Figure out how to inject
     if [[ "${CLOUD_PROVIDER_FLAG:-gce}" == "external" ]]; then
       log-wrap 'StartCloudControllerManager' start-cloud-controller-manager
     fi

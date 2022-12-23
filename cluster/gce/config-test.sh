@@ -612,6 +612,8 @@ export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-external}"
 # --image-credential-provider-bin-dir=${path-to-auth-provider-binary}
 # Also, it is required that DisableKubeletCloudCredentialProviders and KubeletCredentialProviders
 # feature gates are set to true for kubelet to use external credential provider.
+# (TODO/cloud-provider-gcp): Need to add overwrite in kubetest2
+# ENABLE_AUTH_PROVIDER_GCP="${ENABLE_AUTH_PROVIDER_GCP:-false}"
 ENABLE_AUTH_PROVIDER_GCP="${ENABLE_AUTH_PROVIDER_GCP:-true}"
 
 # (TODO/cloud-provider-gcp): Need to figure out how we can add this FeatureGate as an env.
