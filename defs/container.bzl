@@ -21,7 +21,7 @@ def image(binary, visibility = ["//visibility:public"]):
         cmd = ["/" + name],
         files = [binary],
         stamp = "@io_bazel_rules_docker//stamp:always",
-        base = "@distroless//image",
+        base = "@go-runner//image",
         visibility = visibility,
     )
     image_registry = "{STABLE_IMAGE_REGISTRY}"

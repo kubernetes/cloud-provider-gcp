@@ -32,7 +32,7 @@
         "cpu": "{{cpurequest}}"
       }
     },
-    "command": ["/cloud-controller-manager"],
+    "command": ["/go-runner", "--log-file=/var/log/kube-apiserver.log", "--also-stdout=false", "--redirect-stderr=true","/cloud-controller-manager"]
     "args": [
       {{params}}
     ],

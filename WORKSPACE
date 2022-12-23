@@ -75,6 +75,16 @@ container_pull(
     tag = "b54513ef989c81d68cb27d9c7958697e2fedd2c4",
 )
 
+
+container_pull(
+    name = "go-runner",
+    registry = "registry.k8s.io",
+    repository = "build-image/go-runner",
+  # 'tag' is also supported, but digest is encouraged for reproducibility.
+    tag = "v2.3.1-go1.19.4-bullseye.0",
+    digest = "sha256:06f8a7671cc1a1d80196522e0f793dba9ee687d0cea49ae852a095af331133b4",
+)
+
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
 
 gazelle_dependencies()
