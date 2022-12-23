@@ -237,9 +237,12 @@ function copy-to-staging() {
     fi
   fi
 
-  echo "${hash}" > "${tar}.sha512"
+  # (TODO/cloud-provider-gcp): Figure out how to remove this ugly hack (probably we will need to stop doing bazel) 
+  # echo "${hash}" > "${tar}.sha512"
+  set +x
   gsutil -m -q -h "Cache-Control:private, max-age=0" cp "${tar}" "${tar}.sha512" "${staging_path}"
   gsutil -m acl ch -g all:R "${gs_url}" "${gs_url}.sha512" >/dev/null 2>&1 || true
+  set -x
   echo "+++ ${basename_tar} uploaded (sha512 = ${hash})"
 }
 
@@ -1153,6 +1156,8 @@ MULTIZONE: $(yaml-quote "${MULTIZONE:-}")
 MULTIMASTER: $(yaml-quote "${MULTIMASTER:-}")
 NON_MASQUERADE_CIDR: $(yaml-quote "${NON_MASQUERADE_CIDR:-}")
 ENABLE_DEFAULT_STORAGE_CLASS: $(yaml-quote "${ENABLE_DEFAULT_STORAGE_CLASS:-}")
+# (TODO/cloud-provider-gcp): Need to figure out how to inject this
+ENABLE_PDCSI_DRIVER: $(yaml-quote "${ENABLE_PDCSI_DRIVER:-}")
 ENABLE_VOLUME_SNAPSHOTS: $(yaml-quote "${ENABLE_VOLUME_SNAPSHOTS:-}")
 ENABLE_APISERVER_ADVANCED_AUDIT: $(yaml-quote "${ENABLE_APISERVER_ADVANCED_AUDIT:-}")
 ENABLE_APISERVER_DYNAMIC_AUDIT: $(yaml-quote "${ENABLE_APISERVER_DYNAMIC_AUDIT:-}")
