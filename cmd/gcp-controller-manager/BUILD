@@ -40,6 +40,7 @@ go_library(
     ],
     deps = [
         "//cmd/gcp-controller-manager/healthz",
+        "//pkg/clientauthplugin/gcp",
         "//pkg/csrmetrics",
         "//pkg/nodeidentity",
         "//pkg/tpmattest",
@@ -79,7 +80,6 @@ go_library(
         "//vendor/k8s.io/client-go/kubernetes",
         "//vendor/k8s.io/client-go/kubernetes/typed/core/v1:core",
         "//vendor/k8s.io/client-go/listers/core/v1:core",
-        "//vendor/k8s.io/client-go/plugin/pkg/client/auth/gcp",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/tools/cache",
         "//vendor/k8s.io/client-go/tools/clientcmd",
