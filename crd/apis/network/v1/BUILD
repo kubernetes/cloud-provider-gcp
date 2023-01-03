@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "annotations.go",
         "doc.go",
+        "groupversion_info.go",
         "network.go",
         "network_types.go",
         "networkinterface_types.go",
