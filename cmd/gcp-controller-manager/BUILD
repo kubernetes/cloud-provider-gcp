@@ -125,6 +125,7 @@ go_test(
         "//pkg/nodeidentity",
         "//pkg/tpmattest",
         "//vendor/github.com/google/go-cmp/cmp",
+        "//vendor/github.com/google/go-cmp/cmp/cmpopts",
         "//vendor/github.com/google/go-tpm/tpm2",
         "//vendor/google.golang.org/api/compute/v0.beta:v0_beta",
         "//vendor/google.golang.org/api/compute/v1:compute",
