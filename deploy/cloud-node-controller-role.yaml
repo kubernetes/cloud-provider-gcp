@@ -6,6 +6,14 @@ metadata:
   name: system:cloud-controller-manager
 rules:
 - apiGroups:
+  - networking.gke.io
+  resources:
+  - gkenetworkparamset
+  - gkenetworkparamset/status
+  verbs:
+  - update
+  - get
+- apiGroups:
   - ""
   - events.k8s.io
   resources:

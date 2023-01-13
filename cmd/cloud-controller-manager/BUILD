@@ -17,12 +17,14 @@ go_binary(
 go_library(
     name = "cloud-controller-manager_lib",
     srcs = [
+        "gkenetworkparamsetcontroller.go",
         "main.go",
         "nodeipamcontroller.go",
     ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager",
     deps = [
         "//cmd/cloud-controller-manager/options",
+        "//pkg/controller/gkenetworkparamset",
         "//pkg/controller/nodeipam",
         "//pkg/controller/nodeipam/config",
         "//pkg/controller/nodeipam/ipam",
@@ -30,9 +32,11 @@ go_library(
         "//vendor/github.com/spf13/pflag",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apiserver/pkg/util/feature",
+        "//vendor/k8s.io/client-go/tools/cache",
         "//vendor/k8s.io/cloud-provider",
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned",
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1",
         "//vendor/k8s.io/cloud-provider/app",
         "//vendor/k8s.io/cloud-provider/app/config",
         "//vendor/k8s.io/cloud-provider/options",
@@ -44,6 +48,7 @@ go_library(
         "//vendor/k8s.io/controller-manager/controller",
         "//vendor/k8s.io/controller-manager/pkg/features",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/kubernetes/pkg/controller",
         "//vendor/k8s.io/utils/net",
     ],
 )
