@@ -553,10 +553,10 @@ function install-auth-provider-gcp {
   local auth_config_file="${KUBE_HOME}/cri_auth_config.yaml"
   cat >> "${auth_config_file}" << EOF
 kind: CredentialProviderConfig
-apiVersion: kubelet.config.k8s.io/v1beta1
+apiVersion: kubelet.config.k8s.io/v1
 providers:
   - name: auth-provider-gcp
-    apiVersion: credentialprovider.kubelet.k8s.io/v1alpha1
+    apiVersion: credentialprovider.kubelet.k8s.io/v1
     matchImages:
     - "container.cloud.google.com"
     - "gcr.io"

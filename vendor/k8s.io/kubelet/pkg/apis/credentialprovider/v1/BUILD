@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "v1alpha1",
+    name = "credentialprovider",
     srcs = [
         "doc.go",
         "register.go",
@@ -10,8 +10,8 @@ go_library(
         "zz_generated.deepcopy.go",
         "zz_generated.defaults.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1",
-    importpath = "k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1",
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1",
+    importpath = "k8s.io/kubelet/pkg/apis/credentialprovider/v1",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",

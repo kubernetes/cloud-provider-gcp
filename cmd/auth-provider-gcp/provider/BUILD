@@ -15,7 +15,7 @@ go_library(
         "//pkg/credentialconfig",
         "//pkg/gcpcredential",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
-        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1",
+        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1:credentialprovider",
     ],
 )
 
@@ -26,6 +26,6 @@ go_test(
     deps = [
         "//pkg/gcpcredential",
         "//vendor/k8s.io/apimachinery/pkg/util/net",
-        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1",
+        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1:credentialprovider",
     ],
 )
