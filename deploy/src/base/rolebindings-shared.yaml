@@ -1,3 +1,4 @@
+# TODO: Is this really shared (is it used by static pod?)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -19,21 +20,6 @@ kind: ClusterRoleBinding
 metadata:
   labels:
     addonmanager.kubernetes.io/mode: Reconcile
-  name: system:cloud-controller-manager
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: system:cloud-controller-manager
-subjects:
-- kind: User
-  apiGroup: rbac.authorization.k8s.io
-  name: system:cloud-controller-manager
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  labels:
-    addonmanager.kubernetes.io/mode: Reconcile
   name: system:controller:cloud-node-controller
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -43,4 +29,3 @@ subjects:
 - kind: ServiceAccount
   name: cloud-node-controller
   namespace: kube-system
-

@@ -1,4 +1,5 @@
 resources:
-- cloud-node-controller-binding.yaml
-- cloud-node-controller-role.yaml
-- pvl-controller-role.yaml
+- ../base/rolebindings-shared.yaml
+- ../base/rolebindings-staticpod.yaml
+- ../base/cloud-node-controller-role.yaml
+- ../base/pvl-controller-role.yaml
