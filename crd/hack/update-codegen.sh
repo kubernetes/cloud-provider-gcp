@@ -126,4 +126,4 @@ codegen_for () {
 }
 
 codegen_for network v1alpha1 v1 v1
-codegen_for gcpfirewall v1beta1 v1beta1
+codegen_for gcpfirewall v1beta1 v1
