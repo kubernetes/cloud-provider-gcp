@@ -11,9 +11,7 @@ pkg_tar(
 pkg_tar(
     name = "addon",
     srcs = [
-        "cloud-node-controller-binding.yaml",
-        "cloud-node-controller-role.yaml",
-        "pvl-controller-role.yaml",
+        "manifest.yaml",
     ],
     package_dir = "./kubernetes/gci-trusty/cloud-controller-manager",
 )

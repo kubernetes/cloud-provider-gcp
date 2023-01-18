@@ -1,0 +1,4 @@
+resources:
+- cloud-node-controller-binding.yaml
+- cloud-node-controller-role.yaml
+- pvl-controller-role.yaml
