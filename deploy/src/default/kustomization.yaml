@@ -1,0 +1,6 @@
+resources:
+- ../base/daemonset.yaml
+- ../base/rolebindings-serviceaccount.yaml
+- ../base/rolebindings-shared.yaml
+- ../base/cloud-node-controller-role.yaml
+- ../base/pvl-controller-role.yaml

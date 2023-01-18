@@ -91,7 +91,7 @@ if [[ -n "${ZONES:-}" ]]; then
     create_args="${create_args} --zones=${ZONES}"
 fi
 
-cp "${REPO_ROOT}/packages/manifests/direct/manifest.yaml" "${WORKDIR}/cloud-provider-gcp.yaml"
+cp "${REPO_ROOT}/deploy/packages/default/manifest.yaml" "${WORKDIR}/cloud-provider-gcp.yaml"
 sed -i -e "s@k8scloudprovidergcp/cloud-controller-manager:latest@${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}@g" "${WORKDIR}/cloud-provider-gcp.yaml"
 create_args="${create_args} --add=${WORKDIR}/cloud-provider-gcp.yaml"
 
