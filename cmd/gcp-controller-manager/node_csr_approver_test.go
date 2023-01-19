@@ -35,6 +35,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/go-tpm/tpm2"
 	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
@@ -43,15 +45,18 @@ import (
 	capi "k8s.io/api/certificates/v1"
 	certsv1 "k8s.io/api/certificates/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/client-go/kubernetes/fake"
 	testclient "k8s.io/client-go/testing"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
 	"k8s.io/klog/v2"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
+	"k8s.io/utils/pointer"
 )
 
 func init() {
@@ -1636,6 +1641,193 @@ func TestParseInstanceGroupURL(t *testing.T) {
 
 			if gotIgName != tc.wantIgName {
 				t.Fatalf("unexpected igName, got: %v, want: %v", gotIgName, tc.wantIgName)
+			}
+		})
+	}
+}
+
+func TestDeleteAllPodsBoundToNode(t *testing.T) {
+	testNode := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "testNode"},
+		Status: v1.NodeStatus{
+			Capacity: v1.ResourceList{
+				v1.ResourceName(v1.ResourceCPU):    resource.MustParse("10"),
+				v1.ResourceName(v1.ResourceMemory): resource.MustParse("10G"),
+			},
+		},
+	}
+
+	for _, tc := range []struct {
+		desc                 string
+		node                 *v1.Node
+		pod                  *v1.Pod
+		expectedPatchedPod   *v1.Pod
+		expectedDeleteAction *testclient.DeleteActionImpl
+	}{
+		{
+			desc: "Pod that was Running should enter Failed phase prior to deletion",
+			node: testNode,
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "testPod",
+				},
+				Spec: v1.PodSpec{
+					NodeName: "testNode",
+				},
+				Status: v1.PodStatus{
+					Phase: v1.PodRunning,
+					Conditions: []v1.PodCondition{
+						{
+							Type:   v1.PodReady,
+							Status: v1.ConditionTrue,
+						},
+					},
+				},
+			},
+			expectedPatchedPod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "testPod",
+				},
+				Spec: v1.PodSpec{
+					NodeName: "testNode",
+				},
+				Status: v1.PodStatus{
+					Phase: v1.PodFailed,
+					Conditions: []v1.PodCondition{
+						{
+							Type:    v1.DisruptionTarget,
+							Status:  v1.ConditionTrue,
+							Reason:  "DeletionByGCPControllerManager",
+							Message: "GCPControllerManager: node no longer exists",
+						},
+						{
+							Type:   v1.PodReady,
+							Status: v1.ConditionTrue,
+						},
+					},
+				},
+			},
+			expectedDeleteAction: &testclient.DeleteActionImpl{Name: "testPod", DeleteOptions: metav1.DeleteOptions{GracePeriodSeconds: pointer.Int64(0)}},
+		},
+		{
+			desc: "Pod that was in Failed phase should remain in Failed phase prior to deletion. Pod should not be patched because it is already in terminal phase.",
+			node: testNode,
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "testPod",
+				},
+				Spec: v1.PodSpec{
+					NodeName: "testNode",
+				},
+				Status: v1.PodStatus{
+					Phase: v1.PodFailed,
+					Conditions: []v1.PodCondition{
+						{
+							Type:   v1.PodReady,
+							Status: v1.ConditionTrue,
+						},
+					},
+				},
+			},
+			expectedPatchedPod:   nil,
+			expectedDeleteAction: &testclient.DeleteActionImpl{Name: "testPod", DeleteOptions: metav1.DeleteOptions{GracePeriodSeconds: pointer.Int64(0)}},
+		},
+		{
+			desc: "Pod that was in Succeeded phase should remain in Succeeded phase prior to deletion. Pod should not be patched because it is already in terminal phase.",
+			node: testNode,
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "testPod",
+				},
+				Spec: v1.PodSpec{
+					NodeName: "testNode",
+				},
+				Status: v1.PodStatus{
+					Phase: v1.PodSucceeded,
+					Conditions: []v1.PodCondition{
+						{
+							Type:   v1.PodReady,
+							Status: v1.ConditionTrue,
+						},
+					},
+				},
+			},
+			expectedPatchedPod:   nil,
+			expectedDeleteAction: &testclient.DeleteActionImpl{Name: "testPod", DeleteOptions: metav1.DeleteOptions{GracePeriodSeconds: pointer.Int64(0)}},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			nodeList := &v1.NodeList{Items: []v1.Node{*tc.node}}
+			podList := &v1.PodList{Items: []v1.Pod{*tc.pod}}
+
+			client := fake.NewSimpleClientset(nodeList, podList)
+			controllerCtx := &controllerContext{client: client}
+
+			err := deleteAllPodsBoundToNode(controllerCtx, tc.node.Name)
+
+			if err != nil {
+				t.Fatalf("Unexpected error deleting all pods bound to node %v", err)
+			}
+
+			actions := client.Actions()
+
+			expectedNumberOfActions := 0
+			if tc.expectedPatchedPod != nil {
+				expectedNumberOfActions++
+			}
+			if tc.expectedDeleteAction != nil {
+				expectedNumberOfActions++
+			}
+			// Always expect a list pods action
+			expectedNumberOfActions++
+
+			if len(actions) != expectedNumberOfActions {
+				t.Fatalf("Unexpected number of actions, got %v, want 3 (list pods, patch pod, delete pod)", len(actions))
+			}
+
+			var patchAction testclient.PatchAction
+			var deleteAction testclient.DeleteAction
+
+			for _, action := range actions {
+				if action.GetVerb() == "patch" {
+					patchAction = action.(testclient.PatchAction)
+				}
+
+				if action.GetVerb() == "delete" {
+					deleteAction = action.(testclient.DeleteAction)
+				}
+			}
+
+			if tc.expectedPatchedPod != nil {
+				patchedPodBytes := patchAction.GetPatch()
+
+				originalPod, err := json.Marshal(tc.pod)
+				if err != nil {
+					t.Fatalf("Failed to marshal original pod %#v: %v", originalPod, err)
+				}
+				updated, err := strategicpatch.StrategicMergePatch(originalPod, patchedPodBytes, v1.Pod{})
+				if err != nil {
+					t.Fatalf("Failed to apply strategic merge patch %q on pod %#v: %v", patchedPodBytes, originalPod, err)
+				}
+
+				updatedPod := &v1.Pod{}
+				if err := json.Unmarshal(updated, updatedPod); err != nil {
+					t.Fatalf("Failed to unmarshal updated pod %q: %v", updated, err)
+				}
+
+				if diff := cmp.Diff(tc.expectedPatchedPod, updatedPod, cmpopts.IgnoreFields(v1.Pod{}, "TypeMeta"), cmpopts.IgnoreFields(v1.PodCondition{}, "LastTransitionTime")); diff != "" {
+					t.Fatalf("Unexpected diff on pod (-want,+got):\n%s", diff)
+				}
+			}
+
+			if tc.expectedDeleteAction != nil {
+				if diff := cmp.Diff(*tc.expectedDeleteAction, deleteAction, cmpopts.IgnoreFields(testclient.DeleteActionImpl{}, "ActionImpl")); diff != "" {
+					t.Fatalf("Unexpected diff on deleteAction (-want,+got):\n%s", diff)
+				}
 			}
 		})
 	}
