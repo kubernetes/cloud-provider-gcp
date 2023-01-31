@@ -3,6 +3,7 @@ package gkenetworkparamset
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/onsi/gomega"
@@ -14,8 +15,6 @@ import (
 	gkenetworkparamset "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/component-base/metrics/prometheus/controllers"
-
-	"k8s.io/kubernetes/pkg/controller"
 )
 
 type testGKENetworkParamSetController struct {
@@ -31,7 +30,7 @@ type testGKENetworkParamSetController struct {
 
 func setupGKENetworkParamSetController() *testGKENetworkParamSetController {
 	fakeNetworking := fake.NewSimpleClientset()
-	gkeNetworkParamSetInformer := gkenetworkparamset.NewGKENetworkParamSetInformer(fakeNetworking, controller.NoResyncPeriodFunc(), cache.Indexers{})
+	gkeNetworkParamSetInformer := gkenetworkparamset.NewGKENetworkParamSetInformer(fakeNetworking, 0*time.Second, cache.Indexers{})
 	testClusterValues := gce.DefaultTestClusterValues()
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
 	controller := NewGKENetworkParamSetController(

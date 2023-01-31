@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"k8s.io/client-go/tools/cache"
 	cloudprovider "k8s.io/cloud-provider"
@@ -14,7 +15,6 @@ import (
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	genericcontrollermanager "k8s.io/controller-manager/app"
 	"k8s.io/controller-manager/controller"
-	kubecontroller "k8s.io/kubernetes/pkg/controller"
 )
 
 const jsonContentType = "application/json"
@@ -42,7 +42,7 @@ func startGkeNetworkParamsController(ccmConfig *cloudcontrollerconfig.CompletedC
 	}
 
 	//no resync, we dont want to automatically update objects if their state changes in gcp
-	gkeNetworkParamSetInformer := v1alpha1.NewGKENetworkParamSetInformer(networkClient, kubecontroller.NoResyncPeriodFunc(), cache.Indexers{})
+	gkeNetworkParamSetInformer := v1alpha1.NewGKENetworkParamSetInformer(networkClient, 0*time.Second, cache.Indexers{})
 
 	gkeNetworkParamsetController := gkenetworkparamsetcontroller.NewGKENetworkParamSetController(
 		networkClient,

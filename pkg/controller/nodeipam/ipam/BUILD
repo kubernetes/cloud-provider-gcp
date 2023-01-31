@@ -78,7 +78,6 @@ go_test(
         "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1",
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/fake",
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions",
-        "//vendor/k8s.io/kubernetes/pkg/controller",
         "//vendor/k8s.io/utils/net",
     ],
 )
