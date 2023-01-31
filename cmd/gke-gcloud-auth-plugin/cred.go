@@ -38,6 +38,10 @@ const (
 	// active_config is file name of file that holds current gcloud config name and
 	// is located at 'gcloud info | grep "User Config Directory"'
 	activeConfig = "active_config"
+
+	// useEdgeCloudOnlyMessage is a message to place in the description of flags that
+	// are only applied with --use_edge_cloud enabled.
+	useEdgeCloudOnlyMessage = "(only applicable when '--use_edge_cloud' is enabled)"
 )
 
 // cache is the struct that gets cached in the cache file in json format.
@@ -85,8 +89,10 @@ func newPlugin(tokenProvider tokenProvider) *plugin {
 var (
 	useApplicationDefaultCredentials = pflag.Bool("use_application_default_credentials", false, "Output is an ExecCredential filled with application default credentials.")
 	useEdgeCloud                     = pflag.Bool("use_edge_cloud", false, "Output is an ExecCredential for an Edge Cloud cluster.")
-	location                         = pflag.String("location", "", "Location of the Cluster.")
-	cluster                          = pflag.String("cluster", "", "Name of the Cluster.")
+	project                          = pflag.String("project", "", fmt.Sprintf("Parent project of the Cluster %s.", useEdgeCloudOnlyMessage))
+	location                         = pflag.String("location", "", fmt.Sprintf("Location of the Cluster %s.", useEdgeCloudOnlyMessage))
+	cluster                          = pflag.String("cluster", "", fmt.Sprintf("Name of the Cluster %s.", useEdgeCloudOnlyMessage))
+	impersonateServiceAccount        = pflag.String("impersonate_service_account", "", fmt.Sprintf("Impersonate a service account to retrieve tokens for the Cluster %s.", useEdgeCloudOnlyMessage))
 )
 
 func main() {
@@ -99,14 +105,16 @@ func main() {
 
 	var tokenProvider tokenProvider = nil
 	if *useEdgeCloud {
-		if *location == "" || *cluster == "" {
-			klog.Exit(fmt.Errorf("for --use_edge_cloud: --location and --cluster are required"))
+		if *project == "" || *location == "" || *cluster == "" {
+			klog.Exit(fmt.Errorf("for --use_edge_cloud: --project, --location and --cluster are required"))
 		}
 
 		tokenProvider = &gcloudEdgeCloudTokenProvider{
-			location:    *location,
-			clusterName: *cluster,
-			getTokenRaw: getGcloudEdgeCloudTokenRaw,
+			project:                   *project,
+			location:                  *location,
+			clusterName:               *cluster,
+			impersonateServiceAccount: *impersonateServiceAccount,
+			getTokenRaw:               getGcloudEdgeCloudTokenRaw,
 		}
 	} else if *useApplicationDefaultCredentials {
 		tokenProvider = &defaultCredentialsTokenProvider{

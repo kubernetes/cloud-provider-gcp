@@ -602,7 +602,7 @@ func fakeTimeNow() time.Time {
 	return time.Date(2022, 1, 2, 0, 0, 0, 0, time.UTC)
 }
 
-func fakeEdgeCloudTokenOutput(location string, clusterName string) ([]byte, error) {
+func fakeEdgeCloudTokenOutput(project string, location string, clusterName string, impersonateServiceAccount string) ([]byte, error) {
 	return []byte(`
 	{
 		"accessToken": "EdgeCloud_NewAccessToken",
