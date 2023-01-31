@@ -48,7 +48,6 @@ go_library(
         "//vendor/k8s.io/controller-manager/controller",
         "//vendor/k8s.io/controller-manager/pkg/features",
         "//vendor/k8s.io/klog/v2:klog",
-        "//vendor/k8s.io/kubernetes/pkg/controller",
         "//vendor/k8s.io/utils/net",
     ],
 )
