@@ -7,6 +7,7 @@ go_library(
         "doc.go",
         "network.go",
         "network_types.go",
+        "network_validation_interface.go",
         "networkinterface_types.go",
         "zz_generated.deepcopy.go",
         "zz_generated.register.go",
