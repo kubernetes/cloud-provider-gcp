@@ -6,7 +6,14 @@ package v1
 // the same as the default. Use before comparisons of networks.
 func DefaultNetworkIfEmpty(s string) string {
 	if s == "" {
-		return DefaultNetworkName
+		return DefaultPodNetworkName
 	}
 	return s
+}
+
+// IsDefaultNetwork takes a network name and returns if it is a default network.
+// Both DefaultNetworkName and DefaultPodNetworkName are considered as default network for compatibility purposes.
+// DefaultNetworkName will eventually be removed.
+func IsDefaultNetwork(networkName string) bool {
+	return networkName == DefaultNetworkName || networkName == DefaultPodNetworkName
 }

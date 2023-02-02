@@ -5,6 +5,9 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 const (
 	// DefaultNetworkName is the network used by the VETH interface.
 	DefaultNetworkName = "pod-network"
+	// DefaultPodNetworkName is the network used by the VETH interface.
+	// This is same as DefaultNetworkName except for a different name. DefaultNetworkName will be eventually deprecated.
+	DefaultPodNetworkName = "default"
 	// NetworkResourceKeyPrefix is the prefix for extended resource
 	// name corresponding to the network.
 	// e.g. "networking.gke.io.networks/my-network.IP"
