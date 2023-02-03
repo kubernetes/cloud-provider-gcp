@@ -47,7 +47,7 @@ func (ca *cloudCIDRAllocator) PerformMultiNetworkCIDRAllocation(node *v1.Node, i
 			secondaryRangeNames := gnp.Spec.PodIPv4Ranges.RangeNames
 			// In case of host networking, the node interfaces do not have the secondary ranges. We still need to update the
 			// north-interface information on the node.
-			if len(secondaryRangeNames) == 0 && network.Name != networkv1.DefaultNetworkName {
+			if len(secondaryRangeNames) == 0 && !networkv1.IsDefaultNetwork(network.Name) {
 				northInterfaces = append(northInterfaces, networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP})
 			}
 			// Each secondary range in a subnet corresponds to a pod-network. AliasIPRanges list on a node interface consists of IP ranges that belong to multiple secondary ranges (pod-networks).
@@ -58,7 +58,7 @@ func (ca *cloudCIDRAllocator) PerformMultiNetworkCIDRAllocation(node *v1.Node, i
 					continue
 				}
 				klog.V(2).Infof("found an allocatable secondary range for the interface on network")
-				if network.Name == networkv1.DefaultNetworkName {
+				if networkv1.IsDefaultNetwork(network.Name) {
 					defaultNwCIDRs = append(defaultNwCIDRs, ipRange.IpCidrRange)
 					ipv6Addr := ca.cloud.GetIPV6Address(inf)
 					if ipv6Addr != nil {
