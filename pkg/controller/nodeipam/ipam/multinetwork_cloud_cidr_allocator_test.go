@@ -97,7 +97,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 		{
 			desc: "default network only - should return default network cidrs and no multi-network annotations",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultNetworkName, defaultGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
 			},
 			gkeNwParams: []*networkv1alpha1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
@@ -112,7 +112,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 		{
 			desc: "one additional network along with default network",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultNetworkName, defaultGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
 				network(redNetworkName, redGKENetworkParamsName),
 			},
 			gkeNwParams: []*networkv1alpha1.GKENetworkParamSet{
@@ -145,7 +145,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 		{
 			desc: "no secondary ranges in GKENetworkParams",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultNetworkName, defaultGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
 				network(redNetworkName, redGKENetworkParamsName),
 				network(blueNetworkName, blueGKENetworkParamsName),
 			},
@@ -187,7 +187,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 		{
 			desc: "networks without matching interfaces should be ignored",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultNetworkName, defaultGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
 				network(redNetworkName, redGKENetworkParamsName),
 				network(blueNetworkName, blueGKENetworkParamsName),
 			},
@@ -222,7 +222,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 		{
 			desc: "interfaces without matching k8s networks should be ignored",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultNetworkName, defaultGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
 				network(redNetworkName, redGKENetworkParamsName),
 			},
 			gkeNwParams: []*networkv1alpha1.GKENetworkParamSet{
