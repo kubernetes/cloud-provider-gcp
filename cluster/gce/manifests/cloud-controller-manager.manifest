@@ -57,22 +57,7 @@
         {{flexvolume_hostpath_mount}}
         { "name": "logfile",
         "mountPath": "/var/log/cloud-controller-manager.log",
-        "readOnly": false},
-        { "name": "etcssl",
-        "mountPath": "/etc/ssl",
-        "readOnly": true},
-        { "name": "usrsharecacerts",
-        "mountPath": "/usr/share/ca-certificates",
-        "readOnly": true},
-        { "name": "varssl",
-        "mountPath": "/var/ssl",
-        "readOnly": true},
-        { "name": "etcopenssl",
-        "mountPath": "/etc/openssl",
-        "readOnly": true},
-        { "name": "etcpki",
-        "mountPath": "/etc/pki",
-        "readOnly": true}
+        "readOnly": false}
       ]
     }
 ],
@@ -89,26 +74,6 @@
     "hostPath": {
         "path": "/var/log/cloud-controller-manager.log",
         "type": "FileOrCreate"}
-  },
-  { "name": "etcssl",
-    "hostPath": {
-        "path": "/etc/ssl"}
-  },
-  { "name": "usrsharecacerts",
-    "hostPath": {
-        "path": "/usr/share/ca-certificates"}
-  },
-  { "name": "varssl",
-    "hostPath": {
-        "path": "/var/ssl"}
-  },
-  { "name": "etcopenssl",
-    "hostPath": {
-        "path": "/etc/openssl"}
-  },
-  { "name": "etcpki",
-    "hostPath": {
-        "path": "/etc/pki"}
   }
 ]
 }}

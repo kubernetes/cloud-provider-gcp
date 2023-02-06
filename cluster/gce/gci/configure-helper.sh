@@ -2209,9 +2209,7 @@ function start-kube-controller-manager {
     params+=("--pv-recycler-pod-template-filepath-nfs=$PV_RECYCLER_OVERRIDE_TEMPLATE")
     params+=("--pv-recycler-pod-template-filepath-hostpath=$PV_RECYCLER_OVERRIDE_TEMPLATE")
   fi
-  if [[ -n "${RUN_CONTROLLERS:-}" ]]; then
-    params+=("--controllers=${RUN_CONTROLLERS}")
-  fi
+  params+=("--controllers=*,-service,-cloud-node-lifecycle,-nodeipam,-route")
 
   local -r kube_rc_docker_tag=$(cat /home/kubernetes/kube-docker-files/kube-controller-manager.docker_tag)
   local container_env=""
@@ -2313,9 +2311,7 @@ function start-cloud-controller-manager {
       echo "None of the given feature gates (${FEATURE_GATES}) were found to be safe to pass to the CCM"
     fi
   fi
-  if [[ -n "${RUN_CONTROLLERS:-}" ]]; then
-    params+=("--controllers=${RUN_CONTROLLERS}")
-  fi
+  params+=("--controllers=*,-gkenetworkparamset")
 
   # (TODO/cloud-provider-gcp): Figure out how to inject
   local kube_rc_docker_tag=$(cat /home/kubernetes/kube-docker-files/cloud-controller-manager.docker_tag)
