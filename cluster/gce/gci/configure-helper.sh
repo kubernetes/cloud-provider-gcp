@@ -800,7 +800,6 @@ function create-master-auth {
   if [[ -n "${KUBE_BOOTSTRAP_TOKEN:-}" ]]; then
     append_or_replace_prefixed_line "${known_tokens_csv}" "${KUBE_BOOTSTRAP_TOKEN},"          "gcp:kube-bootstrap,uid:gcp:kube-bootstrap,system:masters"
   fi
-  # (TODO/cloud-provider-gcp): Figure out how to inject automatically
   if [[ -n "${CLOUD_CONTROLLER_MANAGER_TOKEN:-}" ]]; then
     append_or_replace_prefixed_line "${known_tokens_csv}" "${CLOUD_CONTROLLER_MANAGER_TOKEN}," "system:cloud-controller-manager,uid:system:cloud-controller-manager"
   fi
@@ -1133,7 +1132,6 @@ function create-master-audit-policy {
       - group: "scheduling.k8s.io"
       - group: "storage.k8s.io"'
 
-# (TODO/cloud-provider-gcp): Figure out how to inject "- system:cloud-controller-manager"
   cat <<EOF >"${path}"
 apiVersion: audit.k8s.io/v1
 kind: Policy
@@ -1658,10 +1656,6 @@ ExecStart=${kubelet_bin} \$KUBELET_OPTS
 [Install]
 WantedBy=multi-user.target
 EOF
-# (TODO/cloud-provider-gcp): Figure out how to inject
-  if [[ ${ENABLE_CREDENTIAL_SIDECAR:-false} == "true" ]]; then
-    create-sidecar-config
-  fi
 
   systemctl daemon-reload
   systemctl start kubelet.service
@@ -2270,64 +2264,79 @@ function start-cloud-controller-manager {
   echo "Start cloud provider controller-manager"
   setup-addon-manifests "addons" "cloud-controller-manager"
 
-  create-kubeconfig "cloud-controller-manager" ${CLOUD_CONTROLLER_MANAGER_TOKEN}
+  create-kubeconfig "cloud-controller-manager" "${CLOUD_CONTROLLER_MANAGER_TOKEN}"
+  echo "Preparing cloud provider controller-manager log file"
   prepare-log-file /var/log/cloud-controller-manager.log "${CLOUD_CONTROLLER_MANAGER_RUNASUSER:-0}"
   # Calculate variables and assemble the command line.
-  local params="${CONTROLLER_MANAGER_TEST_LOG_LEVEL:-"--v=4"} ${CONTROLLER_MANAGER_TEST_ARGS:-} ${CLOUD_CONFIG_OPT}"
-  params+=" --secure-port=10258"
-  params+=" --use-service-account-credentials"
-  params+=" --cloud-provider=gce"
-  params+=" --kubeconfig=/etc/srv/kubernetes/cloud-controller-manager/kubeconfig"
-  params+=" --authorization-kubeconfig=/etc/srv/kubernetes/cloud-controller-manager/kubeconfig"
-  params+=" --authentication-kubeconfig=/etc/srv/kubernetes/cloud-controller-manager/kubeconfig"
+  local params=("${CONTROLLER_MANAGER_TEST_LOG_LEVEL:-"--v=4"}" "${CONTROLLER_MANAGER_TEST_ARGS:-}" "${CLOUD_CONFIG_OPT}")
+  params+=("--secure-port=10258")
+  params+=("--use-service-account-credentials")
+  params+=("--cloud-provider=gce")
+  params+=("--kubeconfig=/etc/srv/kubernetes/cloud-controller-manager/kubeconfig")
+  params+=("--authorization-kubeconfig=/etc/srv/kubernetes/cloud-controller-manager/kubeconfig")
+  params+=("--authentication-kubeconfig=/etc/srv/kubernetes/cloud-controller-manager/kubeconfig")
   if [[ -n "${INSTANCE_PREFIX:-}" ]]; then
-    params+=" --cluster-name=${INSTANCE_PREFIX}"
+    params+=("--cluster-name=${INSTANCE_PREFIX}")
   fi
   if [[ -n "${CLUSTER_IP_RANGE:-}" ]]; then
-    params+=" --cluster-cidr=${CLUSTER_IP_RANGE}"
+    params+=("--cluster-cidr=${CLUSTER_IP_RANGE}")
   fi
   if [[ -n "${CONCURRENT_SERVICE_SYNCS:-}" ]]; then
-    params+=" --concurrent-service-syncs=${CONCURRENT_SERVICE_SYNCS}"
+    params+=("--concurrent-service-syncs=${CONCURRENT_SERVICE_SYNCS}")
   fi
   if [[ "${NETWORK_PROVIDER:-}" == "kubenet" ]]; then
-    params+=" --allocate-node-cidrs=true"
+    params+=("--allocate-node-cidrs=true")
   elif [[ -n "${ALLOCATE_NODE_CIDRS:-}" ]]; then
-    params+=" --allocate-node-cidrs=${ALLOCATE_NODE_CIDRS}"
+    params+=("--allocate-node-cidrs=${ALLOCATE_NODE_CIDRS}")
   fi
   if [[ "${ENABLE_IP_ALIASES:-}" == 'true' ]]; then
-    params+=" --cidr-allocator-type=${NODE_IPAM_MODE}"
-    params+=" --configure-cloud-routes=false"
+    params+=("--cidr-allocator-type=${NODE_IPAM_MODE}")
+    params+=("--configure-cloud-routes=false")
   fi
   if [[ -n "${FEATURE_GATES:-}" ]]; then
     # remove non-GCP feature gates, since the CCM will early exit
     # if given a feature gate it doesn't recognize
-    local safe_feature_gates=$(echo "${FEATURE_GATES}" | grep --perl-regexp -o "((${GCP_FEATURE_GATE_FILTER})=(true|false),*)" | tr -d "\n") 
+    echo "Setting feature gates for cloud provider controller-manager from ${CCM_FEATURE_GATES}"
+    local CCM_FEATURE_GATES_FILTER
+    CCM_FEATURE_GATES_FILTER=$(echo "${CCM_FEATURE_GATES}" | sed "s/^/(/" | sed "s/,/=[^,]*|/g" | sed "s/$/=[^,]*)/")
+    echo "Computing safe feature gates for cloud provider controller-manager from ${FEATURE_GATES} and filter ${CCM_FEATURE_GATES_FILTER}"
+    local safe_feature_gates
+    safe_feature_gates=$(echo "${FEATURE_GATES}" | { grep -E -o "(${CCM_FEATURE_GATES_FILTER})" || true; } | tr "\n" "," | sed "s/,$//")
+    echo "Setting safe feature gates for cloud provider controller-manager with ${safe_feature_gates}"
     if [[ -n "${safe_feature_gates:-}" ]]; then
-      params+=" --feature-gates=${safe_feature_gates}"
-      local filtered_feature_gates=$(echo "${FEATURE_GATES}" | sed "s/,/\n/g" | grep --perl-regexp -v "((${GCP_FEATURE_GATE_FILTER})=(true|false),*)" | sed -z "s/\n/,/g;s/,$/\n/")
-      echo "Feature gates that did not pass through the GCP filter:" ${filtered_feature_gates}
+      params+=("--feature-gates=${safe_feature_gates}")
+      echo "Computing unsafe feature gates for cloud provider controller-manager from ${CCM_FEATURE_GATES_FILTER}"
+      local filtered_feature_gates
+      filtered_feature_gates=$(echo "${FEATURE_GATES}" | sed "s/,/\n/g" | { grep -E -v "(${CCM_FEATURE_GATES_FILTER})" || true; } | sed -z "s/\n/,/g;s/,$/\n/")
+      echo "Feature gates that did not pass through the GCP filter:" "${filtered_feature_gates}"
     else
       echo "None of the given feature gates (${FEATURE_GATES}) were found to be safe to pass to the CCM"
     fi
   fi
   if [[ -n "${RUN_CONTROLLERS:-}" ]]; then
-    params+=" --controllers=${RUN_CONTROLLERS}"
+    params+=("--controllers=${RUN_CONTROLLERS}")
   fi
 
-  params="$(convert-manifest-params "${params}")"
+  # (TODO/cloud-provider-gcp): Figure out how to inject
   local kube_rc_docker_tag=$(cat /home/kubernetes/kube-docker-files/cloud-controller-manager.docker_tag)
   kube_rc_docker_tag=$(echo ${kube_rc_docker_tag} | sed 's/+/-/g')
+
+  echo "Converting manifest for cloud provider controller-manager"
+  local paramstring
+  paramstring="$(convert-manifest-params "${params[*]}")"
   local container_env=""
   if [[ -n "${ENABLE_CACHE_MUTATION_DETECTOR:-}" ]]; then
     container_env="\"env\":[{\"name\": \"KUBE_CACHE_MUTATION_DETECTOR\", \"value\": \"${ENABLE_CACHE_MUTATION_DETECTOR}\"}],"
   fi
 
+  echo "Applying over-rides for manifest for cloud provider controller-manager"
   local -r src_file="${KUBE_HOME}/kube-manifests/kubernetes/gci-trusty/cloud-controller-manager.manifest"
   # Evaluate variables.
   sed -i -e "s@{{pillar\['kube_docker_registry'\]}}@${DOCKER_REGISTRY}@g" "${src_file}"
+  # (TODO/cloud-provider-gcp): Figure out how to inject
   sed -i -e "s@{{pillar\['cloud-controller-manager_docker_tag'\]}}@${kube_rc_docker_tag}@g" "${src_file}"
-  sed -i -e "s@{{params}}@${params}@g" "${src_file}"
-  sed -i -e "s@{{container_env}}@${container_env}@g" ${src_file}
+  sed -i -e "s@{{params}}@${paramstring}@g" "${src_file}"
+  sed -i -e "s@{{container_env}}@${container_env}@g" "${src_file}"
   sed -i -e "s@{{cloud_config_mount}}@${CLOUD_CONFIG_MOUNT}@g" "${src_file}"
   sed -i -e "s@{{cloud_config_volume}}@${CLOUD_CONFIG_VOLUME}@g" "${src_file}"
   sed -i -e "s@{{additional_cloud_config_mount}}@@g" "${src_file}"
@@ -2349,6 +2358,7 @@ function start-cloud-controller-manager {
     sed -i -e "s@{{supplementalGroups}}@@g" "${src_file}"
   fi
 
+  echo "Writing manifest for cloud provider controller-manager"
   cp "${src_file}" /etc/kubernetes/manifests
 }
 
@@ -3221,7 +3231,7 @@ oom_score = -999
 [plugins."io.containerd.grpc.v1.cri"]
   stream_server_address = "127.0.0.1"
   max_container_log_line_size = ${CONTAINERD_MAX_CONTAINER_LOG_LINE:-262144}
-  sandbox_image = "${CONTAINERD_INFRA_CONTAINER:-"registry.k8s.io/pause:3.8"}"
+  sandbox_image = "${CONTAINERD_INFRA_CONTAINER:-"registry.k8s.io/pause:3.9"}"
 [plugins."io.containerd.grpc.v1.cri".cni]
   bin_dir = "${KUBE_HOME}/bin"
   conf_dir = "/etc/cni/net.d"
@@ -3262,26 +3272,6 @@ EOF
 
   echo "Restart containerd to load the config change"
   systemctl restart containerd
-}
-
-# (TODO/cloud-provider-gcp): Figure out how to inject
-function create-sidecar-config {
-  cat >> "/etc/srv/kubernetes/cri_auth_config.yaml" << EOF
-kind: CredentialProviderConfig
-apiVersion: kubelet.config.k8s.io/v1alpha1
-providers:
-  - name: auth-provider-gcp
-    apiVersion: credentialprovider.kubelet.k8s.io/v1alpha1
-    matchImages:
-    - "container.cloud.google.com"
-    - "gcr.io"
-    - "*.gcr.io"
-    - "*.pkg.dev"
-    args:
-    - get-credentials
-    - --v=3
-    defaultCacheDuration: 1m
-EOF
 }
 
 # This function detects the platform/arch of the machine where the script runs,
@@ -3478,8 +3468,7 @@ function main() {
   readonly KUBEDNS_AUTOSCALER="Deployment/kube-dns"
 
   # Resource requests of master components.
-  # (TODO/cloud-provider-gcp): Figure out how to inject
-  CLOUD_CONTROLLER_MANAGER_CPU_REQUEST="${CLOUD_CONTROLLER_MANAGER_CPU_REQUEST:-50m}"
+  CLOUD_CONTROLLER_MANAGER_CPU_REQUEST="${KUBE_CONTROLLER_MANAGER_CPU_REQUEST:-50m}"
   KUBE_CONTROLLER_MANAGER_CPU_REQUEST="${KUBE_CONTROLLER_MANAGER_CPU_REQUEST:-200m}"
   KUBE_SCHEDULER_CPU_REQUEST="${KUBE_SCHEDULER_CPU_REQUEST:-75m}"
 
@@ -3516,7 +3505,6 @@ function main() {
 
   log-start 'GenerateTokens'
   KUBE_CONTROLLER_MANAGER_TOKEN="$(secure_random 32)"
-  # (TODO/cloud-provider-gcp): Figure out how to inject
   CLOUD_CONTROLLER_MANAGER_TOKEN="$(secure_random 32)"
   KUBE_SCHEDULER_TOKEN="$(secure_random 32)"
   KUBE_CLUSTER_AUTOSCALER_TOKEN="$(secure_random 32)"
@@ -3614,8 +3602,9 @@ function main() {
       log-wrap 'StartKonnectivityServer' start-konnectivity-server
     fi
     log-wrap 'StartKubeControllerManager' start-kube-controller-manager
-    # (TODO/cloud-provider-gcp): Figure out how to inject
-    log-wrap 'StartCloudControllerManager' start-cloud-controller-manager
+    if [[ "${CLOUD_PROVIDER_FLAG:-gce}" == "external" ]]; then
+      log-wrap 'StartCloudControllerManager' start-cloud-controller-manager
+    fi
     log-wrap 'StartKubeScheduler' start-kube-scheduler
     log-wrap 'WaitTillApiserverReady' wait-till-apiserver-ready
     log-wrap 'StartKubeAddons' start-kube-addons

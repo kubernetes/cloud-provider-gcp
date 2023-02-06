@@ -17,7 +17,7 @@ go_library(
         "//vendor/github.com/spf13/cobra",
         "//vendor/k8s.io/apimachinery/pkg/util/net",
         "//vendor/k8s.io/klog/v2:klog",
-        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1",
+        "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1:credentialprovider",
     ],
 )
 

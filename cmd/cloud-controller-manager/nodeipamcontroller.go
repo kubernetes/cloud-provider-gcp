@@ -26,10 +26,13 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	cloudprovider "k8s.io/cloud-provider"
 	nodeipamcontrolleroptions "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/options"
+	networkclientset "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned"
+	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
 	nodeipamcontroller "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam"
 	nodeipamconfig "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/config"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
@@ -146,10 +149,21 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 	// get list of node cidr mask sizes
 	nodeCIDRMaskSizes := getNodeCIDRMaskSizes(clusterCIDRs, nodeCIDRMaskSizeIPv4, nodeCIDRMaskSizeIPv6)
 
+	kubeConfig := ccmConfig.Complete().Kubeconfig
+	kubeConfig.ContentType = "application/json" // required to serialize Networks to json
+	networkClient, err := networkclientset.NewForConfig(kubeConfig)
+	if err != nil {
+		return nil, false, err
+	}
+	nwInfFactory := networkinformers.NewSharedInformerFactory(networkClient, 30*time.Second)
+	nwInformer := nwInfFactory.Networking().V1().Networks()
+	gnpInformer := nwInfFactory.Networking().V1alpha1().GKENetworkParamSets()
 	nodeIpamController, err := nodeipamcontroller.NewNodeIpamController(
 		ctx.InformerFactory.Core().V1().Nodes(),
 		cloud,
 		ctx.ClientBuilder.ClientOrDie("node-controller"),
+		nwInformer,
+		gnpInformer,
 		clusterCIDRs,
 		serviceCIDR,
 		secondaryServiceCIDR,
@@ -159,6 +173,7 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 	if err != nil {
 		return nil, false, err
 	}
+	nwInfFactory.Start(ctx.Stop)
 	go nodeIpamController.Run(ctx.Stop, ctx.ControllerManagerMetrics)
 	return nil, true, nil
 }

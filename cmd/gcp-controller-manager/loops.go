@@ -27,17 +27,19 @@ import (
 )
 
 type controllerContext struct {
-	client                             clientset.Interface
-	sharedInformers                    informers.SharedInformerFactory
-	recorder                           record.EventRecorder
-	gcpCfg                             gcpConfig
-	clusterSigningGKEKubeconfig        string
-	csrApproverVerifyClusterMembership bool
-	csrApproverAllowLegacyKubelet      bool
-	verifiedSAs                        *saMap
-	hmsAuthorizeSAMappingURL           string
-	hmsSyncNodeURL                     string
-	delayDirectPathGSARemove           bool
+	client                                 clientset.Interface
+	sharedInformers                        informers.SharedInformerFactory
+	recorder                               record.EventRecorder
+	gcpCfg                                 gcpConfig
+	clusterSigningGKEKubeconfig            string
+	csrApproverVerifyClusterMembership     bool
+	csrApproverAllowLegacyKubelet          bool
+	csrApproverUseGCEInstanceListReferrers bool
+	verifiedSAs                            *saMap
+	hmsAuthorizeSAMappingURL               string
+	hmsSyncNodeURL                         string
+	delayDirectPathGSARemove               bool
+	clearStalePodsOnNodeRegistration       bool
 }
 
 // loops returns all the control loops that the GCPControllerManager can start.
@@ -119,7 +121,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 			if err != nil {
 				return err
 			}
-			go serviceAccountVerifier.Run(20, ctx.Done())
+			go serviceAccountVerifier.Run(3, ctx.Done())
 			return nil
 		}
 		ll[nodeSyncerControlLoopName] = func(ctx context.Context, controllerCtx *controllerContext) error {
@@ -133,7 +135,20 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 			if err != nil {
 				return err
 			}
-			go nodeSyncer.Run(20, ctx.Done())
+			go nodeSyncer.Run(30, ctx.Done())
+			return nil
+		}
+	}
+	if *kubeletReadOnlyCSRApprover {
+		ll["kubelet-readonly-approver"] = func(ctx context.Context, controllerCtx *controllerContext) error {
+			approver := newKubeletReadonlyCSRApprover(controllerCtx)
+			approveController := certificates.NewCertificateController(
+				"kubelet-readonly-approver",
+				controllerCtx.client,
+				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
+				approver.handle,
+			)
+			go approveController.Run(ctx, 20)
 			return nil
 		}
 	}

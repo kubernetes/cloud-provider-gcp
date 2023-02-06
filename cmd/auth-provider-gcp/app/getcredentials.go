@@ -29,7 +29,7 @@ import (
 	"k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/provider"
 	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	klog "k8s.io/klog/v2"
-	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1"
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1"
 )
 
 const (

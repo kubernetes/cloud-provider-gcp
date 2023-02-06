@@ -24,17 +24,17 @@ import (
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
-
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	cloudprovider "k8s.io/cloud-provider"
+	networkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
+	alphanetworkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
 	controllersmetrics "k8s.io/component-base/metrics/prometheus/controllers"
-	"k8s.io/component-base/metrics/prometheus/ratelimiter"
 )
 
 const (
@@ -76,6 +76,8 @@ func NewNodeIpamController(
 	nodeInformer coreinformers.NodeInformer,
 	cloud cloudprovider.Interface,
 	kubeClient clientset.Interface,
+	nwInformer networkinformer.NetworkInformer,
+	gnpInformer alphanetworkinformer.GKENetworkParamSetInformer,
 	clusterCIDRs []*net.IPNet,
 	serviceCIDR *net.IPNet,
 	secondaryServiceCIDR *net.IPNet,
@@ -94,10 +96,6 @@ func NewNodeIpamController(
 		&v1core.EventSinkImpl{
 			Interface: kubeClient.CoreV1().Events(""),
 		})
-
-	if kubeClient.CoreV1().RESTClient().GetRateLimiter() != nil {
-		ratelimiter.RegisterMetricAndTrackRateLimiterUsage("node_ipam_controller", kubeClient.CoreV1().RESTClient().GetRateLimiter())
-	}
 
 	// Cloud CIDR allocator does not rely on clusterCIDR or nodeCIDRMaskSize for allocation.
 	if allocatorType != ipam.CloudAllocatorType {
@@ -136,7 +134,7 @@ func NewNodeIpamController(
 			NodeCIDRMaskSizes:    nodeCIDRMaskSizes,
 		}
 
-		ic.cidrAllocator, err = ipam.New(kubeClient, cloud, nodeInformer, ic.allocatorType, allocatorParams)
+		ic.cidrAllocator, err = ipam.New(kubeClient, cloud, nodeInformer, nwInformer, gnpInformer, ic.allocatorType, allocatorParams)
 		if err != nil {
 			return nil, err
 		}

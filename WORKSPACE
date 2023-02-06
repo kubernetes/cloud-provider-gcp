@@ -33,9 +33,8 @@ http_archive(
 
 http_archive(
     name = "io_bazel_rules_docker",
-    sha256 = "4521794f0fba2e20f3bf15846ab5e01d5332e587e9ce81629c7f96c793bb7036",
-    strip_prefix = "rules_docker-0.14.4",
-    urls = ["https://github.com/bazelbuild/rules_docker/releases/download/v0.14.4/rules_docker-v0.14.4.tar.gz"],
+    sha256 = "b1e80761a8a8243d03ebca8845e9cc1ba6c82ce7c5179ce2b295cd36f7e394bf",
+    urls = ["https://github.com/bazelbuild/rules_docker/releases/download/v0.25.0/rules_docker-v0.25.0.tar.gz"],
 )
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
@@ -68,16 +67,22 @@ load("@io_bazel_rules_docker//repositories:deps.bzl", container_deps = "deps")
 
 container_deps()
 
-load("@io_bazel_rules_docker//repositories:pip_repositories.bzl", "pip_deps")
-
-pip_deps()
-
 container_pull(
     name = "distroless",
     digest = "sha256:c6d5981545ce1406d33e61434c61e9452dad93ecd8397c41e89036ef977a88f4",
     registry = "gcr.io",
     repository = "distroless/static",
     tag = "b54513ef989c81d68cb27d9c7958697e2fedd2c4",
+)
+
+
+container_pull(
+    name = "go-runner",
+    registry = "registry.k8s.io",
+    repository = "build-image/go-runner",
+    # 'tag' is also supported, but digest is encouraged for reproducibility.
+    tag = "v2.3.1-go1.19.4-bullseye.0",
+    digest = "sha256:06f8a7671cc1a1d80196522e0f793dba9ee687d0cea49ae852a095af331133b4",
 )
 
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
@@ -95,11 +100,11 @@ load("//defs:repo_rules.bzl", "fetch_kube_release")
 fetch_kube_release(
     name = "io_k8s_release",
     archives = {
-        "kubernetes-server-linux-amd64.tar.gz": "f813ecb6487bd50b5af95ae207921053dd7ad5156ecdcd4465d7a1c213b98f87",
-        "kubernetes-manifests.tar.gz": "34d1208ae284ff4c2ac2f1ddc3f9dcd24d691d861dc20b0adc08ff44256f35c2",
+        "kubernetes-server-linux-amd64.tar.gz": "9046ae36fdbe444c44c2bbf0274b9eb11f4dd83d487d56e51e5d3125d016513d",
+        "kubernetes-manifests.tar.gz": "d25ce072f315e8003f5107f4b0e7368c0a53332fe58f0e7414cdfc6c5cc053a3",
         # we do not currently make modifications to these release tars below
-        "kubernetes-node-linux-amd64.tar.gz": "27de16edf89c48903877b28b1ff84037fe73f896dc9f313d4bb9ee400503a152",
-        "kubernetes-node-windows-amd64.tar.gz": "cc600b41f75d94efadfc36bac2e23c424aad4d825cef02633f2783109b22842e",
+        "kubernetes-node-linux-amd64.tar.gz": "62edcc0774fa29fd12cc8cb4e16d7470df976eb7c885952c76c1e833b91af69f",
+        "kubernetes-node-windows-amd64.tar.gz": "48339207092b47ee820e16d8c996cf518d7ed6b1c897e47ba9e5baa019fa7840",
     },
-    version = "v1.25.2",
+    version = "v1.26.0",
 )

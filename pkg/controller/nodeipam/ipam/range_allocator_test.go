@@ -29,7 +29,6 @@ import (
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/cloud-provider-gcp/pkg/controller/testutil"
-	"k8s.io/kubernetes/pkg/controller"
 )
 
 const testNodePollInterval = 10 * time.Millisecond
@@ -48,7 +47,7 @@ func waitForUpdatedNodeWithTimeout(nodeHandler *testutil.FakeNodeHandler, number
 // Creates a fakeNodeInformer using the provided fakeNodeHandler.
 func getFakeNodeInformer(fakeNodeHandler *testutil.FakeNodeHandler) coreinformers.NodeInformer {
 	fakeClient := &fake.Clientset{}
-	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, controller.NoResyncPeriodFunc())
+	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, 0*time.Second)
 	fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
 
 	for _, node := range fakeNodeHandler.Existing {
