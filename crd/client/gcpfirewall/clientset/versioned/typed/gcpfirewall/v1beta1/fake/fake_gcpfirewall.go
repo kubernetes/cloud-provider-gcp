@@ -110,7 +110,7 @@ func (c *FakeGCPFirewalls) UpdateStatus(ctx context.Context, gCPFirewall *v1beta
 // Delete takes name of the gCPFirewall and deletes it. Returns an error if one occurs.
 func (c *FakeGCPFirewalls) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(gcpfirewallsResource, name), &v1beta1.GCPFirewall{})
+		Invokes(testing.NewRootDeleteActionWithOptions(gcpfirewallsResource, name, opts), &v1beta1.GCPFirewall{})
 	return err
 }
 
