@@ -37,6 +37,7 @@ ln -s "${SCRIPT_ROOT}" "$GOPATH/src/k8s.io/cloud-provider-gcp/crd"
 # mkdir -p "$GOPATH/src/k8s.io"
 # ln -s "${SCRIPT_ROOT}" "$GOPATH/src/k8s.io/cloud-provider-gcp"
 echo " GOPATH/src/k8s.io/cloud-provider-gcp/crd ${GOPATH}/src/k8s.io/cloud-provider-gcp/crd"
+cd ${SCRIPT_ROOT}
 
 readonly REPO_BASE=k8s.io/cloud-provider-gcp/crd
 readonly OUTPUT_BASE_PKG=${REPO_BASE}/client
