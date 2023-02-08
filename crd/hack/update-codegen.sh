@@ -20,6 +20,8 @@ set -o pipefail
 
 readonly SCRIPT_ROOT=$(cd $(dirname ${BASH_SOURCE})/.. && pwd)
 echo "SCRIPT_ROOT ${SCRIPT_ROOT}"
+cd ${SCRIPT_ROOT}
+
 readonly GO111MODULE="on"
 readonly GOFLAGS="-mod=mod"
 readonly GOPATH="$(mktemp -d)"
