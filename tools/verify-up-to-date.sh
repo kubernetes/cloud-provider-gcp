@@ -18,17 +18,28 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
-cd $KUBE_ROOT
+REPO_ROOT=$(git rev-parse --show-toplevel);
+cd;
 
-tools/update-gofmt.sh
-tools/update_vendor.sh
+if [[ -f "${REPO_ROOT}/.bazelversion" ]]; then
+export BAZEL_VERSION=$(cat "${REPO_ROOT}/.bazelversion");
+echo "BAZEL_VERSION set to ${BAZEL_VERSION}";
+else
+export BAZEL_VERSION="5.3.0";
+echo "BAZEL_VERSION - Falling back to 5.3.0";
+fi;
+/workspace/test-infra/images/kubekins-e2e/install-bazel.sh;
+go install sigs.k8s.io/kubetest2@latest;
+go install sigs.k8s.io/kubetest2/kubetest2-gce@latest;
+go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
+if [[ -f "${REPO_ROOT}/ginko-test-package-version.env" ]]; then
+export TEST_PACKAGE_VERSION=$(cat "${REPO_ROOT}/ginko-test-package-version.env");
+echo "TEST_PACKAGE_VERSION set to ${TEST_PACKAGE_VERSION}";
+else
+export TEST_PACKAGE_VERSION="v1.25.0";
+echo "TEST_PACKAGE_VERSION - Falling back to v1.25.0";
+fi;
 
-source tools/version.sh
-get_version_vars
+${REPO_ROOT}/tools/update-kubernetes-version.sh
 
-if [[ "${KUBE_GIT_TREE_STATE}" != "clean" ]]; then
-    echo "Repository is in state ${KUBE_GIT_TREE_STATE}!"
-    git status
-    exit 1
-fi
+kubetest2 gce -v 2 --repo-root "${REPO_ROOT}" --build --up --down --test=ginkgo --node-size n1-standard-4 --master-size n1-standard-8 -- --test-package-version="${TEST_PACKAGE_VERSION}" --parallel=30 --test-args='--minStartupPods=8 --ginkgo.flakeAttempts=3' --skip-regex='\[Slow\]|\[Serial\]|\[Disruptive\]|\[Flaky\]|\[Feature:.+\]'
