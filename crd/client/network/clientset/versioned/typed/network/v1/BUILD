@@ -5,6 +5,8 @@ go_library(
     srcs = [
         "doc.go",
         "generated_expansion.go",
+        "gkenetworkparamset.go",
+        "gkenetworkparamsetlist.go",
         "network.go",
         "network_client.go",
         "networkinterface.go",
@@ -18,7 +20,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/types",
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/rest",
-        "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1:network",
-        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/scheme",
+        "//crd/apis/network/v1:network",
+        "//crd/client/network/clientset/versioned/scheme",
     ],
 )

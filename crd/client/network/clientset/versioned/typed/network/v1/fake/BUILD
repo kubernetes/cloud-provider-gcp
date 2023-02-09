@@ -4,6 +4,8 @@ go_library(
     name = "fake",
     srcs = [
         "doc.go",
+        "fake_gkenetworkparamset.go",
+        "fake_gkenetworkparamsetlist.go",
         "fake_network.go",
         "fake_network_client.go",
         "fake_networkinterface.go",
@@ -20,7 +22,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/testing",
-        "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1:network",
-        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1:network",
+        "//crd/apis/network/v1:network",
+        "//crd/client/network/clientset/versioned/typed/network/v1:network",
     ],
 )
