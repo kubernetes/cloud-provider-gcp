@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "annotations.go",
         "doc.go",
+        "gkenetworkparamset_types.go",
         "network.go",
         "network_types.go",
         "networkinterface_types.go",
