@@ -8,9 +8,11 @@ import (
 
 // gcloudEdgeCloudTokenProvider provides gcloud edge-cloud tokens.
 type gcloudEdgeCloudTokenProvider struct {
-	location    string
-	clusterName string
-	getTokenRaw func(location string, clusterName string) ([]byte, error)
+	project                   string
+	location                  string
+	clusterName               string
+	impersonateServiceAccount string
+	getTokenRaw               func(project string, location string, clusterName string, impersonateServiceAccount string) ([]byte, error)
 }
 
 // gcloudEdgeCloudToken holds types unmarshaled from the edge cloud access token in json format
@@ -20,7 +22,7 @@ type gcloudEdgeCloudToken struct {
 }
 
 func (p *gcloudEdgeCloudTokenProvider) token() (string, *time.Time, error) {
-	edgeCloudTokenBytes, err := p.getTokenRaw(p.clusterName, p.location)
+	edgeCloudTokenBytes, err := p.getTokenRaw(p.project, p.location, p.clusterName, p.impersonateServiceAccount)
 	if err != nil {
 		return "", nil, err
 	}
@@ -35,6 +37,11 @@ func (p *gcloudEdgeCloudTokenProvider) token() (string, *time.Time, error) {
 
 func (p *gcloudEdgeCloudTokenProvider) useCache() bool { return true }
 
-func getGcloudEdgeCloudTokenRaw(clusterName string, location string) ([]byte, error) {
-	return executeCommand("gcloud", "edge-cloud", "container", "clusters", "print-access-token", clusterName, fmt.Sprintf("--location=%s", location), "--format=json")
+func getGcloudEdgeCloudTokenRaw(project string, location string, clusterName string, impersonateServiceAccount string) ([]byte, error) {
+	args := []string{"edge-cloud", "container", "clusters", "print-access-token", clusterName, fmt.Sprintf("--project=%s", project), fmt.Sprintf("--location=%s", location), "--format=json"}
+	if impersonateServiceAccount != "" {
+		args = append(args, fmt.Sprintf("--impersonate-service-account=%s", impersonateServiceAccount))
+	}
+
+	return executeCommand("gcloud", args...)
 }
