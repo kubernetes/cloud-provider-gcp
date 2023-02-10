@@ -14,6 +14,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/labels",
         "//vendor/k8s.io/client-go/tools/cache",
-        "//crd/apis/network/v1alpha1",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1",
     ],
 )

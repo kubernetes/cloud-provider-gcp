@@ -22,7 +22,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/testing",
-        "//crd/apis/network/v1alpha1",
-        "//crd/client/network/clientset/versioned/typed/network/v1alpha1",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1alpha1",
     ],
 )

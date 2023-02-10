@@ -15,9 +15,9 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/tools/cache",
-        "//crd/apis/network/v1:network",
-        "//crd/client/network/clientset/versioned",
-        "//crd/client/network/informers/externalversions/internalinterfaces",
-        "//crd/client/network/listers/network/v1:network",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1:network",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/internalinterfaces",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1:network",
     ],
 )

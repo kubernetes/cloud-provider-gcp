@@ -14,7 +14,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/runtime/serializer",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
-        "//crd/apis/network/v1:network",
-        "//crd/apis/network/v1alpha1",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1:network",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1",
     ],
 )

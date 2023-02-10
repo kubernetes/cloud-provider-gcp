@@ -12,7 +12,7 @@ go_library(
         "//vendor/k8s.io/client-go/discovery",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/util/flowcontrol",
-        "//crd/client/network/clientset/versioned/typed/network/v1:network",
-        "//crd/client/network/clientset/versioned/typed/network/v1alpha1",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1:network",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1alpha1",
     ],
 )
