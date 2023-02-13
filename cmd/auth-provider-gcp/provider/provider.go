@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
-	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1"
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1"
 )
 
 const (
@@ -36,7 +36,7 @@ const (
 	cacheTypeKey              = "KUBE_SIDECAR_CACHE_TYPE"
 	metadataHTTPClientTimeout = time.Second * 10
 	apiKind                   = "CredentialProviderResponse"
-	apiVersion                = "credentialprovider.kubelet.k8s.io/v1alpha1"
+	apiVersion                = "credentialprovider.kubelet.k8s.io/v1"
 )
 
 // MakeRegistryProvider returns a ContainerRegistryProvider with the given transport.

@@ -5,16 +5,18 @@ Manual instruction how to update `cloud-provider-gcp` repository.
 ## Workflow
 
 1. Update library to the desired version.
-    * [go.mod](https://github.com/kubernetes/cloud-provider-gcp/blob/master/go.mod) and [providers/go.mod](https://github.com/kubernetes/cloud-provider-gcp/blob/master/providers/go.mod) describe the required libraries. Update the version of each dependency to the desired Kubernetes release version. Run `go mod tidy` after update.
+    * [ginko-test-package-version.env](https://github.com/kubernetes/cloud-provider-gcp/blob/master/ginko-test-package-version.env), [go.mod](https://github.com/kubernetes/cloud-provider-gcp/blob/master/go.mod) and [providers/go.mod](https://github.com/kubernetes/cloud-provider-gcp/blob/master/providers/go.mod) describe the required libraries. Update the version of each dependency to the desired Kubernetes release version. Run `go mod tidy` after update. First in `/providers`, then in a root path.
+    * Run `tools/update_vendor.sh`
 1. In [WORKSPACE](https://github.com/kubernetes/cloud-provider-gcp/blob/master/WORKSPACE), update kube-release sha and version to the desired release version.
-    * Note: The current Kubernetes release is using sha512 hash while cloud-provider-gcp is using sha256. Re-sha with command `sha256sum` if needed.
+    * Note: The current Kubernetes release is using sha512 hash while cloud-provider-gcp is using sha256. Re-sha with command `sha256sum` if needed. Use `export KUBE_VERSION=v1.X.Y; tools/sha256_generator.sh` to generate values automatically.
 1. Update `KUBE_GIT_VERSION `in `https://github.com/kubernetes/cloud-provider-gcp/blob/9f5cdad672954777791e722baa607ee2a3912002/tools/version.sh#L77` with the right tag.
-1. Update `/cluster` directory if needed. Script under //cluster is to provision a k8s cluster on GCE using [kube-up.sh](https://github.com/kubernetes/cloud-provider-gcp/blob/master/cluster/kube-up.sh)
+1. Update `/cluster` directory if needed. Script under `/cluster` is used to provision a k8s cluster on GCE using [kube-up.sh](https://github.com/kubernetes/cloud-provider-gcp/blob/master/cluster/kube-up.sh)
     1. Rebase /cluster directory with the /cluster directory from kubernetes/kubernetes at desired Kubernetes release version. (kubernetes/kubernetes/cluster/images should not be pulled in cloud-provide-gcp.)
     1. Selectively re-applies direct contributions made to the /cluster directory of cloud-provider-gcp that are clobbered by the rebase of the /cluster directory. (see reference in the end of this documentation)
     1. Remove any changes regarding OWNERS files.
-1. Update test library version [here](https://github.com/kubernetes/test-infra/blob/76eeb12d9aa94f8507714ab2ce4d179b162dc5b9/config/jobs/kubernetes/cloud-provider-gcp/cloud-provider-gcp-periodics.yaml#L50) to the desired version for conformance test and e2e test.
+    * Note: Use `tools/bump_cluster.sh` to automate part of this process.
 1. Testing:
+    1. Run `tools/verify-all.sh`.
     1. Build `cloud-provider-gcp` with command `bazel clean && bazel build //release:release-tars`.
     1. Bring the cluster up with `kubetest2 gce -v 2 --repo-root $REPO\_ROOT --build --up`
     1. Run conformance tests locally with `kubetest2 gce -v 2 --repo-root $REPO\_ROOT --build --up --down --test=ginkgo -- --test-package-version=[your version] --focus-regex='\[Conformance\]'`

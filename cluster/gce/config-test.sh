@@ -157,6 +157,7 @@ if [[ (( "${KUBE_FEATURE_GATES:-}" = *"AllAlpha=true"* ) || ( "${KUBE_FEATURE_GA
 fi
 
 # Optional: set feature gates
+# shellcheck disable=SC2034 # Variables sourced in other scripts.
 FEATURE_GATES=${KUBE_FEATURE_GATES:-}
 
 TERMINATED_POD_GC_THRESHOLD=${TERMINATED_POD_GC_THRESHOLD:-100}
@@ -300,15 +301,13 @@ if [[ ${KUBE_ENABLE_INSECURE_REGISTRY:-false} = 'true' ]]; then
 fi
 
 if [[ -n "${NODE_ACCELERATORS}" ]]; then
-    if [[ -z "${FEATURE_GATES:-}" ]]; then
-        FEATURE_GATES='DevicePlugins=true'
-    else
-        FEATURE_GATES="${FEATURE_GATES},DevicePlugins=true"
-    fi
     if [[ "${NODE_ACCELERATORS}" =~ .*type=([a-zA-Z0-9-]+).* ]]; then
         NON_MASTER_NODE_LABELS="${NON_MASTER_NODE_LABELS},cloud.google.com/gke-accelerator=${BASH_REMATCH[1]}"
     fi
 fi
+
+# List of the set of feature gates recognized by the GCP CCM
+export CCM_FEATURE_GATES="APIListChunking,APIPriorityAndFairness,APIResponseCompression,APIServerIdentity,APIServerTracing,AllAlpha,AllBeta,CustomResourceValidationExpressions,KMSv2,OpenAPIEnums,OpenAPIV3,RemainingItemCount,ServerSideFieldValidation,StorageVersionAPI,StorageVersionHash"
 
 # Optional: Install cluster DNS.
 # Set CLUSTER_DNS_CORE_DNS to 'false' to install kube-dns instead of CoreDNS.
@@ -453,7 +452,13 @@ EVICTION_HARD=${EVICTION_HARD:-memory.available<250Mi,nodefs.available<10%,nodef
 SCHEDULING_ALGORITHM_PROVIDER=${SCHEDULING_ALGORITHM_PROVIDER:-}
 
 # Optional: install a default StorageClass
-ENABLE_DEFAULT_STORAGE_CLASS=${ENABLE_DEFAULT_STORAGE_CLASS:-false}
+# (TODO/cloud-provider-gcp): This should be reverted when we add ENABLE_DEFAULT_STORAGE_CLASS to kubetest2 parsed argument
+# ENABLE_DEFAULT_STORAGE_CLASS="${ENABLE_DEFAULT_STORAGE_CLASS:-false}"
+ENABLE_DEFAULT_STORAGE_CLASS="${ENABLE_DEFAULT_STORAGE_CLASS:-true}"
+
+# (TODO/cloud-provider-gcp): We need to figure out how to inject PDCSI Driver without code modification
+# Optional: install pd csi driver
+ENABLE_PDCSI_DRIVER="${ENABLE_PDCSI_DRIVER:-true}"
 
 # Optional: install volume snapshot CRDs
 ENABLE_VOLUME_SNAPSHOTS=${ENABLE_VOLUME_SNAPSHOTS:-true}
@@ -597,4 +602,25 @@ export TLS_CIPHER_SUITES=""
 
 # CLOUD_PROVIDER_FLAG defines the cloud-provider value presented to KCM, apiserver,
 # and kubelet
-export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-gce}"
+# (TODO/cloud-provider-gcp): Need to add overwrite in kubetest2
+# export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-gce}"
+export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-external}"
+
+# When ENABLE_AUTH_PROVIDER_GCP is set, following flags for out-of-tree credential provider for GCP
+# are presented to kubelet:
+# --image-credential-provider-config=${path-to-config}
+# --image-credential-provider-bin-dir=${path-to-auth-provider-binary}
+# Also, it is required that DisableKubeletCloudCredentialProviders and KubeletCredentialProviders
+# feature gates are set to true for kubelet to use external credential provider.
+# (TODO/cloud-provider-gcp): Need to add overwrite in kubetest2
+# ENABLE_AUTH_PROVIDER_GCP="${ENABLE_AUTH_PROVIDER_GCP:-false}"
+ENABLE_AUTH_PROVIDER_GCP="${ENABLE_AUTH_PROVIDER_GCP:-true}"
+
+# (TODO/cloud-provider-gcp): Need to figure out how we can add this FeatureGate as an env.
+if [[ ${ENABLE_AUTH_PROVIDER_GCP:-true} == "true" ]]; then
+   if [[ -z "${FEATURE_GATES:-}" ]]; then
+        FEATURE_GATES="KubeletCredentialProviders=true,DisableKubeletCloudCredentialProviders=true,DisableCloudProviders=true"
+    else
+        FEATURE_GATES="${FEATURE_GATES},KubeletCredentialProviders=true,DisableKubeletCloudCredentialProviders=true,DisableCloudProviders=true"
+    fi
+fi

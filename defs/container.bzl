@@ -20,8 +20,8 @@ def image(binary, visibility = ["//visibility:public"]):
         repository = "registry.k8s.io",
         cmd = ["/" + name],
         files = [binary],
-        stamp = True,
-        base = "@distroless//image",
+        stamp = "@io_bazel_rules_docker//stamp:always",
+        base = "@go-runner//image",
         visibility = visibility,
     )
     image_registry = "{STABLE_IMAGE_REGISTRY}"
@@ -33,7 +33,7 @@ def image(binary, visibility = ["//visibility:public"]):
         image = ":image",
         registry = image_registry,
         repository = repository,
-        stamp = True,
+        stamp = "@io_bazel_rules_docker//stamp:always",
         tag = "{STABLE_IMAGE_TAG}",
     )
     container_bundle(
@@ -41,7 +41,7 @@ def image(binary, visibility = ["//visibility:public"]):
         images = {
             image_registry + "/" + repository + ":{STABLE_IMAGE_TAG}": ":image",
         },
-        stamp = True,
+        stamp = "@io_bazel_rules_docker//stamp:always",
         visibility = visibility,
     )
     native.genrule(

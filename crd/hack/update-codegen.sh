@@ -49,28 +49,50 @@ fi
 
 readonly COMMON_FLAGS="${VERIFY_FLAG:-} --go-header-file ${SCRIPT_ROOT}/hack/boilerplate.go.txt"
 
-codegen_for () {
-  local crd_name version apis_pkg output_pkg
+generate_config() {
+  local crd_name version crd_version apis_pkg
+  crd_name="$1"
+  version="$2"
+  crd_version="$3"
+  apis_pkg="${APIS_BASE_PKG}/${1}/${2}/..."
 
-  if [[ $# != 2 ]]; then
-    echo "Usage: codegen_for CRD-NAME VERSION" >&2
-    echo "" >&2
-    echo "This writes auto generated client methods for CRD-NAME/VERSION" >&2
-    return 1
+  if [[ $# -eq 4 ]]; then
+    apis_pkg="{${apis_pkg},${APIS_BASE_PKG}/${1}/${4}/...}"
   fi
-
-  crd_name=${1}
-  version=${2}
-  output_pkg=${OUTPUT_BASE_PKG}/${1}
-  apis_pkg=${APIS_BASE_PKG}/${1}/${2}
 
   echo "Performing code generation for ${crd_name} CRD"
   echo "Generating deepcopy functions and CRD artifacts"
   go run sigs.k8s.io/controller-tools/cmd/controller-gen \
-          object:headerFile=${SCRIPT_ROOT}/hack/boilerplate.go.txt \
-          crd:crdVersions=v1 \
-          paths=${apis_pkg}/... \
-          output:crd:artifacts:config=${SCRIPT_ROOT}/config/crds
+          object:headerFile="${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
+          crd:crdVersions="${crd_version}" \
+          paths="${apis_pkg}" \
+          output:crd:artifacts:config="${SCRIPT_ROOT}/config/crds"
+}
+
+codegen_for () {
+  local crd_name version crd_version extra_version apis_pkg output_pkg
+
+  if [[ $# -ne 3 ]] && [[ $# -ne 4 ]]; then
+    echo "Usage: codegen_for CRD-NAME VERSION CRDSPEC-VERSION optional:EXTRA-VERSION" >&2
+    echo "" >&2
+    echo "This writes auto generated client methods for CRD-NAME/VERSIONs" >&2
+    return 1
+  fi
+
+  crd_name="$1"
+  version="$2"
+  crd_version="$3"
+  output_pkg="${OUTPUT_BASE_PKG}/${1}"
+  apis_pkg="${APIS_BASE_PKG}/${1}/${2}"
+
+  if [[ $# -eq 4 ]]; then
+    extra_version="$4"
+    apis_pkg="${apis_pkg},${APIS_BASE_PKG}/${1}/${extra_version}"
+    generate_config "$crd_name" "$version" "$crd_version" "$extra_version"
+  else
+    generate_config "$crd_name" "$version" "$crd_version"
+  fi
+
 
   echo "Generating clientset at ${output_pkg}/${CLIENTSET_PKG_NAME}"
   echo "apis_pkg ${apis_pkg}"
@@ -103,4 +125,5 @@ codegen_for () {
           ${COMMON_FLAGS}
 }
 
-codegen_for gcpfirewall v1beta1
+codegen_for network v1alpha1 v1 v1
+codegen_for gcpfirewall v1beta1 v1

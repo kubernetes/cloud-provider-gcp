@@ -35,7 +35,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/filter"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -551,17 +551,28 @@ func (g *Cloud) AliasRangesByProviderID(providerID string) (cidrs []string, err 
 		for _, r := range networkInterface.AliasIpRanges {
 			cidrs = append(cidrs, r.IpCidrRange)
 		}
-		ipv6Addr := getIPV6AddressFromInterface(networkInterface)
-		if ipv6Addr != "" {
-			// The podCIDR range is the first /112 subrange from the /96 assigned to
-			// the node
-			ipv6PodCIDR := fmt.Sprintf("%s/112", ipv6Addr)
-			cidrs = append(cidrs, ipv6PodCIDR)
-		} else {
-			klog.Infof("No IPv6 addresses found for %s", providerID)
+		ipv6Addr := g.GetIPV6Address(networkInterface)
+		if ipv6Addr != nil {
+			cidrs = append(cidrs, ipv6Addr.String())
 		}
 	}
 	return
+}
+
+// GetIPV6Address fetches the IPv6 addressses associated with a network interface.
+func (g *Cloud) GetIPV6Address(networkInterface *compute.NetworkInterface) *net.IPNet {
+	ipv6Addr := getIPV6AddressFromInterface(networkInterface)
+	if ipv6Addr == "" {
+		return nil
+	}
+	addr := net.ParseIP(ipv6Addr)
+	// The podCIDR range is the first /112 subrange from the /96 assigned to
+	// the node
+	mask := net.CIDRMask(112, 128)
+	return &net.IPNet{
+		IP:   addr.Mask(mask),
+		Mask: mask,
+	}
 }
 
 // AddAliasToInstanceByProviderID adds an alias to the given instance from the named
@@ -855,4 +866,21 @@ func (g *Cloud) GetNodeTags(nodeNames []string) ([]string, error) {
 	g.lastKnownNodeNames = hosts
 	g.lastComputedNodeTags = tags
 	return tags, nil
+}
+
+// NodeNetworkInterfacesByProviderID returns a list of node interfaces that exist on the node.
+func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, err error) {
+	ctx, cancel := cloud.ContextWithCallTimeout()
+	defer cancel()
+
+	_, zone, name, err := splitProviderID(providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }

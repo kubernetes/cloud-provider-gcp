@@ -1,0 +1,38 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "admission",
+    srcs = [
+        "attributes.go",
+        "audit.go",
+        "chain.go",
+        "config.go",
+        "decorator.go",
+        "errors.go",
+        "handler.go",
+        "interfaces.go",
+        "plugins.go",
+        "reinvocation.go",
+        "util.go",
+    ],
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/admission",
+    importpath = "k8s.io/apiserver/pkg/admission",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/k8s.io/apimachinery/pkg/api/errors",
+        "//vendor/k8s.io/apimachinery/pkg/api/meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer",
+        "//vendor/k8s.io/apimachinery/pkg/util/errors",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/apimachinery/pkg/util/validation",
+        "//vendor/k8s.io/apiserver/pkg/apis/apiserver",
+        "//vendor/k8s.io/apiserver/pkg/apis/apiserver/v1:apiserver",
+        "//vendor/k8s.io/apiserver/pkg/apis/audit",
+        "//vendor/k8s.io/apiserver/pkg/audit",
+        "//vendor/k8s.io/apiserver/pkg/authentication/user",
+        "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/sigs.k8s.io/yaml",
+    ],
+)
