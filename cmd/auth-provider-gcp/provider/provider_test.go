@@ -35,7 +35,7 @@ const (
 	email            = "1234@project.gserviceaccount.com"
 	expectedUsername = "_token"
 	expectedCacheKey = credentialproviderapi.ImagePluginCacheKeyType
-	dummyImage       = "k8s.gcr.io/pause"
+	dummyImage       = "registry.k8s.io/pause"
 )
 
 func hasURL(url string, response *credentialproviderapi.CredentialProviderResponse) bool {
