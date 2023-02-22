@@ -42,6 +42,11 @@ const (
 	// useEdgeCloudOnlyMessage is a message to place in the description of flags that
 	// are only applied with --use_edge_cloud enabled.
 	useEdgeCloudOnlyMessage = "(only applicable when '--use_edge_cloud' is enabled)"
+
+	// cloudsdkAuthAccessEnvVar is an env variable honored by gcloud tool. If this
+	// env variable is set to a value, that value is propagated by gcloud as an
+	// access token
+	cloudsdkAuthAccessEnvVar = "CLOUDSDK_AUTH_ACCESS_TOKEN"
 )
 
 // cache is the struct that gets cached in the cache file in json format.
@@ -174,16 +179,48 @@ func (p *plugin) execCredential() (*clientauthv1b1.ExecCredential, error) {
 		return nil, err
 	}
 
-	return &clientauthv1b1.ExecCredential{
+	ec := &clientauthv1b1.ExecCredential{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ExecCredential",
 			APIVersion: "client.authentication.k8s.io/v1beta1",
 		},
 		Status: &clientauthv1b1.ExecCredentialStatus{
-			Token:               token,
-			ExpirationTimestamp: expiry,
+			Token: token,
 		},
-	}, nil
+	}
+
+	/*
+		This is how an ExecCredential with nil metav1.Time gets printed
+				{
+				    "kind": "ExecCredential",
+				    "apiVersion": "client.authentication.k8s.io/v1beta1",
+				    "spec": {
+				        "interactive": false
+				    },
+				    "status": {
+				        "token": "ya29.test_token"
+				    }
+				}
+
+		If ExpirationTimeStamp is set to an empty metav1.Time, it gets printed as "null"
+			  {
+				    "kind": "ExecCredential",
+				    "apiVersion": "client.authentication.k8s.io/v1beta1",
+				    "spec": {
+				        "interactive": false
+				    },
+				    "status": {
+				        "expirationTimestamp": null,
+				        "token": "ya29.test_token"
+				    }
+				}
+		Hence, the expiration timestamp is set only if it is non-zero
+	*/
+	if !expiry.IsZero() {
+		ec.Status.ExpirationTimestamp = expiry
+	}
+
+	return ec, nil
 }
 
 // accessToken returns a cached token if a valid token exists. If no valid token exists,
