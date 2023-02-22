@@ -70,6 +70,8 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/version",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apimachinery/pkg/watch",
+        "//vendor/k8s.io/client-go/applyconfigurations/core/v1:core",
+        "//vendor/k8s.io/client-go/applyconfigurations/meta/v1:meta",
         "//vendor/k8s.io/client-go/informers",
         "//vendor/k8s.io/client-go/kubernetes",
         "//vendor/k8s.io/client-go/kubernetes/fake",
