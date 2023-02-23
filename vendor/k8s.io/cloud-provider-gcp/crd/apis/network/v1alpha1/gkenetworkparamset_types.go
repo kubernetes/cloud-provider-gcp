@@ -20,10 +20,12 @@ type GKENetworkParamSet struct {
 }
 
 // DeviceModeType defines mode in which the devices will be used by the Pod
-// +kubebuilder:validation:Enum=DPDK-VFIO;NetDevice
+// +kubebuilder:validation:Enum=DPDK-UIO;DPDK-VFIO;NetDevice
 type DeviceModeType string
 
 const (
+	// DPDKUIO indicates that NICs are bound to uio_pci_generic driver
+	DPDKUIO DeviceModeType = "DPDK-UIO"
 	// DPDKVFIO indicates that NICs are bound to vfio-pci driver
 	DPDKVFIO DeviceModeType = "DPDK-VFIO"
 	// NetDevice indicates that NICs are bound to kernel driver and used as net device

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"testing"
 	"time"
@@ -490,6 +491,37 @@ func TestExecCredential(t *testing.T) {
 	}
 }
 
+func TestCloudsdkBasedGcloudAccessToken(t *testing.T) {
+	p := &plugin{
+		k8sStartingConfig: nil,
+		getCacheFilePath:  nil,
+		readFile:          nil,
+		timeNow:           nil,
+		tokenProvider: &gcloudTokenProvider{
+			readGcloudConfigRaw: nil,
+			readFile:            nil,
+		},
+	}
+
+	tokenForEnvVar := "gcloud_token_in_env_var"
+	os.Setenv(cloudsdkAuthAccessEnvVar, tokenForEnvVar)
+
+	ec, err := p.execCredential()
+	if err != nil {
+		t.Fatalf("err should be nil")
+	}
+
+	os.Setenv(cloudsdkAuthAccessEnvVar, "")
+
+	if diff := cmp.Diff(ec.Status.Token, tokenForEnvVar); diff != "" {
+		t.Errorf("unexpected token (-want +got): %s", diff)
+	}
+
+	if ec.Status.ExpirationTimestamp != nil {
+		t.Errorf("unexpected expiration time stamp: %v", ec.Status.ExpirationTimestamp)
+	}
+}
+
 func fakeDefaultTokenSource(ctx context.Context, scope ...string) (oauth2.TokenSource, error) {
 	return &mockTokenSource{}, nil
 }
@@ -602,7 +634,7 @@ func fakeTimeNow() time.Time {
 	return time.Date(2022, 1, 2, 0, 0, 0, 0, time.UTC)
 }
 
-func fakeEdgeCloudTokenOutput(location string, clusterName string) ([]byte, error) {
+func fakeEdgeCloudTokenOutput(project string, location string, clusterName string, impersonateServiceAccount string) ([]byte, error) {
 	return []byte(`
 	{
 		"accessToken": "EdgeCloud_NewAccessToken",

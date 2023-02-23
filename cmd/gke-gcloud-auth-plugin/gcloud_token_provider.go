@@ -3,7 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
+
+	"k8s.io/klog/v2"
 )
 
 // gcloudConfiguration holds types unmarshaled from gcloud config in json format
@@ -42,6 +45,12 @@ func (p *gcloudTokenProvider) readGcloudConfig() (*gcloudConfiguration, error) {
 }
 
 func (p *gcloudTokenProvider) token() (string, *time.Time, error) {
+	cloudsdkAuthAccessToken := os.Getenv(cloudsdkAuthAccessEnvVar)
+	if cloudsdkAuthAccessToken != "" {
+		klog.V(4).Infof("Returning token from Environment Variable CLOUDSDK_AUTH_ACCESS_TOKEN as it is populated")
+		return cloudsdkAuthAccessToken, &time.Time{}, nil
+	}
+
 	gc, err := p.readGcloudConfig()
 	if err != nil {
 		return "", nil, err
@@ -69,7 +78,14 @@ func (p *gcloudTokenProvider) token() (string, *time.Time, error) {
 	return token, &gc.Credential.TokenExpiry, nil
 }
 
-func (p *gcloudTokenProvider) useCache() bool { return true }
+func (p *gcloudTokenProvider) useCache() bool {
+	cloudsdkAuthAccessToken := os.Getenv(cloudsdkAuthAccessEnvVar)
+	if cloudsdkAuthAccessToken != "" {
+		klog.V(4).Infof("cache is not being used as %s is populated", cloudsdkAuthAccessEnvVar)
+		return false
+	}
+	return true
+}
 
 func readGcloudConfigRaw() ([]byte, error) {
 	return executeCommand("gcloud", "config", "config-helper", "--format=json")
