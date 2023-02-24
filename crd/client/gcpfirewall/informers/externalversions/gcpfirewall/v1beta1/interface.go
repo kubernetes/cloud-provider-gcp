@@ -41,5 +41,5 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 
 // GCPFirewalls returns a GCPFirewallInformer.
 func (v *version) GCPFirewalls() GCPFirewallInformer {
-	return &gCPFirewallInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+	return &gCPFirewallInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

@@ -21,3 +21,7 @@ package v1beta1
 // GCPFirewallListerExpansion allows custom methods to be added to
 // GCPFirewallLister.
 type GCPFirewallListerExpansion interface{}
+
+// GCPFirewallNamespaceListerExpansion allows custom methods to be added to
+// GCPFirewallNamespaceLister.
+type GCPFirewallNamespaceListerExpansion interface{}
