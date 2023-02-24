@@ -78,7 +78,7 @@ var (
 	hmsSyncNodeURL                         = pflag.String("hms-sync-node-url", "", "URL for reaching the Hosted Master Service SyncNode API.")
 	kubeletReadOnlyCSRApprover             = pflag.Bool("kubelet-read-only-csr-approver", false, "Enable kubelet readonly csr approver or not")
 	autopilotEnabled                       = pflag.Bool("autopilot", false, "Is this a GKE Autopilot cluster.")
-	clearStalePodsOnNodeRegistration       = pflag.Bool("clearStalePodsOnNodeRegistration", false, "If true, after node registration, delete pods bound to old node.")
+	clearStalePodsOnNodeRegistration       = pflag.Bool("clearStalePodsOnNodeRegistration", true, "If true, after node registration, delete pods bound to old node.")
 )
 
 func main() {
