@@ -39,9 +39,10 @@ const (
 	// is located at 'gcloud info | grep "User Config Directory"'
 	activeConfig = "active_config"
 
-	// useEdgeCloudOnlyMessage is a message to place in the description of flags that
+	// applicableOnlyForEdgeCloud is a message to place in the description of flags that
 	// are only applied with --use_edge_cloud enabled.
-	useEdgeCloudOnlyMessage = "(only applicable when '--use_edge_cloud' is enabled)"
+	applicableOnlyForEdgeCloud = "(only applicable when '--use_edge_cloud' is enabled)"
+	requiredForEdgeCloud       = "(mandatory when using --use_edge_cloud, optional otherwise)"
 
 	// cloudsdkAuthAccessEnvVar is an env variable honored by gcloud tool. If this
 	// env variable is set to a value, that value is propagated by gcloud as an
@@ -55,6 +56,7 @@ const (
 //	"current_context": "gke_user-gke-dev_us-central1_autopilot-cluster-11",
 //	"access_token": "ya29.A0ARrdaM8WL....G0xYXGIQNPi5WvHe07ia4Gs",
 //	"token_expiry": "2022-01-27T08:27:52Z"
+//	"extra_args": "--account=exampleAccount"
 //
 // }
 // The current_context helps us cache tokens by context(cluster) similar to how
@@ -67,6 +69,9 @@ type cache struct {
 	AccessToken string `json:"access_token"`
 	// TokenExpiry is gcloud access token's expiry.
 	TokenExpiry string `json:"token_expiry"`
+	// ExtraArgs refers to the args used when generating the token.
+	// These args could allow the user to set get tokens for non-default accounts, projects, etc.
+	ExtraArgs string `json:"extra_args"`
 }
 
 // plugin holds data to be passed around (eg: useApplicationDefaultCredentials)
@@ -94,10 +99,11 @@ func newPlugin(tokenProvider tokenProvider) *plugin {
 var (
 	useApplicationDefaultCredentials = pflag.Bool("use_application_default_credentials", false, "Output is an ExecCredential filled with application default credentials.")
 	useEdgeCloud                     = pflag.Bool("use_edge_cloud", false, "Output is an ExecCredential for an Edge Cloud cluster.")
-	project                          = pflag.String("project", "", fmt.Sprintf("Parent project of the Cluster %s.", useEdgeCloudOnlyMessage))
-	location                         = pflag.String("location", "", fmt.Sprintf("Location of the Cluster %s.", useEdgeCloudOnlyMessage))
-	cluster                          = pflag.String("cluster", "", fmt.Sprintf("Name of the Cluster %s.", useEdgeCloudOnlyMessage))
-	impersonateServiceAccount        = pflag.String("impersonate_service_account", "", fmt.Sprintf("Impersonate a service account to retrieve tokens for the Cluster %s.", useEdgeCloudOnlyMessage))
+	project                          = pflag.String("project", "", fmt.Sprintf("Parent project of the Cluster %s.", requiredForEdgeCloud))
+	account                          = pflag.String("account", "", "Optional account to use for gcloud config command")
+	location                         = pflag.String("location", "", fmt.Sprintf("Location of the Cluster %s.", applicableOnlyForEdgeCloud))
+	cluster                          = pflag.String("cluster", "", fmt.Sprintf("Name of the Cluster %s.", applicableOnlyForEdgeCloud))
+	impersonateServiceAccount        = pflag.String("impersonate_service_account", "", "Impersonate a service account to retrieve tokens for the Cluster.")
 )
 
 func main() {
@@ -127,8 +133,11 @@ func main() {
 		}
 	} else {
 		tokenProvider = &gcloudTokenProvider{
-			readGcloudConfigRaw: readGcloudConfigRaw,
-			readFile:            readFile,
+			readGcloudConfigRaw:       readGcloudConfigRaw,
+			readFile:                  readFile,
+			account:                   *account,
+			project:                   *project,
+			impersonateServiceAccount: *impersonateServiceAccount,
 		}
 	}
 
@@ -260,10 +269,16 @@ func (p *plugin) writeGcloudAccessTokenToCache(accessToken string, expiry time.T
 		return fmt.Errorf("error getting starting config: %w", err)
 	}
 
+	// Format the []string of extra args to a single string because marshalling []string is finicky.
+	// Since this just acts as a key for the cache we dont need to keep it formatted for executing
+	extraArgs := p.tokenProvider.getExtraArgs()
+	extraArgsString := strings.Join(extraArgs, " ")
+
 	c := cache{
 		CurrentContext: startingConfig.CurrentContext,
 		AccessToken:    accessToken,
 		TokenExpiry:    expiry.Format(time.RFC3339Nano),
+		ExtraArgs:      extraArgsString,
 	}
 
 	formatted, err := formatToJSON(c)
@@ -307,6 +322,12 @@ func (p *plugin) getCachedGcloudAccessToken() (string, *metav1.Time, error) {
 	// generated for, then consider the current access token invalid.
 	if c.CurrentContext != startingConfig.CurrentContext {
 		return "", nil, fmt.Errorf("cache is invalid as the k8s starting config changed")
+	}
+
+	// If the args passed when generating this token differ from those passed
+	// when the cached token was created, the cached token is invalid
+	if c.ExtraArgs != strings.Join(p.tokenProvider.getExtraArgs(), " ") {
+		return "", nil, fmt.Errorf("cache is invalid as the passed in args have changed")
 	}
 
 	return c.AccessToken, &metav1.Time{Time: expiryTimeStamp}, nil

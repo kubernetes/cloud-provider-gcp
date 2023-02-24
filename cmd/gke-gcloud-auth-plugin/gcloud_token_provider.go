@@ -26,13 +26,16 @@ type gcloudConfiguration struct {
 
 // gcloudTokenProvider provides gcloud OAth 2.0 tokens.
 type gcloudTokenProvider struct {
-	readGcloudConfigRaw func() ([]byte, error)
-	readFile            func(filename string) ([]byte, error)
+	readGcloudConfigRaw       func(args []string) ([]byte, error)
+	readFile                  func(filename string) ([]byte, error)
+	account                   string
+	project                   string
+	impersonateServiceAccount string
 }
 
 // readGcloudConfig returns an object which represents gcloud config output
-func (p *gcloudTokenProvider) readGcloudConfig() (*gcloudConfiguration, error) {
-	gcloudConfigBytes, err := p.readGcloudConfigRaw()
+func (p *gcloudTokenProvider) readGcloudConfig(extraArgs []string) (*gcloudConfiguration, error) {
+	gcloudConfigBytes, err := p.readGcloudConfigRaw(extraArgs)
 	if err != nil {
 		return nil, err
 	}
@@ -50,8 +53,8 @@ func (p *gcloudTokenProvider) token() (string, *time.Time, error) {
 		klog.V(4).Infof("Returning token from Environment Variable CLOUDSDK_AUTH_ACCESS_TOKEN as it is populated")
 		return cloudsdkAuthAccessToken, &time.Time{}, nil
 	}
-
-	gc, err := p.readGcloudConfig()
+	gcloudArgs := p.getGcloudArgs()
+	gc, err := p.readGcloudConfig(gcloudArgs)
 	if err != nil {
 		return "", nil, err
 	}
@@ -87,6 +90,31 @@ func (p *gcloudTokenProvider) useCache() bool {
 	return true
 }
 
-func readGcloudConfigRaw() ([]byte, error) {
-	return executeCommand("gcloud", "config", "config-helper", "--format=json")
+func (p *gcloudTokenProvider) getExtraArgs() []string {
+	extraArgs := make([]string, 0, 3)
+	if p.project != "" {
+		extraArgs = append(extraArgs, fmt.Sprintf("--project=%s", p.project))
+	}
+	if p.account != "" {
+		extraArgs = append(extraArgs, fmt.Sprintf("--account=%s", p.account))
+	}
+	if p.impersonateServiceAccount != "" {
+		extraArgs = append(extraArgs, fmt.Sprintf("--impersonate-service-account=%s", p.impersonateServiceAccount))
+	}
+	return extraArgs
+}
+
+func (p *gcloudTokenProvider) getGcloudArgs() []string {
+	args := []string{
+		"config",
+		"config-helper",
+		"--format=json",
+	}
+	args = append(args, p.getExtraArgs()...)
+	return args
+}
+
+func readGcloudConfigRaw(args []string) ([]byte, error) {
+	klog.V(4).Infof("Executing gcloud command with args: %v", args)
+	return executeCommand("gcloud", args...)
 }
