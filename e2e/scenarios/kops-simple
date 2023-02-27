@@ -27,6 +27,27 @@ BINDIR=${WORKSPACE}/bin
 export PATH=${BINDIR}:${PATH}
 mkdir -p "${BINDIR}"
 
+# Setup our cleanup function; as we allocate resources we set a variable to indicate they should be cleaned up
+function cleanup {
+  if [[ "${CLEANUP_BOSKOS:-}" == "true" ]]; then
+    cleanup_boskos
+  fi
+  # shellcheck disable=SC2153
+  if [[ "${DELETE_CLUSTER:-}" == "true" ]]; then
+      kubetest2 ${KUBETEST2_ARGS} --down || echo "kubetest2 down failed"
+  fi
+}
+trap cleanup EXIT
+
+# Ensure we have a project; get one from boskos if one not provided in GCP_PROJECT
+source "${REPO_ROOT}"/test/boskos.sh
+if [[ -z "${GCP_PROJECT:-}" ]]; then
+  echo "GCP_PROJECT not set, acquiring project from boskos"
+  acquire_project
+  CLEANUP_BOSKOS="true"
+fi
+echo "GCP_PROJECT=${GCP_PROJECT}"
+
 # Build kOps & kubetest-2 kOps support
 pushd ${WORKSPACE}/kops
 GOBIN=${BINDIR} go install k8s.io/kops/cmd/kops
@@ -51,24 +72,31 @@ if [[ -z "${WORKDIR:-}" ]]; then
 fi
 mkdir -p "${WORKDIR}"
 
-if [[ -z "${GCP_PROJECT}" ]]; then
-  GCP_PROJECT=$(gcloud config get project)
-fi
-echo "GCP_PROJECT=${GCP_PROJECT}"
-
-if [[ -z "${KOPS_STATE_STORE}" ]]; then
+# KOPS_STATE_STORE holds metadata about the clusters we create
+if [[ -z "${KOPS_STATE_STORE:-}" ]]; then
   KOPS_STATE_STORE="gs://kops-state-${GCP_PROJECT}"
+  # Ensure the bucket exists
+  gsutil ls "${KOPS_STATE_STORE}" || gsutil mb "${KOPS_STATE_STORE}"
 fi
 echo "KOPS_STATE_STORE=${KOPS_STATE_STORE}"
 export KOPS_STATE_STORE
 
-if [[ -z "${IMAGE_REPO}" ]]; then
+# STAGE_LOCATION is used to upload binary artifacts
+if [[ -z "${STAGE_LOCATION:-}" ]]; then
+  STAGE_LOCATION="gs://kops-dev-${GCP_PROJECT}-${USER}"
+  # Ensure the bucket exists
+  gsutil ls "${STAGE_LOCATION}" || gsutil mb "${STAGE_LOCATION}"
+fi
+echo "STAGE_LOCATION=${STAGE_LOCATION}"
+
+# IMAGE_REPO is used to upload images
+if [[ -z "${IMAGE_REPO:-}" ]]; then
   IMAGE_REPO="gcr.io/${GCP_PROJECT}"
 fi
 echo "IMAGE_REPO=${IMAGE_REPO}"
 
 cd ${REPO_ROOT}
-if [[ -z "${IMAGE_TAG}" ]]; then
+if [[ -z "${IMAGE_TAG:-}" ]]; then
   IMAGE_TAG=$(git rev-parse --short HEAD)-$(date +%Y%m%dT%H%M%S)
 fi
 echo "IMAGE_TAG=${IMAGE_REPO}"
@@ -81,7 +109,7 @@ go run github.com/google/ko@v0.12.0 build --tags ${IMAGE_TAG} --base-import-path
 # TODO: Only if running in a test project?
 gsutil iam ch allAuthenticatedUsers:objectViewer gs://artifacts.${GCP_PROJECT}.appspot.com
 
-if [[ -z "${ADMIN_ACCESS}" ]]; then
+if [[ -z "${ADMIN_ACCESS:-}" ]]; then
   ADMIN_ACCESS="0.0.0.0/0" # Or use your IPv4 with /32
 fi
 echo "ADMIN_ACCESS=${ADMIN_ACCESS}"
@@ -99,7 +127,7 @@ create_args="${create_args} --add=${WORKDIR}/cloud-provider-gcp.yaml"
 
 
 # Enable cluster addons, this enables us to replace the built-in manifest
-KOPS_FEATURE_FLAGS="ClusterAddons,${KOPS_FEATURE_FLAGS}"
+KOPS_FEATURE_FLAGS="ClusterAddons,${KOPS_FEATURE_FLAGS:-}"
 echo "KOPS_FEATURE_FLAGS=${KOPS_FEATURE_FLAGS}"
 
 # Note that these arguments for kubetest2 and kOps, not (for example) the arguments passed to the cloud-provider-gcp
@@ -120,13 +148,6 @@ if [[ -n "${SSH_PRIVATE_KEY:-}" ]]; then
   KUBETEST2_ARGS="${KUBETEST2_ARGS} --ssh-private-key=${SSH_PRIVATE_KEY}"
 fi
 
-function delete-cluster {
-    # shellcheck disable=SC2153
-  if [[ "${DELETE_CLUSTER:-}" == "true" ]]; then
-      kubetest2 ${KUBETEST2_ARGS} --down || echo "kubetest2 down failed"
-  fi
-}
-trap delete-cluster EXIT
 
 # The caller can set DELETE_CLUSTER=false to stop us deleting the cluster
 if [[ -z "${DELETE_CLUSTER:-}" ]]; then
