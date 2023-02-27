@@ -76,7 +76,7 @@ echo "IMAGE_TAG=${IMAGE_REPO}"
 # Build and push cloud-controller-manager
 cd ${REPO_ROOT}
 export KO_DOCKER_REPO="${IMAGE_REPO}"
-ko build --tags ${IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
+go run github.com/google/ko@v0.12.0 build --tags ${IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
 
 # TODO: Only if running in a test project?
 gsutil iam ch allAuthenticatedUsers:objectViewer gs://artifacts.${GCP_PROJECT}.appspot.com
@@ -86,7 +86,9 @@ if [[ -z "${ADMIN_ACCESS}" ]]; then
 fi
 echo "ADMIN_ACCESS=${ADMIN_ACCESS}"
 
-create_args="--networking gce"
+# cilium does not yet pass conformance tests (shared hostport test)
+#create_args="--networking cilium"
+create_args="--networking kubenet"
 if [[ -n "${ZONES:-}" ]]; then
     create_args="${create_args} --zones=${ZONES}"
 fi
@@ -103,11 +105,19 @@ echo "KOPS_FEATURE_FLAGS=${KOPS_FEATURE_FLAGS}"
 # Note that these arguments for kubetest2 and kOps, not (for example) the arguments passed to the cloud-provider-gcp
 KUBETEST2_ARGS="kops --kops-binary-path=${BINDIR}/kops"
 KUBETEST2_ARGS="${KUBETEST2_ARGS} -v=2 --cloud-provider=${CLOUD_PROVIDER}"
-KUBETEST2_ARGS="${KUBETEST2_ARGS} --cluster-name=${CLUSTER_NAME:-} --kops-root=${REPO_ROOT}"
+KUBETEST2_ARGS="${KUBETEST2_ARGS} --cluster-name=${CLUSTER_NAME:-} --kops-root=${WORKSPACE}/kops"
 KUBETEST2_ARGS="${KUBETEST2_ARGS} --admin-access=${ADMIN_ACCESS:-} --env=KOPS_FEATURE_FLAGS=${KOPS_FEATURE_FLAGS}"
 
 if [[ -n "${GCP_PROJECT:-}" ]]; then
   KUBETEST2_ARGS="${KUBETEST2_ARGS} --gcp-project=${GCP_PROJECT}"
+fi
+
+if [[ -n "${STAGE_LOCATION:-}" ]]; then
+  KUBETEST2_ARGS="${KUBETEST2_ARGS} --stage-location=${STAGE_LOCATION}"
+fi
+
+if [[ -n "${SSH_PRIVATE_KEY:-}" ]]; then
+  KUBETEST2_ARGS="${KUBETEST2_ARGS} --ssh-private-key=${SSH_PRIVATE_KEY}"
 fi
 
 function delete-cluster {
@@ -125,18 +135,17 @@ fi
 
 kubetest2 ${KUBETEST2_ARGS} \
   --up \
-   \
+  --build \
   --kubernetes-version="${K8S_VERSION}" \
   --create-args="${create_args}" \
   --control-plane-size="${KOPS_CONTROL_PLANE_SIZE:-1}" \
   --template-path="${KOPS_TEMPLATE:-}"
 
-
 kubetest2 ${KUBETEST2_ARGS} \
   --test=kops \
   -- \
   --test-package-version="${K8S_VERSION}" \
-  --parallel=25 \
+  --parallel=30 \
   --skip-regex="\[Serial\]" \
   --focus-regex="\[Conformance\]"
 
