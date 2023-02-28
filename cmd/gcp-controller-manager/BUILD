@@ -14,7 +14,10 @@ go_binary(
 
 load("//defs:container.bzl", "image")
 
-image(binary = ":gcp-controller-manager")
+image(
+    base = "@distroless//image",
+    binary = ":gcp-controller-manager",
+)
 
 go_library(
     name = "gcp-controller-manager_lib",
