@@ -21,6 +21,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver/install",
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver/v1beta1",
         "//vendor/k8s.io/apiserver/pkg/server/egressselector/metrics",
+        "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/component-base/tracing",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/path",
