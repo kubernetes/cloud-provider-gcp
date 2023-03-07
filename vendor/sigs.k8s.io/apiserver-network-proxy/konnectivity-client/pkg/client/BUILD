@@ -12,6 +12,8 @@ go_library(
     deps = [
         "//vendor/google.golang.org/grpc",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client/metrics",
+        "//vendor/sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/common/metrics",
         "//vendor/sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client",
     ],
 )
