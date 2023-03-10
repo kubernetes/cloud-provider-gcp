@@ -4,7 +4,6 @@ go_library(
     name = "credentials",
     srcs = [
         "credentials.go",
-        "go12.go",
         "tls.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/credentials",
@@ -13,7 +12,6 @@ go_library(
     deps = [
         "//vendor/github.com/golang/protobuf/proto",
         "//vendor/google.golang.org/grpc/attributes",
-        "//vendor/google.golang.org/grpc/internal",
         "//vendor/google.golang.org/grpc/internal/credentials",
     ],
 )
