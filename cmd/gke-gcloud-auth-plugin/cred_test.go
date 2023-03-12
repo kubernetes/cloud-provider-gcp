@@ -37,6 +37,7 @@ var (
     "current_context": "%s",
     "access_token": "%s",
     "token_expiry": "%s",
+    "token_expiry_adjusted": false,
 	"extra_args": "%s"
 }
 `
@@ -96,6 +97,7 @@ var (
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "iam-ya29.gcloud_t0k3n^authz-t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z",
+    "token_expiry_adjusted": false,
     "extra_args": ""
 }`
 	cachedFileAutzTokenPathChanged = baseCacheFileWithAuthzToken //fmt.Sprintf(baseCacheFileWithAuthzToken, "old_Path", "")
@@ -105,6 +107,7 @@ var (
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z",
+    "token_expiry_adjusted": false,
     "extra_args": ""
 }`
 
@@ -112,6 +115,7 @@ var (
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z",
+    "token_expiry_adjusted": false,
     "extra_args": "--project=` + fakeProject + ` --account=` + fakeAccount + `"
 }`
 
@@ -119,6 +123,7 @@ var (
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z",
+    "token_expiry_adjusted": false,
     "extra_args": "--impersonate-service-account=` + fakeImpersonateServiceAccount + `"
 }`
 
@@ -126,6 +131,15 @@ var (
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "iam-ya29.gcloud_t0k3n^authz-t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z",
+    "token_expiry_adjusted": false,
+    "extra_args": ""
+}`
+
+	wantCacheFileForAccessTokenFileScenario = `{
+    "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
+    "access_token": "ya29.token_from_file",
+    "token_expiry": "2022-01-02T00:00:20Z",
+    "token_expiry_adjusted": true,
     "extra_args": ""
 }`
 
@@ -152,6 +166,7 @@ var (
     "current_context": "%s",
     "access_token": "EdgeCloud_NewAccessToken",
     "token_expiry": "2022-01-01T00:00:00Z",
+    "token_expiry_adjusted": false,
     "extra_args": "fake-edge-cloud-cluster --project=%s --location=us-central-fake --format=json"
 }`, kubeCtlStartingConfig, fakeProject)
 )
@@ -506,6 +521,21 @@ func TestExecCredential(t *testing.T) {
 			wantCacheFile: wantCacheFileWithAuthzToken,
 		},
 		{
+			testName: "GcloudAccessTokenFromAccessTokenFile",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigWithAccessTokenFileOutput,
+					readFile:            fakeReadFile,
+				},
+			},
+			wantToken:     fakeExecCredential("ya29.token_from_file", nil),
+			wantCacheFile: wantCacheFileForAccessTokenFileScenario,
+		},
+		{
 			testName: "CachedFileWithAuthzTokenFilePathChanged",
 			p: &plugin{
 				k8sStartingConfig: fakeK8sStartingConfig,
@@ -649,7 +679,7 @@ func TestExecCredential(t *testing.T) {
 			// Run
 			ec, err := tc.p.execCredential()
 			if err != nil {
-				t.Fatalf("err should be nil")
+				t.Fatalf("err should be nil: %v", err)
 			}
 
 			if diff := cmp.Diff(tc.wantToken, ec); diff != "" {
@@ -754,6 +784,41 @@ func fakeGcloudConfigWithAuthzTokenOutput(extraArgs []string) ([]byte, error) {
   "credential": {
     "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z"
+  }
+}
+`), nil
+}
+
+func fakeGcloudConfigWithAccessTokenFileOutput(extraArgs []string) ([]byte, error) {
+	return []byte(`
+{
+  "configuration": {
+    "active_configuration": "default",
+    "properties": {
+      "auth": {
+        "access_token_file": "/usr/local/google/home/username/Desktop/gcloud_test_token"
+      },
+      "compute": {
+        "zone": "us-central1-c"
+      },
+      "container": {
+        "cluster": "username-cluster",
+        "use_application_default_credentials": "false"
+      },
+      "core": {
+        "account": "username@google.com",
+        "disable_usage_reporting": "False",
+        "project": "username-gke-dev"
+      }
+    }
+  },
+  "credential": {
+    "access_token": "ya29.token_from_file",
+    "id_token": null,
+    "token_expiry": null
+  },
+  "sentinels": {
+    "config_sentinel": "/usr/local/google/home/username/.config/gcloud/config_sentinel"
   }
 }
 `), nil

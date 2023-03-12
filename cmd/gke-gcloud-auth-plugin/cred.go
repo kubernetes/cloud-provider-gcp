@@ -48,6 +48,12 @@ const (
 	// env variable is set to a value, that value is propagated by gcloud as an
 	// access token
 	cloudsdkAuthAccessEnvVar = "CLOUDSDK_AUTH_ACCESS_TOKEN"
+
+	// AccessTokenExpiryLeeway provides 10 seconds of reuse time by setting expiry
+	// 20 seconds from now , if gcloud does not provide an expiry timestamp for
+	// the access token . This is because, tokens with less than 10 seconds to
+	// live are discarded in getCachedGcloudAccessToken.
+	AccessTokenExpiryLeeway = 20 * time.Second
 )
 
 // cache is the struct that gets cached in the cache file in json format.
@@ -69,6 +75,8 @@ type cache struct {
 	AccessToken string `json:"access_token"`
 	// TokenExpiry is gcloud access token's expiry.
 	TokenExpiry string `json:"token_expiry"`
+	// TokenExpiryAdjusted is true if token expiry in cache has been adjusted.
+	TokenExpiryAdjusted bool `json:"token_expiry_adjusted"`
 	// ExtraArgs refers to the args used when generating the token.
 	// These args could allow the user to set get tokens for non-default accounts, projects, etc.
 	ExtraArgs string `json:"extra_args"`
@@ -269,16 +277,26 @@ func (p *plugin) writeGcloudAccessTokenToCache(accessToken string, expiry time.T
 		return fmt.Errorf("error getting starting config: %w", err)
 	}
 
+	tokenExpiryAdjusted := false
+	// For cases when expiry timestamp is not present, cache for 10 seconds
+	// avoid calling gcloud more than once every 10 seconds
+	if expiry.IsZero() {
+		klog.V(4).Infof("Adding 20 seconds leeway to expiry as no expiry timestamp is present")
+		expiry = p.timeNow().Add(AccessTokenExpiryLeeway)
+		tokenExpiryAdjusted = true
+	}
+
 	// Format the []string of extra args to a single string because marshalling []string is finicky.
 	// Since this just acts as a key for the cache we dont need to keep it formatted for executing
 	extraArgs := p.tokenProvider.getExtraArgs()
 	extraArgsString := strings.Join(extraArgs, " ")
 
 	c := cache{
-		CurrentContext: startingConfig.CurrentContext,
-		AccessToken:    accessToken,
-		TokenExpiry:    expiry.Format(time.RFC3339Nano),
-		ExtraArgs:      extraArgsString,
+		CurrentContext:      startingConfig.CurrentContext,
+		AccessToken:         accessToken,
+		TokenExpiry:         expiry.Format(time.RFC3339Nano),
+		TokenExpiryAdjusted: tokenExpiryAdjusted,
+		ExtraArgs:           extraArgsString,
 	}
 
 	formatted, err := formatToJSON(c)
@@ -328,6 +346,19 @@ func (p *plugin) getCachedGcloudAccessToken() (string, *metav1.Time, error) {
 	// when the cached token was created, the cached token is invalid
 	if c.ExtraArgs != strings.Join(p.tokenProvider.getExtraArgs(), " ") {
 		return "", nil, fmt.Errorf("cache is invalid as the passed in args have changed")
+	}
+
+	//  1. Prevent internal implementation being visible outside
+	//  2. For access tokens without token provider provided expiry timestamp, allow exec code
+	//  to perform its own manipulation at https://github.com/kubernetes/client-go/blob/b5e4a5a9c356d800639ba18f67ae30aef96855f3/plugin/pkg/client/auth/exec/exec.go#L474
+	// 	Code Snippet:
+	//	if cred.Status.ExpirationTimestamp != nil {
+	//		a.exp = cred.Status.ExpirationTimestamp.Time
+	//	} else {
+	//		a.exp = time.Time{}
+	//	}
+	if c.TokenExpiryAdjusted {
+		return c.AccessToken, nil, nil
 	}
 
 	return c.AccessToken, &metav1.Time{Time: expiryTimeStamp}, nil
