@@ -506,6 +506,21 @@ func TestExecCredential(t *testing.T) {
 			wantCacheFile: wantCacheFileWithAuthzToken,
 		},
 		{
+			testName: "GcloudAccessTokenFromAccessTokenFile",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigWithAccessTokenFileOutput,
+					readFile:            fakeReadFile,
+				},
+			},
+			wantToken:     fakeExecCredential("ya29.token_from_file", nil),
+			wantCacheFile: "",
+		},
+		{
 			testName: "CachedFileWithAuthzTokenFilePathChanged",
 			p: &plugin{
 				k8sStartingConfig: fakeK8sStartingConfig,
@@ -649,7 +664,7 @@ func TestExecCredential(t *testing.T) {
 			// Run
 			ec, err := tc.p.execCredential()
 			if err != nil {
-				t.Fatalf("err should be nil")
+				t.Fatalf("err should be nil: %v", err)
 			}
 
 			if diff := cmp.Diff(tc.wantToken, ec); diff != "" {
@@ -754,6 +769,41 @@ func fakeGcloudConfigWithAuthzTokenOutput(extraArgs []string) ([]byte, error) {
   "credential": {
     "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z"
+  }
+}
+`), nil
+}
+
+func fakeGcloudConfigWithAccessTokenFileOutput(extraArgs []string) ([]byte, error) {
+	return []byte(`
+{
+  "configuration": {
+    "active_configuration": "default",
+    "properties": {
+      "auth": {
+        "access_token_file": "/usr/local/google/home/username/Desktop/gcloud_test_token"
+      },
+      "compute": {
+        "zone": "us-central1-c"
+      },
+      "container": {
+        "cluster": "username-cluster",
+        "use_application_default_credentials": "false"
+      },
+      "core": {
+        "account": "username@google.com",
+        "disable_usage_reporting": "False",
+        "project": "username-gke-dev"
+      }
+    }
+  },
+  "credential": {
+    "access_token": "ya29.token_from_file",
+    "id_token": null,
+    "token_expiry": null
+  },
+  "sentinels": {
+    "config_sentinel": "/usr/local/google/home/username/.config/gcloud/config_sentinel"
   }
 }
 `), nil

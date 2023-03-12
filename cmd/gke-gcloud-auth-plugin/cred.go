@@ -253,7 +253,7 @@ func (p *plugin) accessToken() (string, *metav1.Time, error) {
 		return "", nil, fmt.Errorf("Failed to retrieve access token:: %w", err)
 	}
 
-	if useCache {
+	if useCache && !expiry.IsZero() {
 		if err := p.writeGcloudAccessTokenToCache(token, *expiry); err != nil {
 			// log and ignore error as writing to cache is best effort
 			klog.V(4).Infof("Failed to write gcloud access token to cache with error: %v", err)
