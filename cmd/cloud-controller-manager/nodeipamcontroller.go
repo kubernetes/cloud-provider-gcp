@@ -229,7 +229,7 @@ func setNodeCIDRMaskSizes(cfg nodeipamconfig.NodeIPAMControllerConfiguration, cl
 
 	if maskV4Configured {
 		if isSingleStackIPv6 {
-			return nil, errors.New("usage of --node-cidr-mask-size-ipv4 is not allowed for a single-stack IPv6 cluster")
+			klog.Info("--node-cidr-mask-size-ipv4 should not be used for a single-stack IPv6 cluster")
 		}
 
 		ipv4Mask = int(cfg.NodeCIDRMaskSizeIPv4)
@@ -238,7 +238,7 @@ func setNodeCIDRMaskSizes(cfg nodeipamconfig.NodeIPAMControllerConfiguration, cl
 	// !maskV4Configured && !maskConfigured && maskV6Configured
 	if maskV6Configured {
 		if !isSingleStackIPv6 {
-			return nil, errors.New("usage of --node-cidr-mask-size-ipv6 is not allowed for a single-stack IPv4 cluster")
+			klog.Info("--node-cidr-mask-size-ipv6 should not be used for a single-stack IPv4 cluster")
 		}
 
 		ipv6Mask = int(cfg.NodeCIDRMaskSizeIPv6)
