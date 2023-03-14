@@ -34,8 +34,8 @@ type NetworkingV1beta1Client struct {
 	restClient rest.Interface
 }
 
-func (c *NetworkingV1beta1Client) GCPFirewalls(namespace string) GCPFirewallInterface {
-	return newGCPFirewalls(c, namespace)
+func (c *NetworkingV1beta1Client) GCPFirewalls() GCPFirewallInterface {
+	return newGCPFirewalls(c)
 }
 
 // NewForConfig creates a new NetworkingV1beta1Client for the given config.

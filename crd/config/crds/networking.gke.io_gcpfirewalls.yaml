@@ -16,7 +16,7 @@ spec:
     shortNames:
     - gf
     singular: gcpfirewall
-  scope: Namespace
+  scope: Cluster
   versions:
   - name: v1beta1
     schema:
