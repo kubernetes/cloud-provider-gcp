@@ -28,8 +28,8 @@ type FakeNetworkingV1beta1 struct {
 	*testing.Fake
 }
 
-func (c *FakeNetworkingV1beta1) GCPFirewalls(namespace string) v1beta1.GCPFirewallInterface {
-	return &FakeGCPFirewalls{c, namespace}
+func (c *FakeNetworkingV1beta1) GCPFirewalls() v1beta1.GCPFirewallInterface {
+	return &FakeGCPFirewalls{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
