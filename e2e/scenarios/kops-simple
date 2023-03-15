@@ -169,8 +169,8 @@ fi
 echo "ADMIN_ACCESS=${ADMIN_ACCESS}"
 
 # cilium does not yet pass conformance tests (shared hostport test)
-#create_args="--networking cilium"
-create_args="--networking gce"
+create_args="--networking cilium"
+#create_args="--networking gce"
 if [[ -n "${ZONES:-}" ]]; then
     create_args="${create_args} --zones=${ZONES}"
 fi
