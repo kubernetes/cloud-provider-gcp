@@ -18,4 +18,4 @@ gazelle(
     prefix = "k8s.io/cloud-provider-gcp",
 )
 
-# gazelle:exclude crd/hack
+# gazelle:exclude crd
