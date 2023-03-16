@@ -15,7 +15,7 @@ const (
 )
 
 // NetworkType is the type of network.
-// +kubebuilder:validation:Enum=L2;L3
+// +kubebuilder:validation:Enum=L2;L3;Device
 type NetworkType string
 
 const (
@@ -23,6 +23,8 @@ const (
 	L2NetworkType NetworkType = "L2"
 	// L3NetworkType enables L3 connectivity on the network.
 	L3NetworkType NetworkType = "L3"
+	// DeviceNetworkType enables direct device access on the network.
+	DeviceNetworkType NetworkType = "Device"
 )
 
 // LifecycleType defines who manages the lifecycle of the network.
@@ -68,9 +70,10 @@ type Network struct {
 // NetworkSpec contains the specifications for network object
 type NetworkSpec struct {
 	// Type defines type of network.
-	// Valid options include: L2, L3.
+	// Valid options include: L2, L3, Device.
 	// L2 network type enables L2 connectivity on the network.
 	// L3 network type enables L3 connectivity on the network.
+	// Device network type enables direct device access on the network.
 	// +required
 	Type NetworkType `json:"type"`
 
