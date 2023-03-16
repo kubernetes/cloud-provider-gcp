@@ -95,13 +95,14 @@ chmod +x "${KOPS_BIN}"
 CLOUD_PROVIDER="gce"
 echo "CLOUD_PROVIDER=${CLOUD_PROVIDER}"
 
-
+#Set cloud provider location
+GCP_LOCATION="${GCP_LOCATION:-us-central1}"
 
 # KOPS_STATE_STORE holds metadata about the clusters we create
 if [[ -z "${KOPS_STATE_STORE:-}" ]]; then
   KOPS_STATE_STORE="gs://kops-state-${GCP_PROJECT}"
   # Ensure the bucket exists
-  gsutil ls -p "${GCP_PROJECT}" "${KOPS_STATE_STORE}" || gsutil mb -p "${GCP_PROJECT}" "${KOPS_STATE_STORE}"
+  gsutil ls -p "${GCP_PROJECT}" "${KOPS_STATE_STORE}" || gsutil mb -p "${GCP_PROJECT}" -l "${GCP_LOCATION}" "${KOPS_STATE_STORE}"
 
   # Setting ubla off so that kOps can automatically set ACLs for the default serviceACcount
   gsutil ubla set off "${KOPS_STATE_STORE}"
