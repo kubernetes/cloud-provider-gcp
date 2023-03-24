@@ -56,18 +56,21 @@ func network(name, gkeNetworkParamsName string) *networkv1.Network {
 }
 
 func gkeNetworkParams(name, vpc, subnet string, secRangeNames []string) *networkv1alpha1.GKENetworkParamSet {
-	return &networkv1alpha1.GKENetworkParamSet{
+	gnp := &networkv1alpha1.GKENetworkParamSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: networkv1alpha1.GKENetworkParamSetSpec{
 			VPC:       vpc,
 			VPCSubnet: subnet,
-			PodIPv4Ranges: &networkv1alpha1.SecondaryRanges{
-				RangeNames: secRangeNames,
-			},
 		},
 	}
+	if len(secRangeNames) > 0 {
+		gnp.Spec.PodIPv4Ranges = &networkv1alpha1.SecondaryRanges{
+			RangeNames: secRangeNames,
+		}
+	}
+	return gnp
 }
 
 func interfaces(network, subnetwork, networkIP string, aliasIPRanges []*compute.AliasIpRange) *compute.NetworkInterface {
