@@ -44,7 +44,10 @@ func (ca *cloudCIDRAllocator) PerformMultiNetworkCIDRAllocation(node *v1.Node, i
 			}
 			klog.V(2).Infof("interface %s matched, proceeding to find a secondary range", inf.Name)
 			// TODO: Handle IPv6 in future.
-			secondaryRangeNames := gnp.Spec.PodIPv4Ranges.RangeNames
+			var secondaryRangeNames []string
+			if gnp.Spec.PodIPv4Ranges != nil {
+				secondaryRangeNames = gnp.Spec.PodIPv4Ranges.RangeNames
+			}
 			// In case of host networking, the node interfaces do not have the secondary ranges. We still need to update the
 			// north-interface information on the node.
 			if len(secondaryRangeNames) == 0 && !networkv1.IsDefaultNetwork(network.Name) {
