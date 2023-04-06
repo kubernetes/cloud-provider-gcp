@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package configmap
 
 import (
 	"bytes"
@@ -32,6 +32,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/hms"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/serviceaccounts"
 	"k8s.io/klog/v2"
 )
 
@@ -93,12 +95,12 @@ type serviceAccountVerifier struct {
 	saHasSynced func() bool
 	saQueue     workqueue.RateLimitingInterface
 	cmQueue     workqueue.RateLimitingInterface
-	verifiedSAs *saMap
-	hms         *hmsClient
+	verifiedSAs *serviceaccounts.SAMap
+	hms         *hms.Client
 }
 
-func newServiceAccountVerifier(client clientset.Interface, saInformer coreinformers.ServiceAccountInformer, cmInformer coreinformers.ConfigMapInformer, cs *compute.Service, sm *saMap, hmsAuthzURL string) (*serviceAccountVerifier, error) {
-	hms, err := newHMSClient(hmsAuthzURL, &clientcmdapi.AuthProviderConfig{Name: "gcp"})
+func newServiceAccountVerifier(client clientset.Interface, saInformer coreinformers.ServiceAccountInformer, cmInformer coreinformers.ConfigMapInformer, cs *compute.Service, sm *serviceaccounts.SAMap, hmsAuthzURL string) (*serviceAccountVerifier, error) {
+	hms, err := hms.NewClient(hmsAuthzURL, &clientcmdapi.AuthProviderConfig{Name: "gcp"})
 	if err != nil {
 		return nil, err
 	}
@@ -249,8 +251,8 @@ func (sav *serviceAccountVerifier) verify(key string) (bool, error) {
 			klog.Errorf("Dropping invalid key %q in SA queue: %v", key, err)
 			return false, nil
 		}
-		ksa := serviceAccount{namespace, name}
-		if removedGSA, found := sav.verifiedSAs.remove(ksa); found {
+		ksa := serviceaccounts.ServiceAccount{Namespace: namespace, Name: name}
+		if removedGSA, found := sav.verifiedSAs.Remove(ksa); found {
 			klog.Infof("Removed permission %q:%q; KSA removed", ksa, removedGSA)
 			return true, nil
 		}
@@ -261,26 +263,26 @@ func (sav *serviceAccountVerifier) verify(key string) (bool, error) {
 		klog.Errorf("Dropping invalid object from SA queue with key %q: %#v", key, o)
 		return false, nil
 	}
-	ksa := serviceAccount{sa.ObjectMeta.Namespace, sa.ObjectMeta.Name}
+	ksa := serviceaccounts.ServiceAccount{Namespace: sa.ObjectMeta.Namespace, Name: sa.ObjectMeta.Name}
 
 	ann, found := sa.ObjectMeta.Annotations[serviceAccountAnnotationGSAEmail]
 	if !found || ann == "" {
 		// Annotation added (by admin) will not take effect until the SA's next periodic resync.
 		klog.V(5).Infof("SA %v does not have a GsaEmail annotation.", sa)
-		if removedGSA, found := sav.verifiedSAs.remove(ksa); found {
+		if removedGSA, found := sav.verifiedSAs.Remove(ksa); found {
 			klog.Infof("Removed permission %q:%q; annotation removed", ksa, removedGSA)
 			return true, nil
 		}
 		return false, nil
 	}
-	gsa := gsaEmail(ann)
-	permitted, err := sav.hms.authorize(ksa, gsa)
+	gsa := serviceaccounts.GSAEmail(ann)
+	permitted, err := sav.hms.Authorize(ksa.Namespace, ksa.Name, string(gsa))
 	if err != nil {
 		return false, fmt.Errorf("failed to authorize %s:%s; err: %v", ksa, gsa, err)
 	}
 
 	if !permitted {
-		if removedGSA, found := sav.verifiedSAs.remove(ksa); found {
+		if removedGSA, found := sav.verifiedSAs.Remove(ksa); found {
 			if removedGSA == gsa {
 				klog.Infof("Removed permission %q:%q; no longer valid", ksa, gsa)
 			} else {
@@ -292,7 +294,7 @@ func (sav *serviceAccountVerifier) verify(key string) (bool, error) {
 		klog.Infof("Permission denied %q:%q", ksa, gsa)
 		return false, nil
 	}
-	previousGSA, found := sav.verifiedSAs.add(ksa, gsa)
+	previousGSA, found := sav.verifiedSAs.Add(ksa, gsa)
 	if !found {
 		klog.Infof("Permission verified %q:%q", ksa, gsa)
 		return true, nil
@@ -358,7 +360,7 @@ func (sav *serviceAccountVerifier) persist(key string) error {
 	}
 	if !exists {
 		klog.Warningf("ConfigMap %s/%s does not exist; creating.", namespace, name)
-		text, err := sav.verifiedSAs.serialize()
+		text, err := sav.verifiedSAs.Serialize()
 		if err != nil {
 			return fmt.Errorf("internal error during serialization: %v", err)
 		}
@@ -376,7 +378,7 @@ func (sav *serviceAccountVerifier) persist(key string) error {
 		klog.Errorf("Dropping invalid object from ConfigMap queue with key %q: %#v", key, o)
 		return nil
 	}
-	text, err := sav.verifiedSAs.serialize()
+	text, err := sav.verifiedSAs.Serialize()
 	if err != nil {
 		return fmt.Errorf("internal error during serialization: %v", err)
 	}

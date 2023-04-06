@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package hms
 
 import (
 	"context"
@@ -34,11 +34,13 @@ const (
 	hmsRequestTimeout = 30 * time.Second
 )
 
-type hmsClient struct {
+// Client wraps calls to HMS.
+type Client struct {
 	webhook *webhook.GenericWebhook
 }
 
-func newHMSClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*hmsClient, error) {
+// NewClient creates a new Client.
+func NewClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*Client, error) {
 	config := &rest.Config{
 		Host:         url,
 		AuthProvider: authProvider,
@@ -53,7 +55,7 @@ func newHMSClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*h
 	if err != nil {
 		return nil, fmt.Errorf("failed to create REST client for HMS from config %v: %v", config, err)
 	}
-	return &hmsClient{
+	return &Client{
 		webhook: &webhook.GenericWebhook{RestClient: client, RetryBackoff: *apiserveroptions.DefaultAuthWebhookRetryBackoff(), ShouldRetry: webhook.DefaultShouldRetry},
 	}, nil
 }
@@ -63,7 +65,7 @@ func isErrorHTTPStatus(statusCode int) bool {
 	return statusCode < 200 || statusCode >= 300
 }
 
-func (h *hmsClient) sync(node, zone string, gsaList []gsaEmail) error {
+func (h *Client) sync(node, zone string, gsaList []string) error {
 	req := syncNodeRequest{
 		NodeName:  node,
 		NodeZone:  zone,
@@ -77,11 +79,11 @@ func (h *hmsClient) sync(node, zone string, gsaList []gsaEmail) error {
 
 // Authorize implements the saMappingAuthorizer interface.  It calls HMS to verify if ksa has
 // permission to get certificates as gsa.
-func (h *hmsClient) authorize(ksa serviceAccount, gsa gsaEmail) (bool, error) {
+func (h *Client) Authorize(kns, ksa, gsa string) (bool, error) {
 	reqMapping := serviceAccountMapping{
-		KNSName:  ksa.Namespace,
-		KSAName:  ksa.Name,
-		GSAEmail: string(gsa),
+		KNSName:  kns,
+		KSAName:  ksa,
+		GSAEmail: gsa,
 	}
 	req := authorizeSAMappingRequest{
 		RequestedMappings: []serviceAccountMapping{reqMapping},
@@ -101,7 +103,7 @@ func (h *hmsClient) authorize(ksa serviceAccount, gsa gsaEmail) (bool, error) {
 	return false, fmt.Errorf("internal error: requested mapping %v not found in response %+v", reqMapping, rsp)
 }
 
-func (h *hmsClient) call(req, rsp interface{}) error {
+func (h *Client) call(req, rsp interface{}) error {
 	enc, err := json.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("failed to encode %v: %v", req, err)

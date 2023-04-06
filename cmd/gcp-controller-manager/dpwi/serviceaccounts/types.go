@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package serviceaccounts
 
 import (
 	"encoding/json"
@@ -22,44 +22,45 @@ import (
 	"sync"
 )
 
-// gsaEmail identifies a GCP service account in email format.
-type gsaEmail string
+// GSAEmail identifies a GCP service account in email format.
+type GSAEmail string
 
-// serviceAccount identifies a K8s service account object by its namespace and name.  Empty
+// ServiceAccount identifies a K8s service account object by its namespace and name.  Empty
 // Namespace indicates the corresponding Kubernetes object was created in the "default" namespace.
-type serviceAccount struct {
+type ServiceAccount struct {
 	Namespace, Name string
 }
 
 // MarshalText implements the encoding.TextMarshaler interface.
-func (sa serviceAccount) MarshalText() ([]byte, error) {
+func (sa ServiceAccount) MarshalText() ([]byte, error) {
 	return []byte(sa.String()), nil
 }
 
 // String returns sa in a string as "<namespace>/<name>" or "default/<name>" if sa.Namespace is
 // empty.
-func (sa serviceAccount) String() string {
+func (sa ServiceAccount) String() string {
 	if sa.Namespace == "" {
 		return fmt.Sprintf("default/%s", sa.Name)
 	}
 	return fmt.Sprintf("%s/%s", sa.Namespace, sa.Name)
 }
 
-// saMap is a Mutax protected map of gsaEmail keyed by serviceAccount.
-type saMap struct {
+// SAMap is a Mutax protected map of GSAEmail keyed by ServiceAccount.
+type SAMap struct {
 	sync.RWMutex
-	ma map[serviceAccount]gsaEmail
+	ma map[ServiceAccount]GSAEmail
 }
 
-func newSAMap() *saMap {
-	t := make(map[serviceAccount]gsaEmail)
-	return &saMap{
+// NewSAMap creates an empty SAMap
+func NewSAMap() *SAMap {
+	t := make(map[ServiceAccount]GSAEmail)
+	return &SAMap{
 		ma: t,
 	}
 }
 
 // Add stores the mapping from sa to gsa to m and returns the previous gsa if sa already existed.
-func (m *saMap) add(sa serviceAccount, gsa gsaEmail) (gsaEmail, bool) {
+func (m *SAMap) Add(sa ServiceAccount, gsa GSAEmail) (GSAEmail, bool) {
 	m.Lock()
 	defer m.Unlock()
 	lastGSA, found := m.ma[sa]
@@ -68,7 +69,7 @@ func (m *saMap) add(sa serviceAccount, gsa gsaEmail) (gsaEmail, bool) {
 }
 
 // Remove removes the entry keyed by sa in m and returns its gsa if sa existed.
-func (m *saMap) remove(sa serviceAccount) (gsaEmail, bool) {
+func (m *SAMap) Remove(sa ServiceAccount) (GSAEmail, bool) {
 	m.Lock()
 	defer m.Unlock()
 	removedGSA, found := m.ma[sa]
@@ -79,7 +80,7 @@ func (m *saMap) remove(sa serviceAccount) (gsaEmail, bool) {
 }
 
 // Get looks up sa from m and returns its gsa if sa exists.
-func (m *saMap) get(sa serviceAccount) (gsaEmail, bool) {
+func (m *SAMap) Get(sa ServiceAccount) (GSAEmail, bool) {
 	m.RLock()
 	defer m.RUnlock()
 	gsa, ok := m.ma[sa]
@@ -87,7 +88,7 @@ func (m *saMap) get(sa serviceAccount) (gsaEmail, bool) {
 }
 
 // Serialize returns m in its JSON encoded format or error if serialization had failed.
-func (m *saMap) serialize() ([]byte, error) {
+func (m *SAMap) Serialize() ([]byte, error) {
 	m.RLock()
 	defer m.RUnlock()
 	return json.Marshal(m.ma)
