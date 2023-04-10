@@ -2,7 +2,10 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "gkenetworkparamset",
-    srcs = ["gkenetworkparamset_controller.go"],
+    srcs = [
+        "gkenetworkparamset_controller.go",
+        "gkenetworkparamset_metrics.go",
+    ],
     importpath = "k8s.io/cloud-provider-gcp/pkg/controller/gkenetworkparamset",
     visibility = ["//visibility:public"],
     deps = [
@@ -16,6 +19,8 @@ go_library(
         "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1",
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned",
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1alpha1",
+        "//vendor/k8s.io/component-base/metrics",
+        "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/component-base/metrics/prometheus/controllers",
         "//vendor/k8s.io/klog/v2:klog",
     ],

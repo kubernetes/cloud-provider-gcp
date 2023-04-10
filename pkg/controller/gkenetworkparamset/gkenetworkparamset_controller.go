@@ -53,6 +53,9 @@ func NewGKENetworkParamSetController(
 	gceCloud *gce.Cloud,
 ) *Controller {
 
+	// register GNP metrics
+	registerGKENetworkParamSetMetrics()
+
 	return &Controller{
 		networkClientset:         networkClientset,
 		gkeNetworkParamsInformer: gkeNetworkParamsInformer,
@@ -161,6 +164,7 @@ func (c *Controller) syncGKENetworkParamSet(ctx context.Context, key string) err
 
 	subnet, err := c.gceCloud.GetSubnetwork(c.gceCloud.Region(), params.Spec.VPCSubnet)
 	if err != nil {
+		fetchSubnetErrs.Inc()
 		return err
 	}
 
