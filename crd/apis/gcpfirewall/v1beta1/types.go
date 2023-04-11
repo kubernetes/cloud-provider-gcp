@@ -206,6 +206,10 @@ const (
 	// FirewallRuleReasonXPNPermissionError is used when the controller does not
 	// have permission to configure firewalls in the shared VPC project.
 	FirewallRuleReasonXPNPermissionError FirewallRuleConditionReason = "XPNPermissionError"
+
+	// FirewallRuleReasonSynchronized is used if the firewall rule is synchronized
+	// to GCP.
+	FirewallRuleReasonSynchronized FirewallRuleConditionReason = "Synchronized"
 )
 
 // +kubebuilder:object:root=true
