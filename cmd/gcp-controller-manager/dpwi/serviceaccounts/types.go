@@ -17,9 +17,13 @@ limitations under the License.
 package serviceaccounts
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/ctxlog"
 )
 
 // GSAEmail identifies a GCP service account in email format.
@@ -51,40 +55,17 @@ type SAMap struct {
 	ma map[ServiceAccount]GSAEmail
 }
 
-// NewSAMap creates an empty SAMap
-func NewSAMap() *SAMap {
-	t := make(map[ServiceAccount]GSAEmail)
-	return &SAMap{
-		ma: t,
+// Key generates the key with the format Namespace/Name.
+func (sa ServiceAccount) Key() string {
+	return fmt.Sprintf("%s/%s", sa.Namespace, sa.Name)
+}
+
+func saFromKey(key string) (ServiceAccount, error) {
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		return ServiceAccount{}, err
 	}
-}
-
-// Add stores the mapping from sa to gsa to m and returns the previous gsa if sa already existed.
-func (m *SAMap) Add(sa ServiceAccount, gsa GSAEmail) (GSAEmail, bool) {
-	m.Lock()
-	defer m.Unlock()
-	lastGSA, found := m.ma[sa]
-	m.ma[sa] = gsa
-	return lastGSA, found
-}
-
-// Remove removes the entry keyed by sa in m and returns its gsa if sa existed.
-func (m *SAMap) Remove(sa ServiceAccount) (GSAEmail, bool) {
-	m.Lock()
-	defer m.Unlock()
-	removedGSA, found := m.ma[sa]
-	if found {
-		delete(m.ma, sa)
-	}
-	return removedGSA, found
-}
-
-// Get looks up sa from m and returns its gsa if sa exists.
-func (m *SAMap) Get(sa ServiceAccount) (GSAEmail, bool) {
-	m.RLock()
-	defer m.RUnlock()
-	gsa, ok := m.ma[sa]
-	return gsa, ok
+	return ServiceAccount{namespace, name}, nil
 }
 
 // Serialize returns m in its JSON encoded format or error if serialization had failed.
@@ -92,4 +73,57 @@ func (m *SAMap) Serialize() ([]byte, error) {
 	m.RLock()
 	defer m.RUnlock()
 	return json.Marshal(m.ma)
+}
+
+// saMap is a Mutax protected map of GSAEmail keyed by ServiceAccount.
+type saMap struct {
+	sync.RWMutex
+	ma map[ServiceAccount]GSAEmail
+}
+
+// NewSAMap creates an empty SAMap
+func newSAMap() *saMap {
+	t := make(map[ServiceAccount]GSAEmail)
+	return &saMap{
+		ma: t,
+	}
+}
+
+func (m *saMap) addOrUpdate(ctx context.Context, sa ServiceAccount, gsa GSAEmail) {
+	m.Lock()
+	defer m.Unlock()
+	lastGSA := m.ma[sa]
+	if string(gsa) == string(lastGSA) {
+		ctxlog.Infof(ctx, "ksa %v is re-verified to act as gsa %q", sa, gsa)
+	} else {
+		ctxlog.Infof(ctx, "ksa %v can act as gsa %q instead of %q", sa, gsa, lastGSA)
+	}
+	m.ma[sa] = gsa
+}
+
+func (m *saMap) remove(sa ServiceAccount) {
+	m.Lock()
+	defer m.Unlock()
+	delete(m.ma, sa)
+}
+
+// get looks up sa from m and returns its gsa if sa exists.
+func (m *saMap) get(sa ServiceAccount) (GSAEmail, bool) {
+	m.RLock()
+	defer m.RUnlock()
+	gsa, ok := m.ma[sa]
+	return gsa, ok
+}
+
+// Serialize returns m in its JSON encoded format or error if serialization had failed.
+func (m *saMap) serialize() ([]byte, error) {
+	m.RLock()
+	defer m.RUnlock()
+	return json.Marshal(m.ma)
+}
+
+type verifyResult struct {
+	preVerifiedGSA GSAEmail
+	curGSA         GSAEmail
+	denied         bool
 }

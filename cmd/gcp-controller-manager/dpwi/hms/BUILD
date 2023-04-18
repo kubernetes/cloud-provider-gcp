@@ -1,8 +1,11 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "hms",
-    srcs = ["hms.go"],
+    srcs = [
+        "hms.go",
+        "hms_fake.go",
+    ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/hms",
     visibility = ["//visibility:public"],
     deps = [
@@ -13,4 +16,10 @@ go_library(
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/tools/clientcmd/api",
     ],
+)
+
+go_test(
+    name = "hms_test",
+    srcs = ["hms_test.go"],
+    embed = [":hms"],
 )
