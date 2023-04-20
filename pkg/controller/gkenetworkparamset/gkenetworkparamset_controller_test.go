@@ -409,5 +409,6 @@ func TestAddFinalizerToGKENetworkParamSet(t *testing.T) {
 		}
 
 		return finalizerExists, nil
-	}).Should(gomega.BeTrue(), "GKENetworkParamSet should have the finalizer added.")
+		//TODO: This should be true when adding gnp finalizer is a part of the reconcile loop.
+	}).Should(gomega.BeFalse(), "GKENetworkParamSet should have the finalizer added.")
 }

@@ -181,10 +181,7 @@ func (c *Controller) syncGKENetworkParamSet(ctx context.Context, key string) err
 
 	params := obj.(*networkv1alpha1.GKENetworkParamSet)
 
-	err = c.addFinalizerToGKENetworkParamSet(ctx, params)
-	if err != nil {
-		return err
-	}
+	// TODO: Enable finalizer addition when finalizer deletion is added.
 
 	subnet, err := c.gceCloud.GetSubnetwork(c.gceCloud.Region(), params.Spec.VPCSubnet)
 	if err != nil {
