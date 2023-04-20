@@ -8,7 +8,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	cloudprovider "k8s.io/cloud-provider"
 	networkclientset "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned"
-	"k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1"
+	v1alphainformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1"
 	gkenetworkparamsetcontroller "k8s.io/cloud-provider-gcp/pkg/controller/gkenetworkparamset"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/cloud-provider/app"
@@ -42,7 +42,7 @@ func startGkeNetworkParamsController(ccmConfig *cloudcontrollerconfig.CompletedC
 	}
 
 	//no resync, we dont want to automatically update objects if their state changes in gcp
-	gkeNetworkParamSetInformer := v1alpha1.NewGKENetworkParamSetInformer(networkClient, 0*time.Second, cache.Indexers{})
+	gkeNetworkParamSetInformer := v1alphainformers.NewGKENetworkParamSetInformer(networkClient, 0*time.Second, cache.Indexers{})
 
 	gkeNetworkParamsetController := gkenetworkparamsetcontroller.NewGKENetworkParamSetController(
 		networkClient,
