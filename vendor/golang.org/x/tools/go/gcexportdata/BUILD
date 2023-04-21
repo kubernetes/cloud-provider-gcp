@@ -9,5 +9,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/go/gcexportdata",
     importpath = "golang.org/x/tools/go/gcexportdata",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/golang.org/x/tools/go/internal/gcimporter"],
+    deps = ["//vendor/golang.org/x/tools/internal/gcimporter"],
 )

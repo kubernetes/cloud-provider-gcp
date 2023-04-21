@@ -13,5 +13,8 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/sigs.k8s.io/controller-tools/pkg/loader",
     importpath = "sigs.k8s.io/controller-tools/pkg/loader",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/golang.org/x/tools/go/packages"],
+    deps = [
+        "//vendor/golang.org/x/tools/go/packages",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+    ],
 )
