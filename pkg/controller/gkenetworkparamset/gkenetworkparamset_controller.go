@@ -151,20 +151,16 @@ func (c *Controller) handleErr(err error, key interface{}) {
 	klog.Errorf("Dropping GKENetworkParamSet %q out of the queue: %v", key, err)
 }
 
-// addFinalizerToGKENetworkParamSet add a finalizer to params if it doesnt already exist
-func (c *Controller) addFinalizerToGKENetworkParamSet(ctx context.Context, params *networkv1alpha1.GKENetworkParamSet) error {
-	for _, f := range params.ObjectMeta.Finalizers {
+// addFinalizerToGKENetworkParamSet adds a finalizer to params inplace if it doesnt already exist
+func addFinalizerToGKENetworkParamSet(params *networkv1alpha1.GKENetworkParamSet) {
+	gnpFinalizers := params.GetFinalizers()
+	for _, f := range gnpFinalizers {
 		if f == GNPFinalizer {
-			return nil
+			return
 		}
 	}
 
-	params.ObjectMeta.Finalizers = append(params.ObjectMeta.Finalizers, GNPFinalizer)
-	if err := c.updateGKENetworkParamSet(ctx, params); err != nil {
-		return err
-	}
-
-	return nil
+	params.SetFinalizers(append(gnpFinalizers, GNPFinalizer))
 }
 
 func (c *Controller) syncGKENetworkParamSet(ctx context.Context, key string) error {
@@ -182,6 +178,11 @@ func (c *Controller) syncGKENetworkParamSet(ctx context.Context, key string) err
 	params := obj.(*networkv1alpha1.GKENetworkParamSet)
 
 	// TODO: Enable finalizer addition when finalizer deletion is added.
+	// addFinalizerToGKENetworkParamSet(params)
+	// update will be done once in deferred function call
+	// if err := c.updateGKENetworkParamSet(ctx, params); err != nil {
+	// 	return err
+	// }
 
 	subnet, err := c.gceCloud.GetSubnetwork(c.gceCloud.Region(), params.Spec.VPCSubnet)
 	if err != nil {
