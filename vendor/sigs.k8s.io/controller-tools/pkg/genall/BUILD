@@ -15,8 +15,8 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/golang.org/x/tools/go/packages",
+        "//vendor/gopkg.in/yaml.v2:yaml_v2",
         "//vendor/sigs.k8s.io/controller-tools/pkg/loader",
         "//vendor/sigs.k8s.io/controller-tools/pkg/markers",
-        "//vendor/sigs.k8s.io/yaml",
     ],
 )

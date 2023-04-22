@@ -15,7 +15,7 @@ go_library(
         "sync.go",
         "syncmarker_string.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/go/internal/pkgbits",
-    importpath = "golang.org/x/tools/go/internal/pkgbits",
-    visibility = ["//vendor/golang.org/x/tools/go:__subpackages__"],
+    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/internal/pkgbits",
+    importpath = "golang.org/x/tools/internal/pkgbits",
+    visibility = ["//vendor/golang.org/x/tools:__subpackages__"],
 )
