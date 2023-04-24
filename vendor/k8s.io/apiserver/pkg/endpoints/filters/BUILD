@@ -41,6 +41,8 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/apis/audit",
         "//vendor/k8s.io/apiserver/pkg/audit",
         "//vendor/k8s.io/apiserver/pkg/authentication/authenticator",
+        "//vendor/k8s.io/apiserver/pkg/authentication/authenticatorfactory",
+        "//vendor/k8s.io/apiserver/pkg/authentication/request/headerrequest",
         "//vendor/k8s.io/apiserver/pkg/authentication/serviceaccount",
         "//vendor/k8s.io/apiserver/pkg/authentication/user",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizer",
