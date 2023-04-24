@@ -38,7 +38,8 @@ import (
 )
 
 const (
-	GNPFinalizer = "networking.gke.io/ccm"
+	// GNPFinalizer - finalizer value placed on GNP objects by GNP Controller
+	GNPFinalizer = "networking.gke.io/gnp-controller"
 )
 
 // Controller manages GKENetworkParamSet status.
