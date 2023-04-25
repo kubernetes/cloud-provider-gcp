@@ -49,9 +49,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	networkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
-	alphanetworkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1"
 	networklister "k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1"
-	alphanetworklister "k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1alpha1"
 	nodeutil "k8s.io/cloud-provider-gcp/pkg/util"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	utiltaints "k8s.io/cloud-provider-gcp/pkg/util/taints"
@@ -76,7 +74,7 @@ type cloudCIDRAllocator struct {
 	networksLister networklister.NetworkLister
 	// gnpLister is able to list/get GKENetworkParamSet and is populated by the shared GKENewtorkParamSet informer passed to
 	// NewCloudCIDRAllocator.
-	gnpLister alphanetworklister.GKENetworkParamSetLister
+	gnpLister networklister.GKENetworkParamSetLister
 	// nodeLister is able to list/get nodes and is populated by the shared informer passed to
 	// NewCloudCIDRAllocator.
 	nodeLister corelisters.NodeLister
@@ -98,7 +96,7 @@ type cloudCIDRAllocator struct {
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
 
 // NewCloudCIDRAllocator creates a new cloud CIDR allocator.
-func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer alphanetworkinformer.GKENetworkParamSetInformer, nodeInformer informers.NodeInformer) (CIDRAllocator, error) {
+func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeInformer informers.NodeInformer) (CIDRAllocator, error) {
 	if client == nil {
 		klog.Fatalf("kubeClient is nil when starting NodeController")
 	}

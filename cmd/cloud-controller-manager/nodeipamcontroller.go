@@ -133,7 +133,7 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 	}
 	nwInfFactory := networkinformers.NewSharedInformerFactory(networkClient, 30*time.Second)
 	nwInformer := nwInfFactory.Networking().V1().Networks()
-	gnpInformer := nwInfFactory.Networking().V1alpha1().GKENetworkParamSets()
+	gnpInformer := nwInfFactory.Networking().V1().GKENetworkParamSets()
 	nodeIpamController, err := nodeipamcontroller.NewNodeIpamController(
 		ctx.InformerFactory.Core().V1().Nodes(),
 		cloud,

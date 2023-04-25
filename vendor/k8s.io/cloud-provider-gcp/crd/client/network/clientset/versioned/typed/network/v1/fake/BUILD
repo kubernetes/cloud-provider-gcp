@@ -4,6 +4,8 @@ go_library(
     name = "fake",
     srcs = [
         "doc.go",
+        "fake_gkenetworkparamset.go",
+        "fake_gkenetworkparamsetlist.go",
         "fake_network.go",
         "fake_network_client.go",
         "fake_networkinterface.go",

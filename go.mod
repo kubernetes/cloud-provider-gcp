@@ -36,7 +36,7 @@ require (
 require (
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.26.4
-	k8s.io/cloud-provider-gcp/crd v0.0.0-20230414153241-658d4df496a9
+	k8s.io/cloud-provider-gcp/crd v0.0.0-20230426191415-4ab7967b01e9
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
 	k8s.io/kubernetes v1.26.4
 )
