@@ -54,6 +54,8 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=networking.gke.io, Version=v1
+	case v1.SchemeGroupVersion.WithResource("gkenetworkparamsets"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1().GKENetworkParamSets().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("networks"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1().Networks().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("networkinterfaces"):
