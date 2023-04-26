@@ -51,6 +51,7 @@ func main() {
 
 	controllerInitializers := app.DefaultInitFuncConstructors
 
+	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
 	nodeIpamController.nodeIPAMControllerOptions.NodeIPAMControllerConfiguration = &nodeIpamController.nodeIPAMControllerConfiguration
 	fss := cliflag.NamedFlagSets{}
@@ -62,6 +63,9 @@ func main() {
 	controllerInitializers["gkenetworkparamset"] = app.ControllerInitFuncConstructor{
 		Constructor: startGkeNetworkParamSetControllerWrapper,
 	}
+
+	// add controllers disabled by default
+	app.ControllersDisabledByDefault.Insert("gkenetworkparamset")
 
 	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, fss, wait.NeverStop)
 
