@@ -27,7 +27,7 @@ if [ "$#" -lt 4 ] || [ "${1}" == "--help" ]; then
   cat <<EOF
 Usage: $(basename "$0") <generators> <output-package> <apis-package> <groups-versions> ...
 
-  <generators>        the generators comma separated to run (deepcopy,defaulter,client,lister,informer) or "all".
+  <generators>        the generators comma separated to run (deepcopy,defaulter,client,lister,informer,register) or "all".
   <output-package>    the output package name (e.g. github.com/example/project/pkg/generated).
   <apis-package>      the external types dir (e.g. github.com/example/api or github.com/example/project/pkg/apis).
   <groups-versions>   the groups and their versions in the format "groupA:v1,v2 groupB:v1 groupC:v2", relative
@@ -52,7 +52,7 @@ shift 4
   # To support running this script from anywhere, first cd into this directory,
   # and then install with forced module mode on and fully qualified name.
   cd "$(dirname "${0}")"
-  GO111MODULE=on go install k8s.io/code-generator/cmd/{defaulter-gen,client-gen,lister-gen,informer-gen,deepcopy-gen}
+  GO111MODULE=on go install k8s.io/code-generator/cmd/{defaulter-gen,client-gen,lister-gen,informer-gen,deepcopy-gen,register-gen}
 )
 # Go installs the above commands to get installed in $GOBIN if defined, and $GOPATH/bin otherwise:
 GOBIN="$(go env GOBIN)"
@@ -104,5 +104,13 @@ if [ "${GENS}" = "all" ] || grep -qw "informer" <<<"${GENS}"; then
       --versioned-clientset-package "${OUTPUT_PKG}/${CLIENTSET_PKG_NAME:-clientset}/${CLIENTSET_NAME_VERSIONED:-versioned}" \
       --listers-package "${OUTPUT_PKG}/listers" \
       --output-package "${OUTPUT_PKG}/informers" \
+      "$@"
+fi
+
+if [ "${GENS}" = "all" ] || grep -qw "register" <<<"${GENS}"; then
+  echo "Generating register for ${GROUPS_WITH_VERSIONS} at $(codegen::join , "${FQ_APIS[@]}")"
+  "${gobin}/register-gen" \
+      --input-dirs "$(codegen::join , "${FQ_APIS[@]}")" \
+      --output-package "$(codegen::join , "${FQ_APIS[@]}")" \
       "$@"
 fi
