@@ -71,7 +71,17 @@ type GKENetworkParamSetStatus struct {
 	PodCIDRs *NetworkRanges `json:"podCIDRs,omitempty"`
 
 	// Conditions is a field representing the current conditions of the GKENetworkParamSet.
-	Conditions []metav1.Condition `json:"conditions"`
+	//
+	// Known condition types are:
+	//
+	// * "Ready"
+	//
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	// NetworkName specifies which Network object is currently referencing this GKENetworkParamSet
 	// +optional
