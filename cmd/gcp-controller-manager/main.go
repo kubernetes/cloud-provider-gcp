@@ -73,6 +73,7 @@ var (
 	csrApproverUseGCEInstanceListReferrers = pflag.Bool("csr-use-gce-instance-list-referrers", false, "If true use https://cloud.google.com/compute/docs/reference/rest/v1/instances/listReferrers to validate instance cluster membership.")
 	gceAPIEndpointOverride                 = pflag.String("gce-api-endpoint-override", "", "If set, talks to a different GCE API Endpoint. By default it talks to https://www.googleapis.com/compute/v1/projects/")
 	directPath                             = pflag.Bool("direct-path", false, "Enable Direct Path.")
+	directPathMode                         = pflag.String("direct-path-mode", "v2", "Direct Path mode.")
 	delayDirectPathGSARemove               = pflag.Bool("delay-direct-path-gsa-remove", false, "Delay removal of deleted Direct Path workloads' Google Service Accounts.")
 	hmsAuthorizeSAMappingURL               = pflag.String("hms-authorize-sa-mapping-url", "", "URL for reaching the Hosted Master Service AuthorizeSAMapping API.")
 	hmsSyncNodeURL                         = pflag.String("hms-sync-node-url", "", "URL for reaching the Hosted Master Service SyncNode API.")

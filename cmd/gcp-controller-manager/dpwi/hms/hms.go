@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2023 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,12 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package hms provides clients to call HMS to sync node and authorize SA.
 package hms
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,12 +36,12 @@ const (
 	hmsRequestTimeout = 30 * time.Second
 )
 
-// Client wraps calls to HMS.
+// Client is an HMS client.
 type Client struct {
 	webhook *webhook.GenericWebhook
 }
 
-// NewClient creates a new Client.
+// NewClient creates a new client with the server url and the AuthProviderConfig.
 func NewClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*Client, error) {
 	config := &rest.Config{
 		Host:         url,
@@ -51,12 +53,12 @@ func NewClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*Clie
 			NegotiatedSerializer: serializer.NegotiatedSerializerWrapper(runtime.SerializerInfo{}),
 		},
 	}
-	client, err := rest.UnversionedRESTClientFor(config)
+	rc, err := rest.UnversionedRESTClientFor(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create REST client for HMS from config %v: %v", config, err)
+		return nil, fmt.Errorf("failed to create REST client for HMS from config %v: %w", config, err)
 	}
 	return &Client{
-		webhook: &webhook.GenericWebhook{RestClient: client, RetryBackoff: *apiserveroptions.DefaultAuthWebhookRetryBackoff(), ShouldRetry: webhook.DefaultShouldRetry},
+		webhook: &webhook.GenericWebhook{RestClient: rc, RetryBackoff: *apiserveroptions.DefaultAuthWebhookRetryBackoff(), ShouldRetry: webhook.DefaultShouldRetry},
 	}, nil
 }
 
@@ -65,21 +67,20 @@ func isErrorHTTPStatus(statusCode int) bool {
 	return statusCode < 200 || statusCode >= 300
 }
 
-func (h *Client) sync(node, zone string, gsaList []string) error {
+// Sync syncs gsaList on a node in a specific zone.
+func (h *Client) Sync(ctx context.Context, node, zone string, gsaList []string) error {
+	sort.Strings(gsaList)
 	req := syncNodeRequest{
 		NodeName:  node,
 		NodeZone:  zone,
-		GSAEmails: make([]string, 0, len(gsaList)),
+		GSAEmails: gsaList,
 	}
-	for _, gsa := range gsaList {
-		req.GSAEmails = append(req.GSAEmails, string(gsa))
-	}
-	return h.call(req, nil)
+	return h.call(ctx, req, nil)
 }
 
 // Authorize implements the saMappingAuthorizer interface.  It calls HMS to verify if ksa has
 // permission to get certificates as gsa.
-func (h *Client) Authorize(kns, ksa, gsa string) (bool, error) {
+func (h *Client) Authorize(ctx context.Context, kns, ksa, gsa string) (bool, error) {
 	reqMapping := serviceAccountMapping{
 		KNSName:  kns,
 		KSAName:  ksa,
@@ -90,7 +91,7 @@ func (h *Client) Authorize(kns, ksa, gsa string) (bool, error) {
 	}
 
 	var rsp authorizeSAMappingResponse
-	if err := h.call(req, &rsp); err != nil {
+	if err := h.call(ctx, req, &rsp); err != nil {
 		return false, err
 	}
 
@@ -103,18 +104,18 @@ func (h *Client) Authorize(kns, ksa, gsa string) (bool, error) {
 	return false, fmt.Errorf("internal error: requested mapping %v not found in response %+v", reqMapping, rsp)
 }
 
-func (h *Client) call(req, rsp interface{}) error {
+func (h *Client) call(ctx context.Context, req, rsp interface{}) error {
 	enc, err := json.Marshal(req)
 	if err != nil {
-		return fmt.Errorf("failed to encode %v: %v", req, err)
+		return fmt.Errorf("failed to encode %v: %w", req, err)
 	}
 
-	result := h.webhook.WithExponentialBackoff(context.TODO(), func() rest.Result {
-		return h.webhook.RestClient.Post().Body(enc).Do(context.TODO())
+	result := h.webhook.WithExponentialBackoff(ctx, func() rest.Result {
+		return h.webhook.RestClient.Post().Body(enc).Do(ctx)
 	})
 
 	if err = result.Error(); err != nil {
-		return fmt.Errorf("error resulted from request %v: %v", req, err)
+		return fmt.Errorf("error resulted from request %v: %w", req, err)
 	}
 
 	// result.StatusCode is set only if result.Error is nil.
@@ -129,10 +130,10 @@ func (h *Client) call(req, rsp interface{}) error {
 	}
 	raw, err := result.Raw()
 	if err != nil {
-		return fmt.Errorf("request succeeed but failed to read response: %v", err)
+		return fmt.Errorf("request succeeed but failed to read response: %w", err)
 	}
 	if err = json.Unmarshal(raw, rsp); err != nil {
-		return fmt.Errorf("request succeeed but got error %v parsing response: %q", err, raw)
+		return fmt.Errorf("request succeeed but got error %w parsing response: %q", err, raw)
 	}
 	return nil
 }
