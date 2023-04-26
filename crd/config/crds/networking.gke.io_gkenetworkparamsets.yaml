@@ -289,6 +289,10 @@ spec:
                   - type
                   type: object
                 type: array
+              networkName:
+                description: NetworkName specifies which Network object is currently
+                  referencing this GKENetworkParamSet
+                type: string
               podCIDRs:
                 description: PodCIDRs specifies the CIDRs from which IPs will be used
                   for Pod interfaces

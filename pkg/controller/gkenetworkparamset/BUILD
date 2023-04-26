@@ -18,7 +18,6 @@ go_library(
         "//vendor/k8s.io/client-go/util/workqueue",
         "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1",
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned",
-        "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1alpha1",
         "//vendor/k8s.io/component-base/metrics",
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/component-base/metrics/prometheus/controllers",

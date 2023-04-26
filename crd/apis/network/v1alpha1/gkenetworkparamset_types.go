@@ -72,6 +72,10 @@ type GKENetworkParamSetStatus struct {
 
 	// Conditions is a field representing the current conditions of the GKENetworkParamSet.
 	Conditions []metav1.Condition `json:"conditions"`
+
+	// NetworkName specifies which Network object is currently referencing this GKENetworkParamSet
+	// +optional
+	NetworkName string `json:"networkName"`
 }
 
 // +genclient

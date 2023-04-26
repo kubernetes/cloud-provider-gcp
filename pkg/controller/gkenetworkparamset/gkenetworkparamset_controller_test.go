@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1"
 	"k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/fake"
-	gkenetworkparamset "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1"
+	v1alphainformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/component-base/metrics/prometheus/controllers"
 )
@@ -30,7 +30,7 @@ type testGKENetworkParamSetController struct {
 
 func setupGKENetworkParamSetController() *testGKENetworkParamSetController {
 	fakeNetworking := fake.NewSimpleClientset()
-	gkeNetworkParamSetInformer := gkenetworkparamset.NewGKENetworkParamSetInformer(fakeNetworking, 0*time.Second, cache.Indexers{})
+	gkeNetworkParamSetInformer := v1alphainformers.NewGKENetworkParamSetInformer(fakeNetworking, 0*time.Second, cache.Indexers{})
 	testClusterValues := gce.DefaultTestClusterValues()
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
 	controller := NewGKENetworkParamSetController(
@@ -369,4 +369,46 @@ func TestValidParamSetSubnetRange(t *testing.T) {
 		return false, nil
 	}).Should(gomega.BeTrue(), "GKENetworkParamSet Status should be updated with subnet cidr.")
 
+}
+
+func TestAddFinalizerToGKENetworkParamSet(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	testVals := setupGKENetworkParamSetController()
+
+	testVals.runGKENetworkParamSetController(ctx)
+
+	gkeNetworkParamSetName := "test-paramset"
+	paramSet := &v1alpha1.GKENetworkParamSet{
+		ObjectMeta: v1.ObjectMeta{
+			Name: gkeNetworkParamSetName,
+		},
+		Spec: v1alpha1.GKENetworkParamSetSpec{
+			VPC:       "default",
+			VPCSubnet: "test-subnet",
+		},
+	}
+	_, err := testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
+	if err != nil {
+		t.Error(err)
+	}
+
+	g.Eventually(func() (bool, error) {
+		paramSet, err := testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+
+		finalizerExists := false
+		for _, finalizer := range paramSet.ObjectMeta.Finalizers {
+			if finalizer == GNPFinalizer {
+				finalizerExists = true
+				break
+			}
+		}
+
+		return finalizerExists, nil
+		//TODO: This should be true when adding gnp finalizer is a part of the reconcile loop.
+	}).Should(gomega.BeFalse(), "GKENetworkParamSet should have the finalizer added.")
 }
