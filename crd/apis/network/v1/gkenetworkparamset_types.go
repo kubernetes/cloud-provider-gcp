@@ -75,42 +75,42 @@ const (
 	GKENetworkParamSetStatusReady GKENetworkParamSetConditionType = "Ready"
 )
 
-// GKENetworkParamSetReason defines the set of reasons that explain why a
+// GKENetworkParamSetConditionReason defines the set of reasons that explain why a
 // particular GKENetworkParamSet condition type has been raised.
-type GKENetworkParamSetReason string
+type GKENetworkParamSetConditionReason string
 
 const (
 	// SubnetNotFound indicates that the specified subnet was not found.
-	SubnetNotFound GKENetworkParamSetReason = "SubnetNotFound"
+	SubnetNotFound GKENetworkParamSetConditionReason = "SubnetNotFound"
 	// SecondaryRangeNotFound indicates that the specified secondary range was not found.
-	SecondaryRangeNotFound GKENetworkParamSetReason = "SecondaryRangeNotFound"
+	SecondaryRangeNotFound GKENetworkParamSetConditionReason = "SecondaryRangeNotFound"
 	// DeviceModeCantBeUsedWithSecondaryRange indicates that device mode was used with a secondary range.
-	DeviceModeCantBeUsedWithSecondaryRange GKENetworkParamSetReason = "DeviceModeCantBeUsedWithSecondaryRange"
+	DeviceModeCantBeUsedWithSecondaryRange GKENetworkParamSetConditionReason = "DeviceModeCantBeUsedWithSecondaryRange"
 	// DeviceModeVPCAlreadyInUse indicates that the VPC is already in use by another GKENetworkParamSet resource.
-	DeviceModeVPCAlreadyInUse GKENetworkParamSetReason = "DeviceModeVPCAlreadyInUse"
+	DeviceModeVPCAlreadyInUse GKENetworkParamSetConditionReason = "DeviceModeVPCAlreadyInUse"
 	// DeviceModeCantUseDefaultVPC indicates that a device mode GKENetworkParamSet cannot use the default VPC.
-	DeviceModeCantUseDefaultVPC GKENetworkParamSetReason = "DeviceModeCantUseDefaultVPC"
+	DeviceModeCantUseDefaultVPC GKENetworkParamSetConditionReason = "DeviceModeCantUseDefaultVPC"
 	// DPDKUnsupported indicates that DPDK device mode is not supported on the current cluster.
-	DPDKUnsupported GKENetworkParamSetReason = "DPDKUnsupported"
+	DPDKUnsupported GKENetworkParamSetConditionReason = "DPDKUnsupported"
 )
 
-// GNPNetworkParamsReadyReason defines the set of reasons that explains
+// GNPNetworkParamsReadyConditionReason defines the set of reasons that explains
 // the ParamsReady condition on the referencing Network resource.
-type GNPNetworkParamsReadyReason string
+type GNPNetworkParamsReadyConditionReason string
 
 const (
 	// L3SecondaryMissing indicates that the L3 type Network resource is
 	// referencing a GKENetworkParamSet with secondary range unspecified.
-	L3SecondaryMissing GNPNetworkParamsReadyReason = "L3SecondaryMissing"
+	L3SecondaryMissing GNPNetworkParamsReadyConditionReason = "L3SecondaryMissing"
 	// L3DeviceModeExists indicates that the L3 type Network resource is
 	// referencing a GKENetworkParamSet with device mode specified.
-	L3DeviceModeExists GNPNetworkParamsReadyReason = "L3DeviceModeExists"
+	L3DeviceModeExists GNPNetworkParamsReadyConditionReason = "L3DeviceModeExists"
 	// DeviceModeMissing indicates that the Device type Network resource is
 	// referencing a GKENetworkParamSet with device mode unspecified.
-	DeviceModeMissing GNPNetworkParamsReadyReason = "DeviceModeMissing"
+	DeviceModeMissing GNPNetworkParamsReadyConditionReason = "DeviceModeMissing"
 	// DeviceSecondaryExists indicates that the Device type Network resource is
 	// referencing a GKENetworkParamSet with a secondary range specified.
-	DeviceSecondaryExists GNPNetworkParamsReadyReason = "DeviceSecondaryExists"
+	DeviceSecondaryExists GNPNetworkParamsReadyConditionReason = "DeviceSecondaryExists"
 )
 
 // GKENetworkParamSetStatus contains the status information related to the network.
