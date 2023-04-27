@@ -9,7 +9,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
-	networkv1alpha1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1"
 	fake "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/fake"
 	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
 )
@@ -55,18 +54,18 @@ func network(name, gkeNetworkParamsName string) *networkv1.Network {
 	}
 }
 
-func gkeNetworkParams(name, vpc, subnet string, secRangeNames []string) *networkv1alpha1.GKENetworkParamSet {
-	gnp := &networkv1alpha1.GKENetworkParamSet{
+func gkeNetworkParams(name, vpc, subnet string, secRangeNames []string) *networkv1.GKENetworkParamSet {
+	gnp := &networkv1.GKENetworkParamSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: networkv1alpha1.GKENetworkParamSetSpec{
+		Spec: networkv1.GKENetworkParamSetSpec{
 			VPC:       vpc,
 			VPCSubnet: subnet,
 		},
 	}
 	if len(secRangeNames) > 0 {
-		gnp.Spec.PodIPv4Ranges = &networkv1alpha1.SecondaryRanges{
+		gnp.Spec.PodIPv4Ranges = &networkv1.SecondaryRanges{
 			RangeNames: secRangeNames,
 		}
 	}
@@ -90,7 +89,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 	testCases := []struct {
 		desc                       string
 		networks                   []*networkv1.Network
-		gkeNwParams                []*networkv1alpha1.GKENetworkParamSet
+		gkeNwParams                []*networkv1.GKENetworkParamSet
 		interfaces                 []*compute.NetworkInterface
 		wantDefaultNwPodCIDRs      []string
 		wantNorthInterfaces        networkv1.NorthInterfacesAnnotation
@@ -102,7 +101,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 			networks: []*networkv1.Network{
 				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
 			},
-			gkeNwParams: []*networkv1alpha1.GKENetworkParamSet{
+			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
 			},
 			interfaces: []*compute.NetworkInterface{
@@ -118,7 +117,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
 				network(redNetworkName, redGKENetworkParamsName),
 			},
-			gkeNwParams: []*networkv1alpha1.GKENetworkParamSet{
+			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
 				gkeNetworkParams(redGKENetworkParamsName, redVPCName, redVPCSubnetName, []string{redSecondaryRangeA, redSecondaryRangeB}),
 			},
@@ -152,7 +151,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 				network(redNetworkName, redGKENetworkParamsName),
 				network(blueNetworkName, blueGKENetworkParamsName),
 			},
-			gkeNwParams: []*networkv1alpha1.GKENetworkParamSet{
+			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
 				gkeNetworkParams(redGKENetworkParamsName, redVPCName, redVPCSubnetName, []string{redSecondaryRangeA, redSecondaryRangeB}),
 				gkeNetworkParams(blueGKENetworkParamsName, blueVPCName, blueVPCSubnetName, []string{}),
@@ -194,7 +193,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 				network(redNetworkName, redGKENetworkParamsName),
 				network(blueNetworkName, blueGKENetworkParamsName),
 			},
-			gkeNwParams: []*networkv1alpha1.GKENetworkParamSet{
+			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
 				gkeNetworkParams(redGKENetworkParamsName, redVPCName, redVPCSubnetName, []string{redSecondaryRangeA, redSecondaryRangeB}),
 				gkeNetworkParams(blueGKENetworkParamsName, blueVPCName, blueVPCSubnetName, []string{}),
@@ -228,7 +227,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
 				network(redNetworkName, redGKENetworkParamsName),
 			},
-			gkeNwParams: []*networkv1alpha1.GKENetworkParamSet{
+			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
 				gkeNetworkParams(redGKENetworkParamsName, redVPCName, redVPCSubnetName, []string{redSecondaryRangeA, redSecondaryRangeB}),
 			},
@@ -265,7 +264,7 @@ func TestPerformMultiNetworkCIDRAllocation(t *testing.T) {
 			clientSet := fake.NewSimpleClientset()
 			nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, 1*time.Second).Networking()
 			nwInformer := nwInfFactory.V1().Networks()
-			gnpInformer := nwInfFactory.V1alpha1().GKENetworkParamSets()
+			gnpInformer := nwInfFactory.V1().GKENetworkParamSets()
 			for _, nw := range tc.networks {
 				err := nwInformer.Informer().GetStore().Add(nw)
 				if err != nil {
