@@ -174,6 +174,15 @@ const (
 	NetworkConditionStatusParamsReady NetworkConditionType = "ParamsReady"
 )
 
+// NetworkReadyConditionReason defines the set of reasons that explain why a
+// particular Network Ready condition type has been raised.
+type NetworkReadyConditionReason string
+
+const (
+	// ParamsNotReady indicates that the resource referenced in params is not ready.
+	ParamsNotReady NetworkReadyConditionReason = "ParamsNotReady"
+)
+
 // NetworkStatus contains the status information related to the network.
 type NetworkStatus struct {
 	// Conditions is a field representing the current conditions of the Network.
