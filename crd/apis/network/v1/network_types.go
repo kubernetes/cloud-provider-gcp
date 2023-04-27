@@ -159,10 +159,36 @@ type Route struct {
 	To string `json:"to"`
 }
 
+// NetworkConditionType is the type for status conditions on
+// a Network. This type should be used with the
+// NetworkStatus.Conditions field.
+type NetworkConditionType string
+
+const (
+	// NetworkStatusReady is the condition type that holds
+	// if the Network object is validated
+	NetworkConditionStatusReady NetworkConditionType = "Ready"
+
+	// NetworkStatusParamsReady is the condition type that holds
+	// if the params object referenced by Network is validated
+	NetworkConditionStatusParamsReady NetworkConditionType = "ParamsReady"
+)
+
 // NetworkStatus contains the status information related to the network.
 type NetworkStatus struct {
 	// Conditions is a field representing the current conditions of the Network.
-	Conditions []metav1.Condition `json:"conditions"`
+	//
+	// Known condition types are:
+	//
+	// * "Ready"
+	// * "ParamsReady"
+	//
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 // NodeInterfaceMatcher defines criteria to find the matching interface on host networking.
