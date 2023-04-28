@@ -159,30 +159,6 @@ type Route struct {
 	To string `json:"to"`
 }
 
-// NetworkConditionType is the type for status conditions on
-// a Network. This type should be used with the
-// NetworkStatus.Conditions field.
-type NetworkConditionType string
-
-const (
-	// NetworkStatusReady is the condition type that holds
-	// if the Network object is validated
-	NetworkConditionStatusReady NetworkConditionType = "Ready"
-
-	// NetworkStatusParamsReady is the condition type that holds
-	// if the params object referenced by Network is validated
-	NetworkConditionStatusParamsReady NetworkConditionType = "ParamsReady"
-)
-
-// NetworkReadyConditionReason defines the set of reasons that explain why a
-// particular Network Ready condition type has been raised.
-type NetworkReadyConditionReason string
-
-const (
-	// ParamsNotReady indicates that the resource referenced in params is not ready.
-	ParamsNotReady NetworkReadyConditionReason = "ParamsNotReady"
-)
-
 // NetworkStatus contains the status information related to the network.
 type NetworkStatus struct {
 	// Conditions is a field representing the current conditions of the Network.
