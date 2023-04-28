@@ -64,6 +64,55 @@ type NetworkRanges struct {
 	CIDRBlocks []string `json:"cidrBlocks"`
 }
 
+// GKENetworkParamSetConditionType is the type for status conditions on
+// a GKENetworkParamSet. This type should be used with the
+// GKENetworkParamSetStatus.Conditions field.
+type GKENetworkParamSetConditionType string
+
+const (
+	// GKENetworkParamSetStatusReady is the condition type that holds
+	// if the GKENetworkParamSet object is validated
+	GKENetworkParamSetStatusReady GKENetworkParamSetConditionType = "Ready"
+)
+
+// GKENetworkParamSetConditionReason defines the set of reasons that explain why a
+// particular GKENetworkParamSet condition type has been raised.
+type GKENetworkParamSetConditionReason string
+
+const (
+	// SubnetNotFound indicates that the specified subnet was not found.
+	SubnetNotFound GKENetworkParamSetConditionReason = "SubnetNotFound"
+	// SecondaryRangeNotFound indicates that the specified secondary range was not found.
+	SecondaryRangeNotFound GKENetworkParamSetConditionReason = "SecondaryRangeNotFound"
+	// DeviceModeCantBeUsedWithSecondaryRange indicates that device mode was used with a secondary range.
+	DeviceModeCantBeUsedWithSecondaryRange GKENetworkParamSetConditionReason = "DeviceModeCantBeUsedWithSecondaryRange"
+	// DeviceModeVPCAlreadyInUse indicates that the VPC is already in use by another GKENetworkParamSet resource.
+	DeviceModeVPCAlreadyInUse GKENetworkParamSetConditionReason = "DeviceModeVPCAlreadyInUse"
+	// DeviceModeCantUseDefaultVPC indicates that a device mode GKENetworkParamSet cannot use the default VPC.
+	DeviceModeCantUseDefaultVPC GKENetworkParamSetConditionReason = "DeviceModeCantUseDefaultVPC"
+	// DPDKUnsupported indicates that DPDK device mode is not supported on the current cluster.
+	DPDKUnsupported GKENetworkParamSetConditionReason = "DPDKUnsupported"
+)
+
+// GNPNetworkParamsReadyConditionReason defines the set of reasons that explains
+// the ParamsReady condition on the referencing Network resource.
+type GNPNetworkParamsReadyConditionReason string
+
+const (
+	// L3SecondaryMissing indicates that the L3 type Network resource is
+	// referencing a GKENetworkParamSet with secondary range unspecified.
+	L3SecondaryMissing GNPNetworkParamsReadyConditionReason = "L3SecondaryMissing"
+	// L3DeviceModeExists indicates that the L3 type Network resource is
+	// referencing a GKENetworkParamSet with device mode specified.
+	L3DeviceModeExists GNPNetworkParamsReadyConditionReason = "L3DeviceModeExists"
+	// DeviceModeMissing indicates that the Device type Network resource is
+	// referencing a GKENetworkParamSet with device mode unspecified.
+	DeviceModeMissing GNPNetworkParamsReadyConditionReason = "DeviceModeMissing"
+	// DeviceSecondaryExists indicates that the Device type Network resource is
+	// referencing a GKENetworkParamSet with a secondary range specified.
+	DeviceSecondaryExists GNPNetworkParamsReadyConditionReason = "DeviceSecondaryExists"
+)
+
 // GKENetworkParamSetStatus contains the status information related to the network.
 type GKENetworkParamSetStatus struct {
 	// PodCIDRs specifies the CIDRs from which IPs will be used for Pod interfaces
@@ -71,7 +120,21 @@ type GKENetworkParamSetStatus struct {
 	PodCIDRs *NetworkRanges `json:"podCIDRs,omitempty"`
 
 	// Conditions is a field representing the current conditions of the GKENetworkParamSet.
-	Conditions []metav1.Condition `json:"conditions"`
+	//
+	// Known condition types are:
+	//
+	// * "Ready"
+	//
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// NetworkName specifies which Network object is currently referencing this GKENetworkParamSet
+	// +optional
+	NetworkName string `json:"networkName"`
 }
 
 // +genclient
