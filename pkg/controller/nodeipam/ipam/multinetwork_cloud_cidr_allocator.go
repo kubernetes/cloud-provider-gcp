@@ -19,9 +19,8 @@ func (ca *cloudCIDRAllocator) PerformMultiNetworkCIDRAllocation(node *v1.Node, i
 	}
 	networks := make([]*networkv1.Network, 0)
 	// ignore networks that are under deletion.
-	// TODO: Watch network objects to react when networks are deleted.
 	for _, network := range k8sNetworksList {
-		if network.ObjectMeta.DeletionTimestamp.IsZero() {
+		if network.DeletionTimestamp.IsZero() {
 			networks = append(networks, network)
 		}
 	}
@@ -81,4 +80,45 @@ func (ca *cloudCIDRAllocator) PerformMultiNetworkCIDRAllocation(node *v1.Node, i
 func resourceName(name string) string {
 	parts := strings.Split(name, "/")
 	return parts[len(parts)-1]
+}
+
+func (ca *cloudCIDRAllocator) NetworkToNodes(network *networkv1.Network) error {
+	k8sNodesList, err := ca.nodeLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("error fetching nodes: %v", err)
+	}
+	// Need to reschedule all Nodes, since we do not know which one holds the
+	// new Network.
+	for _, node := range k8sNodesList {
+		if network != nil {
+			// filter out nodes that are not part of network
+			if node.Annotations == nil {
+				// skip node w/o any annotation, not possible for it to have any MN
+				continue
+			}
+			northIntfAnn, ok := node.Annotations[networkv1.NorthInterfacesAnnotationKey]
+			if !ok {
+				// skip node w/o "north-interfaces" annotation, no MN
+				continue
+			}
+			northIntf, err := networkv1.ParseNorthInterfacesAnnotation(northIntfAnn)
+			// if err!=nil means there is some format issue with the annotation, lets
+			// re-generate it for that node
+			if err == nil {
+				found := false
+				for _, ele := range northIntf {
+					if ele.Network == network.Name {
+						found = true
+						break
+					}
+				}
+				if !found {
+					// node is not part of this network
+					continue
+				}
+			}
+		}
+		_ = ca.AllocateOrOccupyCIDR(node)
+	}
+	return nil
 }

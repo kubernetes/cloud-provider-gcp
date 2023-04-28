@@ -142,6 +142,41 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		DeleteFunc: nodeutil.CreateDeleteNodeHandler(ca.ReleaseCIDR),
 	})
 
+	nwInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(originalObj interface{}) {
+			nw, isNetwork := originalObj.(*networkv1.Network)
+			if !isNetwork {
+				klog.Errorf("Received unexpected object: %v", originalObj)
+				return
+			}
+			klog.V(0).Infof("Received Network (%s) create event", nw.Name)
+			err := ca.NetworkToNodes(nil)
+			if err != nil {
+				klog.Errorf("Error while adding Nodes to queue: %v", err)
+			}
+		},
+		DeleteFunc: func(originalObj interface{}) {
+			network, ok := originalObj.(*networkv1.Network)
+			if !ok {
+				tombstone, ok := originalObj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", originalObj))
+					return
+				}
+				network, ok = tombstone.Obj.(*networkv1.Network)
+				if !ok {
+					utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Network %#v", originalObj))
+					return
+				}
+			}
+			klog.V(0).Infof("Received Network (%s) delete event", network.Name)
+			err := ca.NetworkToNodes(network)
+			if err != nil {
+				klog.Errorf("Error while adding Nodes to queue: %v", err)
+			}
+		},
+	})
+
 	klog.V(0).Infof("Using cloud CIDR allocator (provider: %v)", cloud.ProviderName())
 	return ca, nil
 }
@@ -301,7 +336,7 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
 		return fmt.Errorf("failed to allocate cidr: Node %v has no CIDRs", node.Name)
 	}
-	//Can have at most 2 ips (one for v4 and one for v6)
+	// Can have at most 2 ips (one for v4 and one for v6)
 	if len(cidrStrings) > 2 {
 		klog.InfoS("Got more than 2 ips, truncating to 2", "cidrStrings", cidrStrings)
 		cidrStrings = cidrStrings[:2]
