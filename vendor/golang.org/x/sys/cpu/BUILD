@@ -41,6 +41,8 @@ go_library(
         "hwcap_linux.go",
         "parse.go",
         "proc_cpuinfo_linux.go",
+        "runtime_auxv.go",
+        "runtime_auxv_go121.go",
         "syscall_aix_ppc64_gc.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/sys/cpu",

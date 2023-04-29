@@ -22,6 +22,7 @@ go_library(
     visibility = ["//vendor/golang.org/x/tools:__subpackages__"],
     deps = [
         "//vendor/golang.org/x/tools/internal/pkgbits",
+        "//vendor/golang.org/x/tools/internal/tokeninternal",
         "//vendor/golang.org/x/tools/internal/typeparams",
     ],
 )

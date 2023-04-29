@@ -6,4 +6,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/encoding",
     importpath = "google.golang.org/grpc/encoding",
     visibility = ["//visibility:public"],
+    deps = ["//vendor/google.golang.org/grpc/internal/grpcutil"],
 )

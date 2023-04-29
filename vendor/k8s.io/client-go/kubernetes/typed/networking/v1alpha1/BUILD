@@ -6,6 +6,7 @@ go_library(
         "clustercidr.go",
         "doc.go",
         "generated_expansion.go",
+        "ipaddress.go",
         "networking_client.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/networking/v1alpha1",

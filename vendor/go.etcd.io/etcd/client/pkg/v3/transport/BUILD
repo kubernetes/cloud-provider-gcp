@@ -10,6 +10,7 @@ go_library(
         "listener_opts.go",
         "listener_tls.go",
         "sockopt.go",
+        "sockopt_solaris.go",
         "sockopt_unix.go",
         "sockopt_windows.go",
         "timeout_conn.go",

@@ -13,6 +13,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/api/meta",
         "//vendor/k8s.io/apiserver/pkg/admission",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizer",
+        "//vendor/k8s.io/apiserver/pkg/cel/openapi/resolver",
         "//vendor/k8s.io/apiserver/pkg/quota/v1:quota",
         "//vendor/k8s.io/client-go/dynamic",
         "//vendor/k8s.io/client-go/informers",

@@ -20,6 +20,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1/unstructured",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/json",
         "//vendor/k8s.io/apimachinery/pkg/util/json",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",

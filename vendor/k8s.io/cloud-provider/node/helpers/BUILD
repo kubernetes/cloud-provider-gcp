@@ -20,6 +20,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/client-go/kubernetes",
         "//vendor/k8s.io/client-go/util/retry",
+        "//vendor/k8s.io/component-helpers/node/util",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/net",
     ],

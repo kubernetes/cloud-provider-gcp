@@ -12,6 +12,7 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/api/legacyscheme",
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates",
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1:certificates",
+        "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1alpha1",
         "//vendor/k8s.io/kubernetes/pkg/apis/certificates/v1beta1",
     ],
 )

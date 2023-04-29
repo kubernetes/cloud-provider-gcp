@@ -6,5 +6,8 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/storage/value/encrypt/aes",
     importpath = "k8s.io/apiserver/pkg/storage/value/encrypt/aes",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/k8s.io/apiserver/pkg/storage/value"],
+    deps = [
+        "//vendor/k8s.io/apiserver/pkg/storage/value",
+        "//vendor/k8s.io/klog/v2:klog",
+    ],
 )

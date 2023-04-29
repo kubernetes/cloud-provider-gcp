@@ -21,6 +21,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/cloud-provider/config",
+        "//vendor/k8s.io/cloud-provider/controllers/node/config/v1alpha1",
         "//vendor/k8s.io/cloud-provider/controllers/service/config/v1alpha1",
         "//vendor/k8s.io/controller-manager/config/v1alpha1",
         "//vendor/k8s.io/utils/pointer",

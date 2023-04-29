@@ -7,6 +7,7 @@ go_library(
         "encoding.go",
         "example.go",
         "external_documentation.go",
+        "fuzz.go",
         "header.go",
         "media_type.go",
         "operation.go",
@@ -14,7 +15,6 @@ go_library(
         "path.go",
         "request_body.go",
         "response.go",
-        "security_requirement.go",
         "security_scheme.go",
         "server.go",
         "spec.go",
@@ -24,6 +24,9 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/go-openapi/swag",
+        "//vendor/github.com/google/gofuzz",
+        "//vendor/k8s.io/kube-openapi/pkg/internal",
+        "//vendor/k8s.io/kube-openapi/pkg/internal/third_party/go-json-experiment/json",
         "//vendor/k8s.io/kube-openapi/pkg/validation/spec",
     ],
 )

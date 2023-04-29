@@ -9,10 +9,11 @@ go_library(
     deps = [
         "//vendor/github.com/golang/protobuf/proto",
         "//vendor/github.com/google/gnostic/openapiv3",
+        "//vendor/github.com/google/uuid",
         "//vendor/github.com/munnerz/goautoneg",
+        "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/kube-openapi/pkg/cached",
         "//vendor/k8s.io/kube-openapi/pkg/common",
-        "//vendor/k8s.io/kube-openapi/pkg/internal/handler",
         "//vendor/k8s.io/kube-openapi/pkg/spec3",
-        "//vendor/k8s.io/kube-openapi/pkg/validation/spec",
     ],
 )
