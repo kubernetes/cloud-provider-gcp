@@ -11,15 +11,15 @@ require (
 	google.golang.org/api v0.63.0
 	gopkg.in/gcfg.v1 v1.2.0
 	gopkg.in/warnings.v0 v0.1.1 // indirect
-	k8s.io/api v0.26.4
-	k8s.io/apimachinery v0.26.4
-	k8s.io/client-go v0.26.4
-	k8s.io/component-base v0.26.4
+	k8s.io/api v0.27.1
+	k8s.io/apimachinery v0.27.1
+	k8s.io/client-go v0.27.1
+	k8s.io/component-base v0.27.1
 	k8s.io/klog/v2 v2.80.1
 	k8s.io/utils v0.0.0-20221107191617-1a15be271d1d
 )
 
-require k8s.io/cloud-provider v0.26.4
+require k8s.io/cloud-provider v0.27.1
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
