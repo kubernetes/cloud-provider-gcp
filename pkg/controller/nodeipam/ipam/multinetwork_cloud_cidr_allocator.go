@@ -7,6 +7,7 @@ import (
 
 	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
@@ -18,6 +19,9 @@ import (
 // GCE interfaces, and is updated with the corresponding annotations for
 // MultiNetwork and NorthInterfaces and the capacity for the additional networks.
 // It also returns calculated cidrs for default Network.
+//
+// NorthInterfacesAnnotationKey is modified on Network Ready condition changes.
+// MultiNetworkAnnotationKey is modified on Node's NodeNetworkAnnotationKey changes.
 func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, interfaces []*compute.NetworkInterface) (defaultNwCIDRs []string, err error) {
 	northInterfaces := networkv1.NorthInterfacesAnnotation{}
 	additionalNodeNetworks := networkv1.MultiNetworkAnnotation{}
@@ -26,13 +30,28 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 	if err != nil {
 		return nil, fmt.Errorf("node=%s error fetching networks: %v", node.Name, err)
 	}
+
+	// get networks from Node's network-status annotation
+	nodeUpNet, err := getUpNetworks(node)
+
+	// statusNetworks is map of networks that are Ready and status==UP
+	statusNetworks := make(map[string]struct{})
+	// networks is list of networks that are Ready
 	networks := make([]*networkv1.Network, 0)
-	// ignore networks that are under deletion.
+	// filter networks based on Ready condition
 	for _, network := range k8sNetworksList {
-		if network.DeletionTimestamp.IsZero() {
+		if meta.IsStatusConditionTrue(network.Status.Conditions, string(networkv1.NetworkConditionStatusReady)) || networkv1.IsDefaultNetwork(network.Name) {
 			networks = append(networks, network)
+			_, ok := nodeUpNet[network.Name]
+			if ok {
+				// we do not care about status of default Network, since it has to be
+				// always available
+				statusNetworks[network.Name] = struct{}{}
+			}
 		}
 	}
+
+	matchedNetworks := make(map[string]struct{})
 	// Fetch the GKENetworkParams for every k8s-network object.
 	// Match the fetched GKENetworkParams object with the interfaces on the node
 	// to build the per-network north-interface and node-network annotations useful for IPAM.
@@ -42,6 +61,11 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 			rangeNameAliasIPMap[ipRange.SubnetworkRangeName] = ipRange
 		}
 		for _, network := range networks {
+			if _, ok := matchedNetworks[network.Name]; ok {
+				// skip networks that are already matched with an interface
+				continue
+			}
+
 			klog.V(4).InfoS("allotting pod CIDRs", "nodeName", node.Name, "networkName", network.Name)
 			gnp, err := ca.gnpLister.Get(network.Spec.ParametersRef.Name)
 			if err != nil {
@@ -69,6 +93,7 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 					continue
 				}
 				klog.V(2).InfoS("found an allocatable secondary range for the interface on network", "nodeName", node.Name, "networkName", network.Name)
+				matchedNetworks[network.Name] = struct{}{}
 				if networkv1.IsDefaultNetwork(network.Name) {
 					defaultNwCIDRs = append(defaultNwCIDRs, ipRange.IpCidrRange)
 					ipv6Addr := ca.cloud.GetIPV6Address(inf)
@@ -77,7 +102,9 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 					}
 				} else {
 					northInterfaces = append(northInterfaces, networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP})
-					additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{ipRange.IpCidrRange}})
+					if _, ok := statusNetworks[network.Name]; ok {
+						additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{ipRange.IpCidrRange}})
+					}
 				}
 				break
 			}
@@ -151,6 +178,25 @@ func getNodeCapacity(nw networkv1.NodeNetwork) (int64, error) {
 		ipCount = size >> 1
 	}
 	return ipCount, nil
+}
+
+func getUpNetworks(node *v1.Node) (map[string]struct{}, error) {
+	m := make(map[string]struct{})
+	if node.Annotations == nil {
+		return m, nil
+	}
+	ann, ok := node.Annotations[networkv1.NodeNetworkAnnotationKey]
+	if !ok {
+		return m, nil
+	}
+	nodeNws, err := networkv1.ParseNodeNetworkAnnotation(ann)
+	if err != nil {
+		return nil, fmt.Errorf("invalid format for multi-network annotation: %v", err)
+	}
+	for _, n := range nodeNws {
+		m[n.Name] = struct{}{}
+	}
+	return m, nil
 }
 
 func (ca *cloudCIDRAllocator) NetworkToNodes(network *networkv1.Network) error {

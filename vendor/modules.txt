@@ -1227,7 +1227,7 @@ k8s.io/cloud-provider/service/helpers
 k8s.io/cloud-provider/volume
 k8s.io/cloud-provider/volume/errors
 k8s.io/cloud-provider/volume/helpers
-# k8s.io/cloud-provider-gcp/crd v0.0.0-20230426191415-4ab7967b01e9
+# k8s.io/cloud-provider-gcp/crd v0.0.0-20230502184815-8d2e986dd7cf
 ## explicit; go 1.19
 k8s.io/cloud-provider-gcp/crd/apis/network/v1
 k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1

@@ -15,7 +15,12 @@ const (
 	gkeNetworkParamsKind = "GKENetworkParams"
 )
 
-func network(name, gkeNetworkParamsName string) *networkv1.Network {
+func network(name, gkeNetworkParamsName string, isReady bool) *networkv1.Network {
+	status := metav1.ConditionFalse
+	if isReady {
+		status = metav1.ConditionTrue
+	}
+
 	return &networkv1.Network{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -26,6 +31,14 @@ func network(name, gkeNetworkParamsName string) *networkv1.Network {
 				Group: group,
 				Kind:  gkeNetworkParamsKind,
 				Name:  gkeNetworkParamsName,
+			},
+		},
+		Status: networkv1.NetworkStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:   string(networkv1.NetworkConditionStatusReady),
+					Status: status,
+				},
 			},
 		},
 	}
@@ -61,7 +74,7 @@ func TestNetworkToNodes(t *testing.T) {
 		},
 		{
 			desc:    "all nodes with the network",
-			network: network("test", "test"),
+			network: network("test", "test", false),
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -87,7 +100,7 @@ func TestNetworkToNodes(t *testing.T) {
 		},
 		{
 			desc:    "only one node with the network",
-			network: network("test", "test"),
+			network: network("test", "test", true),
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -113,7 +126,7 @@ func TestNetworkToNodes(t *testing.T) {
 		},
 		{
 			desc:    "redo node with corrupted annotation",
-			network: network("test", "test"),
+			network: network("test", "test", false),
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -139,7 +152,7 @@ func TestNetworkToNodes(t *testing.T) {
 		},
 		{
 			desc:    "skip node with annotation==nil",
-			network: network("test", "test"),
+			network: network("test", "test", false),
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -162,7 +175,7 @@ func TestNetworkToNodes(t *testing.T) {
 		},
 		{
 			desc:    "skip node with no MN annotation",
-			network: network("test", "test"),
+			network: network("test", "test", false),
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{

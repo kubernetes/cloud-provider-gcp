@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"k8s.io/apimachinery/pkg/api/meta"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	"k8s.io/klog/v2"
 
@@ -123,7 +124,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: nodeutil.CreateAddNodeHandler(ca.AllocateOrOccupyCIDR),
-		UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(_, newNode *v1.Node) error {
+		UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(oldNode, newNode *v1.Node) error {
 			if newNode.Spec.PodCIDR == "" {
 				return ca.AllocateOrOccupyCIDR(newNode)
 			}
@@ -134,6 +135,19 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 			if cond == nil || cond.Status != v1.ConditionFalse || utiltaints.TaintExists(newNode.Spec.Taints, networkUnavailableTaint) {
 				return ca.AllocateOrOccupyCIDR(newNode)
 			}
+
+			// Process Node for Multi-Network network-status annotation change
+			var oldVal, newVal string
+			if newNode.Annotations != nil {
+				newVal = newNode.Annotations[networkv1.NodeNetworkAnnotationKey]
+			}
+			if oldNode.Annotations != nil {
+				oldVal = oldNode.Annotations[networkv1.NodeNetworkAnnotationKey]
+			}
+			if oldVal != newVal {
+				return ca.AllocateOrOccupyCIDR(newNode)
+			}
+
 			return nil
 		}),
 		DeleteFunc: nodeutil.CreateDeleteNodeHandler(ca.ReleaseCIDR),
@@ -150,6 +164,18 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 			err := ca.NetworkToNodes(nil)
 			if err != nil {
 				klog.Errorf("Error while adding Nodes to queue: %v", err)
+			}
+		},
+		UpdateFunc: func(origOldObj, origNewObj interface{}) {
+			oldNet := origOldObj.(*networkv1.Network)
+			newNet := origNewObj.(*networkv1.Network)
+			readyCond := string(networkv1.NetworkConditionStatusReady)
+			if meta.IsStatusConditionTrue(oldNet.Status.Conditions, readyCond) != meta.IsStatusConditionTrue(newNet.Status.Conditions, readyCond) {
+				klog.V(0).Infof("Received Network (%s) update event", newNet.Name)
+				err := ca.NetworkToNodes(newNet)
+				if err != nil {
+					utilruntime.HandleError(fmt.Errorf("error while adding Nodes to queue: %v", err))
+				}
 			}
 		},
 		DeleteFunc: func(originalObj interface{}) {
