@@ -165,11 +165,11 @@ type Route struct {
 type NetworkConditionType string
 
 const (
-	// NetworkStatusReady is the condition type that holds
+	// NetworkConditionStatusReady is the condition type that holds
 	// if the Network object is validated
 	NetworkConditionStatusReady NetworkConditionType = "Ready"
 
-	// NetworkStatusParamsReady is the condition type that holds
+	// NetworkConditionStatusParamsReady is the condition type that holds
 	// if the params object referenced by Network is validated
 	NetworkConditionStatusParamsReady NetworkConditionType = "ParamsReady"
 )
