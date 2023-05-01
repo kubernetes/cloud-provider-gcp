@@ -43,7 +43,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -576,7 +576,7 @@ func (g *Cloud) initializeSubnetworkURLAndIsLegacyNetwork() {
 	// Determine the type of network and attempt to discover the correct subnet for AUTO mode.
 	// Gracefully fail because kubelet calls CreateGCECloud without any config, and minions
 	// lack the proper credentials for API calls.
-	if networkName := lastComponent(g.NetworkURL()); networkName != "" {
+	if networkName := g.NetworkName(); networkName != "" {
 		if n, err := getNetwork(g.service, g.NetworkProjectID(), networkName); err != nil {
 			klog.Warningf("Could not retrieve network %q; err: %v", networkName, err)
 		} else {
@@ -739,6 +739,11 @@ func (g *Cloud) LocalZone() string {
 // OnXPN returns true if the cluster is running on a cross project network (XPN)
 func (g *Cloud) OnXPN() bool {
 	return g.onXPN
+}
+
+// NetworkName returns the network name
+func (g *Cloud) NetworkName() string {
+	return lastComponent(g.NetworkURL())
 }
 
 // NetworkURL returns the network url
