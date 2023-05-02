@@ -20,16 +20,22 @@ limitations under the License.
 package ipam
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"github.com/google/go-cmp/cmp"
+	"google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	"k8s.io/cloud-provider-gcp/pkg/controller/testutil"
+	"k8s.io/cloud-provider-gcp/providers/gce"
 	netutils "k8s.io/utils/net"
 )
 
@@ -85,6 +91,377 @@ func TestNodeUpdateRetryTimeout(t *testing.T) {
 				t.Errorf("nodeUpdateRetryTimeout(tc.count) = %v; want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestUpdateCIDRAllocation(t *testing.T) {
+	tests := []struct {
+		name            string
+		fakeNodeHandler *testutil.FakeNodeHandler
+		nodeChanges     func(*v1.Node)
+		gceInstance     []*compute.Instance
+		expectErr       bool
+		expectErrMsg    string
+		expectedUpdate  bool
+	}{
+		{
+			name: "node not found in k8s",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test1",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			nodeChanges: func(node *v1.Node) {},
+		},
+		{
+			name: "provider not set",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+				},
+			},
+			nodeChanges:  func(node *v1.Node) {},
+			expectErr:    true,
+			expectErrMsg: "doesn't have providerID",
+		},
+		{
+			name: "node not found in gce by provider",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+				},
+			},
+			nodeChanges:  func(node *v1.Node) {},
+			expectErr:    true,
+			expectErrMsg: "failed to get instance from provider",
+		},
+		{
+			name: "gce node has no networks",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+				},
+			},
+			nodeChanges:  func(node *v1.Node) {},
+			expectErr:    true,
+			expectErrMsg: "Node test has no ranges from which CIDRs can",
+		},
+		{
+			name: "empty single stack node",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "192.168.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "192.168.1.0/24"
+				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+			},
+			expectedUpdate: true,
+		},
+		{
+			name: "empty dualstack node",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							Ipv6Address: "2001:db9::110",
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "192.168.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "192.168.1.0/24"
+				node.Spec.PodCIDRs = []string{"192.168.1.0/24", "2001:db9::/112"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+			},
+			expectedUpdate: true,
+		},
+		{
+			name: "incorrect cidr",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							Ipv6Address: "2001:db9::/96",
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "192.168.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			nodeChanges:  func(node *v1.Node) {},
+			expectErr:    true,
+			expectErrMsg: "failed to parse strings",
+		},
+		{
+			name: "node already configured",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							PodCIDR:    "192.168.1.0/24",
+							PodCIDRs:   []string{"192.168.1.0/24"},
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+						Status: v1.NodeStatus{
+							Conditions: []v1.NodeCondition{
+								{
+									Type:    "NetworkUnavailable",
+									Status:  "False",
+									Reason:  "RouteCreated",
+									Message: "NodeController create implicit route",
+								},
+							},
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "192.168.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			nodeChanges:    func(node *v1.Node) {},
+			expectedUpdate: true,
+		},
+		{
+			name: "node configured but NetworkUnavailable condition",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							PodCIDR:    "192.168.1.0/24",
+							PodCIDRs:   []string{"192.168.1.0/24"},
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+						Status: v1.NodeStatus{
+							Conditions: []v1.NodeCondition{
+								{
+									Type:    "NetworkUnavailable",
+									Status:  "True",
+									Reason:  "RouteCreated",
+									Message: "NodeController create implicit route",
+								},
+							},
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "192.168.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			nodeChanges: func(node *v1.Node) {
+				node.Status.Conditions[0].Status = "False"
+			},
+			expectedUpdate: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, stop := context.WithCancel(context.Background())
+			defer stop()
+
+			fakeNodeInformer := getFakeNodeInformer(tc.fakeNodeHandler)
+			testClusterValues := gce.DefaultTestClusterValues()
+			fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+			for _, inst := range tc.gceInstance {
+				err := fakeGCE.Compute().Instances().Insert(ctx, meta.ZonalKey(inst.Name, testClusterValues.ZoneName), inst)
+				if err != nil {
+					t.Fatalf("error setting up the test for fakeGCE: %v", err)
+				}
+			}
+
+			wantNode := tc.fakeNodeHandler.Existing[0].DeepCopy()
+			tc.nodeChanges(wantNode)
+
+			ca := &cloudCIDRAllocator{
+				client:      tc.fakeNodeHandler,
+				cloud:       fakeGCE,
+				recorder:    testutil.NewFakeRecorder(),
+				nodeLister:  fakeNodeInformer.Lister(),
+				nodesSynced: fakeNodeInformer.Informer().HasSynced,
+			}
+			if err := ca.updateCIDRAllocation("test"); err != nil {
+				if tc.expectErr {
+					if tc.expectErrMsg != "" && !strings.Contains(err.Error(), tc.expectErrMsg) {
+						t.Fatalf("received unexpected error message:\nwant: %s\ngot: %v", tc.expectErrMsg, err)
+					}
+					return
+				}
+				t.Fatalf("unexpected error %v", err)
+			}
+
+			updNodes := tc.fakeNodeHandler.GetUpdatedNodesCopy()
+			var gotNode *v1.Node
+			if len(updNodes) == 0 {
+				if tc.expectedUpdate {
+					t.Fatalf("Node update expected but none done")
+				}
+				gotNode = tc.fakeNodeHandler.Existing[0]
+			} else {
+				if !tc.expectedUpdate {
+					t.Fatalf("Node update not expected but received: %v", updNodes[0])
+				}
+				gotNode = updNodes[0]
+			}
+			sanitizeDates(gotNode)
+
+			diff := cmp.Diff(wantNode, gotNode)
+			if diff != "" {
+				t.Fatalf("updateCIDRAllocation() node not updated (-want +got) = %s", diff)
+			}
+		})
+	}
+}
+
+func sanitizeDates(node *v1.Node) {
+	for i := range node.Status.Conditions {
+		node.Status.Conditions[i].LastHeartbeatTime = metav1.Time{}
+		node.Status.Conditions[i].LastTransitionTime = metav1.Time{}
 	}
 }
 
