@@ -349,8 +349,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
-			nodeChanges:    func(node *v1.Node) {},
-			expectedUpdate: true,
+			nodeChanges: func(node *v1.Node) {},
 		},
 		{
 			name: "node configured but NetworkUnavailable condition",
@@ -465,6 +464,33 @@ func sanitizeDates(node *v1.Node) {
 	}
 }
 
+func gkeNetworkParams(name, vpc, subnet string, secRangeNames []string) *networkv1.GKENetworkParamSet {
+	gnp := &networkv1.GKENetworkParamSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: networkv1.GKENetworkParamSetSpec{
+			VPC:       vpc,
+			VPCSubnet: subnet,
+		},
+	}
+	if len(secRangeNames) > 0 {
+		gnp.Spec.PodIPv4Ranges = &networkv1.SecondaryRanges{
+			RangeNames: secRangeNames,
+		}
+	}
+	return gnp
+}
+
+func interfaces(network, subnetwork, networkIP string, aliasIPRanges []*compute.AliasIpRange) *compute.NetworkInterface {
+	return &compute.NetworkInterface{
+		AliasIpRanges: aliasIPRanges,
+		Network:       network,
+		Subnetwork:    subnetwork,
+		NetworkIP:     networkIP,
+	}
+}
+
 func TestNeedPodCIDRsUpdate(t *testing.T) {
 	for _, tc := range []struct {
 		desc         string
@@ -565,180 +591,5 @@ func TestNeedPodCIDRsUpdate(t *testing.T) {
 				t.Errorf("got: %v, want: %v", got, tc.want)
 			}
 		})
-	}
-}
-
-type multiNetworkTestCase struct {
-	description            string
-	fakeNodeHandler        *testutil.FakeNodeHandler
-	northInterfaces        networkv1.NorthInterfacesAnnotation
-	additionalNodeNetworks networkv1.MultiNetworkAnnotation
-	expectedIPCapacities   map[string]int64
-	expectErr              bool
-}
-
-func TestUpdateMultiNetworkAnnotations(t *testing.T) {
-	testCases := []multiNetworkTestCase{
-		{
-			description: "[invalid] - node with cidrs in incorrect format",
-			fakeNodeHandler: &testutil.FakeNodeHandler{
-				Existing: []*v1.Node{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "node0",
-							Labels: map[string]string{
-								"testLabel-0": "node0",
-							},
-						},
-					},
-				},
-				Clientset: fake.NewSimpleClientset(),
-			},
-			northInterfaces: []networkv1.NorthInterface{
-				{
-					Network:   "Blue-Network",
-					IpAddress: "172.10.0.1",
-				},
-			},
-			additionalNodeNetworks: []networkv1.NodeNetwork{
-				{
-					Name:  "Blue-Network",
-					Cidrs: []string{"30.20.1000/24"},
-					Scope: "host-local",
-				},
-			},
-			expectErr: true,
-		},
-		{
-			description: "[valid] - node with no additional networks",
-			fakeNodeHandler: &testutil.FakeNodeHandler{
-				Existing: []*v1.Node{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "node0",
-							Labels: map[string]string{
-								"testLabel-0": "node0",
-							},
-						},
-					},
-				},
-				Clientset: fake.NewSimpleClientset(),
-			},
-		},
-		{
-			description: "[valid] - node with /32 cidr in an additional network",
-			fakeNodeHandler: &testutil.FakeNodeHandler{
-				Existing: []*v1.Node{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "node0",
-							Labels: map[string]string{
-								"testLabel-0": "node0",
-							},
-						},
-					},
-				},
-				Clientset: fake.NewSimpleClientset(),
-			},
-			northInterfaces: []networkv1.NorthInterface{
-				{
-					Network:   "Blue-Network",
-					IpAddress: "172.10.0.1",
-				},
-			},
-			additionalNodeNetworks: []networkv1.NodeNetwork{
-				{
-					Name:  "Blue-Network",
-					Cidrs: []string{"30.20.10.0/32"},
-					Scope: "host-local",
-				},
-			},
-			expectedIPCapacities: map[string]int64{
-				networkv1.NetworkResourceKeyPrefix + "Blue-Network.IP": 1,
-			},
-		},
-		{
-			description: "[valid] - node with 2 additional networks",
-			fakeNodeHandler: &testutil.FakeNodeHandler{
-				Existing: []*v1.Node{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "node0",
-							Labels: map[string]string{
-								"testLabel-0": "node0",
-							},
-						},
-					},
-				},
-				Clientset: fake.NewSimpleClientset(),
-			},
-			northInterfaces: []networkv1.NorthInterface{
-				{
-					Network:   "Blue-Network",
-					IpAddress: "172.10.0.1",
-				},
-				{
-					Network:   "Red-Network",
-					IpAddress: "10.10.0.1",
-				},
-			},
-			additionalNodeNetworks: []networkv1.NodeNetwork{
-				{
-					Name:  "Blue-Network",
-					Cidrs: []string{"30.20.10.0/24"},
-					Scope: "host-local",
-				},
-				{
-					Name:  "Red-Network",
-					Cidrs: []string{"10.20.30.0/24"},
-					Scope: "host-local",
-				},
-			},
-			expectedIPCapacities: map[string]int64{
-				networkv1.NetworkResourceKeyPrefix + "Red-Network.IP":  128,
-				networkv1.NetworkResourceKeyPrefix + "Blue-Network.IP": 128,
-			},
-		},
-	}
-	// test function
-	testFunc := func(tc multiNetworkTestCase) {
-		for _, node := range tc.fakeNodeHandler.Existing {
-			var err error
-			ca := &cloudCIDRAllocator{
-				client: tc.fakeNodeHandler,
-			}
-			if err = ca.updateMultiNetworkAnnotations(node, tc.northInterfaces, tc.additionalNodeNetworks); err != nil {
-				if !tc.expectErr {
-					t.Fatalf("unexpected error %v", err)
-				}
-			}
-		}
-		for _, updatedNode := range tc.fakeNodeHandler.GetUpdatedNodesCopy() {
-			expectedNorthInterfaceAnnotation, _ := networkv1.MarshalNorthInterfacesAnnotation(tc.northInterfaces)
-			a, ok := updatedNode.ObjectMeta.Annotations[networkv1.NorthInterfacesAnnotationKey]
-			if a != expectedNorthInterfaceAnnotation || !ok {
-				t.Errorf("%v: incorrect north-interface annotation on the node, got: %s, want: %s", tc.description, a, expectedNorthInterfaceAnnotation)
-			}
-			expectedMultiNetworkAnnotation, _ := networkv1.MarshalAnnotation(tc.additionalNodeNetworks)
-			a, ok = updatedNode.ObjectMeta.Annotations[networkv1.MultiNetworkAnnotationKey]
-			if a != expectedMultiNetworkAnnotation || !ok {
-				t.Errorf("%v: incorrect multinetwork annotation on the node, got: %s, want: %s", tc.description, a, expectedMultiNetworkAnnotation)
-			}
-			gotCapacities := updatedNode.Status.Capacity
-			if len(gotCapacities) != len(tc.expectedIPCapacities) {
-				t.Errorf("%s: incorrect capacities on the node status, got: %v, want: %v", tc.description, gotCapacities, tc.expectedIPCapacities)
-			}
-			for k, v := range tc.expectedIPCapacities {
-				q, ok := gotCapacities[v1.ResourceName(k)]
-				if !ok || v != q.Value() {
-					t.Errorf("%v: incorrect IP capacity for network %s on the node, got: %v, want: %v", tc.description, k, q.Value(), v)
-				}
-			}
-		}
-	}
-
-	// run the test cases
-	for _, tc := range testCases {
-		testFunc(tc)
 	}
 }

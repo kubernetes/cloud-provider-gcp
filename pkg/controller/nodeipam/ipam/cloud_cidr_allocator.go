@@ -20,40 +20,37 @@ limitations under the License.
 package ipam
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net"
-	"strings"
+	"reflect"
 	"sync"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	"k8s.io/klog/v2"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	informers "k8s.io/client-go/informers/core/v1"
-	corelisters "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
-
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	cloudprovider "k8s.io/cloud-provider"
-	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	networkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
 	networklister "k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1"
 	nodeutil "k8s.io/cloud-provider-gcp/pkg/util"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	utiltaints "k8s.io/cloud-provider-gcp/pkg/util/taints"
 	"k8s.io/cloud-provider-gcp/providers/gce"
+	v1nodeutil "k8s.io/component-helpers/node/util"
 	netutils "k8s.io/utils/net"
 )
 
@@ -291,8 +288,9 @@ func (ca *cloudCIDRAllocator) AllocateOrOccupyCIDR(node *v1.Node) error {
 }
 
 // updateCIDRAllocation assigns CIDR to Node and sends an update to the API server.
+// Operate on the `node` object if any changes have to be done to it in the API.
 func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
-	node, err := ca.nodeLister.Get(nodeName)
+	oldNode, err := ca.nodeLister.Get(nodeName)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil // node no longer available, skip processing
@@ -300,6 +298,8 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		klog.ErrorS(err, "Failed while getting the node for updating Node.Spec.PodCIDR", "nodeName", nodeName)
 		return err
 	}
+	node := oldNode.DeepCopy()
+
 	if node.Spec.ProviderID == "" {
 		return fmt.Errorf("node %s doesn't have providerID", nodeName)
 	}
@@ -310,13 +310,15 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 	}
 
 	cidrStrings := make([]string, 0)
-	var northInterfaces networkv1.NorthInterfacesAnnotation
-	var additionalNodeNetworks networkv1.MultiNetworkAnnotation
 
 	if len(instance.NetworkInterfaces) == 0 || (len(instance.NetworkInterfaces) == 1 && len(instance.NetworkInterfaces[0].AliasIpRanges) == 0) {
 		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
 		return fmt.Errorf("failed to allocate cidr: Node %v has no ranges from which CIDRs can be allocated", node.Name)
 	}
+
+	// sets the v1.NodeNetworkUnavailable condition to False
+	ca.setNetworkCondition(node)
+
 	// nodes in clusters WITHOUT multi-networking are expected to have only 1 network-interface with 1 alias IP range.
 	if len(instance.NetworkInterfaces) == 1 && len(instance.NetworkInterfaces[0].AliasIpRanges) == 1 {
 		cidrStrings = append(cidrStrings, instance.NetworkInterfaces[0].AliasIpRanges[0].IpCidrRange)
@@ -326,7 +328,7 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		}
 	} else {
 		// multi-networking enabled clusters
-		cidrStrings, northInterfaces, additionalNodeNetworks, err = ca.PerformMultiNetworkCIDRAllocation(node, instance.NetworkInterfaces)
+		cidrStrings, err = ca.performMultiNetworkCIDRAllocation(node, instance.NetworkInterfaces)
 		if err != nil {
 			nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
 			return fmt.Errorf("failed to get cidr(s) from provider: %v", err)
@@ -347,6 +349,8 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		return fmt.Errorf("failed to parse strings %v as CIDRs: %v", cidrStrings, err)
 	}
 
+	// TODO: revisit need of needPodCIDRsUpdate with current code base
+	// additionally: spec.podCIDRs: Forbidden: node updates may not change podCIDR except from "" to valid
 	needUpdate, err := needPodCIDRsUpdate(node, cidrs)
 	if err != nil {
 		return fmt.Errorf("err: %v, CIDRS: %v", err, cidrStrings)
@@ -360,33 +364,75 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 			//
 			// See https://github.com/kubernetes/kubernetes/pull/42147#discussion_r103357248
 		}
-		for i := 0; i < cidrUpdateRetries; i++ {
-			if err = utilnode.PatchNodeCIDRs(ca.client, types.NodeName(node.Name), cidrStrings); err == nil {
-				klog.InfoS("Set the node PodCIDRs", "nodeName", node.Name, "cidrStrings", cidrStrings)
-				break
-			}
-		}
-	}
-	if err != nil {
-		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRAssignmentFailed")
-		klog.ErrorS(err, "Failed to update the node PodCIDR after multiple attempts", "nodeName", node.Name, "cidrStrings", cidrStrings)
-		return err
+		node.Spec.PodCIDR = cidrStrings[0]
+		node.Spec.PodCIDRs = cidrStrings
 	}
 
-	if northInterfaces != nil || additionalNodeNetworks != nil {
-		if err := ca.updateMultiNetworkAnnotations(node, northInterfaces, additionalNodeNetworks); err != nil {
+	err = ca.updateNodeCIDR(node, oldNode)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(node.Annotations, oldNode.Annotations) {
+		if err = utilnode.PatchNodeMultiNetwork(ca.client, node); err != nil {
+			nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRAssignmentFailed")
+			klog.ErrorS(err, "Failed to update the node annotations and capacity for multi-networking", "nodeName", node.Name)
 			return err
 		}
 	}
-	err = utilnode.SetNodeCondition(ca.client, types.NodeName(node.Name), v1.NodeCondition{
+	return err
+}
+
+func (ca *cloudCIDRAllocator) setNetworkCondition(node *v1.Node) {
+	cond := v1.NodeCondition{
 		Type:               v1.NodeNetworkUnavailable,
 		Status:             v1.ConditionFalse,
 		Reason:             "RouteCreated",
 		Message:            "NodeController create implicit route",
 		LastTransitionTime: metav1.Now(),
-	})
-	if err != nil {
-		klog.ErrorS(err, "Error setting route status for the node", "nodeName", node.Name)
+	}
+	for i := range node.Status.Conditions {
+		if node.Status.Conditions[i].Type == v1.NodeNetworkUnavailable {
+			// we do not update Times so that we do not trigger unnecessary updates
+			node.Status.Conditions[i].Status = cond.Status
+			node.Status.Conditions[i].Reason = cond.Reason
+			node.Status.Conditions[i].Message = cond.Message
+			return
+		}
+	}
+	// NodeNetworkUnavailable condition not found, lets add it
+	node.Status.Conditions = append(node.Status.Conditions, cond)
+}
+
+func (ca *cloudCIDRAllocator) updateNodeCIDR(node, oldNode *v1.Node) error {
+	var err error
+
+	// update Spec.podCIDR
+	if !reflect.DeepEqual(node.Spec, oldNode.Spec) {
+		// TODO: remove the retry since it is handled by the reconciliation loop
+		for i := 0; i < cidrUpdateRetries; i++ {
+			if err = utilnode.PatchNodeCIDRs(ca.client, types.NodeName(node.Name), node.Spec.PodCIDRs); err == nil {
+				klog.InfoS("Set the node PodCIDRs", "nodeName", node.Name, "cidrStrings", node.Spec.PodCIDRs)
+				break
+			}
+		}
+		if err != nil {
+			nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRAssignmentFailed")
+			klog.ErrorS(err, "Failed to update the node PodCIDR after multiple attempts", "nodeName", node.Name, "cidrStrings", node.Spec.PodCIDRs)
+			return err
+		}
+	}
+
+	// Update Conditions
+	if !reflect.DeepEqual(node.Status.Conditions, oldNode.Status.Conditions) {
+		_, cond := v1nodeutil.GetNodeCondition(&node.Status, v1.NodeNetworkUnavailable)
+		if cond == nil {
+			// this should not happen
+			return fmt.Errorf("unable to find %s condition in node %s", v1.NodeNetworkUnavailable, node.Name)
+		}
+		err = utilnode.SetNodeCondition(ca.client, types.NodeName(node.Name), *cond)
+		if err != nil {
+			klog.ErrorS(err, "Error setting route status for the node", "nodeName", node.Name)
+		}
 	}
 	return err
 }
@@ -433,78 +479,4 @@ func (ca *cloudCIDRAllocator) ReleaseCIDR(node *v1.Node) error {
 	klog.V(2).Infof("Node %v PodCIDR (%v) will be released by external cloud provider (not managed by controller)",
 		node.Name, node.Spec.PodCIDR)
 	return nil
-}
-
-func (ca *cloudCIDRAllocator) updateMultiNetworkAnnotations(node *v1.Node, northInterfaces networkv1.NorthInterfacesAnnotation, additionalNodeNetworks networkv1.MultiNetworkAnnotation) error {
-	northInterfaceAnn, err := networkv1.MarshalNorthInterfacesAnnotation(northInterfaces)
-	if err != nil {
-		klog.ErrorS(err, "Failed to marshal the north interfaces annotation for multi-networking", "nodeName", node.Name)
-		return err
-	}
-	additionalNodeNwAnn, err := networkv1.MarshalAnnotation(additionalNodeNetworks)
-	if err != nil {
-		klog.ErrorS(err, "Failed to marshal the additional node networks annotation for multi-networking", "nodeName", node.Name)
-		return err
-	}
-	if node.Annotations == nil {
-		node.Annotations = make(map[string]string)
-	}
-	node.Annotations[networkv1.NorthInterfacesAnnotationKey] = northInterfaceAnn
-	node.Annotations[networkv1.MultiNetworkAnnotationKey] = additionalNodeNwAnn
-	node.Status.Capacity, err = allocateIPCapacity(node, additionalNodeNetworks)
-	if err != nil {
-		return err
-	}
-	// Prepare patch bytes for the node update.
-	patchBytes, err := json.Marshal([]interface{}{
-		map[string]interface{}{
-			"op":    "replace",
-			"path":  "/metadata/annotations",
-			"value": node.Annotations,
-		},
-		map[string]interface{}{
-			"op":    "add",
-			"path":  "/status/capacity",
-			"value": node.Status.Capacity,
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to build patch bytes for multi-networking: %v", err)
-	}
-	// Since dynamic network addition/deletion is a use case to be supported, we aspire to build these annotations and IP capacities every time from scratch.
-	// Hence we are using a JSON patch merge strategy instead of strategic merge strategy on the node during update.
-	if _, err = ca.client.CoreV1().Nodes().Patch(context.TODO(), node.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{}, "status"); err != nil {
-		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRAssignmentFailed")
-		klog.ErrorS(err, "Failed to update the node annotations and capacity for multi-networking", "nodeName", node.Name)
-		return err
-	}
-	return nil
-}
-
-// allocateIPCapacity updates the extended IP resource capacity for every non-default network on the node.
-func allocateIPCapacity(node *v1.Node, nodeNetworks networkv1.MultiNetworkAnnotation) (v1.ResourceList, error) {
-	resourceList := node.Status.Capacity
-	if resourceList == nil {
-		resourceList = make(v1.ResourceList)
-	}
-	// Rebuild the IP capacity for all the networks on the node by deleting the existing IP capacities first.
-	for name := range resourceList {
-		if strings.HasPrefix(name.String(), networkv1.NetworkResourceKeyPrefix) {
-			delete(resourceList, name)
-		}
-	}
-	for _, nw := range nodeNetworks {
-		_, ipNet, err := net.ParseCIDR(nw.Cidrs[0])
-		if err != nil {
-			return nil, err
-		}
-		var ipCount int64 = 1
-		size := netutils.RangeSize(ipNet)
-		if size > 1 {
-			// The number of IPs supported are halved and returned for overprovisioning purposes.
-			ipCount = size >> 1
-		}
-		resourceList[v1.ResourceName(networkv1.NetworkResourceKeyPrefix+nw.Name+".IP")] = *resource.NewQuantity(int64(ipCount), resource.DecimalSI)
-	}
-	return resourceList, nil
 }

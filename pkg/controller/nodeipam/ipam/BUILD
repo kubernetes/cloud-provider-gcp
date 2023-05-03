@@ -44,6 +44,7 @@ go_library(
         "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1:network",
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1:network",
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1:network",
+        "//vendor/k8s.io/component-helpers/node/util",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/metrics/pkg/client/clientset/versioned/scheme",
         "//vendor/k8s.io/utils/net",
