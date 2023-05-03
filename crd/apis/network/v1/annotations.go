@@ -44,6 +44,8 @@ const (
 	AutoGenAnnotationValTrue = "true"
 	// NorthInterfacesAnnotationKey is the annotation key used to hold interfaces data per node.
 	NorthInterfacesAnnotationKey = "networking.gke.io/north-interfaces"
+	// NICInfoAnnotationKey specifies the mapping between the fist IP addresse and the PCI BDF number on the node.
+	NICInfoAnnotationKey = "networking.gke.io/nic-info"
 )
 
 // InterfaceAnnotation is the value of the interface annotation.
@@ -62,6 +64,20 @@ type InterfaceRef struct {
 	Network *string `json:"network,omitempty"`
 	// Interface reference the NetworkInterface object within the namespace.
 	Interface *string `json:"interface,omitempty"`
+}
+
+// NICInfoAnnotation is the value of the nic-info annotation
+type NICInfoAnnotation []NICInfoRef
+
+//NICInfoRef specifies the mapping between a NIC's first v4 IP and its
+//PCI address on the node.
+type NICInfoRef struct {
+	// First v4 IP address of the interface.
+	BirthIP string `json:"birthIP,omitempty"`
+	// PCI address of this device on the node.
+	PCIAddress string `json:"pciAddress,omitempty"`
+	// Name is the birth name of this interface at node boot time.
+	BirthName string `json:"birthName,omitempty"`
 }
 
 // ParseInterfaceAnnotation parses the given annotation.
@@ -164,6 +180,13 @@ func ParseMultiNetworkAnnotation(annotation string) (MultiNetworkAnnotation, err
 // ParseNorthInterfacesAnnotation parses given annotation to NorthInterfacesAnnotation.
 func ParseNorthInterfacesAnnotation(annotation string) (NorthInterfacesAnnotation, error) {
 	ret := &NorthInterfacesAnnotation{}
+	err := json.Unmarshal([]byte(annotation), ret)
+	return *ret, err
+}
+
+//parseNICInfoAnnotation parses given annotation to NicInfoAnnotation
+func ParseNICInfoAnnotation(annotation string) (NICInfoAnnotation, error) {
+	ret := &NICInfoAnnotation{}
 	err := json.Unmarshal([]byte(annotation), ret)
 	return *ret, err
 }
