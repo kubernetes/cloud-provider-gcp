@@ -47,7 +47,7 @@ go_rules_dependencies()
 
 go_download_sdk(
     name = "go_sdk",
-    version = "1.19.6",
+    version = "1.19.9",
 )
 
 go_register_toolchains()
@@ -81,7 +81,7 @@ container_pull(
     registry = "registry.k8s.io",
     repository = "build-image/go-runner",
     # 'tag' is also supported, but digest is encouraged for reproducibility.
-    tag = "v2.3.1-go1.19.6-bullseye.0",
+    tag = "v2.3.1-go1.19.9-bullseye.0",
     digest = "sha256:b564abe1d4bd3a7e227971530fbc8e3906671c94350706df5244c1deb6edcef4",
 )
 
