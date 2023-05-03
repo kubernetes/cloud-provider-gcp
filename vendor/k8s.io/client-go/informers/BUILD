@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "informers",
     srcs = [
+        "doc.go",
         "factory.go",
         "generic.go",
     ],
@@ -24,6 +25,7 @@ go_library(
         "//vendor/k8s.io/api/batch/v1:batch",
         "//vendor/k8s.io/api/batch/v1beta1",
         "//vendor/k8s.io/api/certificates/v1:certificates",
+        "//vendor/k8s.io/api/certificates/v1alpha1",
         "//vendor/k8s.io/api/certificates/v1beta1",
         "//vendor/k8s.io/api/coordination/v1:coordination",
         "//vendor/k8s.io/api/coordination/v1beta1",
@@ -48,7 +50,7 @@ go_library(
         "//vendor/k8s.io/api/rbac/v1:rbac",
         "//vendor/k8s.io/api/rbac/v1alpha1",
         "//vendor/k8s.io/api/rbac/v1beta1",
-        "//vendor/k8s.io/api/resource/v1alpha1",
+        "//vendor/k8s.io/api/resource/v1alpha2",
         "//vendor/k8s.io/api/scheduling/v1:scheduling",
         "//vendor/k8s.io/api/scheduling/v1alpha1",
         "//vendor/k8s.io/api/scheduling/v1beta1",

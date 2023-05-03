@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "cacher",
     srcs = [
+        "cache_watcher.go",
         "cacher.go",
         "caching_object.go",
         "ready.go",
@@ -29,6 +30,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/apiserver/pkg/audit",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/apiserver/pkg/features",
         "//vendor/k8s.io/apiserver/pkg/storage",
         "//vendor/k8s.io/apiserver/pkg/storage/cacher/metrics",

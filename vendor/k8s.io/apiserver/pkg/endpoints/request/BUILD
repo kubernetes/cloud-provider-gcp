@@ -7,6 +7,7 @@ go_library(
         "doc.go",
         "received_time.go",
         "requestinfo.go",
+        "server_shutdown_signal.go",
         "webhook_duration.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/endpoints/request",

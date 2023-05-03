@@ -17,7 +17,6 @@ go_library(
         "//vendor/k8s.io/api/rbac/v1alpha1",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/labels",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/types",
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/applyconfigurations/rbac/v1alpha1",

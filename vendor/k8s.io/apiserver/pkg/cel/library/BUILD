@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "library",
     srcs = [
+        "authz.go",
         "cost.go",
         "libraries.go",
         "lists.go",
@@ -23,6 +24,11 @@ go_library(
         "//vendor/github.com/google/cel-go/interpreter",
         "//vendor/github.com/google/cel-go/interpreter/functions",
         "//vendor/google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+        "//vendor/k8s.io/apimachinery/pkg/api/validation",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apiserver/pkg/authentication/serviceaccount",
+        "//vendor/k8s.io/apiserver/pkg/authentication/user",
+        "//vendor/k8s.io/apiserver/pkg/authorization/authorizer",
         "//vendor/k8s.io/apiserver/pkg/cel",
     ],
 )

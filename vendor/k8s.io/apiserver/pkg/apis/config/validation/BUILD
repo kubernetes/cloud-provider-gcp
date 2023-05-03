@@ -7,6 +7,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/apis/config/validation",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
         "//vendor/k8s.io/apiserver/pkg/apis/config",

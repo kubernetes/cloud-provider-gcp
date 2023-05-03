@@ -3,10 +3,9 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "v1beta1",
     srcs = [
+        "matchcondition.go",
         "mutatingwebhook.go",
         "mutatingwebhookconfiguration.go",
-        "rule.go",
-        "rulewithoperations.go",
         "servicereference.go",
         "validatingwebhook.go",
         "validatingwebhookconfiguration.go",
@@ -16,7 +15,6 @@ go_library(
     importpath = "k8s.io/client-go/applyconfigurations/admissionregistration/v1beta1",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/api/admissionregistration/v1:admissionregistration",
         "//vendor/k8s.io/api/admissionregistration/v1beta1",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/types",

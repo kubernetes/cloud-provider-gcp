@@ -21,6 +21,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/client-go/tools/cache",
+        "//vendor/k8s.io/client-go/tools/cache/synctrack",
         "//vendor/k8s.io/client-go/util/workqueue",
         "//vendor/k8s.io/klog/v2:klog",
     ],

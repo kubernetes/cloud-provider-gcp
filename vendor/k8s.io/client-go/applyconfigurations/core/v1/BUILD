@@ -27,6 +27,7 @@ go_library(
         "container.go",
         "containerimage.go",
         "containerport.go",
+        "containerresizepolicy.go",
         "containerstate.go",
         "containerstaterunning.go",
         "containerstateterminated.go",

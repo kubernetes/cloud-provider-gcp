@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "routes",
     srcs = [
+        "debugsocket.go",
         "doc.go",
         "flags.go",
         "index.go",
@@ -30,6 +31,7 @@ go_library(
         "//vendor/k8s.io/kube-openapi/pkg/builder",
         "//vendor/k8s.io/kube-openapi/pkg/builder3",
         "//vendor/k8s.io/kube-openapi/pkg/common",
+        "//vendor/k8s.io/kube-openapi/pkg/common/restfuladapter",
         "//vendor/k8s.io/kube-openapi/pkg/handler",
         "//vendor/k8s.io/kube-openapi/pkg/handler3",
         "//vendor/k8s.io/kube-openapi/pkg/validation/spec",

@@ -16,9 +16,9 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apiserver/pkg/storage/value",
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/envelope/metrics",
-        "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/envelope/util",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/kms/apis/v1beta1",
+        "//vendor/k8s.io/kms/pkg/util",
         "//vendor/k8s.io/utils/lru",
     ],
 )

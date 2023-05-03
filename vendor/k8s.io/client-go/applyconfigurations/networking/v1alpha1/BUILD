@@ -5,6 +5,9 @@ go_library(
     srcs = [
         "clustercidr.go",
         "clustercidrspec.go",
+        "ipaddress.go",
+        "ipaddressspec.go",
+        "parentreference.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/applyconfigurations/networking/v1alpha1",
     importpath = "k8s.io/client-go/applyconfigurations/networking/v1alpha1",
