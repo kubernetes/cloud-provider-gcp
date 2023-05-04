@@ -2,20 +2,29 @@ package ipam
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	"k8s.io/klog/v2"
+	netutils "k8s.io/utils/net"
 )
 
-// PerformMultiNetworkCIDRAllocation allots pod CIDRs for all the networks that a node is connected to. It handles IPv6 only for default-network for now.
-func (ca *cloudCIDRAllocator) PerformMultiNetworkCIDRAllocation(node *v1.Node, interfaces []*compute.NetworkInterface) (defaultNwCIDRs []string, northInterfaces networkv1.NorthInterfacesAnnotation, additionalNodeNetworks networkv1.MultiNetworkAnnotation, err error) {
+// performMultiNetworkCIDRAllocation receives the existing Node object and its
+// GCE interfaces, and is updated with the corresponding annotations for
+// MultiNetwork and NorthInterfaces and the capacity for the additional networks.
+// It also returns calculated cidrs for default Network.
+func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, interfaces []*compute.NetworkInterface) (defaultNwCIDRs []string, err error) {
+	northInterfaces := networkv1.NorthInterfacesAnnotation{}
+	additionalNodeNetworks := networkv1.MultiNetworkAnnotation{}
+
 	k8sNetworksList, err := ca.networksLister.List(labels.Everything())
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error fetching networks: %v", err)
+		return nil, fmt.Errorf("node=%s error fetching networks: %v", node.Name, err)
 	}
 	networks := make([]*networkv1.Network, 0)
 	// ignore networks that are under deletion.
@@ -33,15 +42,15 @@ func (ca *cloudCIDRAllocator) PerformMultiNetworkCIDRAllocation(node *v1.Node, i
 			rangeNameAliasIPMap[ipRange.SubnetworkRangeName] = ipRange
 		}
 		for _, network := range networks {
-			klog.V(4).Infof("allotting pod cidrs for network %s", network.Name)
+			klog.V(4).InfoS("allotting pod CIDRs", "nodeName", node.Name, "networkName", network.Name)
 			gnp, err := ca.gnpLister.Get(network.Spec.ParametersRef.Name)
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, err
 			}
 			if resourceName(inf.Network) != resourceName(gnp.Spec.VPC) || resourceName(inf.Subnetwork) != resourceName(gnp.Spec.VPCSubnet) {
 				continue
 			}
-			klog.V(2).Infof("interface %s matched, proceeding to find a secondary range", inf.Name)
+			klog.V(2).InfoS("interface matched, proceeding to find a secondary range", "nodeName", node.Name, "networkInterface", inf.Name)
 			// TODO: Handle IPv6 in future.
 			var secondaryRangeNames []string
 			if gnp.Spec.PodIPv4Ranges != nil {
@@ -59,7 +68,7 @@ func (ca *cloudCIDRAllocator) PerformMultiNetworkCIDRAllocation(node *v1.Node, i
 				if !ok {
 					continue
 				}
-				klog.V(2).Infof("found an allocatable secondary range for the interface on network")
+				klog.V(2).InfoS("found an allocatable secondary range for the interface on network", "nodeName", node.Name, "networkName", network.Name)
 				if networkv1.IsDefaultNetwork(network.Name) {
 					defaultNwCIDRs = append(defaultNwCIDRs, ipRange.IpCidrRange)
 					ipv6Addr := ca.cloud.GetIPV6Address(inf)
@@ -74,12 +83,74 @@ func (ca *cloudCIDRAllocator) PerformMultiNetworkCIDRAllocation(node *v1.Node, i
 			}
 		}
 	}
-	return defaultNwCIDRs, northInterfaces, additionalNodeNetworks, nil
+	if err = updateAnnotations(node, northInterfaces, additionalNodeNetworks); err != nil {
+		return nil, err
+	}
+	return defaultNwCIDRs, nil
+}
+
+func updateAnnotations(node *v1.Node, northInterfaces networkv1.NorthInterfacesAnnotation, additionalNodeNetworks networkv1.MultiNetworkAnnotation) error {
+	northInterfaceAnn, err := networkv1.MarshalNorthInterfacesAnnotation(northInterfaces)
+	if err != nil {
+		klog.ErrorS(err, "Failed to marshal the north interfaces annotation for multi-networking", "nodeName", node.Name)
+		return err
+	}
+	additionalNodeNwAnn, err := networkv1.MarshalAnnotation(additionalNodeNetworks)
+	if err != nil {
+		klog.ErrorS(err, "Failed to marshal the additional node networks annotation for multi-networking", "nodeName", node.Name)
+		return err
+	}
+	if node.Annotations == nil {
+		node.Annotations = make(map[string]string)
+	}
+	node.Annotations[networkv1.NorthInterfacesAnnotationKey] = northInterfaceAnn
+	node.Annotations[networkv1.MultiNetworkAnnotationKey] = additionalNodeNwAnn
+	node.Status.Capacity, err = allocateIPCapacity(node, additionalNodeNetworks)
+	return err
+}
+
+// allocateIPCapacity updates the extended IP resource capacity for every non-default network on the node.
+func allocateIPCapacity(node *v1.Node, nodeNetworks networkv1.MultiNetworkAnnotation) (v1.ResourceList, error) {
+	resourceList := node.Status.Capacity
+	if resourceList == nil {
+		resourceList = make(v1.ResourceList)
+	}
+	// Rebuild the IP capacity for all the networks on the node by deleting the existing IP capacities first.
+	for name := range resourceList {
+		if strings.HasPrefix(name.String(), networkv1.NetworkResourceKeyPrefix) {
+			delete(resourceList, name)
+		}
+	}
+	for _, nw := range nodeNetworks {
+		ipCount, err := getNodeCapacity(nw)
+		if err != nil {
+			return nil, err
+		}
+		resourceList[v1.ResourceName(networkv1.NetworkResourceKeyPrefix+nw.Name+".IP")] = *resource.NewQuantity(ipCount, resource.DecimalSI)
+	}
+	return resourceList, nil
 }
 
 func resourceName(name string) string {
 	parts := strings.Split(name, "/")
 	return parts[len(parts)-1]
+}
+
+func getNodeCapacity(nw networkv1.NodeNetwork) (int64, error) {
+	if len(nw.Cidrs) < 1 {
+		return -1, fmt.Errorf("network %s is missing CIDRs", nw.Name)
+	}
+	_, ipNet, err := net.ParseCIDR(nw.Cidrs[0])
+	if err != nil {
+		return -1, err
+	}
+	var ipCount int64 = 1
+	size := netutils.RangeSize(ipNet)
+	if size > 1 {
+		// The number of IPs supported are halved and returned for overprovisioning purposes.
+		ipCount = size >> 1
+	}
+	return ipCount, nil
 }
 
 func (ca *cloudCIDRAllocator) NetworkToNodes(network *networkv1.Network) error {
