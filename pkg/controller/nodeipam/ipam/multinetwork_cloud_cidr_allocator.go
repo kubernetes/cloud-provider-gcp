@@ -122,20 +122,11 @@ func allocateIPCapacity(node *v1.Node, nodeNetworks networkv1.MultiNetworkAnnota
 		}
 	}
 	for _, nw := range nodeNetworks {
-		if len(nw.Cidrs) < 1 {
-			return nil, fmt.Errorf("network %s is missing CIDRs", nw.Name)
-		}
-		_, ipNet, err := net.ParseCIDR(nw.Cidrs[0])
+		ipCount, err := getNodeCapacity(nw)
 		if err != nil {
 			return nil, err
 		}
-		var ipCount int64 = 1
-		size := netutils.RangeSize(ipNet)
-		if size > 1 {
-			// The number of IPs supported are halved and returned for overprovisioning purposes.
-			ipCount = size >> 1
-		}
-		resourceList[v1.ResourceName(networkv1.NetworkResourceKeyPrefix+nw.Name+".IP")] = *resource.NewQuantity(int64(ipCount), resource.DecimalSI)
+		resourceList[v1.ResourceName(networkv1.NetworkResourceKeyPrefix+nw.Name+".IP")] = *resource.NewQuantity(ipCount, resource.DecimalSI)
 	}
 	return resourceList, nil
 }
@@ -143,6 +134,23 @@ func allocateIPCapacity(node *v1.Node, nodeNetworks networkv1.MultiNetworkAnnota
 func resourceName(name string) string {
 	parts := strings.Split(name, "/")
 	return parts[len(parts)-1]
+}
+
+func getNodeCapacity(nw networkv1.NodeNetwork) (int64, error) {
+	if len(nw.Cidrs) < 1 {
+		return -1, fmt.Errorf("network %s is missing CIDRs", nw.Name)
+	}
+	_, ipNet, err := net.ParseCIDR(nw.Cidrs[0])
+	if err != nil {
+		return -1, err
+	}
+	var ipCount int64 = 1
+	size := netutils.RangeSize(ipNet)
+	if size > 1 {
+		// The number of IPs supported are halved and returned for overprovisioning purposes.
+		ipCount = size >> 1
+	}
+	return ipCount, nil
 }
 
 func (ca *cloudCIDRAllocator) NetworkToNodes(network *networkv1.Network) error {

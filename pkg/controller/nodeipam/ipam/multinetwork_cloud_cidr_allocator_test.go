@@ -215,3 +215,112 @@ func TestNetworkToNodes(t *testing.T) {
 		})
 	}
 }
+
+func TestGetNodeCapacity(t *testing.T) {
+	testCases := []struct {
+		desc      string
+		input     networkv1.NodeNetwork
+		want      int64
+		expectErr bool
+	}{
+		{
+			desc:      "no cidrs",
+			input:     networkv1.NodeNetwork{},
+			want:      -1,
+			expectErr: true,
+		},
+		{
+			desc: "incorrect cidrs",
+			input: networkv1.NodeNetwork{
+				Cidrs: []string{"2000.2.2.2/24"},
+			},
+			want:      -1,
+			expectErr: true,
+		},
+		{
+			desc: "24 v4 cidrs",
+			input: networkv1.NodeNetwork{
+				Cidrs: []string{"2.2.2.2/24"},
+			},
+			want: 128,
+		},
+		{
+			desc: "32 v4 cidrs",
+			input: networkv1.NodeNetwork{
+				Cidrs: []string{"2.2.2.2/32"},
+			},
+			want: 1,
+		},
+		{
+			desc: "31 v4 cidrs",
+			input: networkv1.NodeNetwork{
+				Cidrs: []string{"2.2.2.2/31"},
+			},
+			want: 1,
+		},
+		{
+			desc: "30 v4 cidrs",
+			input: networkv1.NodeNetwork{
+				Cidrs: []string{"2.2.2.2/30"},
+			},
+			want: 2,
+		},
+		{
+			desc: "2 v4 cidrs",
+			input: networkv1.NodeNetwork{
+				Cidrs: []string{"2.2.2.2/2"},
+			},
+			want: 536870912,
+		},
+		{
+			desc: "120 v6 cidrs",
+			input: networkv1.NodeNetwork{
+				Cidrs: []string{"200:12::/120"},
+			},
+			want: 128,
+		},
+		{
+			desc: "128 v6 cidrs",
+			input: networkv1.NodeNetwork{
+				Cidrs: []string{"200:12::/128"},
+			},
+			want: 1,
+		},
+		{
+			desc: "127 v6 cidrs",
+			input: networkv1.NodeNetwork{
+				Cidrs: []string{"200:12::/127"},
+			},
+			want: 1,
+		},
+		{
+			desc: "126 v6 cidrs",
+			input: networkv1.NodeNetwork{
+				Cidrs: []string{"200:12::/126"},
+			},
+			want: 2,
+		},
+		{
+			desc: "2 v6 cidrs",
+			input: networkv1.NodeNetwork{
+				Cidrs: []string{"200:12::/2"},
+			},
+			want: 4611686018427387903,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			// setup
+			got, err := getNodeCapacity(tc.input)
+			if err == nil && tc.expectErr {
+				t.Fatalf("getNodeCapacity(%+v) error expected but got nil", tc.input)
+			} else if err != nil && !tc.expectErr {
+				t.Fatalf("getNodeCapacity(%+v) got unexpected error", tc.input)
+			}
+
+			if got != tc.want {
+				t.Fatalf("getNodeCapacity(%+v) returns %v but want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
