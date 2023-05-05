@@ -174,6 +174,9 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		},
 	})
 
+	// register Cloud CIDR Allocator metrics
+	registerCloudCidrAllocatorMetrics()
+
 	klog.V(0).Infof("Using cloud CIDR allocator (provider: %v)", cloud.ProviderName())
 	return ca, nil
 }
@@ -373,10 +376,34 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		return err
 	}
 	if !reflect.DeepEqual(node.Annotations, oldNode.Annotations) {
+		// retain old north interfaces annotation
+		var oldNorthInterfacesAnnotation networkv1.NorthInterfacesAnnotation
+		if ann, exists := oldNode.Annotations[networkv1.NorthInterfacesAnnotationKey]; exists {
+			oldNorthInterfacesAnnotation, err = networkv1.ParseNorthInterfacesAnnotation(ann)
+			if err != nil {
+				klog.ErrorS(err, "Failed to parse north interfaces annotation for multi-networking", "nodeName", oldNode.Name)
+			}
+		}
+
 		if err = utilnode.PatchNodeMultiNetwork(ca.client, node); err != nil {
 			nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRAssignmentFailed")
 			klog.ErrorS(err, "Failed to update the node annotations and capacity for multi-networking", "nodeName", node.Name)
 			return err
+		}
+
+		// calculate updates to multinetwork node count metric based on new north interfaces annotation
+		if ann, exists := node.Annotations[networkv1.NorthInterfacesAnnotationKey]; exists {
+			newNorthInterfacesAnnotation, err := networkv1.ParseNorthInterfacesAnnotation(ann)
+			if err != nil {
+				klog.ErrorS(err, "Failed to parse north interfaces annotation for multi-networking", "nodeName", node.Name)
+			}
+
+			for _, ni := range oldNorthInterfacesAnnotation {
+				multiNetworkNodes.WithLabelValues(ni.Network).Dec()
+			}
+			for _, ni := range newNorthInterfacesAnnotation {
+				multiNetworkNodes.WithLabelValues(ni.Network).Inc()
+			}
 		}
 	}
 	return err
