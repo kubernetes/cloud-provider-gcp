@@ -7,6 +7,7 @@ go_library(
         "audit.go",
         "chain.go",
         "config.go",
+        "conversion.go",
         "decorator.go",
         "errors.go",
         "handler.go",

@@ -15,7 +15,6 @@ go_library(
         "//vendor/k8s.io/api/batch/v1:batch",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/labels",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/types",
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/applyconfigurations/batch/v1:batch",

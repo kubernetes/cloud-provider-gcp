@@ -9,7 +9,6 @@ go_library(
     deps = [
         "//vendor/github.com/spf13/pflag",
         "//vendor/k8s.io/controller-manager/config",
-        "//vendor/k8s.io/controller-manager/pkg/leadermigration",
         "//vendor/k8s.io/controller-manager/pkg/leadermigration/config",
     ],
 )

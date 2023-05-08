@@ -5,6 +5,8 @@ go_library(
     srcs = [
         "doc.go",
         "generated_expansion.go",
+        "gkenetworkparamset.go",
+        "gkenetworkparamsetlist.go",
         "network.go",
         "network_client.go",
         "networkinterface.go",

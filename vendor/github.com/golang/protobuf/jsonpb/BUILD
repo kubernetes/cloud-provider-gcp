@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "jsonpb",
+    srcs = [
+        "decode.go",
+        "encode.go",
+        "json.go",
+    ],
+    importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/golang/protobuf/jsonpb",
+    importpath = "github.com/golang/protobuf/jsonpb",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/golang/protobuf/proto",
+        "//vendor/google.golang.org/protobuf/encoding/protojson",
+        "//vendor/google.golang.org/protobuf/proto",
+        "//vendor/google.golang.org/protobuf/reflect/protoreflect",
+        "//vendor/google.golang.org/protobuf/reflect/protoregistry",
+        "//vendor/google.golang.org/protobuf/runtime/protoimpl",
+    ],
+)

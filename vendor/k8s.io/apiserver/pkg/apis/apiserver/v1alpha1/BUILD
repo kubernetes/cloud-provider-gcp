@@ -20,5 +20,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver",
+        "//vendor/k8s.io/component-base/tracing/api/v1:api",
     ],
 )

@@ -11,7 +11,6 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/api/meta",
-        "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/util/validation",
     ],
 )

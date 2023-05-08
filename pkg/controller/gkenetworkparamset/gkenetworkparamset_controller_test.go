@@ -10,9 +10,9 @@ import (
 	"google.golang.org/api/compute/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1"
+	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	"k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/fake"
-	gkenetworkparamset "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1"
+	v1informers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/component-base/metrics/prometheus/controllers"
 )
@@ -30,7 +30,7 @@ type testGKENetworkParamSetController struct {
 
 func setupGKENetworkParamSetController() *testGKENetworkParamSetController {
 	fakeNetworking := fake.NewSimpleClientset()
-	gkeNetworkParamSetInformer := gkenetworkparamset.NewGKENetworkParamSetInformer(fakeNetworking, 0*time.Second, cache.Indexers{})
+	gkeNetworkParamSetInformer := v1informers.NewGKENetworkParamSetInformer(fakeNetworking, 0*time.Second, cache.Indexers{})
 	testClusterValues := gce.DefaultTestClusterValues()
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
 	controller := NewGKENetworkParamSetController(
@@ -90,27 +90,27 @@ func TestAddValidParamSetSingleSecondaryRange(t *testing.T) {
 	testVals.runGKENetworkParamSetController(ctx)
 
 	gkeNetworkParamSetName := "test-paramset"
-	paramSet := &v1alpha1.GKENetworkParamSet{
+	paramSet := &networkv1.GKENetworkParamSet{
 		ObjectMeta: v1.ObjectMeta{
 			Name: gkeNetworkParamSetName,
 		},
-		Spec: v1alpha1.GKENetworkParamSetSpec{
+		Spec: networkv1.GKENetworkParamSetSpec{
 			VPC:       "default",
 			VPCSubnet: subnetName,
-			PodIPv4Ranges: &v1alpha1.SecondaryRanges{
+			PodIPv4Ranges: &networkv1.SecondaryRanges{
 				RangeNames: []string{
 					subnetSecondaryRangeName,
 				},
 			},
 		},
 	}
-	_, err = testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
+	_, err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
 	if err != nil {
 		t.Error(err)
 	}
 
 	g.Eventually(func() (bool, error) {
-		paramSet, err := testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
+		paramSet, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -160,14 +160,14 @@ func TestAddValidParamSetMultipleSecondaryRange(t *testing.T) {
 	testVals.runGKENetworkParamSetController(ctx)
 
 	gkeNetworkParamSetName := "test-paramset"
-	paramSet := &v1alpha1.GKENetworkParamSet{
+	paramSet := &networkv1.GKENetworkParamSet{
 		ObjectMeta: v1.ObjectMeta{
 			Name: gkeNetworkParamSetName,
 		},
-		Spec: v1alpha1.GKENetworkParamSetSpec{
+		Spec: networkv1.GKENetworkParamSetSpec{
 			VPC:       "default",
 			VPCSubnet: subnetName,
-			PodIPv4Ranges: &v1alpha1.SecondaryRanges{
+			PodIPv4Ranges: &networkv1.SecondaryRanges{
 				RangeNames: []string{
 					subnetSecondaryRangeName1,
 					subnetSecondaryRangeName2,
@@ -175,13 +175,13 @@ func TestAddValidParamSetMultipleSecondaryRange(t *testing.T) {
 			},
 		},
 	}
-	_, err = testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
+	_, err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
 	if err != nil {
 		t.Error(err)
 	}
 
 	g.Eventually(func() (bool, error) {
-		paramSet, err := testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
+		paramSet, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -218,27 +218,27 @@ func TestAddInvalidParamSetNoMatchingSecondaryRange(t *testing.T) {
 
 	gkeNetworkParamSetName := "test-paramset"
 	nonExistentSecondaryRangeName := "test-secondary-does-not-exist"
-	paramSet := &v1alpha1.GKENetworkParamSet{
+	paramSet := &networkv1.GKENetworkParamSet{
 		ObjectMeta: v1.ObjectMeta{
 			Name: gkeNetworkParamSetName,
 		},
-		Spec: v1alpha1.GKENetworkParamSetSpec{
+		Spec: networkv1.GKENetworkParamSetSpec{
 			VPC:       "default",
 			VPCSubnet: subnetName,
-			PodIPv4Ranges: &v1alpha1.SecondaryRanges{
+			PodIPv4Ranges: &networkv1.SecondaryRanges{
 				RangeNames: []string{
 					nonExistentSecondaryRangeName,
 				},
 			},
 		},
 	}
-	_, err = testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
+	_, err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
 	if err != nil {
 		t.Error(err)
 	}
 
 	g.Consistently(func() (bool, error) {
-		paramSet, err := testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
+		paramSet, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -282,14 +282,14 @@ func TestParamSetPartialSecondaryRange(t *testing.T) {
 
 	gkeNetworkParamSetName := "test-paramset"
 	nonExistentSecondaryRangeName := "test-secondary-does-not-exist"
-	paramSet := &v1alpha1.GKENetworkParamSet{
+	paramSet := &networkv1.GKENetworkParamSet{
 		ObjectMeta: v1.ObjectMeta{
 			Name: gkeNetworkParamSetName,
 		},
-		Spec: v1alpha1.GKENetworkParamSetSpec{
+		Spec: networkv1.GKENetworkParamSetSpec{
 			VPC:       "default",
 			VPCSubnet: subnetName,
-			PodIPv4Ranges: &v1alpha1.SecondaryRanges{
+			PodIPv4Ranges: &networkv1.SecondaryRanges{
 				RangeNames: []string{
 					subnetSecondaryRangeName1,
 					nonExistentSecondaryRangeName,
@@ -297,13 +297,13 @@ func TestParamSetPartialSecondaryRange(t *testing.T) {
 			},
 		},
 	}
-	_, err = testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
+	_, err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
 	if err != nil {
 		t.Error(err)
 	}
 
 	g.Eventually(func() (bool, error) {
-		paramSet, err := testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
+		paramSet, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -340,22 +340,22 @@ func TestValidParamSetSubnetRange(t *testing.T) {
 	testVals.runGKENetworkParamSetController(ctx)
 
 	gkeNetworkParamSetName := "test-paramset"
-	paramSet := &v1alpha1.GKENetworkParamSet{
+	paramSet := &networkv1.GKENetworkParamSet{
 		ObjectMeta: v1.ObjectMeta{
 			Name: gkeNetworkParamSetName,
 		},
-		Spec: v1alpha1.GKENetworkParamSetSpec{
+		Spec: networkv1.GKENetworkParamSetSpec{
 			VPC:       "default",
 			VPCSubnet: subnetName,
 		},
 	}
-	_, err = testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
+	_, err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
 	if err != nil {
 		t.Error(err)
 	}
 
 	g.Eventually(func() (bool, error) {
-		paramSet, err := testVals.networkClient.NetworkingV1alpha1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
+		paramSet, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -369,4 +369,46 @@ func TestValidParamSetSubnetRange(t *testing.T) {
 		return false, nil
 	}).Should(gomega.BeTrue(), "GKENetworkParamSet Status should be updated with subnet cidr.")
 
+}
+
+func TestAddFinalizerToGKENetworkParamSet(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	testVals := setupGKENetworkParamSetController()
+
+	testVals.runGKENetworkParamSetController(ctx)
+
+	gkeNetworkParamSetName := "test-paramset"
+	paramSet := &networkv1.GKENetworkParamSet{
+		ObjectMeta: v1.ObjectMeta{
+			Name: gkeNetworkParamSetName,
+		},
+		Spec: networkv1.GKENetworkParamSetSpec{
+			VPC:       "default",
+			VPCSubnet: "test-subnet",
+		},
+	}
+	_, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, paramSet, v1.CreateOptions{})
+	if err != nil {
+		t.Error(err)
+	}
+
+	g.Eventually(func() (bool, error) {
+		paramSet, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+
+		finalizerExists := false
+		for _, finalizer := range paramSet.ObjectMeta.Finalizers {
+			if finalizer == GNPFinalizer {
+				finalizerExists = true
+				break
+			}
+		}
+
+		return finalizerExists, nil
+		//TODO: This should be true when adding gnp finalizer is a part of the reconcile loop.
+	}).Should(gomega.BeFalse(), "GKENetworkParamSet should have the finalizer added.")
 }

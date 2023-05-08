@@ -49,3 +49,7 @@ func (p *defaultCredentialsTokenProvider) token() (string, *time.Time, error) {
 }
 
 func (p *defaultCredentialsTokenProvider) useCache() bool { return false }
+
+func (p *defaultCredentialsTokenProvider) getExtraArgs() []string { return []string{} }
+
+func (p *defaultCredentialsTokenProvider) getGcloudArgs() []string { return []string{} }

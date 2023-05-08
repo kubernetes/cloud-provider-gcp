@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "doc.go",
         "fake_clustercidr.go",
+        "fake_ipaddress.go",
         "fake_networking_client.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/networking/v1alpha1/fake",
@@ -14,7 +15,6 @@ go_library(
         "//vendor/k8s.io/api/networking/v1alpha1",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/labels",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/types",
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/applyconfigurations/networking/v1alpha1",

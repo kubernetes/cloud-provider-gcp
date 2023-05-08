@@ -8,6 +8,7 @@ go_library(
         "register.go",
         "types.go",
         "types_swagger_doc_generated.go",
+        "well_known_labels.go",
         "zz_generated.deepcopy.go",
         "zz_generated.prerelease-lifecycle.go",
     ],
@@ -20,5 +21,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/types",
     ],
 )

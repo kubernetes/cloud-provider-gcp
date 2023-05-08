@@ -32,7 +32,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	cloudprovider "k8s.io/cloud-provider"
 	networkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
-	alphanetworkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1alpha1"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
 	controllersmetrics "k8s.io/component-base/metrics/prometheus/controllers"
 )
@@ -77,7 +76,7 @@ func NewNodeIpamController(
 	cloud cloudprovider.Interface,
 	kubeClient clientset.Interface,
 	nwInformer networkinformer.NetworkInformer,
-	gnpInformer alphanetworkinformer.GKENetworkParamSetInformer,
+	gnpInformer networkinformer.GKENetworkParamSetInformer,
 	clusterCIDRs []*net.IPNet,
 	serviceCIDR *net.IPNet,
 	secondaryServiceCIDR *net.IPNet,

@@ -15,8 +15,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/authentication/user",
         "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/apiserver/pkg/endpoints/responsewriter",
-        "//vendor/k8s.io/apiserver/pkg/features",
-        "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/component-base/metrics",
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
     ],

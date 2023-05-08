@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Kubernetes Authors.
+Copyright 2023 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -117,7 +117,7 @@ func (c *FakeNetworkInterfaces) UpdateStatus(ctx context.Context, networkInterfa
 // Delete takes name of the networkInterface and deletes it. Returns an error if one occurs.
 func (c *FakeNetworkInterfaces) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(networkinterfacesResource, c.ns, name), &v1alpha1.NetworkInterface{})
+		Invokes(testing.NewDeleteActionWithOptions(networkinterfacesResource, c.ns, name, opts), &v1alpha1.NetworkInterface{})
 
 	return err
 }

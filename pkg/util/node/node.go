@@ -92,3 +92,29 @@ func PatchNodeCIDRs(c clientset.Interface, node types.NodeName, cidrs []string) 
 	}
 	return nil
 }
+
+// PatchNodeMultiNetwork patches the Node's annotations and capacity for MN.
+func PatchNodeMultiNetwork(c clientset.Interface, node *v1.Node) error {
+	// Prepare patch bytes for the node update.
+	patchBytes, err := json.Marshal([]interface{}{
+		map[string]interface{}{
+			"op":    "replace",
+			"path":  "/metadata/annotations",
+			"value": node.Annotations,
+		},
+		map[string]interface{}{
+			"op":    "add",
+			"path":  "/status/capacity",
+			"value": node.Status.Capacity,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to build patch bytes for multi-networking: %w", err)
+	}
+	// Since dynamic network addition/deletion is a use case to be supported, we aspire to build these annotations and IP capacities every time from scratch.
+	// Hence, we are using a JSON patch merge strategy instead of strategic merge strategy on the node during update.
+	if _, err = c.CoreV1().Nodes().Patch(context.TODO(), node.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{}, "status"); err != nil {
+		return fmt.Errorf("failed to patch node for multi-networking: %w", err)
+	}
+	return nil
+}

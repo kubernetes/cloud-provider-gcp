@@ -21,5 +21,6 @@ go_library(
         "//vendor/k8s.io/client-go/informers",
         "//vendor/k8s.io/client-go/listers/admissionregistration/v1:admissionregistration",
         "//vendor/k8s.io/client-go/tools/cache",
+        "//vendor/k8s.io/client-go/tools/cache/synctrack",
     ],
 )

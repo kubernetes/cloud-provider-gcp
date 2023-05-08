@@ -17,5 +17,6 @@ go_library(
         "//vendor/k8s.io/client-go/openapi",
         "//vendor/k8s.io/client-go/openapi/cached",
         "//vendor/k8s.io/client-go/rest",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

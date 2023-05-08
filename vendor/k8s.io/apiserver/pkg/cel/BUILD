@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "cel",
     srcs = [
+        "composited.go",
         "errors.go",
         "escaping.go",
         "limits.go",
@@ -23,5 +24,6 @@ go_library(
         "//vendor/google.golang.org/genproto/googleapis/api/expr/v1alpha1",
         "//vendor/google.golang.org/protobuf/proto",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/apiserver/pkg/apis/cel",
     ],
 )

@@ -32,7 +32,6 @@ rm -rf cluster/README.md
 git checkout cluster/addons/pdcsi-driver
 git checkout cluster/OWNERS
 git checkout cluster/addons/cloud-controller-manager
-git checkout cluster/bin/kubectl
 git checkout cluster/clientbin.sh
 git checkout cluster/common.sh
 git checkout cluster/gce/manifests/cloud-controller-manager.manifest
@@ -53,12 +52,9 @@ done
 echo "
 
 Please review all remaning chagnes. We want to keep:
-  * Custom kubectl
   * PDSCI plugin
   * Enabled CCM
   * Credential provider specific code (look for credential sidecar)
-  * Bumped master size
-  * Bumped node size
   * Enabled ENABLE_DEFAULT_STORAGE_CLASS
   * Restore 'cluster/util.sh' instead of 'hack/lib/util.sh'
  

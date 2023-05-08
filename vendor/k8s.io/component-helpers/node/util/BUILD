@@ -5,6 +5,8 @@ go_library(
     srcs = [
         "cidr.go",
         "conditions.go",
+        "hostname.go",
+        "ips.go",
         "status.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/component-helpers/node/util",
@@ -19,5 +21,6 @@ go_library(
         "//vendor/k8s.io/client-go/kubernetes",
         "//vendor/k8s.io/client-go/kubernetes/typed/core/v1:core",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/utils/net",
     ],
 )

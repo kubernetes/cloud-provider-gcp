@@ -5,19 +5,19 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 http_archive(
     name = "io_bazel_rules_go",
-    sha256 = "16e9fca53ed6bd4ff4ad76facc9b7b651a89db1689a2877d6fd7b82aa824e366",
+    sha256 = "19ef30b21eae581177e0028f6f4b1f54c66467017be33d211ab6fc81da01ea4d",
     urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.34.0/rules_go-v0.34.0.zip",
-        "https://github.com/bazelbuild/rules_go/releases/download/v0.34.0/rules_go-v0.34.0.zip",
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.38.0/rules_go-v0.38.0.zip",
+        "https://github.com/bazelbuild/rules_go/releases/download/v0.38.0/rules_go-v0.38.0.zip",
     ],
 )
 
 http_archive(
     name = "bazel_gazelle",
-    sha256 = "501deb3d5695ab658e82f6f6f549ba681ea3ca2a5fb7911154b5aa45596183fa",
+    sha256 = "727f3e4edd96ea20c29e8c2ca9e8d2af724d8c7778e7923a854b2c80952bc405",
     urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/bazel-gazelle/releases/download/v0.26.0/bazel-gazelle-v0.26.0.tar.gz",
-        "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.26.0/bazel-gazelle-v0.26.0.tar.gz",
+        "https://mirror.bazel.build/github.com/bazelbuild/bazel-gazelle/releases/download/v0.30.0/bazel-gazelle-v0.30.0.tar.gz",
+        "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.30.0/bazel-gazelle-v0.30.0.tar.gz",
     ],
 )
 
@@ -39,7 +39,7 @@ http_archive(
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
-versions.check(minimum_bazel_version = "0.20.0")
+versions.check(minimum_bazel_version = "5.3.0")
 
 load("@io_bazel_rules_go//go:deps.bzl", "go_rules_dependencies", "go_register_toolchains", "go_download_sdk")
 
@@ -47,7 +47,7 @@ go_rules_dependencies()
 
 go_download_sdk(
     name = "go_sdk",
-    version = "1.19",
+    version = "1.20.4",
 )
 
 go_register_toolchains()
@@ -81,8 +81,8 @@ container_pull(
     registry = "registry.k8s.io",
     repository = "build-image/go-runner",
     # 'tag' is also supported, but digest is encouraged for reproducibility.
-    tag = "v2.3.1-go1.19.4-bullseye.0",
-    digest = "sha256:06f8a7671cc1a1d80196522e0f793dba9ee687d0cea49ae852a095af331133b4",
+    tag = "v2.3.1-go1.20.4-bullseye.0",
+    digest = "sha256:b564abe1d4bd3a7e227971530fbc8e3906671c94350706df5244c1deb6edcef4",
 )
 
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
@@ -100,11 +100,11 @@ load("//defs:repo_rules.bzl", "fetch_kube_release")
 fetch_kube_release(
     name = "io_k8s_release",
     archives = {
-        "kubernetes-server-linux-amd64.tar.gz": "9046ae36fdbe444c44c2bbf0274b9eb11f4dd83d487d56e51e5d3125d016513d",
-        "kubernetes-manifests.tar.gz": "d25ce072f315e8003f5107f4b0e7368c0a53332fe58f0e7414cdfc6c5cc053a3",
+        "kubernetes-server-linux-amd64.tar.gz": "1213a31741e83cf6f595fb4f59966ce73caceacd4616d5a0fda506e5a2f55314",
+        "kubernetes-manifests.tar.gz": "7b7dfdefda5d779663720f95fc1d4cdb95cd6a638e2b679527314e79d632a71a",
         # we do not currently make modifications to these release tars below
-        "kubernetes-node-linux-amd64.tar.gz": "62edcc0774fa29fd12cc8cb4e16d7470df976eb7c885952c76c1e833b91af69f",
-        "kubernetes-node-windows-amd64.tar.gz": "48339207092b47ee820e16d8c996cf518d7ed6b1c897e47ba9e5baa019fa7840",
+        "kubernetes-node-linux-amd64.tar.gz": "aabdf9d1eb1d8cd3d128911970d9e5e72eb90628c73e73d70e763068a291fc0d",
+        "kubernetes-node-windows-amd64.tar.gz": "fadf292b5ecd50565f4bb1c4016b809bc57adf4a35a42c74bc4721cb68bad43d",
     },
-    version = "v1.26.0",
+    version = "v1.27.1",
 )

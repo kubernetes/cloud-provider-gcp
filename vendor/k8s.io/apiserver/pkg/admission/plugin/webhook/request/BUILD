@@ -17,6 +17,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/types",
         "//vendor/k8s.io/apimachinery/pkg/util/uuid",
+        "//vendor/k8s.io/apiserver/pkg/admission",
         "//vendor/k8s.io/apiserver/pkg/admission/plugin/webhook/generic",
     ],
 )
