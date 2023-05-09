@@ -80,14 +80,20 @@ const (
 type GKENetworkParamSetConditionReason string
 
 const (
+	// VPCNotFound indicates that the specified VPC was not found.
+	VPCNotFound GKENetworkParamSetConditionReason = "VPCNotFound"
 	// SubnetNotFound indicates that the specified subnet was not found.
 	SubnetNotFound GKENetworkParamSetConditionReason = "SubnetNotFound"
+	// SecondaryRangeAndDeviceModeUnspecified indicates that the user didn't specify either a device mode or secondary range
+	SecondaryRangeAndDeviceModeUnspecified GKENetworkParamSetConditionReason = "SecondaryRangeAndDeviceModeUnspecified"
 	// SecondaryRangeNotFound indicates that the specified secondary range was not found.
 	SecondaryRangeNotFound GKENetworkParamSetConditionReason = "SecondaryRangeNotFound"
 	// DeviceModeCantBeUsedWithSecondaryRange indicates that device mode was used with a secondary range.
 	DeviceModeCantBeUsedWithSecondaryRange GKENetworkParamSetConditionReason = "DeviceModeCantBeUsedWithSecondaryRange"
 	// DeviceModeVPCAlreadyInUse indicates that the VPC is already in use by another GKENetworkParamSet resource.
 	DeviceModeVPCAlreadyInUse GKENetworkParamSetConditionReason = "DeviceModeVPCAlreadyInUse"
+	// DeviceModeSubnetAlreadyInUse indicates that the Subnet is already in use by another GKENetworkParamSet resource.
+	DeviceModeSubnetAlreadyInUse GKENetworkParamSetConditionReason = "DeviceModeSubnetAlreadyInUse"
 	// DeviceModeCantUseDefaultVPC indicates that a device mode GKENetworkParamSet cannot use the default VPC.
 	DeviceModeCantUseDefaultVPC GKENetworkParamSetConditionReason = "DeviceModeCantUseDefaultVPC"
 	// DPDKUnsupported indicates that DPDK device mode is not supported on the current cluster.
