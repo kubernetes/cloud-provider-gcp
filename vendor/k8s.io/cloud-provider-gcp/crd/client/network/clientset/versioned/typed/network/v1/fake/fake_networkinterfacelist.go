@@ -21,10 +21,9 @@ package fake
 import (
 	"context"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	testing "k8s.io/client-go/testing"
-	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
+	v1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 )
 
 // FakeNetworkInterfaceLists implements NetworkInterfaceListInterface
@@ -33,17 +32,17 @@ type FakeNetworkInterfaceLists struct {
 	ns   string
 }
 
-var networkinterfacelistsResource = schema.GroupVersionResource{Group: "networking.gke.io", Version: "v1", Resource: "networkinterfacelists"}
+var networkinterfacelistsResource = v1.SchemeGroupVersion.WithResource("networkinterfacelists")
 
-var networkinterfacelistsKind = schema.GroupVersionKind{Group: "networking.gke.io", Version: "v1", Kind: "NetworkInterfaceList"}
+var networkinterfacelistsKind = v1.SchemeGroupVersion.WithKind("NetworkInterfaceList")
 
 // Get takes name of the networkInterfaceList, and returns the corresponding networkInterfaceList object, and an error if there is any.
-func (c *FakeNetworkInterfaceLists) Get(ctx context.Context, name string, options v1.GetOptions) (result *networkv1.NetworkInterfaceList, err error) {
+func (c *FakeNetworkInterfaceLists) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.NetworkInterfaceList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(networkinterfacelistsResource, c.ns, name), &networkv1.NetworkInterfaceList{})
+		Invokes(testing.NewGetAction(networkinterfacelistsResource, c.ns, name), &v1.NetworkInterfaceList{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*networkv1.NetworkInterfaceList), err
+	return obj.(*v1.NetworkInterfaceList), err
 }

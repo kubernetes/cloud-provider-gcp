@@ -43,14 +43,17 @@ func startGkeNetworkParamsController(ccmConfig *cloudcontrollerconfig.CompletedC
 
 	//no resync, we dont want to automatically update objects if their state changes in gcp
 	gkeNetworkParamSetInformer := v1informers.NewGKENetworkParamSetInformer(networkClient, 0*time.Second, cache.Indexers{})
+	networkInformer := v1informers.NewNetworkInformer(networkClient, 0*time.Second, cache.Indexers{})
 
 	gkeNetworkParamsetController := gkenetworkparamsetcontroller.NewGKENetworkParamSetController(
 		networkClient,
 		gkeNetworkParamSetInformer,
+		networkInformer,
 		gceCloud,
 	)
 
 	go gkeNetworkParamSetInformer.Run(controllerCtx.Stop)
+	go networkInformer.Run(controllerCtx.Stop)
 
 	go gkeNetworkParamsetController.Run(1, controllerCtx.Stop, controllerCtx.ControllerManagerMetrics)
 	return nil, true, nil

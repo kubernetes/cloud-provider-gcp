@@ -108,15 +108,9 @@ const (
 	// L3SecondaryMissing indicates that the L3 type Network resource is
 	// referencing a GKENetworkParamSet with secondary range unspecified.
 	L3SecondaryMissing GNPNetworkParamsReadyConditionReason = "L3SecondaryMissing"
-	// L3DeviceModeExists indicates that the L3 type Network resource is
-	// referencing a GKENetworkParamSet with device mode specified.
-	L3DeviceModeExists GNPNetworkParamsReadyConditionReason = "L3DeviceModeExists"
 	// DeviceModeMissing indicates that the Device type Network resource is
 	// referencing a GKENetworkParamSet with device mode unspecified.
 	DeviceModeMissing GNPNetworkParamsReadyConditionReason = "DeviceModeMissing"
-	// DeviceSecondaryExists indicates that the Device type Network resource is
-	// referencing a GKENetworkParamSet with a secondary range specified.
-	DeviceSecondaryExists GNPNetworkParamsReadyConditionReason = "DeviceSecondaryExists"
 )
 
 // GKENetworkParamSetStatus contains the status information related to the network.
