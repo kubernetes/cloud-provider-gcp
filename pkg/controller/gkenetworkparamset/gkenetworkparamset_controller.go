@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
@@ -236,6 +237,9 @@ func (c *Controller) reconcile(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
+
+	gnpObjects.WithLabelValues(originalParams.Status.NetworkName, strconv.FormatBool(meta.IsStatusConditionTrue(originalParams.Status.Conditions, string(networkv1.GKENetworkParamSetStatusReady))), string(originalParams.Spec.DeviceMode)).Dec()
+	gnpObjects.WithLabelValues(params.Status.NetworkName, strconv.FormatBool(meta.IsStatusConditionTrue(params.Status.Conditions, string(networkv1.GKENetworkParamSetStatusReady))), string(params.Spec.DeviceMode)).Inc()
 
 	return nil
 }
