@@ -24,6 +24,7 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	"google.golang.org/api/compute/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -115,7 +116,23 @@ func (c *Controller) Run(numWorkers int, stopCh <-chan struct{}, controllerManag
 		},
 		// this could result in a large amount of updates, but we cap the number of possible networks to avoid those issues
 		UpdateFunc: func(old, new interface{}) {
-			network := new.(*networkv1.Network)
+			newNetwork := new.(*networkv1.Network)
+			if newNetwork.Spec.ParametersRef != nil && newNetwork.Spec.ParametersRef.Kind == gnpKind {
+				c.queue.Add(newNetwork.Spec.ParametersRef.Name)
+			}
+
+			// we need to check the old network to see if we are no longer referencing the same GNP
+			// this is important so we can delete a GNP waiting for a Network to no longer be inuse.
+			oldNetwork := old.(*networkv1.Network)
+			if oldNetwork.Spec.ParametersRef != nil && oldNetwork.Spec.ParametersRef.Kind == gnpKind {
+				if newNetwork.Spec.ParametersRef == nil || newNetwork.Spec.ParametersRef.Kind != gnpKind || oldNetwork.Spec.ParametersRef.Name != newNetwork.Spec.ParametersRef.Name {
+					c.queue.Add(oldNetwork.Spec.ParametersRef.Name)
+				}
+			}
+		},
+
+		DeleteFunc: func(obj interface{}) {
+			network := obj.(*networkv1.Network)
 			if network.Spec.ParametersRef != nil && network.Spec.ParametersRef.Kind == gnpKind {
 				c.queue.Add(network.Spec.ParametersRef.Name)
 			}
@@ -312,8 +329,32 @@ func (c *Controller) syncNetworkWithGNP(ctx context.Context, network *networkv1.
 }
 
 func (c *Controller) handleGKENetworkParamSetDelete(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
+	if params.Status.NetworkName == "" {
+		removeFinalizerInPlace(params)
+		return nil
+	}
 
-	removeFinalizerInPlace(params)
+	network, err := c.networkClientset.NetworkingV1().Networks().Get(ctx, params.Status.NetworkName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			removeFinalizerInPlace(params)
+			return nil
+		}
+		return err
+	}
+
+	networkStillRefersToGNP := network.Spec.ParametersRef != nil && network.Spec.ParametersRef.Kind == gnpKind && network.Spec.ParametersRef.Name == params.Name
+	if !networkStillRefersToGNP {
+		removeFinalizerInPlace(params)
+		return nil
+	}
+
+	if networkStillRefersToGNP && !network.InUse() {
+		removeFinalizerInPlace(params)
+		return nil
+	}
+
+	// if the network is in use, this GNP object will get reconciled again when the network's in use status changes.
 
 	return nil
 }
