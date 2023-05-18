@@ -14,6 +14,7 @@ go_library(
         "//vendor/github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud",
         "//vendor/github.com/hashicorp/go-multierror",
         "//vendor/google.golang.org/api/compute/v1:compute",
+        "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/api/meta",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
