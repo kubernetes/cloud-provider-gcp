@@ -11,6 +11,15 @@ import (
 const GKENetworkParamSetSubsystem = "gkenetworkparamset_controller"
 
 var (
+	gnpObjects = metrics.NewGaugeVec(
+		&metrics.GaugeOpts{
+			Subsystem:      GKENetworkParamSetSubsystem,
+			Name:           "gnp_object_total",
+			Help:           "Gauge measuring number of GKENetworkParamSet objects",
+			StabilityLevel: metrics.ALPHA,
+		},
+		[]string{"networkName", "status", "type"},
+	)
 	fetchSubnetErrs = metrics.NewCounter(
 		&metrics.CounterOpts{
 			Subsystem:      GKENetworkParamSetSubsystem,
@@ -26,6 +35,7 @@ var registerGNPMetrics sync.Once
 // registerGKENetworkParamSetMetrics registers GKENetworkParamSet metrics.
 func registerGKENetworkParamSetMetrics() {
 	registerGNPMetrics.Do(func() {
+		legacyregistry.MustRegister(gnpObjects)
 		legacyregistry.MustRegister(fetchSubnetErrs)
 	})
 }
