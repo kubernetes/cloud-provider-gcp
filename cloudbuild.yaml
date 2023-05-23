@@ -6,45 +6,42 @@ options:
 steps:
   - name: 'gcr.io/cloud-builders/bazel'
     env:
-    - IMAGE_REGISTRY=gcr.io
-    - IMAGE_REPO=k8s-staging-cloud-provider-gcp
-    - IMAGE_TAG=${_PULL_BASE_REF}
+      - IMAGE_REGISTRY=gcr.io
+      - IMAGE_REPO=k8s-staging-cloud-provider-gcp
+      - IMAGE_TAG=${_PULL_BASE_REF}
     args:
       - run
       - //cmd/cloud-controller-manager:publish
   - name: 'gcr.io/cloud-builders/bazel'
     env:
-    - IMAGE_REGISTRY=gcr.io
-    - IMAGE_REPO=k8s-staging-cloud-provider-gcp
-    - IMAGE_TAG=${_PULL_BASE_REF}
+      - IMAGE_REGISTRY=gcr.io
+      - IMAGE_REPO=k8s-staging-cloud-provider-gcp
+      - IMAGE_TAG=${_PULL_BASE_REF}
     args:
       - run
       - //cmd/gcp-controller-manager:publish
+  # build gke-exec-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
-    env:
-    - IMAGE_REGISTRY=gcr.io
-    - IMAGE_REPO=k8s-staging-cloud-provider-gcp
-    - IMAGE_TAG=${_PULL_BASE_REF}
     args:
-      - run
-      - //cmd/gke-exec-auth-plugin:publish
+      - build
+      - //cmd/gke-exec-auth-plugin
+  # build gke-gcloud-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
-    env:
-    - IMAGE_REGISTRY=gcr.io
-    - IMAGE_REPO=k8s-staging-cloud-provider-gcp
-    - IMAGE_TAG=${_PULL_BASE_REF}
     args:
-      - run
-      - //cmd/gke-gcloud-auth-plugin:publish
+      - build
+      - //cmd/gke-gcloud-auth-plugin
   # build auth-provider-gcp binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
       - build
       - //cmd/auth-provider-gcp
-# upload auth-provider-gcp binary
+# upload auth-provider-gcp. gke-gcloud-auth-plugin and gke-exec-auth-plugin binaries
 artifacts:
   objects:
-    location: 'gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp-linux-amd64#$_PULL_BASE_REF'
-    paths: ['bazel-bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp']
+    location: 'gs://k8s-staging-cloud-provider-gcp/auth-linux-amd64-$_PULL_BASE_REF'
+    paths:
+      - 'bazel-bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp'
+      - 'bazel-bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin'
+      - 'bazel-bin/cmd/gke-exec-auth-plugin/gke-exec-auth-plugin_/gke-exec-auth-plugin'
 substitutions:
   _PULL_BASE_REF: 'master'
