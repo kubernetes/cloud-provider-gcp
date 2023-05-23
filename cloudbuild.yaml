@@ -41,10 +41,10 @@ steps:
     args:
       - build
       - //cmd/auth-provider-gcp
-  # upload auth-provider-gcp binary
-    artifacts:
-      objects:
-        location: 'gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp-linux-amd64#$_PULL_BASE_REF'
-        paths: ['bazel-bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp']
+# upload auth-provider-gcp binary
+artifacts:
+  objects:
+    location: 'gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp-linux-amd64#$_PULL_BASE_REF'
+    paths: ['bazel-bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp']
 substitutions:
   _PULL_BASE_REF: 'master'
