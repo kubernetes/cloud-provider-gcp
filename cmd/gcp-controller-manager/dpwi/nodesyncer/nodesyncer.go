@@ -32,9 +32,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/auth"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/ctxlog"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/eventhandler"
-	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/hms"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/serviceaccounts"
 )
 
@@ -50,7 +50,7 @@ type NodeHandler struct {
 	nodeIndexer cache.Indexer
 	queue       workqueue.RateLimitingInterface
 	verifier    verifier
-	hms         *hms.Client
+	auth        *auth.Client
 	nodeMap     *nodeMap
 }
 
@@ -59,8 +59,8 @@ type verifier interface {
 }
 
 // NewEventHandler creates a new eventHandler.
-func NewEventHandler(podInformer coreinformers.PodInformer, nodeInformer coreinformers.NodeInformer, verifier verifier, hmsSyncNodeURL string) (*NodeHandler, error) {
-	hms, err := hms.NewClient(hmsSyncNodeURL, &clientcmdapi.AuthProviderConfig{Name: "gcp"})
+func NewEventHandler(podInformer coreinformers.PodInformer, nodeInformer coreinformers.NodeInformer, verifier verifier, authSyncNodeURL, hmsSyncNodeURL string) (*NodeHandler, error) {
+	auth, err := auth.NewClient(authSyncNodeURL, hmsSyncNodeURL, &clientcmdapi.AuthProviderConfig{Name: "gcp"})
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func NewEventHandler(podInformer coreinformers.PodInformer, nodeInformer coreinf
 	nh := &NodeHandler{
 		podIndexer:  podIndexer,
 		verifier:    verifier,
-		hms:         hms,
+		auth:        auth,
 		nodeIndexer: nodeInformer.Informer().GetIndexer(),
 		nodeMap:     &nodeMap{m: make(map[string]*nodeGSAs)},
 	}
@@ -137,7 +137,7 @@ func (nh *NodeHandler) process(ctx context.Context, key string) error {
 	}
 	return nh.nodeMap.getNodeGSAs(key).sync(
 		ctx,
-		nh.hms,
+		nh.auth,
 		zone,
 		curGSAs,
 	)
@@ -191,7 +191,7 @@ type nodeGSAs struct {
 	node     string
 }
 
-func (ng *nodeGSAs) sync(ctx context.Context, client *hms.Client, zone string, curGSAs []string) error {
+func (ng *nodeGSAs) sync(ctx context.Context, client *auth.Client, zone string, curGSAs []string) error {
 	ng.Lock()
 	defer ng.Unlock()
 	sort.Strings(curGSAs)

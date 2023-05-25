@@ -28,8 +28,8 @@ import (
 	core "k8s.io/api/core/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/auth"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/ctxlog"
-	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/hms"
 )
 
 const (
@@ -41,23 +41,23 @@ const (
 // Verifier verifies if a Kubernetes Service Account (KSA)
 // can act as a GCP Service Account (GSA) or not.
 type Verifier struct {
-	hms         *hms.Client
+	auth        *auth.Client
 	saIndexer   cache.Indexer
 	verifiedSAs *saMap
 	loadGroup   singleflight.Group
 }
 
 // NewVerifier creates a new Verifier.
-func NewVerifier(saInformer coreinformers.ServiceAccountInformer, hms *hms.Client) *Verifier {
+func NewVerifier(saInformer coreinformers.ServiceAccountInformer, auth *auth.Client) *Verifier {
 	return &Verifier{
-		hms:         hms,
+		auth:        auth,
 		saIndexer:   saInformer.Informer().GetIndexer(),
 		verifiedSAs: newSAMap(),
 	}
 }
 
 // VerifiedGSA returns the verified GSA for a given KSA if it has been verified and stored in memory.
-// Otherwise, it calls HMS or Auth server to verify and store the result in memory.
+// Otherwise, it calls Auth server to verify and store the result in memory.
 func (v *Verifier) VerifiedGSA(ctx context.Context, ksa ServiceAccount) (GSAEmail, error) {
 	gsa, ok := v.verifiedSAs.get(ksa)
 	if ok {
@@ -98,7 +98,7 @@ func (v *Verifier) verify(ctx context.Context, ksa ServiceAccount) (res verifyRe
 		v.verifiedSAs.remove(ksa)
 		return res, nil
 	}
-	permitted, err := v.hms.Authorize(ctx, ksa.Namespace, ksa.Name, string(gsa))
+	permitted, err := v.auth.Authorize(ctx, ksa.Namespace, ksa.Name, string(gsa))
 	if err != nil {
 		return res, fmt.Errorf("failed to authorize %s:%s; err: %w", ksa, gsa, err)
 	}

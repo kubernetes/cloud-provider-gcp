@@ -1,12 +1,12 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "hms",
+    name = "auth",
     srcs = [
-        "hms.go",
-        "hms_fake.go",
+        "auth.go",
+        "auth_fake.go",
     ],
-    importpath = "k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/hms",
+    importpath = "k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/auth",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/runtime",
@@ -19,7 +19,7 @@ go_library(
 )
 
 go_test(
-    name = "hms_test",
-    srcs = ["hms_test.go"],
-    embed = [":hms"],
+    name = "auth_test",
+    srcs = ["auth_test.go"],
+    embed = [":auth"],
 )
