@@ -39,12 +39,13 @@ steps:
       - build
       - //cmd/auth-provider-gcp
 # upload auth-provider-gcp. gke-gcloud-auth-plugin and gke-exec-auth-plugin binaries
+# TODO: figure out how to do this better, most probably getting rid of bazel
 artifacts:
   objects:
     location: 'gs://k8s-staging-cloud-provider-gcp/auth-linux-amd64-$_PULL_BASE_REF'
     paths:
-      - '/workspace/plugin-binaries/execroot/io_k8s_cloud_provider_gcp/cmd/auth-provider-gcp'
-      - '/workspace/plugin-binaries/execroot/io_k8s_cloud_provider_gcp/cmd/gke-gcloud-auth-plugin'
-      - '/workspace/plugin-binaries/execroot/io_k8s_cloud_provider_gcp/cmd/gke-exec-auth-plugin'
+      - '/workspace/plugin-binaries/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp'
+      - '/workspace/plugin-binaries/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin'
+      - '/workspace/plugin-binaries/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-exec-auth-plugin/gke-exec-auth-plugin_/gke-exec-auth-plugin'
 substitutions:
   _PULL_BASE_REF: 'master'
