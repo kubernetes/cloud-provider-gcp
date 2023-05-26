@@ -181,6 +181,8 @@ type NetworkReadyConditionReason string
 const (
 	// ParamsNotReady indicates that the resource referenced in params is not ready.
 	ParamsNotReady NetworkReadyConditionReason = "ParamsNotReady"
+	// NetworkReady indicates that this Network resource is validated and Ready=True
+	NetworkReady NetworkReadyConditionReason = "NetworkReady"
 )
 
 // NetworkStatus contains the status information related to the network.

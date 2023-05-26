@@ -49,7 +49,7 @@ type GKENetworkParamSetSpec struct {
 	// DeviceMode indicates the mode in which the devices will be used by the Pod.
 	// This field is required and valid only for "Device" typed network
 	// +optional
-	DeviceMode DeviceModeType `json:"deviceMode"`
+	DeviceMode DeviceModeType `json:"deviceMode,omitempty"`
 
 	// PodIPv4Ranges specify the names of the secondary ranges of the VPC subnet
 	// used to allocate pod IPs for the network.
@@ -98,6 +98,8 @@ const (
 	DeviceModeCantUseDefaultVPC GKENetworkParamSetConditionReason = "DeviceModeCantUseDefaultVPC"
 	// DPDKUnsupported indicates that DPDK device mode is not supported on the current cluster.
 	DPDKUnsupported GKENetworkParamSetConditionReason = "DPDKUnsupported"
+	// GNPReady indicates that this GNP resource has been successfully validated and Ready=True
+	GNPReady GKENetworkParamSetConditionReason = "GNPReady"
 )
 
 // GNPNetworkParamsReadyConditionReason defines the set of reasons that explains
@@ -111,6 +113,9 @@ const (
 	// DeviceModeMissing indicates that the Device type Network resource is
 	// referencing a GKENetworkParamSet with device mode unspecified.
 	DeviceModeMissing GNPNetworkParamsReadyConditionReason = "DeviceModeMissing"
+	// GNPParamsReady indicates that the referenced GNP resource
+	// has been successfully validated for use with this Network resource and ParamsReady=True
+	GNPParamsReady GNPNetworkParamsReadyConditionReason = "GNPParamsReady"
 )
 
 // GKENetworkParamSetStatus contains the status information related to the network.
