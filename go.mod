@@ -36,7 +36,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.27.1
-	k8s.io/cloud-provider-gcp/crd v0.0.0-20230509000452-e818010fb0ed
+	k8s.io/cloud-provider-gcp/crd v0.0.0-20230526211714-2653e7a8640f
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
 	k8s.io/kubernetes v1.27.1
 )
