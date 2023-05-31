@@ -575,6 +575,7 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			expectedCondition: v1.Condition{
 				Type:   "Ready",
 				Status: v1.ConditionTrue,
+				Reason: "GNPReady",
 			},
 		},
 		{
@@ -867,6 +868,7 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 			expectedCondition: v1.Condition{
 				Type:   "ParamsReady",
 				Status: v1.ConditionTrue,
+				Reason: "GNPParamsReady",
 			},
 		},
 		{
@@ -893,6 +895,7 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 			expectedCondition: v1.Condition{
 				Type:   "ParamsReady",
 				Status: v1.ConditionTrue,
+				Reason: "GNPParamsReady",
 			},
 		},
 	}
