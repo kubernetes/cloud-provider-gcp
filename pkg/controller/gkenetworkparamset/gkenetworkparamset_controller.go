@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
@@ -42,7 +43,7 @@ import (
 const (
 	// GNPFinalizer - finalizer value placed on GNP objects by GNP Controller
 	GNPFinalizer = "networking.gke.io/gnp-controller"
-	gnpKind      = "GKENetworkParamSet"
+	gnpKind      = "gkenetworkparamset"
 )
 
 // Controller manages GKENetworkParamSet status.
@@ -111,22 +112,22 @@ func (c *Controller) Run(numWorkers int, stopCh <-chan struct{}, controllerManag
 	c.networkInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			network := obj.(*networkv1.Network)
-			if network.Spec.ParametersRef != nil && network.Spec.ParametersRef.Kind == gnpKind {
+			if network.Spec.ParametersRef != nil && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) {
 				c.queue.Add(network.Spec.ParametersRef.Name)
 			}
 		},
 		// this could result in a large amount of updates, but we cap the number of possible networks to avoid those issues
 		UpdateFunc: func(old, new interface{}) {
 			newNetwork := new.(*networkv1.Network)
-			if newNetwork.Spec.ParametersRef != nil && newNetwork.Spec.ParametersRef.Kind == gnpKind {
+			if newNetwork.Spec.ParametersRef != nil && strings.EqualFold(newNetwork.Spec.ParametersRef.Kind, gnpKind) {
 				c.queue.Add(newNetwork.Spec.ParametersRef.Name)
 			}
 
 			// we need to check the old network to see if we are no longer referencing the same GNP
 			// this is important so we can delete a GNP waiting for a Network to no longer be inuse.
 			oldNetwork := old.(*networkv1.Network)
-			if oldNetwork.Spec.ParametersRef != nil && oldNetwork.Spec.ParametersRef.Kind == gnpKind {
-				if newNetwork.Spec.ParametersRef == nil || newNetwork.Spec.ParametersRef.Kind != gnpKind || oldNetwork.Spec.ParametersRef.Name != newNetwork.Spec.ParametersRef.Name {
+			if oldNetwork.Spec.ParametersRef != nil && strings.EqualFold(oldNetwork.Spec.ParametersRef.Kind, gnpKind) {
+				if newNetwork.Spec.ParametersRef == nil || !strings.EqualFold(newNetwork.Spec.ParametersRef.Kind, gnpKind) || oldNetwork.Spec.ParametersRef.Name != newNetwork.Spec.ParametersRef.Name {
 					c.queue.Add(oldNetwork.Spec.ParametersRef.Name)
 				}
 			}
@@ -134,7 +135,7 @@ func (c *Controller) Run(numWorkers int, stopCh <-chan struct{}, controllerManag
 
 		DeleteFunc: func(obj interface{}) {
 			network := obj.(*networkv1.Network)
-			if network.Spec.ParametersRef != nil && network.Spec.ParametersRef.Kind == gnpKind {
+			if network.Spec.ParametersRef != nil && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) {
 				c.queue.Add(network.Spec.ParametersRef.Name)
 			}
 		},
@@ -297,7 +298,7 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 	}
 	// see if one of the networks is referencing this GNP
 	for _, network := range networks.Items {
-		if network.Spec.ParametersRef.Name == params.Name && network.Spec.ParametersRef.Kind == gnpKind {
+		if network.Spec.ParametersRef.Name == params.Name && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) {
 			err = c.syncNetworkWithGNP(ctx, &network, params)
 			if err != nil {
 				return err
@@ -347,7 +348,7 @@ func (c *Controller) handleGKENetworkParamSetDelete(ctx context.Context, params 
 		return err
 	}
 
-	networkStillRefersToGNP := network.Spec.ParametersRef != nil && network.Spec.ParametersRef.Kind == gnpKind && network.Spec.ParametersRef.Name == params.Name
+	networkStillRefersToGNP := network.Spec.ParametersRef != nil && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) && network.Spec.ParametersRef.Name == params.Name
 	if !networkStillRefersToGNP {
 		removeFinalizerInPlace(params)
 		return nil
