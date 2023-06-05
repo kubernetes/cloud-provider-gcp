@@ -39,12 +39,10 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 
 	// networks is list of networks that are Ready
 	networks := make([]*networkv1.Network, 0)
-	// filter networks based on status/Ready condition
+	// filter networks based only on Ready condition
+	// we do not filter Networks with DeletionTimestamp set, because we
+	// count on the Network "delete event" for cleanup
 	for _, network := range k8sNetworksList {
-		// don't process networks being deleted
-		if !network.DeletionTimestamp.IsZero() {
-			continue
-		}
 		if meta.IsStatusConditionTrue(network.Status.Conditions, string(networkv1.NetworkConditionStatusReady)) || networkv1.IsDefaultNetwork(network.Name) {
 			networks = append(networks, network)
 		}
