@@ -898,6 +898,33 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 				Reason: "GNPParamsReady",
 			},
 		},
+		{
+			name: "Valid and Network has mixed case kind in ParametersRef",
+			network: &networkv1.Network{
+				ObjectMeta: v1.ObjectMeta{
+					Name: networkName,
+				},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.DeviceNetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: gkeNetworkParamSetName, Kind: "GkEnetworkparamSet"},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: v1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:        nonDefaultTestNetworkName,
+					VPCSubnet:  subnetName,
+					DeviceMode: networkv1.NetDevice,
+				},
+			},
+			expectedCondition: v1.Condition{
+				Type:   "ParamsReady",
+				Status: v1.ConditionTrue,
+				Reason: "GNPParamsReady",
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
