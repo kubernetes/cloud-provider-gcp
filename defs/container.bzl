@@ -9,7 +9,7 @@ load(
 )
 
 # image macro creates basic image and push rules for a main
-def image(binary, visibility = ["//visibility:public"]):
+def image(binary, base = "@go-runner//image", visibility = ["//visibility:public"]):
     if len(binary) == 0:
         fail("binary is a required argument")
     if binary[0] != ":":
@@ -21,7 +21,7 @@ def image(binary, visibility = ["//visibility:public"]):
         cmd = ["/" + name],
         files = [binary],
         stamp = "@io_bazel_rules_docker//stamp:always",
-        base = "@go-runner//image",
+        base = base,
         visibility = visibility,
     )
     image_registry = "{STABLE_IMAGE_REGISTRY}"

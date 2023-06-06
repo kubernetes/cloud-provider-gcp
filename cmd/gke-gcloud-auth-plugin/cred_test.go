@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"testing"
 	"time"
@@ -25,14 +26,18 @@ func (*mockTokenSource) Token() (*oauth2.Token, error) {
 }
 
 var (
-	activeUserConfig  = "default"
-	fakeConfigDefault = `[core]\naccount = username@google.com\nproject = username-gke-dev\n\n[container]\nuse_application_default_credentials = false\ncluster = username-cluster\n\n[compute]\nzone = us-central1-c\n\n`
+	activeUserConfig              = "default"
+	fakeConfigDefault             = `[core]\naccount = username@google.com\nproject = username-gke-dev\n\n[container]\nuse_application_default_credentials = false\ncluster = username-cluster\n\n[compute]\nzone = us-central1-c\n\n`
+	fakeAccount                   = "fakeAccount"
+	fakeProject                   = "fakeProject"
+	fakeImpersonateServiceAccount = "fakeServiceAccount"
 
 	baseCacheFile = `
 {
     "current_context": "%s",
     "access_token": "%s",
-    "token_expiry": "%s"
+    "token_expiry": "%s",
+	"extra_args": "%s"
 }
 `
 	invalidCacheFile   = "invalid_cache_file"
@@ -42,46 +47,86 @@ var (
 	validCacheFile = fmt.Sprintf(baseCacheFile,
 		fakeCurrentContext,
 		cachedAccessToken,
-		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano))
+		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		"")
+
+	validCacheFileWithExtraArgs = fmt.Sprintf(baseCacheFile,
+		fakeCurrentContext,
+		cachedAccessToken,
+		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		fmt.Sprintf("--project=%s --account=%s", fakeProject, fakeAccount))
+
+	validCacheFileWithImpersonateServiceAccount = fmt.Sprintf(baseCacheFile,
+		fakeCurrentContext,
+		cachedAccessToken,
+		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		"--impersonate-service-account="+fakeImpersonateServiceAccount)
 
 	cacheFileWithTokenExpired = fmt.Sprintf(baseCacheFile,
 		fakeCurrentContext,
 		cachedAccessToken,
-		time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano))
+		time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		"")
 
 	cachedFileAccessTokenIsEmpty = fmt.Sprintf(baseCacheFile,
 		fakeCurrentContext,
 		"",
-		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano))
+		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		"")
 
 	cachedFileExpiryTimestampIsMalformed = fmt.Sprintf(baseCacheFile,
 		fakeCurrentContext,
 		cachedAccessToken,
-		"bad time stamp")
+		"bad time stamp",
+		"")
 
 	cachedFileClusterContextChanged = fmt.Sprintf(baseCacheFile,
 		"old cluster context",
 		cachedAccessToken,
-		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano))
+		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		"")
+
+	cachedFileWithBadExtraArgs = fmt.Sprintf(baseCacheFile,
+		fakeCurrentContext,
+		cachedAccessToken,
+		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		"FakeArgs")
 
 	baseCacheFileWithAuthzToken = `{
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "iam-ya29.gcloud_t0k3n^authz-t0k3n",
-    "token_expiry": "2023-01-01T00:00:00Z"
+    "token_expiry": "2022-01-01T00:00:00Z",
+    "extra_args": ""
 }`
-	cachedFileAutzTokenPathChanged = fmt.Sprintf(baseCacheFileWithAuthzToken, "old_Path", "")
-	cachedFileAutzTokenChanged     = fmt.Sprintf(baseCacheFileWithAuthzToken, "auth-token-test-file", "old-authz-t0k3n")
+	cachedFileAutzTokenPathChanged = baseCacheFileWithAuthzToken //fmt.Sprintf(baseCacheFileWithAuthzToken, "old_Path", "")
+	cachedFileAutzTokenChanged     = baseCacheFileWithAuthzToken //fmt.Sprintf(baseCacheFileWithAuthzToken, "auth-token-test-file", "old-authz-t0k3n")
 
 	wantCacheFile = `{
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "ya29.gcloud_t0k3n",
-    "token_expiry": "2022-01-01T00:00:00Z"
+    "token_expiry": "2022-01-01T00:00:00Z",
+    "extra_args": ""
+}`
+
+	wantCacheFileWithExtraArgs = `{
+    "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
+    "access_token": "ya29.gcloud_t0k3n",
+    "token_expiry": "2022-01-01T00:00:00Z",
+    "extra_args": "--project=` + fakeProject + ` --account=` + fakeAccount + `"
+}`
+
+	wantCacheFileImpersonateServiceAccount = `{
+    "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
+    "access_token": "ya29.gcloud_t0k3n",
+    "token_expiry": "2022-01-01T00:00:00Z",
+    "extra_args": "--impersonate-service-account=` + fakeImpersonateServiceAccount + `"
 }`
 
 	wantCacheFileWithAuthzToken = `{
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "iam-ya29.gcloud_t0k3n^authz-t0k3n",
-    "token_expiry": "2022-01-01T00:00:00Z"
+    "token_expiry": "2022-01-01T00:00:00Z",
+    "extra_args": ""
 }`
 
 	// Edge cloud test helpers
@@ -93,19 +138,22 @@ var (
 		kubeCtlStartingConfig,
 		"EdgeCloud_CachedAccessToken",
 		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		"fake-edge-cloud-cluster --project= --location=us-central-fake --format=json",
 	)
 
 	expiredEdgeCloudCacheFile = fmt.Sprintf(baseCacheFile,
 		kubeCtlStartingConfig,
 		"EdgeCloud_CachedAccessToken",
 		time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		"fake-edge-cloud-cluster --project= --location=us-central-fake --format=json",
 	)
 
 	wantEdgeCloudCacheFile = fmt.Sprintf(`{
     "current_context": "%s",
     "access_token": "EdgeCloud_NewAccessToken",
-    "token_expiry": "2022-01-01T00:00:00Z"
-}`, kubeCtlStartingConfig)
+    "token_expiry": "2022-01-01T00:00:00Z",
+    "extra_args": "fake-edge-cloud-cluster --project=%s --location=us-central-fake --format=json"
+}`, kubeCtlStartingConfig, fakeProject)
 )
 
 func TestExecCredential(t *testing.T) {
@@ -113,10 +161,11 @@ func TestExecCredential(t *testing.T) {
 	cacheFilesWrittenBySubtest := make(map[string]string)
 
 	testCases := []struct {
-		testName      string
-		p             *plugin
-		wantToken     *clientauthv1b1.ExecCredential
-		wantCacheFile string
+		testName       string
+		p              *plugin
+		wantToken      *clientauthv1b1.ExecCredential
+		wantCacheFile  string
+		wantGcloudArgs []string
 	}{
 		{
 			testName: "ApplicationDefaultCredentialsSetToTrue",
@@ -146,6 +195,57 @@ func TestExecCredential(t *testing.T) {
 			},
 			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFile,
+			wantGcloudArgs: []string{
+				"config",
+				"config-helper",
+				"--format=json",
+			},
+		},
+		{
+			testName: "NewGcloudAccessTokenWithExtraArgs",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+					account:             fakeAccount,
+					project:             fakeProject,
+				},
+			},
+			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
+			wantCacheFile: wantCacheFileWithExtraArgs,
+			wantGcloudArgs: []string{
+				"config",
+				"config-helper",
+				"--format=json",
+				"--project=" + fakeProject,
+				"--account=" + fakeAccount,
+			},
+		},
+		{
+			testName: "NewGcloudAccessTokenWithImpersonateServiceAccount",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw:       fakeGcloudConfigOutput,
+					readFile:                  fakeReadFile,
+					impersonateServiceAccount: fakeImpersonateServiceAccount,
+				},
+			},
+			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
+			wantCacheFile: wantCacheFileImpersonateServiceAccount,
+			wantGcloudArgs: []string{
+				"config",
+				"config-helper",
+				"--format=json",
+				"--impersonate-service-account=" + fakeImpersonateServiceAccount,
+			},
 		},
 		{
 			testName: "GetK8sStartingConfigFails",
@@ -180,6 +280,51 @@ func TestExecCredential(t *testing.T) {
 				tokenProvider: &gcloudTokenProvider{
 					readGcloudConfigRaw: nil, // Code should be unreachable in this test
 					readFile:            nil, // Code should be unreachable in this test
+				},
+			},
+			wantToken: fakeExecCredential("ya29.cached_token", &metav1.Time{Time: time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC)}),
+		},
+		{
+			testName: "CachedFileIsValidExtraArgs",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile: func(filename string) ([]byte, error) {
+					switch filename {
+					case fakeGetCacheFilePath():
+						return []byte(validCacheFileWithExtraArgs), nil
+					default:
+						return fakeReadFile(filename)
+					}
+				},
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: nil, // Code should be unreachable in this test
+					readFile:            nil, // Code should be unreachable in this test
+					project:             fakeProject,
+					account:             fakeAccount,
+				},
+			},
+			wantToken: fakeExecCredential("ya29.cached_token", &metav1.Time{Time: time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC)}),
+		},
+		{
+			testName: "CachedFileIsValidImpersonateServiceAccount",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile: func(filename string) ([]byte, error) {
+					switch filename {
+					case fakeGetCacheFilePath():
+						return []byte(validCacheFileWithImpersonateServiceAccount), nil
+					default:
+						return fakeReadFile(filename)
+					}
+				},
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw:       nil, // Code should be unreachable in this test
+					readFile:                  nil, // Code should be unreachable in this test
+					impersonateServiceAccount: fakeImpersonateServiceAccount,
 				},
 			},
 			wantToken: fakeExecCredential("ya29.cached_token", &metav1.Time{Time: time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC)}),
@@ -295,6 +440,28 @@ func TestExecCredential(t *testing.T) {
 			wantCacheFile: wantCacheFile,
 		},
 		{
+			testName: "cachedFileExtraArgsChanged",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile: func(filename string) ([]byte, error) {
+					switch filename {
+					case fakeGetCacheFilePath():
+						return []byte(cachedFileWithBadExtraArgs), nil
+					default:
+						return fakeReadFile(filename)
+					}
+				},
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+				},
+			},
+			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
+			wantCacheFile: wantCacheFile,
+		},
+		{
 			testName: "CachingFailsSafely",
 			p: &plugin{
 				k8sStartingConfig: fakeK8sStartingConfig,
@@ -337,6 +504,21 @@ func TestExecCredential(t *testing.T) {
 			},
 			wantToken:     fakeExecCredential("iam-ya29.gcloud_t0k3n^authz-t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFileWithAuthzToken,
+		},
+		{
+			testName: "GcloudAccessTokenFromAccessTokenFile",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigWithAccessTokenFileOutput,
+					readFile:            fakeReadFile,
+				},
+			},
+			wantToken:     fakeExecCredential("ya29.token_from_file", nil),
+			wantCacheFile: "",
 		},
 		{
 			testName: "CachedFileWithAuthzTokenFilePathChanged",
@@ -428,11 +610,22 @@ func TestExecCredential(t *testing.T) {
 				tokenProvider: &gcloudEdgeCloudTokenProvider{
 					location:    fakeEdgeCloudLocation,
 					clusterName: fakeEdgeCloudCluster,
+					project:     fakeProject,
 					getTokenRaw: fakeEdgeCloudTokenOutput,
 				},
 			},
 			wantToken:     fakeExecCredential("EdgeCloud_NewAccessToken", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantEdgeCloudCacheFile,
+			wantGcloudArgs: []string{
+				"edge-cloud",
+				"container",
+				"clusters",
+				"print-access-token",
+				"fake-edge-cloud-cluster",
+				"--project=" + fakeProject,
+				"--location=us-central-fake",
+				"--format=json",
+			},
 		},
 		{
 			testName: "EdgeCloudExpectsNewTokenWhenCacheFileExpires",
@@ -451,6 +644,7 @@ func TestExecCredential(t *testing.T) {
 				tokenProvider: &gcloudEdgeCloudTokenProvider{
 					location:    fakeEdgeCloudLocation,
 					clusterName: fakeEdgeCloudCluster,
+					project:     fakeProject,
 					getTokenRaw: fakeEdgeCloudTokenOutput,
 				},
 			},
@@ -470,7 +664,7 @@ func TestExecCredential(t *testing.T) {
 			// Run
 			ec, err := tc.p.execCredential()
 			if err != nil {
-				t.Fatalf("err should be nil")
+				t.Fatalf("err should be nil: %v", err)
 			}
 
 			if diff := cmp.Diff(tc.wantToken, ec); diff != "" {
@@ -486,7 +680,44 @@ func TestExecCredential(t *testing.T) {
 					t.Errorf("unexpected cachefile write (-want +got): %s", diff)
 				}
 			}
+
+			if tc.wantGcloudArgs != nil {
+				if diff := cmp.Diff(tc.wantGcloudArgs, tc.p.tokenProvider.getGcloudArgs()); diff != "" {
+					t.Errorf("unexpected gcloud args (-want +got): %s", diff)
+				}
+			}
 		})
+	}
+}
+
+func TestCloudsdkBasedGcloudAccessToken(t *testing.T) {
+	p := &plugin{
+		k8sStartingConfig: nil,
+		getCacheFilePath:  nil,
+		readFile:          nil,
+		timeNow:           nil,
+		tokenProvider: &gcloudTokenProvider{
+			readGcloudConfigRaw: nil,
+			readFile:            nil,
+		},
+	}
+
+	tokenForEnvVar := "gcloud_token_in_env_var"
+	os.Setenv(cloudsdkAuthAccessEnvVar, tokenForEnvVar)
+
+	ec, err := p.execCredential()
+	if err != nil {
+		t.Fatalf("err should be nil")
+	}
+
+	os.Setenv(cloudsdkAuthAccessEnvVar, "")
+
+	if diff := cmp.Diff(ec.Status.Token, tokenForEnvVar); diff != "" {
+		t.Errorf("unexpected token (-want +got): %s", diff)
+	}
+
+	if ec.Status.ExpirationTimestamp != nil {
+		t.Errorf("unexpected expiration time stamp: %v", ec.Status.ExpirationTimestamp)
 	}
 }
 
@@ -494,7 +725,7 @@ func fakeDefaultTokenSource(ctx context.Context, scope ...string) (oauth2.TokenS
 	return &mockTokenSource{}, nil
 }
 
-func fakeGcloudConfigOutput() ([]byte, error) {
+func fakeGcloudConfigOutput(extraArgs []string) ([]byte, error) {
 	fakeOutput := `{
   "configuration": {
     "active_configuration": "default",
@@ -524,7 +755,7 @@ func fakeGcloudConfigOutput() ([]byte, error) {
 	return []byte(fakeOutput), nil
 }
 
-func fakeGcloudConfigWithAuthzTokenOutput() ([]byte, error) {
+func fakeGcloudConfigWithAuthzTokenOutput(extraArgs []string) ([]byte, error) {
 	return []byte(`
 {
   "configuration": {
@@ -538,6 +769,41 @@ func fakeGcloudConfigWithAuthzTokenOutput() ([]byte, error) {
   "credential": {
     "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z"
+  }
+}
+`), nil
+}
+
+func fakeGcloudConfigWithAccessTokenFileOutput(extraArgs []string) ([]byte, error) {
+	return []byte(`
+{
+  "configuration": {
+    "active_configuration": "default",
+    "properties": {
+      "auth": {
+        "access_token_file": "/usr/local/google/home/username/Desktop/gcloud_test_token"
+      },
+      "compute": {
+        "zone": "us-central1-c"
+      },
+      "container": {
+        "cluster": "username-cluster",
+        "use_application_default_credentials": "false"
+      },
+      "core": {
+        "account": "username@google.com",
+        "disable_usage_reporting": "False",
+        "project": "username-gke-dev"
+      }
+    }
+  },
+  "credential": {
+    "access_token": "ya29.token_from_file",
+    "id_token": null,
+    "token_expiry": null
+  },
+  "sentinels": {
+    "config_sentinel": "/usr/local/google/home/username/.config/gcloud/config_sentinel"
   }
 }
 `), nil
@@ -602,7 +868,7 @@ func fakeTimeNow() time.Time {
 	return time.Date(2022, 1, 2, 0, 0, 0, 0, time.UTC)
 }
 
-func fakeEdgeCloudTokenOutput(location string, clusterName string) ([]byte, error) {
+func fakeEdgeCloudTokenOutput(extraArgs []string) ([]byte, error) {
 	return []byte(`
 	{
 		"accessToken": "EdgeCloud_NewAccessToken",

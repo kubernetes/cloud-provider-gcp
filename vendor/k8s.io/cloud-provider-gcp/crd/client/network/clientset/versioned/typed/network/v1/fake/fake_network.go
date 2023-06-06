@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Kubernetes Authors.
+Copyright 2023 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -110,7 +110,7 @@ func (c *FakeNetworks) UpdateStatus(ctx context.Context, network *networkv1.Netw
 // Delete takes name of the network and deletes it. Returns an error if one occurs.
 func (c *FakeNetworks) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(networksResource, name), &networkv1.Network{})
+		Invokes(testing.NewRootDeleteActionWithOptions(networksResource, name, opts), &networkv1.Network{})
 	return err
 }
 

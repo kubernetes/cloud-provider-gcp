@@ -22,20 +22,21 @@ import (
 	"time"
 
 	"google.golang.org/api/compute/v1"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
-
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-
-	networkv1alpha1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1alpha1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
+	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	networkclientset "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned"
-	"k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/typed/network/v1alpha1"
 	"k8s.io/cloud-provider-gcp/providers/gce"
-
 	controllersmetrics "k8s.io/component-base/metrics/prometheus/controllers"
+	"k8s.io/klog/v2"
+)
+
+const (
+	// GNPFinalizer - finalizer value placed on GNP objects by GNP Controller
+	GNPFinalizer = "networking.gke.io/gnp-controller"
 )
 
 // Controller manages GKENetworkParamSet status.
@@ -52,6 +53,9 @@ func NewGKENetworkParamSetController(
 	gkeNetworkParamsInformer cache.SharedIndexInformer,
 	gceCloud *gce.Cloud,
 ) *Controller {
+
+	// register GNP metrics
+	registerGKENetworkParamSetMetrics()
 
 	return &Controller{
 		networkClientset:         networkClientset,
@@ -145,6 +149,18 @@ func (c *Controller) handleErr(err error, key interface{}) {
 	klog.Errorf("Dropping GKENetworkParamSet %q out of the queue: %v", key, err)
 }
 
+// addFinalizerToGKENetworkParamSet adds a finalizer to params inplace if it doesnt already exist
+func addFinalizerToGKENetworkParamSet(params *networkv1.GKENetworkParamSet) {
+	gnpFinalizers := params.GetFinalizers()
+	for _, f := range gnpFinalizers {
+		if f == GNPFinalizer {
+			return
+		}
+	}
+
+	params.SetFinalizers(append(gnpFinalizers, GNPFinalizer))
+}
+
 func (c *Controller) syncGKENetworkParamSet(ctx context.Context, key string) error {
 	obj, exists, err := c.gkeNetworkParamsInformer.GetIndexer().GetByKey(key)
 	if err != nil {
@@ -157,16 +173,24 @@ func (c *Controller) syncGKENetworkParamSet(ctx context.Context, key string) err
 		return nil
 	}
 
-	params := obj.(*networkv1alpha1.GKENetworkParamSet)
+	params := obj.(*networkv1.GKENetworkParamSet)
+
+	// TODO: Enable finalizer addition when finalizer deletion is added.
+	// addFinalizerToGKENetworkParamSet(params)
+	// update will be done once in deferred function call
+	// if err := c.updateGKENetworkParamSet(ctx, params); err != nil {
+	// 	return err
+	// }
 
 	subnet, err := c.gceCloud.GetSubnetwork(c.gceCloud.Region(), params.Spec.VPCSubnet)
 	if err != nil {
+		fetchSubnetErrs.Inc()
 		return err
 	}
 
 	cidrs := extractRelevantCidrs(subnet, params)
 
-	err = updateGKENetworkParamSetStatus(ctx, c.networkClientset.NetworkingV1alpha1().GKENetworkParamSets(), params, cidrs)
+	err = c.updateGKENetworkParamSetStatus(ctx, params, cidrs)
 	if err != nil {
 		return err
 	}
@@ -175,7 +199,7 @@ func (c *Controller) syncGKENetworkParamSet(ctx context.Context, key string) err
 }
 
 // extractRelevantCidrs returns the CIDRS of the named ranges in paramset
-func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1alpha1.GKENetworkParamSet) []string {
+func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1.GKENetworkParamSet) []string {
 	cidrs := []string{}
 
 	// use the subnet cidr if there are no secondary ranges specified by user in params
@@ -195,7 +219,7 @@ func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1alpha1.
 	return cidrs
 }
 
-func paramSetIncludesRange(params *networkv1alpha1.GKENetworkParamSet, secondaryRangeName string) bool {
+func paramSetIncludesRange(params *networkv1.GKENetworkParamSet, secondaryRangeName string) bool {
 	for _, rn := range params.Spec.PodIPv4Ranges.RangeNames {
 		if rn == secondaryRangeName {
 			return true
@@ -204,14 +228,21 @@ func paramSetIncludesRange(params *networkv1alpha1.GKENetworkParamSet, secondary
 	return false
 }
 
-// updateGKENetworkParamSetStatus performs a status update for the given GKENetworkParamSet on the cluster with the given cidrs
-func updateGKENetworkParamSetStatus(ctx context.Context, paramSetClient v1alpha1.GKENetworkParamSetInterface, gkeNetworkParamSet *networkv1alpha1.GKENetworkParamSet, cidrs []string) error {
-	gkeNetworkParamSet.Status.PodCIDRs = &networkv1alpha1.NetworkRanges{
+func (c *Controller) updateGKENetworkParamSet(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
+	_, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().Update(ctx, params, v1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update GKENetworkParamSet: %v", err)
+	}
+	return nil
+}
+
+func (c *Controller) updateGKENetworkParamSetStatus(ctx context.Context, gkeNetworkParamSet *networkv1.GKENetworkParamSet, cidrs []string) error {
+	gkeNetworkParamSet.Status.PodCIDRs = &networkv1.NetworkRanges{
 		CIDRBlocks: cidrs,
 	}
 
 	klog.V(4).Infof("GKENetworkParamSet cidrs are: %v", cidrs)
-	_, err := paramSetClient.UpdateStatus(ctx, gkeNetworkParamSet, v1.UpdateOptions{})
+	_, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().UpdateStatus(ctx, gkeNetworkParamSet, v1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update GKENetworkParamSet Status CIDRs: %v", err)
 	}

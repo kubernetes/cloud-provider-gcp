@@ -5,6 +5,9 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 const (
 	// DefaultNetworkName is the network used by the VETH interface.
 	DefaultNetworkName = "pod-network"
+	// DefaultPodNetworkName is the network used by the VETH interface.
+	// This is same as DefaultNetworkName except for a different name. DefaultNetworkName will be eventually deprecated.
+	DefaultPodNetworkName = "default"
 	// NetworkResourceKeyPrefix is the prefix for extended resource
 	// name corresponding to the network.
 	// e.g. "networking.gke.io.networks/my-network.IP"
@@ -12,7 +15,7 @@ const (
 )
 
 // NetworkType is the type of network.
-// +kubebuilder:validation:Enum=L2;L3
+// +kubebuilder:validation:Enum=L2;L3;Device
 type NetworkType string
 
 const (
@@ -20,6 +23,8 @@ const (
 	L2NetworkType NetworkType = "L2"
 	// L3NetworkType enables L3 connectivity on the network.
 	L3NetworkType NetworkType = "L3"
+	// DeviceNetworkType enables direct device access on the network.
+	DeviceNetworkType NetworkType = "Device"
 )
 
 // LifecycleType defines who manages the lifecycle of the network.
@@ -65,9 +70,10 @@ type Network struct {
 // NetworkSpec contains the specifications for network object
 type NetworkSpec struct {
 	// Type defines type of network.
-	// Valid options include: L2, L3.
+	// Valid options include: L2, L3, Device.
 	// L2 network type enables L2 connectivity on the network.
 	// L3 network type enables L3 connectivity on the network.
+	// Device network type enables direct device access on the network.
 	// +required
 	Type NetworkType `json:"type"`
 
@@ -154,7 +160,10 @@ type Route struct {
 }
 
 // NetworkStatus contains the status information related to the network.
-type NetworkStatus struct{}
+type NetworkStatus struct {
+	// Conditions is a field representing the current conditions of the Network.
+	Conditions []metav1.Condition `json:"conditions"`
+}
 
 // NodeInterfaceMatcher defines criteria to find the matching interface on host networking.
 type NodeInterfaceMatcher struct {

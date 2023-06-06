@@ -15,7 +15,7 @@ const (
 )
 
 // NetworkType is the type of network.
-// +kubebuilder:validation:Enum=L2;L3
+// +kubebuilder:validation:Enum=L2;L3;Device
 type NetworkType string
 
 const (
@@ -23,6 +23,8 @@ const (
 	L2NetworkType NetworkType = "L2"
 	// L3NetworkType enables L3 connectivity on the network.
 	L3NetworkType NetworkType = "L3"
+	// DeviceNetworkType enables direct device access on the network.
+	DeviceNetworkType NetworkType = "Device"
 )
 
 // LifecycleType defines who manages the lifecycle of the network.
@@ -68,9 +70,10 @@ type Network struct {
 // NetworkSpec contains the specifications for network object
 type NetworkSpec struct {
 	// Type defines type of network.
-	// Valid options include: L2, L3.
+	// Valid options include: L2, L3, Device.
 	// L2 network type enables L2 connectivity on the network.
 	// L3 network type enables L3 connectivity on the network.
+	// Device network type enables direct device access on the network.
 	// +required
 	Type NetworkType `json:"type"`
 
@@ -156,8 +159,46 @@ type Route struct {
 	To string `json:"to"`
 }
 
+// NetworkConditionType is the type for status conditions on
+// a Network. This type should be used with the
+// NetworkStatus.Conditions field.
+type NetworkConditionType string
+
+const (
+	// NetworkStatusReady is the condition type that holds
+	// if the Network object is validated
+	NetworkConditionStatusReady NetworkConditionType = "Ready"
+
+	// NetworkStatusParamsReady is the condition type that holds
+	// if the params object referenced by Network is validated
+	NetworkConditionStatusParamsReady NetworkConditionType = "ParamsReady"
+)
+
+// NetworkReadyConditionReason defines the set of reasons that explain why a
+// particular Network Ready condition type has been raised.
+type NetworkReadyConditionReason string
+
+const (
+	// ParamsNotReady indicates that the resource referenced in params is not ready.
+	ParamsNotReady NetworkReadyConditionReason = "ParamsNotReady"
+)
+
 // NetworkStatus contains the status information related to the network.
-type NetworkStatus struct{}
+type NetworkStatus struct {
+	// Conditions is a field representing the current conditions of the Network.
+	//
+	// Known condition types are:
+	//
+	// * "Ready"
+	// * "ParamsReady"
+	//
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
 
 // NodeInterfaceMatcher defines criteria to find the matching interface on host networking.
 type NodeInterfaceMatcher struct {

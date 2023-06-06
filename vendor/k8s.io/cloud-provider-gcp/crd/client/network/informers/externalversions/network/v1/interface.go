@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Kubernetes Authors.
+Copyright 2023 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
+	// GKENetworkParamSets returns a GKENetworkParamSetInformer.
+	GKENetworkParamSets() GKENetworkParamSetInformer
 	// Networks returns a NetworkInformer.
 	Networks() NetworkInformer
 	// NetworkInterfaces returns a NetworkInterfaceInformer.
@@ -39,6 +41,11 @@ type version struct {
 // New returns a new Interface.
 func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakListOptions internalinterfaces.TweakListOptionsFunc) Interface {
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
+}
+
+// GKENetworkParamSets returns a GKENetworkParamSetInformer.
+func (v *version) GKENetworkParamSets() GKENetworkParamSetInformer {
+	return &gKENetworkParamSetInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // Networks returns a NetworkInformer.

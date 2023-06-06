@@ -219,3 +219,51 @@ func TestParseNorthInterfacesAnnotation(t *testing.T) {
 		})
 	}
 }
+
+func TestParseNICInfoAnnotation(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    NICInfoAnnotation
+		expected string
+	}{
+		{
+			name:     "nil",
+			input:    nil,
+			expected: "null",
+		},
+		{
+			name:     "empty list",
+			input:    NICInfoAnnotation{},
+			expected: "[]",
+		},
+		{
+			name: "list with items",
+			input: NICInfoAnnotation{
+				{BirthIP: "10.0.0.1", PCIAddress: "0000:00:05.0", BirthName: "eth1"},
+				{BirthIP: "20.0.0.1", PCIAddress: "0000:00:06.0", BirthName: "eth2"},
+			},
+			expected: `[{"birthIP":"10.0.0.1","pciAddress":"0000:00:05.0","birthName":"eth1"},{"birthIP":"20.0.0.1","pciAddress":"0000:00:06.0","birthName":"eth2"}]`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			marshalled, err := MarshalAnnotation(tc.input)
+			if err != nil {
+				t.Fatalf("MarshalAnnotation(%+v) failed with error: %v", tc.input, err)
+			}
+			if marshalled != tc.expected {
+				t.Fatalf("MarshalAnnotation(%+v) returns %q but want %q", tc.input, marshalled, tc.expected)
+			}
+
+			parsed, err := ParseNICInfoAnnotation(marshalled)
+			if err != nil {
+				t.Fatalf("ParseNICInfoAnnotation(%s) failed with error: %v", marshalled, err)
+			}
+
+			if diff := cmp.Diff(parsed, tc.input); diff != "" {
+				t.Fatalf("ParseNICInfoAnnotation(%s)  returns diff: (-got +want): %s", marshalled, diff)
+			}
+		})
+	}
+}

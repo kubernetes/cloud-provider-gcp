@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Kubernetes Authors.
+Copyright 2023 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,14 @@ import (
 
 type FakeNetworkingV1 struct {
 	*testing.Fake
+}
+
+func (c *FakeNetworkingV1) GKENetworkParamSets() v1.GKENetworkParamSetInterface {
+	return &FakeGKENetworkParamSets{c}
+}
+
+func (c *FakeNetworkingV1) GKENetworkParamSetLists() v1.GKENetworkParamSetListInterface {
+	return &FakeGKENetworkParamSetLists{c}
 }
 
 func (c *FakeNetworkingV1) Networks() v1.NetworkInterface {

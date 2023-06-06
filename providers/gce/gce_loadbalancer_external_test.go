@@ -34,7 +34,6 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/mock"
-	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/json"
@@ -303,6 +302,86 @@ func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string,
 		nil,
 		nodes,
 	)
+}
+
+func TestShouldNotRecreateLBWhenNetworkTiersMismatch(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	nodeNames := []string{"test-node-1"}
+
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	svc := fakeLoadbalancerService("")
+	nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+	require.NoError(t, err)
+	staticIP := "1.2.3.4"
+	gce.ReserveRegionAddress(&compute.Address{Address: staticIP, Name: "foo", NetworkTier: cloud.NetworkTierStandard.ToGCEValue()}, vals.Region)
+
+	for _, tc := range []struct {
+		desc          string
+		mutateSvc     func(service *v1.Service)
+		expectNetTier string
+		expectError   bool
+	}{
+		{
+			desc: "initial LB config with standard network tier annotation",
+			mutateSvc: func(service *v1.Service) {
+				svc.Annotations[NetworkTierAnnotationKey] = string(NetworkTierAnnotationStandard)
+			},
+			expectNetTier: NetworkTierAnnotationStandard.ToGCEValue(),
+		},
+		{
+			desc: "svc changed to empty network tier annotation",
+			mutateSvc: func(service *v1.Service) {
+				svc.Annotations = make(map[string]string)
+			},
+			expectNetTier: NetworkTierAnnotationStandard.ToGCEValue(),
+		},
+		{
+			desc: "network tier annotation changed to premium",
+			mutateSvc: func(service *v1.Service) {
+				svc.Annotations[NetworkTierAnnotationKey] = string(NetworkTierAnnotationPremium)
+			},
+			expectNetTier: NetworkTierAnnotationPremium.ToGCEValue(),
+		},
+		{
+			desc: " Network tiers annotation set to Standard and reserved static IP is specified",
+			mutateSvc: func(service *v1.Service) {
+				svc.Annotations[NetworkTierAnnotationKey] = string(NetworkTierAnnotationStandard)
+				svc.Spec.LoadBalancerIP = staticIP
+
+			},
+			expectNetTier: NetworkTierAnnotationStandard.ToGCEValue(),
+		},
+		{
+			desc: "svc changed to empty network tier annotation with static ip",
+			mutateSvc: func(service *v1.Service) {
+				svc.Annotations = make(map[string]string)
+			},
+			expectNetTier: NetworkTierAnnotationStandard.ToGCEValue(),
+			expectError:   true,
+		},
+	} {
+		tc.mutateSvc(svc)
+		status, err := gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+		if tc.expectError {
+			if err == nil {
+				t.Errorf("for test case %q, expect errror != nil, but got %v", tc.desc, err)
+			}
+		} else {
+			assert.NoError(t, err)
+			assert.NotEmpty(t, status.Ingress)
+		}
+
+		lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+		fwdRule, err := gce.GetRegionForwardingRule(lbName, gce.region)
+		assert.NoError(t, err)
+		if fwdRule.NetworkTier != tc.expectNetTier {
+			t.Fatalf("for test case %q, expect fwdRule.NetworkTier == %q, got %v ", tc.desc, tc.expectNetTier, fwdRule.NetworkTier)
+		}
+		assertExternalLbResources(t, gce, svc, vals, nodeNames)
+	}
 }
 
 func TestEnsureExternalLoadBalancer(t *testing.T) {
@@ -920,6 +999,18 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 			needsUpdate:  true,
 			hasErr:       false,
 		},
+		"When the destination ranges are not equal.": {
+			lbName:       lbName,
+			ipAddr:       "8.8.8.8",
+			ports:        svc.Spec.Ports,
+			ipnet:        ipnet,
+			fwIPProtocol: "tcp",
+			getHook:      nil,
+			sourceRange:  fw.SourceRanges[0],
+			exists:       true,
+			needsUpdate:  true,
+			hasErr:       false,
+		},
 		"When basic flow without exceptions.": {
 			lbName:       lbName,
 			ipAddr:       ipAddr,
@@ -1015,6 +1106,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 			fw.SourceRanges[0] = tc.sourceRange
 			fw, err = gce.GetFirewall(MakeFirewallName(lbName))
 			require.Equal(t, fw.SourceRanges[0], tc.sourceRange)
+			require.Equal(t, fw.DestinationRanges[0], status.Ingress[0].IP)
 
 			c := gce.c.(*cloud.MockGCE)
 			c.MockFirewalls.GetHook = tc.getHook
@@ -1136,7 +1228,7 @@ func TestCreateAndUpdateFirewallSucceedsOnXPN(t *testing.T) {
 
 	c := gce.c.(*cloud.MockGCE)
 	c.MockFirewalls.InsertHook = mock.InsertFirewallsUnauthorizedErrHook
-	c.MockFirewalls.UpdateHook = mock.UpdateFirewallsUnauthorizedErrHook
+	c.MockFirewalls.PatchHook = mock.UpdateFirewallsUnauthorizedErrHook
 	gce.onXPN = true
 	require.True(t, gce.OnXPN())
 
@@ -1154,6 +1246,7 @@ func TestCreateAndUpdateFirewallSucceedsOnXPN(t *testing.T) {
 	gce.createFirewall(
 		svc,
 		gce.GetLoadBalancerName(context.TODO(), "", svc),
+		"10.0.0.1",
 		"A sad little firewall",
 		ipnet,
 		svc.Spec.Ports,
@@ -1167,6 +1260,7 @@ func TestCreateAndUpdateFirewallSucceedsOnXPN(t *testing.T) {
 		svc,
 		gce.GetLoadBalancerName(context.TODO(), "", svc),
 		"A sad little firewall",
+		"10.0.0.1",
 		ipnet,
 		svc.Spec.Ports,
 		hosts)
@@ -1474,6 +1568,7 @@ func TestFirewallObject(t *testing.T) {
 	gce, err := fakeGCECloud(vals)
 	gce.nodeTags = []string{"node-tags"}
 	require.NoError(t, err)
+	dstIP := "10.0.0.1"
 	srcRanges := []string{"10.10.0.0/24", "10.20.0.0/24"}
 	sourceRanges, _ := utilnet.ParseIPNets(srcRanges...)
 	fwName := "test-fw"
@@ -1495,6 +1590,7 @@ func TestFirewallObject(t *testing.T) {
 	for _, tc := range []struct {
 		desc             string
 		sourceRanges     utilnet.IPNetSet
+		destinationIP    string
 		svcPorts         []v1.ServicePort
 		expectedFirewall func(fw compute.Firewall) compute.Firewall
 	}{
@@ -1516,6 +1612,18 @@ func TestFirewallObject(t *testing.T) {
 			},
 			expectedFirewall: func(fw compute.Firewall) compute.Firewall {
 				fw.SourceRanges = srcRanges
+				return fw
+			},
+		},
+		{
+			desc:          "has destination IP",
+			sourceRanges:  utilnet.IPNetSet{},
+			destinationIP: dstIP,
+			svcPorts: []v1.ServicePort{
+				{Name: "port1", Protocol: v1.ProtocolTCP, Port: int32(80), TargetPort: intstr.FromInt(80)},
+			},
+			expectedFirewall: func(fw compute.Firewall) compute.Firewall {
+				fw.DestinationRanges = []string{dstIP}
 				return fw
 			},
 		},
@@ -1563,7 +1671,7 @@ func TestFirewallObject(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			ret, err := gce.firewallObject(fwName, fwDesc, tc.sourceRanges, tc.svcPorts, nil)
+			ret, err := gce.firewallObject(fwName, fwDesc, tc.destinationIP, tc.sourceRanges, tc.svcPorts, nil)
 			require.NoError(t, err)
 			expectedFirewall := tc.expectedFirewall(baseFw)
 			retSrcRanges := sets.NewString(ret.SourceRanges...)

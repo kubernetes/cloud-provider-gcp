@@ -14,7 +14,10 @@ go_binary(
 
 load("//defs:container.bzl", "image")
 
-image(binary = ":gcp-controller-manager")
+image(
+    base = "@distroless//image",
+    binary = ":gcp-controller-manager",
+)
 
 go_library(
     name = "gcp-controller-manager_lib",
@@ -39,6 +42,11 @@ go_library(
         "//cmd/gcp-controller-manager:__subpackages__",
     ],
     deps = [
+        "//cmd/gcp-controller-manager/dpwi/configmap",
+        "//cmd/gcp-controller-manager/dpwi/hms",
+        "//cmd/gcp-controller-manager/dpwi/nodesyncer",
+        "//cmd/gcp-controller-manager/dpwi/pods",
+        "//cmd/gcp-controller-manager/dpwi/serviceaccounts",
         "//cmd/gcp-controller-manager/healthz",
         "//pkg/clientauthplugin/gcp",
         "//pkg/csrmetrics",

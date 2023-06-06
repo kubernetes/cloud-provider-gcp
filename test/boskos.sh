@@ -5,12 +5,16 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
+if [[ -z "${BOSKOS_URL:-}" ]]; then
+  BOSKOS_URL="http://boskos.test-pods.svc.cluster.local"
+fi
+
 # acquires a project from boskos
 acquire_project() {
     local project=""
     local project_type="gce-project"
 
-    boskos_response=$(curl -X POST "http://boskos.test-pods.svc.cluster.local/acquire?type=${project_type}&state=free&dest=busy&owner=${JOB_NAME}")
+    boskos_response=$(curl -X POST "${BOSKOS_URL}/acquire?type=${project_type}&state=free&dest=busy&owner=${JOB_NAME}")
 
     if project=$(echo "${boskos_response}" | jq -r '.name'); then
         echo "Using GCP project: ${project}"
@@ -27,12 +31,12 @@ acquire_project() {
 
 # release the project back to boskos
 release_project() {
-    curl -X POST "http://boskos/release?name=${PROJECT}&owner=${JOB_NAME}&dest=dirty"
+    curl -X POST "${BOSKOS_URL}/release?name=${PROJECT}&owner=${JOB_NAME}&dest=dirty"
 }
 
 # send a heartbeat to boskos for the project
 heartbeat_project() {
-    curl -X POST "http://boskos/update?name=${PROJECT}&state=busy&owner=${JOB_NAME}" > /dev/null 2>&1
+    curl -X POST "${BOSKOS_URL}/update?name=${PROJECT}&state=busy&owner=${JOB_NAME}" > /dev/null 2>&1
 }
 
 # heartbeat_project in an infinite loop

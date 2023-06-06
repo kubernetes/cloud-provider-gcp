@@ -42,6 +42,7 @@ type GCPFirewall struct {
 
 	// Status is the runtime status of this GCP firewall
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
+	// +kubebuilder:default={conditions: {{type: "Enforced", status: "Unknown", reason:"Pending", message:"Waiting for controller", lastTransitionTime: "1970-01-01T00:00:00Z"}}}
 	Status GCPFirewallStatus `json:"status,omitempty"`
 }
 
@@ -177,6 +178,7 @@ type GCPFirewallStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	// +kubebuilder:validation:MaxItems=8
+	// +kubebuilder:default={{type: "Enforced", status: "Unknown", reason:"Pending", message:"Waiting for controller", lastTransitionTime: "1970-01-01T00:00:00Z"}}
 	Conditions []metav1.Condition `json:"conditions"`
 }
 
@@ -201,8 +203,13 @@ const (
 	// GCP and enforced yet.
 	FirewallRuleReasonPending FirewallRuleConditionReason = "Pending"
 
-	// FirewallRuleReasonXPNError is used when the controller does not have the perssion to configure firewalls in the shared VPC
+	// FirewallRuleReasonXPNPermissionError is used when the controller does not
+	// have permission to configure firewalls in the shared VPC project.
 	FirewallRuleReasonXPNPermissionError FirewallRuleConditionReason = "XPNPermissionError"
+
+	// FirewallRuleReasonSynchronized is used if the firewall rule is synchronized
+	// to GCP.
+	FirewallRuleReasonSynchronized FirewallRuleConditionReason = "Synchronized"
 )
 
 // +kubebuilder:object:root=true

@@ -14,17 +14,17 @@ filegroup(
     name = "manifests",
     srcs = [
         "abac-authz-policy.jsonl",
+        "cloud-controller-manager.manifest",
         "cluster-autoscaler.manifest",
         "etcd.manifest",
         "glbc.manifest",
-        "pdcsi-controller.yaml",
         "konnectivity-server.yaml",
         "kube-addon-manager.yaml",
         "kube-apiserver.manifest",
         "kube-controller-manager.manifest",
-        "cloud-controller-manager.manifest",
         "kube-proxy.manifest",
         "kube-scheduler.manifest",
+        "pdcsi-controller.yaml",
     ] + glob(["internal-*"]),
 )
 
