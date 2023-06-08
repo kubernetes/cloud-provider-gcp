@@ -10,6 +10,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/types",
         "//vendor/k8s.io/client-go/kubernetes",
+        "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1:network",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )
