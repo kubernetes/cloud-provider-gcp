@@ -113,6 +113,8 @@ const (
 	// DeviceModeMissing indicates that the Device type Network resource is
 	// referencing a GKENetworkParamSet with device mode unspecified.
 	DeviceModeMissing GNPNetworkParamsReadyConditionReason = "DeviceModeMissing"
+	// GNPDeleted indicates that the referenced GNP resource was deleted
+	GNPDeleted GNPNetworkParamsReadyConditionReason = "GNPDeleted"
 	// GNPParamsReady indicates that the referenced GNP resource
 	// has been successfully validated for use with this Network resource and ParamsReady=True
 	GNPParamsReady GNPNetworkParamsReadyConditionReason = "GNPParamsReady"

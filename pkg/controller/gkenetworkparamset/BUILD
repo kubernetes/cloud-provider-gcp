@@ -40,6 +40,8 @@ go_test(
         "//vendor/github.com/onsi/gomega",
         "//vendor/github.com/onsi/gomega/types",
         "//vendor/google.golang.org/api/compute/v1:compute",
+        "//vendor/k8s.io/apimachinery/pkg/api/errors",
+        "//vendor/k8s.io/apimachinery/pkg/api/meta",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/client-go/tools/cache",
         "//vendor/k8s.io/cloud-provider-gcp/crd/apis/network/v1:network",

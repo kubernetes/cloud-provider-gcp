@@ -10,6 +10,8 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 	"google.golang.org/api/compute/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	condmeta "k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
@@ -1051,6 +1053,23 @@ func TestHandleGKENetworkParamSetDelete_NetworkInUse(t *testing.T) {
 			defer stop()
 
 			testVals := setupGKENetworkParamSetController(ctx)
+
+			subnetName := "test-subnet"
+			subnet := &compute.Subnetwork{
+				Name: subnetName,
+				SecondaryIpRanges: []*compute.SubnetworkSecondaryRange{
+					{
+						IpCidrRange: "10.0.0.0/24",
+						RangeName:   "test-secondary-range",
+					},
+				},
+			}
+			subnetKey := meta.RegionalKey(subnet.Name, testVals.clusterValues.Region)
+			err := testVals.cloud.Compute().Subnetworks().Insert(ctx, subnetKey, subnet)
+			if err != nil {
+				t.Error(err)
+			}
+
 			testVals.runGKENetworkParamSetController(ctx)
 
 			networkName := "test-network"
@@ -1074,14 +1093,17 @@ func TestHandleGKENetworkParamSetDelete_NetworkInUse(t *testing.T) {
 					Name:       gkeNetworkParamSetName,
 					Finalizers: []string{GNPFinalizer},
 				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:        nonDefaultTestNetworkName,
+					VPCSubnet:  subnetName,
+					DeviceMode: networkv1.NetDevice,
+				},
 				Status: networkv1.GKENetworkParamSetStatus{
 					NetworkName: networkName,
 				},
 			}
-			now := v1.Now()
-			paramSet.SetDeletionTimestamp(&now)
 
-			_, err := testVals.networkClient.NetworkingV1().Networks().Create(ctx, network, v1.CreateOptions{})
+			_, err = testVals.networkClient.NetworkingV1().Networks().Create(ctx, network, v1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("Failed to create Network: %v", err)
 			}
@@ -1093,13 +1115,55 @@ func TestHandleGKENetworkParamSetDelete_NetworkInUse(t *testing.T) {
 
 			g.Consistently(func() (bool, error) {
 				return testVals.doesGNPFinalizerExist(ctx, gkeNetworkParamSetName)
-			}).Should(gomega.BeTrue(), "finalizer should not be removed from GKENetworkParamSet")
+			}).Should(gomega.BeTrue(), "finalizer should exist on GKENetworkParamSet")
+
+			g.Eventually(func() bool {
+				network, err := testVals.networkClient.NetworkingV1().Networks().Get(ctx, networkName, v1.GetOptions{})
+				if err != nil {
+					t.Fatalf("Failed to get Network: %v", err)
+				}
+
+				return condmeta.IsStatusConditionTrue(network.Status.Conditions, "ParamsReady")
+			}).Should(gomega.BeTrue(), "ParamsReady should be true in Network Conditions")
+
+			newParamset, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
+			if err != nil {
+				t.Fatalf("Failed to get GKENetworkParamSet: %v", err)
+			}
+
+			// simulate a delete on GNP resource
+			now := v1.Now()
+			newParamset.SetDeletionTimestamp(&now)
+			_, err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Update(ctx, newParamset, v1.UpdateOptions{})
+			if err != nil {
+				t.Fatalf("Failed to update GKENetworkParamSet: %v", err)
+			}
 
 			test.networkUpdateFn(ctx, networkName, testVals.networkClient)
 
 			g.Eventually(func() (bool, error) {
 				return testVals.doesGNPFinalizerExist(ctx, gkeNetworkParamSetName)
 			}).Should(gomega.BeFalse(), "finalizer should be removed from GKENetworkParamSet")
+
+			// networkUpdateFn can delete network, so we only want to make an assertion
+			// on network conditions if it still exists
+			networkWasDeleted := false
+			network, err = testVals.networkClient.NetworkingV1().Networks().Get(ctx, networkName, v1.GetOptions{})
+			if errors.IsNotFound(err) {
+				networkWasDeleted = true
+			} else if err != nil {
+				t.Fatalf("Failed to get Network: %v", err)
+			}
+
+			if !networkWasDeleted {
+				g.Eventually(func() bool {
+					network, err := testVals.networkClient.NetworkingV1().Networks().Get(ctx, networkName, v1.GetOptions{})
+					if err != nil {
+						t.Fatalf("Failed to get Network: %v", err)
+					}
+					return condmeta.IsStatusConditionFalse(network.Status.Conditions, "ParamsReady")
+				}).Should(gomega.BeTrue(), "ParamsReady should be removed from Network Conditions")
+			}
 
 		})
 	}
