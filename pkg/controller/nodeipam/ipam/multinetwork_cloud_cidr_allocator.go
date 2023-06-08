@@ -128,9 +128,13 @@ func updateAnnotations(node *v1.Node, northInterfaces networkv1.NorthInterfacesA
 		node.Annotations = make(map[string]string)
 	}
 	node.Annotations[networkv1.NorthInterfacesAnnotationKey] = northInterfaceAnn
+	capacity, err := allocateIPCapacity(node, additionalNodeNetworks)
+	if err != nil {
+		return err
+	}
+	node.Status.Capacity = capacity
 	node.Annotations[networkv1.MultiNetworkAnnotationKey] = additionalNodeNwAnn
-	node.Status.Capacity, err = allocateIPCapacity(node, additionalNodeNetworks)
-	return err
+	return nil
 }
 
 // allocateIPCapacity updates the extended IP resource capacity for every non-default network on the node.
