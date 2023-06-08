@@ -32,8 +32,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/util/workqueue"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	clSetFake "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/fake"
 	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
@@ -66,26 +68,25 @@ const (
 )
 
 func hasNodeInProcessing(ca *cloudCIDRAllocator, name string) bool {
-	ca.lock.Lock()
-	defer ca.lock.Unlock()
-
-	_, found := ca.nodesInProcessing[name]
-	return found
+	if ca.queue.Len() > 0 {
+		val, _ := ca.queue.Get()
+		if val.(string) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBoundedRetries(t *testing.T) {
 	clientSet := fake.NewSimpleClientset()
-	updateChan := make(chan string, 1) // need to buffer as we are using only on go routine
-	stopChan := make(chan struct{})
 	sharedInfomer := informers.NewSharedInformerFactory(clientSet, 1*time.Hour)
 	ca := &cloudCIDRAllocator{
-		client:            clientSet,
-		nodeUpdateChannel: updateChan,
-		nodeLister:        sharedInfomer.Core().V1().Nodes().Lister(),
-		nodesSynced:       sharedInfomer.Core().V1().Nodes().Informer().HasSynced,
-		nodesInProcessing: map[string]*nodeProcessingInfo{},
+		client:      clientSet,
+		nodeLister:  sharedInfomer.Core().V1().Nodes().Lister(),
+		nodesSynced: sharedInfomer.Core().V1().Nodes().Informer().HasSynced,
+		queue:       workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "cloudCIDRAllocator"}),
 	}
-	go ca.worker(stopChan)
+	go wait.UntilWithContext(context.TODO(), ca.runWorker, time.Second)
 	nodeName := "testNode"
 	ca.AllocateOrOccupyCIDR(&v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -99,25 +100,6 @@ func TestBoundedRetries(t *testing.T) {
 
 func withinExpectedRange(got time.Duration, expected time.Duration) bool {
 	return got >= expected/2 && got <= 3*expected/2
-}
-
-func TestNodeUpdateRetryTimeout(t *testing.T) {
-	for _, tc := range []struct {
-		count int
-		want  time.Duration
-	}{
-		{count: 0, want: 250 * time.Millisecond},
-		{count: 1, want: 500 * time.Millisecond},
-		{count: 2, want: 1000 * time.Millisecond},
-		{count: 3, want: 2000 * time.Millisecond},
-		{count: 50, want: 5000 * time.Millisecond},
-	} {
-		t.Run(fmt.Sprintf("count %d", tc.count), func(t *testing.T) {
-			if got := nodeUpdateRetryTimeout(tc.count); !withinExpectedRange(got, tc.want) {
-				t.Errorf("nodeUpdateRetryTimeout(tc.count) = %v; want %v", got, tc.want)
-			}
-		})
-	}
 }
 
 func TestUpdateCIDRAllocation(t *testing.T) {

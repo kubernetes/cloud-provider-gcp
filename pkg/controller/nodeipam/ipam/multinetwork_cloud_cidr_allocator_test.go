@@ -7,6 +7,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/util/workqueue"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	"k8s.io/cloud-provider-gcp/pkg/controller/testutil"
 )
@@ -50,7 +51,7 @@ func TestNetworkToNodes(t *testing.T) {
 	testCases := []struct {
 		desc            string
 		network         *networkv1.Network
-		expectNodes     []string
+		expectNodes     map[string]struct{}
 		fakeNodeHandler *testutil.FakeNodeHandler
 	}{
 		{
@@ -71,7 +72,7 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node0", "node1"},
+			expectNodes: map[string]struct{}{"node0": {}, "node1": {}},
 		},
 		{
 			desc:    "all nodes with the network",
@@ -97,7 +98,7 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node0", "node1"},
+			expectNodes: map[string]struct{}{"node0": {}, "node1": {}},
 		},
 		{
 			desc:    "only one node with the network",
@@ -123,7 +124,7 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node1"},
+			expectNodes: map[string]struct{}{"node1": {}},
 		},
 		{
 			desc:    "redo node with corrupted annotation",
@@ -149,7 +150,7 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node0"},
+			expectNodes: map[string]struct{}{"node0": {}},
 		},
 		{
 			desc:    "skip node with annotation==nil",
@@ -172,7 +173,7 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node1"},
+			expectNodes: map[string]struct{}{"node1": {}},
 		},
 		{
 			desc:    "skip node with no MN annotation",
@@ -196,7 +197,7 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node1"},
+			expectNodes: map[string]struct{}{"node1": {}},
 		},
 	}
 	for _, tc := range testCases {
@@ -205,10 +206,9 @@ func TestNetworkToNodes(t *testing.T) {
 			fakeNodeInformer := getFakeNodeInformer(tc.fakeNodeHandler)
 
 			ca := &cloudCIDRAllocator{
-				nodeLister:        fakeNodeInformer.Lister(),
-				nodesSynced:       fakeNodeInformer.Informer().HasSynced,
-				nodeUpdateChannel: make(chan string, cidrUpdateQueueSize),
-				nodesInProcessing: map[string]*nodeProcessingInfo{},
+				nodeLister:  fakeNodeInformer.Lister(),
+				nodesSynced: fakeNodeInformer.Informer().HasSynced,
+				queue:       workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "cloudCIDRAllocator"}),
 			}
 
 			// test
@@ -216,14 +216,19 @@ func TestNetworkToNodes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error %v", err)
 			}
-			if len(ca.nodesInProcessing) != len(tc.expectNodes) {
-				t.Fatalf("unexpected number of requests (nodesInProcessing): %v\nexpected (expectNodes): %v", ca.nodesInProcessing, tc.expectNodes)
+			if ca.queue.Len() != len(tc.expectNodes) {
+				t.Fatalf("unexpected number of requests (nodesInProcessing): %v\nexpected (expectNodes): %v", ca.queue.Len(), tc.expectNodes)
 			}
 
-			for _, node := range tc.expectNodes {
-				_, ok := ca.nodesInProcessing[node]
+			n := ca.queue.Len()
+			for i := 1; i < n; i++ {
+				val, sh := ca.queue.Get()
+				if sh {
+					t.Fatalf("got preemtive queue shutdown")
+				}
+				_, ok := tc.expectNodes[val.(string)]
 				if !ok {
-					t.Fatalf("node %s not in processing", node)
+					t.Fatalf("unexpected node %s in processing", val)
 				}
 			}
 		})

@@ -20,15 +20,16 @@ limitations under the License.
 package ipam
 
 import (
+	"context"
 	"fmt"
-	"math/rand"
 	"net"
 	"reflect"
-	"sync"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/workqueue"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	"k8s.io/klog/v2"
 
@@ -55,11 +56,6 @@ import (
 	netutils "k8s.io/utils/net"
 )
 
-// nodeProcessingInfo tracks information related to current nodes in processing
-type nodeProcessingInfo struct {
-	retries int
-}
-
 // cloudCIDRAllocator allocates node CIDRs according to IP address aliases
 // assigned by the cloud provider. In this case, the allocation and
 // deallocation is delegated to the external provider, and the controller
@@ -79,16 +75,8 @@ type cloudCIDRAllocator struct {
 	// nodesSynced returns true if the node shared informer has been synced at least once.
 	nodesSynced cache.InformerSynced
 
-	// Channel that is used to pass updating Nodes to the background.
-	// This increases the throughput of CIDR assignment by parallelization
-	// and not blocking on long operations (which shouldn't be done from
-	// event handlers anyway).
-	nodeUpdateChannel chan string
-	recorder          record.EventRecorder
-
-	// Keep a set of nodes that are currectly being processed to avoid races in CIDR allocation
-	lock              sync.Mutex
-	nodesInProcessing map[string]*nodeProcessingInfo
+	recorder record.EventRecorder
+	queue    workqueue.RateLimitingInterface
 }
 
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
@@ -111,15 +99,14 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		return nil, err
 	}
 	ca := &cloudCIDRAllocator{
-		client:            client,
-		cloud:             gceCloud,
-		networksLister:    nwInformer.Lister(),
-		gnpLister:         gnpInformer.Lister(),
-		nodeLister:        nodeInformer.Lister(),
-		nodesSynced:       nodeInformer.Informer().HasSynced,
-		nodeUpdateChannel: make(chan string, cidrUpdateQueueSize),
-		recorder:          recorder,
-		nodesInProcessing: map[string]*nodeProcessingInfo{},
+		client:         client,
+		cloud:          gceCloud,
+		networksLister: nwInformer.Lister(),
+		gnpLister:      gnpInformer.Lister(),
+		nodeLister:     nodeInformer.Lister(),
+		nodesSynced:    nodeInformer.Informer().HasSynced,
+		recorder:       recorder,
+		queue:          workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "cloudCIDRAllocator"}),
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -210,6 +197,10 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 
+	ctx, cancelFn := context.WithCancel(context.Background())
+	defer cancelFn()
+	defer ca.queue.ShutDown()
+
 	klog.Infof("Starting cloud CIDR allocator")
 	defer klog.Infof("Shutting down cloud CIDR allocator")
 
@@ -218,102 +209,64 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 	}
 
 	for i := 0; i < cidrUpdateWorkers; i++ {
-		go ca.worker(stopCh)
+		go wait.UntilWithContext(ctx, ca.runWorker, time.Second)
 	}
 
 	<-stopCh
 }
 
-func (ca *cloudCIDRAllocator) worker(stopChan <-chan struct{}) {
-	for {
-		select {
-		case workItem, ok := <-ca.nodeUpdateChannel:
-			if !ok {
-				klog.Warning("Channel nodeCIDRUpdateChannel was unexpectedly closed")
-				return
-			}
-			if err := ca.updateCIDRAllocation(workItem); err == nil {
-				klog.V(3).Infof("Updated CIDR for %q", workItem)
-			} else {
-				klog.Errorf("Error updating CIDR for %q: %v", workItem, err)
-				if canRetry, timeout := ca.retryParams(workItem); canRetry {
-					klog.V(2).Infof("Retrying update for %q after %v", workItem, timeout)
-					time.AfterFunc(timeout, func() {
-						// Requeue the failed node for update again.
-						ca.nodeUpdateChannel <- workItem
-					})
-					continue
-				}
-				klog.Errorf("Exceeded retry count for %q, dropping from queue", workItem)
-			}
-			ca.removeNodeFromProcessing(workItem)
-		case <-stopChan:
-			return
-		}
+func (ca *cloudCIDRAllocator) AllocateOrOccupyCIDR(node *v1.Node) error {
+	klog.V(4).Infof("Putting node %s into the work queue", node.Name)
+	ca.queue.Add(node.Name)
+	return nil
+}
+
+func (ca *cloudCIDRAllocator) runWorker(ctx context.Context) {
+	for ca.processNextItem(ctx) {
 	}
 }
 
-func (ca *cloudCIDRAllocator) insertNodeToProcessing(nodeName string) bool {
-	ca.lock.Lock()
-	defer ca.lock.Unlock()
-	if _, found := ca.nodesInProcessing[nodeName]; found {
+func (ca *cloudCIDRAllocator) processNextItem(ctx context.Context) bool {
+	key, quit := ca.queue.Get()
+	if quit {
 		return false
 	}
-	ca.nodesInProcessing[nodeName] = &nodeProcessingInfo{}
+
+	defer ca.queue.Done(key)
+
+	klog.V(3).Infof("Processing %s", key)
+	//TODO: properly enable and pass ctx to updateCIDRAllocation
+	err := ca.updateCIDRAllocation(key.(string))
+	ca.handleErr(err, key)
 	return true
 }
 
-func (ca *cloudCIDRAllocator) retryParams(nodeName string) (bool, time.Duration) {
-	ca.lock.Lock()
-	defer ca.lock.Unlock()
+// handleErr checks if an error happened and makes sure we will retry later.
+func (ca *cloudCIDRAllocator) handleErr(err error, key interface{}) {
+	if err == nil {
+		// Forget about the #AddRateLimited history of the key on every successful synchronization.
+		// This ensures that future processing of updates for this key is not delayed because of
+		// an outdated error history.
+		ca.queue.Forget(key)
+		klog.V(3).Infof("Updated CIDR for %q", key)
+		return
+	}
+	klog.Errorf("Error updating CIDR for %q: %v", key, err)
 
-	entry, ok := ca.nodesInProcessing[nodeName]
-	if !ok {
-		klog.Errorf("Cannot get retryParams for %q as entry does not exist", nodeName)
-		return false, 0
+	// This controller retries updateMaxRetries times if something goes wrong. After that, it stops trying.
+	if ca.queue.NumRequeues(key) < updateMaxRetries {
+		klog.Warningf("Error while updating Node object, retrying %q: %v", key, err)
+
+		// Re-enqueue the key rate limited. Based on the rate limiter on the
+		// queue and the re-enqueue history, the key will be processed later again.
+		ca.queue.AddRateLimited(key)
+		return
 	}
 
-	count := entry.retries + 1
-	if count > updateMaxRetries {
-		return false, 0
-	}
-	ca.nodesInProcessing[nodeName].retries = count
-
-	return true, nodeUpdateRetryTimeout(count)
-}
-
-func nodeUpdateRetryTimeout(count int) time.Duration {
-	timeout := updateRetryTimeout
-	for i := 0; i < count && timeout < maxUpdateRetryTimeout; i++ {
-		timeout *= 2
-	}
-	if timeout > maxUpdateRetryTimeout {
-		timeout = maxUpdateRetryTimeout
-	}
-	return time.Duration(timeout.Nanoseconds()/2 + rand.Int63n(timeout.Nanoseconds()))
-}
-
-func (ca *cloudCIDRAllocator) removeNodeFromProcessing(nodeName string) {
-	ca.lock.Lock()
-	defer ca.lock.Unlock()
-	delete(ca.nodesInProcessing, nodeName)
-}
-
-// WARNING: If you're adding any return calls or defer any more work from this
-// function you have to make sure to update nodesInProcessing properly with the
-// disposition of the node when the work is done.
-func (ca *cloudCIDRAllocator) AllocateOrOccupyCIDR(node *v1.Node) error {
-	if node == nil {
-		return nil
-	}
-	if !ca.insertNodeToProcessing(node.Name) {
-		klog.V(2).InfoS("Node is already in a process of CIDR assignment", "node", klog.KObj(node))
-		return nil
-	}
-
-	klog.V(4).Infof("Putting node %s into the work queue", node.Name)
-	ca.nodeUpdateChannel <- node.Name
-	return nil
+	ca.queue.Forget(key)
+	// Report to an external entity that, even after several retries, we could not successfully process this key
+	utilruntime.HandleError(err)
+	klog.Errorf("Exceeded retry count for %q, dropping from queue", key)
 }
 
 // updateCIDRAllocation assigns CIDR to Node and sends an update to the API server.
