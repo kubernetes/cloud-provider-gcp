@@ -160,6 +160,11 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 				klog.Errorf("Received unexpected object: %v", originalObj)
 				return
 			}
+			if !meta.IsStatusConditionTrue(nw.Status.Conditions, string(networkv1.NetworkConditionStatusReady)) {
+				// ignore non-Ready Networks
+				klog.V(5).Infof("Ignoring non-Ready Network (%s) create event", nw.Name)
+				return
+			}
 			klog.V(0).Infof("Received Network (%s) create event", nw.Name)
 			err := ca.NetworkToNodes(nil)
 			if err != nil {
@@ -170,9 +175,19 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 			oldNet := origOldObj.(*networkv1.Network)
 			newNet := origNewObj.(*networkv1.Network)
 			readyCond := string(networkv1.NetworkConditionStatusReady)
-			if meta.IsStatusConditionTrue(oldNet.Status.Conditions, readyCond) != meta.IsStatusConditionTrue(newNet.Status.Conditions, readyCond) {
+			newStatus := meta.IsStatusConditionTrue(newNet.Status.Conditions, readyCond)
+			if meta.IsStatusConditionTrue(oldNet.Status.Conditions, readyCond) != newStatus {
 				klog.V(0).Infof("Received Network (%s) update event", newNet.Name)
-				err := ca.NetworkToNodes(newNet)
+				var err error
+				if newStatus {
+					// Networks that Ready condition switched to True, we need to discover
+					// it on every node
+					err = ca.NetworkToNodes(nil)
+				} else {
+					// Networks that Ready condition switched to False, we need to remove
+					// it only from nodes using it
+					err = ca.NetworkToNodes(newNet)
+				}
 				if err != nil {
 					utilruntime.HandleError(fmt.Errorf("error while adding Nodes to queue: %v", err))
 				}
