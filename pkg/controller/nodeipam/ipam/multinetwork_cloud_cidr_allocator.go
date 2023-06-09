@@ -150,7 +150,7 @@ func allocateIPCapacity(node *v1.Node, nodeNetworks networkv1.MultiNetworkAnnota
 	}
 	// Rebuild the IP capacity for all the networks on the node by deleting the existing IP capacities first.
 	for name := range resourceList {
-		if strings.HasPrefix(name.String(), networkv1.NetworkResourceKeyPrefix) {
+		if strings.HasPrefix(name.String(), networkv1.NetworkResourceKeyPrefix) && strings.HasSuffix(name.String(), ".IP") {
 			delete(resourceList, name)
 		}
 	}
