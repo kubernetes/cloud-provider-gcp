@@ -267,7 +267,7 @@ func (c *Controller) reconcile(ctx context.Context, key string) error {
 func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
 	if params.DeletionTimestamp != nil {
 		// GKENetworkParamSet is being deleted, handle the delete event
-		return c.handleGKENetworkParamSetDelete(ctx, params)
+		return c.handleGNPDelete(ctx, params)
 	}
 
 	addFinalizerInPlace(params)
@@ -298,7 +298,7 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 	}
 	// see if one of the networks is referencing this GNP
 	for _, network := range networks.Items {
-		if network.Spec.ParametersRef.Name == params.Name && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) {
+		if network.Spec.ParametersRef != nil && network.Spec.ParametersRef.Name == params.Name && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) {
 			err = c.syncNetworkWithGNP(ctx, &network, params)
 			if err != nil {
 				return err
@@ -333,33 +333,51 @@ func (c *Controller) syncNetworkWithGNP(ctx context.Context, network *networkv1.
 	return nil
 }
 
-func (c *Controller) handleGKENetworkParamSetDelete(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
+// handleGNPDelete checks to see if its safe to delete the GNP resource before calling executeGNPDelete on it
+func (c *Controller) handleGNPDelete(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
 	if params.Status.NetworkName == "" {
-		removeFinalizerInPlace(params)
-		return nil
+		return c.executeGNPDelete(ctx, params, nil)
 	}
 
 	network, err := c.networkClientset.NetworkingV1().Networks().Get(ctx, params.Status.NetworkName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			removeFinalizerInPlace(params)
-			return nil
+			return c.executeGNPDelete(ctx, params, nil)
 		}
 		return err
 	}
 
 	networkStillRefersToGNP := network.Spec.ParametersRef != nil && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) && network.Spec.ParametersRef.Name == params.Name
 	if !networkStillRefersToGNP {
-		removeFinalizerInPlace(params)
-		return nil
+		return c.executeGNPDelete(ctx, params, network)
 	}
 
 	if networkStillRefersToGNP && !network.InUse() {
-		removeFinalizerInPlace(params)
-		return nil
+		return c.executeGNPDelete(ctx, params, network)
 	}
 
 	// if the network is in use, this GNP object will get reconciled again when the network's in use status changes.
+
+	return nil
+}
+
+func (c *Controller) executeGNPDelete(ctx context.Context, params *networkv1.GKENetworkParamSet, network *networkv1.Network) error {
+	removeFinalizerInPlace(params)
+
+	if network == nil {
+		return nil
+	}
+
+	newNetwork := network.DeepCopy()
+	meta.SetStatusCondition(&newNetwork.Status.Conditions, v1.Condition{
+		Type:    string(networkv1.NetworkConditionStatusParamsReady),
+		Status:  v1.ConditionFalse,
+		Reason:  string(networkv1.GNPDeleted),
+		Message: fmt.Sprintf("GKENetworkParamSet resource was deleted: %v", params.ObjectMeta.Name),
+	})
+	if _, err := c.networkClientset.NetworkingV1().Networks().UpdateStatus(ctx, newNetwork, v1.UpdateOptions{}); err != nil {
+		return err
+	}
 
 	return nil
 }
