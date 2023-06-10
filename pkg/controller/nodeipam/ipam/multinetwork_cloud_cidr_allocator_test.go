@@ -17,6 +17,10 @@ const (
 )
 
 func network(name, gkeNetworkParamsName string, isReady bool) *networkv1.Network {
+	return networkAll(name, gkeNetworkParamsName, networkv1.L3NetworkType, isReady)
+}
+
+func networkAll(name, gkeNetworkParamsName string, netType networkv1.NetworkType, isReady bool) *networkv1.Network {
 	status := metav1.ConditionFalse
 	if isReady {
 		status = metav1.ConditionTrue
@@ -27,7 +31,7 @@ func network(name, gkeNetworkParamsName string, isReady bool) *networkv1.Network
 			Name: name,
 		},
 		Spec: networkv1.NetworkSpec{
-			Type: "L3",
+			Type: netType,
 			ParametersRef: &networkv1.NetworkParametersReference{
 				Group: group,
 				Kind:  gkeNetworkParamsKind,

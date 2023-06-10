@@ -77,11 +77,16 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 			if gnp.Spec.PodIPv4Ranges != nil {
 				secondaryRangeNames = gnp.Spec.PodIPv4Ranges.RangeNames
 			}
-			// In case of host networking, the node interfaces do not have the secondary ranges. We still need to update the
-			// north-interface information on the node.
-			if len(secondaryRangeNames) == 0 && !networkv1.IsDefaultNetwork(network.Name) {
+
+			if network.Spec.Type == networkv1.DeviceNetworkType {
+				processedNetworks[network.Name] = struct{}{}
 				northInterfaces = append(northInterfaces, networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP})
+				if _, ok := upStatusNetworks[network.Name]; ok {
+					additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{inf.NetworkIP + "/32"}})
+				}
+				continue
 			}
+
 			// Each secondary range in a subnet corresponds to a pod-network. AliasIPRanges list on a node interface consists of IP ranges that belong to multiple secondary ranges (pod-networks).
 			// Match the secondary range names of interface and GKENetworkParams and set the right IpCidrRange for current network.
 			for _, secondaryRangeName := range secondaryRangeNames {
@@ -145,7 +150,7 @@ func allocateIPCapacity(node *v1.Node, nodeNetworks networkv1.MultiNetworkAnnota
 	}
 	// Rebuild the IP capacity for all the networks on the node by deleting the existing IP capacities first.
 	for name := range resourceList {
-		if strings.HasPrefix(name.String(), networkv1.NetworkResourceKeyPrefix) {
+		if strings.HasPrefix(name.String(), networkv1.NetworkResourceKeyPrefix) && strings.HasSuffix(name.String(), ".IP") {
 			delete(resourceList, name)
 		}
 	}

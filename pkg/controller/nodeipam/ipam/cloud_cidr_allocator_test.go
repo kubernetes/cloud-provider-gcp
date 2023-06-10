@@ -546,6 +546,8 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			},
 		},
 		{
+			// this is incorrect configuration, Network should be Device type in such situation
+			// no annotation change for such network
 			name: "[mn] no secondary ranges in GKENetworkParams",
 			networks: []*networkv1.Network{
 				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
@@ -603,7 +605,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				},
 			},
 			nodeChanges: func(node *v1.Node) {
-				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"},{\"network\":\"%s\",\"ipAddress\":\"84.1.2.1\"}]", redNetworkName, blueNetworkName)
+				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
 				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
 					"networking.gke.io.networks/Red-Network.IP": *resource.NewQuantity(128, resource.DecimalSI),
@@ -611,8 +613,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			},
 			expectedUpdate: true,
 			expectedMetrics: map[string]float64{
-				redNetworkName:  float64(1),
-				blueNetworkName: float64(1),
+				redNetworkName: float64(1),
 			},
 		},
 		{
@@ -1144,6 +1145,70 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				}
 			},
 			expectedUpdate: true,
+		},
+		{
+			name: "[mn] one additional device network along with default network",
+			networks: []*networkv1.Network{
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				networkAll(redNetworkName, redGKENetworkParamsName, networkv1.DeviceNetworkType, true),
+			},
+			gkeNwParams: []*networkv1.GKENetworkParamSet{
+				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
+				gkeNetworkParams(redGKENetworkParamsName, redVPCName, redVPCSubnetName, []string{}),
+			},
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey: fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName),
+							},
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+						Status: v1.NodeStatus{
+							Capacity: v1.ResourceList{},
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						interfaces(defaultVPCName, defaultVPCSubnetName, "80.1.172.1", []*compute.AliasIpRange{
+							{IpCidrRange: "192.168.1.0/24", SubnetworkRangeName: defaultSecondaryRangeA},
+						}),
+						interfaces(redVPCName, redVPCSubnetName, "10.1.1.1", []*compute.AliasIpRange{
+							{IpCidrRange: "172.11.1.0/24", SubnetworkRangeName: redSecondaryRangeA},
+						}),
+					},
+				},
+			},
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "192.168.1.0/24"
+				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
+				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"10.1.1.1/32\"],\"scope\":\"host-local\"}]", redNetworkName)
+				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
+					"networking.gke.io.networks/Red-Network.IP": *resource.NewQuantity(1, resource.DecimalSI),
+				}
+			},
+			expectedUpdate: true,
+			expectedMetrics: map[string]float64{
+				redNetworkName: float64(1),
+			},
 		},
 	}
 
