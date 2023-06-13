@@ -21,10 +21,10 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/hms"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/auth"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/serviceaccounts"
 )
 
@@ -117,13 +117,13 @@ func TestProcess(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-			server := hms.NewFakeServer(map[string]string{
+			server := auth.NewFakeServer(map[string]string{
 				ksa1.Key(): gsa1,
 				ksa2.Key(): gsa2,
 			})
-			hms, err := hms.NewClient(server.Server.URL, nil)
+			auth, err := auth.NewClient(server.Server.URL, "", nil)
 			if err != nil {
-				t.Fatalf("Failed to create HMS client")
+				t.Fatalf("Failed to create Auth service client")
 			}
 			h := &NodeHandler{
 				podIndexer: &fakeIndexer{
@@ -135,7 +135,7 @@ func TestProcess(t *testing.T) {
 						ksa2: serviceaccounts.GSAEmail(gsa2),
 					},
 				},
-				hms:         hms,
+				auth:        auth,
 				nodeIndexer: &fakeIndexer{node: tc.node},
 				nodeMap:     &nodeMap{m: make(map[string]*nodeGSAs)},
 			}

@@ -75,6 +75,8 @@ var (
 	directPath                             = pflag.Bool("direct-path", false, "Enable Direct Path.")
 	directPathMode                         = pflag.String("direct-path-mode", "v2", "Direct Path mode.")
 	delayDirectPathGSARemove               = pflag.Bool("delay-direct-path-gsa-remove", false, "Delay removal of deleted Direct Path workloads' Google Service Accounts.")
+	authAuthorizeServiceAccountMappingURL  = pflag.String("auth-authorize-service-account-mapping-url", "", "URL for reaching the Auth Service AuthorizeServiceAccountMapping API.")
+	authSyncNodeURL                        = pflag.String("auth-sync-node-url", "", "URL for reaching the Auth Service SyncNode API.")
 	hmsAuthorizeSAMappingURL               = pflag.String("hms-authorize-sa-mapping-url", "", "URL for reaching the Hosted Master Service AuthorizeSAMapping API.")
 	hmsSyncNodeURL                         = pflag.String("hms-sync-node-url", "", "URL for reaching the Hosted Master Service SyncNode API.")
 	kubeletReadOnlyCSRApprover             = pflag.Bool("kubelet-read-only-csr-approver", false, "Enable kubelet readonly csr approver or not")
@@ -173,6 +175,8 @@ type controllerManager struct {
 	csrApproverAllowLegacyKubelet          bool
 	csrApproverUseGCEInstanceListReferrers bool
 	leaderElectionConfig                   componentbaseconfig.LeaderElectionConfiguration
+	authAuthorizeServiceAccountMappingURL  string
+	authSyncNodeURL                        string
 	hmsAuthorizeSAMappingURL               string
 	hmsSyncNodeURL                         string
 	delayDirectPathGSARemove               bool
@@ -246,6 +250,8 @@ func run(s *controllerManager) error {
 				csrApproverAllowLegacyKubelet:          s.csrApproverAllowLegacyKubelet,
 				csrApproverUseGCEInstanceListReferrers: s.csrApproverUseGCEInstanceListReferrers,
 				verifiedSAs:                            verifiedSAs,
+				authAuthorizeServiceAccountMappingURL:  s.authAuthorizeServiceAccountMappingURL,
+				authSyncNodeURL:                        s.authSyncNodeURL,
 				hmsAuthorizeSAMappingURL:               s.hmsAuthorizeSAMappingURL,
 				hmsSyncNodeURL:                         s.hmsSyncNodeURL,
 				delayDirectPathGSARemove:               s.delayDirectPathGSARemove,

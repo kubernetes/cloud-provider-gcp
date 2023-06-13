@@ -10,9 +10,9 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/serviceaccounts",
     visibility = ["//visibility:public"],
     deps = [
+        "//cmd/gcp-controller-manager/dpwi/auth",
         "//cmd/gcp-controller-manager/dpwi/ctxlog",
         "//cmd/gcp-controller-manager/dpwi/eventhandler",
-        "//cmd/gcp-controller-manager/dpwi/hms",
         "//vendor/golang.org/x/sync/singleflight",
         "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/client-go/informers/core/v1:core",
@@ -28,7 +28,7 @@ go_test(
     ],
     embed = [":serviceaccounts"],
     deps = [
-        "//cmd/gcp-controller-manager/dpwi/hms",
+        "//cmd/gcp-controller-manager/dpwi/auth",
         "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",

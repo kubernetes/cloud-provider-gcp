@@ -21,10 +21,10 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/hms"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/auth"
 )
 
 const (
@@ -251,7 +251,7 @@ func newV1SA(ksa ServiceAccount, gsa string) *v1.ServiceAccount {
 	return sa
 }
 
-func setUpDefaultVerifierForTest(t *testing.T) (*Verifier, *hms.FakeServer) {
+func setUpDefaultVerifierForTest(t *testing.T) (*Verifier, *auth.FakeServer) {
 	return setUpVerifierForTest(t, map[string]*v1.ServiceAccount{
 		ksa1.Key(): v1SA1,
 		ksa2.Key(): v1SA2,
@@ -263,18 +263,18 @@ func setUpDefaultVerifierForTest(t *testing.T) (*Verifier, *hms.FakeServer) {
 		},
 	)
 }
-func setUpVerifierForTest(t *testing.T, ksas map[string]*v1.ServiceAccount, permittedPairs map[string]string) (*Verifier, *hms.FakeServer) {
+func setUpVerifierForTest(t *testing.T, ksas map[string]*v1.ServiceAccount, permittedPairs map[string]string) (*Verifier, *auth.FakeServer) {
 	t.Helper()
-	server := hms.NewFakeServer(permittedPairs)
-	hms, err := hms.NewClient(server.Server.URL, nil)
+	server := auth.NewFakeServer(permittedPairs)
+	auth, err := auth.NewClient(server.Server.URL, "", nil)
 	if err != nil {
-		t.Fatalf("Failed to create HMS client")
+		t.Fatalf("Failed to create Auth service client")
 	}
 	indexer := &fakeIndexer{
 		m: ksas,
 	}
 	return &Verifier{
-		hms:         hms,
+		auth:        auth,
 		verifiedSAs: newSAMap(),
 		saIndexer:   indexer,
 	}, server

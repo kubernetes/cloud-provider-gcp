@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package hms provides clients to call HMS to sync node and authorize SA.
-package hms
+// Package auth provides clients to call Auth service to sync node and authorize SA.
+package auth
 
 import (
 	"context"
@@ -33,20 +33,25 @@ import (
 )
 
 const (
-	hmsRequestTimeout = 30 * time.Second
+	authRequestTimeout = 30 * time.Second
 )
 
-// Client is an HMS client.
+// Client is an Auth service client.
 type Client struct {
 	webhook *webhook.GenericWebhook
+	useAuth bool
 }
 
 // NewClient creates a new client with the server url and the AuthProviderConfig.
-func NewClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*Client, error) {
+func NewClient(url, hmsURL string, authProvider *clientcmdapi.AuthProviderConfig) (*Client, error) {
+	useAuth := url != ""
+	if !useAuth {
+		url = hmsURL
+	}
 	config := &rest.Config{
 		Host:         url,
 		AuthProvider: authProvider,
-		Timeout:      hmsRequestTimeout,
+		Timeout:      authRequestTimeout,
 		QPS:          50,
 		Burst:        100,
 		ContentConfig: rest.ContentConfig{
@@ -59,6 +64,7 @@ func NewClient(url string, authProvider *clientcmdapi.AuthProviderConfig) (*Clie
 	}
 	return &Client{
 		webhook: &webhook.GenericWebhook{RestClient: rc, RetryBackoff: *apiserveroptions.DefaultAuthWebhookRetryBackoff(), ShouldRetry: webhook.DefaultShouldRetry},
+		useAuth: useAuth,
 	}, nil
 }
 
@@ -70,31 +76,55 @@ func isErrorHTTPStatus(statusCode int) bool {
 // Sync syncs gsaList on a node in a specific zone.
 func (h *Client) Sync(ctx context.Context, node, zone string, gsaList []string) error {
 	sort.Strings(gsaList)
-	req := syncNodeRequest{
-		NodeName:  node,
-		NodeZone:  zone,
-		GSAEmails: gsaList,
+	if !h.useAuth {
+		return h.call(ctx, hmsSyncNodeRequest{
+			NodeName:  node,
+			NodeZone:  zone,
+			GSAEmails: gsaList,
+		}, nil)
 	}
-	return h.call(ctx, req, nil)
+	return h.call(ctx, syncNodeRequest{
+		Node:                  node,
+		NodeZone:              zone,
+		GoogleServiceAccounts: gsaList,
+	}, nil)
 }
 
 // Authorize implements the saMappingAuthorizer interface.  It calls HMS to verify if ksa has
 // permission to get certificates as gsa.
 func (h *Client) Authorize(ctx context.Context, kns, ksa, gsa string) (bool, error) {
-	reqMapping := serviceAccountMapping{
-		KNSName:  kns,
-		KSAName:  ksa,
-		GSAEmail: gsa,
-	}
-	req := authorizeSAMappingRequest{
-		RequestedMappings: []serviceAccountMapping{reqMapping},
+	if !h.useAuth {
+		reqMapping := hmsServiceAccountMapping{
+			KNSName:  kns,
+			KSAName:  ksa,
+			GSAEmail: gsa,
+		}
+		var rsp hmsAuthorizeSAMappingResponse
+		if err := h.call(ctx, hmsAuthorizeSAMappingRequest{
+			RequestedMappings: []hmsServiceAccountMapping{reqMapping},
+		}, &rsp); err != nil {
+			return false, err
+		}
+		if permitted := rsp.PermittedMappings; len(permitted) > 0 && permitted[0] == reqMapping {
+			return true, nil
+		}
+		if denied := rsp.DeniedMappings; len(denied) > 0 && denied[0] == reqMapping {
+			return false, nil
+		}
+		return false, fmt.Errorf("internal error: requested mapping %v not found in response %+v", reqMapping, rsp)
 	}
 
+	reqMapping := serviceAccountMapping{
+		KubernetesNamespace:      kns,
+		KubernetesServiceAccount: ksa,
+		GoogleServiceAccount:     gsa,
+	}
 	var rsp authorizeSAMappingResponse
-	if err := h.call(ctx, req, &rsp); err != nil {
+	if err := h.call(ctx, authorizeSAMappingRequest{
+		RequestedMappings: []serviceAccountMapping{reqMapping},
+	}, &rsp); err != nil {
 		return false, err
 	}
-
 	if permitted := rsp.PermittedMappings; len(permitted) > 0 && permitted[0] == reqMapping {
 		return true, nil
 	}
@@ -158,6 +188,36 @@ type authorizeSAMappingResponse struct {
 // serviceAccountMapping specifies mapping of a Kubernetes Service Account to a GCP Service Account.
 type serviceAccountMapping struct {
 	// Name of a Kubernetes Namespace for ksa_name.
+	KubernetesNamespace string `json:"kubernetesNamespace"`
+
+	// Name of a Kubernetes Service Account namespaced under kns_name.
+	KubernetesServiceAccount string `json:"kubernetesServiceAccount"`
+
+	// Email address of a GCP Service Account; that is,
+	// <gsa_name>@<project_name>.iam.gserviceaccount.com.
+	GoogleServiceAccount string `json:"googleServiceAccount"`
+}
+
+// hmsAuthorizeSAMappingRequest is the request message for the authorizeSAMapping RPC.
+type hmsAuthorizeSAMappingRequest struct {
+	// List of KSA to GSA mappings to be authorized.
+	RequestedMappings []hmsServiceAccountMapping `json:"requestedMappings"`
+}
+
+// hmsAuthorizeSAMappingResponse is the response message for the authorizeSAMapping RPC.
+type hmsAuthorizeSAMappingResponse struct {
+	// List of KSA to GSA mappings from authorizeSAMappingRequest.requested_mappings that are
+	// denied.
+	DeniedMappings []hmsServiceAccountMapping `json:"deniedMappings"`
+
+	// List of KSA to GSA mappings from authorizeSAMappingRequest.requested_mappings that are
+	// permitted.
+	PermittedMappings []hmsServiceAccountMapping `json:"permittedMappings"`
+}
+
+// serviceAccountMapping specifies mapping of a Kubernetes Service Account to a GCP Service Account.
+type hmsServiceAccountMapping struct {
+	// Name of a Kubernetes Namespace for ksa_name.
 	KNSName string `json:"knsName"`
 
 	// Name of a Kubernetes Service Account namespaced under kns_name.
@@ -168,8 +228,19 @@ type serviceAccountMapping struct {
 	GSAEmail string `json:"gsaEmail"`
 }
 
-// Request for SyncNode RPC.
+// Request for SyncNode RPC of Auth service.
 type syncNodeRequest struct {
+	// Name of the zone for the node being synchronized.
+	NodeZone string `json:"nodeZone"`
+	// Name of the Kubernetes Node to be synchronized.
+	Node string `json:"node"`
+	// List of GCP Service Accounts for the Node in Email address format; that is,
+	// <gsa_name>@<project_name>.iam.gserviceaccount.com.
+	GoogleServiceAccounts []string `json:"googleServiceAccounts"`
+}
+
+// Request for SyncNode RPC of HMS.
+type hmsSyncNodeRequest struct {
 	// Name of the Kubernetes Node to be synchronized.
 	NodeName string `json:"nodeName"`
 	// List of GCP Service Accounts for the Node in Email address format; that is,
