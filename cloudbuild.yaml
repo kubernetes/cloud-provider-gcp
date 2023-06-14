@@ -27,6 +27,11 @@ steps:
       - --output_base=/workspace/bazel-base-linux-amd64
       - build
       - //cmd/gke-exec-auth-plugin
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args:
+      - cp
+      - /workspace/bazel-base-linux-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-exec-auth-plugin/gke-exec-auth-plugin_/gke-exec-auth-plugin
+      - gs://k8s-staging-cloud-provider-gcp/gke-exec-auth-plugin/linux-amd64/${_GIT_TAG}
   # build gke-gcloud-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
@@ -34,6 +39,11 @@ steps:
       - --output_base=/workspace/bazel-base-linux-amd64
       - build
       - //cmd/gke-gcloud-auth-plugin
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args:
+      - cp
+      - /workspace/bazel-base-linux-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin
+      - gs://k8s-staging-cloud-provider-gcp/gke-gcloud-auth-plugin/linux-amd64/${_GIT_TAG}
   # build auth-provider-gcp binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
@@ -41,6 +51,11 @@ steps:
       - --output_base=/workspace/bazel-base-linux-amd64
       - build
       - //cmd/auth-provider-gcp
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args:
+      - cp
+      - /workspace/bazel-base-linux-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp
+      - gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp/linux-amd64/${_GIT_TAG}
   # build gke-exec-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
@@ -49,6 +64,11 @@ steps:
       - build
       - --platforms=@io_bazel_rules_go//go/toolchain:linux_arm64
       - //cmd/gke-exec-auth-plugin
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args:
+      - cp
+      - /workspace/bazel-base-linux-arm64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-exec-auth-plugin/gke-exec-auth-plugin_/gke-exec-auth-plugin
+      - gs://k8s-staging-cloud-provider-gcp/gke-exec-auth-plugin/linux-arm64/${_GIT_TAG}
   # build gke-gcloud-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
@@ -57,6 +77,11 @@ steps:
       - build
       - --platforms=@io_bazel_rules_go//go/toolchain:linux_arm64
       - //cmd/gke-gcloud-auth-plugin
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args:
+      - cp
+      - /workspace/bazel-base-linux-arm64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin
+      - gs://k8s-staging-cloud-provider-gcp/gke-gcloud-auth-plugin/linux-arm64/${_GIT_TAG}
   # build auth-provider-gcp binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
@@ -65,6 +90,11 @@ steps:
       - build
       - --platforms=@io_bazel_rules_go//go/toolchain:linux_arm64
       - //cmd/auth-provider-gcp
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args:
+      - cp
+      - /workspace/bazel-base-linux-arm64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp
+      - gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp/linux-arm64/${_GIT_TAG} 
   # build gke-exec-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
@@ -73,6 +103,11 @@ steps:
       - build
       - --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64
       - //cmd/gke-exec-auth-plugin
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args:
+      - cp
+      - /workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-exec-auth-plugin/gke-exec-auth-plugin_/gke-exec-auth-plugin
+      - gs://k8s-staging-cloud-provider-gcp/gke-exec-auth-plugin/windows-amd64/${_GIT_TAG}
   # build gke-gcloud-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
@@ -81,6 +116,11 @@ steps:
       - build
       - --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64
       - //cmd/gke-gcloud-auth-plugin
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args:
+      - cp
+      - /workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin
+      - gs://k8s-staging-cloud-provider-gcp/gke-gcloud-auth-plugin/windows-amd64/${_GIT_TAG}
   # build auth-provider-gcp binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
@@ -89,21 +129,13 @@ steps:
       - build
       - --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64
       - //cmd/auth-provider-gcp
-# upload auth-provider-gcp. gke-gcloud-auth-plugin and gke-exec-auth-plugin binaries
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args:
+      - cp
+      - /workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp
+      - gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp/windows-amd64/${_GIT_TAG}
 # TODO: figure out how to do this better, most probably getting rid of bazel
-artifacts:
-  objects:
-    location: 'gs://k8s-staging-cloud-provider-gcp/cloud-auth-provider-$_GIT_TAG'
-    paths:
-      - '/workspace/bazel-base-linux-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp'
-      - '/workspace/bazel-base-linux-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin'
-      - '/workspace/bazel-base-linux-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-exec-auth-plugin/gke-exec-auth-plugin_/gke-exec-auth-plugin'
-      - '/workspace/bazel-base-linux-arm64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp'
-      - '/workspace/bazel-base-linux-arm64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin'
-      - '/workspace/bazel-base-linux-arm64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-exec-auth-plugin/gke-exec-auth-plugin_/gke-exec-auth-plugin'
-      - '/workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp.exe'
-      - '/workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin.exe'
-      - '/workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-exec-auth-plugin/gke-exec-auth-plugin_/gke-exec-auth-plugin.exe'
 substitutions:
   _PULL_BASE_REF: 'master'
   _GIT_TAG: '12345'
+  
