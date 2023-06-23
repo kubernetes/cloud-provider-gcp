@@ -3,7 +3,7 @@ This directory dpwi is short for Direct Path (via [ALTS](https://cloud.google.co
 It
 * listens to events of pods, service accounts, config maps, nodes
 * verifies if a KSA (Kubernetes Service Account) can act as a GSA (Google Service Account)
-* extracts all verified GSAs on a node and calls HMS to Sync. Down-streams will mint the credentials on the node.
+* extracts all verified GSAs on a node and calls Auth service to Sync. Down-streams will mint the credentials on the node.
 
 Below is the system graph and a brief introduction about how each component works.
  # System graph
@@ -12,14 +12,14 @@ Below is the system graph and a brief introduction about how each component work
 ## SA Verifier
 This is a key component that it interacts with all other handlers.
 
-It can verify if a KSA can act as a GSA by calling HMS and store the allowed/denied result. Since there can be many concurrent calls, we can use singleflight to minimize the calls to HMS.
+It can verify if a KSA can act as a GSA by calling Auth service and store the allowed/denied result. Since there can be many concurrent calls, we can use singleflight to minimize the calls to Auth service.
 
 It provides 3 APIs
-* ForceVerify(ksa) - Get the annotated GSA. If GSA is not empty, call HMS to verify the permission no matter if it has been verified or not. Store the result.
+* ForceVerify(ksa) - Get the annotated GSA. If GSA is not empty, call Auth service to verify the permission no matter if it has been verified or not. Store the result.
 Only SA Event Handler calls this API.
 
 
-* VerifiedGSA(ksa) - If it has the result locally, use it. Otherwise, call HMS to verify it.
+* VerifiedGSA(ksa) - If it has the result locally, use it. Otherwise, call Auth service to verify it.
 This is for the Pod event handler and the node sync event handler.
 
 
@@ -38,7 +38,7 @@ Since the IAM propagation can take up to 7 minutes, we will retry SA event if it
 If the pod’s KSA can act as a GSA (by calling the SA verifier), it triggers a node event.
 
 ## Node Event Handler
-For a node event, it iterates all pods on the node, makes sure each pod is verified, collects the complete list of GSAs and calls HMS to Sync.
+For a node event, it iterates all pods on the node, makes sure each pod is verified, collects the complete list of GSAs and calls Auth service to Sync.
 
 We use workqueue to store the events, so if there’re many concurrent events for the same node, they will be collapsed into one.
 

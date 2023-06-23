@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package hms
+package auth
 
 import (
 	"encoding/json"
@@ -38,14 +38,14 @@ type FakeServer struct {
 
 // NewFakeServer creates a new FakeServer for testing.
 func NewFakeServer(saMappings map[string]string) *FakeServer {
-	hms := &FakeServer{
+	auth := &FakeServer{
 		saMappings:     saMappings,
 		SyncGSAs:       make(map[string][]string),
 		SyncCount:      make(map[string]int),
 		AuthorizeCount: make(map[string]int),
 	}
-	hms.Server = httptest.NewServer(hms)
-	return hms
+	auth.Server = httptest.NewServer(auth)
+	return auth
 }
 
 // ServeHTTP implements the http.Handler interface.
@@ -56,9 +56,9 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var syncReq syncNodeRequest
-	if err := json.Unmarshal(raw, &syncReq); err == nil && syncReq.NodeName != "" {
-		n := syncReq.NodeName
-		f.SyncGSAs[n] = syncReq.GSAEmails
+	if err := json.Unmarshal(raw, &syncReq); err == nil && syncReq.Node != "" {
+		n := syncReq.Node
+		f.SyncGSAs[n] = syncReq.GoogleServiceAccounts
 		f.SyncCount[n]++
 		return
 	}
@@ -69,9 +69,9 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var resp authorizeSAMappingResponse
 	for _, m := range req.RequestedMappings {
-		key := fmt.Sprintf("%s/%s", m.KNSName, m.KSAName)
+		key := fmt.Sprintf("%s/%s", m.KubernetesNamespace, m.KubernetesServiceAccount)
 		f.AuthorizeCount[key]++
-		if f.saMappings[key] == m.GSAEmail {
+		if f.saMappings[key] == m.GoogleServiceAccount {
 			resp.PermittedMappings = append(resp.PermittedMappings, m)
 		} else {
 			resp.DeniedMappings = append(resp.DeniedMappings, m)

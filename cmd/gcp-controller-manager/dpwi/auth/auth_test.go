@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package hms
+package auth
 
 import (
 	"context"
@@ -31,7 +31,7 @@ const (
 	testGSA = "gsa@testproject.iam.gserviceaccount.com"
 )
 
-type testHMS struct {
+type testAuth struct {
 	server     *httptest.Server
 	saMappings map[serviceAccountMapping]bool
 	req        []byte
@@ -39,37 +39,37 @@ type testHMS struct {
 	wantErr    bool
 }
 
-func newTestHMS(saMappings map[serviceAccountMapping]bool, wantErr, isSyncCall bool) *testHMS {
-	hms := &testHMS{saMappings: saMappings, wantErr: wantErr, isSyncCall: isSyncCall}
-	hms.server = httptest.NewServer(hms)
-	return hms
+func newTestAuth(saMappings map[serviceAccountMapping]bool, wantErr, isSyncCall bool) *testAuth {
+	auth := &testAuth{saMappings: saMappings, wantErr: wantErr, isSyncCall: isSyncCall}
+	auth.server = httptest.NewServer(auth)
+	return auth
 }
 
 // ServeHTTP returns an error when wantErr is true.
 // For Sync(), it simply returns.
 // For Authorize(), it uses saMappings to populate the permitted/denied mappings.
-func (hms *testHMS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if hms.wantErr {
+func (auth *testAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if auth.wantErr {
 		http.Error(w, "random error message", http.StatusBadRequest)
 		return
 	}
 	var err error
-	hms.req, err = io.ReadAll(r.Body)
+	auth.req, err = io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("error reading request: %v", err), http.StatusInternalServerError)
 		return
 	}
-	if hms.isSyncCall {
+	if auth.isSyncCall {
 		return
 	}
 	var req authorizeSAMappingRequest
-	if err := json.Unmarshal(hms.req, &req); err != nil {
+	if err := json.Unmarshal(auth.req, &req); err != nil {
 		http.Error(w, fmt.Sprintf("error unmarshalling request: %v", err), http.StatusInternalServerError)
 		return
 	}
 	var resp authorizeSAMappingResponse
 	for _, m := range req.RequestedMappings {
-		if hms.saMappings[m] {
+		if auth.saMappings[m] {
 			resp.PermittedMappings = append(resp.PermittedMappings, m)
 		} else {
 			resp.DeniedMappings = append(resp.DeniedMappings, m)
@@ -84,8 +84,8 @@ func TestAuthorize(t *testing.T) {
 	permittedKSA := "permittedKSA"
 	deniedKSA := "deniedKSA"
 	saMappings := map[serviceAccountMapping]bool{
-		{KSAName: deniedKSA, KNSName: testKNS, GSAEmail: testGSA}:    false,
-		{KSAName: permittedKSA, KNSName: testKNS, GSAEmail: testGSA}: true,
+		{KubernetesServiceAccount: deniedKSA, KubernetesNamespace: testKNS, GoogleServiceAccount: testGSA}:    false,
+		{KubernetesServiceAccount: permittedKSA, KubernetesNamespace: testKNS, GoogleServiceAccount: testGSA}: true,
 	}
 
 	tests := []struct {
@@ -110,18 +110,18 @@ func TestAuthorize(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-			hmsServer := newTestHMS(saMappings, tc.wantErr, false)
-			hmsClient, err := NewClient(hmsServer.server.URL, nil)
+			authServer := newTestAuth(saMappings, tc.wantErr, false)
+			authClient, err := NewClient(authServer.server.URL, "", nil)
 			if err != nil {
-				t.Fatalf("Error creating test HMS client: %v", err)
+				t.Fatalf("Error creating test Auth client: %v", err)
 			}
 
-			permitted, err := hmsClient.Authorize(context.Background(), testKNS, tc.ksa, testGSA)
+			permitted, err := authClient.Authorize(context.Background(), testKNS, tc.ksa, testGSA)
 			if got, want := err != nil, tc.wantErr; got != want {
-				t.Errorf("hmsClient.Authorize()=%v, want err: %v", err, want)
+				t.Errorf("authClient.Authorize()=%v, want err: %v", err, want)
 			}
 			if got, want := permitted, tc.wantPermitted; got != want {
-				t.Errorf("hmsClient.Authorize()=%v: want permitted: %v", err, want)
+				t.Errorf("authClient.Authorize()=%v: want permitted: %v", err, want)
 			}
 		})
 	}
@@ -143,32 +143,32 @@ func TestSync(t *testing.T) {
 		{
 			desc: "permitted ksa",
 			wantReq: syncNodeRequest{
-				NodeName:  node,
-				NodeZone:  zone,
-				GSAEmails: gsaList,
+				Node:                  node,
+				NodeZone:              zone,
+				GoogleServiceAccounts: gsaList,
 			},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-			hmsServer := newTestHMS(nil, tc.wantErr, true)
-			hmsClient, err := NewClient(hmsServer.server.URL, nil)
+			authServer := newTestAuth(nil, tc.wantErr, true)
+			authClient, err := NewClient(authServer.server.URL, "", nil)
 			if err != nil {
-				t.Fatalf("Error creating test HMS client: %v", err)
+				t.Fatalf("Error creating test Auth client: %v", err)
 			}
-			err = hmsClient.Sync(context.Background(), tc.wantReq.NodeName, tc.wantReq.NodeZone, tc.wantReq.GSAEmails)
+			err = authClient.Sync(context.Background(), tc.wantReq.Node, tc.wantReq.NodeZone, tc.wantReq.GoogleServiceAccounts)
 			if got, want := err != nil, tc.wantErr; got != want {
-				t.Errorf("hmsClient.Sync()=%v, want err: %v", err, want)
+				t.Errorf("authClient.Sync()=%v, want err: %v", err, want)
 			}
 			if err != nil {
 				return
 			}
 			var gotReq syncNodeRequest
-			if err := json.Unmarshal(hmsServer.req, &gotReq); err != nil {
-				t.Errorf("Got invalid HMS request %v: %v", hmsServer.req, err)
+			if err := json.Unmarshal(authServer.req, &gotReq); err != nil {
+				t.Errorf("Got invalid Auth request %v: %v", authServer.req, err)
 			}
 			if got, want := gotReq, tc.wantReq; !reflect.DeepEqual(got, want) {
-				t.Errorf("hmsClient.Sync()=%v: want: %v", got, want)
+				t.Errorf("authClient.Sync()=%v: want: %v", got, want)
 			}
 		})
 	}

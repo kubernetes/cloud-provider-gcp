@@ -39,12 +39,10 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 
 	// networks is list of networks that are Ready
 	networks := make([]*networkv1.Network, 0)
-	// filter networks based on status/Ready condition
+	// filter networks based only on Ready condition
+	// we do not filter Networks with DeletionTimestamp set, because we
+	// count on the Network "delete event" for cleanup
 	for _, network := range k8sNetworksList {
-		// don't process networks being deleted
-		if !network.DeletionTimestamp.IsZero() {
-			continue
-		}
 		if meta.IsStatusConditionTrue(network.Status.Conditions, string(networkv1.NetworkConditionStatusReady)) || networkv1.IsDefaultNetwork(network.Name) {
 			networks = append(networks, network)
 		}
@@ -79,11 +77,16 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 			if gnp.Spec.PodIPv4Ranges != nil {
 				secondaryRangeNames = gnp.Spec.PodIPv4Ranges.RangeNames
 			}
-			// In case of host networking, the node interfaces do not have the secondary ranges. We still need to update the
-			// north-interface information on the node.
-			if len(secondaryRangeNames) == 0 && !networkv1.IsDefaultNetwork(network.Name) {
+
+			if network.Spec.Type == networkv1.DeviceNetworkType {
+				processedNetworks[network.Name] = struct{}{}
 				northInterfaces = append(northInterfaces, networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP})
+				if _, ok := upStatusNetworks[network.Name]; ok {
+					additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{inf.NetworkIP + "/32"}})
+				}
+				continue
 			}
+
 			// Each secondary range in a subnet corresponds to a pod-network. AliasIPRanges list on a node interface consists of IP ranges that belong to multiple secondary ranges (pod-networks).
 			// Match the secondary range names of interface and GKENetworkParams and set the right IpCidrRange for current network.
 			for _, secondaryRangeName := range secondaryRangeNames {
@@ -130,9 +133,13 @@ func updateAnnotations(node *v1.Node, northInterfaces networkv1.NorthInterfacesA
 		node.Annotations = make(map[string]string)
 	}
 	node.Annotations[networkv1.NorthInterfacesAnnotationKey] = northInterfaceAnn
+	capacity, err := allocateIPCapacity(node, additionalNodeNetworks)
+	if err != nil {
+		return err
+	}
+	node.Status.Capacity = capacity
 	node.Annotations[networkv1.MultiNetworkAnnotationKey] = additionalNodeNwAnn
-	node.Status.Capacity, err = allocateIPCapacity(node, additionalNodeNetworks)
-	return err
+	return nil
 }
 
 // allocateIPCapacity updates the extended IP resource capacity for every non-default network on the node.
@@ -143,7 +150,7 @@ func allocateIPCapacity(node *v1.Node, nodeNetworks networkv1.MultiNetworkAnnota
 	}
 	// Rebuild the IP capacity for all the networks on the node by deleting the existing IP capacities first.
 	for name := range resourceList {
-		if strings.HasPrefix(name.String(), networkv1.NetworkResourceKeyPrefix) {
+		if strings.HasPrefix(name.String(), networkv1.NetworkResourceKeyPrefix) && strings.HasSuffix(name.String(), ".IP") {
 			delete(resourceList, name)
 		}
 	}

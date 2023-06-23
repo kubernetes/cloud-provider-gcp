@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
@@ -28,38 +29,44 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	networkclientset "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned"
+	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
+	networkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	controllersmetrics "k8s.io/component-base/metrics/prometheus/controllers"
+
 	"k8s.io/klog/v2"
 )
 
 const (
 	// GNPFinalizer - finalizer value placed on GNP objects by GNP Controller
 	GNPFinalizer = "networking.gke.io/gnp-controller"
-	gnpKind      = "GKENetworkParamSet"
+	gnpKind      = "gkenetworkparamset"
 )
 
 // Controller manages GKENetworkParamSet status.
 type Controller struct {
-	gkeNetworkParamsInformer cache.SharedIndexInformer
-	networkInformer          cache.SharedIndexInformer
+	gkeNetworkParamsInformer networkinformer.GKENetworkParamSetInformer
+	networkInformer          networkinformer.NetworkInformer
 	networkClientset         networkclientset.Interface
 	gceCloud                 *gce.Cloud
 	queue                    workqueue.RateLimitingInterface
+	networkInformerFactory   networkinformers.SharedInformerFactory
 }
 
 // NewGKENetworkParamSetController returns a new
 func NewGKENetworkParamSetController(
 	networkClientset networkclientset.Interface,
-	gkeNetworkParamsInformer cache.SharedIndexInformer,
-	networkInformer cache.SharedIndexInformer,
+	gkeNetworkParamsInformer networkinformer.GKENetworkParamSetInformer,
+	networkInformer networkinformer.NetworkInformer,
 	gceCloud *gce.Cloud,
+	networkInformerFactory networkinformers.SharedInformerFactory,
 ) *Controller {
 
 	// register GNP metrics
@@ -71,6 +78,7 @@ func NewGKENetworkParamSetController(
 		networkInformer:          networkInformer,
 		gceCloud:                 gceCloud,
 		queue:                    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "gkenetworkparamset"),
+		networkInformerFactory:   networkInformerFactory,
 	}
 
 }
@@ -88,7 +96,8 @@ func (c *Controller) Run(numWorkers int, stopCh <-chan struct{}, controllerManag
 	controllerManagerMetrics.ControllerStarted("gkenetworkparamset")
 	defer controllerManagerMetrics.ControllerStopped("gkenetworkparamset")
 
-	c.gkeNetworkParamsInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	gnpInf := c.gkeNetworkParamsInformer.Informer()
+	gnpInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			if err == nil {
@@ -101,6 +110,12 @@ func (c *Controller) Run(numWorkers int, stopCh <-chan struct{}, controllerManag
 				c.queue.Add(key)
 			}
 		},
+		DeleteFunc: func(obj interface{}) {
+			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+			if err == nil {
+				c.queue.Add(key)
+			}
+		},
 	})
 
 	// network.Spec.ParametersRef has 3 cases.
@@ -108,25 +123,26 @@ func (c *Controller) Run(numWorkers int, stopCh <-chan struct{}, controllerManag
 	// not nil, but points to a different type of params object (could eventually be something like awsParams)
 	// not nil and points to a GNP object (We want to process to these)
 
-	c.networkInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	nwInf := c.networkInformer.Informer()
+	nwInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			network := obj.(*networkv1.Network)
-			if network.Spec.ParametersRef != nil && network.Spec.ParametersRef.Kind == gnpKind {
+			if network.Spec.ParametersRef != nil && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) {
 				c.queue.Add(network.Spec.ParametersRef.Name)
 			}
 		},
 		// this could result in a large amount of updates, but we cap the number of possible networks to avoid those issues
 		UpdateFunc: func(old, new interface{}) {
 			newNetwork := new.(*networkv1.Network)
-			if newNetwork.Spec.ParametersRef != nil && newNetwork.Spec.ParametersRef.Kind == gnpKind {
+			if newNetwork.Spec.ParametersRef != nil && strings.EqualFold(newNetwork.Spec.ParametersRef.Kind, gnpKind) {
 				c.queue.Add(newNetwork.Spec.ParametersRef.Name)
 			}
 
 			// we need to check the old network to see if we are no longer referencing the same GNP
 			// this is important so we can delete a GNP waiting for a Network to no longer be inuse.
 			oldNetwork := old.(*networkv1.Network)
-			if oldNetwork.Spec.ParametersRef != nil && oldNetwork.Spec.ParametersRef.Kind == gnpKind {
-				if newNetwork.Spec.ParametersRef == nil || newNetwork.Spec.ParametersRef.Kind != gnpKind || oldNetwork.Spec.ParametersRef.Name != newNetwork.Spec.ParametersRef.Name {
+			if oldNetwork.Spec.ParametersRef != nil && strings.EqualFold(oldNetwork.Spec.ParametersRef.Kind, gnpKind) {
+				if newNetwork.Spec.ParametersRef == nil || !strings.EqualFold(newNetwork.Spec.ParametersRef.Kind, gnpKind) || oldNetwork.Spec.ParametersRef.Name != newNetwork.Spec.ParametersRef.Name {
 					c.queue.Add(oldNetwork.Spec.ParametersRef.Name)
 				}
 			}
@@ -134,13 +150,15 @@ func (c *Controller) Run(numWorkers int, stopCh <-chan struct{}, controllerManag
 
 		DeleteFunc: func(obj interface{}) {
 			network := obj.(*networkv1.Network)
-			if network.Spec.ParametersRef != nil && network.Spec.ParametersRef.Kind == gnpKind {
+			if network.Spec.ParametersRef != nil && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) {
 				c.queue.Add(network.Spec.ParametersRef.Name)
 			}
 		},
 	})
 
-	if !cache.WaitForNamedCacheSync("gkenetworkparamset", stopCh, c.gkeNetworkParamsInformer.HasSynced, c.networkInformer.HasSynced) {
+	c.networkInformerFactory.Start(stopCh)
+
+	if !cache.WaitForNamedCacheSync("gkenetworkparamset", stopCh, nwInf.HasSynced, gnpInf.HasSynced) {
 		return
 	}
 
@@ -222,18 +240,16 @@ func removeFinalizerInPlace(params *networkv1.GKENetworkParamSet) {
 }
 
 func (c *Controller) reconcile(ctx context.Context, key string) error {
-	obj, exists, err := c.gkeNetworkParamsInformer.GetIndexer().GetByKey(key)
+	originalParams, err := c.gkeNetworkParamsInformer.Lister().Get(key)
+
 	if err != nil {
+		if errors.IsNotFound(err) {
+			return c.cleanupGNPDeletion(ctx, key) // GNP was deleted, run cleanup
+		}
 		klog.Errorf("Fetching object with key %s from store failed with %v", key, err)
 		return err
 	}
 
-	if !exists {
-		// GKENetworkParamSet does not exist anymore since the work was queued, so move on
-		return nil
-	}
-
-	originalParams := obj.(*networkv1.GKENetworkParamSet)
 	params := originalParams.DeepCopy()
 
 	err = c.syncGNP(ctx, params)
@@ -266,7 +282,7 @@ func (c *Controller) reconcile(ctx context.Context, key string) error {
 func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
 	if params.DeletionTimestamp != nil {
 		// GKENetworkParamSet is being deleted, handle the delete event
-		return c.handleGKENetworkParamSetDelete(ctx, params)
+		return c.handleGNPDelete(ctx, params)
 	}
 
 	addFinalizerInPlace(params)
@@ -291,22 +307,34 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 		CIDRBlocks: cidrs,
 	}
 
-	networks, err := c.networkClientset.NetworkingV1().Networks().List(ctx, v1.ListOptions{})
+	network, err := c.getNetworkReferringToGNP(params.Name)
 	if err != nil {
 		return err
 	}
-	// see if one of the networks is referencing this GNP
-	for _, network := range networks.Items {
-		if network.Spec.ParametersRef.Name == params.Name && network.Spec.ParametersRef.Kind == gnpKind {
-			err = c.syncNetworkWithGNP(ctx, &network, params)
-			if err != nil {
-				return err
-			}
-			break
-		}
+	if network == nil {
+		return nil
 	}
 
+	err = c.syncNetworkWithGNP(ctx, network, params)
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+// getNetworkReferringToGNP returns the Network that references the GNP name, or nil if none exist
+func (c *Controller) getNetworkReferringToGNP(gnpName string) (*networkv1.Network, error) {
+	networks, err := c.networkInformer.Lister().List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	// see if one of the networks is referencing this GNP
+	for _, network := range networks {
+		if network.Spec.ParametersRef != nil && network.Spec.ParametersRef.Name == gnpName && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) {
+			return network, nil
+		}
+	}
+	return nil, nil
 }
 
 // syncNetworkWithGNP does the cross sync of Network with GNP.
@@ -332,33 +360,60 @@ func (c *Controller) syncNetworkWithGNP(ctx context.Context, network *networkv1.
 	return nil
 }
 
-func (c *Controller) handleGKENetworkParamSetDelete(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
+// handleGNPDelete checks to see if its safe to delete the GNP resource before calling executeGNPDelete on it
+func (c *Controller) handleGNPDelete(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
 	if params.Status.NetworkName == "" {
-		removeFinalizerInPlace(params)
-		return nil
+		return c.executeGNPDelete(ctx, params, nil)
 	}
 
 	network, err := c.networkClientset.NetworkingV1().Networks().Get(ctx, params.Status.NetworkName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			removeFinalizerInPlace(params)
-			return nil
+			return c.executeGNPDelete(ctx, params, nil)
 		}
 		return err
 	}
 
-	networkStillRefersToGNP := network.Spec.ParametersRef != nil && network.Spec.ParametersRef.Kind == gnpKind && network.Spec.ParametersRef.Name == params.Name
+	networkStillRefersToGNP := network.Spec.ParametersRef != nil && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) && network.Spec.ParametersRef.Name == params.Name
 	if !networkStillRefersToGNP {
-		removeFinalizerInPlace(params)
-		return nil
+		return c.executeGNPDelete(ctx, params, network)
 	}
 
 	if networkStillRefersToGNP && !network.InUse() {
-		removeFinalizerInPlace(params)
-		return nil
+		return c.executeGNPDelete(ctx, params, network)
 	}
 
 	// if the network is in use, this GNP object will get reconciled again when the network's in use status changes.
+
+	return nil
+}
+
+func (c *Controller) executeGNPDelete(ctx context.Context, params *networkv1.GKENetworkParamSet, network *networkv1.Network) error {
+	removeFinalizerInPlace(params)
+
+	return nil
+}
+
+// cleanupGNPDeletion is called post GNP deletion
+func (c *Controller) cleanupGNPDeletion(ctx context.Context, gnpName string) error {
+	network, err := c.getNetworkReferringToGNP(gnpName)
+	if err != nil {
+		return err
+	}
+	if network == nil {
+		return nil
+	}
+
+	newNetwork := network.DeepCopy()
+	meta.SetStatusCondition(&newNetwork.Status.Conditions, v1.Condition{
+		Type:    string(networkv1.NetworkConditionStatusParamsReady),
+		Status:  v1.ConditionFalse,
+		Reason:  string(networkv1.GNPDeleted),
+		Message: fmt.Sprintf("GKENetworkParamSet resource was deleted: %v", gnpName),
+	})
+	if _, err := c.networkClientset.NetworkingV1().Networks().UpdateStatus(ctx, newNetwork, v1.UpdateOptions{}); err != nil {
+		return err
+	}
 
 	return nil
 }

@@ -6,9 +6,9 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/nodesyncer",
     visibility = ["//visibility:public"],
     deps = [
+        "//cmd/gcp-controller-manager/dpwi/auth",
         "//cmd/gcp-controller-manager/dpwi/ctxlog",
         "//cmd/gcp-controller-manager/dpwi/eventhandler",
-        "//cmd/gcp-controller-manager/dpwi/hms",
         "//cmd/gcp-controller-manager/dpwi/serviceaccounts",
         "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/client-go/informers/core/v1:core",
@@ -23,7 +23,7 @@ go_test(
     srcs = ["nodesyncer_test.go"],
     embed = [":nodesyncer"],
     deps = [
-        "//cmd/gcp-controller-manager/dpwi/hms",
+        "//cmd/gcp-controller-manager/dpwi/auth",
         "//cmd/gcp-controller-manager/dpwi/serviceaccounts",
         "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/k8s.io/api/core/v1:core",

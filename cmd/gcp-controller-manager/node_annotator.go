@@ -144,6 +144,22 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 				},
 			},
 			{
+				name: "resize-request-reconciler",
+				annotate: func(node *core.Node, instance *compute.Instance) bool {
+					resizeRequestName := extractResizeRequestLabel(instance)
+					if resizeRequestName == nil {
+						return false
+					}
+
+					if node.ObjectMeta.Labels == nil {
+						node.ObjectMeta.Labels = make(map[string]string)
+					}
+
+					node.ObjectMeta.Labels["autoscaling.gke.io/provisioning-request"] = *resizeRequestName
+					return true
+				},
+			},
+			{
 				name: "taints-reconciler",
 				annotate: func(node *core.Node, instance *compute.Instance) bool {
 					klog.Infof("Triggering taint reconcilation")
@@ -287,28 +303,55 @@ func extractKubeLabels(instance *compute.Instance) (map[string]string, error) {
 		return nil, errNoMetadata
 	}
 
-	var kubeLabels *string
-	for _, item := range instance.Metadata.Items {
-		if item == nil || item.Key != labelsKey {
-			continue
-		}
-		if item.Value == nil {
-			return nil, fmt.Errorf("instance %q had nil %q", instance.SelfLink, labelsKey)
-		}
-		kubeLabels = item.Value
-	}
-	if kubeLabels == nil {
+	kubeLabels, found := findValue(instance.Metadata.Items, labelsKey, instance.SelfLink)
+	if !found {
 		return nil, errNoMetadata
 	}
-	if len(*kubeLabels) == 0 {
+
+	if len(kubeLabels) == 0 {
 		return make(map[string]string), nil
 	}
 
-	parsedLabels, err := parseLabels(*kubeLabels)
+	parsedLabels, err := parseLabels(kubeLabels)
 	if err != nil {
 		return nil, fmt.Errorf("instance %q had %s", instance.SelfLink, err.Error())
 	}
 	return parsedLabels, nil
+}
+
+func extractResizeRequestLabel(instance *compute.Instance) *string {
+	const createdByRRKey = "google-compute-mig-resize-request"
+
+	if instance.Metadata == nil {
+		return nil
+	}
+
+	createdByRR, found := findValue(instance.Metadata.Items, createdByRRKey, instance.SelfLink)
+	if !found {
+		return nil
+	}
+
+	// createdByRR is expected to be of format "projects/<project_id>/…", extracting the last part of the path
+	if elements := strings.Split(createdByRR, "/"); len(elements) > 1 {
+		return &elements[len(elements)-1]
+	}
+
+	klog.Warningf("Retrieved label value %q has unexpected format", createdByRR)
+	return nil
+}
+
+func findValue(items []*compute.MetadataItems, key, selfLink string) (string, bool) {
+	for _, item := range items {
+		if item == nil || item.Key != key {
+			continue
+		}
+		if item.Value == nil {
+			klog.Warningf("Cannot retrieve value, instance %q had nil %q", selfLink, key)
+			return "", false
+		}
+		return *item.Value, true
+	}
+	return "", false
 }
 
 func extractNodeTaints(instance *compute.Instance) ([]core.Taint, error) {

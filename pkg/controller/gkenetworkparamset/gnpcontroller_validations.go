@@ -37,6 +37,7 @@ func (val *gnpValidation) toCondition() v1.Condition {
 
 	if val.IsValid {
 		condition.Status = v1.ConditionTrue
+		condition.Reason = string(networkv1.GNPReady)
 	} else {
 		condition.Status = v1.ConditionFalse
 		condition.Reason = string(val.ErrorReason)
@@ -191,6 +192,7 @@ func (val *gnpNetworkCrossValidation) toCondition() v1.Condition {
 
 	if val.IsValid {
 		condition.Status = v1.ConditionTrue
+		condition.Reason = string(networkv1.GNPParamsReady)
 	} else {
 		condition.Status = v1.ConditionFalse
 		condition.Reason = string(val.ErrorReason)

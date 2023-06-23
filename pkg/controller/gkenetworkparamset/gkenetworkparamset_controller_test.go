@@ -10,21 +10,20 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 	"google.golang.org/api/compute/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	condmeta "k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/cache"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	"k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/fake"
-	v1informers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
+	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
+
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/component-base/metrics/prometheus/controllers"
 )
 
 type testGKENetworkParamSetController struct {
-	ctx             context.Context
-	stop            context.CancelFunc
 	networkClient   *fake.Clientset
-	gnpInformer     cache.SharedIndexInformer
-	networkInformer cache.SharedIndexInformer
+	informerFactory networkinformers.SharedInformerFactory
 	clusterValues   gce.TestClusterValues
 	controller      *Controller
 	metrics         *controllers.ControllerManagerMetrics
@@ -38,16 +37,18 @@ const (
 
 func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParamSetController {
 	fakeNetworking := fake.NewSimpleClientset()
-	gkeNetworkParamSetInformer := v1informers.NewGKENetworkParamSetInformer(fakeNetworking, 0*time.Second, cache.Indexers{})
-	networkInformer := v1informers.NewNetworkInformer(fakeNetworking, 0*time.Second, cache.Indexers{})
+	nwInfFactory := networkinformers.NewSharedInformerFactory(fakeNetworking, 0*time.Second)
+	nwInformer := nwInfFactory.Networking().V1().Networks()
+	gnpInformer := nwInfFactory.Networking().V1().GKENetworkParamSets()
 	testClusterValues := gce.DefaultTestClusterValues()
 	testClusterValues.NetworkURL = fmt.Sprintf("projects/%v/global/network/%v", testClusterValues.ProjectID, defaultTestNetworkName)
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
 	controller := NewGKENetworkParamSetController(
 		fakeNetworking,
-		gkeNetworkParamSetInformer,
-		networkInformer,
+		gnpInformer,
+		nwInformer,
 		fakeGCE,
+		nwInfFactory,
 	)
 	metrics := controllers.NewControllerManagerMetrics("test")
 
@@ -66,8 +67,7 @@ func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParam
 
 	return &testGKENetworkParamSetController{
 		networkClient:   fakeNetworking,
-		gnpInformer:     gkeNetworkParamSetInformer,
-		networkInformer: networkInformer,
+		informerFactory: nwInfFactory,
 		clusterValues:   testClusterValues,
 		controller:      controller,
 		metrics:         metrics,
@@ -76,8 +76,6 @@ func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParam
 }
 
 func (testVals *testGKENetworkParamSetController) runGKENetworkParamSetController(ctx context.Context) {
-	go testVals.gnpInformer.Run(ctx.Done())
-	go testVals.networkInformer.Run(ctx.Done())
 	go testVals.controller.Run(1, ctx.Done(), testVals.metrics)
 }
 
@@ -575,6 +573,7 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			expectedCondition: v1.Condition{
 				Type:   "Ready",
 				Status: v1.ConditionTrue,
+				Reason: "GNPReady",
 			},
 		},
 		{
@@ -867,6 +866,7 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 			expectedCondition: v1.Condition{
 				Type:   "ParamsReady",
 				Status: v1.ConditionTrue,
+				Reason: "GNPParamsReady",
 			},
 		},
 		{
@@ -893,6 +893,34 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 			expectedCondition: v1.Condition{
 				Type:   "ParamsReady",
 				Status: v1.ConditionTrue,
+				Reason: "GNPParamsReady",
+			},
+		},
+		{
+			name: "Valid and Network has mixed case kind in ParametersRef",
+			network: &networkv1.Network{
+				ObjectMeta: v1.ObjectMeta{
+					Name: networkName,
+				},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.DeviceNetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: gkeNetworkParamSetName, Kind: "GkEnetworkparamSet"},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: v1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:        nonDefaultTestNetworkName,
+					VPCSubnet:  subnetName,
+					DeviceMode: networkv1.NetDevice,
+				},
+			},
+			expectedCondition: v1.Condition{
+				Type:   "ParamsReady",
+				Status: v1.ConditionTrue,
+				Reason: "GNPParamsReady",
 			},
 		},
 	}
@@ -981,37 +1009,6 @@ func TestHandleGKENetworkParamSetDelete_NetworkInUse(t *testing.T) {
 				}
 			},
 		},
-		{name: "Network switches params while InUse",
-			networkUpdateFn: func(ctx context.Context, networkName string, networkClient *fake.Clientset) {
-				network, err := networkClient.NetworkingV1().Networks().Get(ctx, networkName, v1.GetOptions{})
-				if err != nil {
-					t.Fatalf("Failed to get Network: %v", err)
-				}
-				network.Spec = networkv1.NetworkSpec{
-					Type:          networkv1.DeviceNetworkType,
-					ParametersRef: &networkv1.NetworkParametersReference{Name: "other-paramset", Kind: gnpKind},
-				}
-				_, err = networkClient.NetworkingV1().Networks().Update(ctx, network, v1.UpdateOptions{})
-				if err != nil {
-					t.Fatalf("Failed to update Network: %v", err)
-				}
-			},
-		},
-		{name: "Network removes params while InUse",
-			networkUpdateFn: func(ctx context.Context, networkName string, networkClient *fake.Clientset) {
-				network, err := networkClient.NetworkingV1().Networks().Get(ctx, networkName, v1.GetOptions{})
-				if err != nil {
-					t.Fatalf("Failed to get Network: %v", err)
-				}
-				network.Spec = networkv1.NetworkSpec{
-					Type: networkv1.DeviceNetworkType,
-				}
-				_, err = networkClient.NetworkingV1().Networks().Update(ctx, network, v1.UpdateOptions{})
-				if err != nil {
-					t.Fatalf("Failed to update Network: %v", err)
-				}
-			},
-		},
 	}
 	for _, test := range tests {
 		test := test
@@ -1021,6 +1018,23 @@ func TestHandleGKENetworkParamSetDelete_NetworkInUse(t *testing.T) {
 			defer stop()
 
 			testVals := setupGKENetworkParamSetController(ctx)
+
+			subnetName := "test-subnet"
+			subnet := &compute.Subnetwork{
+				Name: subnetName,
+				SecondaryIpRanges: []*compute.SubnetworkSecondaryRange{
+					{
+						IpCidrRange: "10.0.0.0/24",
+						RangeName:   "test-secondary-range",
+					},
+				},
+			}
+			subnetKey := meta.RegionalKey(subnet.Name, testVals.clusterValues.Region)
+			err := testVals.cloud.Compute().Subnetworks().Insert(ctx, subnetKey, subnet)
+			if err != nil {
+				t.Error(err)
+			}
+
 			testVals.runGKENetworkParamSetController(ctx)
 
 			networkName := "test-network"
@@ -1044,14 +1058,17 @@ func TestHandleGKENetworkParamSetDelete_NetworkInUse(t *testing.T) {
 					Name:       gkeNetworkParamSetName,
 					Finalizers: []string{GNPFinalizer},
 				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:        nonDefaultTestNetworkName,
+					VPCSubnet:  subnetName,
+					DeviceMode: networkv1.NetDevice,
+				},
 				Status: networkv1.GKENetworkParamSetStatus{
 					NetworkName: networkName,
 				},
 			}
-			now := v1.Now()
-			paramSet.SetDeletionTimestamp(&now)
 
-			_, err := testVals.networkClient.NetworkingV1().Networks().Create(ctx, network, v1.CreateOptions{})
+			_, err = testVals.networkClient.NetworkingV1().Networks().Create(ctx, network, v1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("Failed to create Network: %v", err)
 			}
@@ -1063,13 +1080,61 @@ func TestHandleGKENetworkParamSetDelete_NetworkInUse(t *testing.T) {
 
 			g.Consistently(func() (bool, error) {
 				return testVals.doesGNPFinalizerExist(ctx, gkeNetworkParamSetName)
-			}).Should(gomega.BeTrue(), "finalizer should not be removed from GKENetworkParamSet")
+			}).Should(gomega.BeTrue(), "finalizer should exist on GKENetworkParamSet")
+
+			g.Eventually(func() bool {
+				network, err := testVals.networkClient.NetworkingV1().Networks().Get(ctx, networkName, v1.GetOptions{})
+				if err != nil {
+					t.Fatalf("Failed to get Network: %v", err)
+				}
+
+				return condmeta.IsStatusConditionTrue(network.Status.Conditions, "ParamsReady")
+			}).Should(gomega.BeTrue(), "ParamsReady should be true in Network Conditions")
+
+			newParamset, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, v1.GetOptions{})
+			if err != nil {
+				t.Fatalf("Failed to get GKENetworkParamSet: %v", err)
+			}
+
+			// simulate a delete on GNP resource
+			now := v1.Now()
+			newParamset.SetDeletionTimestamp(&now)
+			_, err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Update(ctx, newParamset, v1.UpdateOptions{})
+			if err != nil {
+				t.Fatalf("Failed to update GKENetworkParamSet: %v", err)
+			}
 
 			test.networkUpdateFn(ctx, networkName, testVals.networkClient)
 
 			g.Eventually(func() (bool, error) {
 				return testVals.doesGNPFinalizerExist(ctx, gkeNetworkParamSetName)
 			}).Should(gomega.BeFalse(), "finalizer should be removed from GKENetworkParamSet")
+
+			// The finalizer was removed, we need to manually handle the deletion
+			err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Delete(ctx, gkeNetworkParamSetName, v1.DeleteOptions{})
+			if err != nil {
+				t.Fatalf("Failed to delete GKENetworkParamSet: %v", err)
+			}
+
+			// networkUpdateFn can delete network, so we only want to make an assertion
+			// on network conditions if it still exists
+			networkWasDeleted := false
+			_, err = testVals.networkClient.NetworkingV1().Networks().Get(ctx, networkName, v1.GetOptions{})
+			if errors.IsNotFound(err) {
+				networkWasDeleted = true
+			} else if err != nil {
+				t.Fatalf("Failed to get Network: %v", err)
+			}
+
+			if !networkWasDeleted {
+				g.Eventually(func() bool {
+					network, err := testVals.networkClient.NetworkingV1().Networks().Get(ctx, networkName, v1.GetOptions{})
+					if err != nil {
+						t.Fatalf("Failed to get Network: %v", err)
+					}
+					return condmeta.IsStatusConditionFalse(network.Status.Conditions, "ParamsReady")
+				}).Should(gomega.BeTrue(), "ParamsReady should be removed from Network Conditions")
+			}
 
 		})
 	}

@@ -26,8 +26,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/auth"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/configmap"
-	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/hms"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/nodesyncer"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/pods"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/serviceaccounts"
@@ -45,6 +45,8 @@ type controllerContext struct {
 	csrApproverAllowLegacyKubelet          bool
 	csrApproverUseGCEInstanceListReferrers bool
 	verifiedSAs                            *saMap
+	authAuthorizeServiceAccountMappingURL  string
+	authSyncNodeURL                        string
 	hmsAuthorizeSAMappingURL               string
 	hmsSyncNodeURL                         string
 	delayDirectPathGSARemove               bool
@@ -178,13 +180,13 @@ func loopNames() []string {
 }
 
 func directPathV2Loop(ctx context.Context, controllerCtx *controllerContext) error {
-	hms, err := hms.NewClient(controllerCtx.hmsAuthorizeSAMappingURL, &clientcmdapi.AuthProviderConfig{Name: "gcp"})
+	auth, err := auth.NewClient(controllerCtx.authAuthorizeServiceAccountMappingURL, controllerCtx.hmsAuthorizeSAMappingURL, &clientcmdapi.AuthProviderConfig{Name: "gcp"})
 	if err != nil {
 		return err
 	}
 	verifier := serviceaccounts.NewVerifier(
 		controllerCtx.sharedInformers.Core().V1().ServiceAccounts(),
-		hms,
+		auth,
 	)
 	cmHandler := configmap.NewEventHandler(
 		controllerCtx.client,
@@ -204,6 +206,7 @@ func directPathV2Loop(ctx context.Context, controllerCtx *controllerContext) err
 		controllerCtx.sharedInformers.Core().V1().Pods(),
 		controllerCtx.sharedInformers.Core().V1().Nodes(),
 		verifier,
+		controllerCtx.authSyncNodeURL,
 		controllerCtx.hmsSyncNodeURL,
 	)
 	if err != nil {
