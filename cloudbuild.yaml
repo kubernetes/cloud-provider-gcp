@@ -106,7 +106,7 @@ steps:
   - name: 'gcr.io/cloud-builders/gsutil'
     args:
       - cp
-      - /workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-exec-auth-plugin/gke-exec-auth-plugin_/gke-exec-auth-plugin
+      - /workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-exec-auth-plugin/gke-exec-auth-plugin_/gke-exec-auth-plugin.exe
       - gs://k8s-staging-cloud-provider-gcp/gke-exec-auth-plugin/windows-amd64/${_GIT_TAG}
   # build gke-gcloud-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
@@ -119,7 +119,7 @@ steps:
   - name: 'gcr.io/cloud-builders/gsutil'
     args:
       - cp
-      - /workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin
+      - /workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin.exe
       - gs://k8s-staging-cloud-provider-gcp/gke-gcloud-auth-plugin/windows-amd64/${_GIT_TAG}
   # build auth-provider-gcp binary
   - name: 'gcr.io/cloud-builders/bazel'
@@ -132,7 +132,7 @@ steps:
   - name: 'gcr.io/cloud-builders/gsutil'
     args:
       - cp
-      - /workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp
+      - /workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp.exe
       - gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp/windows-amd64/${_GIT_TAG}
 # TODO: figure out how to do this better, most probably getting rid of bazel
 substitutions:
