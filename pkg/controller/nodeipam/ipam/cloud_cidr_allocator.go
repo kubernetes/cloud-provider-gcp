@@ -48,6 +48,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	networkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
 	networklister "k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1"
+	"k8s.io/cloud-provider-gcp/pkg/controllermetrics"
 	nodeutil "k8s.io/cloud-provider-gcp/pkg/util"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	utiltaints "k8s.io/cloud-provider-gcp/pkg/util/taints"
@@ -55,6 +56,8 @@ import (
 	v1nodeutil "k8s.io/component-helpers/node/util"
 	netutils "k8s.io/utils/net"
 )
+
+const workqueueName = "cloudCIDRAllocator"
 
 // cloudCIDRAllocator allocates node CIDRs according to IP address aliases
 // assigned by the cloud provider. In this case, the allocation and
@@ -106,7 +109,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		nodeLister:     nodeInformer.Lister(),
 		nodesSynced:    nodeInformer.Informer().HasSynced,
 		recorder:       recorder,
-		queue:          workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "cloudCIDRAllocator"}),
+		queue:          workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -282,6 +285,8 @@ func (ca *cloudCIDRAllocator) handleErr(err error, key interface{}) {
 	// Report to an external entity that, even after several retries, we could not successfully process this key
 	utilruntime.HandleError(err)
 	klog.Errorf("Exceeded retry count for %q, dropping from queue", key)
+	controllermetrics.WorkqueueDroppedObjects.WithLabelValues(workqueueName).Inc()
+
 }
 
 // updateCIDRAllocation assigns CIDR to Node and sends an update to the API server.

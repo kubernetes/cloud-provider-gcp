@@ -55,14 +55,13 @@ func (c *Controller) getAndValidateSubnet(ctx context.Context, params *networkv1
 		return nil, &gnpValidation{
 			IsValid:      false,
 			ErrorReason:  networkv1.SubnetNotFound,
-			ErrorMessage: fmt.Sprintf("subnet not specified"),
+			ErrorMessage: "subnet not specified",
 		}
 	}
 
 	// Check if Subnet exists
 	subnet, err := c.gceCloud.GetSubnetwork(c.gceCloud.Region(), params.Spec.VPCSubnet)
 	if err != nil || subnet == nil {
-		fetchSubnetErrs.Inc()
 		return nil, &gnpValidation{
 			IsValid:      false,
 			ErrorReason:  networkv1.SubnetNotFound,
@@ -80,7 +79,7 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 		return &gnpValidation{
 			IsValid:      false,
 			ErrorReason:  networkv1.VPCNotFound,
-			ErrorMessage: fmt.Sprintf("VPC not specified"),
+			ErrorMessage: "VPC not specified",
 		}, nil
 	}
 
@@ -100,7 +99,7 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 		return &gnpValidation{
 			IsValid:      false,
 			ErrorReason:  networkv1.SecondaryRangeAndDeviceModeUnspecified,
-			ErrorMessage: fmt.Sprintf("SecondaryRange and DeviceMode are unspecified. One must be specified."),
+			ErrorMessage: "SecondaryRange and DeviceMode are unspecified. One must be specified.",
 		}, nil
 	}
 

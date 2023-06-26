@@ -38,6 +38,7 @@ import (
 	networkclientset "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned"
 	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
 	networkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
+	"k8s.io/cloud-provider-gcp/pkg/controllermetrics"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	controllersmetrics "k8s.io/component-base/metrics/prometheus/controllers"
 
@@ -46,8 +47,9 @@ import (
 
 const (
 	// GNPFinalizer - finalizer value placed on GNP objects by GNP Controller
-	GNPFinalizer = "networking.gke.io/gnp-controller"
-	gnpKind      = "gkenetworkparamset"
+	GNPFinalizer  = "networking.gke.io/gnp-controller"
+	gnpKind       = "gkenetworkparamset"
+	workqueueName = "gkenetworkparamset"
 )
 
 // Controller manages GKENetworkParamSet status.
@@ -77,7 +79,7 @@ func NewGKENetworkParamSetController(
 		gkeNetworkParamsInformer: gkeNetworkParamsInformer,
 		networkInformer:          networkInformer,
 		gceCloud:                 gceCloud,
-		queue:                    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "gkenetworkparamset"),
+		queue:                    workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
 		networkInformerFactory:   networkInformerFactory,
 	}
 
@@ -212,6 +214,7 @@ func (c *Controller) handleErr(err error, key interface{}) {
 	// Report to an external entity that, even after several retries, we could not successfully process this key
 	utilruntime.HandleError(err)
 	klog.Errorf("Dropping GKENetworkParamSet %q out of the queue: %v", key, err)
+	controllermetrics.WorkqueueDroppedObjects.WithLabelValues(workqueueName).Inc()
 }
 
 // addFinalizerInPlace adds a finalizer by mutating params if it doesnt already exist
@@ -271,8 +274,8 @@ func (c *Controller) reconcile(ctx context.Context, key string) error {
 		return err
 	}
 
-	gnpObjects.WithLabelValues(originalParams.Status.NetworkName, strconv.FormatBool(meta.IsStatusConditionTrue(originalParams.Status.Conditions, string(networkv1.GKENetworkParamSetStatusReady))), string(originalParams.Spec.DeviceMode)).Dec()
-	gnpObjects.WithLabelValues(params.Status.NetworkName, strconv.FormatBool(meta.IsStatusConditionTrue(params.Status.Conditions, string(networkv1.GKENetworkParamSetStatusReady))), string(params.Spec.DeviceMode)).Inc()
+	gnpObjects.WithLabelValues(strconv.FormatBool(meta.IsStatusConditionTrue(originalParams.Status.Conditions, string(networkv1.GKENetworkParamSetStatusReady))), string(originalParams.Spec.DeviceMode)).Dec()
+	gnpObjects.WithLabelValues(strconv.FormatBool(meta.IsStatusConditionTrue(params.Status.Conditions, string(networkv1.GKENetworkParamSetStatusReady))), string(params.Spec.DeviceMode)).Inc()
 
 	return nil
 }
