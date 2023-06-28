@@ -8,15 +8,15 @@ rules:
 - apiGroups:
   - networking.gke.io
   resources:
-  - network
+  - networks
   verbs:
   - get
 - apiGroups:
   - networking.gke.io
   resources:
-  - network/status
-  - gkenetworkparamset
-  - gkenetworkparamset/status
+  - networks/status
+  - gkenetworkparamsets
+  - gkenetworkparamsets/status
   verbs:
   - update
   - get
