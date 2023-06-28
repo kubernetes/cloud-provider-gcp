@@ -15,18 +15,10 @@ var (
 		&metrics.GaugeOpts{
 			Subsystem:      GKENetworkParamSetSubsystem,
 			Name:           "gnp_object_total",
-			Help:           "Gauge measuring number of GKENetworkParamSet objects",
+			Help:           "Gauge measuring number of GKENetworkParamSet objects.",
 			StabilityLevel: metrics.ALPHA,
 		},
-		[]string{"networkName", "status", "type"},
-	)
-	fetchSubnetErrs = metrics.NewCounter(
-		&metrics.CounterOpts{
-			Subsystem:      GKENetworkParamSetSubsystem,
-			Name:           "fetch_subnet_errors_total",
-			Help:           "Number of Errors for fetching subnetwork for GNP sync",
-			StabilityLevel: metrics.ALPHA,
-		},
+		[]string{"status", "type"},
 	)
 )
 
@@ -36,6 +28,5 @@ var registerGNPMetrics sync.Once
 func registerGKENetworkParamSetMetrics() {
 	registerGNPMetrics.Do(func() {
 		legacyregistry.MustRegister(gnpObjects)
-		legacyregistry.MustRegister(fetchSubnetErrs)
 	})
 }

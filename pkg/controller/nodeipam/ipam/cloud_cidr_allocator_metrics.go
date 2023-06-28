@@ -15,7 +15,7 @@ var (
 		&metrics.GaugeOpts{
 			Subsystem:      nodeIpamSubsystem,
 			Name:           "multinetwork_node_total",
-			Help:           "Gauge measuring number of multinetworking nodes that have subscribed to a given network",
+			Help:           "Gauge measuring number of multinetworking nodes that have subscribed to a given network.",
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{"network"},

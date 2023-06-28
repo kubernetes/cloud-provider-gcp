@@ -18,6 +18,7 @@ go_library(
     deps = [
         "//pkg/controller/nodeipam/ipam/cidrset",
         "//pkg/controller/nodeipam/ipam/sync",
+        "//pkg/controllermetrics",
         "//pkg/util",
         "//pkg/util/node",
         "//pkg/util/taints",

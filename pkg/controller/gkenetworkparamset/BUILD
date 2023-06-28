@@ -10,6 +10,7 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/pkg/controller/gkenetworkparamset",
     visibility = ["//visibility:public"],
     deps = [
+        "//pkg/controllermetrics",
         "//providers/gce",
         "//vendor/github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud",
         "//vendor/github.com/hashicorp/go-multierror",
