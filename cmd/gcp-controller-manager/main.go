@@ -114,6 +114,8 @@ func main() {
 		csrApproverAllowLegacyKubelet:          *csrApproverAllowLegacyKubelet,
 		csrApproverUseGCEInstanceListReferrers: *csrApproverUseGCEInstanceListReferrers,
 		leaderElectionConfig:                   *leConfig,
+		authAuthorizeServiceAccountMappingURL:  *authAuthorizeServiceAccountMappingURL,
+		authSyncNodeURL:                        *authSyncNodeURL,
 		hmsAuthorizeSAMappingURL:               *hmsAuthorizeSAMappingURL,
 		hmsSyncNodeURL:                         *hmsSyncNodeURL,
 		healthz:                                healthz.NewHandler(),
