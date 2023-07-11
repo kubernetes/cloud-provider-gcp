@@ -91,6 +91,44 @@ func TestIsDefaultNetwork(t *testing.T) {
 	}
 }
 
+func TestIsDefaultNetworkOrEmpty(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{
+			name:  "empty",
+			input: "",
+			want:  true,
+		},
+		{
+			name:  "old name",
+			input: DefaultNetworkName,
+			want:  true,
+		},
+		{
+			name:  "new name",
+			input: DefaultPodNetworkName,
+			want:  true,
+		},
+		{
+			name:  "non-default name",
+			input: "test",
+			want:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := IsDefaultNetworkOrEmpty(tc.input)
+			if got != tc.want {
+				t.Fatalf("IsDefaultNetworkOrEmpty(%+v) returns %v but want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDefaultNetworkIfEmpty(t *testing.T) {
 	tests := []struct {
 		name  string

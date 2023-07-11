@@ -18,6 +18,13 @@ func IsDefaultNetwork(networkName string) bool {
 	return networkName == DefaultNetworkName || networkName == DefaultPodNetworkName
 }
 
+// IsDefaultNetworkOrEmpty takes a network name and returns if it is a default network or empty.
+// Both DefaultNetworkName and DefaultPodNetworkName are considered as default network for compatibility purposes.
+// DefaultNetworkName will eventually be removed.
+func IsDefaultNetworkOrEmpty(networkName string) bool {
+	return networkName == "" || networkName == DefaultNetworkName || networkName == DefaultPodNetworkName
+}
+
 // InUse is true if the network is referenced by NetworkInterface or Pod objects.
 func (n *Network) InUse() bool {
 	if n.Annotations == nil {
