@@ -1,0 +1,38 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "service",
+    srcs = [
+        "controller.go",
+        "doc.go",
+        "metrics.go",
+    ],
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/cloud-provider/controllers/service",
+    importpath = "k8s.io/cloud-provider/controllers/service",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/k8s.io/api/core/v1:core",
+        "//vendor/k8s.io/apimachinery/pkg/api/errors",
+        "//vendor/k8s.io/apimachinery/pkg/labels",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/apimachinery/pkg/util/wait",
+        "//vendor/k8s.io/apiserver/pkg/util/feature",
+        "//vendor/k8s.io/client-go/informers/core/v1:core",
+        "//vendor/k8s.io/client-go/kubernetes",
+        "//vendor/k8s.io/client-go/kubernetes/scheme",
+        "//vendor/k8s.io/client-go/kubernetes/typed/core/v1:core",
+        "//vendor/k8s.io/client-go/listers/core/v1:core",
+        "//vendor/k8s.io/client-go/tools/cache",
+        "//vendor/k8s.io/client-go/tools/record",
+        "//vendor/k8s.io/client-go/util/workqueue",
+        "//vendor/k8s.io/cloud-provider",
+        "//vendor/k8s.io/cloud-provider/service/helpers",
+        "//vendor/k8s.io/component-base/featuregate",
+        "//vendor/k8s.io/component-base/metrics",
+        "//vendor/k8s.io/component-base/metrics/legacyregistry",
+        "//vendor/k8s.io/component-base/metrics/prometheus/controllers",
+        "//vendor/k8s.io/controller-manager/pkg/features",
+        "//vendor/k8s.io/klog/v2:klog",
+    ],
+)

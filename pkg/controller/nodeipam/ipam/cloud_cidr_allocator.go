@@ -20,14 +20,16 @@ limitations under the License.
 package ipam
 
 import (
+	"context"
 	"fmt"
-	"math/rand"
 	"net"
 	"reflect"
-	"sync"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/workqueue"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	"k8s.io/klog/v2"
 
@@ -46,6 +48,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	networkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
 	networklister "k8s.io/cloud-provider-gcp/crd/client/network/listers/network/v1"
+	"k8s.io/cloud-provider-gcp/pkg/controllermetrics"
 	nodeutil "k8s.io/cloud-provider-gcp/pkg/util"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	utiltaints "k8s.io/cloud-provider-gcp/pkg/util/taints"
@@ -54,10 +57,7 @@ import (
 	netutils "k8s.io/utils/net"
 )
 
-// nodeProcessingInfo tracks information related to current nodes in processing
-type nodeProcessingInfo struct {
-	retries int
-}
+const workqueueName = "cloudCIDRAllocator"
 
 // cloudCIDRAllocator allocates node CIDRs according to IP address aliases
 // assigned by the cloud provider. In this case, the allocation and
@@ -78,16 +78,8 @@ type cloudCIDRAllocator struct {
 	// nodesSynced returns true if the node shared informer has been synced at least once.
 	nodesSynced cache.InformerSynced
 
-	// Channel that is used to pass updating Nodes to the background.
-	// This increases the throughput of CIDR assignment by parallelization
-	// and not blocking on long operations (which shouldn't be done from
-	// event handlers anyway).
-	nodeUpdateChannel chan string
-	recorder          record.EventRecorder
-
-	// Keep a set of nodes that are currectly being processed to avoid races in CIDR allocation
-	lock              sync.Mutex
-	nodesInProcessing map[string]*nodeProcessingInfo
+	recorder record.EventRecorder
+	queue    workqueue.RateLimitingInterface
 }
 
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
@@ -110,20 +102,19 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		return nil, err
 	}
 	ca := &cloudCIDRAllocator{
-		client:            client,
-		cloud:             gceCloud,
-		networksLister:    nwInformer.Lister(),
-		gnpLister:         gnpInformer.Lister(),
-		nodeLister:        nodeInformer.Lister(),
-		nodesSynced:       nodeInformer.Informer().HasSynced,
-		nodeUpdateChannel: make(chan string, cidrUpdateQueueSize),
-		recorder:          recorder,
-		nodesInProcessing: map[string]*nodeProcessingInfo{},
+		client:         client,
+		cloud:          gceCloud,
+		networksLister: nwInformer.Lister(),
+		gnpLister:      gnpInformer.Lister(),
+		nodeLister:     nodeInformer.Lister(),
+		nodesSynced:    nodeInformer.Informer().HasSynced,
+		recorder:       recorder,
+		queue:          workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: nodeutil.CreateAddNodeHandler(ca.AllocateOrOccupyCIDR),
-		UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(_, newNode *v1.Node) error {
+		UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(oldNode, newNode *v1.Node) error {
 			if newNode.Spec.PodCIDR == "" {
 				return ca.AllocateOrOccupyCIDR(newNode)
 			}
@@ -134,6 +125,19 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 			if cond == nil || cond.Status != v1.ConditionFalse || utiltaints.TaintExists(newNode.Spec.Taints, networkUnavailableTaint) {
 				return ca.AllocateOrOccupyCIDR(newNode)
 			}
+
+			// Process Node for Multi-Network network-status annotation change
+			var oldVal, newVal string
+			if newNode.Annotations != nil {
+				newVal = newNode.Annotations[networkv1.NodeNetworkAnnotationKey]
+			}
+			if oldNode.Annotations != nil {
+				oldVal = oldNode.Annotations[networkv1.NodeNetworkAnnotationKey]
+			}
+			if oldVal != newVal {
+				return ca.AllocateOrOccupyCIDR(newNode)
+			}
+
 			return nil
 		}),
 		DeleteFunc: nodeutil.CreateDeleteNodeHandler(ca.ReleaseCIDR),
@@ -146,10 +150,37 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 				klog.Errorf("Received unexpected object: %v", originalObj)
 				return
 			}
+			if !meta.IsStatusConditionTrue(nw.Status.Conditions, string(networkv1.NetworkConditionStatusReady)) {
+				// ignore non-Ready Networks
+				klog.V(5).Infof("Ignoring non-Ready Network (%s) create event", nw.Name)
+				return
+			}
 			klog.V(0).Infof("Received Network (%s) create event", nw.Name)
 			err := ca.NetworkToNodes(nil)
 			if err != nil {
 				klog.Errorf("Error while adding Nodes to queue: %v", err)
+			}
+		},
+		UpdateFunc: func(origOldObj, origNewObj interface{}) {
+			oldNet := origOldObj.(*networkv1.Network)
+			newNet := origNewObj.(*networkv1.Network)
+			readyCond := string(networkv1.NetworkConditionStatusReady)
+			newStatus := meta.IsStatusConditionTrue(newNet.Status.Conditions, readyCond)
+			if meta.IsStatusConditionTrue(oldNet.Status.Conditions, readyCond) != newStatus {
+				klog.V(0).Infof("Received Network (%s) update event", newNet.Name)
+				var err error
+				if newStatus {
+					// Networks that Ready condition switched to True, we need to discover
+					// it on every node
+					err = ca.NetworkToNodes(nil)
+				} else {
+					// Networks that Ready condition switched to False, we need to remove
+					// it only from nodes using it
+					err = ca.NetworkToNodes(newNet)
+				}
+				if err != nil {
+					utilruntime.HandleError(fmt.Errorf("error while adding Nodes to queue: %v", err))
+				}
 			}
 		},
 		DeleteFunc: func(originalObj interface{}) {
@@ -174,12 +205,19 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		},
 	})
 
+	// register Cloud CIDR Allocator metrics
+	registerCloudCidrAllocatorMetrics()
+
 	klog.V(0).Infof("Using cloud CIDR allocator (provider: %v)", cloud.ProviderName())
 	return ca, nil
 }
 
 func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
+
+	ctx, cancelFn := context.WithCancel(context.Background())
+	defer cancelFn()
+	defer ca.queue.ShutDown()
 
 	klog.Infof("Starting cloud CIDR allocator")
 	defer klog.Infof("Shutting down cloud CIDR allocator")
@@ -189,102 +227,66 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 	}
 
 	for i := 0; i < cidrUpdateWorkers; i++ {
-		go ca.worker(stopCh)
+		go wait.UntilWithContext(ctx, ca.runWorker, time.Second)
 	}
 
 	<-stopCh
 }
 
-func (ca *cloudCIDRAllocator) worker(stopChan <-chan struct{}) {
-	for {
-		select {
-		case workItem, ok := <-ca.nodeUpdateChannel:
-			if !ok {
-				klog.Warning("Channel nodeCIDRUpdateChannel was unexpectedly closed")
-				return
-			}
-			if err := ca.updateCIDRAllocation(workItem); err == nil {
-				klog.V(3).Infof("Updated CIDR for %q", workItem)
-			} else {
-				klog.Errorf("Error updating CIDR for %q: %v", workItem, err)
-				if canRetry, timeout := ca.retryParams(workItem); canRetry {
-					klog.V(2).Infof("Retrying update for %q after %v", workItem, timeout)
-					time.AfterFunc(timeout, func() {
-						// Requeue the failed node for update again.
-						ca.nodeUpdateChannel <- workItem
-					})
-					continue
-				}
-				klog.Errorf("Exceeded retry count for %q, dropping from queue", workItem)
-			}
-			ca.removeNodeFromProcessing(workItem)
-		case <-stopChan:
-			return
-		}
+func (ca *cloudCIDRAllocator) AllocateOrOccupyCIDR(node *v1.Node) error {
+	klog.V(4).Infof("Putting node %s into the work queue", node.Name)
+	ca.queue.Add(node.Name)
+	return nil
+}
+
+func (ca *cloudCIDRAllocator) runWorker(ctx context.Context) {
+	for ca.processNextItem(ctx) {
 	}
 }
 
-func (ca *cloudCIDRAllocator) insertNodeToProcessing(nodeName string) bool {
-	ca.lock.Lock()
-	defer ca.lock.Unlock()
-	if _, found := ca.nodesInProcessing[nodeName]; found {
+func (ca *cloudCIDRAllocator) processNextItem(ctx context.Context) bool {
+	key, quit := ca.queue.Get()
+	if quit {
 		return false
 	}
-	ca.nodesInProcessing[nodeName] = &nodeProcessingInfo{}
+
+	defer ca.queue.Done(key)
+
+	klog.V(3).Infof("Processing %s", key)
+	//TODO: properly enable and pass ctx to updateCIDRAllocation
+	err := ca.updateCIDRAllocation(key.(string))
+	ca.handleErr(err, key)
 	return true
 }
 
-func (ca *cloudCIDRAllocator) retryParams(nodeName string) (bool, time.Duration) {
-	ca.lock.Lock()
-	defer ca.lock.Unlock()
+// handleErr checks if an error happened and makes sure we will retry later.
+func (ca *cloudCIDRAllocator) handleErr(err error, key interface{}) {
+	if err == nil {
+		// Forget about the #AddRateLimited history of the key on every successful synchronization.
+		// This ensures that future processing of updates for this key is not delayed because of
+		// an outdated error history.
+		ca.queue.Forget(key)
+		klog.V(3).Infof("Updated CIDR for %q", key)
+		return
+	}
+	klog.Errorf("Error updating CIDR for %q: %v", key, err)
 
-	entry, ok := ca.nodesInProcessing[nodeName]
-	if !ok {
-		klog.Errorf("Cannot get retryParams for %q as entry does not exist", nodeName)
-		return false, 0
+	// This controller retries updateMaxRetries times if something goes wrong. After that, it stops trying.
+	if ca.queue.NumRequeues(key) < updateMaxRetries {
+		klog.Warningf("Error while updating Node object, retrying %q: %v", key, err)
+
+		// Re-enqueue the key rate limited. Based on the rate limiter on the
+		// queue and the re-enqueue history, the key will be processed later again.
+		ca.queue.AddRateLimited(key)
+		return
 	}
 
-	count := entry.retries + 1
-	if count > updateMaxRetries {
-		return false, 0
-	}
-	ca.nodesInProcessing[nodeName].retries = count
+	ca.queue.Forget(key)
+	// Report to an external entity that, even after several retries, we could not successfully process this key
+	utilruntime.HandleError(err)
+	klog.Errorf("Exceeded retry count for %q, dropping from queue", key)
+	controllermetrics.WorkqueueDroppedObjects.WithLabelValues(workqueueName).Inc()
 
-	return true, nodeUpdateRetryTimeout(count)
-}
-
-func nodeUpdateRetryTimeout(count int) time.Duration {
-	timeout := updateRetryTimeout
-	for i := 0; i < count && timeout < maxUpdateRetryTimeout; i++ {
-		timeout *= 2
-	}
-	if timeout > maxUpdateRetryTimeout {
-		timeout = maxUpdateRetryTimeout
-	}
-	return time.Duration(timeout.Nanoseconds()/2 + rand.Int63n(timeout.Nanoseconds()))
-}
-
-func (ca *cloudCIDRAllocator) removeNodeFromProcessing(nodeName string) {
-	ca.lock.Lock()
-	defer ca.lock.Unlock()
-	delete(ca.nodesInProcessing, nodeName)
-}
-
-// WARNING: If you're adding any return calls or defer any more work from this
-// function you have to make sure to update nodesInProcessing properly with the
-// disposition of the node when the work is done.
-func (ca *cloudCIDRAllocator) AllocateOrOccupyCIDR(node *v1.Node) error {
-	if node == nil {
-		return nil
-	}
-	if !ca.insertNodeToProcessing(node.Name) {
-		klog.V(2).InfoS("Node is already in a process of CIDR assignment", "node", klog.KObj(node))
-		return nil
-	}
-
-	klog.V(4).Infof("Putting node %s into the work queue", node.Name)
-	ca.nodeUpdateChannel <- node.Name
-	return nil
 }
 
 // updateCIDRAllocation assigns CIDR to Node and sends an update to the API server.
@@ -373,10 +375,34 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		return err
 	}
 	if !reflect.DeepEqual(node.Annotations, oldNode.Annotations) {
+		// retain old north interfaces annotation
+		var oldNorthInterfacesAnnotation networkv1.NorthInterfacesAnnotation
+		if ann, exists := oldNode.Annotations[networkv1.NorthInterfacesAnnotationKey]; exists {
+			oldNorthInterfacesAnnotation, err = networkv1.ParseNorthInterfacesAnnotation(ann)
+			if err != nil {
+				klog.ErrorS(err, "Failed to parse north interfaces annotation for multi-networking", "nodeName", oldNode.Name)
+			}
+		}
+
 		if err = utilnode.PatchNodeMultiNetwork(ca.client, node); err != nil {
 			nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRAssignmentFailed")
 			klog.ErrorS(err, "Failed to update the node annotations and capacity for multi-networking", "nodeName", node.Name)
 			return err
+		}
+
+		// calculate updates to multinetwork node count metric based on new north interfaces annotation
+		if ann, exists := node.Annotations[networkv1.NorthInterfacesAnnotationKey]; exists {
+			newNorthInterfacesAnnotation, err := networkv1.ParseNorthInterfacesAnnotation(ann)
+			if err != nil {
+				klog.ErrorS(err, "Failed to parse north interfaces annotation for multi-networking", "nodeName", node.Name)
+			}
+
+			for _, ni := range oldNorthInterfacesAnnotation {
+				multiNetworkNodes.WithLabelValues(ni.Network).Dec()
+			}
+			for _, ni := range newNorthInterfacesAnnotation {
+				multiNetworkNodes.WithLabelValues(ni.Network).Inc()
+			}
 		}
 	}
 	return err

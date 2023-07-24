@@ -207,6 +207,119 @@ func TestExtractKubeLabels(t *testing.T) {
 	}
 }
 
+func TestExtractResizeRequestLabel(t *testing.T) {
+	something := "something"
+	exampleLabel := "example-label"
+	exampleValue := "projects/project/zones/us-central1-c/example-stuff/" + exampleLabel
+	emptyLabel := ""
+
+	tests := map[string]struct {
+		instance      *compute.Instance
+		expectedLabel *string
+	}{
+		"no metadata": {
+			instance:      &compute.Instance{},
+			expectedLabel: nil,
+		},
+		"missing key": {
+			instance: &compute.Instance{
+				Metadata: &compute.Metadata{
+					Items: []*compute.MetadataItems{
+						{
+							Key:   something,
+							Value: &something,
+						},
+					},
+				},
+			},
+			expectedLabel: nil,
+		},
+		"missing value": {
+			instance: &compute.Instance{
+				Metadata: &compute.Metadata{
+					Items: []*compute.MetadataItems{
+						{
+							Key: "google-compute-mig-resize-request",
+						},
+					},
+				},
+			},
+			expectedLabel: nil,
+		},
+		"key and value present": {
+			instance: &compute.Instance{
+				Metadata: &compute.Metadata{
+					Items: []*compute.MetadataItems{
+						{
+							Key:   something,
+							Value: &something,
+						},
+						{
+							Key:   "google-compute-mig-resize-request",
+							Value: &exampleValue,
+						},
+					},
+				},
+			},
+			expectedLabel: &exampleLabel,
+		},
+		"key and wrongly formatted value present": {
+			instance: &compute.Instance{
+				Metadata: &compute.Metadata{
+					Items: []*compute.MetadataItems{
+						{
+							Key:   something,
+							Value: &something,
+						},
+						{
+							Key:   "google-compute-mig-resize-request",
+							Value: &exampleLabel,
+						},
+					},
+				},
+			},
+			expectedLabel: nil,
+		},
+		"key and empty string value present": {
+			instance: &compute.Instance{
+				Metadata: &compute.Metadata{
+					Items: []*compute.MetadataItems{
+						{
+							Key:   something,
+							Value: &something,
+						},
+						{
+							Key:   "google-compute-mig-resize-request",
+							Value: &emptyLabel,
+						},
+					},
+				},
+			},
+			expectedLabel: nil,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			label := extractResizeRequestLabel(tc.instance)
+
+			if tc.expectedLabel == nil {
+				if label != nil {
+					t.Errorf("Expected nil, got %q label", *label)
+				}
+				return
+			}
+			if label == nil {
+				t.Errorf("Expected %q label, got nil", *tc.expectedLabel)
+				return
+			}
+			if *label != *tc.expectedLabel {
+				t.Errorf("Expected %q label, got %q", *tc.expectedLabel, *label)
+			}
+		})
+	}
+}
+
 func TestExtractNodeTaints(t *testing.T) {
 	var something = "something"
 	cs := map[string]struct {

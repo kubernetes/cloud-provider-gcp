@@ -42,8 +42,8 @@ go_library(
         "//cmd/gcp-controller-manager:__subpackages__",
     ],
     deps = [
+        "//cmd/gcp-controller-manager/dpwi/auth",
         "//cmd/gcp-controller-manager/dpwi/configmap",
-        "//cmd/gcp-controller-manager/dpwi/hms",
         "//cmd/gcp-controller-manager/dpwi/nodesyncer",
         "//cmd/gcp-controller-manager/dpwi/pods",
         "//cmd/gcp-controller-manager/dpwi/serviceaccounts",

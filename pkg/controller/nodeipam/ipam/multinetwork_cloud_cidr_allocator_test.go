@@ -1,11 +1,13 @@
 package ipam
 
 import (
+	"fmt"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/util/workqueue"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	"k8s.io/cloud-provider-gcp/pkg/controller/testutil"
 )
@@ -15,17 +17,34 @@ const (
 	gkeNetworkParamsKind = "GKENetworkParams"
 )
 
-func network(name, gkeNetworkParamsName string) *networkv1.Network {
+func network(name, gkeNetworkParamsName string, isReady bool) *networkv1.Network {
+	return networkAll(name, gkeNetworkParamsName, networkv1.L3NetworkType, isReady)
+}
+
+func networkAll(name, gkeNetworkParamsName string, netType networkv1.NetworkType, isReady bool) *networkv1.Network {
+	status := metav1.ConditionFalse
+	if isReady {
+		status = metav1.ConditionTrue
+	}
+
 	return &networkv1.Network{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: networkv1.NetworkSpec{
-			Type: "L3",
+			Type: netType,
 			ParametersRef: &networkv1.NetworkParametersReference{
 				Group: group,
 				Kind:  gkeNetworkParamsKind,
 				Name:  gkeNetworkParamsName,
+			},
+		},
+		Status: networkv1.NetworkStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:   string(networkv1.NetworkConditionStatusReady),
+					Status: status,
+				},
 			},
 		},
 	}
@@ -36,7 +55,7 @@ func TestNetworkToNodes(t *testing.T) {
 	testCases := []struct {
 		desc            string
 		network         *networkv1.Network
-		expectNodes     []string
+		expectNodes     map[string]struct{}
 		fakeNodeHandler *testutil.FakeNodeHandler
 	}{
 		{
@@ -57,11 +76,11 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node0", "node1"},
+			expectNodes: map[string]struct{}{"node0": {}, "node1": {}},
 		},
 		{
 			desc:    "all nodes with the network",
-			network: network("test", "test"),
+			network: network("test", "test", false),
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -83,11 +102,11 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node0", "node1"},
+			expectNodes: map[string]struct{}{"node0": {}, "node1": {}},
 		},
 		{
 			desc:    "only one node with the network",
-			network: network("test", "test"),
+			network: network("test", "test", true),
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -109,11 +128,11 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node1"},
+			expectNodes: map[string]struct{}{"node1": {}},
 		},
 		{
 			desc:    "redo node with corrupted annotation",
-			network: network("test", "test"),
+			network: network("test", "test", false),
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -135,11 +154,11 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node0"},
+			expectNodes: map[string]struct{}{"node0": {}},
 		},
 		{
 			desc:    "skip node with annotation==nil",
-			network: network("test", "test"),
+			network: network("test", "test", false),
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -158,11 +177,11 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node1"},
+			expectNodes: map[string]struct{}{"node1": {}},
 		},
 		{
 			desc:    "skip node with no MN annotation",
-			network: network("test", "test"),
+			network: network("test", "test", false),
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -182,7 +201,7 @@ func TestNetworkToNodes(t *testing.T) {
 				},
 				Clientset: k8sfake.NewSimpleClientset(),
 			},
-			expectNodes: []string{"node1"},
+			expectNodes: map[string]struct{}{"node1": {}},
 		},
 	}
 	for _, tc := range testCases {
@@ -191,10 +210,9 @@ func TestNetworkToNodes(t *testing.T) {
 			fakeNodeInformer := getFakeNodeInformer(tc.fakeNodeHandler)
 
 			ca := &cloudCIDRAllocator{
-				nodeLister:        fakeNodeInformer.Lister(),
-				nodesSynced:       fakeNodeInformer.Informer().HasSynced,
-				nodeUpdateChannel: make(chan string, cidrUpdateQueueSize),
-				nodesInProcessing: map[string]*nodeProcessingInfo{},
+				nodeLister:  fakeNodeInformer.Lister(),
+				nodesSynced: fakeNodeInformer.Informer().HasSynced,
+				queue:       workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "cloudCIDRAllocator"}),
 			}
 
 			// test
@@ -202,14 +220,19 @@ func TestNetworkToNodes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error %v", err)
 			}
-			if len(ca.nodesInProcessing) != len(tc.expectNodes) {
-				t.Fatalf("unexpected number of requests (nodesInProcessing): %v\nexpected (expectNodes): %v", ca.nodesInProcessing, tc.expectNodes)
+			if ca.queue.Len() != len(tc.expectNodes) {
+				t.Fatalf("unexpected number of requests (nodesInProcessing): %v\nexpected (expectNodes): %v", ca.queue.Len(), tc.expectNodes)
 			}
 
-			for _, node := range tc.expectNodes {
-				_, ok := ca.nodesInProcessing[node]
+			n := ca.queue.Len()
+			for i := 1; i < n; i++ {
+				val, sh := ca.queue.Get()
+				if sh {
+					t.Fatalf("got preemtive queue shutdown")
+				}
+				_, ok := tc.expectNodes[val.(string)]
 				if !ok {
-					t.Fatalf("node %s not in processing", node)
+					t.Fatalf("unexpected node %s in processing", val)
 				}
 			}
 		})
@@ -320,6 +343,75 @@ func TestGetNodeCapacity(t *testing.T) {
 
 			if got != tc.want {
 				t.Fatalf("getNodeCapacity(%+v) returns %v but want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGetUpNetworks(t *testing.T) {
+	tests := []struct {
+		name        string
+		node        *v1.Node
+		expected    map[string]struct{}
+		expectError bool
+	}{
+		{
+			name:        "empty node",
+			node:        &v1.Node{},
+			expected:    map[string]struct{}{},
+			expectError: false,
+		},
+		{
+			name: "node with no annotations",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+
+					Annotations: map[string]string{},
+				},
+			},
+			expected:    map[string]struct{}{},
+			expectError: false,
+		},
+		{
+			name: "node with valid annotation",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						networkv1.NodeNetworkAnnotationKey: `[{"name": "net1"}]`,
+					},
+				},
+			},
+			expected: map[string]struct{}{
+				"net1": {},
+			},
+			expectError: false,
+		},
+		{
+			name: "node with invalid annotation",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+
+					Annotations: map[string]string{
+						networkv1.NodeNetworkAnnotationKey: `invalid`,
+					},
+				},
+			},
+			expected:    nil,
+			expectError: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := getUpNetworks(test.node)
+			if test.expectError && err == nil {
+				t.Error("expected error but got none")
+			}
+			if !test.expectError && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if fmt.Sprintf("%v", result) != fmt.Sprintf("%v", test.expected) {
+				t.Errorf("expected %v, but got %v", test.expected, result)
 			}
 		})
 	}
