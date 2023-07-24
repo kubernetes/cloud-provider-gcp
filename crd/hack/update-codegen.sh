@@ -48,7 +48,7 @@ echo "Generating firewall CRD clientset"
 "${SCRIPT_ROOT}/hack/generate-groups.sh" all \
   k8s.io/cloud-provider-gcp/crd/client/gcpfirewall \
   k8s.io/cloud-provider-gcp/crd/apis \
-  "gcpfirewall:v1beta1" \
+  "gcpfirewall:v1beta1,v1" \
   --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
 
 
