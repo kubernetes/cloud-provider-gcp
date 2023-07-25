@@ -49,7 +49,7 @@ type GKENetworkParamSetSpec struct {
 	// DeviceMode indicates the mode in which the devices will be used by the Pod.
 	// This field is required and valid only for "Device" typed network
 	// +optional
-	DeviceMode DeviceModeType `json:"deviceMode"`
+	DeviceMode DeviceModeType `json:"deviceMode,omitempty"`
 
 	// PodIPv4Ranges specify the names of the secondary ranges of the VPC subnet
 	// used to allocate pod IPs for the network.
@@ -80,18 +80,26 @@ const (
 type GKENetworkParamSetConditionReason string
 
 const (
+	// VPCNotFound indicates that the specified VPC was not found.
+	VPCNotFound GKENetworkParamSetConditionReason = "VPCNotFound"
 	// SubnetNotFound indicates that the specified subnet was not found.
 	SubnetNotFound GKENetworkParamSetConditionReason = "SubnetNotFound"
+	// SecondaryRangeAndDeviceModeUnspecified indicates that the user didn't specify either a device mode or secondary range
+	SecondaryRangeAndDeviceModeUnspecified GKENetworkParamSetConditionReason = "SecondaryRangeAndDeviceModeUnspecified"
 	// SecondaryRangeNotFound indicates that the specified secondary range was not found.
 	SecondaryRangeNotFound GKENetworkParamSetConditionReason = "SecondaryRangeNotFound"
 	// DeviceModeCantBeUsedWithSecondaryRange indicates that device mode was used with a secondary range.
 	DeviceModeCantBeUsedWithSecondaryRange GKENetworkParamSetConditionReason = "DeviceModeCantBeUsedWithSecondaryRange"
 	// DeviceModeVPCAlreadyInUse indicates that the VPC is already in use by another GKENetworkParamSet resource.
 	DeviceModeVPCAlreadyInUse GKENetworkParamSetConditionReason = "DeviceModeVPCAlreadyInUse"
+	// DeviceModeSubnetAlreadyInUse indicates that the Subnet is already in use by another GKENetworkParamSet resource.
+	DeviceModeSubnetAlreadyInUse GKENetworkParamSetConditionReason = "DeviceModeSubnetAlreadyInUse"
 	// DeviceModeCantUseDefaultVPC indicates that a device mode GKENetworkParamSet cannot use the default VPC.
 	DeviceModeCantUseDefaultVPC GKENetworkParamSetConditionReason = "DeviceModeCantUseDefaultVPC"
 	// DPDKUnsupported indicates that DPDK device mode is not supported on the current cluster.
 	DPDKUnsupported GKENetworkParamSetConditionReason = "DPDKUnsupported"
+	// GNPReady indicates that this GNP resource has been successfully validated and Ready=True
+	GNPReady GKENetworkParamSetConditionReason = "GNPReady"
 )
 
 // GNPNetworkParamsReadyConditionReason defines the set of reasons that explains
@@ -102,15 +110,14 @@ const (
 	// L3SecondaryMissing indicates that the L3 type Network resource is
 	// referencing a GKENetworkParamSet with secondary range unspecified.
 	L3SecondaryMissing GNPNetworkParamsReadyConditionReason = "L3SecondaryMissing"
-	// L3DeviceModeExists indicates that the L3 type Network resource is
-	// referencing a GKENetworkParamSet with device mode specified.
-	L3DeviceModeExists GNPNetworkParamsReadyConditionReason = "L3DeviceModeExists"
 	// DeviceModeMissing indicates that the Device type Network resource is
 	// referencing a GKENetworkParamSet with device mode unspecified.
 	DeviceModeMissing GNPNetworkParamsReadyConditionReason = "DeviceModeMissing"
-	// DeviceSecondaryExists indicates that the Device type Network resource is
-	// referencing a GKENetworkParamSet with a secondary range specified.
-	DeviceSecondaryExists GNPNetworkParamsReadyConditionReason = "DeviceSecondaryExists"
+	// GNPDeleted indicates that the referenced GNP resource was deleted
+	GNPDeleted GNPNetworkParamsReadyConditionReason = "GNPDeleted"
+	// GNPParamsReady indicates that the referenced GNP resource
+	// has been successfully validated for use with this Network resource and ParamsReady=True
+	GNPParamsReady GNPNetworkParamsReadyConditionReason = "GNPParamsReady"
 )
 
 // GKENetworkParamSetStatus contains the status information related to the network.

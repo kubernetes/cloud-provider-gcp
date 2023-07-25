@@ -21,13 +21,12 @@ package fake
 import (
 	"context"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
-	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
+	v1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 )
 
 // FakeGKENetworkParamSets implements GKENetworkParamSetInterface
@@ -35,24 +34,24 @@ type FakeGKENetworkParamSets struct {
 	Fake *FakeNetworkingV1
 }
 
-var gkenetworkparamsetsResource = schema.GroupVersionResource{Group: "networking.gke.io", Version: "v1", Resource: "gkenetworkparamsets"}
+var gkenetworkparamsetsResource = v1.SchemeGroupVersion.WithResource("gkenetworkparamsets")
 
-var gkenetworkparamsetsKind = schema.GroupVersionKind{Group: "networking.gke.io", Version: "v1", Kind: "GKENetworkParamSet"}
+var gkenetworkparamsetsKind = v1.SchemeGroupVersion.WithKind("GKENetworkParamSet")
 
 // Get takes name of the gKENetworkParamSet, and returns the corresponding gKENetworkParamSet object, and an error if there is any.
-func (c *FakeGKENetworkParamSets) Get(ctx context.Context, name string, options v1.GetOptions) (result *networkv1.GKENetworkParamSet, err error) {
+func (c *FakeGKENetworkParamSets) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.GKENetworkParamSet, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(gkenetworkparamsetsResource, name), &networkv1.GKENetworkParamSet{})
+		Invokes(testing.NewRootGetAction(gkenetworkparamsetsResource, name), &v1.GKENetworkParamSet{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*networkv1.GKENetworkParamSet), err
+	return obj.(*v1.GKENetworkParamSet), err
 }
 
 // List takes label and field selectors, and returns the list of GKENetworkParamSets that match those selectors.
-func (c *FakeGKENetworkParamSets) List(ctx context.Context, opts v1.ListOptions) (result *networkv1.GKENetworkParamSetList, err error) {
+func (c *FakeGKENetworkParamSets) List(ctx context.Context, opts metav1.ListOptions) (result *v1.GKENetworkParamSetList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(gkenetworkparamsetsResource, gkenetworkparamsetsKind, opts), &networkv1.GKENetworkParamSetList{})
+		Invokes(testing.NewRootListAction(gkenetworkparamsetsResource, gkenetworkparamsetsKind, opts), &v1.GKENetworkParamSetList{})
 	if obj == nil {
 		return nil, err
 	}
@@ -61,8 +60,8 @@ func (c *FakeGKENetworkParamSets) List(ctx context.Context, opts v1.ListOptions)
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &networkv1.GKENetworkParamSetList{ListMeta: obj.(*networkv1.GKENetworkParamSetList).ListMeta}
-	for _, item := range obj.(*networkv1.GKENetworkParamSetList).Items {
+	list := &v1.GKENetworkParamSetList{ListMeta: obj.(*v1.GKENetworkParamSetList).ListMeta}
+	for _, item := range obj.(*v1.GKENetworkParamSetList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -71,63 +70,63 @@ func (c *FakeGKENetworkParamSets) List(ctx context.Context, opts v1.ListOptions)
 }
 
 // Watch returns a watch.Interface that watches the requested gKENetworkParamSets.
-func (c *FakeGKENetworkParamSets) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeGKENetworkParamSets) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(gkenetworkparamsetsResource, opts))
 }
 
 // Create takes the representation of a gKENetworkParamSet and creates it.  Returns the server's representation of the gKENetworkParamSet, and an error, if there is any.
-func (c *FakeGKENetworkParamSets) Create(ctx context.Context, gKENetworkParamSet *networkv1.GKENetworkParamSet, opts v1.CreateOptions) (result *networkv1.GKENetworkParamSet, err error) {
+func (c *FakeGKENetworkParamSets) Create(ctx context.Context, gKENetworkParamSet *v1.GKENetworkParamSet, opts metav1.CreateOptions) (result *v1.GKENetworkParamSet, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(gkenetworkparamsetsResource, gKENetworkParamSet), &networkv1.GKENetworkParamSet{})
+		Invokes(testing.NewRootCreateAction(gkenetworkparamsetsResource, gKENetworkParamSet), &v1.GKENetworkParamSet{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*networkv1.GKENetworkParamSet), err
+	return obj.(*v1.GKENetworkParamSet), err
 }
 
 // Update takes the representation of a gKENetworkParamSet and updates it. Returns the server's representation of the gKENetworkParamSet, and an error, if there is any.
-func (c *FakeGKENetworkParamSets) Update(ctx context.Context, gKENetworkParamSet *networkv1.GKENetworkParamSet, opts v1.UpdateOptions) (result *networkv1.GKENetworkParamSet, err error) {
+func (c *FakeGKENetworkParamSets) Update(ctx context.Context, gKENetworkParamSet *v1.GKENetworkParamSet, opts metav1.UpdateOptions) (result *v1.GKENetworkParamSet, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(gkenetworkparamsetsResource, gKENetworkParamSet), &networkv1.GKENetworkParamSet{})
+		Invokes(testing.NewRootUpdateAction(gkenetworkparamsetsResource, gKENetworkParamSet), &v1.GKENetworkParamSet{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*networkv1.GKENetworkParamSet), err
+	return obj.(*v1.GKENetworkParamSet), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeGKENetworkParamSets) UpdateStatus(ctx context.Context, gKENetworkParamSet *networkv1.GKENetworkParamSet, opts v1.UpdateOptions) (*networkv1.GKENetworkParamSet, error) {
+func (c *FakeGKENetworkParamSets) UpdateStatus(ctx context.Context, gKENetworkParamSet *v1.GKENetworkParamSet, opts metav1.UpdateOptions) (*v1.GKENetworkParamSet, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(gkenetworkparamsetsResource, "status", gKENetworkParamSet), &networkv1.GKENetworkParamSet{})
+		Invokes(testing.NewRootUpdateSubresourceAction(gkenetworkparamsetsResource, "status", gKENetworkParamSet), &v1.GKENetworkParamSet{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*networkv1.GKENetworkParamSet), err
+	return obj.(*v1.GKENetworkParamSet), err
 }
 
 // Delete takes name of the gKENetworkParamSet and deletes it. Returns an error if one occurs.
-func (c *FakeGKENetworkParamSets) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeGKENetworkParamSets) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteActionWithOptions(gkenetworkparamsetsResource, name, opts), &networkv1.GKENetworkParamSet{})
+		Invokes(testing.NewRootDeleteActionWithOptions(gkenetworkparamsetsResource, name, opts), &v1.GKENetworkParamSet{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeGKENetworkParamSets) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *FakeGKENetworkParamSets) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	action := testing.NewRootDeleteCollectionAction(gkenetworkparamsetsResource, listOpts)
 
-	_, err := c.Fake.Invokes(action, &networkv1.GKENetworkParamSetList{})
+	_, err := c.Fake.Invokes(action, &v1.GKENetworkParamSetList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched gKENetworkParamSet.
-func (c *FakeGKENetworkParamSets) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *networkv1.GKENetworkParamSet, err error) {
+func (c *FakeGKENetworkParamSets) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.GKENetworkParamSet, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(gkenetworkparamsetsResource, name, pt, data, subresources...), &networkv1.GKENetworkParamSet{})
+		Invokes(testing.NewRootPatchSubresourceAction(gkenetworkparamsetsResource, name, pt, data, subresources...), &v1.GKENetworkParamSet{})
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*networkv1.GKENetworkParamSet), err
+	return obj.(*v1.GKENetworkParamSet), err
 }

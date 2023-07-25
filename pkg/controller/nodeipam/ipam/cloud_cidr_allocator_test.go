@@ -32,13 +32,16 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/util/workqueue"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	clSetFake "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/fake"
 	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
 	"k8s.io/cloud-provider-gcp/pkg/controller/testutil"
 	"k8s.io/cloud-provider-gcp/providers/gce"
+	metricsUtil "k8s.io/component-base/metrics/testutil"
 	netutils "k8s.io/utils/net"
 )
 
@@ -65,26 +68,25 @@ const (
 )
 
 func hasNodeInProcessing(ca *cloudCIDRAllocator, name string) bool {
-	ca.lock.Lock()
-	defer ca.lock.Unlock()
-
-	_, found := ca.nodesInProcessing[name]
-	return found
+	if ca.queue.Len() > 0 {
+		val, _ := ca.queue.Get()
+		if val.(string) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBoundedRetries(t *testing.T) {
 	clientSet := fake.NewSimpleClientset()
-	updateChan := make(chan string, 1) // need to buffer as we are using only on go routine
-	stopChan := make(chan struct{})
 	sharedInfomer := informers.NewSharedInformerFactory(clientSet, 1*time.Hour)
 	ca := &cloudCIDRAllocator{
-		client:            clientSet,
-		nodeUpdateChannel: updateChan,
-		nodeLister:        sharedInfomer.Core().V1().Nodes().Lister(),
-		nodesSynced:       sharedInfomer.Core().V1().Nodes().Informer().HasSynced,
-		nodesInProcessing: map[string]*nodeProcessingInfo{},
+		client:      clientSet,
+		nodeLister:  sharedInfomer.Core().V1().Nodes().Lister(),
+		nodesSynced: sharedInfomer.Core().V1().Nodes().Informer().HasSynced,
+		queue:       workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "cloudCIDRAllocator"}),
 	}
-	go ca.worker(stopChan)
+	go wait.UntilWithContext(context.TODO(), ca.runWorker, time.Second)
 	nodeName := "testNode"
 	ca.AllocateOrOccupyCIDR(&v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -100,25 +102,6 @@ func withinExpectedRange(got time.Duration, expected time.Duration) bool {
 	return got >= expected/2 && got <= 3*expected/2
 }
 
-func TestNodeUpdateRetryTimeout(t *testing.T) {
-	for _, tc := range []struct {
-		count int
-		want  time.Duration
-	}{
-		{count: 0, want: 250 * time.Millisecond},
-		{count: 1, want: 500 * time.Millisecond},
-		{count: 2, want: 1000 * time.Millisecond},
-		{count: 3, want: 2000 * time.Millisecond},
-		{count: 50, want: 5000 * time.Millisecond},
-	} {
-		t.Run(fmt.Sprintf("count %d", tc.count), func(t *testing.T) {
-			if got := nodeUpdateRetryTimeout(tc.count); !withinExpectedRange(got, tc.want) {
-				t.Errorf("nodeUpdateRetryTimeout(tc.count) = %v; want %v", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestUpdateCIDRAllocation(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -130,6 +113,8 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 		expectErr       bool
 		expectErrMsg    string
 		expectedUpdate  bool
+		// expectedMetrics is optional if you'd also like to assert a metric
+		expectedMetrics map[string]float64
 	}{
 		{
 			name: "node not found in k8s",
@@ -427,7 +412,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 		{
 			name: "[mn] default network only",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, false),
 			},
 			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
@@ -475,13 +460,14 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					networkv1.MultiNetworkAnnotationKey:    "[]",
 				}
 			},
-			expectedUpdate: true,
+			expectedUpdate:  true,
+			expectedMetrics: map[string]float64{},
 		},
 		{
 			name: "[mn] one additional network along with default network",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
-				network(redNetworkName, redGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				network(redNetworkName, redGKENetworkParamsName, true),
 			},
 			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
@@ -492,6 +478,9 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test",
+							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey: fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName),
+							},
 						},
 						Spec: v1.NodeSpec{
 							ProviderID: "gce://test-project/us-central1-b/test",
@@ -527,22 +516,25 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 						Message: "NodeController create implicit route",
 					},
 				}
-				node.Annotations = map[string]string{
-					networkv1.NorthInterfacesAnnotationKey: fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName),
-					networkv1.MultiNetworkAnnotationKey:    fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName),
-				}
+				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
+				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
 				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
 					"networking.gke.io.networks/Red-Network.IP": *resource.NewQuantity(128, resource.DecimalSI),
 				}
 			},
 			expectedUpdate: true,
+			expectedMetrics: map[string]float64{
+				redNetworkName: float64(1),
+			},
 		},
 		{
+			// this is incorrect configuration, Network should be Device type in such situation
+			// no annotation change for such network
 			name: "[mn] no secondary ranges in GKENetworkParams",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
-				network(redNetworkName, redGKENetworkParamsName),
-				network(blueNetworkName, blueGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				network(redNetworkName, redGKENetworkParamsName, true),
+				network(blueNetworkName, blueGKENetworkParamsName, true),
 			},
 			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
@@ -554,6 +546,9 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test",
+							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey: fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName, blueNetworkName),
+							},
 						},
 						Spec: v1.NodeSpec{
 							PodCIDR:    "192.168.1.0/24",
@@ -592,22 +587,23 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				},
 			},
 			nodeChanges: func(node *v1.Node) {
-				node.Annotations = map[string]string{
-					networkv1.NorthInterfacesAnnotationKey: fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"},{\"network\":\"%s\",\"ipAddress\":\"84.1.2.1\"}]", redNetworkName, blueNetworkName),
-					networkv1.MultiNetworkAnnotationKey:    fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName),
-				}
+				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
+				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
 				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
 					"networking.gke.io.networks/Red-Network.IP": *resource.NewQuantity(128, resource.DecimalSI),
 				}
 			},
 			expectedUpdate: true,
+			expectedMetrics: map[string]float64{
+				redNetworkName: float64(1),
+			},
 		},
 		{
 			name: "[mn] networks without matching gce interfaces should be ignored",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
-				network(redNetworkName, redGKENetworkParamsName),
-				network(blueNetworkName, blueGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				network(redNetworkName, redGKENetworkParamsName, true),
+				network(blueNetworkName, blueGKENetworkParamsName, true),
 			},
 			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
@@ -619,6 +615,9 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test",
+							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey: fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName, blueNetworkName),
+							},
 						},
 						Spec: v1.NodeSpec{
 							PodCIDR:    "192.168.1.0/24",
@@ -654,22 +653,24 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				},
 			},
 			nodeChanges: func(node *v1.Node) {
-				node.Annotations = map[string]string{
-					networkv1.NorthInterfacesAnnotationKey: fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName),
-					networkv1.MultiNetworkAnnotationKey:    fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName),
-				}
+				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
+				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
 				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
 					"networking.gke.io.networks/Red-Network.IP": *resource.NewQuantity(128, resource.DecimalSI),
 				}
 			},
 			expectedUpdate: true,
+			expectedMetrics: map[string]float64{
+				redNetworkName:  float64(1),
+				blueNetworkName: float64(0),
+			},
 		},
 		{
 			name: "[mn] 2 additional networks",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
-				network(redNetworkName, redGKENetworkParamsName),
-				network(blueNetworkName, blueGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				network(redNetworkName, redGKENetworkParamsName, true),
+				network(blueNetworkName, blueGKENetworkParamsName, true),
 			},
 			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
@@ -681,6 +682,9 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test",
+							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey: fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName, blueNetworkName),
+							},
 						},
 						Spec: v1.NodeSpec{
 							PodCIDR:    "192.168.1.0/24",
@@ -719,22 +723,24 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				},
 			},
 			nodeChanges: func(node *v1.Node) {
-				node.Annotations = map[string]string{
-					networkv1.NorthInterfacesAnnotationKey: fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"},{\"network\":\"%s\",\"ipAddress\":\"84.1.2.1\"}]", redNetworkName, blueNetworkName),
-					networkv1.MultiNetworkAnnotationKey:    fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"},{\"name\":\"%s\",\"cidrs\":[\"20.28.1.0/26\"],\"scope\":\"host-local\"}]", redNetworkName, blueNetworkName),
-				}
+				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"},{\"network\":\"%s\",\"ipAddress\":\"84.1.2.1\"}]", redNetworkName, blueNetworkName)
+				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"},{\"name\":\"%s\",\"cidrs\":[\"20.28.1.0/26\"],\"scope\":\"host-local\"}]", redNetworkName, blueNetworkName)
 				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
 					"networking.gke.io.networks/Red-Network.IP":  *resource.NewQuantity(128, resource.DecimalSI),
 					"networking.gke.io.networks/Blue-Network.IP": *resource.NewQuantity(32, resource.DecimalSI),
 				}
 			},
 			expectedUpdate: true,
+			expectedMetrics: map[string]float64{
+				redNetworkName:  float64(1),
+				blueNetworkName: float64(1),
+			},
 		},
 		{
 			name: "[mn] interfaces without matching k8s networks should be ignored",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
-				network(redNetworkName, redGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				network(redNetworkName, redGKENetworkParamsName, true),
 			},
 			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
@@ -745,6 +751,9 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test",
+							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey: fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName),
+							},
 						},
 						Spec: v1.NodeSpec{
 							PodCIDR:    "192.168.1.0/24",
@@ -783,21 +792,22 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				},
 			},
 			nodeChanges: func(node *v1.Node) {
-				node.Annotations = map[string]string{
-					networkv1.NorthInterfacesAnnotationKey: fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName),
-					networkv1.MultiNetworkAnnotationKey:    fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName),
-				}
+				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
+				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
 				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
 					"networking.gke.io.networks/Red-Network.IP": *resource.NewQuantity(128, resource.DecimalSI),
 				}
 			},
 			expectedUpdate: true,
+			expectedMetrics: map[string]float64{
+				redNetworkName: float64(1),
+			},
 		},
 		{
 			name: "[mn] [invalid] - node with cidrs in incorrect format",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
-				network(redNetworkName, redGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				network(redNetworkName, redGKENetworkParamsName, true),
 			},
 			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
@@ -808,6 +818,9 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test",
+							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey: fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName),
+							},
 						},
 						Spec: v1.NodeSpec{
 							PodCIDR:    "192.168.1.0/24",
@@ -849,8 +862,8 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 		{
 			name: "[mn] one additional network with /32 cidr",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
-				network(redNetworkName, redGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				network(redNetworkName, redGKENetworkParamsName, true),
 			},
 			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
@@ -861,6 +874,9 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test",
+							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey: fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName),
+							},
 						},
 						Spec: v1.NodeSpec{
 							PodCIDR:    "192.168.1.0/24",
@@ -896,22 +912,23 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				},
 			},
 			nodeChanges: func(node *v1.Node) {
-				node.Annotations = map[string]string{
-					networkv1.NorthInterfacesAnnotationKey: fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName),
-					networkv1.MultiNetworkAnnotationKey:    fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/32\"],\"scope\":\"host-local\"}]", redNetworkName),
-				}
+				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
+				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/32\"],\"scope\":\"host-local\"}]", redNetworkName)
 				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
 					"networking.gke.io.networks/Red-Network.IP": *resource.NewQuantity(1, resource.DecimalSI),
 				}
 			},
 			expectedUpdate: true,
+			expectedMetrics: map[string]float64{
+				redNetworkName: float64(1),
+			},
 		},
 		{
 			name: "[mn] node already configured",
 			networks: []*networkv1.Network{
-				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName),
-				network(redNetworkName, redGKENetworkParamsName),
-				network(blueNetworkName, blueGKENetworkParamsName),
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				network(redNetworkName, redGKENetworkParamsName, true),
+				network(blueNetworkName, blueGKENetworkParamsName, true),
 			},
 			gkeNwParams: []*networkv1.GKENetworkParamSet{
 				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
@@ -924,6 +941,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test",
 							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey:     fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName, blueNetworkName),
 								networkv1.NorthInterfacesAnnotationKey: fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"},{\"network\":\"%s\",\"ipAddress\":\"84.1.2.1\"}]", redNetworkName, blueNetworkName),
 								networkv1.MultiNetworkAnnotationKey:    fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"},{\"name\":\"%s\",\"cidrs\":[\"20.28.1.0/26\"],\"scope\":\"host-local\"}]", redNetworkName, blueNetworkName),
 							},
@@ -969,11 +987,219 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			},
 			nodeChanges: func(node *v1.Node) {},
 		},
+		{
+			name: "[mn] blue network status change to down",
+			networks: []*networkv1.Network{
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				network(redNetworkName, redGKENetworkParamsName, true),
+				network(blueNetworkName, blueGKENetworkParamsName, true),
+			},
+			gkeNwParams: []*networkv1.GKENetworkParamSet{
+				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
+				gkeNetworkParams(redGKENetworkParamsName, redVPCName, redVPCSubnetName, []string{redSecondaryRangeA, redSecondaryRangeB}),
+				gkeNetworkParams(blueGKENetworkParamsName, blueVPCName, blueVPCSubnetName, []string{blueSecondaryRangeA}),
+			},
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey:     fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName),
+								networkv1.NorthInterfacesAnnotationKey: fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"},{\"network\":\"%s\",\"ipAddress\":\"84.1.2.1\"}]", redNetworkName, blueNetworkName),
+								networkv1.MultiNetworkAnnotationKey:    fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"},{\"name\":\"%s\",\"cidrs\":[\"20.28.1.0/26\"],\"scope\":\"host-local\"}]", redNetworkName, blueNetworkName),
+							},
+						},
+						Spec: v1.NodeSpec{
+							PodCIDR:    "192.168.1.0/24",
+							PodCIDRs:   []string{"192.168.1.0/24"},
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+						Status: v1.NodeStatus{
+							Capacity: map[v1.ResourceName]resource.Quantity{
+								"networking.gke.io.networks/Red-Network.IP":  *resource.NewQuantity(128, resource.DecimalSI),
+								"networking.gke.io.networks/Blue-Network.IP": *resource.NewQuantity(32, resource.DecimalSI),
+							},
+							Conditions: []v1.NodeCondition{
+								{
+									Type:    "NetworkUnavailable",
+									Status:  "False",
+									Reason:  "RouteCreated",
+									Message: "NodeController create implicit route",
+								},
+							},
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						interfaces(defaultVPCName, defaultVPCSubnetName, "80.1.172.1", []*compute.AliasIpRange{
+							{IpCidrRange: "192.168.1.0/24", SubnetworkRangeName: defaultSecondaryRangeA},
+						}),
+						interfaces(redVPCName, redVPCSubnetName, "10.1.1.1", []*compute.AliasIpRange{
+							{IpCidrRange: "172.11.1.0/24", SubnetworkRangeName: redSecondaryRangeA},
+						}),
+						interfaces(blueVPCName, blueVPCSubnetName, "84.1.2.1", []*compute.AliasIpRange{
+							{IpCidrRange: "20.28.1.0/26", SubnetworkRangeName: blueSecondaryRangeA},
+						}),
+					},
+				},
+			},
+			nodeChanges: func(node *v1.Node) {
+				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
+				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
+					"networking.gke.io.networks/Red-Network.IP": *resource.NewQuantity(128, resource.DecimalSI),
+				}
+			},
+			expectedUpdate: true,
+		},
+		{
+			name: "[mn] blue network becomes not ready",
+			networks: []*networkv1.Network{
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				network(redNetworkName, redGKENetworkParamsName, true),
+				network(blueNetworkName, blueGKENetworkParamsName, false),
+			},
+			gkeNwParams: []*networkv1.GKENetworkParamSet{
+				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
+				gkeNetworkParams(redGKENetworkParamsName, redVPCName, redVPCSubnetName, []string{redSecondaryRangeA, redSecondaryRangeB}),
+				gkeNetworkParams(blueGKENetworkParamsName, blueVPCName, blueVPCSubnetName, []string{blueSecondaryRangeA}),
+			},
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey:     fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName, blueNetworkName),
+								networkv1.NorthInterfacesAnnotationKey: fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"},{\"network\":\"%s\",\"ipAddress\":\"84.1.2.1\"}]", redNetworkName, blueNetworkName),
+								networkv1.MultiNetworkAnnotationKey:    fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"},{\"name\":\"%s\",\"cidrs\":[\"20.28.1.0/26\"],\"scope\":\"host-local\"}]", redNetworkName, blueNetworkName),
+							},
+						},
+						Spec: v1.NodeSpec{
+							PodCIDR:    "192.168.1.0/24",
+							PodCIDRs:   []string{"192.168.1.0/24"},
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+						Status: v1.NodeStatus{
+							Capacity: map[v1.ResourceName]resource.Quantity{
+								"networking.gke.io.networks/Red-Network.IP":  *resource.NewQuantity(128, resource.DecimalSI),
+								"networking.gke.io.networks/Blue-Network.IP": *resource.NewQuantity(32, resource.DecimalSI),
+							},
+							Conditions: []v1.NodeCondition{
+								{
+									Type:    "NetworkUnavailable",
+									Status:  "False",
+									Reason:  "RouteCreated",
+									Message: "NodeController create implicit route",
+								},
+							},
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						interfaces(defaultVPCName, defaultVPCSubnetName, "80.1.172.1", []*compute.AliasIpRange{
+							{IpCidrRange: "192.168.1.0/24", SubnetworkRangeName: defaultSecondaryRangeA},
+						}),
+						interfaces(redVPCName, redVPCSubnetName, "10.1.1.1", []*compute.AliasIpRange{
+							{IpCidrRange: "172.11.1.0/24", SubnetworkRangeName: redSecondaryRangeA},
+						}),
+						interfaces(blueVPCName, blueVPCSubnetName, "84.1.2.1", []*compute.AliasIpRange{
+							{IpCidrRange: "20.28.1.0/26", SubnetworkRangeName: blueSecondaryRangeA},
+						}),
+					},
+				},
+			},
+			nodeChanges: func(node *v1.Node) {
+				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
+				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
+				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
+					"networking.gke.io.networks/Red-Network.IP": *resource.NewQuantity(128, resource.DecimalSI),
+				}
+			},
+			expectedUpdate: true,
+		},
+		{
+			name: "[mn] one additional device network along with default network",
+			networks: []*networkv1.Network{
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
+				networkAll(redNetworkName, redGKENetworkParamsName, networkv1.DeviceNetworkType, true),
+			},
+			gkeNwParams: []*networkv1.GKENetworkParamSet{
+				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, []string{defaultSecondaryRangeA, defaultSecondaryRangeB}),
+				gkeNetworkParams(redGKENetworkParamsName, redVPCName, redVPCSubnetName, []string{}),
+			},
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+							Annotations: map[string]string{
+								networkv1.NodeNetworkAnnotationKey: fmt.Sprintf("[{\"name\":\"%s\"},{\"name\":\"%s\"}]", networkv1.DefaultPodNetworkName, redNetworkName),
+							},
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+						Status: v1.NodeStatus{
+							Capacity: v1.ResourceList{},
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						interfaces(defaultVPCName, defaultVPCSubnetName, "80.1.172.1", []*compute.AliasIpRange{
+							{IpCidrRange: "192.168.1.0/24", SubnetworkRangeName: defaultSecondaryRangeA},
+						}),
+						interfaces(redVPCName, redVPCSubnetName, "10.1.1.1", []*compute.AliasIpRange{
+							{IpCidrRange: "172.11.1.0/24", SubnetworkRangeName: redSecondaryRangeA},
+						}),
+					},
+				},
+			},
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "192.168.1.0/24"
+				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
+				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"10.1.1.1/32\"],\"scope\":\"host-local\"}]", redNetworkName)
+				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
+					"networking.gke.io.networks/Red-Network.IP": *resource.NewQuantity(1, resource.DecimalSI),
+				}
+			},
+			expectedUpdate: true,
+			expectedMetrics: map[string]float64{
+				redNetworkName: float64(1),
+			},
+		},
 	}
+
+	registerCloudCidrAllocatorMetrics()
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// setup
+			multiNetworkNodes.Reset()
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
 			testClusterValues := gce.DefaultTestClusterValues()
@@ -1045,6 +1271,18 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			diff := cmp.Diff(wantNode, gotNode)
 			if diff != "" {
 				t.Fatalf("updateCIDRAllocation() node not updated (-want +got) = %s", diff)
+			}
+
+			if tc.expectedMetrics != nil {
+				for nw, em := range tc.expectedMetrics {
+					m, err := metricsUtil.GetGaugeMetricValue(multiNetworkNodes.WithLabelValues(nw))
+					if err != nil {
+						t.Errorf("failed to get %s value, err: %v", multiNetworkNodes.Name, err)
+					}
+					if m != em {
+						t.Fatalf("metrics error: expected %v, received %v for %v", em, m, nw)
+					}
+				}
 			}
 		})
 	}
