@@ -662,10 +662,11 @@ func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]s
 		}
 	}
 	for zone, gceNodes := range gceZonedNodes {
-		_, err := g.ensureInternalInstanceGroup(name, zone, gceNodes)
+		igLink, err := g.ensureInternalInstanceGroup(name, zone, gceNodes)
 		if err != nil {
 			return []string{}, err
 		}
+        igLinks = append(igLinks, igLink)
 	}
 
 	return igLinks, nil
