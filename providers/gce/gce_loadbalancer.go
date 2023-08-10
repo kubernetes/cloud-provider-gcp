@@ -130,18 +130,18 @@ func (g *Cloud) GetLoadBalancerName(ctx context.Context, clusterName string, svc
 
 // EnsureLoadBalancer is an implementation of LoadBalancer.EnsureLoadBalancer.
 func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
-	loadBalancerName := g.GetLoadBalancerName(ctx, clusterName, svc)
-	desiredScheme := getSvcScheme(svc)
-	clusterID, err := g.ClusterID.GetID()
-	if err != nil {
-		return nil, err
-	}
-
 	// GCE load balancers do not support services with LoadBalancerClass set. LoadBalancerClass can't be updated for an existing load balancer, so here we don't need to clean any resources.
 	// Check API documentation for .Spec.LoadBalancerClass for details on when this field is allowed to be changed.
 	if svc.Spec.LoadBalancerClass != nil {
 		klog.Infof("Ignoring service %s/%s using load balancer class %s, it is not supported by this controller.", svc.Namespace, svc.Name, svc.Spec.LoadBalancerClass)
 		return nil, cloudprovider.ImplementedElsewhere
+	}
+
+	loadBalancerName := g.GetLoadBalancerName(ctx, clusterName, svc)
+	desiredScheme := getSvcScheme(svc)
+	clusterID, err := g.ClusterID.GetID()
+	if err != nil {
+		return nil, err
 	}
 
 	// Services with multiples protocols are not supported by this controller, warn the users and sets
@@ -212,18 +212,18 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 
 // UpdateLoadBalancer is an implementation of LoadBalancer.UpdateLoadBalancer.
 func (g *Cloud) UpdateLoadBalancer(ctx context.Context, clusterName string, svc *v1.Service, nodes []*v1.Node) error {
-	loadBalancerName := g.GetLoadBalancerName(ctx, clusterName, svc)
-	scheme := getSvcScheme(svc)
-	clusterID, err := g.ClusterID.GetID()
-	if err != nil {
-		return err
-	}
-
 	// GCE load balancers do not support services with LoadBalancerClass set. LoadBalancerClass can't be updated for an existing load balancer, so here we don't need to clean any resources.
 	// Check API documentation for .Spec.LoadBalancerClass for details on when this field is allowed to be changed.
 	if svc.Spec.LoadBalancerClass != nil {
 		klog.Infof("Ignoring service %s/%s using load balancer class %s, it is not supported by this controller.", svc.Namespace, svc.Name, svc.Spec.LoadBalancerClass)
 		return cloudprovider.ImplementedElsewhere
+	}
+
+	loadBalancerName := g.GetLoadBalancerName(ctx, clusterName, svc)
+	scheme := getSvcScheme(svc)
+	clusterID, err := g.ClusterID.GetID()
+	if err != nil {
+		return err
 	}
 
 	// Services with multiples protocols are not supported by this controller, warn the users and sets
