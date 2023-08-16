@@ -162,7 +162,7 @@ builds:
 EOF
 
 # KO_CONFIG_PATH is the directory, not the path, until https://github.com/ko-build/ko/pull/731 lands in a tag (it's not in 0.12)
-KO_CONFIG_PATH=${WORKDIR}/ go run github.com/google/ko@v0.12.0 build --tags ${IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
+KO_CONFIG_PATH=${WORKDIR}/ go run github.com/google/ko@v0.14.1 build --tags ${IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
 
 if [[ -z "${ADMIN_ACCESS:-}" ]]; then
   ADMIN_ACCESS="0.0.0.0/0" # Or use your IPv4 with /32
@@ -220,7 +220,7 @@ kubetest2 kops ${KUBETEST2_ARGS} \
   --up \
   --kubernetes-version="${K8S_VERSION}" \
   --create-args="${create_args}" \
-  --control-plane-size="${KOPS_CONTROL_PLANE_SIZE:-1}" \
+  --control-plane-count="${KOPS_CONTROL_PLANE_SIZE:-1}" \
   --template-path="${KOPS_TEMPLATE:-}"
 
 kubetest2 kops ${KUBETEST2_ARGS} \
