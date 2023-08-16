@@ -24,7 +24,7 @@ type istiodApprover struct {
 	ctx *controllerContext
 }
 
-func (a *istiodApprover) handle(csr *capi.CertificateSigningRequest) error {
+func (a *istiodApprover) handle(ctx context.Context, csr *capi.CertificateSigningRequest) error {
 	if csr.Spec.SignerName != istiodSignerName {
 		return nil
 	}

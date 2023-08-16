@@ -108,6 +108,19 @@ func TestGKESigner(t *testing.T) {
 			wantErr:       false,
 		},
 		{
+			name: "Signs approved certs with kubelet readonly signer name",
+			csr: &certsv1.CertificateSigningRequest{
+				Spec: capi.CertificateSigningRequestSpec{
+					SignerName: kubeletReadonlyCSRSignerName,
+					Request:    generateCSR(),
+				},
+				Status: statusApproved,
+			},
+			mockResponse:  goodResponse,
+			expected:      goodResponse.Status.Certificate,
+			wantProcessed: true,
+		},
+		{
 			name: "Signs Approved API client certificates",
 			csr: &certsv1.CertificateSigningRequest{
 				Spec: capi.CertificateSigningRequestSpec{
@@ -197,6 +210,19 @@ func TestGKESigner(t *testing.T) {
 			csr: &certsv1.CertificateSigningRequest{
 				Spec: capi.CertificateSigningRequestSpec{
 					SignerName: certsv1.KubeAPIServerClientSignerName,
+					Request:    generateCSR(),
+				},
+				Status: statusApproved,
+			},
+			mockResponse:  invalidResponse,
+			wantProcessed: true,
+			wantErr:       true,
+		},
+		{
+			name: "Returns error after invalid response for readonly approver",
+			csr: &certsv1.CertificateSigningRequest{
+				Spec: capi.CertificateSigningRequestSpec{
+					SignerName: kubeletReadonlyCSRSignerName,
 					Request:    generateCSR(),
 				},
 				Status: statusApproved,

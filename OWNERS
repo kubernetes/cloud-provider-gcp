@@ -1,6 +1,7 @@
 # See the OWNERS docs at https://go.k8s.io/owners
 
 approvers:
+- aojea
 - cheftako
 - saad-ali
 - jingxu97
@@ -9,8 +10,10 @@ approvers:
 - mrhohn
 - mikedanese
 - calebamiles
+- jprzychodzen
+- SergeyKanzhelev
 emeritus_approvers:
 - dnardo
 - nicksardo
 reviewers:
-- jpbetz
+- aojea

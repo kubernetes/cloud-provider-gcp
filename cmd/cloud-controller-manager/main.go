@@ -26,7 +26,7 @@ import (
 
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/cloud-provider"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/cloud-provider/app"
 	"k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/options"
@@ -51,6 +51,7 @@ func main() {
 
 	controllerInitializers := app.DefaultInitFuncConstructors
 
+	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
 	nodeIpamController.nodeIPAMControllerOptions.NodeIPAMControllerConfiguration = &nodeIpamController.nodeIPAMControllerConfiguration
 	fss := cliflag.NamedFlagSets{}
@@ -58,6 +59,13 @@ func main() {
 	controllerInitializers["nodeipam"] = app.ControllerInitFuncConstructor{
 		Constructor: nodeIpamController.startNodeIpamControllerWrapper,
 	}
+
+	controllerInitializers["gkenetworkparamset"] = app.ControllerInitFuncConstructor{
+		Constructor: startGkeNetworkParamSetControllerWrapper,
+	}
+
+	// add controllers disabled by default
+	app.ControllersDisabledByDefault.Insert("gkenetworkparamset")
 
 	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, fss, wait.NeverStop)
 

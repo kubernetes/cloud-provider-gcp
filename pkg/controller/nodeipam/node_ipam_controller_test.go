@@ -25,15 +25,17 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	networkfake "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/fake"
+	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
 	"k8s.io/cloud-provider-gcp/pkg/controller/testutil"
 	"k8s.io/cloud-provider-gcp/providers/gce"
-	"k8s.io/kubernetes/pkg/controller"
 	netutils "k8s.io/utils/net"
 )
 
@@ -46,16 +48,19 @@ func newTestNodeIpamController(clusterCIDR []*net.IPNet, serviceCIDR *net.IPNet,
 		Clientset: fake.NewSimpleClientset(),
 	}
 	fakeClient := &fake.Clientset{}
-	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, controller.NoResyncPeriodFunc())
+	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, 0*time.Second)
 	fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
 
 	for _, node := range fakeNodeHandler.Existing {
 		fakeNodeInformer.Informer().GetStore().Add(node)
 	}
-
+	networkFakeClient := &networkfake.Clientset{}
+	fakeNwInformerFactory := networkinformers.NewSharedInformerFactory(networkFakeClient, 0*time.Second)
+	fakeNwInformer := fakeNwInformerFactory.Networking().V1().Networks()
+	fakeGNPInformer := fakeNwInformerFactory.Networking().V1().GKENetworkParamSets()
 	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
 	return NewNodeIpamController(
-		fakeNodeInformer, fakeGCE, clientSet,
+		fakeNodeInformer, fakeGCE, clientSet, fakeNwInformer, fakeGNPInformer,
 		clusterCIDR, serviceCIDR, secondaryServiceCIDR, nodeCIDRMaskSizes, allocatorType,
 	)
 }

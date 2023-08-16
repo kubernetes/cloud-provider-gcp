@@ -24,16 +24,16 @@ import (
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
-
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	cloudprovider "k8s.io/cloud-provider"
+	networkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
-	"k8s.io/component-base/metrics/prometheus/ratelimiter"
+	controllersmetrics "k8s.io/component-base/metrics/prometheus/controllers"
 )
 
 const (
@@ -75,6 +75,8 @@ func NewNodeIpamController(
 	nodeInformer coreinformers.NodeInformer,
 	cloud cloudprovider.Interface,
 	kubeClient clientset.Interface,
+	nwInformer networkinformer.NetworkInformer,
+	gnpInformer networkinformer.GKENetworkParamSetInformer,
 	clusterCIDRs []*net.IPNet,
 	serviceCIDR *net.IPNet,
 	secondaryServiceCIDR *net.IPNet,
@@ -93,10 +95,6 @@ func NewNodeIpamController(
 		&v1core.EventSinkImpl{
 			Interface: kubeClient.CoreV1().Events(""),
 		})
-
-	if kubeClient.CoreV1().RESTClient().GetRateLimiter() != nil {
-		ratelimiter.RegisterMetricAndTrackRateLimiterUsage("node_ipam_controller", kubeClient.CoreV1().RESTClient().GetRateLimiter())
-	}
 
 	// Cloud CIDR allocator does not rely on clusterCIDR or nodeCIDRMaskSize for allocation.
 	if allocatorType != ipam.CloudAllocatorType {
@@ -135,7 +133,7 @@ func NewNodeIpamController(
 			NodeCIDRMaskSizes:    nodeCIDRMaskSizes,
 		}
 
-		ic.cidrAllocator, err = ipam.New(kubeClient, cloud, nodeInformer, ic.allocatorType, allocatorParams)
+		ic.cidrAllocator, err = ipam.New(kubeClient, cloud, nodeInformer, nwInformer, gnpInformer, ic.allocatorType, allocatorParams)
 		if err != nil {
 			return nil, err
 		}
@@ -148,11 +146,13 @@ func NewNodeIpamController(
 }
 
 // Run starts an asynchronous loop that monitors the status of cluster nodes.
-func (nc *Controller) Run(stopCh <-chan struct{}) {
+func (nc *Controller) Run(stopCh <-chan struct{}, controllerManagerMetrics *controllersmetrics.ControllerManagerMetrics) {
 	defer utilruntime.HandleCrash()
 
 	klog.Infof("Starting ipam controller")
 	defer klog.Infof("Shutting down ipam controller")
+	controllerManagerMetrics.ControllerStarted("nodeipam")
+	defer controllerManagerMetrics.ControllerStopped("nodeipam")
 
 	if !cache.WaitForNamedCacheSync("node", stopCh, nc.nodeInformerSynced) {
 		return

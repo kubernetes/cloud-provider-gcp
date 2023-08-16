@@ -1,4 +1,5 @@
 bazel-*
+cluster/bin
 MERGED_LICENSES
 
 _output

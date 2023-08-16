@@ -35,7 +35,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/filter"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -81,7 +81,7 @@ func makeHostURL(projectsAPIEndpoint, projectID, zone, host string) string {
 // ToInstanceReferences returns instance references by links
 func (g *Cloud) ToInstanceReferences(zone string, instanceNames []string) (refs []*compute.InstanceReference) {
 	for _, ins := range instanceNames {
-		instanceLink := makeHostURL(g.service.BasePath, g.projectID, zone, ins)
+		instanceLink := makeHostURL(g.projectsBasePath, g.projectID, zone, ins)
 		refs = append(refs, &compute.InstanceReference{Instance: instanceLink})
 	}
 	return refs
@@ -118,12 +118,11 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 				}
 				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: internalIP})
 
-				if g.stackType == NetworkStackDualStack {
-					// Both internal and external IPv6 addresses are written to this array
-					ipv6s, err := metadata.Get(fmt.Sprintf(networkInterfaceIPV6, nic))
-					if err != nil {
-						return nil, fmt.Errorf("couldn't get internal IPV6 addresses for node %v: %v", nodeName, err)
-					}
+				// Both internal and external IPv6 addresses are written to this array
+				ipv6s, err := metadata.Get(fmt.Sprintf(networkInterfaceIPV6, nic))
+				if err != nil || ipv6s == "" {
+					klog.Infof("no internal IPV6 addresses found for node %v: %v", nodeName, err)
+				} else {
 					ipv6Arr := strings.Split(ipv6s, "/\n")
 					var internalIPV6 string
 					for _, ip := range ipv6Arr {
@@ -139,6 +138,7 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 						klog.Warningf("internal IPV6 range is empty for node %v", nodeName)
 					}
 				}
+
 				acs, err := metadata.Get(fmt.Sprintf(networkInterfaceAccessConfigs, nic))
 				if err != nil {
 					return nil, fmt.Errorf("couldn't get access configs: %v", err)
@@ -182,15 +182,6 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 		return nil, fmt.Errorf("couldn't get instance details: %v", err)
 	}
 
-	if g.stackType == NetworkStackDualStack {
-		instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(instanceObj.Name), instanceObj.Zone))
-		if err != nil {
-			return nil, fmt.Errorf("error while querying for instance: %v", err)
-		}
-
-		return g.nodeAddressesFromInstance(instance)
-	}
-
 	instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(instanceObj.Name), instanceObj.Zone))
 	if err != nil {
 		return nil, fmt.Errorf("error while querying for instance: %v", err)
@@ -208,15 +199,6 @@ func (g *Cloud) NodeAddressesByProviderID(ctx context.Context, providerID string
 	_, zone, name, err := splitProviderID(providerID)
 	if err != nil {
 		return []v1.NodeAddress{}, err
-	}
-
-	if g.stackType == NetworkStackDualStack {
-		instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
-		if err != nil {
-			return []v1.NodeAddress{}, fmt.Errorf("error while querying for providerID %q: %v", providerID, err)
-		}
-
-		return g.nodeAddressesFromInstance(instance)
 	}
 
 	instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
@@ -266,11 +248,9 @@ func (g *Cloud) nodeAddressesFromInstance(instance *compute.Instance) ([]v1.Node
 		for _, config := range nic.AccessConfigs {
 			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: config.NatIP})
 		}
-		if g.stackType == NetworkStackDualStack {
-			ipv6Addr := getIPV6AddressFromInterface(nic)
-			if ipv6Addr != "" {
-				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: ipv6Addr})
-			}
+		ipv6Addr := getIPV6AddressFromInterface(nic)
+		if ipv6Addr != "" {
+			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: ipv6Addr})
 		}
 	}
 
@@ -571,18 +551,28 @@ func (g *Cloud) AliasRangesByProviderID(providerID string) (cidrs []string, err 
 		for _, r := range networkInterface.AliasIpRanges {
 			cidrs = append(cidrs, r.IpCidrRange)
 		}
-		if g.stackType == NetworkStackDualStack {
-			ipv6Addr := getIPV6AddressFromInterface(networkInterface)
-			if ipv6Addr == "" {
-				return nil, fmt.Errorf("IPV6 address not found for %s", providerID)
-			}
-			// The podCIDR range is the first /112 subrange from the /96 assigned to
-			// the node
-			ipv6PodCIDR := fmt.Sprintf("%s/112", ipv6Addr)
-			cidrs = append(cidrs, ipv6PodCIDR)
+		ipv6Addr := g.GetIPV6Address(networkInterface)
+		if ipv6Addr != nil {
+			cidrs = append(cidrs, ipv6Addr.String())
 		}
 	}
 	return
+}
+
+// GetIPV6Address fetches the IPv6 addressses associated with a network interface.
+func (g *Cloud) GetIPV6Address(networkInterface *compute.NetworkInterface) *net.IPNet {
+	ipv6Addr := getIPV6AddressFromInterface(networkInterface)
+	if ipv6Addr == "" {
+		return nil
+	}
+	addr := net.ParseIP(ipv6Addr)
+	// The podCIDR range is the first /112 subrange from the /96 assigned to
+	// the node
+	mask := net.CIDRMask(112, 128)
+	return &net.IPNet{
+		IP:   addr.Mask(mask),
+		Mask: mask,
+	}
 }
 
 // AddAliasToInstanceByProviderID adds an alias to the given instance from the named
@@ -876,4 +866,21 @@ func (g *Cloud) GetNodeTags(nodeNames []string) ([]string, error) {
 	g.lastKnownNodeNames = hosts
 	g.lastComputedNodeTags = tags
 	return tags, nil
+}
+
+// NodeNetworkInterfacesByProviderID returns a list of node interfaces that exist on the node.
+func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, err error) {
+	ctx, cancel := cloud.ContextWithCallTimeout()
+	defer cancel()
+
+	_, zone, name, err := splitProviderID(providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }

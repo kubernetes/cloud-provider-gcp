@@ -9,7 +9,7 @@ load(
 )
 
 # image macro creates basic image and push rules for a main
-def image(binary, visibility = ["//visibility:public"]):
+def image(binary, base = "@go-runner//image", visibility = ["//visibility:public"]):
     if len(binary) == 0:
         fail("binary is a required argument")
     if binary[0] != ":":
@@ -17,11 +17,11 @@ def image(binary, visibility = ["//visibility:public"]):
     name = binary[1:]
     container_image(
         name = "image",
-        repository = "k8s.gcr.io",
+        repository = "registry.k8s.io",
         cmd = ["/" + name],
         files = [binary],
-        stamp = True,
-        base = "@distroless//image",
+        stamp = "@io_bazel_rules_docker//stamp:always",
+        base = base,
         visibility = visibility,
     )
     image_registry = "{STABLE_IMAGE_REGISTRY}"
@@ -33,7 +33,7 @@ def image(binary, visibility = ["//visibility:public"]):
         image = ":image",
         registry = image_registry,
         repository = repository,
-        stamp = True,
+        stamp = "@io_bazel_rules_docker//stamp:always",
         tag = "{STABLE_IMAGE_TAG}",
     )
     container_bundle(
@@ -41,7 +41,7 @@ def image(binary, visibility = ["//visibility:public"]):
         images = {
             image_registry + "/" + repository + ":{STABLE_IMAGE_TAG}": ":image",
         },
-        stamp = True,
+        stamp = "@io_bazel_rules_docker//stamp:always",
         visibility = visibility,
     )
     native.genrule(

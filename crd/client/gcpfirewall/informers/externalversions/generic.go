@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Kubernetes Authors.
+Copyright 2023 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@ import (
 
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
-	v1alpha1 "k8s.io/cloud-provider-gcp/crd/apis/gcpfirewall/v1alpha1"
+	v1 "k8s.io/cloud-provider-gcp/crd/apis/gcpfirewall/v1"
+	v1beta1 "k8s.io/cloud-provider-gcp/crd/apis/gcpfirewall/v1beta1"
 )
 
 // GenericInformer is type of SharedIndexInformer which will locate and delegate to other
@@ -52,9 +53,13 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=networking.gke.io, Version=v1alpha1
-	case v1alpha1.SchemeGroupVersion.WithResource("gcpfirewalls"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1alpha1().GCPFirewalls().Informer()}, nil
+	// Group=networking.gke.io, Version=v1
+	case v1.SchemeGroupVersion.WithResource("gcpfirewalls"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1().GCPFirewalls().Informer()}, nil
+
+		// Group=networking.gke.io, Version=v1beta1
+	case v1beta1.SchemeGroupVersion.WithResource("gcpfirewalls"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Networking().V1beta1().GCPFirewalls().Informer()}, nil
 
 	}
 

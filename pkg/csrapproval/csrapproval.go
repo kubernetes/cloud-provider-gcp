@@ -38,8 +38,20 @@ var nodeClientKeyUsages = []capi.KeyUsage{
 	capi.UsageClientAuth,
 }
 
+// see https://issue.k8s.io/109077
+var nodeClientKeyUsagesNoEncipherment = []capi.KeyUsage{
+	capi.UsageDigitalSignature,
+	capi.UsageClientAuth,
+}
+
 var nodeServerKeyUsages = []capi.KeyUsage{
 	capi.UsageKeyEncipherment,
+	capi.UsageDigitalSignature,
+	capi.UsageServerAuth,
+}
+
+// see https://issue.k8s.io/109077
+var nodeServerKeyUsagesNoEncipherment = []capi.KeyUsage{
 	capi.UsageDigitalSignature,
 	capi.UsageServerAuth,
 }
@@ -131,7 +143,8 @@ func getCertApprovalCondition(status *capi.CertificateSigningRequestStatus) (app
 // - v.Validate(csr): Validate the SAN, IP address in the certificate.
 //
 // - SubjectAccessReview to ensure that the subject of the certificate
-//	 has the Permission give in Options.Permission on the API server.
+//
+//	has the Permission give in Options.Permission on the API server.
 //
 // - v.PreApproveHoook(csr) completes without error.
 //
@@ -300,7 +313,7 @@ func IsNodeClientCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 		return false
 	}
 
-	return hasExactUsages(csr, nodeClientKeyUsages)
+	return hasExactUsages(csr, nodeClientKeyUsagesNoEncipherment) || hasExactUsages(csr, nodeClientKeyUsages)
 }
 
 // IsNodeServerCert recognizes server certificates
@@ -309,7 +322,7 @@ func IsNodeServerCert(csr *capi.CertificateSigningRequest, x509cr *x509.Certific
 		return false
 	}
 
-	if !hasExactUsages(csr, nodeServerKeyUsages) {
+	if !hasExactUsages(csr, nodeServerKeyUsagesNoEncipherment) && !hasExactUsages(csr, nodeServerKeyUsages) {
 		return false
 	}
 

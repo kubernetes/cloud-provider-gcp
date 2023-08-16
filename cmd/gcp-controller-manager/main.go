@@ -35,7 +35,6 @@ import (
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp" // Register GCP auth provider plugin.
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
@@ -43,6 +42,7 @@ import (
 	rl "k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/healthz"
+	_ "k8s.io/cloud-provider-gcp/pkg/clientauthplugin/gcp" // Register GCP auth provider plugin.
 	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/component-base/config/options"
 	"k8s.io/component-base/logs"
@@ -62,51 +62,67 @@ const (
 )
 
 var (
-	port                               = pflag.Int("port", 8089, "Port to serve status endpoints on (such as /healthz and /metrics).")
-	metricsPort                        = pflag.Int("metrics-port", 8089, "Deprecated. Port to expose Prometheus metrics on. If not set, uses the value of --port.")
-	kubeconfig                         = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information.")
-	clusterSigningGKEKubeconfig        = pflag.String("cluster-signing-gke-kubeconfig", "", "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")
-	gceConfigPath                      = pflag.String("gce-config", "/etc/gce.conf", "Path to gce.conf.")
-	controllers                        = pflag.StringSlice("controllers", []string{"*"}, "Controllers to enable. Possible controllers are: "+strings.Join(loopNames(), ",")+".")
-	csrApproverVerifyClusterMembership = pflag.Bool("csr-validate-cluster-membership", true, "Validate that VMs requesting CSRs belong to current GKE cluster.")
-	csrApproverAllowLegacyKubelet      = pflag.Bool("csr-allow-legacy-kubelet", true, "Allow legacy kubelet bootstrap flow.")
-	gceAPIEndpointOverride             = pflag.String("gce-api-endpoint-override", "", "If set, talks to a different GCE API Endpoint. By default it talks to https://www.googleapis.com/compute/v1/projects/")
-	directPath                         = pflag.Bool("direct-path", false, "Enable Direct Path.")
-	delayDirectPathGSARemove           = pflag.Bool("delay-direct-path-gsa-remove", false, "Delay removal of deleted Direct Path workloads' Google Service Accounts.")
-	hmsAuthorizeSAMappingURL           = pflag.String("hms-authorize-sa-mapping-url", "", "URL for reaching the Hosted Master Service AuthorizeSAMapping API.")
-	hmsSyncNodeURL                     = pflag.String("hms-sync-node-url", "", "URL for reaching the Hosted Master Service SyncNode API.")
+	port                                   = pflag.Int("port", 8089, "Port to serve status endpoints on (such as /healthz and /metrics).")
+	metricsPort                            = pflag.Int("metrics-port", 8089, "Deprecated. Port to expose Prometheus metrics on. If not set, uses the value of --port.")
+	kubeconfig                             = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information.")
+	clusterSigningGKEKubeconfig            = pflag.String("cluster-signing-gke-kubeconfig", "", "If set, use the kubeconfig file to call GKE to sign cluster-scoped certificates instead of using a local private key.")
+	gceConfigPath                          = pflag.String("gce-config", "/etc/gce.conf", "Path to gce.conf.")
+	controllers                            = pflag.StringSlice("controllers", []string{"*"}, "Controllers to enable. Possible controllers are: "+strings.Join(loopNames(), ",")+".")
+	csrApproverVerifyClusterMembership     = pflag.Bool("csr-validate-cluster-membership", true, "Validate that VMs requesting CSRs belong to current GKE cluster.")
+	csrApproverAllowLegacyKubelet          = pflag.Bool("csr-allow-legacy-kubelet", true, "Allow legacy kubelet bootstrap flow.")
+	csrApproverUseGCEInstanceListReferrers = pflag.Bool("csr-use-gce-instance-list-referrers", false, "If true use https://cloud.google.com/compute/docs/reference/rest/v1/instances/listReferrers to validate instance cluster membership.")
+	gceAPIEndpointOverride                 = pflag.String("gce-api-endpoint-override", "", "If set, talks to a different GCE API Endpoint. By default it talks to https://www.googleapis.com/compute/v1/projects/")
+	directPath                             = pflag.Bool("direct-path", false, "Enable Direct Path.")
+	directPathMode                         = pflag.String("direct-path-mode", "v2", "Direct Path mode.")
+	delayDirectPathGSARemove               = pflag.Bool("delay-direct-path-gsa-remove", false, "Delay removal of deleted Direct Path workloads' Google Service Accounts.")
+	authAuthorizeServiceAccountMappingURL  = pflag.String("auth-authorize-service-account-mapping-url", "", "URL for reaching the Auth Service AuthorizeServiceAccountMapping API.")
+	authSyncNodeURL                        = pflag.String("auth-sync-node-url", "", "URL for reaching the Auth Service SyncNode API.")
+	hmsAuthorizeSAMappingURL               = pflag.String("hms-authorize-sa-mapping-url", "", "URL for reaching the Hosted Master Service AuthorizeSAMapping API.")
+	hmsSyncNodeURL                         = pflag.String("hms-sync-node-url", "", "URL for reaching the Hosted Master Service SyncNode API.")
+	kubeletReadOnlyCSRApprover             = pflag.Bool("kubelet-read-only-csr-approver", false, "Enable kubelet readonly csr approver or not")
+	autopilotEnabled                       = pflag.Bool("autopilot", false, "Is this a GKE Autopilot cluster.")
+	clearStalePodsOnNodeRegistration       = pflag.Bool("clearStalePodsOnNodeRegistration", false, "If true, after node registration, delete pods bound to old node.")
 )
 
 func main() {
-	logs.InitLogs()
 
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+
+	logs.AddFlags(pflag.CommandLine)
 
 	leConfig := &componentbaseconfig.LeaderElectionConfiguration{
 		LeaderElect:   true,
 		LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
 		RenewDeadline: metav1.Duration{Duration: 10 * time.Second},
 		RetryPeriod:   metav1.Duration{Duration: 2 * time.Second},
-		//TODO(acumino): Migrate endpointsleases to leases in vesrion 1.24.
-		ResourceLock: rl.EndpointsLeasesResourceLock,
+		ResourceLock:  rl.LeasesResourceLock,
 	}
 	options.BindLeaderElectionFlags(leConfig, pflag.CommandLine)
 
 	pflag.Parse()
 	verflag.PrintAndExitIfRequested()
 
+	// InitLogs should be called after parsing flags.
+	logs.InitLogs()
+
 	s := &controllerManager{
-		clusterSigningGKEKubeconfig:        *clusterSigningGKEKubeconfig,
-		gceConfigPath:                      *gceConfigPath,
-		gceAPIEndpointOverride:             *gceAPIEndpointOverride,
-		controllers:                        *controllers,
-		csrApproverVerifyClusterMembership: *csrApproverVerifyClusterMembership,
-		csrApproverAllowLegacyKubelet:      *csrApproverAllowLegacyKubelet,
-		leaderElectionConfig:               *leConfig,
-		hmsAuthorizeSAMappingURL:           *hmsAuthorizeSAMappingURL,
-		hmsSyncNodeURL:                     *hmsSyncNodeURL,
-		healthz:                            healthz.NewHandler(),
-		delayDirectPathGSARemove:           *delayDirectPathGSARemove,
+		clusterSigningGKEKubeconfig:            *clusterSigningGKEKubeconfig,
+		gceConfigPath:                          *gceConfigPath,
+		gceAPIEndpointOverride:                 *gceAPIEndpointOverride,
+		controllers:                            *controllers,
+		csrApproverVerifyClusterMembership:     *csrApproverVerifyClusterMembership,
+		csrApproverAllowLegacyKubelet:          *csrApproverAllowLegacyKubelet,
+		csrApproverUseGCEInstanceListReferrers: *csrApproverUseGCEInstanceListReferrers,
+		leaderElectionConfig:                   *leConfig,
+		authAuthorizeServiceAccountMappingURL:  *authAuthorizeServiceAccountMappingURL,
+		authSyncNodeURL:                        *authSyncNodeURL,
+		hmsAuthorizeSAMappingURL:               *hmsAuthorizeSAMappingURL,
+		hmsSyncNodeURL:                         *hmsSyncNodeURL,
+		healthz:                                healthz.NewHandler(),
+		delayDirectPathGSARemove:               *delayDirectPathGSARemove,
+		kubeletReadOnlyCSRApprover:             *kubeletReadOnlyCSRApprover,
+		autopilotEnabled:                       *autopilotEnabled,
+		clearStalePodsOnNodeRegistration:       *clearStalePodsOnNodeRegistration,
 	}
 	var err error
 	s.informerKubeconfig, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
@@ -153,16 +169,24 @@ func main() {
 // controllerManager is the main context object for the package.
 type controllerManager struct {
 	// Fields initialized from flags.
-	clusterSigningGKEKubeconfig        string
-	gceConfigPath                      string
-	gceAPIEndpointOverride             string
-	controllers                        []string
-	csrApproverVerifyClusterMembership bool
-	csrApproverAllowLegacyKubelet      bool
-	leaderElectionConfig               componentbaseconfig.LeaderElectionConfiguration
-	hmsAuthorizeSAMappingURL           string
-	hmsSyncNodeURL                     string
-	delayDirectPathGSARemove           bool
+	clusterSigningGKEKubeconfig            string
+	gceConfigPath                          string
+	gceAPIEndpointOverride                 string
+	controllers                            []string
+	csrApproverVerifyClusterMembership     bool
+	csrApproverAllowLegacyKubelet          bool
+	csrApproverUseGCEInstanceListReferrers bool
+	leaderElectionConfig                   componentbaseconfig.LeaderElectionConfiguration
+	authAuthorizeServiceAccountMappingURL  string
+	authSyncNodeURL                        string
+	hmsAuthorizeSAMappingURL               string
+	hmsSyncNodeURL                         string
+	delayDirectPathGSARemove               bool
+	autopilotEnabled                       bool
+	clearStalePodsOnNodeRegistration       bool
+
+	// Kubelet Readonly CSR Approver
+	kubeletReadOnlyCSRApprover bool
 
 	// Fields initialized from other sources.
 	gcpConfig            gcpConfig
@@ -216,21 +240,24 @@ func run(s *controllerManager) error {
 			if err != nil {
 				klog.Fatalf("failed to start client for %q: %v", name, err)
 			}
-			if err := loop(&controllerContext{
+			if err := loop(ctx, &controllerContext{
 				client:          loopClient,
 				sharedInformers: sharedInformers,
 				recorder: eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.EventSource{
 					Component: name,
 				}),
-				gcpCfg:                             s.gcpConfig,
-				clusterSigningGKEKubeconfig:        s.clusterSigningGKEKubeconfig,
-				csrApproverVerifyClusterMembership: s.csrApproverVerifyClusterMembership,
-				csrApproverAllowLegacyKubelet:      s.csrApproverAllowLegacyKubelet,
-				verifiedSAs:                        verifiedSAs,
-				done:                               ctx.Done(),
-				hmsAuthorizeSAMappingURL:           s.hmsAuthorizeSAMappingURL,
-				hmsSyncNodeURL:                     s.hmsSyncNodeURL,
-				delayDirectPathGSARemove:           s.delayDirectPathGSARemove,
+				gcpCfg:                                 s.gcpConfig,
+				clusterSigningGKEKubeconfig:            s.clusterSigningGKEKubeconfig,
+				csrApproverVerifyClusterMembership:     s.csrApproverVerifyClusterMembership,
+				csrApproverAllowLegacyKubelet:          s.csrApproverAllowLegacyKubelet,
+				csrApproverUseGCEInstanceListReferrers: s.csrApproverUseGCEInstanceListReferrers,
+				verifiedSAs:                            verifiedSAs,
+				authAuthorizeServiceAccountMappingURL:  s.authAuthorizeServiceAccountMappingURL,
+				authSyncNodeURL:                        s.authSyncNodeURL,
+				hmsAuthorizeSAMappingURL:               s.hmsAuthorizeSAMappingURL,
+				hmsSyncNodeURL:                         s.hmsSyncNodeURL,
+				delayDirectPathGSARemove:               s.delayDirectPathGSARemove,
+				clearStalePodsOnNodeRegistration:       s.clearStalePodsOnNodeRegistration,
 			}); err != nil {
 				klog.Fatalf("Failed to start %q: %v", name, err)
 			}

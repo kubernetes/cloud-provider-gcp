@@ -242,6 +242,11 @@ func RegisterConversions(s *runtime.Scheme) error {
 	}); err != nil {
 		return err
 	}
+	if err := s.AddConversionFunc((*apiextensions.ValidationRules)(nil), (*ValidationRules)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_apiextensions_ValidationRules_To_v1_ValidationRules(a.(*apiextensions.ValidationRules), b.(*ValidationRules), scope)
+	}); err != nil {
+		return err
+	}
 	if err := s.AddConversionFunc((*CustomResourceConversion)(nil), (*apiextensions.CustomResourceConversion)(nil), func(a, b interface{}, scope conversion.Scope) error {
 		return Convert_v1_CustomResourceConversion_To_apiextensions_CustomResourceConversion(a.(*CustomResourceConversion), b.(*apiextensions.CustomResourceConversion), scope)
 	}); err != nil {
@@ -1253,6 +1258,7 @@ func Convert_apiextensions_ServiceReference_To_v1_ServiceReference(in *apiextens
 func autoConvert_v1_ValidationRule_To_apiextensions_ValidationRule(in *ValidationRule, out *apiextensions.ValidationRule, s conversion.Scope) error {
 	out.Rule = in.Rule
 	out.Message = in.Message
+	out.MessageExpression = in.MessageExpression
 	return nil
 }
 
@@ -1264,6 +1270,7 @@ func Convert_v1_ValidationRule_To_apiextensions_ValidationRule(in *ValidationRul
 func autoConvert_apiextensions_ValidationRule_To_v1_ValidationRule(in *apiextensions.ValidationRule, out *ValidationRule, s conversion.Scope) error {
 	out.Rule = in.Rule
 	out.Message = in.Message
+	out.MessageExpression = in.MessageExpression
 	return nil
 }
 

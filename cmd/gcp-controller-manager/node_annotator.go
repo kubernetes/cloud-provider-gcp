@@ -144,6 +144,22 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 				},
 			},
 			{
+				name: "resize-request-reconciler",
+				annotate: func(node *core.Node, instance *compute.Instance) bool {
+					resizeRequestName := extractResizeRequestLabel(instance)
+					if resizeRequestName == nil {
+						return false
+					}
+
+					if node.ObjectMeta.Labels == nil {
+						node.ObjectMeta.Labels = make(map[string]string)
+					}
+
+					node.ObjectMeta.Labels["autoscaling.gke.io/provisioning-request"] = *resizeRequestName
+					return true
+				},
+			},
+			{
 				name: "taints-reconciler",
 				annotate: func(node *core.Node, instance *compute.Instance) bool {
 					klog.Infof("Triggering taint reconcilation")
@@ -155,12 +171,15 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 						return false
 					}
 
-					err = mergeManagedTaints(node, desiredTaints)
-					if err != nil {
-						klog.Errorf("Error merging taints: %v", err)
-						return false
+					if node.ObjectMeta.Annotations == nil {
+						node.ObjectMeta.Annotations = make(map[string]string)
 					}
 
+					// Set last applied taints annotation. Cluster autoscaler relies on
+					// this.
+					// Note: We don't merge the taints like we do for labels because we
+					// don't want to reapply any taints the user might have deleted.
+					node.ObjectMeta.Annotations[lastAppliedTaintsKey] = serializeTaints(desiredTaints)
 					return true
 				},
 			},
@@ -284,28 +303,55 @@ func extractKubeLabels(instance *compute.Instance) (map[string]string, error) {
 		return nil, errNoMetadata
 	}
 
-	var kubeLabels *string
-	for _, item := range instance.Metadata.Items {
-		if item == nil || item.Key != labelsKey {
-			continue
-		}
-		if item.Value == nil {
-			return nil, fmt.Errorf("instance %q had nil %q", instance.SelfLink, labelsKey)
-		}
-		kubeLabels = item.Value
-	}
-	if kubeLabels == nil {
+	kubeLabels, found := findValue(instance.Metadata.Items, labelsKey, instance.SelfLink)
+	if !found {
 		return nil, errNoMetadata
 	}
-	if len(*kubeLabels) == 0 {
+
+	if len(kubeLabels) == 0 {
 		return make(map[string]string), nil
 	}
 
-	parsedLabels, err := parseLabels(*kubeLabels)
+	parsedLabels, err := parseLabels(kubeLabels)
 	if err != nil {
 		return nil, fmt.Errorf("instance %q had %s", instance.SelfLink, err.Error())
 	}
 	return parsedLabels, nil
+}
+
+func extractResizeRequestLabel(instance *compute.Instance) *string {
+	const createdByRRKey = "google-compute-mig-resize-request"
+
+	if instance.Metadata == nil {
+		return nil
+	}
+
+	createdByRR, found := findValue(instance.Metadata.Items, createdByRRKey, instance.SelfLink)
+	if !found {
+		return nil
+	}
+
+	// createdByRR is expected to be of format "projects/<project_id>/…", extracting the last part of the path
+	if elements := strings.Split(createdByRR, "/"); len(elements) > 1 {
+		return &elements[len(elements)-1]
+	}
+
+	klog.Warningf("Retrieved label value %q has unexpected format", createdByRR)
+	return nil
+}
+
+func findValue(items []*compute.MetadataItems, key, selfLink string) (string, bool) {
+	for _, item := range items {
+		if item == nil || item.Key != key {
+			continue
+		}
+		if item.Value == nil {
+			klog.Warningf("Cannot retrieve value, instance %q had nil %q", selfLink, key)
+			return "", false
+		}
+		return *item.Value, true
+	}
+	return "", false
 }
 
 func extractNodeTaints(instance *compute.Instance) ([]core.Taint, error) {
@@ -371,20 +417,6 @@ func extractLastAppliedLabels(node *core.Node) map[string]string {
 	return parsedLabels
 }
 
-func extractLastAppliedTaints(node *core.Node) []core.Taint {
-	lastTaints, ok := node.ObjectMeta.Annotations[lastAppliedTaintsKey]
-	if !ok || len(lastTaints) == 0 {
-		return nil
-	}
-
-	parsedTaints, err := parseTaints(lastTaints)
-	if err != nil {
-		klog.Errorf("Failed to parse last applied taints annotation: %q, treat it as not set, err: %v", lastTaints, err)
-		return nil
-	}
-	return parsedTaints
-}
-
 func mergeManagedLabels(node *core.Node, desiredLabels map[string]string) error {
 	if node.ObjectMeta.Annotations == nil {
 		node.ObjectMeta.Annotations = make(map[string]string)
@@ -401,34 +433,6 @@ func mergeManagedLabels(node *core.Node, desiredLabels map[string]string) error 
 		node.ObjectMeta.Labels[key] = value
 	}
 	node.ObjectMeta.Annotations[lastAppliedLabelsKey] = serializeLabels(desiredLabels)
-	return nil
-}
-
-func mergeManagedTaints(node *core.Node, desiredTaints []core.Taint) error {
-	if node.ObjectMeta.Annotations == nil {
-		node.ObjectMeta.Annotations = make(map[string]string)
-	}
-	lastAppliedTaints := extractLastAppliedTaints(node)
-	// Merge GCE managed taints by:
-	// 1. delete managed taints to be removed, which is present in last-applied-taints
-	// 2. add/update taints from GCE taint source to node
-	// 3. update last-applied-taints in annotation
-	for _, taint := range lastAppliedTaints {
-		node.Spec.Taints, _ = taintsutil.DeleteTaint(node.Spec.Taints, &taint)
-	}
-	for _, taint := range desiredTaints {
-		updated := false
-		for i := range node.Spec.Taints {
-			if taint.MatchTaint(&node.Spec.Taints[i]) {
-				node.Spec.Taints[i] = taint
-				updated = true
-			}
-		}
-		if !updated {
-			node.Spec.Taints = append(node.Spec.Taints, taint)
-		}
-	}
-	node.ObjectMeta.Annotations[lastAppliedTaintsKey] = serializeTaints(desiredTaints)
 	return nil
 }
 

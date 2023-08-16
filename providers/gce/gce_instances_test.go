@@ -78,6 +78,7 @@ func TestNodeAddresses(t *testing.T) {
 	require.NoError(t, err)
 
 	instanceMap := make(map[string]*ga.Instance)
+	// n1 is dual stack instance with internal IPv6 address
 	instance := &ga.Instance{
 		Name: "n1",
 		Zone: "us-central1-b",
@@ -91,7 +92,7 @@ func TestNodeAddresses(t *testing.T) {
 	}
 	instanceMap["n1"] = instance
 
-	// n2 is instance with external IPv6 address
+	// n2 is dual stack instance with external IPv6 address
 	instance = &ga.Instance{
 		Name: "n2",
 		Zone: "us-central1-b",
@@ -118,7 +119,7 @@ func TestNodeAddresses(t *testing.T) {
 	}
 	instanceMap["n4"] = instance
 
-	// n5 is a single stack instance
+	// n5 is a single stack IPv4 instance
 	instance = &ga.Instance{
 		Name: "n5",
 		Zone: "us-central1-b",
@@ -147,24 +148,24 @@ func TestNodeAddresses(t *testing.T) {
 	testcases := []struct {
 		name      string
 		nodeName  string
-		dualStack bool
 		wantErr   string
 		wantAddrs []v1.NodeAddress
 	}{
 		{
-			name:     "internal single stack instance",
+			name:     "internal dual stack instance",
 			nodeName: "n1",
 			wantAddrs: []v1.NodeAddress{
 				{Type: v1.NodeInternalIP, Address: "10.1.1.1"},
+				{Type: v1.NodeInternalIP, Address: "2001:2d00::0:1"},
 			},
 		},
 		{
-			name:      "internal dual stack instance",
-			nodeName:  "n1",
-			dualStack: true,
+			name:     "external dual stack instance",
+			nodeName: "n2",
 			wantAddrs: []v1.NodeAddress{
-				{Type: v1.NodeInternalIP, Address: "10.1.1.1"},
-				{Type: v1.NodeInternalIP, Address: "2001:2d00::0:1"},
+				{Type: v1.NodeInternalIP, Address: "10.1.1.2"},
+				{Type: v1.NodeExternalIP, Address: "20.1.1.2"},
+				{Type: v1.NodeInternalIP, Address: "2001:1900::0:2"},
 			},
 		},
 		{
@@ -173,32 +174,13 @@ func TestNodeAddresses(t *testing.T) {
 			wantErr:  "instance not found",
 		},
 		{
-			name:     "external single stack instance",
-			nodeName: "n2",
-			wantAddrs: []v1.NodeAddress{
-				{Type: v1.NodeInternalIP, Address: "10.1.1.2"},
-				{Type: v1.NodeExternalIP, Address: "20.1.1.2"},
-			},
-		},
-		{
-			name:      "external dual stack instance",
-			nodeName:  "n2",
-			dualStack: true,
-			wantAddrs: []v1.NodeAddress{
-				{Type: v1.NodeInternalIP, Address: "10.1.1.2"},
-				{Type: v1.NodeExternalIP, Address: "20.1.1.2"},
-				{Type: v1.NodeInternalIP, Address: "2001:1900::0:2"},
-			},
-		},
-		{
 			name:     "network interface not found",
 			nodeName: "n4",
 			wantErr:  "could not find network interface",
 		},
 		{
-			name:      "single stack instance",
-			nodeName:  "n5",
-			dualStack: true,
+			name:     "single stack instance",
+			nodeName: "n5",
 			wantAddrs: []v1.NodeAddress{
 				{Type: v1.NodeInternalIP, Address: "10.1.1.5"},
 				{Type: v1.NodeExternalIP, Address: "20.1.1.5"},
@@ -208,11 +190,6 @@ func TestNodeAddresses(t *testing.T) {
 
 	for _, test := range testcases {
 		t.Run(test.name, func(t *testing.T) {
-			if test.dualStack {
-				gce.stackType = NetworkStackDualStack
-			} else {
-				gce.stackType = NetworkStackIPV4
-			}
 			gotAddrs, err := gce.NodeAddresses(context.TODO(), types.NodeName(test.nodeName))
 			if err != nil && (test.wantErr == "" || !strings.Contains(err.Error(), test.wantErr)) {
 				t.Errorf("gce.NodeAddresses. Want err: %v, got: %v", test.wantErr, err)
@@ -309,14 +286,12 @@ func TestAliasRangesByProviderID(t *testing.T) {
 	testcases := []struct {
 		name       string
 		providerId string
-		dualStack  bool
 		wantErr    string
 		wantCIDRs  []string
 	}{
 		{
 			name:       "internal single stack instance",
 			providerId: "gce://p1/us-central1-b/n1",
-			dualStack:  true,
 			wantCIDRs: []string{
 				"10.11.1.0/24",
 				"2001:2d00::1:0:0/112",
@@ -325,13 +300,11 @@ func TestAliasRangesByProviderID(t *testing.T) {
 		{
 			name:       "instance not found",
 			providerId: "gce://p1/us-central1-b/x1",
-			dualStack:  true,
 			wantErr:    "instance not found",
 		},
 		{
 			name:       "internal single stack instance",
 			providerId: "gce://p1/us-central1-b/n2",
-			dualStack:  true,
 			wantCIDRs: []string{
 				"10.11.2.0/24",
 				"2001:1900::2:0:0/112",
@@ -340,24 +313,12 @@ func TestAliasRangesByProviderID(t *testing.T) {
 		{
 			name:       "network interface not found",
 			providerId: "gce://p1/us-central1-b/n4",
-			dualStack:  true,
 			wantErr:    "",
-		},
-		{
-			name:       "single stack instance",
-			providerId: "gce://p1/us-central1-b/n5",
-			dualStack:  true,
-			wantErr:    "IPV6 address not found",
 		},
 	}
 
 	for _, test := range testcases {
 		t.Run(test.name, func(t *testing.T) {
-			if test.dualStack {
-				gce.stackType = NetworkStackDualStack
-			} else {
-				gce.stackType = NetworkStackIPV4
-			}
 			gotCIDRs, err := gce.AliasRangesByProviderID(test.providerId)
 			if err != nil && (test.wantErr == "" || !strings.Contains(err.Error(), test.wantErr)) {
 				t.Errorf("gce.AliasRangesByProviderID. Want err: %v, got: %v", test.wantErr, err)
@@ -365,6 +326,83 @@ func TestAliasRangesByProviderID(t *testing.T) {
 				t.Errorf("gce.AliasRangesByProviderID. Want err: %v, got: %v, gotCIDRs: %v", test.wantErr, err, gotCIDRs)
 			}
 			assert.Equal(t, test.wantCIDRs, gotCIDRs)
+		})
+	}
+}
+
+func TestInstanceByProviderID(t *testing.T) {
+	gce, err := fakeGCECloud(DefaultTestClusterValues())
+	require.NoError(t, err)
+
+	instanceMap := make(map[string]*ga.Instance)
+	interfaces := []*ga.NetworkInterface{
+		{
+			AliasIpRanges: []*ga.AliasIpRange{
+				{IpCidrRange: "10.11.1.0/24", SubnetworkRangeName: "range-A"},
+			},
+			NetworkIP:  "10.1.1.1",
+			Network:    "network-A",
+			Subnetwork: "subnetwork-A",
+		},
+		{
+			AliasIpRanges: []*ga.AliasIpRange{
+				{IpCidrRange: "20.11.1.0/24", SubnetworkRangeName: "range-B"},
+			},
+			NetworkIP:  "20.1.1.1",
+			Network:    "network-B",
+			Subnetwork: "subnetwork-B",
+		},
+	}
+	// n1 is instance with 2 network interfaces
+	instance := &ga.Instance{
+		Name:              "n1",
+		Zone:              "us-central1-b",
+		NetworkInterfaces: interfaces,
+	}
+	instanceMap["n1"] = instance
+
+	mockGCE := gce.c.(*cloud.MockGCE)
+	mai := mockGCE.Instances().(*cloud.MockInstances)
+	mai.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances) (bool, *ga.Instance, error) {
+		ret, ok := instanceMap[key.Name]
+		if !ok {
+			return true, nil, fmt.Errorf("instance not found")
+		}
+		return true, ret, nil
+	}
+
+	testcases := []struct {
+		name         string
+		providerId   string
+		wantErr      string
+		wantInstance *ga.Instance
+	}{
+		{
+			name:       "invalid provider id",
+			providerId: "gce://p1/x1",
+			wantErr:    "error splitting providerID",
+		},
+		{
+			name:       "instance not found",
+			providerId: "gce://p1/us-central1-b/x1",
+			wantErr:    "instance not found",
+		},
+		{
+			name:         "instance with multiple interfaces",
+			providerId:   "gce://p1/us-central1-b/n1",
+			wantInstance: instance,
+		},
+	}
+
+	for _, test := range testcases {
+		t.Run(test.name, func(t *testing.T) {
+			gotInstance, err := gce.InstanceByProviderID(test.providerId)
+			if err != nil && (test.wantErr == "" || !strings.Contains(err.Error(), test.wantErr)) {
+				t.Errorf("gce.InstanceByProviderID. Want err: %v, got: %v", test.wantErr, err)
+			} else if err == nil && test.wantErr != "" {
+				t.Errorf("gce.InstanceByProviderID. Want err: %v, got: %v, gotInstances: %v", test.wantErr, err, gotInstance)
+			}
+			assert.Equal(t, test.wantInstance, gotInstance)
 		})
 	}
 }

@@ -32,17 +32,19 @@
         "cpu": "{{cpurequest}}"
       }
     },
-    "command": ["/cloud-controller-manager"],
     "args": [
       "--log-file=/var/log/cloud-controller-manager.log",
-      "--logtostderr=false",
+      "--also-stdout=false",
+      "--redirect-stderr=true",
+      "/cloud-controller-manager",
       {{params}}
     ],
     {{container_env}}
     "livenessProbe": {
       "httpGet": {
         "host": "127.0.0.1",
-        "port": 10253,
+        "port": 10258,
+        "scheme": "HTTPS",
         "path": "/healthz"
       },
       "initialDelaySeconds": 15,

@@ -32,19 +32,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/watch"
 	v1apply "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	ref "k8s.io/client-go/tools/reference"
 	utilnode "k8s.io/component-helpers/node/topology"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/utils/clock"
+	clocktesting "k8s.io/utils/clock/testing"
 
 	jsonpatch "github.com/evanphx/json-patch"
 )
@@ -118,7 +118,7 @@ func (m *FakeNodeHandler) Create(_ context.Context, node *v1.Node, _ metav1.Crea
 	}()
 	for _, n := range m.Existing {
 		if n.Name == node.Name {
-			return nil, apierrors.NewAlreadyExists(api.Resource("nodes"), node.Name)
+			return nil, apierrors.NewAlreadyExists(v1.Resource("nodes"), node.Name)
 		}
 	}
 	if m.CreateHook == nil || m.CreateHook(m, node) {
@@ -406,7 +406,7 @@ func (f *FakeRecorder) AnnotatedEventf(obj runtime.Object, annotations map[strin
 func (f *FakeRecorder) generateEvent(obj runtime.Object, timestamp metav1.Time, eventtype, reason, message string) {
 	f.Lock()
 	defer f.Unlock()
-	ref, err := ref.GetReference(legacyscheme.Scheme, obj)
+	ref, err := ref.GetReference(scheme.Scheme, obj)
 	if err != nil {
 		klog.Errorf("Encountered error while getting reference: %v", err)
 		return
@@ -455,7 +455,7 @@ func NewFakeRecorder() *FakeRecorder {
 	return &FakeRecorder{
 		source: v1.EventSource{Component: "nodeControllerTest"},
 		Events: []*v1.Event{},
-		clock:  clock.NewFakeClock(time.Now()),
+		clock:  clocktesting.NewFakeClock(time.Now()),
 	}
 }
 

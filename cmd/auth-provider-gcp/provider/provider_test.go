@@ -27,7 +27,7 @@ import (
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
-	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1"
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1"
 )
 
 const (
@@ -35,7 +35,7 @@ const (
 	email            = "1234@project.gserviceaccount.com"
 	expectedUsername = "_token"
 	expectedCacheKey = credentialproviderapi.ImagePluginCacheKeyType
-	dummyImage       = "k8s.gcr.io/pause"
+	dummyImage       = "registry.k8s.io/pause"
 )
 
 func hasURL(url string, response *credentialproviderapi.CredentialProviderResponse) bool {
