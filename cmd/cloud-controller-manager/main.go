@@ -20,6 +20,7 @@ limitations under the License.
 package main
 
 import (
+	"k8s.io/cloud-provider/names"
 	"math/rand"
 	"os"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
+	_ "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/cloud-provider/app"
 	"k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/options"
@@ -35,8 +37,7 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/clientgo" // load all the prometheus client-go plugins
 	_ "k8s.io/component-base/metrics/prometheus/version"  // for version metric registration
 	"k8s.io/klog/v2"
-
-	_ "k8s.io/cloud-provider-gcp/providers/gce"
+	kcmnames "k8s.io/kubernetes/cmd/kube-controller-manager/names"
 )
 
 func main() {
@@ -66,8 +67,9 @@ func main() {
 
 	// add controllers disabled by default
 	app.ControllersDisabledByDefault.Insert("gkenetworkparamset")
-
-	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, fss, wait.NeverStop)
+	aliasMap := names.CCMControllerAliases()
+	aliasMap["nodeipam"] = kcmnames.NodeIpamController
+	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, aliasMap, fss, wait.NeverStop)
 
 	logs.InitLogs()
 	defer logs.FlushLogs()
