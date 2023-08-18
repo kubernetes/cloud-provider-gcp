@@ -27,14 +27,16 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/onsi/ginkgo/v2 v2.11.0 // indirect
+	github.com/onsi/gomega v1.27.10 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	golang.org/x/crypto v0.12.0 // indirect
 	golang.org/x/net v0.14.0 // indirect
 	golang.org/x/oauth2 v0.8.0 // indirect
 	golang.org/x/sys v0.11.0 // indirect
 	golang.org/x/term v0.11.0 // indirect
 	golang.org/x/text v0.12.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
+	golang.org/x/tools v0.12.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -44,7 +46,6 @@ require (
 	k8s.io/klog/v2 v2.100.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2 // indirect
-	sigs.k8s.io/controller-tools v0.13.0 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
