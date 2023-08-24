@@ -17,6 +17,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/util/httpstream/wsstream",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apiserver/pkg/audit",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizer",
@@ -28,7 +29,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/storage",
         "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/apiserver/pkg/util/flushwriter",
-        "//vendor/k8s.io/apiserver/pkg/util/wsstream",
         "//vendor/k8s.io/component-base/tracing",
     ],
 )

@@ -18,6 +18,7 @@ go_library(
         "map.go",
         "null.go",
         "object.go",
+        "optional.go",
         "overflow.go",
         "provider.go",
         "string.go",

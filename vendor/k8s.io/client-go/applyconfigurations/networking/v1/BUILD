@@ -26,7 +26,6 @@ go_library(
         "networkpolicypeer.go",
         "networkpolicyport.go",
         "networkpolicyspec.go",
-        "networkpolicystatus.go",
         "servicebackendport.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/applyconfigurations/networking/v1",

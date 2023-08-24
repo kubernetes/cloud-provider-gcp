@@ -8,7 +8,8 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/admissionregistration/v1:admissionregistration",
-        "//vendor/k8s.io/api/admissionregistration/v1alpha1",
+        "//vendor/k8s.io/api/admissionregistration/v1beta1",
+        "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apiserver/pkg/admission",
         "//vendor/k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/namespace",

@@ -10,9 +10,13 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/storage/value",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/google.golang.org/grpc/codes",
         "//vendor/google.golang.org/grpc/status",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/util/errors",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/component-base/metrics",
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
+        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

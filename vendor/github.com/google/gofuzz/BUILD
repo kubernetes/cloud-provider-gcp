@@ -9,4 +9,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/google/gofuzz",
     importpath = "github.com/google/gofuzz",
     visibility = ["//visibility:public"],
+    deps = ["//vendor/github.com/google/gofuzz/bytesource"],
 )

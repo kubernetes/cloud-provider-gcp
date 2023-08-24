@@ -2,7 +2,10 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "node",
-    srcs = ["node_controller.go"],
+    srcs = [
+        "metrics.go",
+        "node_controller.go",
+    ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/cloud-provider/controllers/node",
     importpath = "k8s.io/cloud-provider/controllers/node",
     visibility = ["//visibility:public"],
@@ -27,6 +30,8 @@ go_library(
         "//vendor/k8s.io/cloud-provider",
         "//vendor/k8s.io/cloud-provider/api",
         "//vendor/k8s.io/cloud-provider/node/helpers",
+        "//vendor/k8s.io/component-base/metrics",
+        "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/component-base/metrics/prometheus/controllers",
         "//vendor/k8s.io/component-helpers/node/util",
         "//vendor/k8s.io/controller-manager/pkg/features",

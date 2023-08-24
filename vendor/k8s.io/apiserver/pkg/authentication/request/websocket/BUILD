@@ -7,7 +7,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/authentication/request/websocket",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/apimachinery/pkg/util/httpstream/wsstream",
         "//vendor/k8s.io/apiserver/pkg/authentication/authenticator",
-        "//vendor/k8s.io/apiserver/pkg/util/wsstream",
     ],
 )

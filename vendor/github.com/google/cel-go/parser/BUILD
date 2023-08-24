@@ -16,7 +16,7 @@ go_library(
     importpath = "github.com/google/cel-go/parser",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/antlr/antlr4/runtime/Go/antlr",
+        "//vendor/github.com/antlr/antlr4/runtime/Go/antlr/v4:antlr",
         "//vendor/github.com/google/cel-go/common",
         "//vendor/github.com/google/cel-go/common/operators",
         "//vendor/github.com/google/cel-go/common/runes",

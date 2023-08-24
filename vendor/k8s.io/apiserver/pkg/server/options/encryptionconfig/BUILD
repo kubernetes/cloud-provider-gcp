@@ -23,6 +23,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/aes",
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/envelope",
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/envelope/kmsv2",
+        "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/envelope/kmsv2/v2:kmsv2",
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/envelope/metrics",
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/identity",
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/secretbox",

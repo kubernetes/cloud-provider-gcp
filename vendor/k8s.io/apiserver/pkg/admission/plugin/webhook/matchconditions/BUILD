@@ -13,6 +13,7 @@ go_library(
         "//vendor/github.com/google/cel-go/cel",
         "//vendor/github.com/google/cel-go/common/types",
         "//vendor/k8s.io/api/admissionregistration/v1:admissionregistration",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/util/errors",
         "//vendor/k8s.io/apiserver/pkg/admission",

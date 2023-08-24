@@ -12,6 +12,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apiserver/pkg/server/healthz",
         "//vendor/k8s.io/apiserver/pkg/server/options/encryptionconfig",
+        "//vendor/k8s.io/apiserver/pkg/server/options/encryptionconfig/metrics",
         "//vendor/k8s.io/client-go/util/workqueue",
         "//vendor/k8s.io/klog/v2:klog",
     ],

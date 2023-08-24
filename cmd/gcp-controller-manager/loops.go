@@ -60,7 +60,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 	ll := map[string]func(context.Context, *controllerContext) error{
 		"node-certificate-approver": func(ctx context.Context, controllerCtx *controllerContext) error {
 			approver := newNodeApprover(controllerCtx)
-			approveController := certificates.NewCertificateController(
+			approveController := certificates.NewCertificateController(ctx,
 				"node-certificate-approver",
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
@@ -71,7 +71,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 		},
 		"istiod-certificate-approver": func(ctx context.Context, controllerCtx *controllerContext) error {
 			approver := newIstiodApprover(controllerCtx)
-			approveController := certificates.NewCertificateController(
+			approveController := certificates.NewCertificateController(ctx,
 				"istiod-certificate-approver",
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
@@ -82,7 +82,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 		},
 		"oidc-certificate-approver": func(ctx context.Context, controllerCtx *controllerContext) error {
 			approver := newOIDCApprover(controllerCtx)
-			approveController := certificates.NewCertificateController(
+			approveController := certificates.NewCertificateController(ctx,
 				"oidc-certificate-approver",
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
@@ -96,7 +96,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 			if err != nil {
 				return err
 			}
-			signController := certificates.NewCertificateController(
+			signController := certificates.NewCertificateController(ctx,
 				"signer",
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
@@ -157,7 +157,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 	if *kubeletReadOnlyCSRApprover {
 		ll["kubelet-readonly-approver"] = func(ctx context.Context, controllerCtx *controllerContext) error {
 			approver := newKubeletReadonlyCSRApprover(controllerCtx)
-			approveController := certificates.NewCertificateController(
+			approveController := certificates.NewCertificateController(ctx,
 				"kubelet-readonly-approver",
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),

@@ -74,6 +74,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/server/mux",
         "//vendor/k8s.io/apiserver/pkg/server/routes",
         "//vendor/k8s.io/apiserver/pkg/server/storage",
+        "//vendor/k8s.io/apiserver/pkg/storage/value",
         "//vendor/k8s.io/apiserver/pkg/storageversion",
         "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol",

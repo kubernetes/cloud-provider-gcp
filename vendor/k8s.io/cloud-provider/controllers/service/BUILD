@@ -27,6 +27,7 @@ go_library(
         "//vendor/k8s.io/client-go/tools/record",
         "//vendor/k8s.io/client-go/util/workqueue",
         "//vendor/k8s.io/cloud-provider",
+        "//vendor/k8s.io/cloud-provider/api",
         "//vendor/k8s.io/cloud-provider/service/helpers",
         "//vendor/k8s.io/component-base/featuregate",
         "//vendor/k8s.io/component-base/metrics",

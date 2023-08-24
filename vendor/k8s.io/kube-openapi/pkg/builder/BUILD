@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "doc.go",
         "openapi.go",
+        "parameters.go",
         "util.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kube-openapi/pkg/builder",

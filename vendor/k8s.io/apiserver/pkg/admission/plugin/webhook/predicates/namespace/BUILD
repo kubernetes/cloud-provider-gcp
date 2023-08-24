@@ -10,6 +10,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/namespace",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/api/meta",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",

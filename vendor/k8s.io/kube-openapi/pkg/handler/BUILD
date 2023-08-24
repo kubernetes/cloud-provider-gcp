@@ -13,7 +13,7 @@ go_library(
         "//vendor/github.com/NYTimes/gziphandler",
         "//vendor/github.com/emicklei/go-restful/v3:go-restful",
         "//vendor/github.com/golang/protobuf/proto",
-        "//vendor/github.com/google/gnostic/openapiv2",
+        "//vendor/github.com/google/gnostic-models/openapiv2",
         "//vendor/github.com/google/uuid",
         "//vendor/github.com/munnerz/goautoneg",
         "//vendor/k8s.io/klog/v2:klog",

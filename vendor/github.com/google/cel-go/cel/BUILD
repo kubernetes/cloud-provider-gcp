@@ -20,6 +20,7 @@ go_library(
         "//vendor/github.com/google/cel-go/checker/decls",
         "//vendor/github.com/google/cel-go/common",
         "//vendor/github.com/google/cel-go/common/containers",
+        "//vendor/github.com/google/cel-go/common/operators",
         "//vendor/github.com/google/cel-go/common/overloads",
         "//vendor/github.com/google/cel-go/common/types",
         "//vendor/github.com/google/cel-go/common/types/pb",

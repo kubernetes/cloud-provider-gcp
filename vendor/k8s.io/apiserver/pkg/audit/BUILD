@@ -16,7 +16,6 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/audit",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/google/uuid",
         "//vendor/k8s.io/api/authentication/v1:authentication",
         "//vendor/k8s.io/apimachinery/pkg/api/meta",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",

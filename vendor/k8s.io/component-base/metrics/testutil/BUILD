@@ -18,5 +18,6 @@ go_library(
         "//vendor/github.com/prometheus/common/model",
         "//vendor/k8s.io/apimachinery/pkg/version",
         "//vendor/k8s.io/component-base/metrics",
+        "//vendor/k8s.io/component-base/metrics/legacyregistry",
     ],
 )

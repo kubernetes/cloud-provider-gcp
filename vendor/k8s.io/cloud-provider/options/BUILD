@@ -36,6 +36,7 @@ go_library(
         "//vendor/k8s.io/cloud-provider/config/v1alpha1",
         "//vendor/k8s.io/cloud-provider/controllers/node/config",
         "//vendor/k8s.io/cloud-provider/controllers/service/config",
+        "//vendor/k8s.io/cloud-provider/names",
         "//vendor/k8s.io/component-base/cli/flag",
         "//vendor/k8s.io/controller-manager/options",
         "//vendor/k8s.io/controller-manager/pkg/clientbuilder",

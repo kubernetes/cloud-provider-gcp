@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "buffer.go",
         "doc.go",
+        "error.go",
         "json.go",
         "jsonfloat.go",
         "media.go",
@@ -19,7 +20,10 @@ go_library(
     importpath = "google.golang.org/api/internal/gensupport",
     visibility = ["//vendor/google.golang.org/api:__subpackages__"],
     deps = [
+        "//vendor/github.com/google/uuid",
         "//vendor/github.com/googleapis/gax-go/v2:gax-go",
+        "//vendor/github.com/googleapis/gax-go/v2/apierror",
         "//vendor/google.golang.org/api/googleapi",
+        "//vendor/google.golang.org/api/internal",
     ],
 )

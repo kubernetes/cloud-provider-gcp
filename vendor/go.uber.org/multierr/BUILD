@@ -4,10 +4,10 @@ go_library(
     name = "multierr",
     srcs = [
         "error.go",
-        "go113.go",
+        "error_post_go120.go",
+        "error_pre_go120.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/go.uber.org/multierr",
     importpath = "go.uber.org/multierr",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/go.uber.org/atomic"],
 )

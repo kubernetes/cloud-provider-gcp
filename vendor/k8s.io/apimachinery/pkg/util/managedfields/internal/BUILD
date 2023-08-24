@@ -20,6 +20,7 @@ go_library(
         "stripmeta.go",
         "structuredmerge.go",
         "typeconverter.go",
+        "versioncheck.go",
         "versionconverter.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apimachinery/pkg/util/managedfields/internal",

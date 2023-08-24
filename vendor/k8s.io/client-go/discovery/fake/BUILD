@@ -7,7 +7,7 @@ go_library(
     importpath = "k8s.io/client-go/discovery/fake",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/google/gnostic/openapiv2",
+        "//vendor/github.com/google/gnostic-models/openapiv2",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",

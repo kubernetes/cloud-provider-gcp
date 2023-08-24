@@ -40,6 +40,7 @@ go_library(
         "//vendor/k8s.io/cloud-provider/controllers/nodelifecycle",
         "//vendor/k8s.io/cloud-provider/controllers/route",
         "//vendor/k8s.io/cloud-provider/controllers/service",
+        "//vendor/k8s.io/cloud-provider/names",
         "//vendor/k8s.io/cloud-provider/options",
         "//vendor/k8s.io/component-base/cli/flag",
         "//vendor/k8s.io/component-base/cli/globalflag",

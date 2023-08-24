@@ -17,6 +17,7 @@ go_library(
         "validatingadmissionpolicyspec.go",
         "validatingadmissionpolicystatus.go",
         "validation.go",
+        "variable.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/applyconfigurations/admissionregistration/v1alpha1",
     importpath = "k8s.io/client-go/applyconfigurations/admissionregistration/v1alpha1",

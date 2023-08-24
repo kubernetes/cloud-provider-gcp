@@ -16,7 +16,6 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/asaskevich/govalidator",
-        "//vendor/github.com/mitchellh/mapstructure",
         "//vendor/k8s.io/kube-openapi/pkg/validation/errors",
         "//vendor/k8s.io/kube-openapi/pkg/validation/strfmt/bson",
         "//vendor/k8s.io/utils/net",

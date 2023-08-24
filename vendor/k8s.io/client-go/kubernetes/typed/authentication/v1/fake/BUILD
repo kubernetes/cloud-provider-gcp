@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "doc.go",
         "fake_authentication_client.go",
+        "fake_selfsubjectreview.go",
         "fake_tokenreview.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/authentication/v1/fake",

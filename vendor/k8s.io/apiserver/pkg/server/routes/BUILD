@@ -26,6 +26,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/storage/cacher/metrics",
         "//vendor/k8s.io/apiserver/pkg/storage/etcd3/metrics",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/metrics",
+        "//vendor/k8s.io/apiserver/pkg/util/peerproxy/metrics",
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/kube-openapi/pkg/builder",

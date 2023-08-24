@@ -6,13 +6,11 @@ go_library(
         "controller_ref_manager.go",
         "controller_utils.go",
         "doc.go",
-        "lookup_cache.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/controller",
     importpath = "k8s.io/kubernetes/pkg/controller",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/groupcache/lru",
         "//vendor/k8s.io/api/apps/v1:apps",
         "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",

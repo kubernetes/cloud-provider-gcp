@@ -6,6 +6,7 @@ go_library(
         "cipher_suites.go",
         "doc.go",
         "tlsutil.go",
+        "versions.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/go.etcd.io/etcd/client/pkg/v3/tlsutil",
     importpath = "go.etcd.io/etcd/client/pkg/v3/tlsutil",

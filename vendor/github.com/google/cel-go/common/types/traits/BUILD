@@ -15,6 +15,7 @@ go_library(
         "receiver.go",
         "sizer.go",
         "traits.go",
+        "zeroer.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/google/cel-go/common/types/traits",
     importpath = "github.com/google/cel-go/common/types/traits",

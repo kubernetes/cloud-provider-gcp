@@ -7,6 +7,7 @@ go_library(
     importpath = "k8s.io/kubernetes/pkg/features",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/apiextensions-apiserver/pkg/features",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apiserver/pkg/features",
         "//vendor/k8s.io/apiserver/pkg/util/feature",

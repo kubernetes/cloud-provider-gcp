@@ -16,8 +16,10 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/go-logr/logr",
+        "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/github.com/spf13/pflag",
         "//vendor/k8s.io/apimachinery/pkg/api/resource",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
         "//vendor/k8s.io/component-base/cli/flag",
         "//vendor/k8s.io/component-base/featuregate",

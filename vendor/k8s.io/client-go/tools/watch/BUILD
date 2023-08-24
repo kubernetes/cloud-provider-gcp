@@ -11,10 +11,10 @@ go_library(
     importpath = "k8s.io/client-go/tools/watch",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/davecgh/go-spew/spew",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/util/dump",
         "//vendor/k8s.io/apimachinery/pkg/util/net",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apimachinery/pkg/watch",
