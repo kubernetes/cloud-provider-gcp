@@ -363,7 +363,7 @@ func executeCommand(name string, arg ...string) ([]byte, error) {
 	cmd.Stderr = &stderrBuffer
 	err := cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf("failure while executing %s, with args %v: %w", name, arg, err)
+		return nil, fmt.Errorf("failure while executing %s, with args %v: %w (err: %s)", name, arg, err, stderrBuffer.String())
 	}
 	return stdoutBuffer.Bytes(), nil
 }
