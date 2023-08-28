@@ -245,7 +245,7 @@ func (g *Cloud) UpdateLoadBalancer(ctx context.Context, clusterName string, svc 
 		}
 	}
 
-	klog.V(4).Infof("UpdateLoadBalancer(%v, %v, %v, %v, %v): updating with %d nodes", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, len(nodes))
+	klog.V(4).Infof("UpdateLoadBalancer(%v, %v, %v, %v, %v): updating with %v nodes [node names limited, total number of nodes: %d]", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, loggableNodeNames(nodes), len(nodes))
 
 	switch scheme {
 	case cloud.SchemeInternal:
