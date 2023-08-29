@@ -23,7 +23,6 @@ go_library(
         "//pkg/util/node",
         "//pkg/util/taints",
         "//providers/gce",
-        "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/google.golang.org/api/compute/v1:compute",
         "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
@@ -87,6 +86,5 @@ go_test(
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/fake",
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions",
         "//vendor/k8s.io/component-base/metrics/testutil",
-        "//vendor/k8s.io/utils/net",
     ],
 )
