@@ -65,9 +65,10 @@ func splitNodesByZone(nodes []*v1.Node) map[string][]*v1.Node {
 	return zones
 }
 
-func getZone(n *v1.Node) string {
-	zone, ok := n.Labels[v1.LabelFailureDomainBetaZone]
+func getZone(node *v1.Node) string {
+	zone, ok := node.Labels[v1.LabelFailureDomainBetaZone]
 	if !ok {
+		klog.Warningf("Node without zone label, returning %q as zone. Node name: %v, node labels: %v", defaultZone, node.Name, node.Labels)
 		return defaultZone
 	}
 	return zone

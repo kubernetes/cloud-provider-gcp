@@ -41,7 +41,8 @@ import (
 )
 
 const (
-	errStrLbNoHosts = "cannot EnsureLoadBalancer() with no hosts"
+	errStrLbNoHosts   = "cannot EnsureLoadBalancer() with no hosts"
+	maxNodeNamesToLog = 50
 )
 
 // ensureExternalLoadBalancer is the external implementation of LoadBalancer.EnsureLoadBalancer.
@@ -817,6 +818,13 @@ func nodeNames(nodes []*v1.Node) []string {
 		ret[i] = node.Name
 	}
 	return ret
+}
+
+func loggableNodeNames(nodes []*v1.Node) []string {
+	if len(nodes) > maxNodeNamesToLog {
+		return nodeNames(nodes[:maxNodeNamesToLog])
+	}
+	return nodeNames(nodes)
 }
 
 func hostURLToComparablePath(hostURL string) string {
