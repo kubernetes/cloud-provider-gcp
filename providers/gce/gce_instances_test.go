@@ -406,3 +406,39 @@ func TestInstanceByProviderID(t *testing.T) {
 		})
 	}
 }
+
+func TestGetZone(t *testing.T) {
+	testCases := []struct {
+		nodeLabels   map[string]string
+		expectedZone string
+	}{
+		{
+			nodeLabels:   nil,
+			expectedZone: emptyZone,
+		},
+		{
+			nodeLabels:   map[string]string{v1.LabelTopologyZone: "zone-a"},
+			expectedZone: "zone-a",
+		},
+		{
+			nodeLabels:   map[string]string{v1.LabelFailureDomainBetaZone: "zone-b"},
+			expectedZone: "zone-b",
+		},
+		{
+			nodeLabels:   map[string]string{v1.LabelTopologyRegion: "us-central1"},
+			expectedZone: emptyZone,
+		},
+	}
+	for _, tc := range testCases {
+		node := &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: tc.nodeLabels,
+			},
+		}
+
+		gotZone := getZone(node)
+		if gotZone != tc.expectedZone {
+			t.Errorf("Wrong labels from node labels: %v, got: %v, want: %v", tc.nodeLabels, gotZone, tc.expectedZone)
+		}
+	}
+}
