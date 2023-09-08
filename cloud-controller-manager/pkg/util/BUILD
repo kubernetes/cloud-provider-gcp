@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "util",
     srcs = ["controller_utils.go"],
-    importpath = "k8s.io/cloud-provider-gcp/pkg/util",
+    importpath = "k8s.io/cloud-provider-gcp/cloud-controller-manager/pkg/util",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/core/v1:core",

@@ -11,13 +11,13 @@ pkg_tar(
     srcs = [
         ":rename_ccm_image",
         "//cmd/auth-provider-gcp",
-        "//cmd/cloud-controller-manager",
-        "//cmd/cloud-controller-manager:cloud-controller-manager.docker_tag",
+        "//cloud-controller-manager/cmd/cloud-controller-manager",
+        "//cloud-controller-manager/cmd/cloud-controller-manager:cloud-controller-manager.docker_tag",
     ],
     extension = "tar.gz",
     remap_paths = {
         "/auth-provider-gcp": "kubernetes/server/bin/auth-provider-gcp",
-        "/cmd/cloud-controller-manager/cloud-controller-manager.tar": "kubernetes/server/bin/cloud-controller-manager.tar",
+        "/cloud-controller-manager/cmd/cloud-controller-manager/cloud-controller-manager.tar": "kubernetes/server/bin/cloud-controller-manager.tar",
         "/cloud-controller-manager.docker_tag": "kubernetes/server/bin/cloud-controller-manager.docker_tag",
         "/cloud-controller-manager": "kubernetes/server/bin/cloud-controller-manager",
     },
@@ -43,8 +43,8 @@ pkg_tar(
 
 genrule(
     name = "rename_ccm_image",
-    srcs = ["//cmd/cloud-controller-manager:image.tar"],
-    outs = ["cmd/cloud-controller-manager/cloud-controller-manager.tar"],
+    srcs = ["//cloud-controller-manager/cmd/cloud-controller-manager:image.tar"],
+    outs = ["cloud-controller-manager/cmd/cloud-controller-manager/cloud-controller-manager.tar"],
     cmd = '''
     {
       mkdir archive
@@ -56,8 +56,8 @@ genrule(
       image_tag=`echo $$image_tag | sed 's/+/-/g'`
       sed -i "s@:image\"@:$${image_tag}\"@g" manifest.json
       sed -i "s@\"image\"@\"$${image_tag}\"@g" repositories
-      sed -i "s@registry.k8s.io/cmd/cloud-controller-manager:@registry.k8s.io/cloud-controller-manager:@g" manifest.json
-      sed -i "s@registry.k8s.io/cmd/cloud-controller-manager@registry.k8s.io/cloud-controller-manager@g" repositories
+      sed -i "s@registry.k8s.io/cloud-controller-manager/cmd/cloud-controller-manager:@registry.k8s.io/cloud-controller-manager:@g" manifest.json
+      sed -i "s@registry.k8s.io/cloud-controller-manager/cmd/cloud-controller-manager@registry.k8s.io/cloud-controller-manager@g" repositories
       tar -c -T contents -f ../$@
       cd ..
     }''',

@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "taints",
     srcs = ["taints.go"],
-    importpath = "k8s.io/cloud-provider-gcp/pkg/util/taints",
+    importpath = "k8s.io/cloud-provider-gcp/cloud-controller-manager/pkg/util/taints",
     visibility = ["//visibility:public"],
     deps = ["//vendor/k8s.io/api/core/v1:core"],
 )

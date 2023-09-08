@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "node",
     srcs = ["node.go"],
-    importpath = "k8s.io/cloud-provider-gcp/pkg/util/node",
+    importpath = "k8s.io/cloud-provider-gcp/cloud-controller-manager/pkg/util/node",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/core/v1:core",
@@ -20,7 +20,7 @@ go_test(
     srcs = ["node_test.go"],
     embed = [":node"],
     deps = [
-        "//pkg/controller/testutil",
+        "//cloud-controller-manager/pkg/controller/testutil",
         "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/apimachinery/pkg/api/resource",

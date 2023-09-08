@@ -6,7 +6,7 @@ go_library(
         "cidr_set.go",
         "metrics.go",
     ],
-    importpath = "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam/cidrset",
+    importpath = "k8s.io/cloud-provider-gcp/cloud-controller-manager/pkg/controller/nodeipam/ipam/cidrset",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/component-base/metrics",

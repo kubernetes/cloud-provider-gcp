@@ -10,10 +10,10 @@ go_library(
         "zz_generated.conversion.go",
         "zz_generated.deepcopy.go",
     ],
-    importpath = "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/config/v1alpha1",
+    importpath = "k8s.io/cloud-provider-gcp/cloud-controller-manager/pkg/controller/nodeipam/config/v1alpha1",
     visibility = ["//visibility:public"],
     deps = [
-        "//pkg/controller/nodeipam/config",
+        "//cloud-controller-manager/pkg/controller/nodeipam/config",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/conversion",
         "//vendor/k8s.io/apimachinery/pkg/runtime",

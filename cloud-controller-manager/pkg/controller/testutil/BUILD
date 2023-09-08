@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "testutil",
     srcs = ["test_utils.go"],
-    importpath = "k8s.io/cloud-provider-gcp/pkg/controller/testutil",
+    importpath = "k8s.io/cloud-provider-gcp/cloud-controller-manager/pkg/controller/testutil",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/evanphx/json-patch",
