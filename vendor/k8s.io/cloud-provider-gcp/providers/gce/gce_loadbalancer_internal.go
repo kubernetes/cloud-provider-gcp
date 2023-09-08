@@ -561,6 +561,12 @@ func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []string) (
 	}
 
 	gceNodes := sets.NewString(nodes...)
+	// Individual InstanceGroups have a limit for 1000 instances.
+	// As a result, it's not possible to add more.
+	// Given that the long-term fix (AlphaFeatureILBSubsets) is already in-progress,
+	// to stop the bleeding we now simply cut down the contents to first 1000
+	// instances in the alphabetical order. Since there is a limitation for
+	// 250 backend VMs for ILB, this isn't making things worse.
 	if len(gceNodes) > maxInstancesPerInstanceGroup {
 		klog.Warningf("Limiting number of VMs for InstanceGroup %s to %d", name, maxInstancesPerInstanceGroup)
 		gceNodes = sets.NewString(gceNodes.List()[:maxInstancesPerInstanceGroup]...)
@@ -622,13 +628,23 @@ func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]s
 	var igLinks []string
 	gceZonedNodes := map[string][]string{}
 	for zone, zNodes := range zonedNodes {
+		// Skip managing instance groups altogether, using any matching the prefix within the zone.
+		if g.AlphaFeatureGate.Enabled(AlphaFeatureSkipIGsManagement) {
+			igs, err := g.FilterInstanceGroupsByNamePrefix(name, zone)
+			if err != nil {
+				return nil, err
+			}
+			for _, ig := range igs {
+				igLinks = append(igLinks, ig.SelfLink)
+			}
+			break
+		}
 
-		// TODO(nrb): Work the alpha feature gate back in
-		// if g.AlphaFeatureGate.Enabled(AlphaFeatureSkipIGsManagement) {
 		hosts, err := g.getFoundInstanceByNames(nodeNames(zNodes))
 		if err != nil {
 			return nil, err
 		}
+
 		names := sets.NewString()
 		for _, h := range hosts {
 			names.Insert(h.Name)
@@ -666,7 +682,7 @@ func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]s
 		if err != nil {
 			return []string{}, err
 		}
-        igLinks = append(igLinks, igLink)
+		igLinks = append(igLinks, igLink)
 	}
 
 	return igLinks, nil
