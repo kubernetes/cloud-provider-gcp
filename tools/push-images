@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+# Copyright 2023 The Kubernetes Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -e
+set -x
+
+source $(git rev-parse --show-toplevel)/tools/common
+
+# IMAGE_REPO is used to upload images
+if [[ -z "${IMAGE_REPO:-}" ]]; then
+  echo "IMAGE_REPO must be set"
+  exit 1
+fi
+echo "IMAGE_REPO=${IMAGE_REPO}"
+export KO_DOCKER_REPO="${IMAGE_REPO}"
+
+# We default IMAGE_TAG to a unique value that combines the sha and the (real) build date
+if [[ -z "${IMAGE_TAG:-}" ]]; then
+  IMAGE_TAG=$(git rev-parse --short HEAD)-$(date +%Y%m%dT%H%M%S)
+fi
+echo "IMAGE_TAG=${IMAGE_TAG}"
+
+go run github.com/google/ko@v0.14.1 build --tags=${IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
+go run github.com/google/ko@v0.14.1 build --tags=${IMAGE_TAG} --base-import-paths --push=true ./cmd/gcp-controller-manager/
