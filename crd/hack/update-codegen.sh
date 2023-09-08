@@ -31,7 +31,7 @@ export GO111MODULE GOFLAGS GOPATH
 # Even when modules are enabled, the code-generator tools always write to
 # a traditional GOPATH directory, so fake on up to point to the current
 # workspace.
-mkdir -p "$GOPATH/src/k8s.io/cloud-provider-gcp"
+mkdir -p "$GOPATH/src/k8s.io/cloud-provider-gcp/cloud-controller-manager/"
 ln -s "${SCRIPT_ROOT}" "$GOPATH/src/k8s.io/cloud-provider-gcp/crd"
 
 echo "GOPATH/src/k8s.io/cloud-provider-gcp/crd ${GOPATH}/src/k8s.io/cloud-provider-gcp/crd"
