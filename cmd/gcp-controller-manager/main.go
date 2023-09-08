@@ -73,8 +73,6 @@ var (
 	csrApproverUseGCEInstanceListReferrers = pflag.Bool("csr-use-gce-instance-list-referrers", false, "If true use https://cloud.google.com/compute/docs/reference/rest/v1/instances/listReferrers to validate instance cluster membership.")
 	gceAPIEndpointOverride                 = pflag.String("gce-api-endpoint-override", "", "If set, talks to a different GCE API Endpoint. By default it talks to https://www.googleapis.com/compute/v1/projects/")
 	directPath                             = pflag.Bool("direct-path", false, "Enable Direct Path.")
-	directPathMode                         = pflag.String("direct-path-mode", "v2", "Direct Path mode.")
-	delayDirectPathGSARemove               = pflag.Bool("delay-direct-path-gsa-remove", false, "Delay removal of deleted Direct Path workloads' Google Service Accounts.")
 	authAuthorizeServiceAccountMappingURL  = pflag.String("auth-authorize-service-account-mapping-url", "", "URL for reaching the Auth Service AuthorizeServiceAccountMapping API.")
 	authSyncNodeURL                        = pflag.String("auth-sync-node-url", "", "URL for reaching the Auth Service SyncNode API.")
 	hmsAuthorizeSAMappingURL               = pflag.String("hms-authorize-sa-mapping-url", "", "URL for reaching the Hosted Master Service AuthorizeSAMapping API.")
@@ -119,7 +117,6 @@ func main() {
 		hmsAuthorizeSAMappingURL:               *hmsAuthorizeSAMappingURL,
 		hmsSyncNodeURL:                         *hmsSyncNodeURL,
 		healthz:                                healthz.NewHandler(),
-		delayDirectPathGSARemove:               *delayDirectPathGSARemove,
 		kubeletReadOnlyCSRApprover:             *kubeletReadOnlyCSRApprover,
 		autopilotEnabled:                       *autopilotEnabled,
 		clearStalePodsOnNodeRegistration:       *clearStalePodsOnNodeRegistration,
@@ -181,7 +178,6 @@ type controllerManager struct {
 	authSyncNodeURL                        string
 	hmsAuthorizeSAMappingURL               string
 	hmsSyncNodeURL                         string
-	delayDirectPathGSARemove               bool
 	autopilotEnabled                       bool
 	clearStalePodsOnNodeRegistration       bool
 
@@ -228,8 +224,6 @@ func run(s *controllerManager) error {
 		Interface: v1core.New(controllerClientBuilder.ClientOrDie("gcp-controller-manager").CoreV1().RESTClient()).Events(""),
 	})
 
-	verifiedSAs := newSAMap()
-
 	startControllers := func(ctx context.Context) {
 		for name, loop := range loops() {
 			if !s.isEnabled(name) {
@@ -251,12 +245,10 @@ func run(s *controllerManager) error {
 				csrApproverVerifyClusterMembership:     s.csrApproverVerifyClusterMembership,
 				csrApproverAllowLegacyKubelet:          s.csrApproverAllowLegacyKubelet,
 				csrApproverUseGCEInstanceListReferrers: s.csrApproverUseGCEInstanceListReferrers,
-				verifiedSAs:                            verifiedSAs,
 				authAuthorizeServiceAccountMappingURL:  s.authAuthorizeServiceAccountMappingURL,
 				authSyncNodeURL:                        s.authSyncNodeURL,
 				hmsAuthorizeSAMappingURL:               s.hmsAuthorizeSAMappingURL,
 				hmsSyncNodeURL:                         s.hmsSyncNodeURL,
-				delayDirectPathGSARemove:               s.delayDirectPathGSARemove,
 				clearStalePodsOnNodeRegistration:       s.clearStalePodsOnNodeRegistration,
 			}); err != nil {
 				klog.Fatalf("Failed to start %q: %v", name, err)

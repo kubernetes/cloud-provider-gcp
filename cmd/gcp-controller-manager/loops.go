@@ -44,12 +44,10 @@ type controllerContext struct {
 	csrApproverVerifyClusterMembership     bool
 	csrApproverAllowLegacyKubelet          bool
 	csrApproverUseGCEInstanceListReferrers bool
-	verifiedSAs                            *saMap
 	authAuthorizeServiceAccountMappingURL  string
 	authSyncNodeURL                        string
 	hmsAuthorizeSAMappingURL               string
 	hmsSyncNodeURL                         string
-	delayDirectPathGSARemove               bool
 	clearStalePodsOnNodeRegistration       bool
 }
 
@@ -120,39 +118,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 		},
 	}
 	if *directPath {
-		if *directPathMode == "v2" {
-			ll["direct-path-with-workload-identity"] = directPathV2Loop
-		} else {
-			ll[saVerifierControlLoopName] = func(ctx context.Context, controllerCtx *controllerContext) error {
-				serviceAccountVerifier, err := newServiceAccountVerifier(
-					controllerCtx.client,
-					controllerCtx.sharedInformers.Core().V1().ServiceAccounts(),
-					controllerCtx.sharedInformers.Core().V1().ConfigMaps(),
-					controllerCtx.gcpCfg.Compute,
-					controllerCtx.verifiedSAs,
-					controllerCtx.hmsAuthorizeSAMappingURL,
-				)
-				if err != nil {
-					return err
-				}
-				go serviceAccountVerifier.Run(3, ctx.Done())
-				return nil
-			}
-			ll[nodeSyncerControlLoopName] = func(ctx context.Context, controllerCtx *controllerContext) error {
-				nodeSyncer, err := newNodeSyncer(
-					controllerCtx.sharedInformers.Core().V1().Pods(),
-					controllerCtx.verifiedSAs,
-					controllerCtx.hmsSyncNodeURL,
-					controllerCtx.client,
-					controllerCtx.delayDirectPathGSARemove,
-				)
-				if err != nil {
-					return err
-				}
-				go nodeSyncer.Run(30, ctx.Done())
-				return nil
-			}
-		}
+		ll["direct-path-with-workload-identity"] = directPathV2Loop
 	}
 	if *kubeletReadOnlyCSRApprover {
 		ll["kubelet-readonly-approver"] = func(ctx context.Context, controllerCtx *controllerContext) error {
