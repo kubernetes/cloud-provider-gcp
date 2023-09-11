@@ -183,6 +183,33 @@ func TestEnsureLoadBalancerDeletedDeletesInternalLb(t *testing.T) {
 	assertInternalLbResourcesDeleted(t, gce, apiService, vals, true)
 }
 
+func TestEnsureLoadBalancerDeletedChecksInternalLbFinalizer(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodeNames := []string{"test-node-1"}
+	_, err = createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+	require.NoError(t, err)
+
+	apiService := fakeLoadbalancerService(string(LBTypeInternal))
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+	createInternalLoadBalancer(gce, apiService, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+
+	// Read service from apiserver so it has finalizer
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Get(context.TODO(), apiService.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	delete(apiService.Annotations, ServiceAnnotationLoadBalancerType)
+	err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, apiService)
+	assert.NoError(t, err)
+	assertInternalLbResourcesDeleted(t, gce, apiService, vals, true)
+}
+
 func TestProjectsBasePath(t *testing.T) {
 	t.Parallel()
 	vals := DefaultTestClusterValues()
