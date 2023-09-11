@@ -22,11 +22,9 @@ package ipam
 import (
 	"context"
 	"fmt"
-	"net"
 	"reflect"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
@@ -350,25 +348,14 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse strings %v as CIDRs: %v", cidrStrings, err)
 	}
-
-	// TODO: revisit need of needPodCIDRsUpdate with current code base
-	// additionally: spec.podCIDRs: Forbidden: node updates may not change podCIDR except from "" to valid
-	needUpdate, err := needPodCIDRsUpdate(node, cidrs)
-	if err != nil {
-		return fmt.Errorf("err: %v, CIDRS: %v", err, cidrStrings)
-	}
-	if needUpdate {
-		if node.Spec.PodCIDR != "" {
-			klog.ErrorS(nil, "PodCIDR being reassigned!", "nodeName", node.Name, "node.Spec.PodCIDRs", node.Spec.PodCIDRs, "cidrStrings", cidrStrings)
-			// We fall through and set the CIDR despite this error. This
-			// implements the same logic as implemented in the
-			// rangeAllocator.
-			//
-			// See https://github.com/kubernetes/kubernetes/pull/42147#discussion_r103357248
+	if len(cidrs) > 1 {
+		if dualStack, _ := netutils.IsDualStackCIDRs(cidrs); !dualStack {
+			return fmt.Errorf("err: IPs are not dual stack, CIDRS: %v", cidrStrings)
 		}
-		node.Spec.PodCIDR = cidrStrings[0]
-		node.Spec.PodCIDRs = cidrStrings
 	}
+
+	node.Spec.PodCIDR = cidrStrings[0]
+	node.Spec.PodCIDRs = cidrStrings
 
 	err = ca.updateNodeCIDR(node, oldNode)
 	if err != nil {
@@ -434,18 +421,13 @@ func (ca *cloudCIDRAllocator) updateNodeCIDR(node, oldNode *v1.Node) error {
 
 	// update Spec.podCIDR
 	if !reflect.DeepEqual(node.Spec, oldNode.Spec) {
-		// TODO: remove the retry since it is handled by the reconciliation loop
-		for i := 0; i < cidrUpdateRetries; i++ {
-			if err = utilnode.PatchNodeCIDRs(ca.client, types.NodeName(node.Name), node.Spec.PodCIDRs); err == nil {
-				klog.InfoS("Set the node PodCIDRs", "nodeName", node.Name, "cidrStrings", node.Spec.PodCIDRs)
-				break
-			}
-		}
+		err = utilnode.PatchNodeCIDRs(ca.client, types.NodeName(node.Name), node.Spec.PodCIDRs)
 		if err != nil {
 			nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRAssignmentFailed")
 			klog.ErrorS(err, "Failed to update the node PodCIDR after multiple attempts", "nodeName", node.Name, "cidrStrings", node.Spec.PodCIDRs)
 			return err
 		}
+		klog.InfoS("Set the node PodCIDRs", "nodeName", node.Name, "cidrStrings", node.Spec.PodCIDRs)
 	}
 
 	// Update Conditions
@@ -461,44 +443,6 @@ func (ca *cloudCIDRAllocator) updateNodeCIDR(node, oldNode *v1.Node) error {
 		}
 	}
 	return err
-}
-
-func needPodCIDRsUpdate(node *v1.Node, podCIDRs []*net.IPNet) (bool, error) {
-	if node.Spec.PodCIDR == "" {
-		return true, nil
-	}
-	_, nodePodCIDR, err := net.ParseCIDR(node.Spec.PodCIDR)
-	if err != nil {
-		klog.ErrorS(err, "Found invalid node.Spec.PodCIDR", "node.Spec.PodCIDR", node.Spec.PodCIDR)
-		// We will try to overwrite with new CIDR(s)
-		return true, nil
-	}
-	nodePodCIDRs, err := netutils.ParseCIDRs(node.Spec.PodCIDRs)
-	if err != nil {
-		klog.ErrorS(err, "Found invalid node.Spec.PodCIDRs", "node.Spec.PodCIDRs", node.Spec.PodCIDRs)
-		// We will try to overwrite with new CIDR(s)
-		return true, nil
-	}
-
-	if len(podCIDRs) == 1 {
-		if cmp.Equal(nodePodCIDR, podCIDRs[0]) {
-			klog.V(4).InfoS("Node already has allocated CIDR. It matches the proposed one.", "nodeName", node.Name, "podCIDRs[0]", podCIDRs[0])
-			return false, nil
-		}
-	} else if len(nodePodCIDRs) == len(podCIDRs) {
-		if dualStack, _ := netutils.IsDualStackCIDRs(podCIDRs); !dualStack {
-			return false, fmt.Errorf("IPs are not dual stack")
-		}
-		for idx, cidr := range podCIDRs {
-			if !cmp.Equal(nodePodCIDRs[idx], cidr) {
-				return true, nil
-			}
-		}
-		klog.V(4).InfoS("Node already has allocated CIDRs. It matches the proposed one.", "nodeName", node.Name, "podCIDRs", podCIDRs)
-		return false, nil
-	}
-
-	return true, nil
 }
 
 func (ca *cloudCIDRAllocator) ReleaseCIDR(node *v1.Node) error {
