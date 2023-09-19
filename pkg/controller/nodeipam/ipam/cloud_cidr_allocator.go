@@ -311,7 +311,13 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 
 	cidrStrings := make([]string, 0)
 
-	if len(instance.NetworkInterfaces) == 0 || (len(instance.NetworkInterfaces) == 1 && len(instance.NetworkInterfaces[0].AliasIpRanges) == 0) {
+	// if there are no interfaces or there is 1 interface
+	// but does not have IP alias or IPv6 ranges no CIDR
+	// can be allocated
+	if len(instance.NetworkInterfaces) == 0 ||
+		(len(instance.NetworkInterfaces) == 1 &&
+			len(instance.NetworkInterfaces[0].AliasIpRanges) == 0 &&
+			ca.cloud.GetIPV6Address(instance.NetworkInterfaces[0]) == nil) {
 		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
 		return fmt.Errorf("failed to allocate cidr: Node %v has no ranges from which CIDRs can be allocated", node.Name)
 	}
@@ -319,9 +325,17 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 	// sets the v1.NodeNetworkUnavailable condition to False
 	ca.setNetworkCondition(node)
 
-	// nodes in clusters WITHOUT multi-networking are expected to have only 1 network-interface with 1 alias IP range.
-	if len(instance.NetworkInterfaces) == 1 && len(instance.NetworkInterfaces[0].AliasIpRanges) == 1 {
-		cidrStrings = append(cidrStrings, instance.NetworkInterfaces[0].AliasIpRanges[0].IpCidrRange)
+	// nodes in clusters WITHOUT multi-networking are expected to have
+	// only 1 network-interface and 1 alias IPv4 range or/and 1 IPv6 address
+	// multi-network cluster may have 1 interface with multiple alias
+	if len(instance.NetworkInterfaces) == 1 &&
+		(len(instance.NetworkInterfaces[0].AliasIpRanges) == 1 ||
+			ca.cloud.GetIPV6Address(instance.NetworkInterfaces[0]) != nil) {
+		// with 1 alias IPv4 range on single IPv4 or dual stack clusters
+		if len(instance.NetworkInterfaces[0].AliasIpRanges) == 1 {
+			cidrStrings = append(cidrStrings, instance.NetworkInterfaces[0].AliasIpRanges[0].IpCidrRange)
+		}
+		// with 1 IPv6 range on single IPv6 or dual stack cluster
 		ipv6Addr := ca.cloud.GetIPV6Address(instance.NetworkInterfaces[0])
 		if ipv6Addr != nil {
 			cidrStrings = append(cidrStrings, ipv6Addr.String())
