@@ -20,7 +20,6 @@ limitations under the License.
 package main
 
 import (
-	"k8s.io/cloud-provider/names"
 	"math/rand"
 	"os"
 	"time"
@@ -31,6 +30,7 @@ import (
 	_ "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/cloud-provider/app"
 	"k8s.io/cloud-provider/app/config"
+	"k8s.io/cloud-provider/names"
 	"k8s.io/cloud-provider/options"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/logs"
@@ -57,7 +57,7 @@ func main() {
 	nodeIpamController.nodeIPAMControllerOptions.NodeIPAMControllerConfiguration = &nodeIpamController.nodeIPAMControllerConfiguration
 	fss := cliflag.NamedFlagSets{}
 	nodeIpamController.nodeIPAMControllerOptions.AddFlags(fss.FlagSet("nodeipam controller"))
-	controllerInitializers["nodeipam"] = app.ControllerInitFuncConstructor{
+	controllerInitializers[kcmnames.NodeIpamController] = app.ControllerInitFuncConstructor{
 		Constructor: nodeIpamController.startNodeIpamControllerWrapper,
 	}
 
