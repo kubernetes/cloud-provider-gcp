@@ -1253,53 +1253,6 @@ func TestShouldDeleteNode(t *testing.T) {
 		expectedErr    error
 	}{
 		{
-			desc: "instance with 1 alias range and matches podCIDR",
-			ctx:  &controllerContext{},
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "node-test",
-				},
-				Spec: v1.NodeSpec{
-					PodCIDR: "10.0.0.1/24",
-				},
-			},
-			instance: &compute.Instance{
-				NetworkInterfaces: []*compute.NetworkInterface{
-					{
-						AliasIpRanges: []*compute.AliasIpRange{
-							{
-								IpCidrRange: "10.0.0.1/24",
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			desc: "instance with 1 alias range doesn't match podCIDR",
-			ctx:  &controllerContext{},
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "node-test",
-				},
-				Spec: v1.NodeSpec{
-					PodCIDR: "10.0.0.1/24",
-				},
-			},
-			instance: &compute.Instance{
-				NetworkInterfaces: []*compute.NetworkInterface{
-					{
-						AliasIpRanges: []*compute.AliasIpRange{
-							{
-								IpCidrRange: "10.0.0.2/24",
-							},
-						},
-					},
-				},
-			},
-			shouldDelete: true,
-		},
-		{
 			desc: "instance with 2 alias range and 1 matches podCIDR",
 			ctx:  &controllerContext{},
 			node: &v1.Node{
@@ -1399,13 +1352,15 @@ func TestShouldDeleteNode(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		fakeGetInstance := func(_ *controllerContext, _ string) (*compute.Instance, error) {
-			return c.instance, c.getInstanceErr
-		}
-		shouldDelete, err := shouldDeleteNode(c.ctx, c.node, fakeGetInstance)
-		if err != c.expectedErr || shouldDelete != c.shouldDelete {
-			t.Errorf("%s: shouldDeleteNode=(%v, %v), want (%v, %v)", c.desc, shouldDelete, err, c.shouldDelete, c.expectedErr)
-		}
+		t.Run(c.desc, func(t *testing.T) {
+			fakeGetInstance := func(_ *controllerContext, _ string) (*compute.Instance, error) {
+				return c.instance, c.getInstanceErr
+			}
+			shouldDelete, err := shouldDeleteNode(c.ctx, c.node, fakeGetInstance)
+			if err != c.expectedErr || shouldDelete != c.shouldDelete {
+				t.Errorf("%s: shouldDeleteNode=(%v, %v), want (%v, %v)", c.desc, shouldDelete, err, c.shouldDelete, c.expectedErr)
+			}
+		})
 	}
 }
 

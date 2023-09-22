@@ -963,27 +963,6 @@ func shouldDeleteNode(ctx *controllerContext, node *v1.Node, getInstance func(*c
 			return true, nil
 		}
 	}
-	// Newly created node might not have pod CIDR allocated yet.
-	if node.Spec.PodCIDR == "" {
-		klog.V(2).Infof("Node %q has empty podCIDR.", node.Name)
-		return false, nil
-	}
-	var unmatchedRanges []string
-	for _, networkInterface := range inst.NetworkInterfaces {
-		for _, r := range networkInterface.AliasIpRanges {
-			if node.Spec.PodCIDR == r.IpCidrRange {
-				klog.V(2).Infof("Instance %q has alias range that matches node's podCIDR.", inst.Name)
-				return false, nil
-			}
-			unmatchedRanges = append(unmatchedRanges, r.IpCidrRange)
-		}
-	}
-	if len(unmatchedRanges) != 0 {
-		klog.Warningf("Instance %q has alias range(s) %v and none of them match node's podCIDR %s, will trigger node deletion.", inst.Name, unmatchedRanges, node.Spec.PodCIDR)
-		return true, nil
-	}
-	// Instance with no alias range is route based, for which node object deletion is unnecessary.
-	klog.V(2).Infof("Instance %q has no alias range.", inst.Name)
 	return false, nil
 }
 
