@@ -34,6 +34,7 @@ import (
 	"net/url"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -792,7 +793,11 @@ func TestValidators(t *testing.T) {
 
 		goodCase := func(b *csrBuilder, c *controllerContext) {
 			c.csrApproverVerifyClusterMembership = true
-			c.csrApproverUseGCEInstanceListReferrers = true
+			c.csrApproverListReferrersConfig = gceInstanceListReferrersConfig{
+				enabled:         true,
+				initialInterval: 1 * time.Millisecond,
+				retryCount:      11,
+			}
 
 			cs, err := compute.New(gceClient)
 			if err != nil {
@@ -1424,15 +1429,14 @@ func TestValidateInstanceGroupHint(t *testing.T) {
 	}
 }
 
-func TestCheckInstanceReferrers(t *testing.T) {
+func TestCheckInstanceReferrersBackOff(t *testing.T) {
 	for _, tc := range []struct {
 		desc                     string
 		clusterInstanceGroupUrls []string
 		instance                 *compute.Instance
-		gceClientHandler         func(rw http.ResponseWriter, req *http.Request)
+		gceClientHandler         func() func(rw http.ResponseWriter, req *http.Request)
 		projectID                string
 		wantOK                   bool
-		wantErr                  bool
 	}{
 		{
 			desc: "match found",
@@ -1444,14 +1448,16 @@ func TestCheckInstanceReferrers(t *testing.T) {
 				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
 			},
 			projectID: "z1",
-			gceClientHandler: func(rw http.ResponseWriter, req *http.Request) {
-				json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
-					Items: []*compute.Reference{
-						{
-							Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				return func(rw http.ResponseWriter, req *http.Request) {
+					json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+						Items: []*compute.Reference{
+							{
+								Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+							},
 						},
-					},
-				})
+					})
+				}
 			},
 			wantOK: true,
 		},
@@ -1465,16 +1471,107 @@ func TestCheckInstanceReferrers(t *testing.T) {
 				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
 			},
 			projectID: "z1",
-			gceClientHandler: func(rw http.ResponseWriter, req *http.Request) {
-				json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
-					Items: []*compute.Reference{
-						{
-							Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig2",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				return func(rw http.ResponseWriter, req *http.Request) {
+					json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+						Items: []*compute.Reference{
+							{
+								Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig2",
+							},
 						},
-					},
-				})
+					})
+				}
 			},
 			wantOK: false,
+		},
+		{
+			desc: "match found on 10th call",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				i := 0
+				return func(rw http.ResponseWriter, req *http.Request) {
+					i++
+					if i > 10 {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{
+								{
+									Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+								},
+							},
+						})
+					} else {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{},
+						})
+					}
+				}
+			},
+			wantOK: true,
+		},
+		{
+			desc: "not found errors are retried",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				i := 0
+				return func(rw http.ResponseWriter, req *http.Request) {
+					i++
+					if i > 10 {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{
+								{
+									Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+								},
+							},
+						})
+					} else {
+						http.Error(rw, "not found", http.StatusNotFound)
+					}
+				}
+			},
+			wantOK: true,
+		},
+		{
+			desc: "all errors are retried",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				i := 0
+				return func(rw http.ResponseWriter, req *http.Request) {
+					i++
+					if i > 10 {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{
+								{
+									Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+								},
+							},
+						})
+					} else {
+						http.Error(rw, "internal server error", http.StatusInternalServerError)
+					}
+				}
+			},
+			wantOK: true,
 		},
 		{
 			desc: "error",
@@ -1486,14 +1583,47 @@ func TestCheckInstanceReferrers(t *testing.T) {
 				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
 			},
 			projectID: "z1",
-			gceClientHandler: func(rw http.ResponseWriter, req *http.Request) {
-				http.Error(rw, "not found", http.StatusNotFound)
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				return func(rw http.ResponseWriter, req *http.Request) {
+					http.Error(rw, "forbidden", http.StatusForbidden)
+				}
 			},
-			wantErr: true,
+			wantOK: false,
+		},
+		{
+			desc: "match found only on first call",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				i := 0
+				return func(rw http.ResponseWriter, req *http.Request) {
+					i++
+					if i == 1 {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{
+								{
+									Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+								},
+							},
+						})
+					} else {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{},
+						})
+					}
+				}
+			},
+			wantOK: true,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(tc.gceClientHandler))
+			srv := httptest.NewServer(http.HandlerFunc(tc.gceClientHandler()))
 			defer srv.Close()
 			cl := srv.Client()
 			cl.Transport = fakeTransport{srv.URL}
@@ -1506,11 +1636,13 @@ func TestCheckInstanceReferrers(t *testing.T) {
 					ProjectID: tc.projectID,
 					Compute:   cs,
 				},
+				csrApproverListReferrersConfig: gceInstanceListReferrersConfig{
+					enabled:         true,
+					initialInterval: 1 * time.Millisecond,
+					retryCount:      11,
+				},
 			}
-			gotOK, err := checkInstanceReferrers(ctx, tc.instance, tc.clusterInstanceGroupUrls)
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("got error: %v; want error: %v", err, tc.wantErr)
-			}
+			gotOK := checkInstanceReferrersBackOff(ctx, tc.instance, tc.clusterInstanceGroupUrls)
 			if gotOK != tc.wantOK {
 				t.Errorf("got: %v; want: %v", gotOK, tc.wantOK)
 			}

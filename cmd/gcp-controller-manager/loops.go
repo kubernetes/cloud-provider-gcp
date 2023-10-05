@@ -36,19 +36,19 @@ import (
 )
 
 type controllerContext struct {
-	client                                 clientset.Interface
-	sharedInformers                        informers.SharedInformerFactory
-	recorder                               record.EventRecorder
-	gcpCfg                                 gcpConfig
-	clusterSigningGKEKubeconfig            string
-	csrApproverVerifyClusterMembership     bool
-	csrApproverAllowLegacyKubelet          bool
-	csrApproverUseGCEInstanceListReferrers bool
-	authAuthorizeServiceAccountMappingURL  string
-	authSyncNodeURL                        string
-	hmsAuthorizeSAMappingURL               string
-	hmsSyncNodeURL                         string
-	clearStalePodsOnNodeRegistration       bool
+	client                                clientset.Interface
+	sharedInformers                       informers.SharedInformerFactory
+	recorder                              record.EventRecorder
+	gcpCfg                                gcpConfig
+	clusterSigningGKEKubeconfig           string
+	csrApproverVerifyClusterMembership    bool
+	csrApproverAllowLegacyKubelet         bool
+	csrApproverListReferrersConfig        gceInstanceListReferrersConfig
+	authAuthorizeServiceAccountMappingURL string
+	authSyncNodeURL                       string
+	hmsAuthorizeSAMappingURL              string
+	hmsSyncNodeURL                        string
+	clearStalePodsOnNodeRegistration      bool
 }
 
 // loops returns all the control loops that the GCPControllerManager can start.
