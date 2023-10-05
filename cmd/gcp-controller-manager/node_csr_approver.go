@@ -37,6 +37,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
 	"google.golang.org/api/googleapi"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	authorization "k8s.io/api/authorization/v1"
 	capi "k8s.io/api/certificates/v1"
@@ -46,6 +47,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/apiserver/pkg/util/webhook"
 	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
@@ -695,6 +697,43 @@ func validateInstanceGroupHint(instanceGroupUrls []string, instanceGroupHint str
 	return resolved, nil
 }
 
+var errNotFoundListReferrers = errors.New("not found the entry in ListReferrers")
+
+func checkInstanceReferrersBackOff(ctx *controllerContext, instance *compute.Instance, clusterInstanceGroupUrls []string) bool {
+	if !ctx.csrApproverListReferrersConfig.enabled {
+		return false
+	}
+	klog.Infof("Using compute.InstancesService.ListReferrers to verify cluster membership of instance %q", instance.Name)
+
+	var found bool
+	startTime := time.Now()
+	backoffPolicy := wait.Backoff{
+		Duration: ctx.csrApproverListReferrersConfig.initialInterval,
+		Factor:   1.5,
+		Jitter:   0.2,
+		Steps:    ctx.csrApproverListReferrersConfig.retryCount,
+	}
+	webhook.WithExponentialBackoff(context.TODO(), backoffPolicy, func() error {
+		var retryErr error
+		found, retryErr = checkInstanceReferrers(ctx, instance, clusterInstanceGroupUrls)
+		if retryErr != nil || !found {
+			return errNotFoundListReferrers
+		}
+		return nil
+	},
+		func(err error) bool {
+			return err != nil
+		},
+	)
+
+	if found {
+		klog.V(2).Infof("Determined cluster membership of instance %q using compute.InstancesService.ListReferrers after %v", instance.Name, time.Since(startTime))
+	} else {
+		klog.Warningf("Could not determine cluster membership of instance %q using compute.InstancesService.ListReferrers after %v; falling back to checking all instance groups", instance.Name, time.Since(startTime))
+	}
+	return found
+}
+
 func checkInstanceReferrers(ctx *controllerContext, instance *compute.Instance, clusterInstanceGroupUrls []string) (bool, error) {
 	// instanceZone looks like
 	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
@@ -743,16 +782,9 @@ func clusterHasInstance(ctx *controllerContext, instance *compute.Instance, inst
 		return false, err
 	}
 
-	if ctx.csrApproverUseGCEInstanceListReferrers {
-		klog.Infof("using compute.InstancesService.ListReferrers to verify cluster membership of instance %q", instance.Name)
-		ok, err := checkInstanceReferrers(ctx, instance, clusterInstanceGroupUrls)
-		if err != nil {
-			return false, err
-		}
-		if ok {
-			return true, nil
-		}
-		klog.Warningf("could not determine cluster membership of instance %q using compute.InstancesService.ListReferrers; falling back to checking all instance groups", instance.Name)
+	ok := checkInstanceReferrersBackOff(ctx, instance, clusterInstanceGroupUrls)
+	if ok {
+		return true, nil
 	}
 
 	validatedInstanceGroupHint, err := validateInstanceGroupHint(clusterInstanceGroupUrls, instanceGroupHint)
