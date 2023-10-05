@@ -50,6 +50,7 @@ go_library(
         "//pkg/tpmattest",
         "//providers/gce",
         "//vendor/cloud.google.com/go/compute/metadata",
+        "//vendor/github.com/cenkalti/backoff/v4:backoff",
         "//vendor/github.com/google/go-tpm/tpm2",
         "//vendor/github.com/prometheus/client_golang/prometheus/promhttp",
         "//vendor/github.com/spf13/pflag",

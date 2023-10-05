@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/google/go-tpm/tpm2"
 	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
@@ -695,6 +696,57 @@ func validateInstanceGroupHint(instanceGroupUrls []string, instanceGroupHint str
 	return resolved, nil
 }
 
+func waitFunc(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	}
+	return nil
+}
+
+func checkInstanceReferrersBackOff(ctx *controllerContext, instance *compute.Instance, clusterInstanceGroupUrls []string) (bool, error) {
+	if !ctx.csrApproverListReferrersConfig.enabled {
+		return false, nil
+	}
+	klog.Infof("Using compute.InstancesService.ListReferrers to verify cluster membership of instance %q", instance.Name)
+
+	// Do not use NewExponentialBackOff since it calls Reset and the code here
+	// must call Reset after changing the InitialInterval (this saves an
+	// unnecessary call to Now).
+	b := &backoff.ExponentialBackOff{
+		InitialInterval:     ctx.csrApproverListReferrersConfig.initialInterval,
+		RandomizationFactor: backoff.DefaultRandomizationFactor,
+		Multiplier:          backoff.DefaultMultiplier,
+		MaxInterval:         ctx.csrApproverListReferrersConfig.maxInterval,
+		MaxElapsedTime:      ctx.csrApproverListReferrersConfig.maxElapsedTime,
+		Stop:                backoff.Stop,
+		Clock:               backoff.SystemClock,
+	}
+	b.Reset()
+
+	for {
+		ok, err := checkInstanceReferrers(ctx, instance, clusterInstanceGroupUrls)
+		if err != nil && !isNotFound(err) {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
+
+		bOff := b.NextBackOff()
+		if bOff == backoff.Stop {
+			klog.Warningf("Could not determine cluster membership of instance %q using compute.InstancesService.ListReferrers after %v; falling back to checking all instance groups", instance.Name, b.GetElapsedTime())
+			return false, nil
+		}
+		if err := waitFunc(context.TODO(), bOff); err != nil {
+			return false, err
+		}
+	}
+}
+
 func checkInstanceReferrers(ctx *controllerContext, instance *compute.Instance, clusterInstanceGroupUrls []string) (bool, error) {
 	// instanceZone looks like
 	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
@@ -743,16 +795,11 @@ func clusterHasInstance(ctx *controllerContext, instance *compute.Instance, inst
 		return false, err
 	}
 
-	if ctx.csrApproverUseGCEInstanceListReferrers {
-		klog.Infof("using compute.InstancesService.ListReferrers to verify cluster membership of instance %q", instance.Name)
-		ok, err := checkInstanceReferrers(ctx, instance, clusterInstanceGroupUrls)
-		if err != nil {
-			return false, err
-		}
-		if ok {
-			return true, nil
-		}
-		klog.Warningf("could not determine cluster membership of instance %q using compute.InstancesService.ListReferrers; falling back to checking all instance groups", instance.Name)
+	ok, err := checkInstanceReferrersBackOff(ctx, instance, clusterInstanceGroupUrls)
+	if err != nil {
+		return false, err
+	} else if ok {
+		return true, nil
 	}
 
 	validatedInstanceGroupHint, err := validateInstanceGroupHint(clusterInstanceGroupUrls, instanceGroupHint)
