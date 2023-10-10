@@ -101,6 +101,10 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, sharedBackend, scheme, protocol, svc.Spec.SessionAffinity)
 	backendServiceLink := g.getBackendServiceLink(backendServiceName)
 
+	// Lock the sharedResourceLock to prevent any deletions of shared resources while assembling shared resources here
+	g.sharedResourceLock.Lock()
+	defer g.sharedResourceLock.Unlock()
+
 	// Ensure instance groups exist and nodes are assigned to groups
 	igName := makeInstanceGroupName(clusterID)
 	igLinks, err := g.ensureInternalInstanceGroups(igName, nodes)
@@ -116,10 +120,6 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 			return nil, err
 		}
 	}
-
-	// Lock the sharedResourceLock to prevent any deletions of shared resources while assembling shared resources here
-	g.sharedResourceLock.Lock()
-	defer g.sharedResourceLock.Unlock()
 
 	// Ensure health check exists before creating the backend service. The health check is shared
 	// if externalTrafficPolicy=Cluster.
