@@ -48,11 +48,11 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/apiserver/pkg/util/webhook"
-	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
 	"k8s.io/klog/v2"
+	apipod "k8s.io/kubernetes/pkg/api/v1/pod"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 	"k8s.io/kubernetes/pkg/features"
@@ -1038,22 +1038,17 @@ func markFailedAndDeletePodWithCondition(ctx *controllerContext, pod *v1.Pod) er
 		// is orphaned, in which case the pod would remain in the Running phase
 		// forever as there is no kubelet running to change the phase.
 		if pod.Status.Phase != v1.PodSucceeded && pod.Status.Phase != v1.PodFailed {
-			podApply := corev1apply.Pod(pod.Name, pod.Namespace).WithStatus(corev1apply.PodStatus())
-			// we don't need to extract the pod apply configuration and can send
-			// only phase and the DisruptionTarget condition as GCPControllerManager would not
-			// own other fields. If the DisruptionTarget condition is owned by
-			// GCPControllerManager it means that it is in the Failed phase, so sending the
-			// condition will not be re-attempted.
-			podApply.Status.WithPhase(v1.PodFailed)
-			podApply.Status.WithConditions(
-				corev1apply.PodCondition().
-					WithType(v1.DisruptionTarget).
-					WithStatus(v1.ConditionTrue).
-					WithReason("DeletionByGCPControllerManager").
-					WithMessage(fmt.Sprintf("%s: node no longer exists", fieldManager)).
-					WithLastTransitionTime(metav1.Now()))
-
-			if _, err := ctx.client.CoreV1().Pods(pod.Namespace).ApplyStatus(context.TODO(), podApply, metav1.ApplyOptions{FieldManager: fieldManager, Force: true}); err != nil {
+			newPod := pod.DeepCopy()
+			newPod.Status.Phase = v1.PodFailed
+			apipod.UpdatePodCondition(&newPod.Status, &v1.PodCondition{
+				Type:    v1.DisruptionTarget,
+				Status:  v1.ConditionTrue,
+				Reason:  "DeletionByGCPControllerManager",
+				Message: fmt.Sprintf("%s: node no longer exists", fieldManager),
+			})
+			if _, err := ctx.client.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), newPod, metav1.UpdateOptions{
+				FieldManager: fieldManager,
+			}); err != nil {
 				return err
 			}
 		}
