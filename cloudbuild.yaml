@@ -83,7 +83,7 @@ steps:
     args:
       - cp
       - /workspace/bazel-base-linux-arm64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp
-      - gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp/linux-arm64/${_GIT_TAG} 
+      - gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp/linux-arm64/${_GIT_TAG}
   # build gke-exec-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
@@ -128,3 +128,7 @@ substitutions:
   _PULL_BASE_REF: 'master'
   _GIT_TAG: '12345'
   _IMAGE_REPO: 'gcr.io/k8s-staging-cloud-provider-gcp'
+tags:
+  - 'cloud-provider-gcp'
+  - ${_GIT_TAG}
+  - ${_PULL_BASE_REF}
