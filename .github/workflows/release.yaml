@@ -1,0 +1,22 @@
+on:
+  workflow_dispatch:
+  push:
+    brach:
+      - 'faiq/add-build'
+
+name: Release Cloud Provider GCP
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: setup-bazelisk
+        uses: ./
+        with:
+          bazelisk-version: 1.7.4
+
+      - name: publish container images
+        run: |
+          IMAGE_REGISTRY=ghcr.io IMAGE_REPO=mesosphere/cloud-controller-manager-gcp IMAGE_TAG=${{ github.event.inputs.tag }} bazel run //cmd/cloud-controller-manager:publish
