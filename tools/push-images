@@ -31,7 +31,24 @@ export KO_DOCKER_REPO="${IMAGE_REPO}"
 if [[ -z "${IMAGE_TAG:-}" ]]; then
   IMAGE_TAG=$(git rev-parse --short HEAD)-$(date +%Y%m%dT%H%M%S)
 fi
-echo "IMAGE_TAG=${IMAGE_TAG}"
 
-go run github.com/google/ko@v0.14.1 build --tags=${IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
-go run github.com/google/ko@v0.14.1 build --tags=${IMAGE_TAG} --base-import-paths --push=true ./cmd/gcp-controller-manager/
+if [[ "$IMAGE_TAG" == *"/"* ]]; then
+  COMPONENT=$(dirname "${IMAGE_TAG}")
+  IMAGE_TAG=$(basename "${IMAGE_TAG}")
+  echo "COMPONENT=${COMPONENT}, IMAGE_TAG=${IMAGE_TAG}"
+else
+  COMPONENT=""
+  echo "IMAGE_TAG=${IMAGE_TAG}"
+fi
+
+if [[ "${COMPONENT:-ccm}" == "ccm" ]]; then
+  go run github.com/google/ko@v0.14.1 build --tags=${IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
+else
+  echo "Skipping CCM build, because component is ${COMPONENT}"
+fi
+
+if [[ "${COMPONENT:-gcm}" == "gcm" ]]; then
+  go run github.com/google/ko@v0.14.1 build --tags=${IMAGE_TAG} --base-import-paths --push=true ./cmd/gcp-controller-manager/
+else
+  echo "Skipping GCM build, because component is ${COMPONENT}"
+fi
