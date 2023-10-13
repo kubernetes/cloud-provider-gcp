@@ -27,28 +27,47 @@ fi
 echo "IMAGE_REPO=${IMAGE_REPO}"
 export KO_DOCKER_REPO="${IMAGE_REPO}"
 
-# We default IMAGE_TAG to a unique value that combines the sha and the (real) build date
-if [[ -z "${IMAGE_TAG:-}" ]]; then
-  IMAGE_TAG=$(git rev-parse --short HEAD)-$(date +%Y%m%dT%H%M%S)
+# We set the tag if we want to build and push the image
+CCM_IMAGE_TAG=""
+GCM_IMAGE_TAG=""
+
+# Parse all the git tags
+tags=()
+while IFS= read -r tag
+do
+  tags+=( "${tag}" )
+  echo "Found tag ${tag}"
+
+  # Look for component-specific tags, like ccm/v1.2.3
+  if [[ "$tag" == *"/"* ]]; then
+    component=$(dirname "${tag}")
+    image_tag=$(basename "${tag}")
+    if [[ "${component}" == "ccm" ]]; then
+      CCM_IMAGE_TAG="${image_tag}"
+    elif [[ "${component}" == "gcm" ]]; then
+      GCM_IMAGE_TAG="${image_tag}"
+    else
+      echo "Unknown component found in tag ${tag}, ignoring"
+    fi
+  fi
+done < <(git tag --points-at HEAD)
+
+# If no direct tags, construct a tag from git and build all components
+if [[ ${#tags[@]} -eq 0 ]]; then
+  # We default to a unique value that combines the sha and the (real) build date
+  image_tag=$(date +%Y%m%dT%H%M%S)-$(git rev-parse --short HEAD)
+  CCM_IMAGE_TAG="${image_tag}"
+  GCM_IMAGE_TAG="${image_tag}"
 fi
 
-if [[ "$IMAGE_TAG" == *"/"* ]]; then
-  COMPONENT=$(dirname "${IMAGE_TAG}")
-  IMAGE_TAG=$(basename "${IMAGE_TAG}")
-  echo "COMPONENT=${COMPONENT}, IMAGE_TAG=${IMAGE_TAG}"
+if [[ -n "${CCM_IMAGE_TAG}" ]]; then
+  go run github.com/google/ko@v0.14.1 build --tags=${CCM_IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
 else
-  COMPONENT=""
-  echo "IMAGE_TAG=${IMAGE_TAG}"
+  echo "Skipping CCM build, because no relevant tag found"
 fi
 
-if [[ "${COMPONENT:-ccm}" == "ccm" ]]; then
-  go run github.com/google/ko@v0.14.1 build --tags=${IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
+if [[ -n "${GCM_IMAGE_TAG}" ]]; then
+  go run github.com/google/ko@v0.14.1 build --tags=${GCM_IMAGE_TAG} --base-import-paths --push=true ./cmd/gcp-controller-manager/
 else
-  echo "Skipping CCM build, because component is ${COMPONENT}"
-fi
-
-if [[ "${COMPONENT:-gcm}" == "gcm" ]]; then
-  go run github.com/google/ko@v0.14.1 build --tags=${IMAGE_TAG} --base-import-paths --push=true ./cmd/gcp-controller-manager/
-else
-  echo "Skipping GCM build, because component is ${COMPONENT}"
+  echo "Skipping GCM build, because no relevant tag found"
 fi

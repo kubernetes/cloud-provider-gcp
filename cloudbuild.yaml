@@ -7,7 +7,7 @@ steps:
   - name: 'golang:1.20.8'
     env:
       - IMAGE_REPO=${_IMAGE_REPO}
-      - IMAGE_TAG=${_PULL_BASE_REF}
+      # Note that we do not pass through the git tag, the script infers the correct tag
     entrypoint: tools/push-images
   # build gke-exec-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
