@@ -1,6 +1,6 @@
 module k8s.io/cloud-provider-gcp/providers
 
-go 1.19
+go 1.20
 
 require (
 	cloud.google.com/go v0.99.0
@@ -11,15 +11,15 @@ require (
 	google.golang.org/api v0.63.0
 	gopkg.in/gcfg.v1 v1.2.0
 	gopkg.in/warnings.v0 v0.1.1 // indirect
-	k8s.io/api v0.28.0
-	k8s.io/apimachinery v0.28.0
-	k8s.io/client-go v0.28.0
-	k8s.io/component-base v0.28.0
+	k8s.io/api v0.28.2
+	k8s.io/apimachinery v0.28.2
+	k8s.io/client-go v0.28.2
+	k8s.io/component-base v0.28.2
 	k8s.io/klog/v2 v2.90.1
 	k8s.io/utils v0.0.0-20230209194617-a36077c30491
 )
 
-require k8s.io/cloud-provider v0.28.0
+require k8s.io/cloud-provider v0.28.2
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

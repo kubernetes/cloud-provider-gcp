@@ -100,10 +100,10 @@ load("//defs:repo_rules.bzl", "fetch_kube_release")
 fetch_kube_release(
     name = "io_k8s_release",
     archives = {
-        "kubernetes-server-linux-amd64.tar.gz": "ba0981ab36e2c0f18bcf512bcde196e58ba446269deedba7eb3b4f988bc53051",
-        "kubernetes-manifests.tar.gz": "3bc58f0184628ad9157533bc03f3049c288340561dccf05cd4289af7fd32275a",
-        "kubernetes-node-linux-amd64.tar.gz": "2c21f759608762bc8483739be5a0b57a44452fa323ad274a18f3431d5ec18e2f",
-        "kubernetes-node-windows-amd64.tar.gz": "cfc95ae4104534a75971de7dff48ef5084ddc70a1370eac93b24a605423173f3",
+        "kubernetes-server-linux-amd64.tar.gz": "747eed461b39c5b1c313e33204f87c5f24d8366ab4b8263607347dd3492f7db7",
+        "kubernetes-manifests.tar.gz": "f17a4b6c30df7e8615e93135f0e728a5cf2492a5f7c73a0f3be2ad5729ecf6ba",
+        "kubernetes-node-linux-amd64.tar.gz": "88951491c2465c082d102640059cc07eb022fcc419dc556e39be9945e95dc7c2",
+        "kubernetes-node-windows-amd64.tar.gz": "0f95edc363a90b97fce3fd9a2a9a97aca9cb13be56141f6dd312185233304218",
     },
-    version = "v1.28.0",
+    version = "v1.28.2",
 )
