@@ -1462,6 +1462,29 @@ func TestCheckInstanceReferrersBackOff(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			desc: "match found for instanceGroupManagers",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				return func(rw http.ResponseWriter, req *http.Request) {
+					json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+						Items: []*compute.Reference{
+							{
+								Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+							},
+						},
+					})
+				}
+			},
+			wantOK: true,
+		},
+		{
 			desc: "match not found",
 			clusterInstanceGroupUrls: []string{
 				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
