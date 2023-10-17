@@ -743,9 +743,11 @@ func checkInstanceReferrers(ctx *controllerContext, instance *compute.Instance, 
 	for _, ig := range clusterInstanceGroupUrls {
 		// GKE's cluster.NodePools[].instanceGroupUrls are of the form:
 		// https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/instanceGroupManagers/instance-group-1.
-		// Where as instance referrers are of the form:
+		// Where as instance referrers are one of the forms:
+		// https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/instanceGroupManagers/instance-group-1.
 		// https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/instanceGroups/instance-group-1.
-		// With the string replace below we convert them to the same form.
+		// We pass the string as it is for the first kind and use a string replace below we convert them to the second form.
+		clusterInstanceGroupMap[ig] = true
 		clusterInstanceGroupMap[strings.Replace(ig, "/instanceGroupManagers/", "/instanceGroups/", 1)] = true
 	}
 
