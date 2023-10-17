@@ -1443,6 +1443,7 @@ k8s.io/kubernetes/pkg/features
 k8s.io/kubernetes/pkg/fieldpath
 k8s.io/kubernetes/pkg/util/hash
 k8s.io/kubernetes/pkg/util/parsers
+k8s.io/kubernetes/pkg/util/pod
 k8s.io/kubernetes/pkg/util/taints
 # k8s.io/metrics v0.28.0 => k8s.io/metrics v0.28.0
 ## explicit; go 1.20

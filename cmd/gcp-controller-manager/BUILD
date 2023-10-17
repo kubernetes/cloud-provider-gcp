@@ -103,6 +103,7 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/controller",
         "//vendor/k8s.io/kubernetes/pkg/controller/certificates",
         "//vendor/k8s.io/kubernetes/pkg/features",
+        "//vendor/k8s.io/kubernetes/pkg/util/pod",
         "//vendor/k8s.io/kubernetes/pkg/util/taints",
     ],
 )
@@ -139,6 +140,7 @@ go_test(
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/types",
+        "//vendor/k8s.io/apimachinery/pkg/util/strategicpatch",
         "//vendor/k8s.io/client-go/kubernetes/fake",
         "//vendor/k8s.io/client-go/listers/core/v1:core",
         "//vendor/k8s.io/client-go/testing",

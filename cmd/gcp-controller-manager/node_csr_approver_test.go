@@ -50,6 +50,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/client-go/kubernetes/fake"
 	testclient "k8s.io/client-go/testing"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
@@ -1875,12 +1876,12 @@ func TestDeleteAllPodsBoundToNode(t *testing.T) {
 				t.Fatalf("Unexpected number of actions, got %v, want 3 (list pods, patch pod, delete pod)", len(actions))
 			}
 
-			var updateAction testclient.UpdateAction
+			var patchAction testclient.PatchAction
 			var deleteAction testclient.DeleteAction
 
 			for _, action := range actions {
-				if action.GetVerb() == "update" {
-					updateAction = action.(testclient.UpdateAction)
+				if action.GetVerb() == "patch" {
+					patchAction = action.(testclient.PatchAction)
 				}
 
 				if action.GetVerb() == "delete" {
@@ -1889,8 +1890,23 @@ func TestDeleteAllPodsBoundToNode(t *testing.T) {
 			}
 
 			if tc.expectedPatchedPod != nil {
-				patchedPod := updateAction.GetObject().(*v1.Pod)
-				if diff := cmp.Diff(tc.expectedPatchedPod, patchedPod, cmpopts.IgnoreFields(v1.Pod{}, "TypeMeta"), cmpopts.IgnoreFields(v1.PodCondition{}, "LastTransitionTime")); diff != "" {
+				patchedPodBytes := patchAction.GetPatch()
+
+				originalPod, err := json.Marshal(tc.pod)
+				if err != nil {
+					t.Fatalf("Failed to marshal original pod %#v: %v", originalPod, err)
+				}
+				updated, err := strategicpatch.StrategicMergePatch(originalPod, patchedPodBytes, v1.Pod{})
+				if err != nil {
+					t.Fatalf("Failed to apply strategic merge patch %q on pod %#v: %v", patchedPodBytes, originalPod, err)
+				}
+
+				updatedPod := &v1.Pod{}
+				if err := json.Unmarshal(updated, updatedPod); err != nil {
+					t.Fatalf("Failed to unmarshal updated pod %q: %v", updated, err)
+				}
+
+				if diff := cmp.Diff(tc.expectedPatchedPod, updatedPod, cmpopts.IgnoreFields(v1.Pod{}, "TypeMeta"), cmpopts.IgnoreFields(v1.PodCondition{}, "LastTransitionTime")); diff != "" {
 					t.Fatalf("Unexpected diff on pod (-want,+got):\n%s", diff)
 				}
 			}

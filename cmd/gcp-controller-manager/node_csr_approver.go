@@ -56,6 +56,7 @@ import (
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 	"k8s.io/kubernetes/pkg/features"
+	utilpod "k8s.io/kubernetes/pkg/util/pod"
 )
 
 const (
@@ -1038,17 +1039,15 @@ func markFailedAndDeletePodWithCondition(ctx *controllerContext, pod *v1.Pod) er
 		// is orphaned, in which case the pod would remain in the Running phase
 		// forever as there is no kubelet running to change the phase.
 		if pod.Status.Phase != v1.PodSucceeded && pod.Status.Phase != v1.PodFailed {
-			newPod := pod.DeepCopy()
-			newPod.Status.Phase = v1.PodFailed
-			apipod.UpdatePodCondition(&newPod.Status, &v1.PodCondition{
+			newStatus := pod.Status.DeepCopy()
+			newStatus.Phase = v1.PodFailed
+			apipod.UpdatePodCondition(newStatus, &v1.PodCondition{
 				Type:    v1.DisruptionTarget,
 				Status:  v1.ConditionTrue,
 				Reason:  "DeletionByGCPControllerManager",
 				Message: fmt.Sprintf("%s: node no longer exists", fieldManager),
 			})
-			if _, err := ctx.client.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), newPod, metav1.UpdateOptions{
-				FieldManager: fieldManager,
-			}); err != nil {
+			if _, _, _, err := utilpod.PatchPodStatus(context.TODO(), ctx.client, pod.Namespace, pod.Name, pod.UID, pod.Status, *newStatus); err != nil {
 				return err
 			}
 		}
