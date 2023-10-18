@@ -1807,14 +1807,14 @@ func TestDeleteAllPodsBoundToNode(t *testing.T) {
 					Phase: v1.PodFailed,
 					Conditions: []v1.PodCondition{
 						{
+							Type:   v1.PodReady,
+							Status: v1.ConditionTrue,
+						},
+						{
 							Type:    v1.DisruptionTarget,
 							Status:  v1.ConditionTrue,
 							Reason:  "DeletionByGCPControllerManager",
 							Message: "GCPControllerManager: node no longer exists",
-						},
-						{
-							Type:   v1.PodReady,
-							Status: v1.ConditionTrue,
 						},
 					},
 				},
