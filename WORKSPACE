@@ -41,13 +41,13 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 
 versions.check(minimum_bazel_version = "5.3.0")
 
-load("@io_bazel_rules_go//go:deps.bzl", "go_rules_dependencies", "go_register_toolchains", "go_download_sdk")
+load("@io_bazel_rules_go//go:deps.bzl", "go_download_sdk", "go_register_toolchains", "go_rules_dependencies")
 
 go_rules_dependencies()
 
 go_download_sdk(
     name = "go_sdk",
-    version = "1.20.8",
+    version = "1.20.10",
 )
 
 go_register_toolchains()
@@ -75,14 +75,13 @@ container_pull(
     tag = "b54513ef989c81d68cb27d9c7958697e2fedd2c4",
 )
 
-
 container_pull(
     name = "go-runner",
+    digest = "sha256:b564abe1d4bd3a7e227971530fbc8e3906671c94350706df5244c1deb6edcef4",
     registry = "registry.k8s.io",
     repository = "build-image/go-runner",
     # 'tag' is also supported, but digest is encouraged for reproducibility.
     tag = "v2.3.1-go1.20.4-bullseye.0",
-    digest = "sha256:b564abe1d4bd3a7e227971530fbc8e3906671c94350706df5244c1deb6edcef4",
 )
 
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
