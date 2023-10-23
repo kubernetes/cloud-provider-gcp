@@ -41,13 +41,13 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 
 versions.check(minimum_bazel_version = "5.3.0")
 
-load("@io_bazel_rules_go//go:deps.bzl", "go_rules_dependencies", "go_register_toolchains", "go_download_sdk")
+load("@io_bazel_rules_go//go:deps.bzl", "go_download_sdk", "go_register_toolchains", "go_rules_dependencies")
 
 go_rules_dependencies()
 
 go_download_sdk(
     name = "go_sdk",
-    version = "1.20.5",
+    version = "1.20.10",
 )
 
 go_register_toolchains()
@@ -75,14 +75,13 @@ container_pull(
     tag = "b54513ef989c81d68cb27d9c7958697e2fedd2c4",
 )
 
-
 container_pull(
     name = "go-runner",
+    digest = "sha256:b564abe1d4bd3a7e227971530fbc8e3906671c94350706df5244c1deb6edcef4",
     registry = "registry.k8s.io",
     repository = "build-image/go-runner",
     # 'tag' is also supported, but digest is encouraged for reproducibility.
     tag = "v2.3.1-go1.20.4-bullseye.0",
-    digest = "sha256:b564abe1d4bd3a7e227971530fbc8e3906671c94350706df5244c1deb6edcef4",
 )
 
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
@@ -100,11 +99,10 @@ load("//defs:repo_rules.bzl", "fetch_kube_release")
 fetch_kube_release(
     name = "io_k8s_release",
     archives = {
-        "kubernetes-server-linux-amd64.tar.gz": "1213a31741e83cf6f595fb4f59966ce73caceacd4616d5a0fda506e5a2f55314",
-        "kubernetes-manifests.tar.gz": "7b7dfdefda5d779663720f95fc1d4cdb95cd6a638e2b679527314e79d632a71a",
-        # we do not currently make modifications to these release tars below
-        "kubernetes-node-linux-amd64.tar.gz": "aabdf9d1eb1d8cd3d128911970d9e5e72eb90628c73e73d70e763068a291fc0d",
-        "kubernetes-node-windows-amd64.tar.gz": "fadf292b5ecd50565f4bb1c4016b809bc57adf4a35a42c74bc4721cb68bad43d",
+        "kubernetes-server-linux-amd64.tar.gz": "ba0981ab36e2c0f18bcf512bcde196e58ba446269deedba7eb3b4f988bc53051",
+        "kubernetes-manifests.tar.gz": "3bc58f0184628ad9157533bc03f3049c288340561dccf05cd4289af7fd32275a",
+        "kubernetes-node-linux-amd64.tar.gz": "2c21f759608762bc8483739be5a0b57a44452fa323ad274a18f3431d5ec18e2f",
+        "kubernetes-node-windows-amd64.tar.gz": "cfc95ae4104534a75971de7dff48ef5084ddc70a1370eac93b24a605423173f3",
     },
-    version = "v1.27.1",
+    version = "v1.28.0",
 )

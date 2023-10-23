@@ -41,9 +41,8 @@ import (
 )
 
 const (
-	errStrLbNoHosts = "cannot EnsureLoadBalancer() with no hosts"
-
-	ELBRbsFinalizer = "gke.networking.io/l4-netlb-v2"
+	errStrLbNoHosts   = "cannot EnsureLoadBalancer() with no hosts"
+	maxNodeNamesToLog = 50
 )
 
 // ensureExternalLoadBalancer is the external implementation of LoadBalancer.EnsureLoadBalancer.
@@ -55,16 +54,8 @@ const (
 // new load balancers and updating existing load balancers, recognizing when
 // each is needed.
 func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
-	// Skip service handling if managed by ingress-gce using Regional Backend Services
-	if val, ok := apiService.Annotations[RBSAnnotationKey]; ok && val == RBSEnabled {
-		return nil, cloudprovider.ImplementedElsewhere
-	}
-	// Skip service handling if service has Regional Backend Services finalizer
-	if hasFinalizer(apiService, ELBRbsFinalizer) {
-		return nil, cloudprovider.ImplementedElsewhere
-	}
-	// Skip service handling if it has Regional Backend Service created by Ingress-GCE
-	if existingFwdRule != nil && existingFwdRule.BackendService != "" {
+	// Skip service handling if it uses Regional Backend Services and handled by other controllers
+	if usesL4RBS(apiService, existingFwdRule) {
 		return nil, cloudprovider.ImplementedElsewhere
 	}
 
@@ -73,7 +64,6 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	}
 
 	hostNames := nodeNames(nodes)
-	supportsNodesHealthCheck := supportsNodesHealthCheck(nodes)
 	hosts, err := g.getInstancesByNames(hostNames)
 	if err != nil {
 		return nil, err
@@ -239,9 +229,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 			// turn on the tpNeedsRecreation flag to delete/recreate fwdrule/tpool updating the
 			// target pool to use local traffic health check.
 			klog.V(2).Infof("ensureExternalLoadBalancer(%s): Updating from nodes health checks to local traffic health checks.", lbRefStr)
-			if supportsNodesHealthCheck {
-				hcToDelete = makeHTTPHealthCheck(MakeNodesHealthCheckName(clusterID), GetNodesHealthCheckPath(), GetNodesHealthCheckPort())
-			}
+			hcToDelete = makeHTTPHealthCheck(MakeNodesHealthCheckName(clusterID), GetNodesHealthCheckPath(), GetNodesHealthCheckPort())
 			tpNeedsRecreation = true
 		}
 		hcToCreate = makeHTTPHealthCheck(loadBalancerName, path, healthCheckNodePort)
@@ -255,9 +243,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 			hcToDelete = hcLocalTrafficExisting
 			tpNeedsRecreation = true
 		}
-		if supportsNodesHealthCheck {
-			hcToCreate = makeHTTPHealthCheck(MakeNodesHealthCheckName(clusterID), GetNodesHealthCheckPath(), GetNodesHealthCheckPort())
-		}
+		hcToCreate = makeHTTPHealthCheck(MakeNodesHealthCheckName(clusterID), GetNodesHealthCheckPath(), GetNodesHealthCheckPort())
 	}
 	// Now we get to some slightly more interesting logic.
 	// First, neither target pools nor forwarding rules can be updated in place -
@@ -832,6 +818,13 @@ func nodeNames(nodes []*v1.Node) []string {
 		ret[i] = node.Name
 	}
 	return ret
+}
+
+func loggableNodeNames(nodes []*v1.Node) []string {
+	if len(nodes) > maxNodeNamesToLog {
+		return nodeNames(nodes[:maxNodeNamesToLog])
+	}
+	return nodeNames(nodes)
 }
 
 func hostURLToComparablePath(hostURL string) string {

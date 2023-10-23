@@ -4,22 +4,11 @@ timeout: 3600s
 options:
   substitution_option: ALLOW_LOOSE
 steps:
-  - name: 'gcr.io/cloud-builders/bazel'
+  - name: 'golang:1.20.10'
     env:
-      - IMAGE_REGISTRY=gcr.io
-      - IMAGE_REPO=k8s-staging-cloud-provider-gcp
+      - IMAGE_REPO=${_IMAGE_REPO}
       - IMAGE_TAG=${_PULL_BASE_REF}
-    args:
-      - run
-      - //cmd/cloud-controller-manager:publish
-  - name: 'gcr.io/cloud-builders/bazel'
-    env:
-      - IMAGE_REGISTRY=gcr.io
-      - IMAGE_REPO=k8s-staging-cloud-provider-gcp
-      - IMAGE_TAG=${_PULL_BASE_REF}
-    args:
-      - run
-      - //cmd/gcp-controller-manager:publish
+    entrypoint: tools/push-images
   # build gke-exec-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
@@ -94,7 +83,7 @@ steps:
     args:
       - cp
       - /workspace/bazel-base-linux-arm64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp
-      - gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp/linux-arm64/${_GIT_TAG} 
+      - gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp/linux-arm64/${_GIT_TAG}
   # build gke-exec-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
     args:
@@ -138,4 +127,8 @@ steps:
 substitutions:
   _PULL_BASE_REF: 'master'
   _GIT_TAG: '12345'
-  
+  _IMAGE_REPO: 'gcr.io/k8s-staging-cloud-provider-gcp'
+tags:
+  - 'cloud-provider-gcp'
+  - ${_GIT_TAG}
+  - ${_PULL_BASE_REF}

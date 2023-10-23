@@ -42,7 +42,6 @@ import (
 	"k8s.io/cloud-provider-gcp/pkg/controller/testutil"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	metricsUtil "k8s.io/component-base/metrics/testutil"
-	netutils "k8s.io/utils/net"
 )
 
 const (
@@ -98,10 +97,6 @@ func TestBoundedRetries(t *testing.T) {
 	}
 }
 
-func withinExpectedRange(got time.Duration, expected time.Duration) bool {
-	return got >= expected/2 && got <= 3*expected/2
-}
-
 func TestUpdateCIDRAllocation(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -131,7 +126,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			nodeChanges: func(node *v1.Node) {},
 		},
 		{
-			name: "provider not set",
+			name: "want error - provider not set",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -152,7 +147,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			expectErrMsg: "doesn't have providerID",
 		},
 		{
-			name: "node not found in gce by provider",
+			name: "want error - node not found in gce by provider",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -176,7 +171,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			expectErrMsg: "failed to get instance from provider",
 		},
 		{
-			name: "gce node has no networks",
+			name: "want error - gce node has no networks",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -287,7 +282,46 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			expectedUpdate: true,
 		},
 		{
-			name: "incorrect cidr",
+			name: "ipv6 single stack",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							Ipv6Address: "2001:db9::110",
+						},
+					},
+				},
+			},
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "2001:db9::/112"
+				node.Spec.PodCIDRs = []string{"2001:db9::/112"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+			},
+			expectedUpdate: true,
+		},
+		{
+			name: "want error - incorrect cidr",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -319,6 +353,40 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			nodeChanges:  func(node *v1.Node) {},
 			expectErr:    true,
 			expectErrMsg: "failed to parse strings",
+		},
+		{
+			name: "want error - incorrect dualstack cidr",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							Ipv6Address: "10.10.1.0",
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "192.168.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			nodeChanges:  func(node *v1.Node) {},
+			expectErr:    true,
+			expectErrMsg: "err: IPs are not dual stack",
 		},
 		{
 			name: "node already configured",
@@ -804,7 +872,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			},
 		},
 		{
-			name: "[mn] [invalid] - node with cidrs in incorrect format",
+			name: "[mn] want error - node with cidrs in incorrect format",
 			networks: []*networkv1.Network{
 				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
 				network(redNetworkName, redGKENetworkParamsName, true),
@@ -860,7 +928,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			expectErrMsg: "invalid CIDR address",
 		},
 		{
-			name: "[mn] one additional network with /32 cidr",
+			name: "[mn] want error - one additional network with /32 cidr",
 			networks: []*networkv1.Network{
 				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, true),
 				network(redNetworkName, redGKENetworkParamsName, true),
@@ -1319,108 +1387,5 @@ func interfaces(network, subnetwork, networkIP string, aliasIPRanges []*compute.
 		Network:       network,
 		Subnetwork:    subnetwork,
 		NetworkIP:     networkIP,
-	}
-}
-
-func TestNeedPodCIDRsUpdate(t *testing.T) {
-	for _, tc := range []struct {
-		desc         string
-		cidrs        []string
-		nodePodCIDR  string
-		nodePodCIDRs []string
-		want         bool
-		wantErr      bool
-	}{
-		{
-			desc:         "want error - invalid cidr",
-			cidrs:        []string{"10.10.10.0/24"},
-			nodePodCIDR:  "10.10..0/24",
-			nodePodCIDRs: []string{"10.10..0/24"},
-			want:         true,
-		},
-		{
-			desc:         "want error - cidr len 2 but not dual stack",
-			cidrs:        []string{"10.10.10.0/24", "10.10.11.0/24"},
-			nodePodCIDR:  "10.10.10.0/24",
-			nodePodCIDRs: []string{"10.10.10.0/24", "2001:db8::/64"},
-			wantErr:      true,
-		},
-		{
-			desc:         "want false - matching v4 only cidr",
-			cidrs:        []string{"10.10.10.0/24"},
-			nodePodCIDR:  "10.10.10.0/24",
-			nodePodCIDRs: []string{"10.10.10.0/24"},
-			want:         false,
-		},
-		{
-			desc:  "want false - nil node.Spec.PodCIDR",
-			cidrs: []string{"10.10.10.0/24"},
-			want:  true,
-		},
-		{
-			desc:         "want true - non matching v4 only cidr",
-			cidrs:        []string{"10.10.10.0/24"},
-			nodePodCIDR:  "10.10.11.0/24",
-			nodePodCIDRs: []string{"10.10.11.0/24"},
-			want:         true,
-		},
-		{
-			desc:         "want false - matching v4 and v6 cidrs",
-			cidrs:        []string{"10.10.10.0/24", "2001:db8::/64"},
-			nodePodCIDR:  "10.10.10.0/24",
-			nodePodCIDRs: []string{"10.10.10.0/24", "2001:db8::/64"},
-			want:         false,
-		},
-		{
-			desc:         "want false - matching v4 and v6 cidrs, different strings but same CIDRs",
-			cidrs:        []string{"10.10.10.0/24", "2001:db8::/64"},
-			nodePodCIDR:  "10.10.10.0/24",
-			nodePodCIDRs: []string{"10.10.10.0/24", "2001:db8:0::/64"},
-			want:         false,
-		},
-		{
-			desc:         "want true - matching v4 and non matching v6 cidrs",
-			cidrs:        []string{"10.10.10.0/24", "2001:db8::/64"},
-			nodePodCIDR:  "10.10.10.0/24",
-			nodePodCIDRs: []string{"10.10.10.0/24", "2001:dba::/64"},
-			want:         true,
-		},
-		{
-			desc:  "want true - nil node.Spec.PodCIDRs",
-			cidrs: []string{"10.10.10.0/24", "2001:db8::/64"},
-			want:  true,
-		},
-		{
-			desc:         "want true - matching v6 and non matching v4 cidrs",
-			cidrs:        []string{"10.10.10.0/24", "2001:db8::/64"},
-			nodePodCIDR:  "10.10.1.0/24",
-			nodePodCIDRs: []string{"10.10.1.0/24", "2001:db8::/64"},
-			want:         true,
-		},
-		{
-			desc:         "want true - missing v6",
-			cidrs:        []string{"10.10.10.0/24", "2001:db8::/64"},
-			nodePodCIDR:  "10.10.10.0/24",
-			nodePodCIDRs: []string{"10.10.10.0/24"},
-			want:         true,
-		},
-	} {
-		var node v1.Node
-		node.Spec.PodCIDR = tc.nodePodCIDR
-		node.Spec.PodCIDRs = tc.nodePodCIDRs
-		netCIDRs, err := netutils.ParseCIDRs(tc.cidrs)
-		if err != nil {
-			t.Errorf("failed to parse %v as CIDRs: %v", tc.cidrs, err)
-		}
-
-		t.Run(tc.desc, func(t *testing.T) {
-			got, err := needPodCIDRsUpdate(&node, netCIDRs)
-			if tc.wantErr == (err == nil) {
-				t.Errorf("err: %v, wantErr: %v", err, tc.wantErr)
-			}
-			if err == nil && got != tc.want {
-				t.Errorf("got: %v, want: %v", got, tc.want)
-			}
-		})
 	}
 }

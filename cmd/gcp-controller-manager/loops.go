@@ -36,21 +36,19 @@ import (
 )
 
 type controllerContext struct {
-	client                                 clientset.Interface
-	sharedInformers                        informers.SharedInformerFactory
-	recorder                               record.EventRecorder
-	gcpCfg                                 gcpConfig
-	clusterSigningGKEKubeconfig            string
-	csrApproverVerifyClusterMembership     bool
-	csrApproverAllowLegacyKubelet          bool
-	csrApproverUseGCEInstanceListReferrers bool
-	verifiedSAs                            *saMap
-	authAuthorizeServiceAccountMappingURL  string
-	authSyncNodeURL                        string
-	hmsAuthorizeSAMappingURL               string
-	hmsSyncNodeURL                         string
-	delayDirectPathGSARemove               bool
-	clearStalePodsOnNodeRegistration       bool
+	client                                clientset.Interface
+	sharedInformers                       informers.SharedInformerFactory
+	recorder                              record.EventRecorder
+	gcpCfg                                gcpConfig
+	clusterSigningGKEKubeconfig           string
+	csrApproverVerifyClusterMembership    bool
+	csrApproverAllowLegacyKubelet         bool
+	csrApproverListReferrersConfig        gceInstanceListReferrersConfig
+	authAuthorizeServiceAccountMappingURL string
+	authSyncNodeURL                       string
+	hmsAuthorizeSAMappingURL              string
+	hmsSyncNodeURL                        string
+	clearStalePodsOnNodeRegistration      bool
 }
 
 // loops returns all the control loops that the GCPControllerManager can start.
@@ -60,7 +58,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 	ll := map[string]func(context.Context, *controllerContext) error{
 		"node-certificate-approver": func(ctx context.Context, controllerCtx *controllerContext) error {
 			approver := newNodeApprover(controllerCtx)
-			approveController := certificates.NewCertificateController(
+			approveController := certificates.NewCertificateController(ctx,
 				"node-certificate-approver",
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
@@ -71,7 +69,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 		},
 		"istiod-certificate-approver": func(ctx context.Context, controllerCtx *controllerContext) error {
 			approver := newIstiodApprover(controllerCtx)
-			approveController := certificates.NewCertificateController(
+			approveController := certificates.NewCertificateController(ctx,
 				"istiod-certificate-approver",
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
@@ -82,7 +80,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 		},
 		"oidc-certificate-approver": func(ctx context.Context, controllerCtx *controllerContext) error {
 			approver := newOIDCApprover(controllerCtx)
-			approveController := certificates.NewCertificateController(
+			approveController := certificates.NewCertificateController(ctx,
 				"oidc-certificate-approver",
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
@@ -96,7 +94,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 			if err != nil {
 				return err
 			}
-			signController := certificates.NewCertificateController(
+			signController := certificates.NewCertificateController(ctx,
 				"signer",
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
@@ -120,44 +118,12 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 		},
 	}
 	if *directPath {
-		if *directPathMode == "v2" {
-			ll["direct-path-with-workload-identity"] = directPathV2Loop
-		} else {
-			ll[saVerifierControlLoopName] = func(ctx context.Context, controllerCtx *controllerContext) error {
-				serviceAccountVerifier, err := newServiceAccountVerifier(
-					controllerCtx.client,
-					controllerCtx.sharedInformers.Core().V1().ServiceAccounts(),
-					controllerCtx.sharedInformers.Core().V1().ConfigMaps(),
-					controllerCtx.gcpCfg.Compute,
-					controllerCtx.verifiedSAs,
-					controllerCtx.hmsAuthorizeSAMappingURL,
-				)
-				if err != nil {
-					return err
-				}
-				go serviceAccountVerifier.Run(3, ctx.Done())
-				return nil
-			}
-			ll[nodeSyncerControlLoopName] = func(ctx context.Context, controllerCtx *controllerContext) error {
-				nodeSyncer, err := newNodeSyncer(
-					controllerCtx.sharedInformers.Core().V1().Pods(),
-					controllerCtx.verifiedSAs,
-					controllerCtx.hmsSyncNodeURL,
-					controllerCtx.client,
-					controllerCtx.delayDirectPathGSARemove,
-				)
-				if err != nil {
-					return err
-				}
-				go nodeSyncer.Run(30, ctx.Done())
-				return nil
-			}
-		}
+		ll["direct-path-with-workload-identity"] = directPathV2Loop
 	}
 	if *kubeletReadOnlyCSRApprover {
 		ll["kubelet-readonly-approver"] = func(ctx context.Context, controllerCtx *controllerContext) error {
 			approver := newKubeletReadonlyCSRApprover(controllerCtx)
-			approveController := certificates.NewCertificateController(
+			approveController := certificates.NewCertificateController(ctx,
 				"kubelet-readonly-approver",
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),

@@ -561,15 +561,15 @@ export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-external}"
 # are presented to kubelet:
 # --image-credential-provider-config=${path-to-config}
 # --image-credential-provider-bin-dir=${path-to-auth-provider-binary}
-# Also, it is required that DisableKubeletCloudCredentialProviders and KubeletCredentialProviders
-# feature gates are set to true for kubelet to use external credential provider.
+# Also, it is required that DisableKubeletCloudCredentialProviders
+# feature gate is set to true for kubelet to use external credential provider.
 ENABLE_AUTH_PROVIDER_GCP="${ENABLE_AUTH_PROVIDER_GCP:-true}"
 
 # (TODO/cloud-provider-gcp): Need to figure out how we can add this FeatureGate as an env.
 if [[ ${ENABLE_AUTH_PROVIDER_GCP:-true} == "true" ]]; then
    if [[ -z "${FEATURE_GATES:-}" ]]; then
-        FEATURE_GATES="KubeletCredentialProviders=true,DisableKubeletCloudCredentialProviders=true,DisableCloudProviders=true"
+        FEATURE_GATES="DisableKubeletCloudCredentialProviders=true,DisableCloudProviders=true"
     else
-        FEATURE_GATES="${FEATURE_GATES},KubeletCredentialProviders=true,DisableKubeletCloudCredentialProviders=true,DisableCloudProviders=true"
+        FEATURE_GATES="${FEATURE_GATES},DisableKubeletCloudCredentialProviders=true,DisableCloudProviders=true"
     fi
 fi
