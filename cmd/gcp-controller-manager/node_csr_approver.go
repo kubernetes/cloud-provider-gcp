@@ -37,6 +37,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
 	"google.golang.org/api/googleapi"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	authorization "k8s.io/api/authorization/v1"
 	capi "k8s.io/api/certificates/v1"
@@ -46,14 +47,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
+	"k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
 	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
 	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
 	"k8s.io/klog/v2"
+	apipod "k8s.io/kubernetes/pkg/api/v1/pod"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
 	"k8s.io/kubernetes/pkg/controller/certificates"
 	"k8s.io/kubernetes/pkg/features"
+	utilpod "k8s.io/kubernetes/pkg/util/pod"
 )
 
 const (
@@ -695,6 +698,43 @@ func validateInstanceGroupHint(instanceGroupUrls []string, instanceGroupHint str
 	return resolved, nil
 }
 
+var errNotFoundListReferrers = errors.New("not found the entry in ListReferrers")
+
+func checkInstanceReferrersBackOff(ctx *controllerContext, instance *compute.Instance, clusterInstanceGroupUrls []string) bool {
+	if !ctx.csrApproverListReferrersConfig.enabled {
+		return false
+	}
+	klog.Infof("Using compute.InstancesService.ListReferrers to verify cluster membership of instance %q", instance.Name)
+
+	var found bool
+	startTime := time.Now()
+	backoffPolicy := wait.Backoff{
+		Duration: ctx.csrApproverListReferrersConfig.initialInterval,
+		Factor:   1.5,
+		Jitter:   0.2,
+		Steps:    ctx.csrApproverListReferrersConfig.retryCount,
+	}
+	webhook.WithExponentialBackoff(context.TODO(), backoffPolicy, func() error {
+		var retryErr error
+		found, retryErr = checkInstanceReferrers(ctx, instance, clusterInstanceGroupUrls)
+		if retryErr != nil || !found {
+			return errNotFoundListReferrers
+		}
+		return nil
+	},
+		func(err error) bool {
+			return err != nil
+		},
+	)
+
+	if found {
+		klog.V(2).Infof("Determined cluster membership of instance %q using compute.InstancesService.ListReferrers after %v", instance.Name, time.Since(startTime))
+	} else {
+		klog.Warningf("Could not determine cluster membership of instance %q using compute.InstancesService.ListReferrers after %v; falling back to checking all instance groups", instance.Name, time.Since(startTime))
+	}
+	return found
+}
+
 func checkInstanceReferrers(ctx *controllerContext, instance *compute.Instance, clusterInstanceGroupUrls []string) (bool, error) {
 	// instanceZone looks like
 	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
@@ -704,9 +744,11 @@ func checkInstanceReferrers(ctx *controllerContext, instance *compute.Instance, 
 	for _, ig := range clusterInstanceGroupUrls {
 		// GKE's cluster.NodePools[].instanceGroupUrls are of the form:
 		// https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/instanceGroupManagers/instance-group-1.
-		// Where as instance referrers are of the form:
+		// Where as instance referrers are one of the forms:
+		// https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/instanceGroupManagers/instance-group-1.
 		// https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/instanceGroups/instance-group-1.
-		// With the string replace below we convert them to the same form.
+		// We pass the string as it is for the first kind and use a string replace below we convert them to the second form.
+		clusterInstanceGroupMap[ig] = true
 		clusterInstanceGroupMap[strings.Replace(ig, "/instanceGroupManagers/", "/instanceGroups/", 1)] = true
 	}
 
@@ -743,16 +785,9 @@ func clusterHasInstance(ctx *controllerContext, instance *compute.Instance, inst
 		return false, err
 	}
 
-	if ctx.csrApproverUseGCEInstanceListReferrers {
-		klog.Infof("using compute.InstancesService.ListReferrers to verify cluster membership of instance %q", instance.Name)
-		ok, err := checkInstanceReferrers(ctx, instance, clusterInstanceGroupUrls)
-		if err != nil {
-			return false, err
-		}
-		if ok {
-			return true, nil
-		}
-		klog.Warningf("could not determine cluster membership of instance %q using compute.InstancesService.ListReferrers; falling back to checking all instance groups", instance.Name)
+	ok := checkInstanceReferrersBackOff(ctx, instance, clusterInstanceGroupUrls)
+	if ok {
+		return true, nil
 	}
 
 	validatedInstanceGroupHint, err := validateInstanceGroupHint(clusterInstanceGroupUrls, instanceGroupHint)
@@ -963,27 +998,6 @@ func shouldDeleteNode(ctx *controllerContext, node *v1.Node, getInstance func(*c
 			return true, nil
 		}
 	}
-	// Newly created node might not have pod CIDR allocated yet.
-	if node.Spec.PodCIDR == "" {
-		klog.V(2).Infof("Node %q has empty podCIDR.", node.Name)
-		return false, nil
-	}
-	var unmatchedRanges []string
-	for _, networkInterface := range inst.NetworkInterfaces {
-		for _, r := range networkInterface.AliasIpRanges {
-			if node.Spec.PodCIDR == r.IpCidrRange {
-				klog.V(2).Infof("Instance %q has alias range that matches node's podCIDR.", inst.Name)
-				return false, nil
-			}
-			unmatchedRanges = append(unmatchedRanges, r.IpCidrRange)
-		}
-	}
-	if len(unmatchedRanges) != 0 {
-		klog.Warningf("Instance %q has alias range(s) %v and none of them match node's podCIDR %s, will trigger node deletion.", inst.Name, unmatchedRanges, node.Spec.PodCIDR)
-		return true, nil
-	}
-	// Instance with no alias range is route based, for which node object deletion is unnecessary.
-	klog.V(2).Infof("Instance %q has no alias range.", inst.Name)
 	return false, nil
 }
 
@@ -1027,22 +1041,15 @@ func markFailedAndDeletePodWithCondition(ctx *controllerContext, pod *v1.Pod) er
 		// is orphaned, in which case the pod would remain in the Running phase
 		// forever as there is no kubelet running to change the phase.
 		if pod.Status.Phase != v1.PodSucceeded && pod.Status.Phase != v1.PodFailed {
-			podApply := corev1apply.Pod(pod.Name, pod.Namespace).WithStatus(corev1apply.PodStatus())
-			// we don't need to extract the pod apply configuration and can send
-			// only phase and the DisruptionTarget condition as GCPControllerManager would not
-			// own other fields. If the DisruptionTarget condition is owned by
-			// GCPControllerManager it means that it is in the Failed phase, so sending the
-			// condition will not be re-attempted.
-			podApply.Status.WithPhase(v1.PodFailed)
-			podApply.Status.WithConditions(
-				corev1apply.PodCondition().
-					WithType(v1.DisruptionTarget).
-					WithStatus(v1.ConditionTrue).
-					WithReason("DeletionByGCPControllerManager").
-					WithMessage(fmt.Sprintf("%s: node no longer exists", fieldManager)).
-					WithLastTransitionTime(metav1.Now()))
-
-			if _, err := ctx.client.CoreV1().Pods(pod.Namespace).ApplyStatus(context.TODO(), podApply, metav1.ApplyOptions{FieldManager: fieldManager, Force: true}); err != nil {
+			newStatus := pod.Status.DeepCopy()
+			newStatus.Phase = v1.PodFailed
+			apipod.UpdatePodCondition(newStatus, &v1.PodCondition{
+				Type:    v1.DisruptionTarget,
+				Status:  v1.ConditionTrue,
+				Reason:  "DeletionByGCPControllerManager",
+				Message: fmt.Sprintf("%s: node no longer exists", fieldManager),
+			})
+			if _, _, _, err := utilpod.PatchPodStatus(context.TODO(), ctx.client, pod.Namespace, pod.Name, pod.UID, pod.Status, *newStatus); err != nil {
 				return err
 			}
 		}

@@ -36,6 +36,7 @@ go_library(
         "//vendor/k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions",
         "//vendor/k8s.io/cloud-provider/app",
         "//vendor/k8s.io/cloud-provider/app/config",
+        "//vendor/k8s.io/cloud-provider/names",
         "//vendor/k8s.io/cloud-provider/options",
         "//vendor/k8s.io/component-base/cli/flag",
         "//vendor/k8s.io/component-base/logs",
@@ -44,6 +45,7 @@ go_library(
         "//vendor/k8s.io/controller-manager/app",
         "//vendor/k8s.io/controller-manager/controller",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/kubernetes/cmd/kube-controller-manager/names",
         "//vendor/k8s.io/utils/net",
     ],
 )

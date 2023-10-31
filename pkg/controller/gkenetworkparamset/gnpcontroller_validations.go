@@ -83,13 +83,15 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 		}, nil
 	}
 
-	network, err := c.gceCloud.GetNetwork(params.Spec.VPC)
-	if err != nil || network == nil {
-		return &gnpValidation{
-			IsValid:      false,
-			ErrorReason:  networkv1.VPCNotFound,
-			ErrorMessage: fmt.Sprintf("VPC: %s not found", params.Spec.VPC),
-		}, nil
+	if !c.gceCloud.OnXPN() {
+		network, err := c.gceCloud.GetNetwork(params.Spec.VPC)
+		if err != nil || network == nil {
+			return &gnpValidation{
+				IsValid:      false,
+				ErrorReason:  networkv1.VPCNotFound,
+				ErrorMessage: fmt.Sprintf("VPC: %s not found", params.Spec.VPC),
+			}, nil
+		}
 	}
 
 	//check if both deviceMode and secondary ranges are unspecified

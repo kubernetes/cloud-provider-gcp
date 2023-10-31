@@ -34,6 +34,7 @@ import (
 	"net/url"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -792,7 +793,11 @@ func TestValidators(t *testing.T) {
 
 		goodCase := func(b *csrBuilder, c *controllerContext) {
 			c.csrApproverVerifyClusterMembership = true
-			c.csrApproverUseGCEInstanceListReferrers = true
+			c.csrApproverListReferrersConfig = gceInstanceListReferrersConfig{
+				enabled:         true,
+				initialInterval: 1 * time.Millisecond,
+				retryCount:      11,
+			}
 
 			cs, err := compute.New(gceClient)
 			if err != nil {
@@ -1253,53 +1258,6 @@ func TestShouldDeleteNode(t *testing.T) {
 		expectedErr    error
 	}{
 		{
-			desc: "instance with 1 alias range and matches podCIDR",
-			ctx:  &controllerContext{},
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "node-test",
-				},
-				Spec: v1.NodeSpec{
-					PodCIDR: "10.0.0.1/24",
-				},
-			},
-			instance: &compute.Instance{
-				NetworkInterfaces: []*compute.NetworkInterface{
-					{
-						AliasIpRanges: []*compute.AliasIpRange{
-							{
-								IpCidrRange: "10.0.0.1/24",
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			desc: "instance with 1 alias range doesn't match podCIDR",
-			ctx:  &controllerContext{},
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "node-test",
-				},
-				Spec: v1.NodeSpec{
-					PodCIDR: "10.0.0.1/24",
-				},
-			},
-			instance: &compute.Instance{
-				NetworkInterfaces: []*compute.NetworkInterface{
-					{
-						AliasIpRanges: []*compute.AliasIpRange{
-							{
-								IpCidrRange: "10.0.0.2/24",
-							},
-						},
-					},
-				},
-			},
-			shouldDelete: true,
-		},
-		{
 			desc: "instance with 2 alias range and 1 matches podCIDR",
 			ctx:  &controllerContext{},
 			node: &v1.Node{
@@ -1399,13 +1357,15 @@ func TestShouldDeleteNode(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		fakeGetInstance := func(_ *controllerContext, _ string) (*compute.Instance, error) {
-			return c.instance, c.getInstanceErr
-		}
-		shouldDelete, err := shouldDeleteNode(c.ctx, c.node, fakeGetInstance)
-		if err != c.expectedErr || shouldDelete != c.shouldDelete {
-			t.Errorf("%s: shouldDeleteNode=(%v, %v), want (%v, %v)", c.desc, shouldDelete, err, c.shouldDelete, c.expectedErr)
-		}
+		t.Run(c.desc, func(t *testing.T) {
+			fakeGetInstance := func(_ *controllerContext, _ string) (*compute.Instance, error) {
+				return c.instance, c.getInstanceErr
+			}
+			shouldDelete, err := shouldDeleteNode(c.ctx, c.node, fakeGetInstance)
+			if err != c.expectedErr || shouldDelete != c.shouldDelete {
+				t.Errorf("%s: shouldDeleteNode=(%v, %v), want (%v, %v)", c.desc, shouldDelete, err, c.shouldDelete, c.expectedErr)
+			}
+		})
 	}
 }
 
@@ -1469,15 +1429,14 @@ func TestValidateInstanceGroupHint(t *testing.T) {
 	}
 }
 
-func TestCheckInstanceReferrers(t *testing.T) {
+func TestCheckInstanceReferrersBackOff(t *testing.T) {
 	for _, tc := range []struct {
 		desc                     string
 		clusterInstanceGroupUrls []string
 		instance                 *compute.Instance
-		gceClientHandler         func(rw http.ResponseWriter, req *http.Request)
+		gceClientHandler         func() func(rw http.ResponseWriter, req *http.Request)
 		projectID                string
 		wantOK                   bool
-		wantErr                  bool
 	}{
 		{
 			desc: "match found",
@@ -1489,14 +1448,39 @@ func TestCheckInstanceReferrers(t *testing.T) {
 				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
 			},
 			projectID: "z1",
-			gceClientHandler: func(rw http.ResponseWriter, req *http.Request) {
-				json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
-					Items: []*compute.Reference{
-						{
-							Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				return func(rw http.ResponseWriter, req *http.Request) {
+					json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+						Items: []*compute.Reference{
+							{
+								Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+							},
 						},
-					},
-				})
+					})
+				}
+			},
+			wantOK: true,
+		},
+		{
+			desc: "match found for instanceGroupManagers",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				return func(rw http.ResponseWriter, req *http.Request) {
+					json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+						Items: []*compute.Reference{
+							{
+								Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+							},
+						},
+					})
+				}
 			},
 			wantOK: true,
 		},
@@ -1510,16 +1494,107 @@ func TestCheckInstanceReferrers(t *testing.T) {
 				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
 			},
 			projectID: "z1",
-			gceClientHandler: func(rw http.ResponseWriter, req *http.Request) {
-				json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
-					Items: []*compute.Reference{
-						{
-							Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig2",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				return func(rw http.ResponseWriter, req *http.Request) {
+					json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+						Items: []*compute.Reference{
+							{
+								Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig2",
+							},
 						},
-					},
-				})
+					})
+				}
 			},
 			wantOK: false,
+		},
+		{
+			desc: "match found on 10th call",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				i := 0
+				return func(rw http.ResponseWriter, req *http.Request) {
+					i++
+					if i > 10 {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{
+								{
+									Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+								},
+							},
+						})
+					} else {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{},
+						})
+					}
+				}
+			},
+			wantOK: true,
+		},
+		{
+			desc: "not found errors are retried",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				i := 0
+				return func(rw http.ResponseWriter, req *http.Request) {
+					i++
+					if i > 10 {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{
+								{
+									Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+								},
+							},
+						})
+					} else {
+						http.Error(rw, "not found", http.StatusNotFound)
+					}
+				}
+			},
+			wantOK: true,
+		},
+		{
+			desc: "all errors are retried",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				i := 0
+				return func(rw http.ResponseWriter, req *http.Request) {
+					i++
+					if i > 10 {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{
+								{
+									Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+								},
+							},
+						})
+					} else {
+						http.Error(rw, "internal server error", http.StatusInternalServerError)
+					}
+				}
+			},
+			wantOK: true,
 		},
 		{
 			desc: "error",
@@ -1531,14 +1606,47 @@ func TestCheckInstanceReferrers(t *testing.T) {
 				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
 			},
 			projectID: "z1",
-			gceClientHandler: func(rw http.ResponseWriter, req *http.Request) {
-				http.Error(rw, "not found", http.StatusNotFound)
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				return func(rw http.ResponseWriter, req *http.Request) {
+					http.Error(rw, "forbidden", http.StatusForbidden)
+				}
 			},
-			wantErr: true,
+			wantOK: false,
+		},
+		{
+			desc: "match found only on first call",
+			clusterInstanceGroupUrls: []string{
+				"https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroupManagers/ig1",
+			},
+			instance: &compute.Instance{
+				Name: "i1",
+				Zone: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1",
+			},
+			projectID: "z1",
+			gceClientHandler: func() func(rw http.ResponseWriter, req *http.Request) {
+				i := 0
+				return func(rw http.ResponseWriter, req *http.Request) {
+					i++
+					if i == 1 {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{
+								{
+									Referrer: "https://www.googleapis.com/compute/v1/projects/p1/zones/z1/instanceGroups/ig1",
+								},
+							},
+						})
+					} else {
+						json.NewEncoder(rw).Encode(compute.InstanceListReferrers{
+							Items: []*compute.Reference{},
+						})
+					}
+				}
+			},
+			wantOK: true,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(tc.gceClientHandler))
+			srv := httptest.NewServer(http.HandlerFunc(tc.gceClientHandler()))
 			defer srv.Close()
 			cl := srv.Client()
 			cl.Transport = fakeTransport{srv.URL}
@@ -1551,11 +1659,13 @@ func TestCheckInstanceReferrers(t *testing.T) {
 					ProjectID: tc.projectID,
 					Compute:   cs,
 				},
+				csrApproverListReferrersConfig: gceInstanceListReferrersConfig{
+					enabled:         true,
+					initialInterval: 1 * time.Millisecond,
+					retryCount:      11,
+				},
 			}
-			gotOK, err := checkInstanceReferrers(ctx, tc.instance, tc.clusterInstanceGroupUrls)
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("got error: %v; want error: %v", err, tc.wantErr)
-			}
+			gotOK := checkInstanceReferrersBackOff(ctx, tc.instance, tc.clusterInstanceGroupUrls)
 			if gotOK != tc.wantOK {
 				t.Errorf("got: %v; want: %v", gotOK, tc.wantOK)
 			}
@@ -1697,14 +1807,14 @@ func TestDeleteAllPodsBoundToNode(t *testing.T) {
 					Phase: v1.PodFailed,
 					Conditions: []v1.PodCondition{
 						{
+							Type:   v1.PodReady,
+							Status: v1.ConditionTrue,
+						},
+						{
 							Type:    v1.DisruptionTarget,
 							Status:  v1.ConditionTrue,
 							Reason:  "DeletionByGCPControllerManager",
 							Message: "GCPControllerManager: node no longer exists",
-						},
-						{
-							Type:   v1.PodReady,
-							Status: v1.ConditionTrue,
 						},
 					},
 				},

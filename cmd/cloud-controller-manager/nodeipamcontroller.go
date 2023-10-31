@@ -70,59 +70,66 @@ func (nodeIpamController *nodeIPAMController) startNodeIpamControllerWrapper(ini
 func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, nodeIPAMConfig nodeipamconfig.NodeIPAMControllerConfiguration, ctx genericcontrollermanager.ControllerContext, cloud cloudprovider.Interface) (controller.Interface, bool, error) {
 	var serviceCIDR *net.IPNet
 	var secondaryServiceCIDR *net.IPNet
+	var clusterCIDRs []*net.IPNet
+	var nodeCIDRMaskSizes []int
 
 	// should we start nodeIPAM
 	if !ccmConfig.ComponentConfig.KubeCloudShared.AllocateNodeCIDRs {
 		return nil, false, fmt.Errorf("the AllocateNodeCIDRs is not enabled")
 	}
 
-	// failure: bad cidrs in config
-	clusterCIDRs, dualStack, err := processCIDRs(ccmConfig.ComponentConfig.KubeCloudShared.ClusterCIDR)
-	if err != nil {
-		return nil, false, err
-	}
-
-	// failure: more than one cidr but they are not configured as dual stack
-	if len(clusterCIDRs) > 1 && !dualStack {
-		return nil, false, fmt.Errorf("len of ClusterCIDRs==%v and they are not configured as dual stack (at least one from each IPFamily", len(clusterCIDRs))
-	}
-
-	// failure: more than cidrs is not allowed even with dual stack
-	if len(clusterCIDRs) > 2 {
-		return nil, false, fmt.Errorf("len of clusters is:%v > more than max allowed of 2", len(clusterCIDRs))
-	}
-
-	// service cidr processing
-	if len(strings.TrimSpace(nodeIPAMConfig.ServiceCIDR)) != 0 {
-		_, serviceCIDR, err = net.ParseCIDR(nodeIPAMConfig.ServiceCIDR)
+	// the CloudAllocator ipam does not need service or cluster cidrs since it obtains the data from the cloud directly
+	// for backward compatiblity reasons we don't fail if there are any of those values configured
+	if ipam.CIDRAllocatorType(ccmConfig.ComponentConfig.KubeCloudShared.CIDRAllocatorType) != ipam.CloudAllocatorType {
+		// failure: bad cidrs in config
+		cidrs, dualStack, err := processCIDRs(ccmConfig.ComponentConfig.KubeCloudShared.ClusterCIDR)
 		if err != nil {
-			klog.Warningf("Unsuccessful parsing of service CIDR %v: %v", nodeIPAMConfig.ServiceCIDR, err)
+			return nil, false, err
 		}
-	}
+		clusterCIDRs = cidrs
 
-	if len(strings.TrimSpace(nodeIPAMConfig.SecondaryServiceCIDR)) != 0 {
-		_, secondaryServiceCIDR, err = net.ParseCIDR(nodeIPAMConfig.SecondaryServiceCIDR)
+		// failure: more than one cidr but they are not configured as dual stack
+		if len(clusterCIDRs) > 1 && !dualStack {
+			return nil, false, fmt.Errorf("len of ClusterCIDRs==%v and they are not configured as dual stack (at least one from each IPFamily", len(clusterCIDRs))
+		}
+
+		// failure: more than cidrs is not allowed even with dual stack
+		if len(clusterCIDRs) > 2 {
+			return nil, false, fmt.Errorf("len of clusters is:%v > more than max allowed of 2", len(clusterCIDRs))
+		}
+
+		// service cidr processing
+		if len(strings.TrimSpace(nodeIPAMConfig.ServiceCIDR)) != 0 {
+			_, serviceCIDR, err = net.ParseCIDR(nodeIPAMConfig.ServiceCIDR)
+			if err != nil {
+				klog.Warningf("Unsuccessful parsing of service CIDR %v: %v", nodeIPAMConfig.ServiceCIDR, err)
+			}
+		}
+
+		if len(strings.TrimSpace(nodeIPAMConfig.SecondaryServiceCIDR)) != 0 {
+			_, secondaryServiceCIDR, err = net.ParseCIDR(nodeIPAMConfig.SecondaryServiceCIDR)
+			if err != nil {
+				klog.Warningf("Unsuccessful parsing of service CIDR %v: %v", nodeIPAMConfig.SecondaryServiceCIDR, err)
+			}
+		}
+
+		// the following checks are triggered if both serviceCIDR and secondaryServiceCIDR are provided
+		if serviceCIDR != nil && secondaryServiceCIDR != nil {
+			// should be dual stack (from different IPFamilies)
+			dualstackServiceCIDR, err := netutils.IsDualStackCIDRs([]*net.IPNet{serviceCIDR, secondaryServiceCIDR})
+			if err != nil {
+				return nil, false, fmt.Errorf("failed to perform dualstack check on serviceCIDR and secondaryServiceCIDR error:%v", err)
+			}
+			if !dualstackServiceCIDR {
+				return nil, false, fmt.Errorf("serviceCIDR and secondaryServiceCIDR are not dualstack (from different IPfamiles)")
+			}
+		}
+
+		// get list of node cidr mask sizes
+		nodeCIDRMaskSizes, err = setNodeCIDRMaskSizes(nodeIPAMConfig, clusterCIDRs)
 		if err != nil {
-			klog.Warningf("Unsuccessful parsing of service CIDR %v: %v", nodeIPAMConfig.SecondaryServiceCIDR, err)
+			return nil, false, err
 		}
-	}
-
-	// the following checks are triggered if both serviceCIDR and secondaryServiceCIDR are provided
-	if serviceCIDR != nil && secondaryServiceCIDR != nil {
-		// should be dual stack (from different IPFamilies)
-		dualstackServiceCIDR, err := netutils.IsDualStackCIDRs([]*net.IPNet{serviceCIDR, secondaryServiceCIDR})
-		if err != nil {
-			return nil, false, fmt.Errorf("failed to perform dualstack check on serviceCIDR and secondaryServiceCIDR error:%v", err)
-		}
-		if !dualstackServiceCIDR {
-			return nil, false, fmt.Errorf("serviceCIDR and secondaryServiceCIDR are not dualstack (from different IPfamiles)")
-		}
-	}
-
-	// get list of node cidr mask sizes
-	nodeCIDRMaskSizes, err := setNodeCIDRMaskSizes(nodeIPAMConfig, clusterCIDRs)
-	if err != nil {
-		return nil, false, err
 	}
 
 	kubeConfig := ccmConfig.Complete().Kubeconfig
