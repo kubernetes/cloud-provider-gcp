@@ -966,7 +966,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 		ports        []v1.ServicePort
 		ipnet        utilnet.IPNetSet
 		fwIPProtocol string
-		getHook      func(context.Context, *meta.Key, *cloud.MockFirewalls) (bool, *compute.Firewall, error)
+		getHook      func(context.Context, *meta.Key, *cloud.MockFirewalls, ...cloud.Option) (bool, *compute.Firewall, error)
 		sourceRange  string
 		exists       bool
 		needsUpdate  bool
@@ -1074,7 +1074,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 			ports:        svc.Spec.Ports,
 			ipnet:        ipnet,
 			fwIPProtocol: "tcp",
-			getHook: func(ctx context.Context, key *meta.Key, m *cloud.MockFirewalls) (bool, *compute.Firewall, error) {
+			getHook: func(ctx context.Context, key *meta.Key, m *cloud.MockFirewalls, options ...cloud.Option) (bool, *compute.Firewall, error) {
 				obj, ok := m.Objects[*key]
 				if !ok {
 					return false, nil, nil
@@ -1098,7 +1098,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 			ports:        svc.Spec.Ports,
 			ipnet:        ipnet,
 			fwIPProtocol: "tcp",
-			getHook: func(ctx context.Context, key *meta.Key, m *cloud.MockFirewalls) (bool, *compute.Firewall, error) {
+			getHook: func(ctx context.Context, key *meta.Key, m *cloud.MockFirewalls, options ...cloud.Option) (bool, *compute.Firewall, error) {
 				obj, ok := m.Objects[*key]
 				if !ok {
 					return false, nil, nil
@@ -1122,7 +1122,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 			ports:        svc.Spec.Ports,
 			ipnet:        ipnet,
 			fwIPProtocol: "tcp",
-			getHook: func(ctx context.Context, key *meta.Key, m *cloud.MockFirewalls) (bool, *compute.Firewall, error) {
+			getHook: func(ctx context.Context, key *meta.Key, m *cloud.MockFirewalls, options ...cloud.Option) (bool, *compute.Firewall, error) {
 				obj, ok := m.Objects[*key]
 				if !ok {
 					return false, nil, nil
@@ -1496,7 +1496,7 @@ func TestExternalLoadBalancerEnsureHttpHealthCheck(t *testing.T) {
 			gce, err := fakeGCECloud(DefaultTestClusterValues())
 			require.NoError(t, err)
 			c := gce.c.(*cloud.MockGCE)
-			c.MockHttpHealthChecks.UpdateHook = func(ctx context.Context, key *meta.Key, obj *compute.HttpHealthCheck, m *cloud.MockHttpHealthChecks) error {
+			c.MockHttpHealthChecks.UpdateHook = func(ctx context.Context, key *meta.Key, obj *compute.HttpHealthCheck, m *cloud.MockHttpHealthChecks, options ...cloud.Option) error {
 				m.Objects[*key] = &cloud.MockHttpHealthChecksObj{Obj: obj}
 				return nil
 			}
