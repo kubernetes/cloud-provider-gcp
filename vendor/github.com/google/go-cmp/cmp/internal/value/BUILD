@@ -4,7 +4,7 @@ go_library(
     name = "value",
     srcs = [
         "name.go",
-        "pointer_unsafe.go",
+        "pointer.go",
         "sort.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/google/go-cmp/cmp/internal/value",

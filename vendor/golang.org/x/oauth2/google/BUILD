@@ -20,6 +20,7 @@ go_library(
         "//vendor/golang.org/x/oauth2",
         "//vendor/golang.org/x/oauth2/authhandler",
         "//vendor/golang.org/x/oauth2/google/internal/externalaccount",
+        "//vendor/golang.org/x/oauth2/google/internal/externalaccountauthorizeduser",
         "//vendor/golang.org/x/oauth2/internal",
         "//vendor/golang.org/x/oauth2/jws",
         "//vendor/golang.org/x/oauth2/jwt",
