@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
+	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/klog/v2"
 	netutils "k8s.io/utils/net"
 )
@@ -18,11 +19,11 @@ import (
 // performMultiNetworkCIDRAllocation receives the existing Node object and its
 // GCE interfaces, and is updated with the corresponding annotations for
 // MultiNetwork and NorthInterfaces and the capacity for the additional networks.
-// It also returns calculated cidrs for default Network.
+// It also returns calculated cidrs for default Network if there're no node labels.
 //
 // NorthInterfacesAnnotationKey is modified on Network Ready condition changes.
 // MultiNetworkAnnotationKey is modified on Node's NodeNetworkAnnotationKey changes.
-func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, interfaces []*compute.NetworkInterface) (defaultNwCIDRs []string, err error) {
+func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, interfaces []*compute.NetworkInterface, hasNodeLabels bool) (defaultNwCIDRs []string, err error) {
 	northInterfaces := networkv1.NorthInterfacesAnnotation{}
 	additionalNodeNetworks := networkv1.MultiNetworkAnnotation{}
 
@@ -96,13 +97,16 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 				}
 				klog.V(2).InfoS("found an allocatable secondary range for the interface on network", "nodeName", node.Name, "networkName", network.Name)
 				processedNetworks[network.Name] = struct{}{}
-				if networkv1.IsDefaultNetwork(network.Name) {
+				// for defaultNwCIDRs, if there're no NodeLabels keep this,
+				// otherwise get the CIDR with labels
+				if networkv1.IsDefaultNetwork(network.Name) && !hasNodeLabels {
 					defaultNwCIDRs = append(defaultNwCIDRs, ipRange.IpCidrRange)
 					ipv6Addr := ca.cloud.GetIPV6Address(inf)
 					if ipv6Addr != nil {
 						defaultNwCIDRs = append(defaultNwCIDRs, ipv6Addr.String())
 					}
-				} else {
+				}
+				if !networkv1.IsDefaultNetwork(network.Name) {
 					northInterfaces = append(northInterfaces, networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP})
 					if _, ok := upStatusNetworks[network.Name]; ok {
 						additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{ipRange.IpCidrRange}})
@@ -116,6 +120,42 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 		return nil, err
 	}
 	return defaultNwCIDRs, nil
+}
+
+// getNodeDefaultLabels returns true if the node has labels for subnet and Pod range
+func getNodeDefaultLabels(node *v1.Node) (bool, string, string) {
+	defaultSubnet, foundSubnet := node.Labels[utilnode.NodePoolSubnetLabelPrefix]
+	defaultPodRange, foundRange := node.Labels[utilnode.NodePoolPodRangeLabelPrefix]
+	if !foundSubnet || defaultSubnet == "" || !foundRange || defaultPodRange == "" {
+		return false, "", ""
+	}
+	return true, defaultSubnet, defaultPodRange
+}
+
+// extractDefaultNwCIDRs returns the Pod CIDRs for default Network.
+// Different subnet can have the same secondary range name, here uses the subnet and range name
+// to find the matching CIDR(s)
+func (ca *cloudCIDRAllocator) extractDefaultNwCIDRs(interfaces []*compute.NetworkInterface, defaultSubnet, defaultPodRange string) (defaultNwCIDRs []string) {
+out:
+	for _, inf := range interfaces {
+		// extra the subnetwork name from the URL
+		parts := strings.Split(inf.Subnetwork, "/subnetworks/")
+		if parts[1] != defaultSubnet {
+			continue
+		}
+		for _, ipRange := range inf.AliasIpRanges {
+			if ipRange.SubnetworkRangeName != defaultPodRange {
+				continue
+			}
+			defaultNwCIDRs = append(defaultNwCIDRs, ipRange.IpCidrRange)
+			ipv6Addr := ca.cloud.GetIPV6Address(inf)
+			if ipv6Addr != nil {
+				defaultNwCIDRs = append(defaultNwCIDRs, ipv6Addr.String())
+			}
+			break out
+		}
+	}
+	return defaultNwCIDRs
 }
 
 func updateAnnotations(node *v1.Node, northInterfaces networkv1.NorthInterfacesAnnotation, additionalNodeNetworks networkv1.MultiNetworkAnnotation) error {
