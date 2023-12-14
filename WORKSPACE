@@ -77,7 +77,8 @@ container_pull(
 
 container_pull(
     name = "go-runner",
-    digest = "sha256:07ae0b21ca58c7f11c80f3b25398a24be1cb5e691d934b6b8d934ff4ba5a65dd",
+    # this digest is actually go-runner-amd64
+    digest = "sha256:ff9d9b20255f11611cdcaf3ccd6f395ce2fa02a78c546ec93b4e06eb77359d46",
     registry = "registry.k8s.io",
     repository = "build-image/go-runner",
     # 'tag' is also supported, but digest is encouraged for reproducibility.
