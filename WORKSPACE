@@ -47,7 +47,7 @@ go_rules_dependencies()
 
 go_download_sdk(
     name = "go_sdk",
-    version = "1.20.10",
+    version = "1.20.12",
 )
 
 go_register_toolchains()
@@ -77,11 +77,12 @@ container_pull(
 
 container_pull(
     name = "go-runner",
-    digest = "sha256:b564abe1d4bd3a7e227971530fbc8e3906671c94350706df5244c1deb6edcef4",
+    # this digest is actually go-runner-amd64
+    digest = "sha256:ff9d9b20255f11611cdcaf3ccd6f395ce2fa02a78c546ec93b4e06eb77359d46",
     registry = "registry.k8s.io",
     repository = "build-image/go-runner",
     # 'tag' is also supported, but digest is encouraged for reproducibility.
-    tag = "v2.3.1-go1.20.4-bullseye.0",
+    tag = "v2.3.1-go1.20.12-bullseye.0",
 )
 
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
