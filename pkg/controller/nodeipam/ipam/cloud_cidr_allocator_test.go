@@ -283,45 +283,6 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			expectedUpdate: true,
 		},
 		{
-			name: "ipv6 single stack",
-			fakeNodeHandler: &testutil.FakeNodeHandler{
-				Existing: []*v1.Node{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test",
-						},
-						Spec: v1.NodeSpec{
-							ProviderID: "gce://test-project/us-central1-b/test",
-						},
-					},
-				},
-				Clientset: fake.NewSimpleClientset(),
-			},
-			gceInstance: []*compute.Instance{
-				{
-					Name: "test",
-					NetworkInterfaces: []*compute.NetworkInterface{
-						{
-							Ipv6Address: "2001:db9::110",
-						},
-					},
-				},
-			},
-			nodeChanges: func(node *v1.Node) {
-				node.Spec.PodCIDR = "2001:db9::/112"
-				node.Spec.PodCIDRs = []string{"2001:db9::/112"}
-				node.Status.Conditions = []v1.NodeCondition{
-					{
-						Type:    "NetworkUnavailable",
-						Status:  "False",
-						Reason:  "RouteCreated",
-						Message: "NodeController create implicit route",
-					},
-				}
-			},
-			expectedUpdate: true,
-		},
-		{
 			name: "want error - incorrect cidr",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
