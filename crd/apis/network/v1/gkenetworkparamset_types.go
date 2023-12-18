@@ -118,6 +118,9 @@ const (
 	// GNPParamsReady indicates that the referenced GNP resource
 	// has been successfully validated for use with this Network resource and ParamsReady=True
 	GNPParamsReady GNPNetworkParamsReadyConditionReason = "GNPParamsReady"
+	// GNPParamsNotReady indicates that the referenced GNP resource
+	// needs to be updated and triggers Network resource to update
+	GNPParamsNotReady GNPNetworkParamsReadyConditionReason = "GNPParamsNotReady"
 )
 
 // GKENetworkParamSetStatus contains the status information related to the network.

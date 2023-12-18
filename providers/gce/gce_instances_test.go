@@ -137,7 +137,7 @@ func TestNodeAddresses(t *testing.T) {
 
 	mockGCE := gce.c.(*cloud.MockGCE)
 	mi := mockGCE.Instances().(*cloud.MockInstances)
-	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances) (bool, *ga.Instance, error) {
+	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
 		ret, ok := instanceMap[key.Name]
 		if !ok {
 			return true, nil, fmt.Errorf("instance not found")
@@ -275,7 +275,7 @@ func TestAliasRangesByProviderID(t *testing.T) {
 
 	mockGCE := gce.c.(*cloud.MockGCE)
 	mai := mockGCE.Instances().(*cloud.MockInstances)
-	mai.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances) (bool, *ga.Instance, error) {
+	mai.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
 		ret, ok := instanceMap[key.Name]
 		if !ok {
 			return true, nil, fmt.Errorf("instance not found")
@@ -363,7 +363,7 @@ func TestInstanceByProviderID(t *testing.T) {
 
 	mockGCE := gce.c.(*cloud.MockGCE)
 	mai := mockGCE.Instances().(*cloud.MockInstances)
-	mai.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances) (bool, *ga.Instance, error) {
+	mai.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
 		ret, ok := instanceMap[key.Name]
 		if !ok {
 			return true, nil, fmt.Errorf("instance not found")

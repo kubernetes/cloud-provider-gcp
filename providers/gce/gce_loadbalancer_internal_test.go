@@ -1950,7 +1950,7 @@ func TestEnsureInternalLoadBalancerModifyProtocol(t *testing.T) {
 	gce, err := fakeGCECloud(vals)
 	require.NoError(t, err)
 	c := gce.c.(*cloud.MockGCE)
-	c.MockRegionBackendServices.UpdateHook = func(ctx context.Context, key *meta.Key, be *compute.BackendService, m *cloud.MockRegionBackendServices) error {
+	c.MockRegionBackendServices.UpdateHook = func(ctx context.Context, key *meta.Key, be *compute.BackendService, m *cloud.MockRegionBackendServices, options ...cloud.Option) error {
 		// Same key can be used since FR will have the same name.
 		fr, err := c.MockForwardingRules.Get(ctx, key)
 		if err != nil && !isNotFound(err) {
