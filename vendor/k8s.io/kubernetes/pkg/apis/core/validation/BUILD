@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "doc.go",
         "events.go",
+        "names.go",
         "validation.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/apis/core/validation",
@@ -27,6 +28,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/validation",
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
         "//vendor/k8s.io/apiserver/pkg/util/feature",
+        "//vendor/k8s.io/component-helpers/node/util/sysctl",
         "//vendor/k8s.io/component-helpers/scheduling/corev1",
         "//vendor/k8s.io/kubelet/pkg/apis",
         "//vendor/k8s.io/kubernetes/pkg/api/service",

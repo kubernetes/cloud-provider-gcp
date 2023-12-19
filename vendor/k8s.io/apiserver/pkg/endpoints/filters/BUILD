@@ -27,6 +27,7 @@ go_library(
     deps = [
         "//vendor/github.com/google/uuid",
         "//vendor/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
+        "//vendor/go.opentelemetry.io/otel/semconv/v1.17.0:v1_17_0",
         "//vendor/go.opentelemetry.io/otel/trace",
         "//vendor/k8s.io/api/authentication/v1:authentication",
         "//vendor/k8s.io/api/core/v1:core",
@@ -49,8 +50,10 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/responsewriters",
         "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/apiserver/pkg/endpoints/responsewriter",
+        "//vendor/k8s.io/apiserver/pkg/features",
         "//vendor/k8s.io/apiserver/pkg/server/httplog",
         "//vendor/k8s.io/apiserver/pkg/storageversion",
+        "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/apiserver/pkg/warning",
         "//vendor/k8s.io/component-base/metrics",
         "//vendor/k8s.io/component-base/metrics/legacyregistry",

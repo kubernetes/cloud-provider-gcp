@@ -8,6 +8,6 @@ go_library(
     visibility = ["//vendor/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc:__subpackages__"],
     deps = [
         "//vendor/go.opentelemetry.io/otel/attribute",
-        "//vendor/go.opentelemetry.io/otel/semconv/v1.12.0:v1_12_0",
+        "//vendor/go.opentelemetry.io/otel/semconv/v1.17.0:v1_17_0",
     ],
 )

@@ -6,5 +6,8 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/endpoints/handlers/metrics",
     importpath = "k8s.io/apiserver/pkg/endpoints/handlers/metrics",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/k8s.io/component-base/metrics"],
+    deps = [
+        "//vendor/k8s.io/component-base/metrics",
+        "//vendor/k8s.io/component-base/metrics/legacyregistry",
+    ],
 )

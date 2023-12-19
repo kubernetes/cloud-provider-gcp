@@ -6,6 +6,7 @@ go_library(
         "csistoragecapacity.go",
         "interface.go",
         "volumeattachment.go",
+        "volumeattributesclass.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/informers/storage/v1alpha1",
     importpath = "k8s.io/client-go/informers/storage/v1alpha1",

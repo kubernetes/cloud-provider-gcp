@@ -34,6 +34,7 @@ go_library(
         "//vendor/github.com/prometheus/client_golang/prometheus/promhttp",
         "//vendor/github.com/prometheus/client_model/go",
         "//vendor/github.com/spf13/pflag",
+        "//vendor/gopkg.in/yaml.v2:yaml_v2",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/version",
         "//vendor/k8s.io/component-base/metrics/prometheusextension",

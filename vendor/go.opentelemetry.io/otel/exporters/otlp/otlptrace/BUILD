@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "clients.go",
         "exporter.go",
+        "version.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/go.opentelemetry.io/otel/exporters/otlp/otlptrace",
     importpath = "go.opentelemetry.io/otel/exporters/otlp/otlptrace",

@@ -20,6 +20,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/version",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/metrics",
         "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/responsewriters",
         "//vendor/k8s.io/apiserver/pkg/endpoints/metrics",
         "//vendor/k8s.io/apiserver/pkg/server/mux",

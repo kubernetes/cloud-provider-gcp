@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "doc.go",
         "encoder.go",
+        "filter.go",
         "iterator.go",
         "key.go",
         "kv.go",
@@ -15,5 +16,8 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/go.opentelemetry.io/otel/attribute",
     importpath = "go.opentelemetry.io/otel/attribute",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/go.opentelemetry.io/otel/internal"],
+    deps = [
+        "//vendor/go.opentelemetry.io/otel/internal",
+        "//vendor/go.opentelemetry.io/otel/internal/attribute",
+    ],
 )

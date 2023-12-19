@@ -7,6 +7,7 @@ go_library(
         "error_handler.go",
         "handler.go",
         "internal_logging.go",
+        "metric.go",
         "propagation.go",
         "trace.go",
         "version.go",
@@ -17,6 +18,7 @@ go_library(
     deps = [
         "//vendor/github.com/go-logr/logr",
         "//vendor/go.opentelemetry.io/otel/internal/global",
+        "//vendor/go.opentelemetry.io/otel/metric",
         "//vendor/go.opentelemetry.io/otel/propagation",
         "//vendor/go.opentelemetry.io/otel/trace",
     ],

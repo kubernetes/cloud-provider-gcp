@@ -22,7 +22,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/core/v1:core",
-        "//vendor/k8s.io/api/flowcontrol/v1beta3",
+        "//vendor/k8s.io/api/flowcontrol/v1:flowcontrol",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/types",
@@ -41,5 +41,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/request",
         "//vendor/k8s.io/client-go/kubernetes/scheme",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/utils/clock",
     ],
 )

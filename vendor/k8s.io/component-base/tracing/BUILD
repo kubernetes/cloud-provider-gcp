@@ -16,6 +16,7 @@ go_library(
         "//vendor/go.opentelemetry.io/otel/propagation",
         "//vendor/go.opentelemetry.io/otel/sdk/resource",
         "//vendor/go.opentelemetry.io/otel/sdk/trace",
+        "//vendor/go.opentelemetry.io/otel/semconv/v1.17.0:v1_17_0",
         "//vendor/go.opentelemetry.io/otel/trace",
         "//vendor/k8s.io/client-go/transport",
         "//vendor/k8s.io/component-base/tracing/api/v1:api",

@@ -15,6 +15,7 @@ go_library(
         "//vendor/github.com/google/cel-go/cel",
         "//vendor/github.com/google/cel-go/common/types",
         "//vendor/github.com/google/cel-go/common/types/ref",
+        "//vendor/github.com/google/cel-go/common/types/traits",
         "//vendor/github.com/google/cel-go/interpreter",
         "//vendor/k8s.io/api/admission/v1:admission",
         "//vendor/k8s.io/api/authentication/v1:authentication",

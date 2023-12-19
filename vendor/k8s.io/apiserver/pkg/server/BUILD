@@ -91,6 +91,7 @@ go_library(
         "//vendor/k8s.io/kube-openapi/pkg/common",
         "//vendor/k8s.io/kube-openapi/pkg/handler",
         "//vendor/k8s.io/kube-openapi/pkg/handler3",
+        "//vendor/k8s.io/kube-openapi/pkg/spec3",
         "//vendor/k8s.io/kube-openapi/pkg/util",
         "//vendor/k8s.io/kube-openapi/pkg/validation/spec",
         "//vendor/k8s.io/utils/clock",

@@ -6,5 +6,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/pkg/util/parsers",
     importpath = "k8s.io/kubernetes/pkg/util/parsers",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/github.com/docker/distribution/reference"],
+    deps = ["//vendor/github.com/distribution/reference"],
 )

@@ -39,7 +39,7 @@ go_library(
         "//vendor/k8s.io/api/events/v1:events",
         "//vendor/k8s.io/api/events/v1beta1",
         "//vendor/k8s.io/api/extensions/v1beta1",
-        "//vendor/k8s.io/api/flowcontrol/v1alpha1",
+        "//vendor/k8s.io/api/flowcontrol/v1:flowcontrol",
         "//vendor/k8s.io/api/flowcontrol/v1beta1",
         "//vendor/k8s.io/api/flowcontrol/v1beta2",
         "//vendor/k8s.io/api/flowcontrol/v1beta3",
