@@ -4,9 +4,9 @@ go_library(
     name = "fake",
     srcs = [
         "doc.go",
-        "fake_clustercidr.go",
         "fake_ipaddress.go",
         "fake_networking_client.go",
+        "fake_servicecidr.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/networking/v1alpha1/fake",
     importpath = "k8s.io/client-go/kubernetes/typed/networking/v1alpha1/fake",

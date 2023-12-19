@@ -11,7 +11,6 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/google.golang.org/grpc",
-        "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/kms/apis/v2:apis",
     ],
 )

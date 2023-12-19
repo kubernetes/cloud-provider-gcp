@@ -3,11 +3,11 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "v1alpha1",
     srcs = [
-        "clustercidr.go",
         "doc.go",
         "generated_expansion.go",
         "ipaddress.go",
         "networking_client.go",
+        "servicecidr.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/networking/v1alpha1",
     importpath = "k8s.io/client-go/kubernetes/typed/networking/v1alpha1",

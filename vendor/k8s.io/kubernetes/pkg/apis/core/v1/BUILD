@@ -24,6 +24,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/intstr",
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
         "//vendor/k8s.io/apiserver/pkg/util/feature",
+        "//vendor/k8s.io/kubernetes/pkg/api/v1/service",
         "//vendor/k8s.io/kubernetes/pkg/apis/apps",
         "//vendor/k8s.io/kubernetes/pkg/apis/core",
         "//vendor/k8s.io/kubernetes/pkg/features",

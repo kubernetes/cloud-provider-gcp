@@ -23,7 +23,7 @@ go_library(
         "provider.go",
         "string.go",
         "timestamp.go",
-        "type.go",
+        "types.go",
         "uint.go",
         "unknown.go",
         "util.go",
@@ -32,6 +32,7 @@ go_library(
     importpath = "github.com/google/cel-go/common/types",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/google/cel-go/checker/decls",
         "//vendor/github.com/google/cel-go/common/overloads",
         "//vendor/github.com/google/cel-go/common/types/pb",
         "//vendor/github.com/google/cel-go/common/types/ref",

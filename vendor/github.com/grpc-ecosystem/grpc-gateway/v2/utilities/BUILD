@@ -6,6 +6,7 @@ go_library(
         "doc.go",
         "pattern.go",
         "readerfactory.go",
+        "string_array_flag.go",
         "trie.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/grpc-ecosystem/grpc-gateway/v2/utilities",

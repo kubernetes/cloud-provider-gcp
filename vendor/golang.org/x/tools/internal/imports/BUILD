@@ -16,6 +16,7 @@ go_library(
     deps = [
         "//vendor/golang.org/x/mod/module",
         "//vendor/golang.org/x/tools/go/ast/astutil",
+        "//vendor/golang.org/x/tools/internal/event",
         "//vendor/golang.org/x/tools/internal/gocommand",
         "//vendor/golang.org/x/tools/internal/gopathwalk",
     ],

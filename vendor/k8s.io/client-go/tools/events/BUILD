@@ -33,6 +33,7 @@ go_library(
         "//vendor/k8s.io/client-go/kubernetes/typed/core/v1:core",
         "//vendor/k8s.io/client-go/kubernetes/typed/events/v1:events",
         "//vendor/k8s.io/client-go/rest",
+        "//vendor/k8s.io/client-go/tools/internal/events",
         "//vendor/k8s.io/client-go/tools/record",
         "//vendor/k8s.io/client-go/tools/record/util",
         "//vendor/k8s.io/client-go/tools/reference",

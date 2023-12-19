@@ -4,6 +4,7 @@ go_library(
     name = "common",
     srcs = [
         "adaptor.go",
+        "equality.go",
         "maplist.go",
         "schemas.go",
         "values.go",

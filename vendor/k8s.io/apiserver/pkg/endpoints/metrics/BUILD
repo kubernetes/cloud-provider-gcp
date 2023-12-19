@@ -8,8 +8,11 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/emicklei/go-restful/v3:go-restful",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/internalversion",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1/validation",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/types",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apiserver/pkg/audit",
         "//vendor/k8s.io/apiserver/pkg/authentication/user",

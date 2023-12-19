@@ -6,6 +6,7 @@ go_library(
         "bindings.go",
         "encoders.go",
         "guards.go",
+        "lists.go",
         "math.go",
         "native.go",
         "protos.go",
@@ -17,8 +18,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/google/cel-go/cel",
-        "//vendor/github.com/google/cel-go/checker/decls",
-        "//vendor/github.com/google/cel-go/common",
+        "//vendor/github.com/google/cel-go/checker",
         "//vendor/github.com/google/cel-go/common/types",
         "//vendor/github.com/google/cel-go/common/types/pb",
         "//vendor/github.com/google/cel-go/common/types/ref",

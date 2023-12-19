@@ -18,6 +18,7 @@ go_library(
         "mutation_detector.go",
         "object-names.go",
         "reflector.go",
+        "reflector_data_consistency_detector.go",
         "reflector_metrics.go",
         "retry_with_deadline.go",
         "shared_informer.go",
@@ -29,6 +30,7 @@ go_library(
     importpath = "k8s.io/client-go/tools/cache",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/api/meta",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",

@@ -11,6 +11,5 @@ go_library(
         "//vendor/k8s.io/gengo/generator",
         "//vendor/k8s.io/gengo/namer",
         "//vendor/k8s.io/gengo/parser",
-        "//vendor/k8s.io/gengo/types",
     ],
 )

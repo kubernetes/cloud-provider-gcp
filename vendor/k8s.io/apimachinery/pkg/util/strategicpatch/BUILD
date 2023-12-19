@@ -17,5 +17,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/mergepatch",
         "//vendor/k8s.io/apimachinery/third_party/forked/golang/json",
         "//vendor/k8s.io/kube-openapi/pkg/util/proto",
+        "//vendor/k8s.io/kube-openapi/pkg/validation/spec",
     ],
 )

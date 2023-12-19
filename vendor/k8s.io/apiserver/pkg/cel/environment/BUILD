@@ -11,7 +11,9 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/google/cel-go/cel",
+        "//vendor/github.com/google/cel-go/checker",
         "//vendor/github.com/google/cel-go/ext",
+        "//vendor/github.com/google/cel-go/interpreter",
         "//vendor/golang.org/x/sync/singleflight",
         "//vendor/k8s.io/apimachinery/pkg/util/version",
         "//vendor/k8s.io/apiserver/pkg/apis/cel",

@@ -12,6 +12,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/gogo/protobuf/proto",
+        "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/golang.org/x/crypto/cryptobyte",
         "//vendor/google.golang.org/grpc",
         "//vendor/google.golang.org/grpc/credentials/insecure",
@@ -26,6 +27,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/aes",
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/envelope/kmsv2/v2:kmsv2",
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/envelope/metrics",
+        "//vendor/k8s.io/component-base/tracing",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/kms/apis/v2:apis",
         "//vendor/k8s.io/kms/pkg/service",

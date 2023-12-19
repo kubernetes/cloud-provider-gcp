@@ -7,7 +7,6 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/server/options/encryptionconfig/controller",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/fsnotify/fsnotify",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apiserver/pkg/server/healthz",

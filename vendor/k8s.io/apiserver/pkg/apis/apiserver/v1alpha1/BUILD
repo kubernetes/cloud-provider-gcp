@@ -4,6 +4,7 @@ go_library(
     name = "v1alpha1",
     srcs = [
         "conversion.go",
+        "defaults.go",
         "doc.go",
         "register.go",
         "types.go",
