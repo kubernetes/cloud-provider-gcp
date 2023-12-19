@@ -22,7 +22,7 @@ This command will build and publish
 IMAGE_REGISTRY=example.com IMAGE_REPO=my-repo IMAGE_TAG=v1 bazel run //cmd/gcp-controller-manager:publish
 ```
 
-## Publishing cloud-controller-maanger image
+## Publishing cloud-controller-manager image
 
 This command will build and publish cloud-controller-manager
 `gcr.io/k8s-image-staging/cloud-controller-manager:latest`:
