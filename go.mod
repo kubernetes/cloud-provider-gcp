@@ -28,7 +28,7 @@ require (
 	k8s.io/kubelet v0.29.0
 	k8s.io/metrics v0.29.0
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
-	sigs.k8s.io/controller-tools v0.12.0
+	sigs.k8s.io/controller-tools v0.13.0
 )
 
 require (
@@ -36,7 +36,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.29.0
-	k8s.io/cloud-provider-gcp/crd v0.0.0-20230608185813-17ff4d5f2987
+	k8s.io/cloud-provider-gcp/crd v0.0.0-20231206221110-9fb2d417fa43
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
 	k8s.io/kubernetes v1.29.0
 )

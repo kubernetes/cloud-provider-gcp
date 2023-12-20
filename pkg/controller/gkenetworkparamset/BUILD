@@ -48,6 +48,7 @@ go_test(
         "//pkg/util/node",
         "//providers/gce",
         "//vendor/github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta",
+        "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/github.com/onsi/gomega",
         "//vendor/github.com/onsi/gomega/types",
         "//vendor/google.golang.org/api/compute/v1:compute",
