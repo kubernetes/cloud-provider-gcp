@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ga "google.golang.org/api/compute/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 )
@@ -59,7 +59,7 @@ func TestInstanceExists(t *testing.T) {
 			name:        "node not exist",
 			nodeName:    "test-node-2",
 			exist:       false,
-			expectedErr: fmt.Errorf("failed to get instance ID from cloud provider: instance not found"),
+			expectedErr: nil,
 		},
 	}
 

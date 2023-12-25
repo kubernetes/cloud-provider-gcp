@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "internaloption",
+    srcs = ["internaloption.go"],
+    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/api/option/internaloption",
+    importpath = "google.golang.org/api/option/internaloption",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/golang.org/x/oauth2/google",
+        "//vendor/google.golang.org/api/internal",
+        "//vendor/google.golang.org/api/option",
+    ],
+)

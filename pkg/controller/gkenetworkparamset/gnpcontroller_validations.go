@@ -22,8 +22,12 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"google.golang.org/api/compute/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
+	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
+	"k8s.io/klog/v2"
+	"k8s.io/utils/strings/slices"
 )
 
 type gnpValidation struct {
@@ -32,14 +36,14 @@ type gnpValidation struct {
 	ErrorMessage string
 }
 
-func (val *gnpValidation) toCondition() v1.Condition {
-	condition := v1.Condition{}
+func (val *gnpValidation) toCondition() metav1.Condition {
+	condition := metav1.Condition{}
 
 	if val.IsValid {
-		condition.Status = v1.ConditionTrue
+		condition.Status = metav1.ConditionTrue
 		condition.Reason = string(networkv1.GNPReady)
 	} else {
-		condition.Status = v1.ConditionFalse
+		condition.Status = metav1.ConditionFalse
 		condition.Reason = string(val.ErrorReason)
 		condition.Message = val.ErrorMessage
 	}
@@ -94,8 +98,8 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 		}
 	}
 
-	//check if both deviceMode and secondary ranges are unspecified
-	isSecondaryRangeSpecified := params.Spec.PodIPv4Ranges != nil && len(params.Spec.PodIPv4Ranges.RangeNames) > 0
+	// check if both deviceMode and secondary ranges are unspecified
+	isSecondaryRangeSpecified := hasRangeNames(params)
 	isDeviceModeSpecified := params.Spec.DeviceMode != ""
 	if !isSecondaryRangeSpecified && !isDeviceModeSpecified {
 		return &gnpValidation{
@@ -151,7 +155,7 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 
 	//if GNP with deviceMode and referencing VPC or Subnet is referenced in any other existing GNP
 	if isDeviceModeSpecified {
-		gnpList, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().List(ctx, v1.ListOptions{})
+		gnpList, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -188,14 +192,14 @@ type gnpNetworkCrossValidation struct {
 	ErrorMessage string
 }
 
-func (val *gnpNetworkCrossValidation) toCondition() v1.Condition {
-	condition := v1.Condition{}
+func (val *gnpNetworkCrossValidation) toCondition() metav1.Condition {
+	condition := metav1.Condition{}
 
 	if val.IsValid {
-		condition.Status = v1.ConditionTrue
+		condition.Status = metav1.ConditionTrue
 		condition.Reason = string(networkv1.GNPParamsReady)
 	} else {
-		condition.Status = v1.ConditionFalse
+		condition.Status = metav1.ConditionFalse
 		condition.Reason = string(val.ErrorReason)
 		condition.Message = val.ErrorMessage
 	}
@@ -207,7 +211,7 @@ func (val *gnpNetworkCrossValidation) toCondition() v1.Condition {
 
 // crossValidateNetworkAndGnp validates a given network and GNP object are compatible
 func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GKENetworkParamSet) *gnpNetworkCrossValidation {
-	isSecondaryRangeSpecified := params.Spec.PodIPv4Ranges != nil && len(params.Spec.PodIPv4Ranges.RangeNames) > 0
+	isSecondaryRangeSpecified := hasRangeNames(params)
 
 	if network.Spec.Type == networkv1.L3NetworkType {
 		if !isSecondaryRangeSpecified {
@@ -232,4 +236,76 @@ func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GK
 	return &gnpNetworkCrossValidation{
 		IsValid: true,
 	}
+}
+
+// nonDefaultParamsPodRanges returns true if the node has new Pod range that's not in the "default" params
+func (c *Controller) nonDefaultParamsPodRanges(node *v1.Node) bool {
+	defaultPodRanges, err := c.getParamsPodRanges(networkv1.DefaultPodNetworkName)
+	if err != nil {
+		klog.V(4).Infof("check new Pod range on node %q error: %v", node.Name, err)
+		return false
+	}
+	v, ok := node.Labels[utilnode.NodePoolPodRangeLabelPrefix]
+	// node pools can not create with overlapped pod ranges so that we can use `slices.Contains`
+	if ok && v != "" && !slices.Contains(defaultPodRanges, v) {
+		return true
+	}
+	return false
+}
+
+// getParamsPodRanges returns a list of Pod range names of the paramset and error
+func (c *Controller) getParamsPodRanges(paramsName string) ([]string, error) {
+	params, err := c.gkeNetworkParamsInformer.Lister().Get(paramsName)
+	if err != nil {
+		return nil, err
+	}
+	if hasRangeNames(params) {
+		return params.Spec.PodIPv4Ranges.RangeNames, nil
+	}
+	return nil, fmt.Errorf("params %v does not have PodIPv4Ranges", params.Name)
+}
+
+// hasRangeNames returns true if RangeNames is specified, return false
+// if PodIPv4Ranges is nil or length of RangeNames is 0
+func hasRangeNames(params *networkv1.GKENetworkParamSet) bool {
+	if params.Spec.PodIPv4Ranges != nil {
+		if len(params.Spec.PodIPv4Ranges.RangeNames) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// samePodIPv4Ranges returns true if both PodIPv4Rangess are nil or have the same RangeNames,
+// returns false if either one is nil or has differnent element in the RangeNames list
+func samePodIPv4Ranges(params *networkv1.GKENetworkParamSet, originalParams *networkv1.GKENetworkParamSet) bool {
+	if !hasRangeNames(params) && !hasRangeNames(originalParams) {
+		return true
+	}
+	if hasRangeNames(params) && hasRangeNames(originalParams) {
+		return sameStringSlice(params.Spec.PodIPv4Ranges.RangeNames, originalParams.Spec.PodIPv4Ranges.RangeNames)
+	}
+	return false
+}
+
+// sameStringSlice returns true if two slices have the same elements
+// regardless of the order
+func sameStringSlice(x, y []string) bool {
+	if len(x) != len(y) {
+		return false
+	}
+	diff := make(map[string]int, len(x))
+	for _, a := range x {
+		diff[a]++
+	}
+	for _, b := range y {
+		if _, ok := diff[b]; !ok {
+			return false
+		}
+		diff[b]--
+		if diff[b] == 0 {
+			delete(diff, b)
+		}
+	}
+	return len(diff) == 0
 }

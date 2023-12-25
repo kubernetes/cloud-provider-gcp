@@ -70,6 +70,7 @@ go_test(
         "//pkg/controller/nodeipam/ipam/cidrset",
         "//pkg/controller/nodeipam/ipam/test",
         "//pkg/controller/testutil",
+        "//pkg/util/node",
         "//providers/gce",
         "//vendor/github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta",
         "//vendor/github.com/google/go-cmp/cmp",
