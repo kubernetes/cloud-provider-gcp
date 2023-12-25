@@ -2,12 +2,6 @@ module k8s.io/cloud-provider-gcp
 
 go 1.21
 
-// k8s.io/kubernetes imports dynamic-resource-allocation from the staging repos as of 1.26.0.
-// This means that `go list -mod readonly -m -f '{{ if not .Main }}{{ .String }}{{ end }}' all` fails
-// as it cannot find the v0.0.0 revision. This is needed to resolve that error and fixes
-// the ART builds.
-replace k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.26.0
-
 require (
 	github.com/evanphx/json-patch v5.6.0+incompatible
 	github.com/gofrs/flock v0.7.1
