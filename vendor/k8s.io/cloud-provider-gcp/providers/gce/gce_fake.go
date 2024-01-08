@@ -39,6 +39,7 @@ type TestClusterValues struct {
 	OnXPN             bool
 	Regional          bool
 	NetworkURL        string
+	SubnetworkURL     string
 }
 
 // DefaultTestClusterValues Creates a reasonable set of default cluster values

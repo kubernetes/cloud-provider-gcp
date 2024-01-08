@@ -40,6 +40,7 @@ import (
 	clSetFake "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned/fake"
 	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
 	"k8s.io/cloud-provider-gcp/pkg/controller/testutil"
+	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	metricsUtil "k8s.io/component-base/metrics/testutil"
 )
@@ -282,45 +283,6 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			expectedUpdate: true,
 		},
 		{
-			name: "ipv6 single stack",
-			fakeNodeHandler: &testutil.FakeNodeHandler{
-				Existing: []*v1.Node{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test",
-						},
-						Spec: v1.NodeSpec{
-							ProviderID: "gce://test-project/us-central1-b/test",
-						},
-					},
-				},
-				Clientset: fake.NewSimpleClientset(),
-			},
-			gceInstance: []*compute.Instance{
-				{
-					Name: "test",
-					NetworkInterfaces: []*compute.NetworkInterface{
-						{
-							Ipv6Address: "2001:db9::110",
-						},
-					},
-				},
-			},
-			nodeChanges: func(node *v1.Node) {
-				node.Spec.PodCIDR = "2001:db9::/112"
-				node.Spec.PodCIDRs = []string{"2001:db9::/112"}
-				node.Status.Conditions = []v1.NodeCondition{
-					{
-						Type:    "NetworkUnavailable",
-						Status:  "False",
-						Reason:  "RouteCreated",
-						Message: "NodeController create implicit route",
-					},
-				}
-			},
-			expectedUpdate: true,
-		},
-		{
 			name: "want error - incorrect cidr",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
@@ -490,6 +452,64 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+						Status: v1.NodeStatus{
+							Capacity: v1.ResourceList{},
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						interfaces(defaultVPCName, defaultVPCSubnetName, "80.1.172.1", []*compute.AliasIpRange{
+							{IpCidrRange: "192.168.1.0/24", SubnetworkRangeName: defaultSecondaryRangeA},
+							{IpCidrRange: "10.11.1.0/24", SubnetworkRangeName: defaultSecondaryRangeB},
+						}),
+					},
+				},
+			},
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "192.168.1.0/24"
+				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+				node.Annotations = map[string]string{
+					networkv1.NorthInterfacesAnnotationKey: "[]",
+					networkv1.MultiNetworkAnnotationKey:    "[]",
+				}
+			},
+			expectedUpdate:  true,
+			expectedMetrics: map[string]float64{},
+		},
+		{
+			name: "[mn] default network only, get PodCIDR with node labels",
+			networks: []*networkv1.Network{
+				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, false),
+			},
+			gkeNwParams: []*networkv1.GKENetworkParamSet{
+				gkeNetworkParams(defaultGKENetworkParamsName, defaultVPCName, defaultVPCSubnetName, nil),
+			},
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+							Labels: map[string]string{
+								utilnode.NodePoolSubnetLabelPrefix:   "default",
+								utilnode.NodePoolPodRangeLabelPrefix: defaultSecondaryRangeA,
+							},
 						},
 						Spec: v1.NodeSpec{
 							ProviderID: "gce://test-project/us-central1-b/test",
