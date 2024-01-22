@@ -49,6 +49,17 @@ const (
 	GKE ProviderType = "GKE"
 )
 
+// IPAMModeType defines the IPAM mode for the network. Can be 'internal' or 'external'.
+// +kubebuilder:validation:Enum=Internal;External
+type IPAMModeType string
+
+const (
+	// Pod IPs will be allocated internally by ipam-controller based on ClusterCIDRConfig.
+	InternalMode IPAMModeType = "Internal"
+	// Pod IPs will be allocated by the external DHCP server.
+	ExternalMode IPAMModeType = "External"
+)
+
 // +genclient
 // +genclient:nonNamespaced
 // +kubebuilder:object:root=true
@@ -117,6 +128,11 @@ type NetworkSpec struct {
 	// configurations for the network.
 	// +optional
 	ParametersRef *NetworkParametersReference `json:"parametersRef,omitempty"`
+
+	// IPAMMode specifies the IPAM mode for the network.
+	// Valid options include: internal, external
+	// +optional
+	IPAMMode *IPAMModeType `json:"IPAMMode,omitempty"`
 }
 
 // NetworkParametersReference identifies an API object containing additional parameters for the network.
