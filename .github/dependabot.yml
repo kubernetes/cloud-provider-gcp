@@ -1,0 +1,66 @@
+version: 2
+updates:
+- package-ecosystem: docker
+  directory: /cluster/gce/gci/mounter
+  schedule:
+    interval: weekly
+  labels:
+  - 'area/dependency'
+  - 'release-note-none'
+  - 'ok-to-test'
+- package-ecosystem: docker
+  directory: /cluster/addons/addon-manager
+  schedule:
+    interval: weekly
+  labels:
+  - 'area/dependency'
+  - 'release-note-none'
+  - 'ok-to-test'
+- package-ecosystem: gomod
+  directory: /providers
+  schedule:
+    interval: weekly
+  labels:
+  - 'area/dependency'
+  - 'release-note-none'
+  - 'ok-to-test'
+  groups:
+    gomod-dependencies:
+      patterns:
+      - '*'
+- package-ecosystem: gomod
+  directory: /
+  schedule:
+    interval: weekly
+  labels:
+  - 'area/dependency'
+  - 'release-note-none'
+  - 'ok-to-test'
+  groups:
+    gomod-dependencies:
+      patterns:
+      - '*'
+- package-ecosystem: gomod
+  directory: /crd
+  schedule:
+    interval: weekly
+  labels:
+  - 'area/dependency'
+  - 'release-note-none'
+  - 'ok-to-test'
+  groups:
+    gomod-dependencies:
+      patterns:
+      - '*'
+- package-ecosystem: gomod
+  directory: /crd/hack
+  schedule:
+    interval: weekly
+  labels:
+  - 'area/dependency'
+  - 'release-note-none'
+  - 'ok-to-test'
+  groups:
+    gomod-dependencies:
+      patterns:
+      - '*
