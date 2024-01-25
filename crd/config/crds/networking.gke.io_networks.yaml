@@ -35,6 +35,13 @@ spec:
           spec:
             description: NetworkSpec contains the specifications for network object
             properties:
+              IPAMMode:
+                description: 'IPAMMode specifies the IPAM mode for the network. Valid
+                  options include: internal, external'
+                enum:
+                - Internal
+                - External
+                type: string
               dnsConfig:
                 description: Specifies the DNS configuration of the network. Required
                   if ExternalDHCP4 is false or not set on L2 type network.
