@@ -283,6 +283,11 @@ func (g *Cloud) ContainerService() *container.Service {
 	return g.containerService
 }
 
+// StackType returns the type of the IP protocol stack.
+func (g *Cloud) StackType() StackType {
+	return g.stackType
+}
+
 // newGCECloud creates a new instance of Cloud.
 func newGCECloud(config io.Reader) (gceCloud *Cloud, err error) {
 	var cloudConfig *CloudConfig
