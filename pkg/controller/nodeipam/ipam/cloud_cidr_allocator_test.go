@@ -99,6 +99,9 @@ func TestBoundedRetries(t *testing.T) {
 }
 
 func TestUpdateCIDRAllocation(t *testing.T) {
+	dualStackType := gce.NetworkStackDualStack
+	singleStackIPv6Type := gce.NetworkStackIPV6
+
 	tests := []struct {
 		name            string
 		fakeNodeHandler *testutil.FakeNodeHandler
@@ -106,6 +109,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 		gkeNwParams     []*networkv1.GKENetworkParamSet
 		nodeChanges     func(*v1.Node)
 		gceInstance     []*compute.Instance
+		stackType       *gce.StackType
 		expectErr       bool
 		expectErrMsg    string
 		expectedUpdate  bool
@@ -215,6 +219,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					Name: "test",
 					NetworkInterfaces: []*compute.NetworkInterface{
 						{
+							Ipv6Address: "2001:db9::110",
 							AliasIpRanges: []*compute.AliasIpRange{
 								{
 									IpCidrRange: "192.168.1.0/24",
@@ -280,10 +285,57 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				}
 			},
+			stackType:      &dualStackType,
 			expectedUpdate: true,
 		},
 		{
-			name: "want error - incorrect cidr",
+			name: "empty single stack ipv6 node",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							Ipv6Address: "2001:db9::110",
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "192.168.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "2001:db9::/112"
+				node.Spec.PodCIDRs = []string{"2001:db9::/112"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+			},
+			stackType:      &singleStackIPv6Type,
+			expectedUpdate: true,
+		},
+
+		{
+			name: "want error - incorrect ipv6 cidr instead of address",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -313,11 +365,12 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				},
 			},
 			nodeChanges:  func(node *v1.Node) {},
+			stackType:    &dualStackType,
 			expectErr:    true,
 			expectErrMsg: "failed to parse strings",
 		},
 		{
-			name: "want error - incorrect dualstack cidr",
+			name: "want error - incorrect ipv4 address instead of ipv6 address",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -347,6 +400,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				},
 			},
 			nodeChanges:  func(node *v1.Node) {},
+			stackType:    &dualStackType,
 			expectErr:    true,
 			expectErrMsg: "err: IPs are not dual stack",
 		},
@@ -1290,8 +1344,13 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			multiNetworkNodes.Reset()
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
+
 			testClusterValues := gce.DefaultTestClusterValues()
+			if tc.stackType != nil {
+				testClusterValues.StackType = *tc.stackType
+			}
 			fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+
 			for _, inst := range tc.gceInstance {
 				err := fakeGCE.Compute().Instances().Insert(ctx, meta.ZonalKey(inst.Name, testClusterValues.ZoneName), inst)
 				if err != nil {

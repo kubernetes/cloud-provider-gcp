@@ -321,10 +321,21 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 
 	// nodes in clusters WITHOUT multi-networking are expected to have only 1 network-interface with 1 alias IP range.
 	if len(instance.NetworkInterfaces) == 1 && len(instance.NetworkInterfaces[0].AliasIpRanges) == 1 {
-		cidrStrings = append(cidrStrings, instance.NetworkInterfaces[0].AliasIpRanges[0].IpCidrRange)
+		ipv4CIDR := instance.NetworkInterfaces[0].AliasIpRanges[0].IpCidrRange
 		ipv6Addr := ca.cloud.GetIPV6Address(instance.NetworkInterfaces[0])
-		if ipv6Addr != nil {
-			cidrStrings = append(cidrStrings, ipv6Addr.String())
+
+		switch ca.cloud.StackType() {
+		case gce.NetworkStackIPV4:
+			cidrStrings = append(cidrStrings, ipv4CIDR)
+		case gce.NetworkStackDualStack:
+			cidrStrings = append(cidrStrings, ipv4CIDR)
+			if ipv6Addr != nil {
+				cidrStrings = append(cidrStrings, ipv6Addr.String())
+			}
+		case gce.NetworkStackIPV6:
+			if ipv6Addr != nil {
+				cidrStrings = append(cidrStrings, ipv6Addr.String())
+			}
 		}
 	} else {
 		// multi-networking enabled clusters
