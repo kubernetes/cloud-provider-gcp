@@ -104,7 +104,7 @@ github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
-# github.com/google/cel-go v0.17.7
+# github.com/google/cel-go v0.17.8
 ## explicit; go 1.18
 github.com/google/cel-go/cel
 github.com/google/cel-go/checker
@@ -1272,7 +1272,7 @@ k8s.io/client-go/util/jsonpath
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
-# k8s.io/cloud-provider v0.30.0-alpha.3 => k8s.io/cloud-provider v0.30.0-alpha.3
+# k8s.io/cloud-provider v0.30.0-alpha.3 => k8s.io/cloud-provider v0.0.0-20240229125408-123fab8a9194
 ## explicit; go 1.21
 k8s.io/cloud-provider
 k8s.io/cloud-provider/api
@@ -1380,7 +1380,7 @@ k8s.io/component-helpers/node/util
 k8s.io/component-helpers/node/util/sysctl
 k8s.io/component-helpers/scheduling/corev1
 k8s.io/component-helpers/scheduling/corev1/nodeaffinity
-# k8s.io/controller-manager v0.30.0-alpha.3 => k8s.io/controller-manager v0.30.0-alpha.3
+# k8s.io/controller-manager v0.30.0-alpha.3 => k8s.io/controller-manager v0.20.0-alpha.1.0.20240229125230-05eba06abdf4
 ## explicit; go 1.21
 k8s.io/controller-manager/app
 k8s.io/controller-manager/config
@@ -1546,13 +1546,13 @@ sigs.k8s.io/yaml
 # k8s.io/apiserver => k8s.io/apiserver v0.30.0-alpha.3
 # k8s.io/cli-runtime => k8s.io/cli-runtime v0.30.0-alpha.3
 # k8s.io/client-go => k8s.io/client-go v0.30.0-alpha.3
-# k8s.io/cloud-provider => k8s.io/cloud-provider v0.30.0-alpha.3
+# k8s.io/cloud-provider => k8s.io/cloud-provider v0.0.0-20240229125408-123fab8a9194
 # k8s.io/cloud-provider-gcp/providers => ./providers
 # k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.30.0-alpha.3
 # k8s.io/code-generator => k8s.io/code-generator v0.30.0-alpha.3
 # k8s.io/component-base => k8s.io/component-base v0.30.0-alpha.3
 # k8s.io/component-helpers => k8s.io/component-helpers v0.30.0-alpha.3
-# k8s.io/controller-manager => k8s.io/controller-manager v0.30.0-alpha.3
+# k8s.io/controller-manager => k8s.io/controller-manager v0.20.0-alpha.1.0.20240229125230-05eba06abdf4
 # k8s.io/cri-api => k8s.io/cri-api v0.30.0-alpha.3
 # k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.30.0-alpha.3
 # k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.30.0-alpha.3

@@ -80,7 +80,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
-	github.com/google/cel-go v0.17.7 // indirect
+	github.com/google/cel-go v0.17.8 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.4.0
 	github.com/googleapis/gax-go/v2 v2.12.0 // indirect
@@ -155,14 +155,14 @@ replace (
 	k8s.io/apiserver => k8s.io/apiserver v0.30.0-alpha.3
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.30.0-alpha.3
 	k8s.io/client-go => k8s.io/client-go v0.30.0-alpha.3
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.30.0-alpha.3
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.0.0-20240229125408-123fab8a9194
 
 	k8s.io/cloud-provider-gcp/providers => ./providers
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.30.0-alpha.3
 	k8s.io/code-generator => k8s.io/code-generator v0.30.0-alpha.3
 	k8s.io/component-base => k8s.io/component-base v0.30.0-alpha.3
 	k8s.io/component-helpers => k8s.io/component-helpers v0.30.0-alpha.3
-	k8s.io/controller-manager => k8s.io/controller-manager v0.30.0-alpha.3
+	k8s.io/controller-manager => k8s.io/controller-manager v0.20.0-alpha.1.0.20240229125230-05eba06abdf4
 	k8s.io/cri-api => k8s.io/cri-api v0.30.0-alpha.3
 	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.30.0-alpha.3
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.30.0-alpha.3
