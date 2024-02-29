@@ -45,7 +45,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/version",
         "//vendor/k8s.io/apiserver/pkg/admission",
         "//vendor/k8s.io/apiserver/pkg/admission/plugin/namespace/lifecycle",
-        "//vendor/k8s.io/apiserver/pkg/admission/plugin/validatingadmissionpolicy",
+        "//vendor/k8s.io/apiserver/pkg/admission/plugin/policy/validating",
         "//vendor/k8s.io/apiserver/pkg/admission/plugin/webhook/mutating",
         "//vendor/k8s.io/apiserver/pkg/admission/plugin/webhook/validating",
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver/install",

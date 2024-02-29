@@ -37,5 +37,6 @@ go_library(
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/component-base/tracing",
         "//vendor/k8s.io/utils/lru",
+        "//vendor/k8s.io/utils/net",
     ],
 )

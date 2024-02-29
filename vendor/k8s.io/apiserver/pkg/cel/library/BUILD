@@ -4,7 +4,9 @@ go_library(
     name = "library",
     srcs = [
         "authz.go",
+        "cidr.go",
         "cost.go",
+        "ip.go",
         "lists.go",
         "quantity.go",
         "regex.go",

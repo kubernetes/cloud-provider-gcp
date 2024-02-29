@@ -6,6 +6,7 @@ go_library(
         "doc.go",
         "register.go",
         "types.go",
+        "types_encryption.go",
         "zz_generated.deepcopy.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/apis/apiserver",

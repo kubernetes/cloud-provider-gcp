@@ -8,6 +8,7 @@ go_library(
         "options.go",
         "pflags.go",
         "registry.go",
+        "text.go",
         "types.go",
         "zz_generated.deepcopy.go",
     ],
@@ -26,5 +27,6 @@ go_library(
         "//vendor/k8s.io/component-base/logs/internal/setverbositylevel",
         "//vendor/k8s.io/component-base/logs/klogflags",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/klog/v2/textlogger",
     ],
 )

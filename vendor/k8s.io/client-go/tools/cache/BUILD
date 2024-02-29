@@ -55,6 +55,7 @@ go_library(
         "//vendor/k8s.io/utils/buffer",
         "//vendor/k8s.io/utils/clock",
         "//vendor/k8s.io/utils/pointer",
+        "//vendor/k8s.io/utils/ptr",
         "//vendor/k8s.io/utils/trace",
     ],
 )
