@@ -1,0 +1,90 @@
+builds:
+  - main: ./cmd/auth-provider-gcp
+    id: auth-provider-gcp
+    no_unique_dist_dir: true
+    binary: auth-provider-gcp/{{.Tag}}/{{.Os}}-{{.Arch}}/auth-provider-gcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -X k8s.io/component-base/version/verflag.programName=auth-provider-gcp
+
+      - -X k8s.io/component-base/version.buildDate={{.Env.BUILD_DATE}}
+      - -X k8s.io/component-base/version.gitCommit={{.Env.KUBE_GIT_COMMIT}}
+      - -X k8s.io/component-base/version.gitMajor={{.Env.KUBE_GIT_MAJOR}}
+      - -X k8s.io/component-base/version.gitMinor={{.Env.KUBE_GIT_MINOR}}
+      - -X k8s.io/component-base/version.gitTreeState={{.Env.KUBE_GIT_TREE_STATE}}
+      - -X k8s.io/component-base/version.gitVersion={{.Env.KUBE_GIT_VERSION}}
+
+      - -X k8s.io/client-go/pkg/version.buildDate={{.Env.BUILD_DATE}}
+      - -X k8s.io/client-go/pkg/version.gitCommit={{.Env.KUBE_GIT_COMMIT}}
+      - -X k8s.io/client-go/pkg/version.gitMajor={{.Env.KUBE_GIT_MAJOR}}
+      - -X k8s.io/client-go/pkg/version.gitMinor={{.Env.KUBE_GIT_MINOR}}
+      - -X k8s.io/client-go/pkg/version.gitTreeState={{.Env.KUBE_GIT_TREE_STATE}}
+      - -X k8s.io/client-go/pkg/version.gitVersion={{.Env.KUBE_GIT_VERSION}}
+
+  - main: ./cmd/gke-exec-auth-plugin
+    id: gke-exec-auth-plugin
+    no_unique_dist_dir: true
+    binary: gke-exec-auth-plugin/{{.Tag}}/{{.Os}}-{{.Arch}}/gke-exec-auth-plugin
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -X k8s.io/component-base/version/verflag.programName=gke-exec-auth-plugin
+
+      - -X k8s.io/component-base/version.buildDate={{.Env.BUILD_DATE}}
+      - -X k8s.io/component-base/version.gitCommit={{.Env.KUBE_GIT_COMMIT}}
+      - -X k8s.io/component-base/version.gitMajor={{.Env.KUBE_GIT_MAJOR}}
+      - -X k8s.io/component-base/version.gitMinor={{.Env.KUBE_GIT_MINOR}}
+      - -X k8s.io/component-base/version.gitTreeState={{.Env.KUBE_GIT_TREE_STATE}}
+      - -X k8s.io/component-base/version.gitVersion={{.Env.KUBE_GIT_VERSION}}
+
+      - -X k8s.io/client-go/pkg/version.buildDate={{.Env.BUILD_DATE}}
+      - -X k8s.io/client-go/pkg/version.gitCommit={{.Env.KUBE_GIT_COMMIT}}
+      - -X k8s.io/client-go/pkg/version.gitMajor={{.Env.KUBE_GIT_MAJOR}}
+      - -X k8s.io/client-go/pkg/version.gitMinor={{.Env.KUBE_GIT_MINOR}}
+      - -X k8s.io/client-go/pkg/version.gitTreeState={{.Env.KUBE_GIT_TREE_STATE}}
+      - -X k8s.io/client-go/pkg/version.gitVersion={{.Env.KUBE_GIT_VERSION}}
+
+  - main: ./cmd/gke-gcloud-auth-plugin
+    id: gke-gcloud-auth-plugin
+    no_unique_dist_dir: true
+    binary: gke-gcloud-auth-plugin/{{.Tag}}/{{.Os}}-{{.Arch}}/gke-gcloud-auth-plugin
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -X k8s.io/component-base/version/verflag.programName=gke-gcloud-auth-plugin
+
+      - -X k8s.io/component-base/version.buildDate={{.Env.BUILD_DATE}}
+      - -X k8s.io/component-base/version.gitCommit={{.Env.KUBE_GIT_COMMIT}}
+      - -X k8s.io/component-base/version.gitMajor={{.Env.KUBE_GIT_MAJOR}}
+      - -X k8s.io/component-base/version.gitMinor={{.Env.KUBE_GIT_MINOR}}
+      - -X k8s.io/component-base/version.gitTreeState={{.Env.KUBE_GIT_TREE_STATE}}
+      - -X k8s.io/component-base/version.gitVersion={{.Env.KUBE_GIT_VERSION}}
+
+      - -X k8s.io/client-go/pkg/version.buildDate={{.Env.BUILD_DATE}}
+      - -X k8s.io/client-go/pkg/version.gitCommit={{.Env.KUBE_GIT_COMMIT}}
+      - -X k8s.io/client-go/pkg/version.gitMajor={{.Env.KUBE_GIT_MAJOR}}
+      - -X k8s.io/client-go/pkg/version.gitMinor={{.Env.KUBE_GIT_MINOR}}
+      - -X k8s.io/client-go/pkg/version.gitTreeState={{.Env.KUBE_GIT_TREE_STATE}}
+      - -X k8s.io/client-go/pkg/version.gitVersion={{.Env.KUBE_GIT_VERSION}}
