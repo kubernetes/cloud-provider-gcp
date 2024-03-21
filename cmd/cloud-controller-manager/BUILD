@@ -4,6 +4,7 @@ load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_binary",
     "go_library",
+    "go_test",
 )
 load("//defs:version.bzl", "version_x_defs")
 
@@ -53,3 +54,16 @@ go_library(
 load("//defs:container.bzl", "image")
 
 image(binary = ":cloud-controller-manager")
+
+go_test(
+    name = "cloud-controller-manager_test",
+    srcs = ["nodeipamcontroller_test.go"],
+    embed = [":cloud-controller-manager_lib"],
+    deps = [
+        "//pkg/controller/nodeipam/config",
+        "//vendor/k8s.io/cloud-provider",
+        "//vendor/k8s.io/cloud-provider/app/config",
+        "//vendor/k8s.io/cloud-provider/config",
+        "//vendor/k8s.io/controller-manager/app",
+    ],
+)
