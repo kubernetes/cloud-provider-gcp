@@ -70,6 +70,13 @@ spec:
                 description: Gateway4 defines the gateway IPv4 address for the network.
                   Required if ExternalDHCP4 is false or not set on L2 type network.
                 type: string
+              ipam4:
+                description: 'IPAM4 specifies the IPAM mode for the network. Valid
+                  options include: Internal, External'
+                enum:
+                - Internal
+                - External
+                type: string
               l2NetworkConfig:
                 description: L2NetworkConfig includes all the network config related
                   to L2 type network
