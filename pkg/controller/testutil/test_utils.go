@@ -40,6 +40,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	ref "k8s.io/client-go/tools/reference"
 	utilnode "k8s.io/component-helpers/node/topology"
 	"k8s.io/klog/v2"
@@ -403,6 +404,11 @@ func (f *FakeRecorder) AnnotatedEventf(obj runtime.Object, annotations map[strin
 	f.Eventf(obj, eventtype, reason, messageFmt, args...)
 }
 
+// WithLogger is supposed to replace the context used for logging. This fake implementation does nothing.
+func (f *FakeRecorder) WithLogger(logger klog.Logger) record.EventRecorderLogger {
+	return f
+}
+
 func (f *FakeRecorder) generateEvent(obj runtime.Object, timestamp metav1.Time, eventtype, reason, message string) {
 	f.Lock()
 	defer f.Unlock()
@@ -449,6 +455,36 @@ func (f *FakeRecorder) makeEvent(ref *v1.ObjectReference, eventtype, reason, mes
 		Type:           eventtype,
 	}
 }
+
+// FakeBroadcaster is used as a fake broadcaster during testing. Its only implemented method, NewRecorder,
+// builds a fake recorder instance.
+type FakeBroadcaster struct {
+}
+
+// fakeBroadcaster implements record.EventBroadcaster
+var _ record.EventBroadcaster = &FakeBroadcaster{}
+
+func (f *FakeBroadcaster) StartEventWatcher(eventHandler func(*v1.Event)) watch.Interface {
+	return nil
+}
+
+func (f *FakeBroadcaster) StartRecordingToSink(sink record.EventSink) watch.Interface {
+	return nil
+}
+
+func (f *FakeBroadcaster) StartLogging(logf func(format string, args ...interface{})) watch.Interface {
+	return nil
+}
+
+func (f *FakeBroadcaster) StartStructuredLogging(verbosity klog.Level) watch.Interface {
+	return nil
+}
+
+func (f *FakeBroadcaster) NewRecorder(scheme *runtime.Scheme, source v1.EventSource) record.EventRecorderLogger {
+	return NewFakeRecorder()
+}
+
+func (f *FakeBroadcaster) Shutdown() {}
 
 // NewFakeRecorder returns a pointer to a newly constructed FakeRecorder.
 func NewFakeRecorder() *FakeRecorder {

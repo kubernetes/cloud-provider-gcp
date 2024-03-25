@@ -100,21 +100,18 @@ func TestBoundedRetries(t *testing.T) {
 }
 
 func TestUpdateCIDRAllocation(t *testing.T) {
-	ipv4ipv6Stack := stackIPv4IPv6
-	ipv6ipv4Stack := stackIPv6IPv4
-	ipv6Stack := stackIPv6
-
 	tests := []struct {
-		name            string
-		fakeNodeHandler *testutil.FakeNodeHandler
-		networks        []*networkv1.Network
-		gkeNwParams     []*networkv1.GKENetworkParamSet
-		nodeChanges     func(*v1.Node)
-		gceInstance     []*compute.Instance
-		stackType       *clusterStackType
-		expectErr       bool
-		expectErrMsg    string
-		expectedUpdate  bool
+		name                 string
+		fakeNodeHandler      *testutil.FakeNodeHandler
+		networks             []*networkv1.Network
+		gkeNwParams          []*networkv1.GKENetworkParamSet
+		nodeChanges          func(*v1.Node)
+		gceInstance          []*compute.Instance
+		serviceCIDR          string
+		secondaryServiceCIDR string
+		expectErr            bool
+		expectErrMsg         string
+		expectedUpdate       bool
 		// expectedMetrics is optional if you'd also like to assert a metric
 		expectedMetrics map[string]float64
 	}{
@@ -318,7 +315,8 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
-			stackType: &ipv4ipv6Stack,
+			serviceCIDR:          "10.1.0.0/16",
+			secondaryServiceCIDR: "2001:aa::/112",
 			nodeChanges: func(node *v1.Node) {
 				node.Spec.PodCIDR = "192.168.1.0/24"
 				node.Spec.PodCIDRs = []string{"192.168.1.0/24", "2001:db9::/112"}
@@ -363,7 +361,8 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
-			stackType: &ipv6ipv4Stack,
+			serviceCIDR:          "2001:aa::/112",
+			secondaryServiceCIDR: "10.1.0.0/16",
 			nodeChanges: func(node *v1.Node) {
 				node.Spec.PodCIDR = "2001:db9::/112"
 				node.Spec.PodCIDRs = []string{"2001:db9::/112", "192.168.1.0/24"}
@@ -403,7 +402,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
-			stackType: &ipv6Stack,
+			serviceCIDR: "2001:aa::/112",
 			nodeChanges: func(node *v1.Node) {
 				node.Spec.PodCIDR = "2001:db9::/112"
 				node.Spec.PodCIDRs = []string{"2001:db9::/112"}
@@ -448,10 +447,11 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
-			stackType:    &ipv4ipv6Stack,
-			nodeChanges:  func(node *v1.Node) {},
-			expectErr:    true,
-			expectErrMsg: "failed to parse strings",
+			serviceCIDR:          "10.1.0.0/16",
+			secondaryServiceCIDR: "2001:aa::/112",
+			nodeChanges:          func(node *v1.Node) {},
+			expectErr:            true,
+			expectErrMsg:         "failed to parse strings",
 		},
 		{
 			name: "want error - incorrect ipv4 address instead of ipv6 address",
@@ -483,10 +483,11 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
-			stackType:    &ipv4ipv6Stack,
-			nodeChanges:  func(node *v1.Node) {},
-			expectErr:    true,
-			expectErrMsg: "err: IPs are not dual stack",
+			serviceCIDR:          "10.1.0.0/16",
+			secondaryServiceCIDR: "2001:aa::/112",
+			nodeChanges:          func(node *v1.Node) {},
+			expectErr:            true,
+			expectErrMsg:         "err: IPs are not dual stack",
 		},
 		{
 			name: "node already configured",
@@ -1458,21 +1459,34 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			wantNode := tc.fakeNodeHandler.Existing[0].DeepCopy()
 			tc.nodeChanges(wantNode)
 
-			stackType := stackIPv4
-			if tc.stackType != nil {
-				stackType = *tc.stackType
+			var serviceCIDR, secondaryServiceCIDR *net.IPNet
+
+			if tc.serviceCIDR != "" {
+				var err error
+				_, serviceCIDR, err = net.ParseCIDR(tc.serviceCIDR)
+				if err != nil {
+					t.Fatalf("net.ParseCIDR(%v): %v", tc.serviceCIDR, err)
+				}
 			}
 
-			ca := &cloudCIDRAllocator{
-				client:         tc.fakeNodeHandler,
-				cloud:          fakeGCE,
-				recorder:       testutil.NewFakeRecorder(),
-				nodeLister:     fakeNodeInformer.Lister(),
-				nodesSynced:    fakeNodeInformer.Informer().HasSynced,
-				networksLister: nwInformer.Lister(),
-				gnpLister:      gnpInformer.Lister(),
-				stackType:      stackType,
+			if tc.secondaryServiceCIDR != "" {
+				var err error
+				_, secondaryServiceCIDR, err = net.ParseCIDR(tc.secondaryServiceCIDR)
+				if err != nil {
+					t.Fatalf("net.ParseCIDR(%v): %v", tc.secondaryServiceCIDR, err)
+				}
 			}
+
+			cidrAllocatorParams := CIDRAllocatorParams{
+				ServiceCIDR:          serviceCIDR,
+				SecondaryServiceCIDR: secondaryServiceCIDR,
+			}
+			cidrAllocator, err := NewCloudCIDRAllocator(tc.fakeNodeHandler, fakeGCE, nwInformer, gnpInformer, fakeNodeInformer, cidrAllocatorParams, &testutil.FakeBroadcaster{})
+			if err != nil {
+				t.Fatalf("NewCloudCIDRAllocator(): %v", err)
+			}
+
+			ca := cidrAllocator.(*cloudCIDRAllocator)
 
 			// test
 			if err := ca.updateCIDRAllocation("test"); err != nil {
