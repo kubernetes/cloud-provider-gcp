@@ -132,7 +132,13 @@ type NetworkSpec struct {
 	// IPAMMode specifies the IPAM mode for the network.
 	// Valid options include: internal, external
 	// +optional
+	// +deprecatedversion:warning="IPAMMode is deprecated in favor of IPAM4."
 	IPAMMode *IPAMModeType `json:"IPAMMode,omitempty"`
+
+	// IPAM4 specifies the IPAM mode for the network.
+	// Valid options include: Internal, External
+	// +optional
+	IPAM4 *IPAMModeType `json:"ipam4,omitempty"`
 }
 
 // NetworkParametersReference identifies an API object containing additional parameters for the network.
