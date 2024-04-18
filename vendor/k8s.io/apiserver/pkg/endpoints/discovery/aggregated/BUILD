@@ -16,6 +16,7 @@ go_library(
     deps = [
         "//vendor/github.com/emicklei/go-restful/v3:go-restful",
         "//vendor/github.com/google/go-cmp/cmp",
+        "//vendor/k8s.io/api/apidiscovery/v2:apidiscovery",
         "//vendor/k8s.io/api/apidiscovery/v2beta1",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
@@ -24,6 +25,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apimachinery/pkg/version",
+        "//vendor/k8s.io/apiserver/pkg/apis/apidiscovery/v2:apidiscovery",
         "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/negotiation",
         "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/responsewriters",
         "//vendor/k8s.io/apiserver/pkg/endpoints/metrics",

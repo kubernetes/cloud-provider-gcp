@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "features",
+    srcs = [
+        "envvar.go",
+        "features.go",
+        "known_features.go",
+    ],
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/features",
+    importpath = "k8s.io/client-go/features",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/k8s.io/apimachinery/pkg/util/naming",
+        "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/klog/v2:klog",
+    ],
+)

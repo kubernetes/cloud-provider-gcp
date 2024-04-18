@@ -48,6 +48,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apimachinery/pkg/watch",
+        "//vendor/k8s.io/client-go/features",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/tools/cache/synctrack",
         "//vendor/k8s.io/client-go/tools/pager",
@@ -55,6 +56,7 @@ go_library(
         "//vendor/k8s.io/utils/buffer",
         "//vendor/k8s.io/utils/clock",
         "//vendor/k8s.io/utils/pointer",
+        "//vendor/k8s.io/utils/ptr",
         "//vendor/k8s.io/utils/trace",
     ],
 )

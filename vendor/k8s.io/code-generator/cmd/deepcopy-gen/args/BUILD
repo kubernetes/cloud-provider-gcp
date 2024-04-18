@@ -6,9 +6,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/code-generator/cmd/deepcopy-gen/args",
     importpath = "k8s.io/code-generator/cmd/deepcopy-gen/args",
     visibility = ["//visibility:public"],
-    deps = [
-        "//vendor/github.com/spf13/pflag",
-        "//vendor/k8s.io/gengo/args",
-        "//vendor/k8s.io/gengo/examples/deepcopy-gen/generators",
-    ],
+    deps = ["//vendor/github.com/spf13/pflag"],
 )

@@ -62,6 +62,7 @@ go_library(
         "//vendor/k8s.io/api/storage/v1:storage",
         "//vendor/k8s.io/api/storage/v1alpha1",
         "//vendor/k8s.io/api/storage/v1beta1",
+        "//vendor/k8s.io/api/storagemigration/v1alpha1",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
@@ -173,6 +174,8 @@ go_library(
         "//vendor/k8s.io/client-go/kubernetes/typed/storage/v1alpha1/fake",
         "//vendor/k8s.io/client-go/kubernetes/typed/storage/v1beta1",
         "//vendor/k8s.io/client-go/kubernetes/typed/storage/v1beta1/fake",
+        "//vendor/k8s.io/client-go/kubernetes/typed/storagemigration/v1alpha1",
+        "//vendor/k8s.io/client-go/kubernetes/typed/storagemigration/v1alpha1/fake",
         "//vendor/k8s.io/client-go/testing",
     ],
 )

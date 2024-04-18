@@ -7,6 +7,8 @@ go_library(
         "doc.go",
         "generated_expansion.go",
         "mutatingwebhookconfiguration.go",
+        "validatingadmissionpolicy.go",
+        "validatingadmissionpolicybinding.go",
         "validatingwebhookconfiguration.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/admissionregistration/v1",

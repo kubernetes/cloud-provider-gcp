@@ -13,6 +13,5 @@ go_library(
         "//vendor/golang.org/x/time/rate",
         "//vendor/k8s.io/utils/clock",
         "//vendor/k8s.io/utils/clock/testing",
-        "//vendor/k8s.io/utils/integer",
     ],
 )

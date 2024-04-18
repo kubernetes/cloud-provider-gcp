@@ -7,10 +7,9 @@ go_library(
     importpath = "k8s.io/code-generator/cmd/client-gen/generators/scheme",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/code-generator/cmd/client-gen/path",
         "//vendor/k8s.io/code-generator/cmd/client-gen/types",
-        "//vendor/k8s.io/gengo/generator",
-        "//vendor/k8s.io/gengo/namer",
-        "//vendor/k8s.io/gengo/types",
+        "//vendor/k8s.io/gengo/v2/generator",
+        "//vendor/k8s.io/gengo/v2/namer",
+        "//vendor/k8s.io/gengo/v2/types",
     ],
 )

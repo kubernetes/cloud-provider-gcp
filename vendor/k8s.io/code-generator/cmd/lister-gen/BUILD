@@ -11,6 +11,8 @@ go_library(
         "//vendor/k8s.io/code-generator/cmd/lister-gen/args",
         "//vendor/k8s.io/code-generator/cmd/lister-gen/generators",
         "//vendor/k8s.io/code-generator/pkg/util",
+        "//vendor/k8s.io/gengo/v2:gengo",
+        "//vendor/k8s.io/gengo/v2/generator",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )
