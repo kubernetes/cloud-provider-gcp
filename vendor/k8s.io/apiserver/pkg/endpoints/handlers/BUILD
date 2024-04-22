@@ -62,6 +62,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/apiserver/pkg/features",
         "//vendor/k8s.io/apiserver/pkg/registry/rest",
+        "//vendor/k8s.io/apiserver/pkg/server/filters",
         "//vendor/k8s.io/apiserver/pkg/storage",
         "//vendor/k8s.io/apiserver/pkg/util/dryrun",
         "//vendor/k8s.io/apiserver/pkg/util/feature",

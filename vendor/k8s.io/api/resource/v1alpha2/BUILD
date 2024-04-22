@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "doc.go",
         "generated.pb.go",
+        "namedresources.go",
         "register.go",
         "types.go",
         "types_swagger_doc_generated.go",
@@ -16,6 +17,7 @@ go_library(
     deps = [
         "//vendor/github.com/gogo/protobuf/proto",
         "//vendor/k8s.io/api/core/v1:core",
+        "//vendor/k8s.io/apimachinery/pkg/api/resource",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",

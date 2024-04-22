@@ -19,6 +19,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/go.opentelemetry.io/otel/attribute",
+        "//vendor/google.golang.org/grpc/metadata",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/api/meta",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
@@ -42,5 +43,6 @@ go_library(
         "//vendor/k8s.io/component-base/tracing",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/clock",
+        "//vendor/k8s.io/utils/ptr",
     ],
 )

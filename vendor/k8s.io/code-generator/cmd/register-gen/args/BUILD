@@ -6,5 +6,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/code-generator/cmd/register-gen/args",
     importpath = "k8s.io/code-generator/cmd/register-gen/args",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/k8s.io/gengo/args"],
+    deps = ["//vendor/github.com/spf13/pflag"],
 )

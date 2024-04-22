@@ -15,6 +15,8 @@ go_library(
         "podfailurepolicyonexitcodesrequirement.go",
         "podfailurepolicyonpodconditionspattern.go",
         "podfailurepolicyrule.go",
+        "successpolicy.go",
+        "successpolicyrule.go",
         "uncountedterminatedpods.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/applyconfigurations/batch/v1",

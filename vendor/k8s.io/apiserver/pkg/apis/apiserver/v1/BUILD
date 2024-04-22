@@ -3,9 +3,11 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "apiserver",
     srcs = [
+        "defaults.go",
         "doc.go",
         "register.go",
         "types.go",
+        "types_encryption.go",
         "zz_generated.conversion.go",
         "zz_generated.deepcopy.go",
         "zz_generated.defaults.go",

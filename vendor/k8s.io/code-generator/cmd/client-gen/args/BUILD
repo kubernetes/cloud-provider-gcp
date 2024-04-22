@@ -14,7 +14,5 @@ go_library(
         "//vendor/github.com/spf13/pflag",
         "//vendor/k8s.io/code-generator/cmd/client-gen/generators/util",
         "//vendor/k8s.io/code-generator/cmd/client-gen/types",
-        "//vendor/k8s.io/code-generator/pkg/util",
-        "//vendor/k8s.io/gengo/args",
     ],
 )

@@ -61,6 +61,7 @@ go_library(
         "//vendor/k8s.io/api/storage/v1:storage",
         "//vendor/k8s.io/api/storage/v1alpha1",
         "//vendor/k8s.io/api/storage/v1beta1",
+        "//vendor/k8s.io/api/storagemigration/v1alpha1",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",

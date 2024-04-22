@@ -63,6 +63,7 @@ go_library(
         "//vendor/k8s.io/client-go/kubernetes/typed/storage/v1:storage",
         "//vendor/k8s.io/client-go/kubernetes/typed/storage/v1alpha1",
         "//vendor/k8s.io/client-go/kubernetes/typed/storage/v1beta1",
+        "//vendor/k8s.io/client-go/kubernetes/typed/storagemigration/v1alpha1",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/util/flowcontrol",
     ],

@@ -7,7 +7,8 @@ go_library(
     importpath = "k8s.io/code-generator/pkg/namer",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/k8s.io/gengo/namer",
-        "//vendor/k8s.io/gengo/types",
+        "//vendor/k8s.io/gengo/v2:gengo",
+        "//vendor/k8s.io/gengo/v2/namer",
+        "//vendor/k8s.io/gengo/v2/types",
     ],
 )

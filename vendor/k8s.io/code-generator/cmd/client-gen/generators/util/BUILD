@@ -9,5 +9,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/code-generator/cmd/client-gen/generators/util",
     importpath = "k8s.io/code-generator/cmd/client-gen/generators/util",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/k8s.io/gengo/types"],
+    deps = ["//vendor/k8s.io/gengo/v2:gengo"],
 )
