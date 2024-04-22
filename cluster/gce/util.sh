@@ -400,7 +400,7 @@ function detect-node-names() {
     for group in "${INSTANCE_GROUPS[@]}"; do
       kube::util::read-array NODE_NAMES < <(gcloud compute instance-groups managed list-instances \
         "${group}" --zone "${ZONE}" --project "${PROJECT}" \
-        --format='value(instance)')
+        --format='value(name)')
     done
   fi
   # Add heapster node name to the list too (if it exists).
