@@ -114,6 +114,10 @@ func createAndInsertNodes(gce *Cloud, nodeNames []string, zoneName string) ([]*v
 						v1.LabelTopologyZone: zoneName,
 					},
 				},
+				Spec: v1.NodeSpec{
+					// Add PodCIDR for multi subnet purpose. Nodes need to have PodCIDR to be regarded as nodes from the default subnet (unless they have the subnet label).
+					PodCIDR: "192.168.0.0/0",
+				},
 			},
 		)
 
