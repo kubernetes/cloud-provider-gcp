@@ -199,6 +199,177 @@ func TestEnsureMultipleInstanceGroups(t *testing.T) {
 	}
 }
 
+func TestEnsureInstanceGroupFromDefaultNetworkMultiSubnetClusterMode(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	vals.SubnetworkURL = "https://www.googleapis.com/compute/v1/projects/project/regions/us-central1/subnetworks/defaultSubnet"
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodes, err := createAndInsertNodes(gce, []string{"n1", "n2", "n3", "n4", "n5"}, vals.ZoneName)
+	require.NoError(t, err)
+	// node with a matching subnet
+	nodes[0].Labels[labelGKESubnetworkName] = "defaultSubnet"
+	// node with a label of a non-matching subnet
+	nodes[1].Labels[labelGKESubnetworkName] = "anotherSubnet"
+	// node with no label but a PodCIDR
+	nodes[2].Spec.PodCIDR = "10.0.5.0/24"
+	// node[3] has no label nor PodCIDR
+	nodes[3].Spec.PodCIDR = ""
+	// node[4] has a label that contains an empty string (this indicates the default network).
+	nodes[4].Spec.PodCIDR = ""
+	nodes[4].Labels[labelGKESubnetworkName] = ""
+
+	baseName := makeInstanceGroupName(vals.ClusterID)
+
+	igsFromCloud, err := gce.ensureInternalInstanceGroups(baseName, nodes)
+	require.NoError(t, err)
+
+	url, err := cloud.ParseResourceURL(igsFromCloud[0])
+	require.NoError(t, err)
+	instances, err := gce.ListInstancesInInstanceGroup(url.Key.Name, url.Key.Zone, "ALL")
+	require.NoError(t, err)
+	assert.Len(t, instances, 3, "Incorrect number of Instances in the group")
+	var instanceURLs []string
+	for _, inst := range instances {
+		instanceURLs = append(instanceURLs, inst.Instance)
+	}
+	if !hasInstanceForNode(instances, nodes[0]) {
+		t.Errorf("expected n1 to be in instances but it contained %+v", instanceURLs)
+	}
+	if hasInstanceForNode(instances, nodes[1]) {
+		t.Errorf("expected n2 to NOT be in instances but it was included %+v", instanceURLs)
+	}
+	if !hasInstanceForNode(instances, nodes[2]) {
+		t.Errorf("expected n3 to be in instances but it contained %+v", instanceURLs)
+	}
+	if hasInstanceForNode(instances, nodes[3]) {
+		t.Errorf("expected n4 to NOT be in instances but it was included %+v", instanceURLs)
+	}
+	if !hasInstanceForNode(instances, nodes[4]) {
+		t.Errorf("expected n5 to be in instances but it contained %+v", instanceURLs)
+	}
+}
+
+// Test that the node filtering will not be done if the cluster subnetwork value is not set properly.
+func TestEnsureInstanceGroupFromDefaultNetworkMultiSubnetClusterModeIfSubnetworkValueIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	vals.SubnetworkURL = "invalid"
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodes, err := createAndInsertNodes(gce, []string{"n1", "n2"}, vals.ZoneName)
+	require.NoError(t, err)
+	// node with a matching subnet
+	nodes[0].Labels[labelGKESubnetworkName] = "defaultSubnet"
+	// node with a label of a non-matching subnet
+	nodes[1].Labels[labelGKESubnetworkName] = "anotherSubnet"
+
+	baseName := makeInstanceGroupName(vals.ClusterID)
+
+	igsFromCloud, err := gce.ensureInternalInstanceGroups(baseName, nodes)
+	require.NoError(t, err)
+
+	url, err := cloud.ParseResourceURL(igsFromCloud[0])
+	require.NoError(t, err)
+	instances, err := gce.ListInstancesInInstanceGroup(url.Key.Name, url.Key.Zone, "ALL")
+	require.NoError(t, err)
+	assert.Len(t, instances, 2, "Incorrect number of Instances in the group")
+	var instanceURLs []string
+	for _, inst := range instances {
+		instanceURLs = append(instanceURLs, inst.Instance)
+	}
+	if !hasInstanceForNode(instances, nodes[0]) {
+		t.Errorf("expected n1 to be in instances but it contained %+v", instanceURLs)
+	}
+	if !hasInstanceForNode(instances, nodes[1]) {
+		t.Errorf("expected n2 to be in instances but it contained %+v", instanceURLs)
+	}
+}
+
+func hasInstanceForNode(instances []*compute.InstanceWithNamedPorts, node *v1.Node) bool {
+	for _, instance := range instances {
+		if strings.HasSuffix(instance.Instance, node.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRemoveNodesInNonDefaultNetworks(t *testing.T) {
+	t.Parallel()
+
+	testInput := []struct {
+		node                    *v1.Node
+		shouldBeInDefaultSubnet bool
+	}{
+		{
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "defaultSubnetNodeWithLabel",
+					Labels: map[string]string{labelGKESubnetworkName: "defaultSubnet"},
+				},
+			},
+			shouldBeInDefaultSubnet: true,
+		},
+		{
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "nonDefaultSubnetNode",
+					Labels: map[string]string{labelGKESubnetworkName: "secondarySubnet"},
+				},
+			},
+			shouldBeInDefaultSubnet: false,
+		},
+		{
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "defaultSubnetNodeWithEmptyLabel",
+					Labels: map[string]string{labelGKESubnetworkName: ""},
+				},
+			},
+			shouldBeInDefaultSubnet: true,
+		},
+		{
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "defaultSubnetNodeWithoutLabel",
+				},
+				Spec: v1.NodeSpec{PodCIDR: "10.0.0.0/28"},
+			},
+			shouldBeInDefaultSubnet: true,
+		},
+		{
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "nodeInUnknownSubnet",
+				},
+			},
+			shouldBeInDefaultSubnet: false,
+		},
+	}
+	var nodes []*v1.Node
+	for _, testNode := range testInput {
+		nodes = append(nodes, testNode.node)
+	}
+
+	onlyDefaultSubnetNodes := removeNodesInNonDefaultNetworks(nodes, "defaultSubnet")
+
+	defaultSubnetNodesSet := make(map[string]struct{})
+	for _, node := range onlyDefaultSubnetNodes {
+		defaultSubnetNodesSet[node.Name] = struct{}{}
+	}
+	for _, testNode := range testInput {
+		_, hasNode := defaultSubnetNodesSet[testNode.node.Name]
+		if testNode.shouldBeInDefaultSubnet != hasNode {
+			t.Errorf("Node %s should not be in the default subnet but it was present in %v", testNode.node.Name, defaultSubnetNodesSet)
+		}
+	}
+}
+
 func TestEnsureInternalLoadBalancer(t *testing.T) {
 	t.Parallel()
 
@@ -2016,4 +2187,49 @@ func TestEnsureInternalLoadBalancerAllPorts(t *testing.T) {
 		t.Errorf("Unexpected error %v", err)
 	}
 	assertInternalLbResourcesDeleted(t, gce, svc, vals, true)
+}
+
+func TestSubnetNameFromURL(t *testing.T) {
+	cases := []struct {
+		desc     string
+		url      string
+		wantName string
+		wantErr  bool
+	}{
+		{
+			desc:     "full URL",
+			url:      "https://www.googleapis.com/compute/v1/projects/project/regions/us-central1/subnetworks/defaultSubnet",
+			wantName: "defaultSubnet",
+		},
+		{
+			desc:     "project path",
+			url:      "projects/project/regions/us-central1/subnetworks/defaultSubnet",
+			wantName: "defaultSubnet",
+		},
+		{
+			desc:    "missing name",
+			url:     "projects/project/regions/us-central1/subnetworks",
+			wantErr: true,
+		},
+		{
+			desc:    "invalid",
+			url:     "invalid",
+			wantErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			subnetName, err := subnetNameFromURL(tc.url)
+			if err != nil && !tc.wantErr {
+				t.Errorf("unexpected error %v", err)
+			}
+			if err == nil && tc.wantErr {
+				t.Errorf("wanted an error but got none")
+			}
+			if !tc.wantErr && subnetName != tc.wantName {
+				t.Errorf("invalid name extracted from URL %s, want=%s, got=%s", tc.url, tc.wantName, subnetName)
+			}
+		})
+	}
+
 }
