@@ -253,6 +253,7 @@ function copy-to-staging() {
     fi
   fi
 
+  rm -f "${tar}.sha512"
   echo "${hash}" > "${tar}.sha512"
   gsutil -m -q -h "Cache-Control:private, max-age=0" cp "${tar}" "${tar}.sha512" "${staging_path}"
   gsutil -m acl ch -g all:R "${gs_url}" "${gs_url}.sha512" >/dev/null 2>&1 || true
