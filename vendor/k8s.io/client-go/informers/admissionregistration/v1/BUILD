@@ -5,6 +5,8 @@ go_library(
     srcs = [
         "interface.go",
         "mutatingwebhookconfiguration.go",
+        "validatingadmissionpolicy.go",
+        "validatingadmissionpolicybinding.go",
         "validatingwebhookconfiguration.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/informers/admissionregistration/v1",

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"path/filepath"
@@ -20,15 +21,18 @@ import (
 const (
 	modeTPM      = "tpm"
 	modeAltToken = "alt-token"
+	modeVMToken  = "vm-token"
 	flockName    = "kubelet-client.lock"
 )
 
 var (
-	mode = flag.String("mode", modeTPM, "Plugin mode, one of ['tpm', 'alt-token'].")
+	mode = flag.String("mode", modeTPM, "Plugin mode, one of ['tpm', 'alt-token', 'vm-token'].")
+
 	// TPM flags.
 	cacheDir = flag.String("cache-dir", "/var/lib/kubelet/pki", "Path to directory to store key and certificate.")
 	tpmPath  = flag.String("tpm-path", "/dev/tpm0", "path to a TPM character device or socket.")
 
+	// alt-token flags
 	altTokenURL  = flag.String("alt-token-url", "", "URL to token endpoint.")
 	altTokenBody = flag.String("alt-token-body", "", "Body of token request.")
 
@@ -54,6 +58,7 @@ func main() {
 
 	var key, cert []byte
 	var token string
+	var expirationTimestamp time.Time
 	var err error
 
 	switch *mode {
@@ -70,6 +75,9 @@ func main() {
 		if err != nil {
 			klog.Exit(err)
 		}
+		// Use a one hour expiration so we get reinvoked at least once an hour, we'll cache the cert for longer.
+		expirationTimestamp = time.Now().Add(responseExpiry)
+
 	case modeAltToken:
 		if *altTokenURL == "" {
 			klog.Exit("--alt-token-url must be set")
@@ -82,20 +90,40 @@ func main() {
 			klog.Exit(err)
 		}
 		token = tok.AccessToken
+		if tok.Expiry.IsZero() {
+			// Use a one hour expiration if the token didn't have an expiration
+			expirationTimestamp = time.Now().Add(responseExpiry)
+		} else {
+			// Use the token expiration with a little leeway to get called before the actual expiration
+			expirationTimestamp = tok.Expiry.Add(-time.Minute)
+		}
+
+	case modeVMToken:
+		tok, err := getVMToken(context.Background())
+		if err != nil {
+			klog.Exit(err)
+		}
+		token = tok.AccessToken
+		if tok.Expiry.IsZero() {
+			// Use a one hour expiration if the token didn't have an expiration
+			expirationTimestamp = time.Now().Add(responseExpiry)
+		} else {
+			// Use the token expiration with a little leeway to get called before the actual expiration
+			expirationTimestamp = tok.Expiry.Add(-time.Minute)
+		}
 	default:
 		klog.Exitf("unrecognized --mode value %q, want one of [%q, %q]", *mode, modeAltToken, modeTPM)
 	}
 
-	if err := writeResponse(token, key, cert); err != nil {
+	if err := writeResponse(token, key, cert, expirationTimestamp); err != nil {
 		klog.Exit(err)
 	}
 }
 
-func writeResponse(token string, key, cert []byte) error {
+func writeResponse(token string, key, cert []byte, expirationTimestamp time.Time) error {
 	resp := &clientauthentication.ExecCredential{
 		Status: &clientauthentication.ExecCredentialStatus{
-			// Make Kubelet poke us every hour, we'll cache the cert for longer.
-			ExpirationTimestamp:   &metav1.Time{Time: time.Now().Add(responseExpiry)},
+			ExpirationTimestamp:   &metav1.Time{Time: expirationTimestamp},
 			Token:                 token,
 			ClientCertificateData: string(cert),
 			ClientKeyData:         string(key),

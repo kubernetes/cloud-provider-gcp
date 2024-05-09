@@ -56,8 +56,6 @@ const (
 	leaderElectionResourceLockNamespace = "kube-system"
 	leaderElectionResourceLockName      = "gcp-controller-manager"
 
-	kubeconfigQPS     = 100
-	kubeconfigBurst   = 200
 	kubeconfigTimeout = 30 * time.Second
 )
 
@@ -82,6 +80,8 @@ var (
 	kubeletReadOnlyCSRApprover              = pflag.Bool("kubelet-read-only-csr-approver", false, "Enable kubelet readonly csr approver or not")
 	autopilotEnabled                        = pflag.Bool("autopilot", false, "Is this a GKE Autopilot cluster.")
 	clearStalePodsOnNodeRegistration        = pflag.Bool("clearStalePodsOnNodeRegistration", false, "If true, after node registration, delete pods bound to old node.")
+	kubeconfigQPS                           = pflag.Float32("kubeconfig-qps", 100, "QPS to use while talking with kube-apiserver.")
+	kubeconfigBurst                         = pflag.Int("kubeconfig-burst", 200, "Burst to use while talking with kube-apiserver.")
 )
 
 func main() {
@@ -133,8 +133,8 @@ func main() {
 		klog.Exitf("failed loading kubeconfig: %v", err)
 	}
 	// bump the QPS limits per controller up from defaults of 5 qps / 10 burst
-	s.informerKubeconfig.QPS = kubeconfigQPS
-	s.informerKubeconfig.Burst = kubeconfigBurst
+	s.informerKubeconfig.QPS = *kubeconfigQPS
+	s.informerKubeconfig.Burst = *kubeconfigBurst
 	// kubeconfig for controllers is the same, plus it has a client timeout for
 	// API requests. Informers shouldn't have a timeout because that breaks
 	// watch requests.

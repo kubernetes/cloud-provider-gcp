@@ -4,6 +4,7 @@ go_library(
     name = "klog",
     srcs = [
         "contextual.go",
+        "contextual_slog.go",
         "exit.go",
         "format.go",
         "imports.go",
@@ -15,13 +16,13 @@ go_library(
         "klog_file_windows.go",
         "klogr.go",
         "klogr_slog.go",
+        "safeptr.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/klog/v2",
     importpath = "k8s.io/klog/v2",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/go-logr/logr",
-        "//vendor/github.com/go-logr/logr/slogr",
         "//vendor/k8s.io/klog/v2/internal/buffer",
         "//vendor/k8s.io/klog/v2/internal/clock",
         "//vendor/k8s.io/klog/v2/internal/dbg",

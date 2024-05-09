@@ -39,6 +39,5 @@ go_library(
         "//vendor/k8s.io/kubernetes/pkg/util/hash",
         "//vendor/k8s.io/kubernetes/pkg/util/taints",
         "//vendor/k8s.io/utils/clock",
-        "//vendor/k8s.io/utils/integer",
     ],
 )

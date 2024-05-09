@@ -3,8 +3,10 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "cel",
     srcs = [
+        "cidr.go",
         "errors.go",
         "escaping.go",
+        "ip.go",
         "limits.go",
         "quantity.go",
         "types.go",

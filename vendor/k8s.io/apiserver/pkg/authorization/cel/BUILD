@@ -6,6 +6,7 @@ go_library(
         "compile.go",
         "interface.go",
         "matcher.go",
+        "metrics.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/authorization/cel",
     importpath = "k8s.io/apiserver/pkg/authorization/cel",
@@ -18,5 +19,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/version",
         "//vendor/k8s.io/apiserver/pkg/cel",
         "//vendor/k8s.io/apiserver/pkg/cel/environment",
+        "//vendor/k8s.io/component-base/metrics",
+        "//vendor/k8s.io/component-base/metrics/legacyregistry",
     ],
 )
