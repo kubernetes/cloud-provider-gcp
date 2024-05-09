@@ -10,6 +10,7 @@ go_library(
         "tpm.go",
         "tpm_other.go",
         "tpm_windows.go",
+        "vm_token.go",
     ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/gke-exec-auth-plugin",
     visibility = ["//visibility:private"],
