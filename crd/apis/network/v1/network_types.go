@@ -133,6 +133,11 @@ type NetworkSpec struct {
 	// Valid options include: internal, external
 	// +optional
 	IPAMMode *IPAMModeType `json:"IPAMMode,omitempty"`
+
+	// IPAMMode6 specifies the IPAM mode for the IPv6 network.
+	// Valid options include: internal, external
+	// +optional
+	IPAMMode6 *IPAMModeType `json:"IPAMMode6,omitempty"`
 }
 
 // NetworkParametersReference identifies an API object containing additional parameters for the network.

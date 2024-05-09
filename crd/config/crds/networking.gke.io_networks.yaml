@@ -49,6 +49,14 @@ spec:
                 - Internal
                 - External
                 type: string
+              IPAMMode6:
+                description: |-
+                  IPAMMode6 specifies the IPAM mode for the IPv6 network.
+                  Valid options include: internal, external
+                enum:
+                - Internal
+                - External
+                type: string
               dnsConfig:
                 description: |-
                   Specifies the DNS configuration of the network.
