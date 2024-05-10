@@ -21,7 +21,8 @@ import (
 	"reflect"
 	"testing"
 
-	compute "google.golang.org/api/compute/v1"
+	"github.com/google/go-cmp/cmp"
+	compute "google.golang.org/api/compute/v0.beta"
 	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -315,6 +316,84 @@ func TestExtractResizeRequestLabel(t *testing.T) {
 			}
 			if *label != *tc.expectedLabel {
 				t.Errorf("Expected %q label, got %q", *tc.expectedLabel, *label)
+			}
+		})
+	}
+}
+
+func TestAnnotateMachineTermination(t *testing.T) {
+	tests := map[string]struct {
+		node       *core.Node
+		instance   *compute.Instance
+		wantNode   *core.Node
+		wantResult bool
+	}{
+		"nil instance": {
+			node:       &core.Node{ObjectMeta: v1.ObjectMeta{Annotations: map[string]string{"key": "value"}}},
+			instance:   nil,
+			wantResult: false,
+			wantNode:   &core.Node{ObjectMeta: v1.ObjectMeta{Annotations: map[string]string{"key": "value"}}},
+		},
+		"nil instance.ResourceStatus": {
+			node:       &core.Node{ObjectMeta: v1.ObjectMeta{Annotations: map[string]string{"key": "value"}}},
+			instance:   &compute.Instance{},
+			wantResult: false,
+			wantNode:   &core.Node{ObjectMeta: v1.ObjectMeta{Annotations: map[string]string{"key": "value"}}},
+		},
+		"nil instance.ResourceStatus.Scheduling": {
+			node:       &core.Node{ObjectMeta: v1.ObjectMeta{Annotations: map[string]string{"key": "value"}}},
+			instance:   &compute.Instance{ResourceStatus: &compute.ResourceStatus{}},
+			wantResult: false,
+			wantNode:   &core.Node{ObjectMeta: v1.ObjectMeta{Annotations: map[string]string{"key": "value"}}},
+		},
+		"empty instance.ResourceStatus.Scheduling.TerminationTimestamp": {
+			node: &core.Node{ObjectMeta: v1.ObjectMeta{Annotations: map[string]string{"key": "value"}}},
+			instance: &compute.Instance{
+				ResourceStatus: &compute.ResourceStatus{
+					Scheduling: &compute.ResourceStatusScheduling{},
+				},
+			},
+			wantResult: false,
+			wantNode:   &core.Node{ObjectMeta: v1.ObjectMeta{Annotations: map[string]string{"key": "value"}}},
+		},
+		"no annotations, value in instance.ResourceStatus.Scheduling.TerminationTimestamp": {
+			node: &core.Node{},
+			instance: &compute.Instance{
+				ResourceStatus: &compute.ResourceStatus{
+					Scheduling: &compute.ResourceStatusScheduling{
+						TerminationTimestamp: "abc",
+					},
+				},
+			},
+			wantResult: true,
+			wantNode: &core.Node{ObjectMeta: v1.ObjectMeta{
+				Annotations: map[string]string{instanceTerminationAnnotationKey: "abc"}},
+			},
+		},
+		"value in instance.ResourceStatus.Scheduling.TerminationTimestamp": {
+			node: &core.Node{ObjectMeta: v1.ObjectMeta{Annotations: map[string]string{"key": "value"}}},
+			instance: &compute.Instance{
+				ResourceStatus: &compute.ResourceStatus{
+					Scheduling: &compute.ResourceStatusScheduling{
+						TerminationTimestamp: "abc",
+					},
+				},
+			},
+			wantResult: true,
+			wantNode: &core.Node{ObjectMeta: v1.ObjectMeta{
+				Annotations: map[string]string{"key": "value", instanceTerminationAnnotationKey: "abc"}},
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := annotateMachineTermination(tc.node, tc.instance)
+			if result != tc.wantResult {
+				t.Errorf("result = %v, wantResult: %v", result, tc.wantResult)
+			}
+			if diff := cmp.Diff(tc.wantNode, tc.node); diff != "" {
+				t.Errorf("Unexpected node (-want,+got):\n%s", diff)
 			}
 		})
 	}
