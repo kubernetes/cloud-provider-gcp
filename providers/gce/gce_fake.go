@@ -40,6 +40,7 @@ type TestClusterValues struct {
 	Regional          bool
 	NetworkURL        string
 	SubnetworkURL     string
+	StackType         StackType
 }
 
 // DefaultTestClusterValues Creates a reasonable set of default cluster values
@@ -52,6 +53,7 @@ func DefaultTestClusterValues() TestClusterValues {
 		SecondaryZoneName: "us-central1-c",
 		ClusterID:         "test-cluster-id",
 		ClusterName:       "Test-Cluster-Name",
+		StackType:         clusterStackIPV4,
 	}
 }
 
@@ -86,6 +88,7 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 		regional:            vals.Regional,
 		networkURL:          vals.NetworkURL,
 		unsafeSubnetworkURL: vals.SubnetworkURL,
+		stackType:           vals.StackType,
 	}
 	c := cloud.NewMockGCE(&gceProjectRouter{gce})
 	gce.c = c
@@ -95,4 +98,9 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 // UpdateFakeGCECloud updates the fake GCE cloud with the specified values. Currently only the onXPN value is updated.
 func UpdateFakeGCECloud(g *Cloud, vals TestClusterValues) {
 	g.onXPN = vals.OnXPN
+}
+
+// SetFakeStackType updates the fake GCE cloud with the specified stack type.
+func SetFakeStackType(g *Cloud, stackType StackType) {
+	g.stackType = stackType
 }

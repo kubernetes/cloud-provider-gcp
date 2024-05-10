@@ -135,6 +135,35 @@ func TestNodeAddresses(t *testing.T) {
 	}
 	instanceMap["n5"] = instance
 
+	// n6 is a single stack IPv6 instance with internal IPv6 address
+	instance = &ga.Instance{
+		Name: "n6",
+		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				StackType:   "IPV6",
+				Ipv6Address: "2001:2d00::0:1",
+			},
+		},
+	}
+	instanceMap["n6"] = instance
+
+	// n7 is single stack IPv6 instance with external IPv6 address
+	instance = &ga.Instance{
+		Name: "n7",
+		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				StackType:      "IPV6",
+				Ipv6AccessType: "EXTERNAL",
+				Ipv6AccessConfigs: []*ga.AccessConfig{
+					{ExternalIpv6: "2001:1900::0:2"},
+				},
+			},
+		},
+	}
+	instanceMap["n7"] = instance
+
 	mockGCE := gce.c.(*cloud.MockGCE)
 	mi := mockGCE.Instances().(*cloud.MockInstances)
 	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
@@ -148,20 +177,41 @@ func TestNodeAddresses(t *testing.T) {
 	testcases := []struct {
 		name      string
 		nodeName  string
+		stackType StackType
 		wantErr   string
 		wantAddrs []v1.NodeAddress
 	}{
 		{
-			name:     "internal dual stack instance",
-			nodeName: "n1",
+			name:      "internal dual stack instance with cluster stack type IPv4",
+			nodeName:  "n1",
+			stackType: clusterStackIPV4,
 			wantAddrs: []v1.NodeAddress{
 				{Type: v1.NodeInternalIP, Address: "10.1.1.1"},
 				{Type: v1.NodeInternalIP, Address: "2001:2d00::0:1"},
 			},
 		},
 		{
-			name:     "external dual stack instance",
-			nodeName: "n2",
+			name:      "internal dual stack instance with cluster stack type dual",
+			nodeName:  "n1",
+			stackType: clusterStackDualStack,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "10.1.1.1"},
+				{Type: v1.NodeInternalIP, Address: "2001:2d00::0:1"},
+			},
+		},
+		{
+			name:      "internal dual stack instance with cluster stack type IPv6",
+			nodeName:  "n1",
+			stackType: clusterStackIPV6,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "2001:2d00::0:1"},
+				{Type: v1.NodeInternalIP, Address: "10.1.1.1"},
+			},
+		},
+		{
+			name:      "external dual stack instance with cluster stack type IPv4",
+			nodeName:  "n2",
+			stackType: clusterStackIPV4,
 			wantAddrs: []v1.NodeAddress{
 				{Type: v1.NodeInternalIP, Address: "10.1.1.2"},
 				{Type: v1.NodeExternalIP, Address: "20.1.1.2"},
@@ -169,28 +219,93 @@ func TestNodeAddresses(t *testing.T) {
 			},
 		},
 		{
-			name:     "instance not found",
-			nodeName: "x1",
-			wantErr:  "instance not found",
+			name:      "external dual stack instance with cluster stack type dual",
+			nodeName:  "n2",
+			stackType: clusterStackDualStack,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "10.1.1.2"},
+				{Type: v1.NodeExternalIP, Address: "20.1.1.2"},
+				{Type: v1.NodeInternalIP, Address: "2001:1900::0:2"},
+			},
 		},
 		{
-			name:     "network interface not found",
-			nodeName: "n4",
-			wantErr:  "could not find network interface",
+			name:      "external dual stack instance with cluster stack type IPv6",
+			nodeName:  "n2",
+			stackType: clusterStackIPV6,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "2001:1900::0:2"},
+				{Type: v1.NodeInternalIP, Address: "10.1.1.2"},
+				{Type: v1.NodeExternalIP, Address: "20.1.1.2"},
+			},
 		},
 		{
-			name:     "single stack instance",
-			nodeName: "n5",
+			name:      "instance not found with cluster stack type IPv4",
+			nodeName:  "x1",
+			stackType: clusterStackIPV4,
+			wantErr:   "instance not found",
+		},
+		{
+			name:      "instance not found with cluster stack type dual",
+			nodeName:  "x1",
+			stackType: clusterStackDualStack,
+			wantErr:   "instance not found",
+		},
+		{
+			name:      "instance not found with cluster stack type IPv6",
+			nodeName:  "x1",
+			stackType: clusterStackIPV6,
+			wantErr:   "instance not found",
+		},
+		{
+			name:      "network interface not found with cluster stack type IPv4",
+			nodeName:  "n4",
+			stackType: clusterStackIPV4,
+			wantErr:   "could not find network interface",
+		},
+		{
+			name:      "network interface not found with cluster stack type dual",
+			nodeName:  "n4",
+			stackType: clusterStackDualStack,
+			wantErr:   "could not find network interface",
+		},
+		{
+			name:      "network interface not found with cluster stack type IPv6",
+			nodeName:  "n4",
+			stackType: clusterStackIPV6,
+			wantErr:   "could not find network interface",
+		},
+		{
+			name:      "single stack instance with cluster stack type IPv4",
+			nodeName:  "n5",
+			stackType: clusterStackIPV4,
 			wantAddrs: []v1.NodeAddress{
 				{Type: v1.NodeInternalIP, Address: "10.1.1.5"},
 				{Type: v1.NodeExternalIP, Address: "20.1.1.5"},
+			},
+		},
+		{
+			name:      "single stack IPv6 instance with internal IPv6 address and cluster stack type IPv6",
+			nodeName:  "n6",
+			stackType: clusterStackIPV6,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "2001:2d00::0:1"},
+			},
+		},
+		{
+			name:      "single stack IPv6 instance with external IPv6 address and cluster stack type IPv6",
+			nodeName:  "n7",
+			stackType: clusterStackIPV6,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "2001:1900::0:2"},
 			},
 		},
 	}
 
 	for _, test := range testcases {
 		t.Run(test.name, func(t *testing.T) {
-			gotAddrs, err := gce.NodeAddresses(context.TODO(), types.NodeName(test.nodeName))
+			SetFakeStackType(gce, test.stackType)
+
+			gotAddrs, err := gce.NodeAddresses(context.Background(), types.NodeName(test.nodeName))
 			if err != nil && (test.wantErr == "" || !strings.Contains(err.Error(), test.wantErr)) {
 				t.Errorf("gce.NodeAddresses. Want err: %v, got: %v", test.wantErr, err)
 				return
