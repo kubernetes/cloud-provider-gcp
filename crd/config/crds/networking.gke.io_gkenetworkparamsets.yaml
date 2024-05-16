@@ -48,6 +48,7 @@ spec:
                 enum:
                 - DPDK-VFIO
                 - NetDevice
+                - RDMA
                 type: string
               podIPv4Ranges:
                 description: |-
