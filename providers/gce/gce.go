@@ -96,9 +96,26 @@ var _ cloudprovider.Clusters = (*Cloud)(nil)
 
 type StackType string
 
+// NetworkStackDualStack is deprecated, use `clusterStackDualStack` instead.
 const NetworkStackDualStack StackType = "IPV4_IPV6"
+
+// NetworkStackIPV4 is deprecated, use `clusterStackIPV4` instead.
 const NetworkStackIPV4 StackType = "IPV4"
+
+// NetworkStackIPV6 is deprecated, use `clusterStackIPV6` instead.
 const NetworkStackIPV6 StackType = "IPV6"
+
+// clusterStackDualStack represents a dual stack cluster, i. e. Pods and Services are addressable with both
+// IPv4 and IPv6 addresses. The underlying VPC's stack type must be dual as well.
+const clusterStackDualStack StackType = "IPV4_IPV6"
+
+// clusterStackIPV4 represents a cluster in which Pods and Services are addressable with IPv4 addresses.
+// The underlying VPC's stack type could be either IPV4 or dual stack IPV4_IPV6.
+const clusterStackIPV4 StackType = "IPV4"
+
+// clusterStackIPV6 represents a cluster in which Pods and Services are addressable with IPv6 addresses.
+// The underlying VPC's stack type could be either IPV6 or dual stack IPV4_IPV6.
+const clusterStackIPV6 StackType = "IPV6"
 
 // Cloud is an implementation of Interface, LoadBalancer and Instances for Google Compute Engine.
 type Cloud struct {
