@@ -86,10 +86,16 @@ fi
 # you are updating the os image versions, update this variable.
 # Also please update corresponding image for node e2e at:
 # https://github.com/kubernetes/kubernetes/blob/master/test/e2e_node/jenkins/image-config.yaml
-GCI_VERSION=${KUBE_GCI_VERSION:-cos-97-16919-103-16}
+#
+# By default, the latest image from the image family will be used unless an
+# explicit image will be set.
+GCI_VERSION=${KUBE_GCI_VERSION:-}
+IMAGE_FAMILY=${KUBE_IMAGE_FAMILY:-cos-97-lts}
 export MASTER_IMAGE=${KUBE_GCE_MASTER_IMAGE:-}
+export MASTER_IMAGE_FAMILY=${KUBE_GCE_MASTER_IMAGE_FAMILY:-${IMAGE_FAMILY}}
 export MASTER_IMAGE_PROJECT=${KUBE_GCE_MASTER_PROJECT:-cos-cloud}
 export NODE_IMAGE=${KUBE_GCE_NODE_IMAGE:-${GCI_VERSION}}
+export NODE_IMAGE_FAMILY=${KUBE_GCE_NODE_IMAGE_FAMILY:-${IMAGE_FAMILY}}
 export NODE_IMAGE_PROJECT=${KUBE_GCE_NODE_PROJECT:-cos-cloud}
 export NODE_SERVICE_ACCOUNT=${KUBE_GCE_NODE_SERVICE_ACCOUNT:-default}
 
@@ -255,6 +261,9 @@ if [[ (( "${KUBE_FEATURE_GATES:-}" == *"AllAlpha=true"* ) || ( "${KUBE_FEATURE_G
   RUN_CONTROLLERS="${RUN_CONTROLLERS:-*,endpointslice}"
 fi
 
+# By default disable gkenetworkparamset controller in CCM
+RUN_CCM_CONTROLLERS="${RUN_CCM_CONTROLLERS:-*,-gkenetworkparamset}"
+
 # List of the set of feature gates recognized by the GCP CCM
 export CCM_FEATURE_GATES="APIListChunking,APIPriorityAndFairness,APIResponseCompression,APIServerIdentity,APIServerTracing,AllAlpha,AllBeta,CustomResourceValidationExpressions,KMSv2,OpenAPIEnums,OpenAPIV3,RemainingItemCount,ServerSideFieldValidation,StorageVersionAPI,StorageVersionHash"
 
@@ -399,13 +408,7 @@ EVICTION_HARD="${EVICTION_HARD:-memory.available<250Mi,nodefs.available<10%,node
 SCHEDULING_ALGORITHM_PROVIDER="${SCHEDULING_ALGORITHM_PROVIDER:-}"
 
 # Optional: install a default StorageClass
-# (TODO/cloud-provider-gcp): This should be reverted when we add ENABLE_DEFAULT_STORAGE_CLASS to kubetest2 parsed argument
-# ENABLE_DEFAULT_STORAGE_CLASS="${ENABLE_DEFAULT_STORAGE_CLASS:-false}"
-ENABLE_DEFAULT_STORAGE_CLASS="${ENABLE_DEFAULT_STORAGE_CLASS:-true}"
-
-# (TODO/cloud-provider-gcp): We need to figure out how to inject PDCSI Driver without code modification
-# Optional: install pd csi driver
-ENABLE_PDCSI_DRIVER="${ENABLE_PDCSI_DRIVER:-true}"
+ENABLE_DEFAULT_STORAGE_CLASS="${ENABLE_DEFAULT_STORAGE_CLASS:-false}"
 
 # Optional: install volume snapshot CRDs
 ENABLE_VOLUME_SNAPSHOTS="${ENABLE_VOLUME_SNAPSHOTS:-true}"
@@ -553,23 +556,12 @@ export TLS_CIPHER_SUITES=""
 
 # CLOUD_PROVIDER_FLAG defines the cloud-provider value presented to KCM, apiserver,
 # and kubelet
-# (TODO/cloud-provider-gcp): Need to add overwrite in kubetest2
-# export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-gce}"
-export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-external}"
+export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-gce}"
 
 # When ENABLE_AUTH_PROVIDER_GCP is set, following flags for out-of-tree credential provider for GCP
 # are presented to kubelet:
 # --image-credential-provider-config=${path-to-config}
 # --image-credential-provider-bin-dir=${path-to-auth-provider-binary}
 # Also, it is required that DisableKubeletCloudCredentialProviders
-# feature gate is set to true for kubelet to use external credential provider.
-ENABLE_AUTH_PROVIDER_GCP="${ENABLE_AUTH_PROVIDER_GCP:-true}"
-
-# (TODO/cloud-provider-gcp): Need to figure out how we can add this FeatureGate as an env.
-if [[ ${ENABLE_AUTH_PROVIDER_GCP:-true} == "true" ]]; then
-   if [[ -z "${FEATURE_GATES:-}" ]]; then
-        FEATURE_GATES="DisableKubeletCloudCredentialProviders=true,DisableCloudProviders=true"
-    else
-        FEATURE_GATES="${FEATURE_GATES},DisableKubeletCloudCredentialProviders=true,DisableCloudProviders=true"
-    fi
-fi
+# feature gates are set to true for kubelet to use external credential provider.
+ENABLE_AUTH_PROVIDER_GCP="${ENABLE_AUTH_PROVIDER_GCP:-false}"
