@@ -824,10 +824,6 @@ function create-master-auth {
   if [[ -n "${ADDON_MANAGER_TOKEN:-}" ]]; then
     append_or_replace_prefixed_line "${known_tokens_csv}" "${ADDON_MANAGER_TOKEN},"           "system:addon-manager,uid:system:addon-manager,system:masters"
   fi
-  # (TODO/cloud-provider-gcp): Figure out how to inject automatically
-  if [[ -n "${PDCSI_CONTROLLER_TOKEN:-}" ]]; then
-    append_or_replace_prefixed_line "${known_tokens_csv}" "${PDCSI_CONTROLLER_TOKEN},"        "system:pdcsi-controller,uid:system:pdcsi-controller,system:masters"
-  fi
   if [[ -n "${KONNECTIVITY_SERVER_TOKEN:-}" ]]; then
     append_or_replace_prefixed_line "${known_tokens_csv}" "${KONNECTIVITY_SERVER_TOKEN},"     "system:konnectivity-server,uid:system:konnectivity-server"
     create-kubeconfig "konnectivity-server" "${KONNECTIVITY_SERVER_TOKEN}"
@@ -1787,6 +1783,7 @@ function prepare-kube-proxy-manifest-variables {
   sed -i -e "s@{{kube_cache_mutation_detector_env_name}}@${kube_cache_mutation_detector_env_name}@g" "${src_file}"
   sed -i -e "s@{{kube_cache_mutation_detector_env_value}}@${kube_cache_mutation_detector_env_value}@g" "${src_file}"
   sed -i -e "s@{{ cpurequest }}@${KUBE_PROXY_CPU_REQUEST:-100m}@g" "${src_file}"
+  sed -i -e "s@{{ memoryrequest }}@${KUBE_PROXY_MEMORY_REQUEST:-50Mi}@g" "${src_file}"
   sed -i -e "s@{{api_servers_with_port}}@${api_servers}@g" "${src_file}"
   sed -i -e "s@{{kubernetes_service_host_env_value}}@${KUBERNETES_MASTER_NAME}@g" "${src_file}"
   if [[ -n "${CLUSTER_IP_RANGE:-}" ]]; then
@@ -2250,7 +2247,6 @@ function start-kube-controller-manager {
   cp "${src_file}" /etc/kubernetes/manifests
 }
 
-# (TODO/cloud-provider-gcp): Figure out how to inject
 # Starts cloud controller manager.
 # It prepares the log file, loads the docker image, calculates variables, sets them
 # in the manifest file, and then copies the manifest file to /etc/kubernetes/manifests.
@@ -2313,13 +2309,9 @@ function start-cloud-controller-manager {
       echo "None of the given feature gates (${FEATURE_GATES}) were found to be safe to pass to the CCM"
     fi
   fi
-  if [[ -n "${RUN_CONTROLLERS:-}" ]]; then
-    params+=("--controllers=${RUN_CONTROLLERS}")
+  if [[ -n "${RUN_CCM_CONTROLLERS:-}" ]]; then
+    params+=("--controllers=${RUN_CCM_CONTROLLERS}")
   fi
-
-  # (TODO/cloud-provider-gcp): Figure out how to inject
-  local kube_rc_docker_tag=$(cat /home/kubernetes/kube-docker-files/cloud-controller-manager.docker_tag)
-  kube_rc_docker_tag=$(echo ${kube_rc_docker_tag} | sed 's/+/-/g')
 
   echo "Converting manifest for cloud provider controller-manager"
   local paramstring
@@ -2333,8 +2325,6 @@ function start-cloud-controller-manager {
   local -r src_file="${KUBE_HOME}/kube-manifests/kubernetes/gci-trusty/cloud-controller-manager.manifest"
   # Evaluate variables.
   sed -i -e "s@{{pillar\['kube_docker_registry'\]}}@${DOCKER_REGISTRY}@g" "${src_file}"
-  # (TODO/cloud-provider-gcp): Figure out how to inject
-  sed -i -e "s@{{pillar\['cloud-controller-manager_docker_tag'\]}}@${kube_rc_docker_tag}@g" "${src_file}"
   sed -i -e "s@{{params}}@${paramstring}@g" "${src_file}"
   sed -i -e "s@{{container_env}}@${container_env}@g" "${src_file}"
   sed -i -e "s@{{cloud_config_mount}}@${CLOUD_CONFIG_MOUNT}@g" "${src_file}"
@@ -2929,10 +2919,6 @@ EOF
   if [[ "${ENABLE_DEFAULT_STORAGE_CLASS:-}" == "true" ]]; then
     setup-addon-manifests "addons" "storage-class/gce"
   fi
-  # (TODO/cloud-provider-gcp): Figure out how to inject
-  if [[ "${ENABLE_PDCSI_DRIVER:-}" == "true" ]]; then
-    setup-addon-manifests "addons" "pdcsi-driver"
-  fi
   if [[ "${ENABLE_VOLUME_SNAPSHOTS:-}" == "true" ]]; then
     setup-addon-manifests "addons" "volumesnapshots/crd"
     setup-addon-manifests "addons" "volumesnapshots/volume-snapshot-controller"
@@ -2965,20 +2951,6 @@ EOF
   sed -i -e "s@{{kubectl_extra_prune_whitelist}}@${ADDON_MANAGER_PRUNE_WHITELIST:-}@g" "${src_file}"
   sed -i -e "s@{{runAsUser}}@${KUBE_ADDON_MANAGER_RUNASUSER:-2002}@g" "${src_file}"
   sed -i -e "s@{{runAsGroup}}@${KUBE_ADDON_MANAGER_RUNASGROUP:-2002}@g" "${src_file}"
-  cp "${src_file}" /etc/kubernetes/manifests
-}
-
-# (TODO/cloud-provider-gcp): Figure out how to inject
-# Prepares the manifests of pdcsi controller, and starts the pdcsi controller.
-function start-pdcsi-controller {
-  echo "Prepare pdcsi controller manifests and start pdcsi controller"
-  local -r src_dir="${KUBE_HOME}/kube-manifests/kubernetes/gci-trusty"
-
-  create-kubeconfig "pdcsi-controller" "${PDCSI_CONTROLLER_TOKEN}"
-
-  src_file="${src_dir}/pdcsi-controller.yaml"
-  sed -i -e "s@{{runAsUser}}@${PDCSI_CONTROLLER_RUNASUSER:-2045}@g" "${src_file}"
-  sed -i -e "s@{{runAsGroup}}@${PDCSI_CONTROLLER_RUNASGROUP:-2045}@g" "${src_file}"
   cp "${src_file}" /etc/kubernetes/manifests
 }
 
@@ -3144,7 +3116,7 @@ spec:
     - /bin/sh
     args:
     - -c
-    - test -e /scrub && rm -rf /scrub/..?* /scrub/.[!.]* /scrub/* && test -z $(ls -A /scrub) || exit 1
+    - test -e /scrub && find /scrub -mindepth 1 -delete && test -z $(ls -A /scrub) || exit 1
     volumeMounts:
     - name: vol
       mountPath: /scrub
@@ -3512,8 +3484,6 @@ function main() {
     GCE_GLBC_TOKEN="$(secure_random 32)"
   fi
   ADDON_MANAGER_TOKEN="$(secure_random 32)"
-  # (TODO/cloud-provider-gcp): Figure out how to inject
-  PDCSI_CONTROLLER_TOKEN="$(secure_random 32)"
   if [[ "${ENABLE_APISERVER_INSECURE_PORT:-false}" != "true" ]]; then
     KUBE_BOOTSTRAP_TOKEN="$(secure_random 32)"
   fi
@@ -3608,10 +3578,6 @@ function main() {
     log-wrap 'StartKubeScheduler' start-kube-scheduler
     log-wrap 'WaitTillApiserverReady' wait-till-apiserver-ready
     log-wrap 'StartKubeAddons' start-kube-addons
-    # (TODO/cloud-provider-gcp): Figure out how to inject
-    if [[ "${ENABLE_PDCSI_DRIVER:-}" == "true" ]]; then
-      log-wrap 'StartPdcsiController' start-pdcsi-controller
-    fi
     log-wrap 'StartClusterAutoscaler' start-cluster-autoscaler
     log-wrap 'StartLBController' start-lb-controller
     log-wrap 'UpdateLegacyAddonNodeLabels' update-legacy-addon-node-labels &
