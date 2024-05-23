@@ -5,12 +5,14 @@ go 1.22.0
 toolchain go1.22.1
 
 require (
+	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.25.0
 	github.com/onsi/ginkgo/v2 v2.15.0
 	github.com/onsi/gomega v1.31.0
 	google.golang.org/api v0.151.0
 	k8s.io/api v0.30.0
 	k8s.io/apimachinery v0.30.0
 	k8s.io/client-go v0.30.0
+	k8s.io/cloud-provider v0.30.0
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
 	k8s.io/kubernetes v1.30.0
 	k8s.io/pod-security-admission v0.30.0
@@ -19,7 +21,6 @@ require (
 require (
 	cloud.google.com/go/compute v1.23.1 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
-	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.25.0 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
 	github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a // indirect
@@ -115,7 +116,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.0.0 // indirect
 	k8s.io/apiserver v0.30.0 // indirect
-	k8s.io/cloud-provider v0.30.0 // indirect
 	k8s.io/component-base v0.30.0 // indirect
 	k8s.io/component-helpers v0.30.0 // indirect
 	k8s.io/controller-manager v0.30.0 // indirect
