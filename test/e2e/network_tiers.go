@@ -38,6 +38,9 @@ import (
 	admissionapi "k8s.io/pod-security-admission/api"
 )
 
+// Migrated from k/k in-tree at:
+//
+//	https://github.com/kubernetes/kubernetes/blob/release-1.30/test/e2e/network/network_tiers.go
 var _ = ginkgo.Describe("[cloud-provider-gcp-e2e] Network Tiers", func() {
 	f := framework.NewDefaultFramework("network-tiers")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged

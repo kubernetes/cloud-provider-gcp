@@ -5,7 +5,7 @@ go 1.22.0
 toolchain go1.22.1
 
 require (
-	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.25.0
+	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.27.0
 	github.com/onsi/ginkgo/v2 v2.15.0
 	github.com/onsi/gomega v1.31.0
 	google.golang.org/api v0.151.0
