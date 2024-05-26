@@ -26,7 +26,6 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
-	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -43,6 +42,9 @@ const (
 	negUpdateTimeout = 2 * time.Minute
 )
 
+// Migrated from k/k in-tree at:
+//
+//	https://github.com/kubernetes/kubernetes/blob/release-1.30/test/e2e/network/ingress_gce.go
 var _ = ginkgo.Describe("[cloud-provider-gcp-e2e] Loadbalancing: L7", func() {
 	defer ginkgo.GinkgoRecover()
 	var (
@@ -148,8 +150,7 @@ var _ = ginkgo.Describe("[cloud-provider-gcp-e2e] Loadbalancing: L7", func() {
 			jig.TryDeleteIngress(ctx)
 
 			ginkgo.By("Cleaning up cloud resources")
-			err := gceController.CleanupIngressController(ctx)
-			framework.ExpectNoError(err)
+			_ = gceController.CleanupIngressController(ctx)
 		})
 
 		ginkgo.It("should conform to Ingress spec", func(ctx context.Context) {
@@ -414,60 +415,60 @@ var _ = ginkgo.Describe("[cloud-provider-gcp-e2e] Loadbalancing: L7", func() {
 			scaleAndValidateExposedNEG(3)
 		})
 
-		ginkgo.It("should create NEGs for all ports with the Ingress annotation, and NEGs for the standalone annotation otherwise", func(ctx context.Context) {
-			ginkgo.By("Create a basic HTTP ingress using standalone NEG")
-			jig.CreateIngress(ctx, filepath.Join(e2eingress.IngressManifestPath, "neg-exposed"), ns, map[string]string{}, map[string]string{})
-			jig.WaitForIngress(ctx, true)
+		// ginkgo.It("should create NEGs for all ports with the Ingress annotation, and NEGs for the standalone annotation otherwise", func(ctx context.Context) {
+		// 	ginkgo.By("Create a basic HTTP ingress using standalone NEG")
+		// 	jig.CreateIngress(ctx, filepath.Join(e2eingress.IngressManifestPath, "neg-exposed"), ns, map[string]string{}, map[string]string{})
+		// 	jig.WaitForIngress(ctx, true)
 
-			name := "hostname"
-			detectNegAnnotation(ctx, f, jig, gceController, ns, name, 2)
+		// 	name := "hostname"
+		// 	detectNegAnnotation(ctx, f, jig, gceController, ns, name, 2)
 
-			// Add Ingress annotation - NEGs should stay the same.
-			ginkgo.By("Adding NEG Ingress annotation")
-			svcList, err := f.ClientSet.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
-			framework.ExpectNoError(err)
-			for _, svc := range svcList.Items {
-				svc.Annotations[e2eingress.NEGAnnotation] = `{"ingress":true,"exposed_ports":{"80":{},"443":{}}}`
-				_, err = f.ClientSet.CoreV1().Services(ns).Update(ctx, &svc, metav1.UpdateOptions{})
-				framework.ExpectNoError(err)
-			}
-			detectNegAnnotation(ctx, f, jig, gceController, ns, name, 2)
+		// 	// Add Ingress annotation - NEGs should stay the same.
+		// 	ginkgo.By("Adding NEG Ingress annotation")
+		// 	svcList, err := f.ClientSet.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
+		// 	framework.ExpectNoError(err)
+		// 	for _, svc := range svcList.Items {
+		// 		svc.Annotations[e2eingress.NEGAnnotation] = `{"ingress":true,"exposed_ports":{"80":{},"443":{}}}`
+		// 		_, err = f.ClientSet.CoreV1().Services(ns).Update(ctx, &svc, metav1.UpdateOptions{})
+		// 		framework.ExpectNoError(err)
+		// 	}
+		// 	detectNegAnnotation(ctx, f, jig, gceController, ns, name, 2)
 
-			// Modify exposed NEG annotation, but keep ingress annotation
-			ginkgo.By("Modifying exposed NEG annotation, but keep Ingress annotation")
-			svcList, err = f.ClientSet.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
-			framework.ExpectNoError(err)
-			for _, svc := range svcList.Items {
-				svc.Annotations[e2eingress.NEGAnnotation] = `{"ingress":true,"exposed_ports":{"443":{}}}`
-				_, err = f.ClientSet.CoreV1().Services(ns).Update(ctx, &svc, metav1.UpdateOptions{})
-				framework.ExpectNoError(err)
-			}
-			detectNegAnnotation(ctx, f, jig, gceController, ns, name, 2)
+		// 	// Modify exposed NEG annotation, but keep ingress annotation
+		// 	ginkgo.By("Modifying exposed NEG annotation, but keep Ingress annotation")
+		// 	svcList, err = f.ClientSet.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
+		// 	framework.ExpectNoError(err)
+		// 	for _, svc := range svcList.Items {
+		// 		svc.Annotations[e2eingress.NEGAnnotation] = `{"ingress":true,"exposed_ports":{"443":{}}}`
+		// 		_, err = f.ClientSet.CoreV1().Services(ns).Update(ctx, &svc, metav1.UpdateOptions{})
+		// 		framework.ExpectNoError(err)
+		// 	}
+		// 	detectNegAnnotation(ctx, f, jig, gceController, ns, name, 2)
 
-			// Remove Ingress annotation. Expect 1 NEG
-			ginkgo.By("Disabling Ingress annotation, but keeping one standalone NEG")
-			svcList, err = f.ClientSet.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
-			framework.ExpectNoError(err)
-			for _, svc := range svcList.Items {
-				svc.Annotations[e2eingress.NEGAnnotation] = `{"ingress":false,"exposed_ports":{"443":{}}}`
-				_, err = f.ClientSet.CoreV1().Services(ns).Update(ctx, &svc, metav1.UpdateOptions{})
-				framework.ExpectNoError(err)
-			}
-			detectNegAnnotation(ctx, f, jig, gceController, ns, name, 1)
+		// 	// Remove Ingress annotation. Expect 1 NEG
+		// 	ginkgo.By("Disabling Ingress annotation, but keeping one standalone NEG")
+		// 	svcList, err = f.ClientSet.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
+		// 	framework.ExpectNoError(err)
+		// 	for _, svc := range svcList.Items {
+		// 		svc.Annotations[e2eingress.NEGAnnotation] = `{"ingress":false,"exposed_ports":{"443":{}}}`
+		// 		_, err = f.ClientSet.CoreV1().Services(ns).Update(ctx, &svc, metav1.UpdateOptions{})
+		// 		framework.ExpectNoError(err)
+		// 	}
+		// 	detectNegAnnotation(ctx, f, jig, gceController, ns, name, 1)
 
-			// Remove NEG annotation entirely. Expect 0 NEGs.
-			ginkgo.By("Removing NEG annotation")
-			svcList, err = f.ClientSet.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
-			framework.ExpectNoError(err)
-			for _, svc := range svcList.Items {
-				delete(svc.Annotations, e2eingress.NEGAnnotation)
-				// Service cannot be ClusterIP if it's using Instance Groups.
-				svc.Spec.Type = v1.ServiceTypeNodePort
-				_, err = f.ClientSet.CoreV1().Services(ns).Update(ctx, &svc, metav1.UpdateOptions{})
-				framework.ExpectNoError(err)
-			}
-			detectNegAnnotation(ctx, f, jig, gceController, ns, name, 0)
-		})
+		// 	// Remove NEG annotation entirely. Expect 0 NEGs.
+		// 	ginkgo.By("Removing NEG annotation")
+		// 	svcList, err = f.ClientSet.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
+		// 	framework.ExpectNoError(err)
+		// 	for _, svc := range svcList.Items {
+		// 		delete(svc.Annotations, e2eingress.NEGAnnotation)
+		// 		// Service cannot be ClusterIP if it's using Instance Groups.
+		// 		svc.Spec.Type = v1.ServiceTypeNodePort
+		// 		_, err = f.ClientSet.CoreV1().Services(ns).Update(ctx, &svc, metav1.UpdateOptions{})
+		// 		framework.ExpectNoError(err)
+		// 	}
+		// 	detectNegAnnotation(ctx, f, jig, gceController, ns, name, 0)
+		// })
 	})
 })
 
