@@ -471,6 +471,8 @@ function load-docker-images {
   if [[ "${KUBERNETES_MASTER:-}" == "true" ]]; then
     try-load-docker-image "${img_dir}/kube-apiserver.tar"
     try-load-docker-image "${img_dir}/kube-controller-manager.tar"
+    # (TODO/cloud-provider-gcp): Figure out how to inject
+    try-load-docker-image "${img_dir}/cloud-controller-manager.tar"
     try-load-docker-image "${img_dir}/kube-scheduler.tar"
   else
     try-load-docker-image "${img_dir}/kube-proxy.tar"
@@ -539,28 +541,10 @@ function install-containerd-ubuntu {
 }
 
 function install-auth-provider-gcp {
-  local -r filename="auth-provider-gcp"
-  local -r auth_provider_storage_full_path="${AUTH_PROVIDER_GCP_STORAGE_PATH}/${AUTH_PROVIDER_GCP_VERSION}/${HOST_PLATFORM}_${HOST_ARCH}/${filename}"
-  echo "Downloading auth-provider-gcp ${auth_provider_storage_full_path}" .
+  # Keep in sync with --image-credential-provider-config in ../util.sh
+  local auth_config_file="${KUBE_HOME}/cri-auth-config.yaml"
+  cat >> "${auth_config_file}" << EOF
 
-  case "${HOST_ARCH}" in
-    amd64)
-      local -r auth_provider_gcp_hash="${AUTH_PROVIDER_GCP_HASH_LINUX_AMD64}"
-      ;;
-    arm64)
-      local -r auth_provider_gcp_hash="${AUTH_PROVIDER_GCP_HASH_LINUX_ARM64}"
-      ;;
-    *)
-      echo "Unrecognized version and platform/arch combination: ${HOST_PLATFORM}/${HOST_ARCH}"
-      exit 1
-  esac
-
-  download-or-bust "${auth_provider_gcp_hash}" "${auth_provider_storage_full_path}"
-
-  mv "${KUBE_HOME}/${filename}" "${AUTH_PROVIDER_GCP_LINUX_BIN_DIR}"
-  chmod a+x "${KUBE_BIN}/${filename}"
-
-  cat >> "${AUTH_PROVIDER_GCP_LINUX_CONF_FILE}" << EOF
 kind: CredentialProviderConfig
 apiVersion: kubelet.config.k8s.io/v1
 providers:
@@ -671,11 +655,15 @@ function install-kube-binary-config {
       cp "${src_dir}/kube-apiserver.tar" "${dst_dir}"
       cp "${src_dir}/kube-controller-manager.tar" "${dst_dir}"
       cp "${src_dir}/kube-scheduler.tar" "${dst_dir}"
-      cp -r "${KUBE_HOME}/kubernetes/addons" "${dst_dir}"
+      # (TODO/cloud-provider-gcp): Figure out how to inject
+      cp "${src_dir}/cloud-controller-manager.tar" "${dst_dir}"
+cp -r "${KUBE_HOME}/kubernetes/addons" "${dst_dir}"
     fi
     log-wrap "LoadDockerImages" load-docker-images
     mv "${src_dir}/kubelet" "${KUBE_BIN}"
     mv "${src_dir}/kubectl" "${KUBE_BIN}"
+    # (TODO/cloud-provider-gcp): Figure out how to inject
+    mv "${src_dir}/auth-provider-gcp" "${KUBE_BIN}"
 
     # Some older images have LICENSES baked-in as a file. Presumably they will
     # have the directory baked-in eventually.

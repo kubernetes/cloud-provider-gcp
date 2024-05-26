@@ -253,6 +253,7 @@ function copy-to-staging() {
     fi
   fi
 
+  rm -f "${tar}.sha512"
   echo "${hash}" > "${tar}.sha512"
   gsutil -m -q -h "Cache-Control:private, max-age=0" cp "${tar}" "${tar}.sha512" "${staging_path}"
   gsutil -m acl ch -g all:R "${gs_url}" "${gs_url}.sha512" >/dev/null 2>&1 || true
@@ -745,7 +746,7 @@ function yaml-map-string-string {
 # Returns kubelet flags used on both Linux and Windows nodes.
 function construct-common-kubelet-flags {
   local flags="${KUBELET_TEST_LOG_LEVEL:-"--v=2"} ${KUBELET_TEST_ARGS:-}"
-  flags+=" --cloud-provider=${CLOUD_PROVIDER_FLAG:-gce}"
+  flags+=" --cloud-provider=${CLOUD_PROVIDER_FLAG:-external}"
   # TODO(mtaufen): ROTATE_CERTIFICATES seems unused; delete it?
   if [[ -n "${ROTATE_CERTIFICATES:-}" ]]; then
     flags+=" --rotate-certificates=true"
@@ -770,7 +771,7 @@ function construct-linux-kubelet-flags {
   # If ENABLE_AUTH_PROVIDER_GCP is set to true, kubelet is enabled to use out-of-tree auth 
   # credential provider instead of in-tree auth credential provider.
   # https://kubernetes.io/docs/tasks/kubelet-credential-provider/kubelet-credential-provider
-  if [[ "${ENABLE_AUTH_PROVIDER_GCP:-false}" == "true" ]]; then
+  if [[ "${ENABLE_AUTH_PROVIDER_GCP:-external}" == "true" ]]; then
     # Keep the values of --image-credential-provider-config and --image-credential-provider-bin-dir
     # in sync with value of auth_config_file and auth_provider_dir set in install-auth-provider-gcp function
     # in gci/configure.sh.
@@ -882,7 +883,7 @@ function construct-windows-kubelet-flags {
 
   # If ENABLE_AUTH_PROVIDER_GCP is set to true, kubelet is enabled to use out-of-tree auth
   # credential provider. https://kubernetes.io/docs/tasks/kubelet-credential-provider/kubelet-credential-provider
-  if [[ "${ENABLE_AUTH_PROVIDER_GCP:-false}" == "true" ]]; then
+  if [[ "${ENABLE_AUTH_PROVIDER_GCP:-true}" == "true" ]]; then
     flags+="  --image-credential-provider-config=${AUTH_PROVIDER_GCP_WINDOWS_CONF_FILE}"
     flags+="  --image-credential-provider-bin-dir=${AUTH_PROVIDER_GCP_WINDOWS_BIN_DIR}"
   fi
@@ -1169,6 +1170,8 @@ MULTIZONE: $(yaml-quote "${MULTIZONE:-}")
 MULTIMASTER: $(yaml-quote "${MULTIMASTER:-}")
 NON_MASQUERADE_CIDR: $(yaml-quote "${NON_MASQUERADE_CIDR:-}")
 ENABLE_DEFAULT_STORAGE_CLASS: $(yaml-quote "${ENABLE_DEFAULT_STORAGE_CLASS:-}")
+# (TODO/cloud-provider-gcp): Need to figure out how to inject this
+ENABLE_PDCSI_DRIVER: $(yaml-quote "${ENABLE_PDCSI_DRIVER:-}")
 ENABLE_VOLUME_SNAPSHOTS: $(yaml-quote "${ENABLE_VOLUME_SNAPSHOTS:-}")
 ENABLE_APISERVER_ADVANCED_AUDIT: $(yaml-quote "${ENABLE_APISERVER_ADVANCED_AUDIT:-}")
 ENABLE_APISERVER_DYNAMIC_AUDIT: $(yaml-quote "${ENABLE_APISERVER_DYNAMIC_AUDIT:-}")
@@ -1356,6 +1359,8 @@ KUBE_POD_LOG_READERS_GROUP: 2007
 KONNECTIVITY_SERVER_RUNASUSER: 2008
 KONNECTIVITY_SERVER_RUNASGROUP: 2008
 KONNECTIVITY_SERVER_SOCKET_WRITER_GROUP: 2008
+CLOUD_CONTROLLER_MANAGER_RUNASUSER: 2009
+CLOUD_CONTROLLER_MANAGER_RUNASGROUP: 2009
 EOF
     # KUBE_APISERVER_REQUEST_TIMEOUT_SEC (if set) controls the --request-timeout
     # flag

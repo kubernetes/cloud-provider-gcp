@@ -4,7 +4,8 @@ go_library(
     name = "strs",
     srcs = [
         "strings.go",
-        "strings_unsafe.go",
+        "strings_unsafe_go120.go",
+        "strings_unsafe_go121.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/protobuf/internal/strs",
     importpath = "google.golang.org/protobuf/internal/strs",

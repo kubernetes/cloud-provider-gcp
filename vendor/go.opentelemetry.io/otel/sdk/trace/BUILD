@@ -19,6 +19,7 @@ go_library(
         "span_limits.go",
         "span_processor.go",
         "tracer.go",
+        "version.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/go.opentelemetry.io/otel/sdk/trace",
     importpath = "go.opentelemetry.io/otel/sdk/trace",
@@ -32,7 +33,9 @@ go_library(
         "//vendor/go.opentelemetry.io/otel/sdk/internal",
         "//vendor/go.opentelemetry.io/otel/sdk/internal/env",
         "//vendor/go.opentelemetry.io/otel/sdk/resource",
-        "//vendor/go.opentelemetry.io/otel/semconv/v1.12.0:v1_12_0",
+        "//vendor/go.opentelemetry.io/otel/semconv/v1.24.0:v1_24_0",
         "//vendor/go.opentelemetry.io/otel/trace",
+        "//vendor/go.opentelemetry.io/otel/trace/embedded",
+        "//vendor/go.opentelemetry.io/otel/trace/noop",
     ],
 )

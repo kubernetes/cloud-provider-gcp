@@ -9,6 +9,14 @@ go_library(
         "container.go",
         "doc.go",
         "env.go",
+        "host_id.go",
+        "host_id_bsd.go",
+        "host_id_darwin.go",
+        "host_id_exec.go",
+        "host_id_linux.go",
+        "host_id_readfile.go",
+        "host_id_unsupported.go",
+        "host_id_windows.go",
         "os.go",
         "os_release_darwin.go",
         "os_release_unix.go",
@@ -24,7 +32,8 @@ go_library(
     deps = [
         "//vendor/go.opentelemetry.io/otel",
         "//vendor/go.opentelemetry.io/otel/attribute",
-        "//vendor/go.opentelemetry.io/otel/semconv/v1.12.0:v1_12_0",
+        "//vendor/go.opentelemetry.io/otel/sdk",
+        "//vendor/go.opentelemetry.io/otel/semconv/v1.24.0:v1_24_0",
     ] + select({
         "@io_bazel_rules_go//go/platform:aix": [
             "//vendor/golang.org/x/sys/unix",

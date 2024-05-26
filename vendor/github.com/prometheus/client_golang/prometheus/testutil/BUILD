@@ -16,5 +16,6 @@ go_library(
         "//vendor/github.com/prometheus/client_golang/prometheus/testutil/promlint",
         "//vendor/github.com/prometheus/client_model/go",
         "//vendor/github.com/prometheus/common/expfmt",
+        "//vendor/google.golang.org/protobuf/proto",
     ],
 )

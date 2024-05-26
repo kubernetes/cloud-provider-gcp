@@ -17,15 +17,14 @@ package otlptrace // import "go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/tracetransform"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 )
 
-var (
-	errAlreadyStarted = errors.New("already started")
-)
+var errAlreadyStarted = errors.New("already started")
 
 // Exporter exports trace data in the OTLP wire format.
 type Exporter struct {
@@ -45,12 +44,16 @@ func (e *Exporter) ExportSpans(ctx context.Context, ss []tracesdk.ReadOnlySpan) 
 		return nil
 	}
 
-	return e.client.UploadTraces(ctx, protoSpans)
+	err := e.client.UploadTraces(ctx, protoSpans)
+	if err != nil {
+		return fmt.Errorf("traces export: %w", err)
+	}
+	return nil
 }
 
 // Start establishes a connection to the receiving endpoint.
 func (e *Exporter) Start(ctx context.Context) error {
-	var err = errAlreadyStarted
+	err := errAlreadyStarted
 	e.startOnce.Do(func() {
 		e.mu.Lock()
 		e.started = true
@@ -101,7 +104,7 @@ func NewUnstarted(client Client) *Exporter {
 	}
 }
 
-// MarshalLog is the marshaling function used by the logging system to represent this exporter.
+// MarshalLog is the marshaling function used by the logging system to represent this Exporter.
 func (e *Exporter) MarshalLog() interface{} {
 	return struct {
 		Type   string

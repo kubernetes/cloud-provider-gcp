@@ -6,4 +6,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/utils/pointer",
     importpath = "k8s.io/utils/pointer",
     visibility = ["//visibility:public"],
+    deps = ["//vendor/k8s.io/utils/ptr"],
 )

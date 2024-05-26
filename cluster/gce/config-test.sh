@@ -103,7 +103,7 @@ ALLOWED_NOTREADY_NODES=${ALLOWED_NOTREADY_NODES:-$(($(get-num-nodes) / 100))}
 # By default, the latest image from the image family will be used unless an
 # explicit image will be set.
 GCI_VERSION=${KUBE_GCI_VERSION:-}
-IMAGE_FAMILY=${KUBE_IMAGE_FAMILY:-cos-97-lts}
+IMAGE_FAMILY=${KUBE_IMAGE_FAMILY:-cos-109-lts}
 export MASTER_IMAGE=${KUBE_GCE_MASTER_IMAGE:-}
 export MASTER_IMAGE_FAMILY=${KUBE_GCE_MASTER_IMAGE_FAMILY:-${IMAGE_FAMILY}}
 export MASTER_IMAGE_PROJECT=${KUBE_GCE_MASTER_PROJECT:-cos-cloud}
@@ -605,7 +605,12 @@ export TLS_CIPHER_SUITES=""
 
 # CLOUD_PROVIDER_FLAG defines the cloud-provider value presented to KCM, apiserver,
 # and kubelet
-export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-gce}"
+export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-external}"
+
+# Don't run the node-ipam-controller on the KCM if cloud-provider external
+if [[ "${CLOUD_PROVIDER_FLAG}" ==  "external" ]]; then
+  RUN_CONTROLLERS="${RUN_CONTROLLERS:-*,-node-ipam-controller}"
+fi
 
 # When ENABLE_AUTH_PROVIDER_GCP is set, following flags for out-of-tree credential provider for GCP
 # are presented to kubelet:
@@ -613,4 +618,4 @@ export CLOUD_PROVIDER_FLAG="${CLOUD_PROVIDER_FLAG:-gce}"
 # --image-credential-provider-bin-dir=${path-to-auth-provider-binary}
 # Also, it is required that DisableKubeletCloudCredentialProviders and KubeletCredentialProviders
 # feature gates are set to true for kubelet to use external credential provider.
-ENABLE_AUTH_PROVIDER_GCP="${ENABLE_AUTH_PROVIDER_GCP:-true}"
+export ENABLE_AUTH_PROVIDER_GCP="${ENABLE_AUTH_PROVIDER_GCP:-true}"
