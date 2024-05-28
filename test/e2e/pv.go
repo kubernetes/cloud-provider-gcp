@@ -40,6 +40,10 @@ const (
 	gcePDDetachPollTime = 10 * time.Second
 )
 
+// Migrated from k/k in-tree file at:
+//
+//	https://github.com/kubernetes/kubernetes/blob/master/test/e2e/storage/persistent_volumes.go
+//
 // Testing configurations of single a PV/PVC pair attached to a GCE PD
 var _ = Describe("[cloud-provider-gcp-e2e] Persistent Volumes", func() {
 	var (
