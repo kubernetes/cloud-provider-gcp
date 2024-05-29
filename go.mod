@@ -4,7 +4,6 @@ go 1.22.0
 
 require (
 	github.com/evanphx/json-patch v5.6.0+incompatible
-	github.com/gofrs/flock v0.7.1
 	github.com/google/go-cmp v0.6.0
 	github.com/google/go-tpm v0.3.2
 	github.com/prometheus/client_golang v1.16.0
@@ -34,7 +33,6 @@ require (
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
 	github.com/hashicorp/go-multierror v1.1.1
-	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.30.0
 	k8s.io/cloud-provider-gcp/crd v0.0.0-20240501223938-e2d14570fb4d
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
