@@ -29,16 +29,19 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	extensionsinternal "k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2edebug "k8s.io/kubernetes/test/e2e/framework/debug"
 	e2egpu "k8s.io/kubernetes/test/e2e/framework/gpu"
 	e2ejob "k8s.io/kubernetes/test/e2e/framework/job"
 	e2emanifest "k8s.io/kubernetes/test/e2e/framework/manifest"
+	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2eresource "k8s.io/kubernetes/test/e2e/framework/resource"
 	e2etestfiles "k8s.io/kubernetes/test/e2e/framework/testfiles"
 	imageutils "k8s.io/kubernetes/test/utils/image"
+	admissionapi "k8s.io/pod-security-admission/api"
 )
 
 const (
@@ -48,8 +51,98 @@ const (
 	driverInstallTimeout = 10 * time.Minute
 )
 
+var gpuResourceName v1.ResourceName
+
+// Migrated from k/k in tree test:
+//
+//	https://github.com/kubernetes/kubernetes/blob/release-1.30/test/e2e/scheduling/nvidia-gpus.go
+var _ = ginkgo.Describe("[cloud-provider-gcp-e2e] Device Plugin GPUs", func() {
+	f := framework.NewDefaultFramework("device-plugin-gpus")
+	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
+	ginkgo.It("run Nvidia GPU Device Plugin tests", func(ctx context.Context) {
+		rsgather := SetupNVIDIAGPUNode(ctx, f, true)
+		gpuPodNum := getGPUsAvailable(ctx, f) / getGPUsPerPod()
+		framework.Logf("Creating %d pods and have the pods run a CUDA app", gpuPodNum)
+		podList := []*v1.Pod{}
+		for i := int64(0); i < gpuPodNum; i++ {
+			podList = append(podList, e2epod.NewPodClient(f).Create(ctx, makeCudaAdditionDevicePluginTestPod()))
+		}
+		framework.Logf("Wait for all test pods to succeed")
+		// Wait for all pods to succeed
+		for _, pod := range podList {
+			e2epod.NewPodClient(f).WaitForSuccess(ctx, pod.Name, 5*time.Minute)
+			logContainers(ctx, f, pod)
+		}
+
+		framework.Logf("Stopping ResourceUsageGather")
+		constraints := make(map[string]e2edebug.ResourceConstraint)
+		// For now, just gets summary. Can pass valid constraints in the future.
+		summary, err := rsgather.StopAndSummarize([]int{50, 90, 100}, constraints)
+		f.TestSummaries = append(f.TestSummaries, summary)
+		framework.ExpectNoError(err, "getting resource usage summary")
+	})
+})
+
+var _ = ginkgo.Describe("[cloud-provider-gcp-e2e] GPUDevicePluginAcrossRecreate", func() {
+	f := framework.NewDefaultFramework("device-plugin-gpus-recreate")
+	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
+	ginkgo.It("run Nvidia GPU Device Plugin tests with a recreation", func(ctx context.Context) {
+		_ = SetupNVIDIAGPUNode(ctx, f, false)
+		// Job set to have 5 completions with parallelism of 1 to ensure that it lasts long enough to experience the node recreation
+		completions := int32(5)
+		ginkgo.By("Starting GPU job")
+		StartJob(ctx, f, completions)
+
+		job, err := e2ejob.GetJob(ctx, f.ClientSet, f.Namespace.Name, "cuda-add")
+		framework.ExpectNoError(err)
+
+		// make sure job is running by waiting for its first pod to start running
+		err = e2ejob.WaitForJobPodsRunning(ctx, f.ClientSet, f.Namespace.Name, job.Name, 1)
+		framework.ExpectNoError(err)
+
+		numNodes, err := e2enode.TotalRegistered(ctx, f.ClientSet)
+		framework.ExpectNoError(err)
+		nodes, err := e2enode.CheckReady(ctx, f.ClientSet, numNodes, framework.NodeReadyInitialTimeout)
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Recreating nodes")
+		err = RecreateNodes(f.ClientSet, nodes)
+		framework.ExpectNoError(err)
+		ginkgo.By("Done recreating nodes")
+
+		ginkgo.By("Waiting for gpu job to finish")
+		err = e2ejob.WaitForJobFinish(ctx, f.ClientSet, f.Namespace.Name, job.Name)
+		framework.ExpectNoError(err)
+		ginkgo.By("Done with gpu job")
+
+		gomega.Expect(job.Status.Failed).To(gomega.BeZero(), "Job pods failed during node recreation: %v", job.Status.Failed)
+
+		VerifyJobNCompletions(ctx, f, completions)
+	})
+})
+
+// Test is an interface for upgrade tests.
+type Test interface {
+	// Name should return a test name sans spaces.
+	Name() string
+
+	// Setup should create and verify whatever objects need to
+	// exist before the upgrade disruption starts.
+	Setup(ctx context.Context, f *framework.Framework)
+
+	// Test will run during the upgrade. When the upgrade is
+	// complete, done will be closed and final validation can
+	// begin.
+	Test(ctx context.Context, f *framework.Framework, done <-chan struct{}, upgrade UpgradeType)
+
+	// Teardown should clean up any objects that are created that
+	// aren't already cleaned up by the framework. This will
+	// always be called, even if Setup failed.
+	Teardown(ctx context.Context, f *framework.Framework)
+}
+
 // NvidiaGPUUpgradeTest tests that gpu resource is available before and after
-// a cluster upgrade.
+// a cluster upgrade. Implements "Test" interface above.
 type NvidiaGPUUpgradeTest struct {
 }
 
@@ -81,8 +174,6 @@ func (t *NvidiaGPUUpgradeTest) Test(ctx context.Context, f *framework.Framework,
 func (t *NvidiaGPUUpgradeTest) Teardown(ctx context.Context, f *framework.Framework) {
 	// rely on the namespace deletion to clean up everything
 }
-
-var gpuResourceName v1.ResourceName
 
 // SetupNVIDIAGPUNode install Nvidia Drivers and wait for Nvidia GPUs to be available on nodes
 func SetupNVIDIAGPUNode(ctx context.Context, f *framework.Framework, setupResourceGatherer bool) *e2edebug.ContainerResourceGatherer {
@@ -135,6 +226,68 @@ func SetupNVIDIAGPUNode(ctx context.Context, f *framework.Framework, setupResour
 	}, driverInstallTimeout, time.Second).Should(gomega.BeTrue())
 
 	return rsgather
+}
+
+func getGPUsAvailable(ctx context.Context, f *framework.Framework) int64 {
+	nodeList, err := f.ClientSet.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	framework.ExpectNoError(err, "getting node list")
+	var gpusAvailable int64
+	for _, node := range nodeList.Items {
+		if val, ok := node.Status.Allocatable[gpuResourceName]; ok {
+			gpusAvailable += (&val).Value()
+		}
+	}
+	return gpusAvailable
+}
+
+func getGPUsPerPod() int64 {
+	var gpusPerPod int64
+	gpuPod := makeCudaAdditionDevicePluginTestPod()
+	for _, container := range gpuPod.Spec.Containers {
+		if val, ok := container.Resources.Limits[gpuResourceName]; ok {
+			gpusPerPod += (&val).Value()
+		}
+	}
+	return gpusPerPod
+}
+
+func makeCudaAdditionDevicePluginTestPod() *v1.Pod {
+	podName := testPodNamePrefix + string(uuid.NewUUID())
+	testContainers := []v1.Container{
+		{
+			Name:  "vector-addition-cuda8",
+			Image: imageutils.GetE2EImage(imageutils.CudaVectorAdd),
+			Resources: v1.ResourceRequirements{
+				Limits: v1.ResourceList{
+					gpuResourceName: *resource.NewQuantity(1, resource.DecimalSI),
+				},
+			},
+		},
+		{
+			Name:  "vector-addition-cuda10",
+			Image: imageutils.GetE2EImage(imageutils.CudaVectorAdd2),
+			Resources: v1.ResourceRequirements{
+				Limits: v1.ResourceList{
+					gpuResourceName: *resource.NewQuantity(1, resource.DecimalSI),
+				},
+			},
+		},
+	}
+	testPod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: podName,
+		},
+		Spec: v1.PodSpec{
+			RestartPolicy: v1.RestartPolicyNever,
+		},
+	}
+
+	testPod.Spec.Containers = testContainers
+	if os.Getenv("TEST_MAX_GPU_COUNT") == "1" {
+		testPod.Spec.Containers = []v1.Container{testContainers[0]}
+	}
+	framework.Logf("testPod.Spec.Containers {%#v}", testPod.Spec.Containers)
+	return testPod
 }
 
 func logOSImages(ctx context.Context, f *framework.Framework) {
@@ -235,4 +388,12 @@ func podNames(pods []v1.Pod) []string {
 		originalPodNames[i] = p.ObjectMeta.Name
 	}
 	return originalPodNames
+}
+
+func logContainers(ctx context.Context, f *framework.Framework, pod *v1.Pod) {
+	for _, container := range pod.Spec.Containers {
+		logs, err := e2epod.GetPodLogs(ctx, f.ClientSet, f.Namespace.Name, pod.Name, container.Name)
+		framework.ExpectNoError(err, "Should be able to get container logs for container: %s", container.Name)
+		framework.Logf("Got container logs for %s:\n%v", container.Name, logs)
+	}
 }

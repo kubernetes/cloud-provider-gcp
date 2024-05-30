@@ -29,77 +29,19 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 
-	"k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/kubernetes/test/e2e/chaosmonkey"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/utils/junit"
 	admissionapi "k8s.io/pod-security-admission/api"
 )
 
-// UpgradeType represents different types of upgrades.
-type UpgradeType int
-
-const (
-	// MasterUpgrade indicates that only the master is being upgraded.
-	MasterUpgrade UpgradeType = iota
-
-	// NodeUpgrade indicates that only the nodes are being upgraded.
-	NodeUpgrade
-
-	// ClusterUpgrade indicates that both master and nodes are
-	// being upgraded.
-	ClusterUpgrade
-
-	// EtcdUpgrade indicates that only etcd is being upgraded (or migrated
-	// between storage versions).
-	EtcdUpgrade
-)
-
-// Test is an interface for upgrade tests.
-type Test interface {
-	// Name should return a test name sans spaces.
-	Name() string
-
-	// Setup should create and verify whatever objects need to
-	// exist before the upgrade disruption starts.
-	Setup(ctx context.Context, f *framework.Framework)
-
-	// Test will run during the upgrade. When the upgrade is
-	// complete, done will be closed and final validation can
-	// begin.
-	Test(ctx context.Context, f *framework.Framework, done <-chan struct{}, upgrade UpgradeType)
-
-	// Teardown should clean up any objects that are created that
-	// aren't already cleaned up by the framework. This will
-	// always be called, even if Setup failed.
-	Teardown(ctx context.Context, f *framework.Framework)
-}
-
-// Skippable is an interface that an upgrade test can implement to be
-// able to indicate that it should be skipped.
-type Skippable interface {
-	// Skip should return true if test should be skipped. upgCtx
-	// provides information about the upgrade that is going to
-	// occur.
-	Skip(upgCtx UpgradeContext) bool
-}
-
-// UpgradeContext contains information about all the stages of the
-// upgrade that is going to occur.
-type UpgradeContext struct {
-	Versions []VersionContext
-}
-
-// VersionContext represents a stage of the upgrade.
-type VersionContext struct {
-	Version   version.Version
-	NodeImage string
-}
-
 var upgradeTests = []Test{
 	&NvidiaGPUUpgradeTest{},
 }
 
+// Migrated from k/k in tree test:
+//
+//	https://github.com/kubernetes/kubernetes/blob/release-1.30/test/e2e/cloud/gcp/node/gpu.go
 var _ = ginkgo.Describe("[cloud-provider-gcp-e2e] GPU Upgrade", func() {
 	f := framework.NewDefaultFramework("gpu-upgrade")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
@@ -174,10 +116,6 @@ func (cma *chaosMonkeyAdapter) Test(ctx context.Context, sem *chaosmonkey.Semaph
 		})
 	}
 	defer ready()
-	if skippable, ok := cma.test.(Skippable); ok && skippable.Skip(cma.upgCtx) {
-		ginkgo.By("skipping test " + cma.test.Name())
-		return
-	}
 
 	ginkgo.DeferCleanup(cma.test.Teardown, cma.framework)
 	cma.test.Setup(ctx, cma.framework)

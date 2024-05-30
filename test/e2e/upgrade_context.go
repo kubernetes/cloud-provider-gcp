@@ -32,6 +32,37 @@ var (
 	upgradeImage  = e2econfig.Flags.String("upgrade-image", "", "Image to upgrade to (e.g. 'container_vm' or 'gci') if doing an upgrade test.")
 )
 
+// UpgradeType represents different types of upgrades.
+type UpgradeType int
+
+const (
+	// MasterUpgrade indicates that only the master is being upgraded.
+	MasterUpgrade UpgradeType = iota
+
+	// NodeUpgrade indicates that only the nodes are being upgraded.
+	NodeUpgrade
+
+	// ClusterUpgrade indicates that both master and nodes are
+	// being upgraded.
+	ClusterUpgrade
+
+	// EtcdUpgrade indicates that only etcd is being upgraded (or migrated
+	// between storage versions).
+	EtcdUpgrade
+)
+
+// UpgradeContext contains information about all the stages of the
+// upgrade that is going to occur.
+type UpgradeContext struct {
+	Versions []VersionContext
+}
+
+// VersionContext represents a stage of the upgrade.
+type VersionContext struct {
+	Version   utilversion.Version
+	NodeImage string
+}
+
 // GetUpgradeContext return UpgradeContext for GCP provider.
 func GetUpgradeContext(c discovery.DiscoveryInterface) (*UpgradeContext, error) {
 	current, err := c.ServerVersion()
