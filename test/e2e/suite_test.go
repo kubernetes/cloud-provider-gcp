@@ -31,6 +31,7 @@ import (
 	"github.com/onsi/gomega"
 	"k8s.io/kubernetes/test/e2e/framework"
 	frameworkconfig "k8s.io/kubernetes/test/e2e/framework/config"
+	"k8s.io/kubernetes/test/e2e/framework/testfiles"
 )
 
 const kubeconfigEnvVar = "KUBECONFIG"
@@ -53,6 +54,11 @@ func init() {
 	flag.Parse()
 
 	framework.AfterReadingAllFlags(&framework.TestContext)
+
+	// Set up the root directory, so resource manifests can be applied.
+	if framework.TestContext.RepoRoot != "" {
+		testfiles.AddFileSource(testfiles.RootFileSource{Root: framework.TestContext.RepoRoot})
+	}
 }
 
 func TestE2E(t *testing.T) {
