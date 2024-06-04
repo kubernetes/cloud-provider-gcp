@@ -17,9 +17,14 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 
+	"google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
 	gcecloud "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
@@ -115,4 +120,54 @@ func GetGCECloud() (*gcecloud.Cloud, error) {
 		return nil, fmt.Errorf("failed to convert CloudConfig.Provider to GCE provider: %#v", framework.TestContext.CloudConfig.Provider)
 	}
 	return p.gceCloud, nil
+}
+
+// IsGoogleAPIHTTPErrorCode returns true if the error is a google api
+// error matching the corresponding HTTP error code.
+func IsGoogleAPIHTTPErrorCode(err error, code int) bool {
+	apiErr, ok := err.(*googleapi.Error)
+	return ok && apiErr.Code == code
+}
+
+// GetInstanceTags gets tags from GCE instance with given name.
+func GetInstanceTags(cloudConfig framework.CloudConfig, instanceName string) *compute.Tags {
+	gceCloud := cloudConfig.Provider.(*Provider).gceCloud
+	res, err := gceCloud.ComputeServices().GA.Instances.Get(cloudConfig.ProjectID, cloudConfig.Zone,
+		instanceName).Do()
+	if err != nil {
+		framework.Failf("Failed to get instance tags for %v: %v", instanceName, err)
+	}
+	return res.Tags
+}
+
+// SetInstanceTags sets tags on GCE instance with given name.
+func SetInstanceTags(cloudConfig framework.CloudConfig, instanceName, zone string, tags []string) []string {
+	gceCloud := cloudConfig.Provider.(*Provider).gceCloud
+	// Re-get instance everytime because we need the latest fingerprint for updating metadata
+	resTags := GetInstanceTags(cloudConfig, instanceName)
+	_, err := gceCloud.ComputeServices().GA.Instances.SetTags(
+		cloudConfig.ProjectID, zone, instanceName,
+		&compute.Tags{Fingerprint: resTags.Fingerprint, Items: tags}).Do()
+	if err != nil {
+		framework.Failf("failed to set instance tags: %v", err)
+	}
+	framework.Logf("Sent request to set tags %v on instance: %v", tags, instanceName)
+	return resTags.Items
+}
+
+// GetClusterID returns cluster ID
+func GetClusterID(ctx context.Context, c clientset.Interface) (string, error) {
+	cm, err := c.CoreV1().ConfigMaps(metav1.NamespaceSystem).Get(ctx, gcecloud.UIDConfigMapName, metav1.GetOptions{})
+	if err != nil || cm == nil {
+		return "", fmt.Errorf("error getting cluster ID: %w", err)
+	}
+	clusterID, clusterIDExists := cm.Data[gcecloud.UIDCluster]
+	providerID, providerIDExists := cm.Data[gcecloud.UIDProvider]
+	if !clusterIDExists {
+		return "", fmt.Errorf("cluster ID not set")
+	}
+	if providerIDExists {
+		return providerID, nil
+	}
+	return clusterID, nil
 }
