@@ -43,6 +43,9 @@ const (
 	recreateNodeReadyAgainTimeout = 10 * time.Minute
 )
 
+// Migrated from k/k in-tree test:
+//
+//	https://github.com/kubernetes/kubernetes/blob/release-1.30/test/e2e/cloud/gcp/recreate_node.go
 var _ = ginkgo.Describe("[cloud-provider-gcp-e2e] Recreate Nodes", func() {
 	f := framework.NewDefaultFramework("recreate-nodes")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
