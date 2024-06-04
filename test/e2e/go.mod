@@ -8,6 +8,7 @@ require (
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.27.0
 	github.com/onsi/ginkgo/v2 v2.15.0
 	github.com/onsi/gomega v1.31.0
+	golang.org/x/oauth2 v0.13.0
 	google.golang.org/api v0.151.0
 	k8s.io/api v0.30.0
 	k8s.io/apimachinery v0.30.0
@@ -126,7 +127,6 @@ require (
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/mod v0.17.0 // indirect
 	golang.org/x/net v0.25.0 // indirect
-	golang.org/x/oauth2 v0.13.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/term v0.20.0 // indirect
