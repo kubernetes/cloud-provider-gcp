@@ -19,6 +19,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/apis/config/validation",
         "//vendor/k8s.io/apiserver/pkg/features",
         "//vendor/k8s.io/apiserver/pkg/server/healthz",
+        "//vendor/k8s.io/apiserver/pkg/server/options/encryptionconfig/metrics",
         "//vendor/k8s.io/apiserver/pkg/storage/value",
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/aes",
         "//vendor/k8s.io/apiserver/pkg/storage/value/encrypt/envelope",
