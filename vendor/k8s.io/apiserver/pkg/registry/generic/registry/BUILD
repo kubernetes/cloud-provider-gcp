@@ -28,6 +28,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apimachinery/pkg/watch",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager",
         "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/apiserver/pkg/registry/generic",
         "//vendor/k8s.io/apiserver/pkg/registry/rest",
