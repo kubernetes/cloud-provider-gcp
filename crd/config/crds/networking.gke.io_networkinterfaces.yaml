@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.12.0
+    controller-gen.kubebuilder.io/version: v0.15.0
   name: networkinterfaces.networking.gke.io
 spec:
   group: networking.gke.io
@@ -38,14 +38,19 @@ spec:
           to a network.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -54,11 +59,11 @@ spec:
               resource.
             properties:
               ipAddresses:
-                description: IpAddresses specifies the static IP addresses on this
-                  NetworkInterface. Each IPAddress may contain subnet mask. If subnet
-                  mask is not included, /32 is taken as default. For example, IPAddress
-                  input 1.2.3.4 will be taken as 1.2.3.4/32. Alternatively, the input
-                  can be 1.2.3.4/24 with subnet mask of /24.
+                description: |-
+                  IpAddresses specifies the static IP addresses on this NetworkInterface.
+                  Each IPAddress may contain subnet mask. If subnet mask is not included, /32 is taken as default.
+                  For example, IPAddress input 1.2.3.4 will be taken as 1.2.3.4/32. Alternatively, the input can be 1.2.3.4/24
+                  with subnet mask of /24.
                 items:
                   type: string
                 type: array
@@ -82,14 +87,16 @@ spec:
                   connects to.
                 properties:
                   nameservers:
-                    description: A list of nameserver IP addresses. Duplicated nameservers
-                      will be removed.
+                    description: |-
+                      A list of nameserver IP addresses.
+                      Duplicated nameservers will be removed.
                     items:
                       type: string
                     minItems: 1
                     type: array
                   searches:
-                    description: A list of DNS search domains for host-name lookup.
+                    description: |-
+                      A list of DNS search domains for host-name lookup.
                       Duplicated search paths will be removed.
                     items:
                       type: string
@@ -120,8 +127,9 @@ spec:
                   description: Route defines a routing table entry to a specific subnetwork.
                   properties:
                     to:
-                      description: To defines a destination IPv4 block in CIDR annotation.
-                        e.g. 192.168.0.0/24. The CIDR 0.0.0.0/0 will be rejected.
+                      description: |-
+                        To defines a destination IPv4 block in CIDR annotation. e.g. 192.168.0.0/24.
+                        The CIDR 0.0.0.0/0 will be rejected.
                       type: string
                   required:
                   - to
@@ -157,14 +165,19 @@ spec:
           to a network.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -173,11 +186,11 @@ spec:
               resource.
             properties:
               ipAddresses:
-                description: IpAddresses specifies the static IP addresses on this
-                  NetworkInterface. Each IPAddress may contain subnet mask. If subnet
-                  mask is not included, /32 is taken as default. For example, IPAddress
-                  input 1.2.3.4 will be taken as 1.2.3.4/32. Alternatively, the input
-                  can be 1.2.3.4/24 with subnet mask of /24.
+                description: |-
+                  IpAddresses specifies the static IP addresses on this NetworkInterface.
+                  Each IPAddress may contain subnet mask. If subnet mask is not included, /32 is taken as default.
+                  For example, IPAddress input 1.2.3.4 will be taken as 1.2.3.4/32. Alternatively, the input can be 1.2.3.4/24
+                  with subnet mask of /24.
                 items:
                   type: string
                 type: array
@@ -201,14 +214,16 @@ spec:
                   connects to.
                 properties:
                   nameservers:
-                    description: A list of nameserver IP addresses. Duplicated nameservers
-                      will be removed.
+                    description: |-
+                      A list of nameserver IP addresses.
+                      Duplicated nameservers will be removed.
                     items:
                       type: string
                     minItems: 1
                     type: array
                   searches:
-                    description: A list of DNS search domains for host-name lookup.
+                    description: |-
+                      A list of DNS search domains for host-name lookup.
                       Duplicated search paths will be removed.
                     items:
                       type: string
@@ -239,8 +254,9 @@ spec:
                   description: Route defines a routing table entry to a specific subnetwork.
                   properties:
                     to:
-                      description: To defines a destination IPv4 block in CIDR annotation.
-                        e.g. 192.168.0.0/24. The CIDR 0.0.0.0/0 will be rejected.
+                      description: |-
+                        To defines a destination IPv4 block in CIDR annotation. e.g. 192.168.0.0/24.
+                        The CIDR 0.0.0.0/0 will be rejected.
                       type: string
                   required:
                   - to
