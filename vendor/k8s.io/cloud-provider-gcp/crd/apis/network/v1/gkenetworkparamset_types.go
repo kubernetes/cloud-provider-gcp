@@ -20,7 +20,7 @@ type GKENetworkParamSet struct {
 }
 
 // DeviceModeType defines mode in which the devices will be used by the Pod
-// +kubebuilder:validation:Enum=DPDK-VFIO;NetDevice
+// +kubebuilder:validation:Enum=DPDK-VFIO;NetDevice;RDMA
 type DeviceModeType string
 
 const (
@@ -28,6 +28,8 @@ const (
 	DPDKVFIO DeviceModeType = "DPDK-VFIO"
 	// NetDevice indicates that NICs are bound to kernel driver and used as net device
 	NetDevice DeviceModeType = "NetDevice"
+	// RDMA indicates that NICs support RDMA
+	RDMA DeviceModeType = "RDMA"
 )
 
 // SecondaryRanges represents ranges of network addresses.

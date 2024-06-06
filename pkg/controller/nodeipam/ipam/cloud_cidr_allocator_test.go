@@ -22,6 +22,7 @@ package ipam
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +100,10 @@ func TestBoundedRetries(t *testing.T) {
 }
 
 func TestUpdateCIDRAllocation(t *testing.T) {
+	ipv4ipv6Stack := stackIPv4IPv6
+	ipv6ipv4Stack := stackIPv6IPv4
+	ipv6Stack := stackIPv6
+
 	tests := []struct {
 		name            string
 		fakeNodeHandler *testutil.FakeNodeHandler
@@ -106,6 +111,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 		gkeNwParams     []*networkv1.GKENetworkParamSet
 		nodeChanges     func(*v1.Node)
 		gceInstance     []*compute.Instance
+		stackType       *clusterStackType
 		expectErr       bool
 		expectErrMsg    string
 		expectedUpdate  bool
@@ -196,7 +202,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			expectErrMsg: "Node test has no ranges from which CIDRs can",
 		},
 		{
-			name: "empty single stack node",
+			name: "empty single stack node, single stack ipv4 cluster",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -239,7 +245,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			expectedUpdate: true,
 		},
 		{
-			name: "empty dualstack node",
+			name: "empty dual stack node, single stack ipv4 cluster",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -270,6 +276,51 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			},
 			nodeChanges: func(node *v1.Node) {
 				node.Spec.PodCIDR = "192.168.1.0/24"
+				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+			},
+			expectedUpdate: true,
+		},
+		{
+			name: "empty dual stack node, IPv4IPv6 cluster",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							Ipv6Address: "2001:db9::110",
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "192.168.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			stackType: &ipv4ipv6Stack,
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "192.168.1.0/24"
 				node.Spec.PodCIDRs = []string{"192.168.1.0/24", "2001:db9::/112"}
 				node.Status.Conditions = []v1.NodeCondition{
 					{
@@ -283,7 +334,92 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			expectedUpdate: true,
 		},
 		{
-			name: "want error - incorrect cidr",
+			name: "empty dual stack node, IPv6IPv4 cluster",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							Ipv6Address: "2001:db9::110",
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "192.168.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			stackType: &ipv6ipv4Stack,
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "2001:db9::/112"
+				node.Spec.PodCIDRs = []string{"2001:db9::/112", "192.168.1.0/24"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+			},
+			expectedUpdate: true,
+		},
+		{
+			name: "empty single stack ipv6 node, single stack ipv6 cluster",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							Ipv6Address: "2001:db9::110",
+						},
+					},
+				},
+			},
+			stackType: &ipv6Stack,
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "2001:db9::/112"
+				node.Spec.PodCIDRs = []string{"2001:db9::/112"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+			},
+			expectedUpdate: true,
+		},
+		{
+			name: "want error - incorrect ipv6 cidr instead of address",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -312,12 +448,13 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			stackType:    &ipv4ipv6Stack,
 			nodeChanges:  func(node *v1.Node) {},
 			expectErr:    true,
 			expectErrMsg: "failed to parse strings",
 		},
 		{
-			name: "want error - incorrect dualstack cidr",
+			name: "want error - incorrect ipv4 address instead of ipv6 address",
 			fakeNodeHandler: &testutil.FakeNodeHandler{
 				Existing: []*v1.Node{
 					{
@@ -346,6 +483,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			stackType:    &ipv4ipv6Stack,
 			nodeChanges:  func(node *v1.Node) {},
 			expectErr:    true,
 			expectErrMsg: "err: IPs are not dual stack",
@@ -1320,6 +1458,11 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			wantNode := tc.fakeNodeHandler.Existing[0].DeepCopy()
 			tc.nodeChanges(wantNode)
 
+			stackType := stackIPv4
+			if tc.stackType != nil {
+				stackType = *tc.stackType
+			}
+
 			ca := &cloudCIDRAllocator{
 				client:         tc.fakeNodeHandler,
 				cloud:          fakeGCE,
@@ -1328,6 +1471,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				nodesSynced:    fakeNodeInformer.Informer().HasSynced,
 				networksLister: nwInformer.Lister(),
 				gnpLister:      gnpInformer.Lister(),
+				stackType:      stackType,
 			}
 
 			// test
@@ -1407,5 +1551,91 @@ func interfaces(network, subnetwork, networkIP string, aliasIPRanges []*compute.
 		Network:       network,
 		Subnetwork:    subnetwork,
 		NetworkIP:     networkIP,
+	}
+}
+
+func TestIsIP4_net_nil(t *testing.T) {
+	if isIP4(nil) != false {
+		t.Fatalf("isIP4(nil) = true, want false")
+	}
+}
+
+func TestIsIP4_ip_nil(t *testing.T) {
+	ipnet := &net.IPNet{IP: nil}
+	if isIP4(ipnet) != false {
+		t.Fatalf("isIP4(%+v) = true, want false", ipnet)
+	}
+}
+
+func TestIsIP4(t *testing.T) {
+	testCases := []struct {
+		desc string
+		cidr string
+		want bool
+	}{
+		{
+			desc: "ipv4 cidr",
+			cidr: "10.1.0.0/16",
+			want: true,
+		},
+		{
+			desc: "ipv6 cidr",
+			cidr: "2001:db9::/110",
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		_, ipnet, err := net.ParseCIDR(tc.cidr)
+		if err != nil {
+			t.Fatalf("net.ParseCIDR(%v): %v", tc.cidr, err)
+		}
+
+		if isIP4(ipnet) != tc.want {
+			t.Fatalf("ipIP4(%+v): %v, want %v", ipnet, isIP4(ipnet), tc.want)
+		}
+	}
+}
+
+func TestIsIP6_net_nil(t *testing.T) {
+	if isIP6(nil) != false {
+		t.Fatalf("isIP6(nil) = true, want false")
+	}
+}
+
+func TestIsIP6_ip_nil(t *testing.T) {
+	ipnet := &net.IPNet{IP: nil}
+	if isIP6(ipnet) != false {
+		t.Fatalf("isIP6(%+v) = true, want false", ipnet)
+	}
+}
+
+func TestIsIP6(t *testing.T) {
+	testCases := []struct {
+		desc string
+		cidr string
+		want bool
+	}{
+		{
+			desc: "ipv4 cidr",
+			cidr: "10.1.0.0/16",
+			want: false,
+		},
+		{
+			desc: "ipv6 cidr",
+			cidr: "2001:db9::/110",
+			want: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		_, ipnet, err := net.ParseCIDR(tc.cidr)
+		if err != nil {
+			t.Fatalf("net.ParseCIDR(%v): %v", tc.cidr, err)
+		}
+
+		if isIP6(ipnet) != tc.want {
+			t.Fatalf("ipIP6(%+v): %v, want %v", ipnet, isIP6(ipnet), tc.want)
+		}
 	}
 }

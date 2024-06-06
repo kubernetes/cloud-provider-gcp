@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	compute "google.golang.org/api/compute/v1"
+	compute "google.golang.org/api/compute/v0.beta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	taintsutil "k8s.io/kubernetes/pkg/util/taints"
 
@@ -45,9 +45,10 @@ import (
 
 const (
 	// InstanceIDAnnotationKey is the node annotation key where the external ID is written.
-	InstanceIDAnnotationKey = "container.googleapis.com/instance_id"
-	lastAppliedLabelsKey    = "node.gke.io/last-applied-node-labels"
-	lastAppliedTaintsKey    = "node.gke.io/last-applied-node-taints"
+	InstanceIDAnnotationKey          = "container.googleapis.com/instance_id"
+	lastAppliedLabelsKey             = "node.gke.io/last-applied-node-labels"
+	lastAppliedTaintsKey             = "node.gke.io/last-applied-node-taints"
+	instanceTerminationAnnotationKey = "node.gke.io/machine-termination-datetime"
 )
 
 var errNoMetadata = fmt.Errorf("instance did not have 'kube-labels' metadata")
@@ -158,6 +159,10 @@ func newNodeAnnotator(client clientset.Interface, nodeInformer coreinformers.Nod
 					node.ObjectMeta.Labels["autoscaling.gke.io/provisioning-request"] = *resizeRequestName
 					return true
 				},
+			},
+			{
+				name:     "machine-termination-reconciler",
+				annotate: annotateMachineTermination,
 			},
 			{
 				name: "taints-reconciler",
@@ -479,4 +484,19 @@ func serializeTaints(taints []core.Taint) string {
 	// Sort taints to avoid test flakes.
 	sort.Strings(taintElements)
 	return strings.Join(taintElements, ",")
+}
+
+func annotateMachineTermination(node *core.Node, instance *compute.Instance) bool {
+	if instance == nil || instance.ResourceStatus == nil || instance.ResourceStatus.Scheduling == nil {
+		return false
+	}
+	termination := instance.ResourceStatus.Scheduling.TerminationTimestamp
+	if termination == "" {
+		return false
+	}
+	if node.ObjectMeta.Annotations == nil {
+		node.ObjectMeta.Annotations = make(map[string]string)
+	}
+	node.ObjectMeta.Annotations[instanceTerminationAnnotationKey] = termination
+	return true
 }

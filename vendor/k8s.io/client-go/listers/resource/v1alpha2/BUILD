@@ -1,0 +1,24 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "v1alpha2",
+    srcs = [
+        "expansion_generated.go",
+        "podschedulingcontext.go",
+        "resourceclaim.go",
+        "resourceclaimparameters.go",
+        "resourceclaimtemplate.go",
+        "resourceclass.go",
+        "resourceclassparameters.go",
+        "resourceslice.go",
+    ],
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/listers/resource/v1alpha2",
+    importpath = "k8s.io/client-go/listers/resource/v1alpha2",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/k8s.io/api/resource/v1alpha2",
+        "//vendor/k8s.io/apimachinery/pkg/api/errors",
+        "//vendor/k8s.io/apimachinery/pkg/labels",
+        "//vendor/k8s.io/client-go/tools/cache",
+    ],
+)
