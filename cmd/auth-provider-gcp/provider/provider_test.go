@@ -26,7 +26,7 @@ import (
 	"testing"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
+	"k8s.io/cloud-provider-gcp/providers/gce/gcpcredential"
 	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1"
 )
 

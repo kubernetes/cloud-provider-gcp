@@ -13,7 +13,7 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp/provider",
     deps = [
         "//pkg/credentialconfig",
-        "//pkg/gcpcredential",
+        "//providers/gce/gcpcredential",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1:credentialprovider",
     ],
@@ -24,7 +24,7 @@ go_test(
     srcs = ["provider_test.go"],
     embed = [":provider"],
     deps = [
-        "//pkg/gcpcredential",
+        "//providers/gce/gcpcredential",
         "//vendor/k8s.io/apimachinery/pkg/util/net",
         "//vendor/k8s.io/kubelet/pkg/apis/credentialprovider/v1:credentialprovider",
     ],
