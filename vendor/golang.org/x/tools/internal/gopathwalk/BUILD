@@ -6,5 +6,4 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/internal/gopathwalk",
     importpath = "golang.org/x/tools/internal/gopathwalk",
     visibility = ["//vendor/golang.org/x/tools:__subpackages__"],
-    deps = ["//vendor/golang.org/x/tools/internal/fastwalk"],
 )
