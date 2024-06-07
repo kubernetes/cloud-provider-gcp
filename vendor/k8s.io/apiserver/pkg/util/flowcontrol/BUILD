@@ -9,6 +9,7 @@ go_library(
         "apf_filter.go",
         "conc_alloc.go",
         "formatting.go",
+        "max_seats.go",
         "rule.go",
         "watch_tracker.go",
     ],

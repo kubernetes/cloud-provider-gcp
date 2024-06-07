@@ -14,5 +14,8 @@ go_library(
         "//vendor/golang.org/x/mod/semver",
         "//vendor/golang.org/x/sys/execabs",
         "//vendor/golang.org/x/tools/internal/event",
+        "//vendor/golang.org/x/tools/internal/event/keys",
+        "//vendor/golang.org/x/tools/internal/event/label",
+        "//vendor/golang.org/x/tools/internal/event/tag",
     ],
 )
