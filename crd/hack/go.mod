@@ -1,6 +1,6 @@
 module k8s.io/cloud-provider-gcp/crd/hack
 
-go 1.19
+go 1.20
 
 require (
 	k8s.io/code-generator v0.27.1
