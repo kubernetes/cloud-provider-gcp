@@ -807,6 +807,15 @@ function construct-linux-kubelet-flags {
       flags+=" --resolv-conf=/run/systemd/resolve/resolv.conf"
     fi
   fi
+  
+  # Conditionally add the graceful shutdown flags
+  if [[ -n "${SHUTDOWN_GRACE_PERIOD:-}" ]]; then
+    flags+=" --shutdown-grace-period=${SHUTDOWN_GRACE_PERIOD}"
+  fi
+  if [[ -n "${SHUTDOWN_GRACE_PERIOD_CRITICAL_PODS:-}" ]]; then
+    flags+=" --shutdown-grace-period-critical-pods=${SHUTDOWN_GRACE_PERIOD_CRITICAL_PODS}"
+  fi
+
   flags+=" --volume-plugin-dir=${VOLUME_PLUGIN_DIR}"
   local node_labels
   node_labels="$(build-linux-node-labels "${node_type}")"
