@@ -68,7 +68,7 @@ func newTestNodeIpamController(clusterCIDR []*net.IPNet, serviceCIDR *net.IPNet,
 // TestNewNodeIpamControllerWithCIDRMasks tests if the controller can be
 // created with combinations of network CIDRs and masks.
 func TestNewNodeIpamControllerWithCIDRMasks(t *testing.T) {
-	emptyServiceCIDR := ""
+	emptyCIDR := ""
 	for _, tc := range []struct {
 		desc                 string
 		clusterCIDR          string
@@ -78,20 +78,132 @@ func TestNewNodeIpamControllerWithCIDRMasks(t *testing.T) {
 		allocatorType        ipam.CIDRAllocatorType
 		wantFatal            bool
 	}{
-		{"valid_range_allocator", "10.0.0.0/21", "10.1.0.0/21", emptyServiceCIDR, []int{24}, ipam.RangeAllocatorType, false},
-
-		{"valid_range_allocator_dualstack", "10.0.0.0/21,2000::/10", "10.1.0.0/21", emptyServiceCIDR, []int{24, 98}, ipam.RangeAllocatorType, false},
-		{"valid_range_allocator_dualstack_dualstackservice", "10.0.0.0/21,2000::/10", "10.1.0.0/21", "3000::/10", []int{24, 98}, ipam.RangeAllocatorType, false},
-
-		{"valid_cloud_allocator", "10.0.0.0/21", "10.1.0.0/21", emptyServiceCIDR, []int{24}, ipam.CloudAllocatorType, false},
-		{"valid_ipam_from_cluster", "10.0.0.0/21", "10.1.0.0/21", emptyServiceCIDR, []int{24}, ipam.IPAMFromClusterAllocatorType, false},
-		{"valid_ipam_from_cloud", "10.0.0.0/21", "10.1.0.0/21", emptyServiceCIDR, []int{24}, ipam.IPAMFromCloudAllocatorType, false},
-		{"valid_skip_cluster_CIDR_validation_for_cloud_allocator", "invalid", "10.1.0.0/21", emptyServiceCIDR, []int{24}, ipam.CloudAllocatorType, false},
-		{"invalid_cluster_CIDR", "invalid", "10.1.0.0/21", emptyServiceCIDR, []int{24}, ipam.IPAMFromClusterAllocatorType, true},
-		{"valid_CIDR_smaller_than_mask_cloud_allocator", "10.0.0.0/26", "10.1.0.0/21", emptyServiceCIDR, []int{24}, ipam.CloudAllocatorType, false},
-		{"invalid_CIDR_smaller_than_mask_other_allocators", "10.0.0.0/26", "10.1.0.0/21", emptyServiceCIDR, []int{24}, ipam.IPAMFromCloudAllocatorType, true},
-		{"invalid_serviceCIDR_contains_clusterCIDR", "10.0.0.0/23", "10.0.0.0/21", emptyServiceCIDR, []int{24}, ipam.IPAMFromClusterAllocatorType, true},
-		{"invalid_CIDR_mask_size", "10.0.0.0/24,2000::/64", "10.1.0.0/21", emptyServiceCIDR, []int{24, 48}, ipam.IPAMFromClusterAllocatorType, true},
+		{
+			"valid_range_allocator",
+			"10.0.0.0/21",
+			"10.1.0.0/21",
+			emptyCIDR,
+			[]int{24},
+			ipam.RangeAllocatorType,
+			false,
+		},
+		{
+			"valid_range_allocator_dualstack",
+			"10.0.0.0/21,2000::/10",
+			"10.1.0.0/21",
+			emptyCIDR,
+			[]int{24, 98},
+			ipam.RangeAllocatorType,
+			false,
+		},
+		{
+			"valid_range_allocator_dualstack_dualstackservice",
+			"10.0.0.0/21,2000::/10",
+			"10.1.0.0/21",
+			"3000::/10",
+			[]int{24, 98},
+			ipam.RangeAllocatorType,
+			false,
+		},
+		{
+			"valid_cloud_allocator_ipv4",
+			"10.0.0.0/21",
+			"10.1.0.0/21",
+			emptyCIDR,
+			[]int{24},
+			ipam.CloudAllocatorType,
+			false,
+		},
+		{
+			"valid_cloud_allocator_dualstack",
+			"10.0.0.0/21,2000::/10",
+			"10.1.0.0/21",
+			"3000::/10",
+			[]int{24},
+			ipam.CloudAllocatorType,
+			false,
+		},
+		{
+			"valid_cloud_allocator_ipv6",
+			"2000::/10",
+			"3000::/10",
+			emptyCIDR,
+			[]int{24},
+			ipam.CloudAllocatorType,
+			false,
+		},
+		{
+			"valid_ipam_from_cluster",
+			"10.0.0.0/21",
+			"10.1.0.0/21",
+			emptyCIDR,
+			[]int{24},
+			ipam.IPAMFromClusterAllocatorType,
+			false,
+		},
+		{
+			"valid_ipam_from_cloud",
+			"10.0.0.0/21",
+			"10.1.0.0/21",
+			emptyCIDR,
+			[]int{24},
+			ipam.IPAMFromCloudAllocatorType,
+			false,
+		},
+		{
+			"valid_skip_cluster_CIDR_validation_for_cloud_allocator",
+			"invalid",
+			"10.1.0.0/21",
+			emptyCIDR,
+			[]int{24},
+			ipam.CloudAllocatorType,
+			false,
+		},
+		{
+			"invalid_cluster_CIDR",
+			"invalid",
+			"10.1.0.0/21",
+			emptyCIDR,
+			[]int{24},
+			ipam.IPAMFromClusterAllocatorType,
+			true,
+		},
+		{
+			"valid_CIDR_smaller_than_mask_cloud_allocator",
+			"10.0.0.0/26",
+			"10.1.0.0/21",
+			emptyCIDR,
+			[]int{24},
+			ipam.CloudAllocatorType,
+			false,
+		},
+		{
+			"invalid_CIDR_smaller_than_mask_other_allocators",
+			"10.0.0.0/26",
+			"10.1.0.0/21",
+			emptyCIDR,
+			[]int{24},
+			ipam.IPAMFromCloudAllocatorType,
+			true,
+		},
+		{
+			"invalid_serviceCIDR_contains_clusterCIDR",
+			"10.0.0.0/23",
+			"10.0.0.0/21",
+			emptyCIDR,
+			[]int{24},
+			ipam.IPAMFromClusterAllocatorType,
+			true,
+		},
+		{
+			"invalid_CIDR_mask_size",
+			"10.0.0.0/24,2000::/64",
+			"10.1.0.0/21",
+			emptyCIDR,
+			[]int{24, 48},
+			ipam.IPAMFromClusterAllocatorType,
+			true,
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			clusterCidrs, _ := netutils.ParseCIDRs(strings.Split(tc.clusterCIDR, ","))

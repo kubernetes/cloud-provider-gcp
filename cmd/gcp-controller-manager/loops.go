@@ -108,7 +108,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 			nodeAnnotateController, err := newNodeAnnotator(
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Core().V1().Nodes(),
-				controllerCtx.gcpCfg.Compute,
+				controllerCtx.gcpCfg.BetaCompute,
 			)
 			if err != nil {
 				return err

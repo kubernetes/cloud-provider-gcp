@@ -19,3 +19,4 @@ gazelle(
 )
 
 # gazelle:exclude crd
+# gazelle:exclude test/e2e

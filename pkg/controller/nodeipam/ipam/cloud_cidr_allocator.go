@@ -22,6 +22,7 @@ package ipam
 import (
 	"context"
 	"fmt"
+	"net"
 	"reflect"
 	"time"
 
@@ -57,6 +58,17 @@ import (
 
 const workqueueName = "cloudCIDRAllocator"
 
+// clusterStackType represents the cluster's IP family as per
+// https://kubernetes.io/docs/concepts/cluster-administration/networking/#cluster-network-ipfamilies
+type clusterStackType string
+
+const (
+	stackIPv4     clusterStackType = "IPv4"
+	stackIPv4IPv6 clusterStackType = "IPv4_IPv6"
+	stackIPv6IPv4 clusterStackType = "IPv6_IPv4"
+	stackIPv6     clusterStackType = "IPv6"
+)
+
 // cloudCIDRAllocator allocates node CIDRs according to IP address aliases
 // assigned by the cloud provider. In this case, the allocation and
 // deallocation is delegated to the external provider, and the controller
@@ -78,12 +90,14 @@ type cloudCIDRAllocator struct {
 
 	recorder record.EventRecorder
 	queue    workqueue.RateLimitingInterface
+
+	stackType clusterStackType
 }
 
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
 
 // NewCloudCIDRAllocator creates a new cloud CIDR allocator.
-func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeInformer informers.NodeInformer) (CIDRAllocator, error) {
+func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeInformer informers.NodeInformer, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
 	if client == nil {
 		klog.Fatalf("kubeClient is nil when starting NodeController")
 	}
@@ -99,6 +113,21 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		err := fmt.Errorf("cloudCIDRAllocator does not support %v provider", cloud.ProviderName())
 		return nil, err
 	}
+
+	// Default value for deployments where the primary service CIDR is not defined.
+	stackType := stackIPv4
+
+	// Based on validation performed in startNodeIpamController(), if there are 2 service CIDRs provided,
+	// they are of different family types.
+
+	if isIP4(allocatorParams.ServiceCIDR) && isIP6(allocatorParams.SecondaryServiceCIDR) {
+		stackType = stackIPv4IPv6
+	} else if isIP6(allocatorParams.ServiceCIDR) && isIP4(allocatorParams.SecondaryServiceCIDR) {
+		stackType = stackIPv6IPv4
+	} else if isIP6(allocatorParams.ServiceCIDR) && allocatorParams.SecondaryServiceCIDR == nil {
+		stackType = stackIPv6
+	}
+
 	ca := &cloudCIDRAllocator{
 		client:         client,
 		cloud:          gceCloud,
@@ -108,6 +137,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		nodesSynced:    nodeInformer.Informer().HasSynced,
 		recorder:       recorder,
 		queue:          workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
+		stackType:      stackType,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -311,20 +341,48 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 
 	cidrStrings := make([]string, 0)
 
-	if len(instance.NetworkInterfaces) == 0 || (len(instance.NetworkInterfaces) == 1 && len(instance.NetworkInterfaces[0].AliasIpRanges) == 0) {
+	// No Pod CIDRs can be allocated to a node, if there are no network interfaces;
+	// or if there is one network interface, but it has neither an IP alias nor an IPv6 address.
+	if len(instance.NetworkInterfaces) == 0 ||
+		(len(instance.NetworkInterfaces) == 1 &&
+			len(instance.NetworkInterfaces[0].AliasIpRanges) == 0 &&
+			ca.cloud.GetIPV6Address(instance.NetworkInterfaces[0]) == nil) {
+
 		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
 		return fmt.Errorf("failed to allocate cidr: Node %v has no ranges from which CIDRs can be allocated", node.Name)
 	}
 
-	// sets the v1.NodeNetworkUnavailable condition to False
+	// Sets the v1.NodeNetworkUnavailable condition to False.
 	ca.setNetworkCondition(node)
 
-	// nodes in clusters WITHOUT multi-networking are expected to have only 1 network-interface with 1 alias IP range.
-	if len(instance.NetworkInterfaces) == 1 && len(instance.NetworkInterfaces[0].AliasIpRanges) == 1 {
-		cidrStrings = append(cidrStrings, instance.NetworkInterfaces[0].AliasIpRanges[0].IpCidrRange)
-		ipv6Addr := ca.cloud.GetIPV6Address(instance.NetworkInterfaces[0])
-		if ipv6Addr != nil {
-			cidrStrings = append(cidrStrings, ipv6Addr.String())
+	// Nodes in clusters WITHOUT multi-networking are expected to have only 1 network-interface
+	// with 1 alias IPv4 range and/or 1 IPv6 address. Multi-network clusters may have 1 interface
+	// with multiple aliases.
+	if len(instance.NetworkInterfaces) == 1 &&
+		(len(instance.NetworkInterfaces[0].AliasIpRanges) == 1 ||
+			ca.cloud.GetIPV6Address(instance.NetworkInterfaces[0]) != nil) {
+
+		ipv4CIDR := ""
+		if len(instance.NetworkInterfaces[0].AliasIpRanges) > 0 {
+			ipv4CIDR = instance.NetworkInterfaces[0].AliasIpRanges[0].IpCidrRange
+		}
+
+		ipv6CIDR := ""
+		if addr := ca.cloud.GetIPV6Address(instance.NetworkInterfaces[0]); addr != nil {
+			ipv6CIDR = addr.String()
+		}
+
+		switch {
+		case ca.stackType == stackIPv4 && ipv4CIDR != "":
+			cidrStrings = []string{ipv4CIDR}
+		case ca.stackType == stackIPv4IPv6 && ipv4CIDR != "" && ipv6CIDR != "":
+			cidrStrings = []string{ipv4CIDR, ipv6CIDR}
+		case ca.stackType == stackIPv6IPv4 && ipv4CIDR != "" && ipv6CIDR != "":
+			cidrStrings = []string{ipv6CIDR, ipv4CIDR}
+		case ca.stackType == stackIPv6 && ipv6CIDR != "":
+			cidrStrings = []string{ipv6CIDR}
+		default:
+			return fmt.Errorf("failed to allocate cidr: Node %v has no ranges from which CIDRs can be allocated for the cluster stack family %s", node.Name, ca.stackType)
 		}
 	} else {
 		// multi-networking enabled clusters
@@ -461,4 +519,20 @@ func (ca *cloudCIDRAllocator) ReleaseCIDR(node *v1.Node) error {
 	klog.V(2).Infof("Node %v PodCIDR (%v) will be released by external cloud provider (not managed by controller)",
 		node.Name, node.Spec.PodCIDR)
 	return nil
+}
+
+// isIP4 returns true if `ipnet` is not nil and holds a non-nil IPv4 IP address, false otherwise.
+func isIP4(ipnet *net.IPNet) bool {
+	if ipnet == nil || ipnet.IP == nil {
+		return false
+	}
+	return ipnet.IP.To4() != nil
+}
+
+// isIP6 returns true if `ipnet` is not nil and holds a non-nil IPv6 IP address not representable as an IPv4 address, false otherwise.
+func isIP6(ipnet *net.IPNet) bool {
+	if ipnet == nil || ipnet.IP == nil {
+		return false
+	}
+	return ipnet.IP.To4() == nil && ipnet.IP.To16() != nil
 }
