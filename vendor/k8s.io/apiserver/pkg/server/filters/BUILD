@@ -41,5 +41,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/request",
         "//vendor/k8s.io/client-go/kubernetes/scheme",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/utils/clock",
     ],
 )

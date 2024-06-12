@@ -76,50 +76,71 @@ var (
 	FirewallChangeMsg = fmt.Sprintf("%s %s %s", v1.EventTypeNormal, eventReasonManualChange, eventMsgFirewallChange)
 )
 
-func createAndInsertNodes(gce *Cloud, nodeNames []string, zoneName string) ([]*v1.Node, error) {
-	nodes := []*v1.Node{}
+type instanceSpec struct {
+	name string
+	zone string
+}
 
-	for _, name := range nodeNames {
+// createInstances creates the underlying instances given by the nodeSpec and
+// returns the associated Kubernetes node objects.
+func createInstances(gce *Cloud, instances []instanceSpec) ([]*v1.Node, error) {
+	var ret []*v1.Node
+
+	for _, inst := range instances {
 		// Inserting the same node name twice causes an error - here we check if
 		// the instance exists already before insertion.
 		// TestUpdateExternalLoadBalancer inserts a new node, and relies on an older
 		// node to already have been inserted.
-		instance, _ := gce.getInstanceByName(name)
+		instance, _ := gce.getInstanceByName(inst.name)
 
 		if instance == nil {
 			err := gce.InsertInstance(
 				gce.ProjectID(),
-				zoneName,
+				inst.zone,
 				&compute.Instance{
-					Name: name,
+					Name: inst.name,
 					Tags: &compute.Tags{
-						Items: []string{name},
+						Items: []string{inst.name},
 					},
 					// add Instance.Zone, otherwise InstanceID() won't return a right instanceID.
-					Zone: zoneName,
+					Zone: inst.zone,
 				},
 			)
 			if err != nil {
-				return nodes, err
+				return ret, err
 			}
 		}
 
-		nodes = append(
-			nodes,
-			&v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: name,
-					Labels: map[string]string{
-						v1.LabelHostname:     name,
-						v1.LabelTopologyZone: zoneName,
-					},
+		newNode := &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: inst.name,
+				Labels: map[string]string{
+					v1.LabelHostname:              inst.name,
+					v1.LabelFailureDomainBetaZone: inst.zone,
 				},
 			},
-		)
-
+			Spec: v1.NodeSpec{
+				ProviderID: fmt.Sprintf("gce://%s/%s/%s", gce.ProjectID(), inst.zone, inst.name),
+			},
+			Status: v1.NodeStatus{
+				NodeInfo: v1.NodeSystemInfo{KubeProxyVersion: "v1.7.2"},
+			},
+		}
+		ret = append(ret, newNode)
 	}
 
-	return nodes, nil
+	return ret, nil
+}
+
+func createAndInsertNodes(gce *Cloud, nodeNames []string, zoneName string) ([]*v1.Node, error) {
+	var specs []instanceSpec
+	for _, name := range nodeNames {
+		specs = append(specs, instanceSpec{
+			name: name,
+			zone: zoneName,
+		})
+	}
+	return createInstances(gce, specs)
 }
 
 func assertExternalLbResources(t *testing.T, gce *Cloud, apiService *v1.Service, vals TestClusterValues, nodeNames []string) {
