@@ -40,24 +40,33 @@ type SecondaryRanges struct {
 
 // GKENetworkParamSetSpec contains the specifications for network object
 type GKENetworkParamSetSpec struct {
-	// VPC speficies the VPC to which the network belongs.
-	// +required
-	VPC string `json:"vpc"`
+	// VPC specifies the VPC to which the network belongs. Mutually exclusive with NetworkAttachment.
+	// This field is required when not connecting across a network attachment
+	// +optional
+	VPC string `json:"vpc,omitempty"`
 
-	// VPCSubnet is the path of the VPC subnet
-	// +required
-	VPCSubnet string `json:"vpcSubnet"`
+	// VPCSubnet is the path of the VPC subnet. Must be set if specifying VPC. Mutually exclusive with
+	// NetworkAttachment. This field is required when not connecting across a network attachment
+	// +optional
+	VPCSubnet string `json:"vpcSubnet,omitempty"`
 
 	// DeviceMode indicates the mode in which the devices will be used by the Pod.
-	// This field is required and valid only for "Device" typed network
+	// This field is required and valid only for "Device" typed network. Mutually exclusive with
+	// NetworkAttachment
 	// +optional
 	DeviceMode DeviceModeType `json:"deviceMode,omitempty"`
 
 	// PodIPv4Ranges specify the names of the secondary ranges of the VPC subnet
 	// used to allocate pod IPs for the network.
-	// This field is required and valid only for L3 typed network
+	// This field is required and valid only for L3 typed network. Mutually exclusive with
+	// NetworkAttachment
 	// +optional
 	PodIPv4Ranges *SecondaryRanges `json:"podIPv4Ranges,omitempty"`
+
+	// NetworkAttachment specifies the network attachment to connect to. Mutually exclusive with VPC,
+	// VPCSubnet, DeviceMode, and PodIPv4Ranges
+	// +optional
+	NetworkAttachment string `json:"networkAttachment,omitempty"`
 }
 
 // NetworkRanges represents ranges of network addresses.

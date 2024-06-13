@@ -44,17 +44,24 @@ spec:
               deviceMode:
                 description: |-
                   DeviceMode indicates the mode in which the devices will be used by the Pod.
-                  This field is required and valid only for "Device" typed network
+                  This field is required and valid only for "Device" typed network. Mutually exclusive with
+                  NetworkAttachment
                 enum:
                 - DPDK-VFIO
                 - NetDevice
                 - RDMA
                 type: string
+              networkAttachment:
+                description: |-
+                  NetworkAttachment specifies the network attachment to connect to. Mutually exclusive with VPC,
+                  VPCSubnet, DeviceMode, and PodIPv4Ranges
+                type: string
               podIPv4Ranges:
                 description: |-
                   PodIPv4Ranges specify the names of the secondary ranges of the VPC subnet
                   used to allocate pod IPs for the network.
-                  This field is required and valid only for L3 typed network
+                  This field is required and valid only for L3 typed network. Mutually exclusive with
+                  NetworkAttachment
                 properties:
                   rangeNames:
                     items:
@@ -65,14 +72,15 @@ spec:
                 - rangeNames
                 type: object
               vpc:
-                description: VPC speficies the VPC to which the network belongs.
+                description: |-
+                  VPC specifies the VPC to which the network belongs. Mutually exclusive with NetworkAttachment.
+                  This field is required when not connecting across a network attachment
                 type: string
               vpcSubnet:
-                description: VPCSubnet is the path of the VPC subnet
+                description: |-
+                  VPCSubnet is the path of the VPC subnet. Must be set if specifying VPC. Mutually exclusive with
+                  NetworkAttachment. This field is required when not connecting across a network attachment
                 type: string
-            required:
-            - vpc
-            - vpcSubnet
             type: object
           status:
             description: GKENetworkParamSetStatus contains the status information
