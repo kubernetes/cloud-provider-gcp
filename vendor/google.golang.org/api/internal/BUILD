@@ -5,7 +5,9 @@ go_library(
     srcs = [
         "conn_pool.go",
         "creds.go",
+        "dca.go",
         "settings.go",
+        "version.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/api/internal",
     importpath = "google.golang.org/api/internal",
@@ -13,6 +15,7 @@ go_library(
     deps = [
         "//vendor/golang.org/x/oauth2",
         "//vendor/golang.org/x/oauth2/google",
+        "//vendor/google.golang.org/api/internal/cert",
         "//vendor/google.golang.org/api/internal/impersonate",
         "//vendor/google.golang.org/grpc",
     ],

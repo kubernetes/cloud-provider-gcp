@@ -30,45 +30,78 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ga "google.golang.org/api/compute/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 )
 
 func TestInstanceExists(t *testing.T) {
+	const instanceName = "test-node-1"
+	providerID := fmt.Sprintf(
+		"gce://%s/%s/%s",
+		DefaultTestClusterValues().ProjectID,
+		DefaultTestClusterValues().ZoneName,
+		instanceName)
+
 	gce, err := fakeGCECloud(DefaultTestClusterValues())
 	require.NoError(t, err)
 
-	nodeNames := []string{"test-node-1"}
-	_, err = createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+	_, err = createInstances(gce, []instanceSpec{
+		{
+			name: instanceName,
+			zone: DefaultTestClusterValues().ZoneName,
+		},
+	})
 	require.NoError(t, err)
 
 	testcases := []struct {
-		name        string
-		nodeName    string
-		exist       bool
-		expectedErr error
+		name          string
+		nodeName      string
+		hasProviderID bool
+
+		exist   bool
+		wantErr bool
 	}{
 		{
-			name:        "node exist",
-			nodeName:    "test-node-1",
-			exist:       true,
-			expectedErr: nil,
+			name:     "exists, Node has provider ID",
+			nodeName: instanceName,
+			exist:    true,
+			wantErr:  false,
 		},
 		{
-			name:        "node not exist",
-			nodeName:    "test-node-2",
-			exist:       false,
-			expectedErr: fmt.Errorf("failed to get instance ID from cloud provider: instance not found"),
+			name:     "exists, Node does not have provider ID",
+			nodeName: instanceName,
+			exist:    true,
+			wantErr:  false,
+		},
+		{
+			name:     "does not exist, Node has provider ID",
+			nodeName: "test-node-2",
+			exist:    false,
+			wantErr:  false,
+		},
+		{
+			name:     "does not exist, Node does not have provider ID",
+			nodeName: "test-node-2",
+			exist:    false,
+			wantErr:  false,
 		},
 	}
 
 	for _, test := range testcases {
 		t.Run(test.name, func(t *testing.T) {
 			node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: test.nodeName}}
+			if test.hasProviderID {
+				node.Spec.ProviderID = providerID
+			}
 			exist, err := gce.InstanceExists(context.TODO(), node)
-			assert.Equal(t, test.expectedErr, err, test.name)
-			assert.Equal(t, test.exist, exist, test.name)
+
+			if gotErr := err != nil; gotErr != test.wantErr {
+				t.Errorf("gce.InstanceExists() = %t, %v; gotErr = %t, want %t", exist, err, gotErr, test.wantErr)
+			}
+			if exist != test.exist {
+				t.Errorf("gce.InstanceExists() = %t, %v; want %t, _", exist, err, test.exist)
+			}
 		})
 	}
 }
