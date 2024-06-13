@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "keys.go",
         "standard.go",
+        "util.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/internal/event/keys",
     importpath = "golang.org/x/tools/internal/event/keys",

@@ -133,7 +133,7 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 	// GCE load balancers do not support services with LoadBalancerClass set. LoadBalancerClass can't be updated for an existing load balancer, so here we don't need to clean any resources.
 	// Check API documentation for .Spec.LoadBalancerClass for details on when this field is allowed to be changed.
 	if svc.Spec.LoadBalancerClass != nil {
-		klog.Infof("Ignoring service %s/%s using load balancer class %s, it is not supported by this controller.", svc.Namespace, svc.Name, svc.Spec.LoadBalancerClass)
+		klog.Infof("Ignoring service %s/%s using load balancer class %s, it is not supported by this controller.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
 		return nil, cloudprovider.ImplementedElsewhere
 	}
 
@@ -215,7 +215,7 @@ func (g *Cloud) UpdateLoadBalancer(ctx context.Context, clusterName string, svc 
 	// GCE load balancers do not support services with LoadBalancerClass set. LoadBalancerClass can't be updated for an existing load balancer, so here we don't need to clean any resources.
 	// Check API documentation for .Spec.LoadBalancerClass for details on when this field is allowed to be changed.
 	if svc.Spec.LoadBalancerClass != nil {
-		klog.Infof("Ignoring service %s/%s using load balancer class %s, it is not supported by this controller.", svc.Namespace, svc.Name, svc.Spec.LoadBalancerClass)
+		klog.Infof("Ignoring service %s/%s using load balancer class %s, it is not supported by this controller.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
 		return cloudprovider.ImplementedElsewhere
 	}
 

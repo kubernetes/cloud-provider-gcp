@@ -12,7 +12,6 @@ go_library(
     visibility = ["//vendor/golang.org/x/tools:__subpackages__"],
     deps = [
         "//vendor/golang.org/x/mod/semver",
-        "//vendor/golang.org/x/sys/execabs",
         "//vendor/golang.org/x/tools/internal/event",
         "//vendor/golang.org/x/tools/internal/event/keys",
         "//vendor/golang.org/x/tools/internal/event/label",
