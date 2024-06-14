@@ -20,11 +20,11 @@ import (
 	"context"
 	"fmt"
 
+	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"

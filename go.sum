@@ -6,6 +6,8 @@ cloud.google.com/go/compute/metadata v0.2.3/go.mod h1:VAV5nSsACxMJvgaAuX6Pk2Aawl
 github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 h1:UQHMgLO+TxOElx5B5HZ4hJQsoJ/PvUvKRhJHDQXO8P8=
 github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
+github.com/GoogleCloudPlatform/gke-networking-api v0.0.0-20240607071244-6b5fc8e50568 h1:o72XyltkahvsvZb+z/4WjWhsyR2irCrc1Hq0qWt265g=
+github.com/GoogleCloudPlatform/gke-networking-api v0.0.0-20240607071244-6b5fc8e50568/go.mod h1:EAAsxeXNK8uHG+/3jnJGG7dVruhDRx7i6GEWIjHMyeQ=
 github.com/GoogleCloudPlatform/k8s-cloud-provider v1.25.0 h1:lwL1vLWmdBJ5h+StMEN6+GMz1J/Y0yUU3RDv+QBy+Q4=
 github.com/GoogleCloudPlatform/k8s-cloud-provider v1.25.0/go.mod h1:UTfhBnADaj2rybPT049NScSh7Eall3u2ib43wmz3deg=
 github.com/NYTimes/gziphandler v1.1.1 h1:ZUDjpQae29j0ryrS0u/B8HZfJBtBQHjqw2rQ2cqUQ3I=
@@ -520,8 +522,6 @@ k8s.io/client-go v0.30.0 h1:sB1AGGlhY/o7KCyCEQ0bPWzYDL0pwOZO4vAtTSh/gJQ=
 k8s.io/client-go v0.30.0/go.mod h1:g7li5O5256qe6TYdAMyX/otJqMhIiGgTapdLchhmOaY=
 k8s.io/cloud-provider v0.30.0 h1:hz1MXkFjsyO167sRZVchXEi2YYMQ6kolBi79nuICjzw=
 k8s.io/cloud-provider v0.30.0/go.mod h1:iyVcGvDfmZ7m5cliI9TTHj0VTjYDNpc/K71Gp6hukjU=
-k8s.io/cloud-provider-gcp/crd v0.0.0-20240516180109-1f529adb1422 h1:0O7S4t/uunqGPMkiPNVrV11zQZ17t4yr81GK0UyjLtg=
-k8s.io/cloud-provider-gcp/crd v0.0.0-20240516180109-1f529adb1422/go.mod h1:pwe/XUjl1R7fqTAxPNxUU4F2kRi0KT6995nvpabTy0A=
 k8s.io/code-generator v0.30.0 h1:3VUVqHvWFSVSm9kqL/G6kD4ZwNdHF6J/jPyo3Jgjy3k=
 k8s.io/code-generator v0.30.0/go.mod h1:mBMZhfRR4IunJUh2+7LVmdcWwpouCH5+LNPkZ3t/v7Q=
 k8s.io/component-base v0.30.0 h1:cj6bp38g0ainlfYtaOQuRELh5KSYjhKxM+io7AUIk4o=

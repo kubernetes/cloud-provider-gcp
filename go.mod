@@ -32,10 +32,10 @@ require (
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
+	github.com/GoogleCloudPlatform/gke-networking-api v0.0.0-20240607071244-6b5fc8e50568
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.30.0
-	k8s.io/cloud-provider-gcp/crd v0.0.0-20240516180109-1f529adb1422
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
 	k8s.io/kubernetes v1.30.0
 )
