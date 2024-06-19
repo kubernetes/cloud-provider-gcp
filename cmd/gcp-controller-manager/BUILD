@@ -47,7 +47,6 @@ go_library(
         "//pkg/clientauthplugin/gcp",
         "//pkg/csrmetrics",
         "//pkg/nodeidentity",
-        "//pkg/tpmattest",
         "//providers/gce",
         "//vendor/cloud.google.com/go/compute/metadata",
         "//vendor/github.com/google/go-tpm/tpm2",
@@ -123,7 +122,6 @@ go_test(
     embed = [":gcp-controller-manager_lib"],
     deps = [
         "//pkg/nodeidentity",
-        "//pkg/tpmattest",
         "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/github.com/google/go-cmp/cmp/cmpopts",
         "//vendor/github.com/google/go-tpm/tpm2",

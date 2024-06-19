@@ -69,7 +69,7 @@ func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
 		webhook:      webhook,
 		ctx:          ctx,
 		retryBackoff: ClusterSigningGKERetryBackoff,
-		validators:   csrValidators(ctx),
+		validators:   csrValidators(),
 	}, nil
 }
 
