@@ -41,9 +41,6 @@ type controllerContext struct {
 	recorder                              record.EventRecorder
 	gcpCfg                                gcpConfig
 	clusterSigningGKEKubeconfig           string
-	csrApproverVerifyClusterMembership    bool
-	csrApproverAllowLegacyKubelet         bool
-	csrApproverListReferrersConfig        gceInstanceListReferrersConfig
 	authAuthorizeServiceAccountMappingURL string
 	authSyncNodeURL                       string
 	hmsAuthorizeSAMappingURL              string
