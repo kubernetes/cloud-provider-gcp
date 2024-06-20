@@ -81,12 +81,12 @@ var (
 	_ testing.FakeClient  = &Clientset{}
 )
 
-// NetworkingV1alpha1 retrieves the NetworkingV1alpha1Client
-func (c *Clientset) NetworkingV1alpha1() networkingv1alpha1.NetworkingV1alpha1Interface {
-	return &fakenetworkingv1alpha1.FakeNetworkingV1alpha1{Fake: &c.Fake}
-}
-
 // NetworkingV1 retrieves the NetworkingV1Client
 func (c *Clientset) NetworkingV1() networkingv1.NetworkingV1Interface {
 	return &fakenetworkingv1.FakeNetworkingV1{Fake: &c.Fake}
+}
+
+// NetworkingV1alpha1 retrieves the NetworkingV1alpha1Client
+func (c *Clientset) NetworkingV1alpha1() networkingv1alpha1.NetworkingV1alpha1Interface {
+	return &fakenetworkingv1alpha1.FakeNetworkingV1alpha1{Fake: &c.Fake}
 }
