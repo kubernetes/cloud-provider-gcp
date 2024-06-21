@@ -72,7 +72,6 @@ var (
 	authSyncNodeURL                       = pflag.String("auth-sync-node-url", "", "URL for reaching the Auth Service SyncNode API.")
 	hmsAuthorizeSAMappingURL              = pflag.String("hms-authorize-sa-mapping-url", "", "URL for reaching the Hosted Master Service AuthorizeSAMapping API.")
 	hmsSyncNodeURL                        = pflag.String("hms-sync-node-url", "", "URL for reaching the Hosted Master Service SyncNode API.")
-	kubeletReadOnlyCSRApprover            = pflag.Bool("kubelet-read-only-csr-approver", false, "Enable kubelet readonly csr approver or not")
 	autopilotEnabled                      = pflag.Bool("autopilot", false, "Is this a GKE Autopilot cluster.")
 	clearStalePodsOnNodeRegistration      = pflag.Bool("clearStalePodsOnNodeRegistration", false, "If true, after node registration, delete pods bound to old node.")
 	kubeconfigQPS                         = pflag.Float32("kubeconfig-qps", 100, "QPS to use while talking with kube-apiserver.")
@@ -111,7 +110,6 @@ func main() {
 		hmsAuthorizeSAMappingURL:              *hmsAuthorizeSAMappingURL,
 		hmsSyncNodeURL:                        *hmsSyncNodeURL,
 		healthz:                               healthz.NewHandler(),
-		kubeletReadOnlyCSRApprover:            *kubeletReadOnlyCSRApprover,
 		autopilotEnabled:                      *autopilotEnabled,
 		clearStalePodsOnNodeRegistration:      *clearStalePodsOnNodeRegistration,
 	}
@@ -171,9 +169,6 @@ type controllerManager struct {
 	hmsSyncNodeURL                        string
 	autopilotEnabled                      bool
 	clearStalePodsOnNodeRegistration      bool
-
-	// Kubelet Readonly CSR Approver
-	kubeletReadOnlyCSRApprover bool
 
 	// Fields initialized from other sources.
 	gcpConfig            gcpConfig
