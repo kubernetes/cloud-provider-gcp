@@ -30,7 +30,6 @@ go_library(
         "main.go",
         "node_annotator.go",
         "node_csr_approver.go",
-        "oidc_csr_approver.go",
     ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager",
     visibility = [
@@ -112,7 +111,6 @@ go_test(
         "istiod_csr_approver_test.go",
         "node_annotator_test.go",
         "node_csr_approver_test.go",
-        "oidc_csr_approver_test.go",
     ],
     embed = [":gcp-controller-manager_lib"],
     deps = [

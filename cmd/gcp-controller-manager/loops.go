@@ -75,17 +75,6 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 			go approveController.Run(ctx, 20)
 			return nil
 		},
-		"oidc-certificate-approver": func(ctx context.Context, controllerCtx *controllerContext) error {
-			approver := newOIDCApprover(controllerCtx)
-			approveController := certificates.NewCertificateController(ctx,
-				"oidc-certificate-approver",
-				controllerCtx.client,
-				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
-				approver.handle,
-			)
-			go approveController.Run(ctx, 20)
-			return nil
-		},
 		"certificate-signer": func(ctx context.Context, controllerCtx *controllerContext) error {
 			signer, err := newGKESigner(controllerCtx)
 			if err != nil {
