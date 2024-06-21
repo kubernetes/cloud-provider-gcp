@@ -22,7 +22,6 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
-	"k8s.io/cloud-provider-gcp/providers/gce"
 	"sort"
 	"strings"
 
@@ -30,9 +29,9 @@ import (
 	"golang.org/x/oauth2"
 	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
-	container "google.golang.org/api/container/v1"
 	gcfg "gopkg.in/gcfg.v1"
 	warnings "gopkg.in/warnings.v0"
+	"k8s.io/cloud-provider-gcp/providers/gce"
 )
 
 const (
@@ -48,7 +47,6 @@ type gcpConfig struct {
 	TPMEndorsementCACache *caCache
 	Compute               *compute.Service
 	BetaCompute           *betacompute.Service
-	Container             *container.Service
 }
 
 func getRegionFromLocation(loc string) (string, error) {
@@ -101,25 +99,6 @@ func loadGCPConfig(gceConfigPath, gceAPIEndpointOverride string) (gcpConfig, err
 		a.BetaCompute.BasePath = strings.Replace(gceAPIEndpointOverride, "v1", "beta", -1)
 	}
 	a.BetaCompute.UserAgent = userAgentName
-
-	a.Container, err = container.New(client)
-	if err != nil {
-		return a, fmt.Errorf("creating GKE API client: %v", err)
-	}
-	// Overwrite GKE API endpoint in case we're not running in prod.
-	gkeAPIEndpoint, err := metadata.Get("instance/attributes/gke-api-endpoint")
-	if err != nil {
-		if _, ok := err.(metadata.NotDefinedError); ok {
-			gkeAPIEndpoint = ""
-		} else {
-			return a, err
-		}
-	}
-	if gkeAPIEndpoint != "" {
-		a.Container.BasePath = gkeAPIEndpoint
-	}
-	a.Container.UserAgent = userAgentName
-
 	// Get cluster zone from metadata server.
 	a.Location, err = metadata.Get("instance/attributes/cluster-location")
 	if err != nil {

@@ -52,7 +52,6 @@ go_library(
         "//vendor/golang.org/x/oauth2",
         "//vendor/google.golang.org/api/compute/v0.beta:v0_beta",
         "//vendor/google.golang.org/api/compute/v1:compute",
-        "//vendor/google.golang.org/api/container/v1:container",
         "//vendor/google.golang.org/api/googleapi",
         "//vendor/gopkg.in/gcfg.v1:gcfg_v1",
         "//vendor/gopkg.in/warnings.v0:warnings_v0",
