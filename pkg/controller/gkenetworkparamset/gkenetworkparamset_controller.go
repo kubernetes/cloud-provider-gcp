@@ -406,6 +406,27 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 	}
 
 	addFinalizerInPlace(params)
+
+	// Validate that the fields set are a valid combination.
+	presenceValidation := c.validateFieldCombinations(ctx, params)
+	if !presenceValidation.IsValid {
+		meta.SetStatusCondition(&params.Status.Conditions, presenceValidation.toCondition())
+		return nil
+	}
+
+	// Validate specific fields once field combination is valid.
+	netAttachment := params.Spec.NetworkAttachment
+	if netAttachment != "" {
+		networkAttachmentValidation := c.validateNetworkAttachment(ctx, netAttachment)
+		meta.SetStatusCondition(&params.Status.Conditions, networkAttachmentValidation.toCondition())
+		if !networkAttachmentValidation.IsValid {
+			return nil
+		}
+
+		return c.getAndSyncNetworkForGNP(ctx, params)
+	}
+
+	// Validate params with (VPC + VPCSubnet).
 	subnet, subnetValidation := c.getAndValidateSubnet(ctx, params)
 	meta.SetStatusCondition(&params.Status.Conditions, subnetValidation.toCondition())
 	if !subnetValidation.IsValid {
@@ -436,6 +457,13 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 		CIDRBlocks: cidrs,
 	}
 
+	return c.getAndSyncNetworkForGNP(ctx, params)
+}
+
+// getAndSyncNetworkForGNP gets the network that refers to this GNP object, and
+// then does the cross sync of Network with GNP. GNP is guaranteed to have
+// minimum fields set (either NetworkAttachment or [VPC + VPCSubnet]).
+func (c *Controller) getAndSyncNetworkForGNP(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
 	network, err := c.getNetworkReferringToGNP(params.Name)
 	if err != nil {
 		return err

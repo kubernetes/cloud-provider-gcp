@@ -498,6 +498,7 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 	gkeNetworkParamSetName := "test-paramset"
 	duplicateVPCName := "already-used-vpc"
 	duplicateSubnetName := "already-used-subnet"
+	netAttachmentName := "projects/test-project/regions/test-region/networkAttachments/testAttachment"
 
 	tests := []struct {
 		name              string
@@ -506,7 +507,7 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 		expectedCondition metav1.Condition
 	}{
 		{
-			name: "Unspecified Subnet",
+			name: "VPC with unspecified VPCSubnet",
 			paramSet: &networkv1.GKENetworkParamSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: gkeNetworkParamSetName,
@@ -518,7 +519,21 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			expectedCondition: metav1.Condition{
 				Type:   "Ready",
 				Status: metav1.ConditionFalse,
-				Reason: "SubnetNotFound",
+				Reason: "GNPConfigInvalid",
+			},
+		},
+		{
+			name: "Unspecified - no NetworkAttachment, no VPC or VPCSubnet",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{},
+			},
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionFalse,
+				Reason: "GNPConfigInvalid",
 			},
 		},
 		{
@@ -528,8 +543,9 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 					Name: gkeNetworkParamSetName,
 				},
 				Spec: networkv1.GKENetworkParamSetSpec{
-					VPC:       "test-vpc",
-					VPCSubnet: "non-existant-test-subnet",
+					VPC:        "test-vpc",
+					VPCSubnet:  "non-existant-test-subnet",
+					DeviceMode: "test-device-mode",
 				},
 			},
 			expectedCondition: metav1.Condition{
@@ -584,7 +600,7 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			},
 		},
 		{
-			name: "Valid GKENetworkParamSet",
+			name: "Valid GKENetworkParamSet with VPC, VPCSubnet, and PodIPv4Ranges",
 			paramSet: &networkv1.GKENetworkParamSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: gkeNetworkParamSetName,
@@ -603,6 +619,38 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 				Type:   "Ready",
 				Status: metav1.ConditionTrue,
 				Reason: "GNPReady",
+			},
+		},
+		{
+			name: "Valid GKENetworkParamSet with NetworkAttachment",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					NetworkAttachment: netAttachmentName,
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionTrue,
+				Reason: "GNPReady",
+			},
+		},
+		{
+			name: "GNP with NetworkAttachment - bad format",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					NetworkAttachment: "invalid",
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionFalse,
+				Reason: "NetworkAttachmentInvalid",
 			},
 		},
 		{
@@ -642,7 +690,7 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			},
 		},
 		{
-			name: "GNP with VPC unspecified",
+			name: "GNP with VPCSubnet - VPC unspecified",
 			paramSet: &networkv1.GKENetworkParamSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: gkeNetworkParamSetName,
@@ -655,11 +703,11 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			expectedCondition: metav1.Condition{
 				Type:   "Ready",
 				Status: metav1.ConditionFalse,
-				Reason: "VPCNotFound",
+				Reason: "GNPConfigInvalid",
 			},
 		},
 		{
-			name: "GNP with specified, but nonexistant VPC",
+			name: "GNP with VPC and VPCSubnet - specified, but nonexistant VPC",
 			paramSet: &networkv1.GKENetworkParamSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: gkeNetworkParamSetName,
@@ -677,7 +725,7 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			},
 		},
 		{
-			name: "GNP without devicemode or secondary range specified",
+			name: "GNP with VPC and VPCSubnet - without DeviceMode or secondary range specified",
 			paramSet: &networkv1.GKENetworkParamSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: gkeNetworkParamSetName,
@@ -709,6 +757,78 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 				Type:   "Ready",
 				Status: metav1.ConditionFalse,
 				Reason: "DeviceModeCantUseDefaultVPC",
+			},
+		},
+		{
+			name: "GNP with NetworkAttachment - but VPC specified",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					NetworkAttachment: netAttachmentName,
+					VPC:               defaultTestNetworkName,
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionFalse,
+				Reason: "GNPConfigInvalid",
+			},
+		},
+		{
+			name: "GNP with NetworkAttachment - but VPCSubnet specified",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					NetworkAttachment: netAttachmentName,
+					VPCSubnet:         "test-subnet",
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionFalse,
+				Reason: "GNPConfigInvalid",
+			},
+		},
+		{
+			name: "GNP with NetworkAttachment - but PodIPv4Ranges specified",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					NetworkAttachment: netAttachmentName,
+					PodIPv4Ranges: &networkv1.SecondaryRanges{
+						RangeNames: []string{
+							"nonexistent-secondary-range",
+						},
+					},
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionFalse,
+				Reason: "GNPConfigInvalid",
+			},
+		},
+		{
+			name: "GNP with NetworkAttachment - but DeviceMode specified",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					NetworkAttachment: netAttachmentName,
+					DeviceMode:        "test-device-mode",
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionFalse,
+				Reason: "GNPConfigInvalid",
 			},
 		},
 	}
@@ -810,6 +930,7 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 	subnetName := "test-subnet"
 	subnetSecondaryRangeName := "test-secondary-range"
 	networkName := "network-name"
+	netAttachmentName := "projects/test-project/regions/test-region/networkAttachments/testAttachment"
 
 	tests := []struct {
 		name              string
@@ -818,7 +939,7 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 		expectedCondition metav1.Condition
 	}{
 		{
-			name: "L3NetworkType with missing PodIPv4Ranges",
+			name: "L3NetworkType has VPC + VPCSubnet GNP missing PodIPv4Ranges",
 			network: &networkv1.Network{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: networkName,
@@ -842,6 +963,56 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 				Type:   "ParamsReady",
 				Status: metav1.ConditionFalse,
 				Reason: "L3SecondaryMissing",
+			},
+		},
+		{
+			name: "DeviceNetworkType with NetworkAttachment",
+			network: &networkv1.Network{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: networkName,
+				},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.DeviceNetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: gkeNetworkParamSetName, Kind: gnpKind},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					NetworkAttachment: netAttachmentName,
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:   "ParamsReady",
+				Status: metav1.ConditionFalse,
+				Reason: "NetworkAttachmentUnsupported",
+			},
+		},
+		{
+			name: "L2NetworkType with NetworkAttachment",
+			network: &networkv1.Network{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: networkName,
+				},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.L2NetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: gkeNetworkParamSetName, Kind: gnpKind},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					NetworkAttachment: netAttachmentName,
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:   "ParamsReady",
+				Status: metav1.ConditionFalse,
+				Reason: "NetworkAttachmentUnsupported",
 			},
 		},
 		{
@@ -872,7 +1043,7 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 			},
 		},
 		{
-			name: "Valid L3NetworkType",
+			name: "Valid L3NetworkType with PodIPv4Ranges",
 			network: &networkv1.Network{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: networkName,
@@ -890,6 +1061,31 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 					VPC:           nonDefaultTestNetworkName,
 					VPCSubnet:     subnetName,
 					PodIPv4Ranges: &networkv1.SecondaryRanges{RangeNames: []string{subnetSecondaryRangeName}},
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:   "ParamsReady",
+				Status: metav1.ConditionTrue,
+				Reason: "GNPParamsReady",
+			},
+		},
+		{
+			name: "Valid L3NetworkType with NetworkAttachment",
+			network: &networkv1.Network{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: networkName,
+				},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.L3NetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: gkeNetworkParamSetName, Kind: gnpKind},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					NetworkAttachment: netAttachmentName,
 				},
 			},
 			expectedCondition: metav1.Condition{
