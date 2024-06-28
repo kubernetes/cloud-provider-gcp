@@ -19,7 +19,10 @@ package e2e
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 
+	v1 "k8s.io/api/core/v1"
+	clientset "k8s.io/client-go/kubernetes"
 	gcecloud "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
@@ -115,4 +118,54 @@ func GetGCECloud() (*gcecloud.Cloud, error) {
 		return nil, fmt.Errorf("failed to convert CloudConfig.Provider to GCE provider: %#v", framework.TestContext.CloudConfig.Provider)
 	}
 	return p.gceCloud, nil
+}
+
+// RecreateNodes recreates the given nodes in a managed instance group.
+func RecreateNodes(c clientset.Interface, nodes []v1.Node) error {
+	// Build mapping from zone to nodes in that zone.
+	nodeNamesByZone := make(map[string][]string)
+	for i := range nodes {
+		node := &nodes[i]
+
+		if zone, ok := node.Labels[v1.LabelFailureDomainBetaZone]; ok {
+			nodeNamesByZone[zone] = append(nodeNamesByZone[zone], node.Name)
+			continue
+		}
+
+		if zone, ok := node.Labels[v1.LabelTopologyZone]; ok {
+			nodeNamesByZone[zone] = append(nodeNamesByZone[zone], node.Name)
+			continue
+		}
+
+		defaultZone := framework.TestContext.CloudConfig.Zone
+		nodeNamesByZone[defaultZone] = append(nodeNamesByZone[defaultZone], node.Name)
+	}
+
+	// Find the sole managed instance group name
+	var instanceGroup string
+	if strings.Contains(framework.TestContext.CloudConfig.NodeInstanceGroup, ",") {
+		return fmt.Errorf("Test does not support cluster setup with more than one managed instance group: %s", framework.TestContext.CloudConfig.NodeInstanceGroup)
+	}
+	instanceGroup = framework.TestContext.CloudConfig.NodeInstanceGroup
+
+	// Recreate the nodes.
+	for zone, nodeNames := range nodeNamesByZone {
+		args := []string{
+			"compute",
+			fmt.Sprintf("--project=%s", framework.TestContext.CloudConfig.ProjectID),
+			"instance-groups",
+			"managed",
+			"recreate-instances",
+			instanceGroup,
+		}
+
+		args = append(args, fmt.Sprintf("--instances=%s", strings.Join(nodeNames, ",")))
+		args = append(args, fmt.Sprintf("--zone=%s", zone))
+		framework.Logf("Recreating instance group %s.", instanceGroup)
+		stdout, stderr, err := framework.RunCmd("gcloud", args...)
+		if err != nil {
+			return fmt.Errorf("error recreating nodes: %s\nstdout: %s\nstderr: %s", err, stdout, stderr)
+		}
+	}
+	return nil
 }
