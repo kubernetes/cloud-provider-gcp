@@ -8,7 +8,7 @@ cloud.google.com/go/compute/metadata
 ## explicit; go 1.16
 github.com/Azure/go-ansiterm
 github.com/Azure/go-ansiterm/winterm
-# github.com/GoogleCloudPlatform/gke-networking-api v0.0.0-20240618093647-6e3f2840923a
+# github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240703141847-066e11533e15
 ## explicit; go 1.22.0
 github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1
 github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1alpha1
