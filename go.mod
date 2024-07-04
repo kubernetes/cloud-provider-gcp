@@ -31,7 +31,7 @@ require (
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
-	github.com/GoogleCloudPlatform/gke-networking-api v0.0.0-20240618093647-6e3f2840923a
+	github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240703141847-066e11533e15
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.30.0
