@@ -1343,6 +1343,12 @@ function create-kubelet-kubeconfig() {
   fi
   if [[ "${CREATE_BOOTSTRAP_KUBECONFIG:-true}" == "true" ]]; then
     echo "Creating kubelet bootstrap-kubeconfig file"
+
+    local host=${apiserver_address}
+    if [[ "${host}" =~ : ]]; then
+	    host="[$host]"
+    fi
+
     cat <<EOF >/var/lib/kubelet/bootstrap-kubeconfig
 apiVersion: v1
 kind: Config
@@ -1354,7 +1360,7 @@ users:
 clusters:
 - name: local
   cluster:
-    server: https://${apiserver_address}
+    server: https://${host}
     certificate-authority: ${CA_CERT_BUNDLE_PATH}
 contexts:
 - context:
@@ -1432,6 +1438,12 @@ function create-node-problem-detector-kubeconfig {
   fi
   echo "Creating node-problem-detector kubeconfig file"
   mkdir -p /var/lib/node-problem-detector
+
+  local host=${apiserver_address}
+  if [[ "${host}" =~ : ]]; then
+	  host="[$host]"
+  fi
+
   cat <<EOF >/var/lib/node-problem-detector/kubeconfig
 apiVersion: v1
 kind: Config
@@ -1442,7 +1454,7 @@ users:
 clusters:
 - name: local
   cluster:
-    server: https://${apiserver_address}
+    server: https://${host}
     certificate-authority-data: ${CA_CERT}
 contexts:
 - context:
@@ -1702,7 +1714,12 @@ function start-node-problem-detector {
       flags+=" ${EXTRA_NPD_ARGS}"
     fi
   fi
-  flags+=" --apiserver-override=https://${KUBERNETES_MASTER_NAME}?inClusterConfig=false&auth=/var/lib/node-problem-detector/kubeconfig"
+
+  local host=${KUBERNETES_MASTER_NAME}
+  if [[ "${host}" =~ : ]]; then
+	  host="[$host]"
+  fi
+  flags+=" --apiserver-override=https://${host}?inClusterConfig=false&auth=/var/lib/node-problem-detector/kubeconfig"
 
   # Write the systemd service file for node problem detector.
   cat <<EOF >/etc/systemd/system/node-problem-detector.service
@@ -1752,7 +1769,13 @@ function prepare-kube-proxy-manifest-variables {
     kube_docker_registry=${KUBE_DOCKER_REGISTRY}
   fi
   local -r kube_proxy_docker_tag=$(cat /home/kubernetes/kube-docker-files/kube-proxy.docker_tag)
-  local api_servers="--master=https://${KUBERNETES_MASTER_NAME}"
+
+  local host=${KUBERNETES_MASTER_NAME}
+  if [[ "${host}" =~ : ]]; then
+	  host="[$host]"
+  fi
+  local api_servers="--master=https://${host}"
+
   local params="${KUBEPROXY_TEST_LOG_LEVEL:-"--v=2"}"
   if [[ -n "${FEATURE_GATES:-}" ]]; then
     params+=" --feature-gates=${FEATURE_GATES}"
