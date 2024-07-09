@@ -23,5 +23,6 @@ go_library(
         "//vendor/go.opentelemetry.io/otel/metric/embedded",
         "//vendor/go.opentelemetry.io/otel/propagation",
         "//vendor/go.opentelemetry.io/otel/trace",
+        "//vendor/go.opentelemetry.io/otel/trace/embedded",
     ],
 )

@@ -4,7 +4,6 @@ go_library(
     name = "google",
     srcs = [
         "appengine.go",
-        "appengine_gen2_flex.go",
         "default.go",
         "doc.go",
         "error.go",
@@ -19,8 +18,9 @@ go_library(
         "//vendor/cloud.google.com/go/compute/metadata",
         "//vendor/golang.org/x/oauth2",
         "//vendor/golang.org/x/oauth2/authhandler",
-        "//vendor/golang.org/x/oauth2/google/internal/externalaccount",
+        "//vendor/golang.org/x/oauth2/google/externalaccount",
         "//vendor/golang.org/x/oauth2/google/internal/externalaccountauthorizeduser",
+        "//vendor/golang.org/x/oauth2/google/internal/impersonate",
         "//vendor/golang.org/x/oauth2/internal",
         "//vendor/golang.org/x/oauth2/jws",
         "//vendor/golang.org/x/oauth2/jwt",
