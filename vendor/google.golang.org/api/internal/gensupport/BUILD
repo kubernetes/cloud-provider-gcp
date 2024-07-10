@@ -12,7 +12,6 @@ go_library(
         "params.go",
         "resumable.go",
         "retry.go",
-        "retryable_linux.go",
         "send.go",
         "version.go",
     ],

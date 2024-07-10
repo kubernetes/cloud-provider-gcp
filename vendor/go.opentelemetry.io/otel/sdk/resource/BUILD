@@ -33,7 +33,7 @@ go_library(
         "//vendor/go.opentelemetry.io/otel",
         "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/go.opentelemetry.io/otel/sdk",
-        "//vendor/go.opentelemetry.io/otel/semconv/v1.21.0:v1_21_0",
+        "//vendor/go.opentelemetry.io/otel/semconv/v1.24.0:v1_24_0",
     ] + select({
         "@io_bazel_rules_go//go/platform:aix": [
             "//vendor/golang.org/x/sys/unix",

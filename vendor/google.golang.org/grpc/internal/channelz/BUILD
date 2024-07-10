@@ -3,14 +3,16 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "channelz",
     srcs = [
+        "channel.go",
+        "channelmap.go",
         "funcs.go",
-        "id.go",
         "logging.go",
-        "types.go",
-        "types_linux.go",
-        "types_nonlinux.go",
-        "util_linux.go",
-        "util_nonlinux.go",
+        "server.go",
+        "socket.go",
+        "subchannel.go",
+        "syscall_linux.go",
+        "syscall_nonlinux.go",
+        "trace.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/internal/channelz",
     importpath = "google.golang.org/grpc/internal/channelz",
@@ -19,6 +21,7 @@ go_library(
         "//vendor/google.golang.org/grpc/connectivity",
         "//vendor/google.golang.org/grpc/credentials",
         "//vendor/google.golang.org/grpc/grpclog",
+        "//vendor/google.golang.org/grpc/internal",
     ] + select({
         "@io_bazel_rules_go//go/platform:android": [
             "//vendor/golang.org/x/sys/unix",
