@@ -667,8 +667,8 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			},
 			expectedCondition: metav1.Condition{
 				Type:   "Ready",
-				Status: metav1.ConditionFalse,
-				Reason: "DeviceModeVPCAlreadyInUse",
+				Status: metav1.ConditionTrue,
+				Reason: "GNPReady",
 			},
 		},
 		{

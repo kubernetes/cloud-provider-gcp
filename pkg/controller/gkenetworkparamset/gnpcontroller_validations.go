@@ -227,7 +227,7 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 		}
 	}
 
-	//if GNP with deviceMode and referencing VPC or Subnet is referenced in any other existing GNP
+	//if GNP with deviceMode and referencing Subnet is referenced in any other existing GNP
 	if isDeviceModeSpecified {
 		gnpList, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().List(ctx, metav1.ListOptions{})
 		if err != nil {
@@ -235,17 +235,8 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 		}
 		for _, otherGNP := range gnpList.Items {
 			isDifferentGNP := params.Name != otherGNP.Name
-			isMatchingVPC := params.Spec.VPC == otherGNP.Spec.VPC
 			isMatchingSubnet := params.Spec.VPCSubnet == otherGNP.Spec.VPCSubnet
 			isParamsNewer := params.CreationTimestamp.After(otherGNP.CreationTimestamp.Time)
-
-			if isDifferentGNP && isMatchingVPC && isParamsNewer {
-				return &gnpValidation{
-					IsValid:      false,
-					ErrorReason:  networkv1.DeviceModeVPCAlreadyInUse,
-					ErrorMessage: fmt.Sprintf("GNP with deviceMode can't reference a VPC already in use. VPC '%s' is already in use by '%s'", otherGNP.Spec.VPC, otherGNP.Name),
-				}, nil
-			}
 
 			if isDifferentGNP && isMatchingSubnet && isParamsNewer {
 				return &gnpValidation{
