@@ -730,7 +730,8 @@ func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]s
 				parts := strings.Split(ins.Instance, "/")
 				groupInstances.Insert(parts[len(parts)-1])
 			}
-			if names.HasAll(groupInstances.UnsortedList()...) {
+			groupInstanceNames := groupInstances.UnsortedList()
+			if names.HasAll(groupInstanceNames...) || g.allHaveNodePrefix(groupInstanceNames) {
 				igLinks = append(igLinks, ig.SelfLink)
 				skip.Insert(groupInstances.UnsortedList()...)
 			}
@@ -755,6 +756,15 @@ func (g *Cloud) candidateExternalInstanceGroups(zone string) ([]*compute.Instanc
 		return nil, nil
 	}
 	return g.ListInstanceGroupsWithPrefix(zone, g.externalInstanceGroupsPrefix)
+}
+
+func (g *Cloud) allHaveNodePrefix(instances []string) bool {
+	for _, instance := range instances {
+		if !strings.HasPrefix(instance, g.nodeInstancePrefix) {
+			return false
+		}
+	}
+	return true
 }
 
 func (g *Cloud) ensureInternalInstanceGroupsDeleted(name string) error {
