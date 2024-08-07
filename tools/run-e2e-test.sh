@@ -50,6 +50,8 @@ source ${REPO_ROOT}/test/boskos.sh
 VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
 VERBOSITY=2
 DEFAULT_GCP_ZONE="us-central1-b"
+MASTER_SIZE="n1-standard-8"
+NODE_SIZE="n1-standard-4"
 # run-id is set to milliseconds since the unix epoch.
 RUN_ID="$(date +%s%N | cut -b1-13)"
 RUN_DIR="${REPO_ROOT}/_rundir/${RUN_ID}"
@@ -170,6 +172,8 @@ kubetest2 gce \
 	  --up \
 	  --down \
 	  --test ginkgo \
+	  --master-size ${MASTER_SIZE} \
+	  --node-size ${NODE_SIZE} \
 	  --overwrite-logs-dir \
 	  -- \
 	  --use-built-binaries true \
