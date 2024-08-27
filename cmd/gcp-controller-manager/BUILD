@@ -121,7 +121,6 @@ go_test(
         "//vendor/github.com/google/go-cmp/cmp/cmpopts",
         "//vendor/google.golang.org/api/compute/v0.beta:v0_beta",
         "//vendor/google.golang.org/api/compute/v1:compute",
-        "//vendor/google.golang.org/api/container/v1:container",
         "//vendor/k8s.io/api/authorization/v1:authorization",
         "//vendor/k8s.io/api/certificates/v1:certificates",
         "//vendor/k8s.io/api/certificates/v1beta1",

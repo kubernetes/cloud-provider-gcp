@@ -134,7 +134,6 @@ type Cloud struct {
 	containerService *container.Service
 	tpuService       *tpuService
 	client           clientset.Interface
-	clientBuilder    cloudprovider.ControllerClientBuilder
 	eventBroadcaster record.EventBroadcaster
 	eventRecorder    record.EventRecorder
 	projectID        string
@@ -675,7 +674,6 @@ func tryConvertToProjectNames(configProject, configNetworkProject string, servic
 // Initialize takes in a clientBuilder and spawns a goroutine for watching the clusterid configmap.
 // This must be called before utilizing the funcs of gce.ClusterID
 func (g *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
-	g.clientBuilder = clientBuilder
 	g.client = clientBuilder.ClientOrDie("cloud-provider")
 
 	g.eventBroadcaster = record.NewBroadcaster()

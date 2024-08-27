@@ -29,13 +29,12 @@ import (
 )
 
 type testGKENetworkParamSetController struct {
-	networkClient   *networkfake.Clientset
-	informerFactory networkinformers.SharedInformerFactory
-	clusterValues   gce.TestClusterValues
-	controller      *Controller
-	metrics         *controllers.ControllerManagerMetrics
-	cloud           *gce.Cloud
-	nodeStore       cache.Store
+	networkClient *networkfake.Clientset
+	clusterValues gce.TestClusterValues
+	controller    *Controller
+	metrics       *controllers.ControllerManagerMetrics
+	cloud         *gce.Cloud
+	nodeStore     cache.Store
 }
 
 const (
@@ -94,13 +93,12 @@ func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParam
 	fakeGCE.Compute().Networks().Insert(ctx, nonDefaultNetworkKey, nonDefaultNetwork)
 
 	return &testGKENetworkParamSetController{
-		networkClient:   fakeNetworking,
-		informerFactory: nwInfFactory,
-		clusterValues:   testClusterValues,
-		controller:      controller,
-		metrics:         metrics,
-		cloud:           fakeGCE,
-		nodeStore:       fakeNodeInformer.Informer().GetStore(),
+		networkClient: fakeNetworking,
+		clusterValues: testClusterValues,
+		controller:    controller,
+		metrics:       metrics,
+		cloud:         fakeGCE,
+		nodeStore:     fakeNodeInformer.Informer().GetStore(),
 	}
 }
 
