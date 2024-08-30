@@ -603,8 +603,8 @@ func (g *Cloud) ensureInternalHealthCheck(name string, svcName types.NamespacedN
 	return hc, nil
 }
 
-func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []*v1.Node) (string, error) {
-	klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): checking group that it contains %v nodes [node names limited, total number of nodes: %d]", name, zone, loggableNodeNames(nodes), len(nodes))
+func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []*v1.Node, emptyZoneNodes []*v1.Node) (string, error) {
+	klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): checking group that it contains %v nodes [node names limited, total number of nodes: %d], the following nodes have empty string in the zone field and won't be deleted: %v", name, zone, loggableNodeNames(nodes), len(nodes), loggableNodeNames(emptyZoneNodes))
 	ig, err := g.GetInstanceGroup(name, zone)
 	if err != nil && !isNotFound(err) {
 		return "", err
@@ -613,6 +613,11 @@ func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []*v1.Node)
 	kubeNodes := sets.NewString()
 	for _, n := range nodes {
 		kubeNodes.Insert(n.Name)
+	}
+
+	emptyZoneNodesNames := sets.NewString()
+	for _, n := range emptyZoneNodes {
+		emptyZoneNodesNames.Insert(n.Name)
 	}
 
 	// Individual InstanceGroup has a limit for 1000 instances in it.
@@ -650,7 +655,7 @@ func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []*v1.Node)
 		}
 	}
 
-	removeNodes := gceNodes.Difference(kubeNodes).List()
+	removeNodes := gceNodes.Difference(kubeNodes).Difference(emptyZoneNodesNames).List()
 	addNodes := kubeNodes.Difference(gceNodes).List()
 
 	if len(removeNodes) != 0 {
@@ -689,8 +694,22 @@ func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]s
 
 	zonedNodes := splitNodesByZone(nodes)
 	klog.V(2).Infof("ensureInternalInstanceGroups(%v): %d nodes over %d zones in region %v", name, len(nodes), len(zonedNodes), g.region)
+
+	emptyZoneNodesNames := sets.NewString()
+	for _, n := range zonedNodes[""] {
+		emptyZoneNodesNames.Insert(n.Name)
+	}
+
+	if len(emptyZoneNodesNames) > 0 {
+		klog.V(2).Infof("%d nodes have empty zone: %v in region %v", len(emptyZoneNodesNames), emptyZoneNodesNames, g.region)
+	}
+
 	var igLinks []string
 	for zone, nodes := range zonedNodes {
+		if zone == "" {
+			continue // skip ensuring nodes with empty zone
+		}
+
 		if g.AlphaFeatureGate.Enabled(AlphaFeatureSkipIGsManagement) {
 			igs, err := g.FilterInstanceGroupsByNamePrefix(name, zone)
 			if err != nil {
@@ -700,7 +719,7 @@ func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]s
 				igLinks = append(igLinks, ig.SelfLink)
 			}
 		} else {
-			igLink, err := g.ensureInternalInstanceGroup(name, zone, nodes)
+			igLink, err := g.ensureInternalInstanceGroup(name, zone, nodes, zonedNodes[""])
 			if err != nil {
 				return nil, err
 			}
