@@ -19,15 +19,22 @@ package gkenetworkparamset
 import (
 	"context"
 	"fmt"
+	"regexp"
 
+	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
+)
+
+var (
+	// networkAttachmentRE enforces the network attachment format to match
+	// projects/PROJECT_ID/regions/REGION/networkAttachments/NETWORK_ATTACHMENT
+	networkAttachmentRE = regexp.MustCompile(`projects/([^/]+)/regions/([^/]+)/networkAttachments/([^/]+)`)
 )
 
 type gnpValidation struct {
@@ -53,6 +60,59 @@ func (val *gnpValidation) toCondition() metav1.Condition {
 	return condition
 }
 
+// validateFieldCombinations validates that the fields set are valid to specify
+// together. Ensures minimum required fields are set and returns error when a
+// specific combination of set fields is not supported.
+func (c *Controller) validateFieldCombinations(ctx context.Context, params *networkv1.GKENetworkParamSet) *gnpValidation {
+	hasAttachment := params.Spec.NetworkAttachment != ""
+	hasVPC := params.Spec.VPC != ""
+	hasSubnet := params.Spec.VPCSubnet != ""
+	hasDeviceMode := params.Spec.DeviceMode != ""
+	hasSecondaryRanges := hasRangeNames(params)
+
+	// Check minimum fields required
+	if !hasAttachment && (!hasVPC || !hasSubnet) {
+		return &gnpValidation{
+			IsValid:      false,
+			ErrorReason:  networkv1.GNPConfigInvalid,
+			ErrorMessage: "NetworkAttachment or (VPC + VPCSubnet) must be specified",
+		}
+	}
+
+	if hasAttachment {
+		if hasVPC || hasSubnet || hasDeviceMode || hasSecondaryRanges {
+			return &gnpValidation{
+				IsValid:      false,
+				ErrorReason:  networkv1.GNPConfigInvalid,
+				ErrorMessage: "When NetworkAttachment is specified, none of the following can be specified: (VPC, VPCSubnet, DeviceMode, PodIPv4Ranges)",
+			}
+		}
+
+		return &gnpValidation{IsValid: true}
+	}
+
+	// Network attachment is not specified.
+	// Check if both deviceMode and secondary ranges are unspecified.
+	if !hasSecondaryRanges && !hasDeviceMode {
+		return &gnpValidation{
+			IsValid:      false,
+			ErrorReason:  networkv1.SecondaryRangeAndDeviceModeUnspecified,
+			ErrorMessage: "One of PodIPV4Ranges or DeviceMode must be specified.",
+		}
+	}
+
+	// Check if deviceMode is specified at the same time as secondary range.
+	if hasSecondaryRanges && hasDeviceMode {
+		return &gnpValidation{
+			IsValid:      false,
+			ErrorReason:  networkv1.DeviceModeCantBeUsedWithSecondaryRange,
+			ErrorMessage: "PodIPv4Ranges and DeviceMode can not be specified at the same time",
+		}
+	}
+
+	return &gnpValidation{IsValid: true}
+}
+
 // getAndValidateSubnet validates that the subnet is present in params and exists in GCP.
 func (c *Controller) getAndValidateSubnet(ctx context.Context, params *networkv1.GKENetworkParamSet) (*compute.Subnetwork, *gnpValidation) {
 	if params.Spec.VPCSubnet == "" {
@@ -74,6 +134,20 @@ func (c *Controller) getAndValidateSubnet(ctx context.Context, params *networkv1
 	}
 
 	return subnet, &gnpValidation{IsValid: true}
+}
+
+// validateNetworkAttachment validates that the given network attachment is valid.
+func (c *Controller) validateNetworkAttachment(ctx context.Context, netAttachment string) *gnpValidation {
+	// Check format of network attachment
+	if !networkAttachmentRE.MatchString(netAttachment) {
+		return &gnpValidation{
+			IsValid:      false,
+			ErrorReason:  networkv1.NetworkAttachmentInvalid,
+			ErrorMessage: fmt.Sprintf("invalid network attachment name: %q. Must match projects/PROJECT_ID/regions/REGION/networkAttachments/NETWORK_ATTACHMENT", netAttachment),
+		}
+	}
+
+	return &gnpValidation{IsValid: true}
 }
 
 func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *networkv1.GKENetworkParamSet, subnet *compute.Subnetwork) (*gnpValidation, error) {
@@ -153,7 +227,7 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 		}
 	}
 
-	//if GNP with deviceMode and referencing VPC or Subnet is referenced in any other existing GNP
+	//if GNP with deviceMode and referencing Subnet is referenced in any other existing GNP
 	if isDeviceModeSpecified {
 		gnpList, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().List(ctx, metav1.ListOptions{})
 		if err != nil {
@@ -161,17 +235,8 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 		}
 		for _, otherGNP := range gnpList.Items {
 			isDifferentGNP := params.Name != otherGNP.Name
-			isMatchingVPC := params.Spec.VPC == otherGNP.Spec.VPC
 			isMatchingSubnet := params.Spec.VPCSubnet == otherGNP.Spec.VPCSubnet
 			isParamsNewer := params.CreationTimestamp.After(otherGNP.CreationTimestamp.Time)
-
-			if isDifferentGNP && isMatchingVPC && isParamsNewer {
-				return &gnpValidation{
-					IsValid:      false,
-					ErrorReason:  networkv1.DeviceModeVPCAlreadyInUse,
-					ErrorMessage: fmt.Sprintf("GNP with deviceMode can't reference a VPC already in use. VPC '%s' is already in use by '%s'", otherGNP.Spec.VPC, otherGNP.Name),
-				}, nil
-			}
 
 			if isDifferentGNP && isMatchingSubnet && isParamsNewer {
 				return &gnpValidation{
@@ -212,14 +277,23 @@ func (val *gnpNetworkCrossValidation) toCondition() metav1.Condition {
 // crossValidateNetworkAndGnp validates a given network and GNP object are compatible
 func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GKENetworkParamSet) *gnpNetworkCrossValidation {
 	isSecondaryRangeSpecified := hasRangeNames(params)
+	isVPCSpecified := params.Spec.VPC != ""
+	isVPCSubnetSpecified := params.Spec.VPCSubnet != ""
+	isNetworkAttachmentSpecified := params.Spec.NetworkAttachment != ""
 
 	if network.Spec.Type == networkv1.L3NetworkType {
-		if !isSecondaryRangeSpecified {
+		if isVPCSpecified && isVPCSubnetSpecified && !isSecondaryRangeSpecified {
 			return &gnpNetworkCrossValidation{
 				IsValid:      false,
 				ErrorReason:  networkv1.L3SecondaryMissing,
-				ErrorMessage: "L3 type network requires secondary range to be specified in params",
+				ErrorMessage: "L3 type network referring to params with (VPC + VPCSUbnet) pair requires secondary range to be specified in params",
 			}
+		}
+	} else if isNetworkAttachmentSpecified {
+		return &gnpNetworkCrossValidation{
+			IsValid:      false,
+			ErrorReason:  networkv1.NetworkAttachmentUnsupported,
+			ErrorMessage: "NetworkAttachment is only allowed for L3 type networks.",
 		}
 	}
 

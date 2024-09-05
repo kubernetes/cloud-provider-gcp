@@ -6,9 +6,9 @@ import (
 	"net"
 	"time"
 
+	networkclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned"
+	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
 	cloudprovider "k8s.io/cloud-provider"
-	networkclientset "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned"
-	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
 	gkenetworkparamsetcontroller "k8s.io/cloud-provider-gcp/pkg/controller/gkenetworkparamset"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
 	"k8s.io/cloud-provider-gcp/providers/gce"

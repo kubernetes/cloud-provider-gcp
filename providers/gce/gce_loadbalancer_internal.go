@@ -50,6 +50,8 @@ const (
 	maxInstancesPerInstanceGroup = 1000
 	// maxL4ILBPorts is the maximum number of ports that can be specified in an L4 ILB Forwarding Rule. Beyond this, "AllPorts" field should be used.
 	maxL4ILBPorts = 5
+	// labelGKESubnetworkName is the key of the label that contains the subnet name the node is connected to.
+	labelGKESubnetworkName = "cloud.google.com/gke-node-pool-subnet"
 )
 
 func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
@@ -252,6 +254,54 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	status := &v1.LoadBalancerStatus{}
 	status.Ingress = []v1.LoadBalancerIngress{{IP: updatedFwdRule.IPAddress}}
 	return status, nil
+}
+
+func removeNodesInNonDefaultNetworks(nodes []*v1.Node, defaultSubnetName string) []*v1.Node {
+	var newList []*v1.Node
+	var skippedNodes []string
+	for _, node := range nodes {
+		subnetLabel, ok := node.Labels[labelGKESubnetworkName]
+		// nodes that have no label and no PodCIDR should be filtered out.
+		// This translates to: if node doesn't have the label but has PodCIDR then it is assumed to be in the default network.
+		// This check is a safeguard for situations when the cluster might be running older node controller that does not know multi-subnet or multi-subnet feature misbehaves.
+		if !ok && node.Spec.PodCIDR == "" {
+			skippedNodes = append(skippedNodes, node.Name)
+			continue
+		}
+		// For clusters that become multi-subnet the label on existing nodes from the default network can be present with an emtpy value.
+		if ok && subnetLabel != "" && subnetLabel != defaultSubnetName {
+			skippedNodes = append(skippedNodes, node.Name)
+			continue
+		}
+		newList = append(newList, node)
+	}
+	countOfSkippedNodes := len(skippedNodes)
+	if len(skippedNodes) > 0 {
+		klog.V(2).Infof("Skipped %d nodes from non default subnetworks. First skipped nodes: %v", countOfSkippedNodes, truncateList(skippedNodes, 10))
+	}
+	return newList
+}
+
+// Extract the subnet name from the URL.
+// example: for `https://www.googleapis.com/compute/v1/projects/project/regions/us-central1/subnetworks/defaultSubnet`
+// this will return `defaultSubnet`.
+func subnetNameFromURL(url string) (string, error) {
+	resource, err := cloud.ParseResourceURL(url)
+	if err != nil {
+		return "", err
+	}
+	if resource.Key == nil {
+		return "", fmt.Errorf("subnet URL %s is missing the name", url)
+	}
+	return resource.Key.Name, nil
+}
+
+// truncates a list - will return a sublist of at most max elements.
+func truncateList[T any](l []T, max int) []T {
+	if len(l) <= max {
+		return l
+	}
+	return l[:max]
 }
 
 func (g *Cloud) clearPreviousInternalResources(svc *v1.Service, loadBalancerName string, existingBackendService *compute.BackendService, expectedBSName, expectedHCName string) {
@@ -553,26 +603,30 @@ func (g *Cloud) ensureInternalHealthCheck(name string, svcName types.NamespacedN
 	return hc, nil
 }
 
-func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []string) (string, error) {
-	klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): checking group that it contains %v nodes [node names limited, total number of nodes: %d]", name, zone, nodes, len(nodes))
+func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []*v1.Node) (string, error) {
+	klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): checking group that it contains %v nodes [node names limited, total number of nodes: %d]", name, zone, loggableNodeNames(nodes), len(nodes))
 	ig, err := g.GetInstanceGroup(name, zone)
 	if err != nil && !isNotFound(err) {
 		return "", err
 	}
 
-	gceNodes := sets.NewString(nodes...)
-	// Individual InstanceGroups have a limit for 1000 instances.
-	// As a result, it's not possible to add more.
+	kubeNodes := sets.NewString()
+	for _, n := range nodes {
+		kubeNodes.Insert(n.Name)
+	}
+
+	// Individual InstanceGroup has a limit for 1000 instances in it.
+	// As a result, it's not possible to add more to it.
 	// Given that the long-term fix (AlphaFeatureILBSubsets) is already in-progress,
 	// to stop the bleeding we now simply cut down the contents to first 1000
 	// instances in the alphabetical order. Since there is a limitation for
 	// 250 backend VMs for ILB, this isn't making things worse.
-	if len(gceNodes) > maxInstancesPerInstanceGroup {
+	if len(kubeNodes) > maxInstancesPerInstanceGroup {
 		klog.Warningf("Limiting number of VMs for InstanceGroup %s to %d", name, maxInstancesPerInstanceGroup)
-		gceNodes = sets.NewString(gceNodes.List()[:maxInstancesPerInstanceGroup]...)
+		kubeNodes = sets.NewString(kubeNodes.List()[:maxInstancesPerInstanceGroup]...)
 	}
 
-	igNodes := sets.NewString()
+	gceNodes := sets.NewString()
 	if ig == nil {
 		klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): creating instance group", name, zone)
 		newIG := &compute.InstanceGroup{Name: name}
@@ -592,12 +646,12 @@ func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []string) (
 
 		for _, ins := range instances {
 			parts := strings.Split(ins.Instance, "/")
-			igNodes.Insert(parts[len(parts)-1])
+			gceNodes.Insert(parts[len(parts)-1])
 		}
 	}
 
-	removeNodes := igNodes.Difference(gceNodes).List()
-	addNodes := gceNodes.Difference(igNodes).List()
+	removeNodes := gceNodes.Difference(kubeNodes).List()
+	addNodes := kubeNodes.Difference(gceNodes).List()
 
 	if len(removeNodes) != 0 {
 		klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): removing nodes: %v", name, zone, removeNodes)
@@ -622,13 +676,21 @@ func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []string) (
 // ensureInternalInstanceGroups generates an unmanaged instance group for every zone
 // where a K8s node exists. It also ensures that each node belongs to an instance group
 func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]string, error) {
+	defaultSubnetName, err := subnetNameFromURL(g.SubnetworkURL())
+	// Perform node filtering only if the subnet URL is valid. Do not stop execution in case some clusters have invalid SubnetworkURL configured.
+	if err == nil {
+		// Filter out any node that is not from the default network. This is required for multi-subnet feature.
+		// This should not change behavior for nodes that are in the default network.
+		// This can't be done earlier when listing node since the code is shared between internal and external LBs.
+		nodes = removeNodesInNonDefaultNetworks(nodes, defaultSubnetName)
+	} else {
+		klog.Errorf("invalid subnetwork URL configured for the controller, assuming all nodes are in the default subnetwork %s, err: %v", g.SubnetworkURL(), err)
+	}
+
 	zonedNodes := splitNodesByZone(nodes)
 	klog.V(2).Infof("ensureInternalInstanceGroups(%v): %d nodes over %d zones in region %v", name, len(nodes), len(zonedNodes), g.region)
-
 	var igLinks []string
-	gceZonedNodes := map[string][]string{}
-	for zone, zNodes := range zonedNodes {
-		// Skip managing instance groups altogether, using any matching the prefix within the zone.
+	for zone, nodes := range zonedNodes {
 		if g.AlphaFeatureGate.Enabled(AlphaFeatureSkipIGsManagement) {
 			igs, err := g.FilterInstanceGroupsByNamePrefix(name, zone)
 			if err != nil {
@@ -637,72 +699,16 @@ func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]s
 			for _, ig := range igs {
 				igLinks = append(igLinks, ig.SelfLink)
 			}
-			break
-		}
-
-		hosts, err := g.getFoundInstanceByNames(nodeNames(zNodes))
-		if err != nil {
-			return nil, err
-		}
-
-		names := sets.NewString()
-		for _, h := range hosts {
-			names.Insert(h.Name)
-		}
-		skip := sets.NewString()
-
-		igs, err := g.candidateExternalInstanceGroups(zone)
-		if err != nil {
-			return nil, err
-		}
-		for _, ig := range igs {
-			if strings.EqualFold(ig.Name, name) {
-				continue
-			}
-			instances, err := g.ListInstancesInInstanceGroup(ig.Name, zone, allInstances)
+		} else {
+			igLink, err := g.ensureInternalInstanceGroup(name, zone, nodes)
 			if err != nil {
 				return nil, err
 			}
-			groupInstances := sets.NewString()
-			for _, ins := range instances {
-				parts := strings.Split(ins.Instance, "/")
-				groupInstances.Insert(parts[len(parts)-1])
-			}
-			groupInstanceNames := groupInstances.UnsortedList()
-			if names.HasAll(groupInstanceNames...) || g.allHaveNodePrefix(groupInstanceNames) {
-				igLinks = append(igLinks, ig.SelfLink)
-				skip.Insert(groupInstances.UnsortedList()...)
-			}
+			igLinks = append(igLinks, igLink)
 		}
-		if remaining := names.Difference(skip).UnsortedList(); len(remaining) > 0 {
-			gceZonedNodes[zone] = remaining
-		}
-	}
-	for zone, gceNodes := range gceZonedNodes {
-		igLink, err := g.ensureInternalInstanceGroup(name, zone, gceNodes)
-		if err != nil {
-			return []string{}, err
-		}
-		igLinks = append(igLinks, igLink)
 	}
 
 	return igLinks, nil
-}
-
-func (g *Cloud) candidateExternalInstanceGroups(zone string) ([]*compute.InstanceGroup, error) {
-	if g.externalInstanceGroupsPrefix == "" {
-		return nil, nil
-	}
-	return g.ListInstanceGroupsWithPrefix(zone, g.externalInstanceGroupsPrefix)
-}
-
-func (g *Cloud) allHaveNodePrefix(instances []string) bool {
-	for _, instance := range instances {
-		if !strings.HasPrefix(instance, g.nodeInstancePrefix) {
-			return false
-		}
-	}
-	return true
 }
 
 func (g *Cloud) ensureInternalInstanceGroupsDeleted(name string) error {

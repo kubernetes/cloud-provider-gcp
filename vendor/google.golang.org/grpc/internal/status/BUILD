@@ -1,0 +1,16 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "status",
+    srcs = ["status.go"],
+    importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/internal/status",
+    importpath = "google.golang.org/grpc/internal/status",
+    visibility = ["//vendor/google.golang.org/grpc:__subpackages__"],
+    deps = [
+        "//vendor/google.golang.org/genproto/googleapis/rpc/status",
+        "//vendor/google.golang.org/grpc/codes",
+        "//vendor/google.golang.org/protobuf/proto",
+        "//vendor/google.golang.org/protobuf/protoadapt",
+        "//vendor/google.golang.org/protobuf/types/known/anypb",
+    ],
+)

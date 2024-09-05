@@ -1,0 +1,13 @@
+# See the OWNERS docs at https://go.k8s.io/owners
+
+approvers:
+- ahmedtd
+- aojea
+- vinayakankugoyal
+
+reviewers:
+- ahmedtd
+- aojea
+- mimowo
+- vinayakankugoyal
+- zshihang
