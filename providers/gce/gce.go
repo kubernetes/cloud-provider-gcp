@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -827,6 +828,9 @@ func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
 				g.nodeZones[newZone] = sets.NewString()
 			}
 			g.nodeZones[newZone].Insert(newNode.ObjectMeta.Name)
+			if !slices.Contains(g.managedZones, newZone) {
+				klog.Warningf("Initializing node %s in an unmanaged zone %s. Managed zones: %v", newNode.ObjectMeta.Name, newZone, g.managedZones)
+			}
 		}
 	}
 }
