@@ -32,6 +32,7 @@ import (
 	"github.com/spf13/pflag"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -121,6 +122,8 @@ func main() {
 	// bump the QPS limits per controller up from defaults of 5 qps / 10 burst
 	s.informerKubeconfig.QPS = *kubeconfigQPS
 	s.informerKubeconfig.Burst = *kubeconfigBurst
+	// use protobuf encoding which is more efficient than default JSON encoding
+	s.informerKubeconfig.ContentType = runtime.ContentTypeProtobuf
 	// kubeconfig for controllers is the same, plus it has a client timeout for
 	// API requests. Informers shouldn't have a timeout because that breaks
 	// watch requests.
