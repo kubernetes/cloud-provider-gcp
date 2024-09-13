@@ -28,10 +28,10 @@ import (
 	"strings"
 	"time"
 
+	networkclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned"
+	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
 	cloudprovider "k8s.io/cloud-provider"
 	nodeipamcontrolleroptions "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/options"
-	networkclientset "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned"
-	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
 	nodeipamcontroller "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam"
 	nodeipamconfig "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/config"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"

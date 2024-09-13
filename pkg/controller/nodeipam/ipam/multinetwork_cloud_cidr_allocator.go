@@ -5,12 +5,12 @@ import (
 	"net"
 	"strings"
 
+	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
-	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/klog/v2"
 	netutils "k8s.io/utils/net"
@@ -56,7 +56,18 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 	for _, inf := range interfaces {
 		rangeNameAliasIPMap := map[string]*compute.AliasIpRange{}
 		for _, ipRange := range inf.AliasIpRanges {
-			rangeNameAliasIPMap[ipRange.SubnetworkRangeName] = ipRange
+			// If this interface is a PSC interface (has a network attachment),
+			// map attachment name to the first encountered alias range.
+			if inf.NetworkAttachment != "" {
+				// We always use the first alias range, if there are multiple.
+				// With GKE, there will always be exactly one alias range.
+				if _, exists := rangeNameAliasIPMap[inf.NetworkAttachment]; !exists {
+					rangeNameAliasIPMap[inf.NetworkAttachment] = ipRange
+				}
+			} else {
+				// Non-network attachment interfaces have named alias ranges.
+				rangeNameAliasIPMap[ipRange.SubnetworkRangeName] = ipRange
+			}
 		}
 		for _, network := range networks {
 			if _, ok := processedNetworks[network.Name]; ok {
@@ -69,15 +80,19 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 			if err != nil {
 				return nil, err
 			}
-			if resourceName(inf.Network) != resourceName(gnp.Spec.VPC) || resourceName(inf.Subnetwork) != resourceName(gnp.Spec.VPCSubnet) {
+
+			// Network object must match GNP on network attachment OR on
+			// (VPC + subnet). Otherwise, proceed to next network.
+			matchVPC := resourceName(inf.Network) == resourceName(gnp.Spec.VPC)
+			matchSubnet := resourceName(inf.Subnetwork) == resourceName(gnp.Spec.VPCSubnet)
+			// Don't match empty network attachment names.
+			matchNetworkAttachment := inf.NetworkAttachment != "" && resourceName(inf.NetworkAttachment) == resourceName(gnp.Spec.NetworkAttachment)
+			match := matchNetworkAttachment || (matchVPC && matchSubnet)
+			if !match {
 				continue
 			}
-			klog.V(2).InfoS("interface matched, proceeding to find a secondary range", "nodeName", node.Name, "networkInterface", inf.Name)
+			klog.V(2).InfoS("interface matched, proceeding to find a pod range", "nodeName", node.Name, "networkInterface", inf.Name)
 			// TODO: Handle IPv6 in future.
-			var secondaryRangeNames []string
-			if gnp.Spec.PodIPv4Ranges != nil {
-				secondaryRangeNames = gnp.Spec.PodIPv4Ranges.RangeNames
-			}
 
 			if network.Spec.Type == networkv1.DeviceNetworkType {
 				processedNetworks[network.Name] = struct{}{}
@@ -88,14 +103,25 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 				continue
 			}
 
+			var podRangeNames []string
+			if gnp.Spec.PodIPv4Ranges != nil {
+				podRangeNames = gnp.Spec.PodIPv4Ranges.RangeNames
+			}
+			// GNP with NetworkAttachment set will not have PodIPv4Ranges.
+			// Instead, the attachment name is the key for rangeNameAliasIPMap.
+			netAttachment := gnp.Spec.NetworkAttachment
+			if netAttachment != "" {
+				podRangeNames = []string{inf.NetworkAttachment}
+			}
+
 			// Each secondary range in a subnet corresponds to a pod-network. AliasIPRanges list on a node interface consists of IP ranges that belong to multiple secondary ranges (pod-networks).
 			// Match the secondary range names of interface and GKENetworkParams and set the right IpCidrRange for current network.
-			for _, secondaryRangeName := range secondaryRangeNames {
-				ipRange, ok := rangeNameAliasIPMap[secondaryRangeName]
+			for _, podRangeName := range podRangeNames {
+				ipRange, ok := rangeNameAliasIPMap[podRangeName]
 				if !ok {
 					continue
 				}
-				klog.V(2).InfoS("found an allocatable secondary range for the interface on network", "nodeName", node.Name, "networkName", network.Name)
+				klog.V(2).InfoS("found an allocatable alias range for the interface on network", "nodeName", node.Name, "networkName", network.Name, "rangeName", podRangeName, "aliasRange", ipRange.IpCidrRange)
 				processedNetworks[network.Name] = struct{}{}
 				// for defaultNwCIDRs, if there're no NodeLabels keep this,
 				// otherwise get the CIDR with labels

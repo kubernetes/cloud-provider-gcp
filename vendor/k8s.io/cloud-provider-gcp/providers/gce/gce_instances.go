@@ -739,6 +739,8 @@ func (g *Cloud) getFoundInstanceByNames(names []string) ([]*gceInstance, error) 
 
 // Gets the named instance, returning cloudprovider.InstanceNotFound if the instance is not found
 func (g *Cloud) getInstanceByName(name string) (*gceInstance, error) {
+	klog.Infof("Searching node %s in managed zones %v", name, g.managedZones)
+
 	// Avoid changing behaviour when not managing multiple zones
 	for _, zone := range g.managedZones {
 		instance, err := g.getInstanceFromProjectInZoneByName(g.projectID, zone, name)

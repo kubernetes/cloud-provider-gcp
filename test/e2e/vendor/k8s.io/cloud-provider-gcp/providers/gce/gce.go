@@ -23,8 +23,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,7 +45,6 @@ import (
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -495,11 +494,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		containerService.BasePath = config.ContainerAPIEndpoint
 	}
 
-	client, err := newOauthClient(config.TokenSource)
-	if err != nil {
-		return nil, err
-	}
-	tpuService, err := newTPUService(client)
+	tpuService, err := newTPUService()
 	if err != nil {
 		return nil, err
 	}
@@ -841,6 +836,9 @@ func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
 				g.nodeZones[newZone] = sets.NewString()
 			}
 			g.nodeZones[newZone].Insert(newNode.ObjectMeta.Name)
+			if !slices.Contains(g.managedZones, newZone) {
+				klog.Warningf("Initializing node %s in an unmanaged zone %s. Managed zones: %v", newNode.ObjectMeta.Name, newZone, g.managedZones)
+			}
 		}
 	}
 }
@@ -966,40 +964,6 @@ func findSubnetForRegion(subnetURLs []string, region string) string {
 		}
 	}
 	return ""
-}
-
-func newOauthClient(tokenSource oauth2.TokenSource) (*http.Client, error) {
-	if tokenSource == nil {
-		var err error
-		tokenSource, err = google.DefaultTokenSource(
-			context.Background(),
-			compute.CloudPlatformScope,
-			compute.ComputeScope)
-		klog.Infof("Using DefaultTokenSource %#v", tokenSource)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		klog.Infof("Using existing Token Source %#v", tokenSource)
-	}
-
-	backoff := wait.Backoff{
-		// These values will add up to about a minute. See #56293 for background.
-		Duration: time.Second,
-		Factor:   1.4,
-		Steps:    10,
-	}
-	if err := wait.ExponentialBackoff(backoff, func() (bool, error) {
-		if _, err := tokenSource.Token(); err != nil {
-			klog.Errorf("error fetching initial token: %v", err)
-			return false, nil
-		}
-		return true, nil
-	}); err != nil {
-		return nil, err
-	}
-
-	return oauth2.NewClient(context.Background(), tokenSource), nil
 }
 
 func (manager *gceServiceManager) getProjectsAPIEndpoint() string {
