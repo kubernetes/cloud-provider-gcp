@@ -13,6 +13,7 @@ go_library(
         "//vendor/google.golang.org/grpc/channelz",
         "//vendor/google.golang.org/grpc/connectivity",
         "//vendor/google.golang.org/grpc/credentials",
+        "//vendor/google.golang.org/grpc/experimental/stats",
         "//vendor/google.golang.org/grpc/grpclog",
         "//vendor/google.golang.org/grpc/internal",
         "//vendor/google.golang.org/grpc/metadata",

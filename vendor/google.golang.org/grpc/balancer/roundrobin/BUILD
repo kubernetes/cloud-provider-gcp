@@ -10,6 +10,5 @@ go_library(
         "//vendor/google.golang.org/grpc/balancer",
         "//vendor/google.golang.org/grpc/balancer/base",
         "//vendor/google.golang.org/grpc/grpclog",
-        "//vendor/google.golang.org/grpc/internal/grpcrand",
     ],
 )

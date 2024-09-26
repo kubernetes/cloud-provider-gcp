@@ -7,10 +7,9 @@ go_library(
     importpath = "github.com/google/s2a-go/internal/v2",
     visibility = ["//vendor/github.com/google/s2a-go:__subpackages__"],
     deps = [
-        "//vendor/github.com/golang/protobuf/proto",
         "//vendor/github.com/google/s2a-go/fallback",
         "//vendor/github.com/google/s2a-go/internal/handshaker/service",
-        "//vendor/github.com/google/s2a-go/internal/proto/common_go_proto",
+        "//vendor/github.com/google/s2a-go/internal/proto/v2/common_go_proto",
         "//vendor/github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
         "//vendor/github.com/google/s2a-go/internal/tokenmanager",
         "//vendor/github.com/google/s2a-go/internal/v2/tlsconfigstore",
@@ -19,5 +18,6 @@ go_library(
         "//vendor/google.golang.org/grpc",
         "//vendor/google.golang.org/grpc/credentials",
         "//vendor/google.golang.org/grpc/grpclog",
+        "//vendor/google.golang.org/protobuf/proto",
     ],
 )

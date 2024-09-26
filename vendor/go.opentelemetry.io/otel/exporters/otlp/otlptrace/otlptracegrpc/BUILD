@@ -4,6 +4,7 @@ go_library(
     name = "otlptracegrpc",
     srcs = [
         "client.go",
+        "doc.go",
         "exporter.go",
         "options.go",
     ],
