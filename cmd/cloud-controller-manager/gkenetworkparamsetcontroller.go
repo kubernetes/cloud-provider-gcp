@@ -56,7 +56,7 @@ func startGkeNetworkParamsController(ccmConfig *cloudcontrollerconfig.CompletedC
 	gnpInformer := nwInfFactory.Networking().V1().GKENetworkParamSets()
 
 	gkeNetworkParamsetController := gkenetworkparamsetcontroller.NewGKENetworkParamSetController(
-		controllerCtx.InformerFactory.Core().V1().Nodes(),
+		ccmConfig.SharedInformers.Core().V1().Nodes(),
 		networkClient,
 		gnpInformer,
 		nwInformer,
