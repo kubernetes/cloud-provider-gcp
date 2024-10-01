@@ -15,6 +15,7 @@ go_library(
         "//vendor/go.opentelemetry.io/otel/exporters/otlp/otlptrace",
         "//vendor/go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc/internal/envconfig",
         "//vendor/go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc/internal/retry",
+        "//vendor/go.opentelemetry.io/otel/internal/global",
         "//vendor/google.golang.org/grpc",
         "//vendor/google.golang.org/grpc/backoff",
         "//vendor/google.golang.org/grpc/credentials",

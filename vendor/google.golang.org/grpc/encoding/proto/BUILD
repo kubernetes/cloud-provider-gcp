@@ -8,6 +8,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/google.golang.org/grpc/encoding",
+        "//vendor/google.golang.org/grpc/mem",
         "//vendor/google.golang.org/protobuf/proto",
         "//vendor/google.golang.org/protobuf/protoadapt",
     ],

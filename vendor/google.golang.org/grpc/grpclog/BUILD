@@ -11,5 +11,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/grpclog",
     importpath = "google.golang.org/grpc/grpclog",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/google.golang.org/grpc/internal/grpclog"],
+    deps = ["//vendor/google.golang.org/grpc/grpclog/internal"],
 )

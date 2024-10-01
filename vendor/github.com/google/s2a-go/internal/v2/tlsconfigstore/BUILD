@@ -7,7 +7,6 @@ go_library(
     importpath = "github.com/google/s2a-go/internal/v2/tlsconfigstore",
     visibility = ["//vendor/github.com/google/s2a-go:__subpackages__"],
     deps = [
-        "//vendor/github.com/google/s2a-go/internal/proto/common_go_proto",
         "//vendor/github.com/google/s2a-go/internal/proto/v2/common_go_proto",
         "//vendor/github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
         "//vendor/github.com/google/s2a-go/internal/tokenmanager",

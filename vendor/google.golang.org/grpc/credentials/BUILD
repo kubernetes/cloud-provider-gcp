@@ -11,7 +11,9 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/google.golang.org/grpc/attributes",
+        "//vendor/google.golang.org/grpc/grpclog",
         "//vendor/google.golang.org/grpc/internal/credentials",
+        "//vendor/google.golang.org/grpc/internal/envconfig",
         "//vendor/google.golang.org/protobuf/proto",
     ],
 )

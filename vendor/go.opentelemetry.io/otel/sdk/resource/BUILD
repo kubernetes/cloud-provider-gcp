@@ -30,10 +30,12 @@ go_library(
     importpath = "go.opentelemetry.io/otel/sdk/resource",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/google/uuid",
         "//vendor/go.opentelemetry.io/otel",
         "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/go.opentelemetry.io/otel/sdk",
-        "//vendor/go.opentelemetry.io/otel/semconv/v1.24.0:v1_24_0",
+        "//vendor/go.opentelemetry.io/otel/sdk/internal/x",
+        "//vendor/go.opentelemetry.io/otel/semconv/v1.26.0:v1_26_0",
     ] + select({
         "@io_bazel_rules_go//go/platform:aix": [
             "//vendor/golang.org/x/sys/unix",

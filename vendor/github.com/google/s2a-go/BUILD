@@ -11,11 +11,11 @@ go_library(
     importpath = "github.com/google/s2a-go",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/protobuf/proto",
         "//vendor/github.com/google/s2a-go/fallback",
         "//vendor/github.com/google/s2a-go/internal/handshaker",
         "//vendor/github.com/google/s2a-go/internal/handshaker/service",
         "//vendor/github.com/google/s2a-go/internal/proto/common_go_proto",
+        "//vendor/github.com/google/s2a-go/internal/proto/v2/common_go_proto",
         "//vendor/github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
         "//vendor/github.com/google/s2a-go/internal/tokenmanager",
         "//vendor/github.com/google/s2a-go/internal/v2:internal",
@@ -24,5 +24,6 @@ go_library(
         "//vendor/google.golang.org/grpc/credentials",
         "//vendor/google.golang.org/grpc/grpclog",
         "//vendor/google.golang.org/grpc/peer",
+        "//vendor/google.golang.org/protobuf/proto",
     ],
 )

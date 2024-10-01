@@ -10,6 +10,7 @@ go_library(
         "info.go",
         "programmatic_provider.go",
         "url_provider.go",
+        "x509_provider.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/cloud.google.com/go/auth/credentials/internal/externalaccount",
     importpath = "cloud.google.com/go/auth/credentials/internal/externalaccount",
@@ -20,5 +21,6 @@ go_library(
         "//vendor/cloud.google.com/go/auth/credentials/internal/stsexchange",
         "//vendor/cloud.google.com/go/auth/internal",
         "//vendor/cloud.google.com/go/auth/internal/credsfile",
+        "//vendor/cloud.google.com/go/auth/internal/transport/cert",
     ],
 )

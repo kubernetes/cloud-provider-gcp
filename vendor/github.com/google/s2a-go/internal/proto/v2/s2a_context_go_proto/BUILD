@@ -7,7 +7,7 @@ go_library(
     importpath = "github.com/google/s2a-go/internal/proto/v2/s2a_context_go_proto",
     visibility = ["//vendor/github.com/google/s2a-go:__subpackages__"],
     deps = [
-        "//vendor/github.com/google/s2a-go/internal/proto/common_go_proto",
+        "//vendor/github.com/google/s2a-go/internal/proto/v2/common_go_proto",
         "//vendor/google.golang.org/protobuf/reflect/protoreflect",
         "//vendor/google.golang.org/protobuf/runtime/protoimpl",
     ],
