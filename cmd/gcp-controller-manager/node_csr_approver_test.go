@@ -37,7 +37,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
-	container "google.golang.org/api/container/v1"
 	authorization "k8s.io/api/authorization/v1"
 	capi "k8s.io/api/certificates/v1"
 	certsv1 "k8s.io/api/certificates/v1"
@@ -294,11 +293,6 @@ func TestNodeApproverHandle(t *testing.T) {
 			c.verifyActions(t, client.Actions())
 		})
 	}
-}
-
-// stringPointer copies a constant string and returns a pointer to the copy.
-func stringPointer(str string) *string {
-	return &str
 }
 
 func TestValidators(t *testing.T) {
@@ -714,41 +708,6 @@ func fakeGCPAPI(t *testing.T, ekPub *rsa.PublicKey) (*http.Client, *httptest.Ser
 					{
 						Referrer: "https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroups/ig0",
 					},
-				},
-			})
-		default:
-			http.Error(rw, "not found", http.StatusNotFound)
-		}
-	}))
-	cl := srv.Client()
-	cl.Transport = fakeTransport{srv.URL}
-	return cl, srv
-}
-
-func fakeGKEAPI(t *testing.T) (*http.Client, *httptest.Server) {
-	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		t.Logf("fakeGKEAPI request %q", req.URL.Path)
-		switch req.URL.Path {
-		case "/v1/projects/p0/locations/z0/clusters/c0":
-			json.NewEncoder(rw).Encode(container.Cluster{
-				Name: "c0",
-				NodePools: []*container.NodePool{
-					{InstanceGroupUrls: []string{"https://www.googleapis.com/compute/v1/projects/2/zones/r0/instanceGroupManagers/ig0"}},
-					{InstanceGroupUrls: []string{"https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroupManagers/ig0"}},
-				},
-			})
-		case "/v1/projects/p0/locations/z0/clusters/c1":
-			json.NewEncoder(rw).Encode(container.Cluster{
-				Name: "c1",
-				NodePools: []*container.NodePool{
-					{InstanceGroupUrls: []string{"https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroupManagers/ig1"}},
-				},
-			})
-		case "/v1/projects/p0/locations/z0/clusters/c2":
-			json.NewEncoder(rw).Encode(container.Cluster{
-				Name: "c2",
-				NodePools: []*container.NodePool{
-					{InstanceGroupUrls: []string{"https://www.googleapis.com/compute/v1/projects/2/zones/z0/instanceGroupManagers/unknown"}},
 				},
 			})
 		default:

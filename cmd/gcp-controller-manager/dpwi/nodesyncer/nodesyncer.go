@@ -31,7 +31,6 @@ import (
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/auth"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/ctxlog"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/eventhandler"
@@ -48,7 +47,6 @@ type NodeHandler struct {
 	eventhandler.EventHandler
 	podIndexer  cache.Indexer
 	nodeIndexer cache.Indexer
-	queue       workqueue.RateLimitingInterface
 	verifier    verifier
 	auth        *auth.Client
 	nodeMap     *nodeMap

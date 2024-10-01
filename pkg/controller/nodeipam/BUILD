@@ -17,7 +17,6 @@ go_library(
         "//vendor/k8s.io/client-go/informers/core/v1:core",
         "//vendor/k8s.io/client-go/kubernetes",
         "//vendor/k8s.io/client-go/kubernetes/typed/core/v1:core",
-        "//vendor/k8s.io/client-go/listers/core/v1:core",
         "//vendor/k8s.io/client-go/tools/cache",
         "//vendor/k8s.io/client-go/tools/record",
         "//vendor/k8s.io/cloud-provider",

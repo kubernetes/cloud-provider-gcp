@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"sync"
 
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/cloud-provider-gcp/cmd/gcp-controller-manager/dpwi/ctxlog"
 )
 
@@ -58,14 +57,6 @@ type SAMap struct {
 // Key generates the key with the format Namespace/Name.
 func (sa ServiceAccount) Key() string {
 	return fmt.Sprintf("%s/%s", sa.Namespace, sa.Name)
-}
-
-func saFromKey(key string) (ServiceAccount, error) {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		return ServiceAccount{}, err
-	}
-	return ServiceAccount{namespace, name}, nil
 }
 
 // Serialize returns m in its JSON encoded format or error if serialization had failed.
@@ -113,13 +104,6 @@ func (m *saMap) get(sa ServiceAccount) (GSAEmail, bool) {
 	defer m.RUnlock()
 	gsa, ok := m.ma[sa]
 	return gsa, ok
-}
-
-// Serialize returns m in its JSON encoded format or error if serialization had failed.
-func (m *saMap) serialize() ([]byte, error) {
-	m.RLock()
-	defer m.RUnlock()
-	return json.Marshal(m.ma)
 }
 
 type verifyResult struct {

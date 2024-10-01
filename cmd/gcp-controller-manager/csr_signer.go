@@ -49,10 +49,9 @@ var (
 // gkeSigner uses external calls to GKE in order to sign certificate signing
 // requests.
 type gkeSigner struct {
-	webhook      *webhook.GenericWebhook
-	ctx          *controllerContext
-	retryBackoff *wait.Backoff
-	validators   []csrValidator
+	webhook    *webhook.GenericWebhook
+	ctx        *controllerContext
+	validators []csrValidator
 }
 
 // newGKESigner will create a new instance of a gkeSigner.
@@ -66,10 +65,9 @@ func newGKESigner(ctx *controllerContext) (*gkeSigner, error) {
 		return nil, err
 	}
 	return &gkeSigner{
-		webhook:      webhook,
-		ctx:          ctx,
-		retryBackoff: ClusterSigningGKERetryBackoff,
-		validators:   csrValidators(),
+		webhook:    webhook,
+		ctx:        ctx,
+		validators: csrValidators(),
 	}, nil
 }
 

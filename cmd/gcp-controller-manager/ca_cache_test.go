@@ -90,7 +90,6 @@ type fakeCA struct {
 	intermediateCert                                          *x509.Certificate
 	intermediateCertKey                                       *rsa.PrivateKey
 	validCert                                                 *x509.Certificate
-	validCertKey                                              *rsa.PrivateKey
 	invalidCerts                                              map[string]*x509.Certificate
 	srvURL                                                    string
 }
@@ -202,7 +201,7 @@ func (ca *fakeCA) regenerateValidCert(t *testing.T, id nodeidentity.Identity) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, ca.validCert, ca.validCertKey = makeCert(t, &x509.Certificate{
+	_, ca.validCert, _ = makeCert(t, &x509.Certificate{
 		SerialNumber:          big.NewInt(3),
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(time.Hour),

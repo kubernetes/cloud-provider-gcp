@@ -28,7 +28,6 @@ import (
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	cloudprovider "k8s.io/cloud-provider"
@@ -52,15 +51,9 @@ const (
 type Controller struct {
 	allocatorType ipam.CIDRAllocatorType
 
-	cloud                cloudprovider.Interface
-	clusterCIDRs         []*net.IPNet
 	serviceCIDR          *net.IPNet
 	secondaryServiceCIDR *net.IPNet
-	kubeClient           clientset.Interface
-	// Method for easy mocking in unittest.
-	lookupIP func(host string) ([]net.IP, error)
 
-	nodeLister         corelisters.NodeLister
 	nodeInformerSynced cache.InformerSynced
 
 	cidrAllocator ipam.CIDRAllocator
@@ -111,10 +104,6 @@ func NewNodeIpamController(
 	}
 
 	ic := &Controller{
-		cloud:                cloud,
-		kubeClient:           kubeClient,
-		lookupIP:             net.LookupIP,
-		clusterCIDRs:         clusterCIDRs,
 		serviceCIDR:          serviceCIDR,
 		secondaryServiceCIDR: secondaryServiceCIDR,
 		allocatorType:        allocatorType,
@@ -139,7 +128,6 @@ func NewNodeIpamController(
 		}
 	}
 
-	ic.nodeLister = nodeInformer.Lister()
 	ic.nodeInformerSynced = nodeInformer.Informer().HasSynced
 
 	return ic, nil
