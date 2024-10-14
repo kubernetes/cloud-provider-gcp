@@ -647,8 +647,12 @@ func TestEnsureExternalLoadBalancerRBSFinalizer(t *testing.T) {
 		finalizers []string
 		wantError  *error
 	}{
-		"When has ELBRbsFinalizer": {
+		"When has ELBRbsFinalizer V2": {
 			finalizers: []string{NetLBFinalizerV2},
+			wantError:  &cloudprovider.ImplementedElsewhere,
+		},
+		"When has ELBRbsFinalizer V3": {
+			finalizers: []string{NetLBFinalizerV3},
 			wantError:  &cloudprovider.ImplementedElsewhere,
 		},
 		"When has no finalizer": {
