@@ -705,6 +705,58 @@ func TestUpdateInternalLoadBalancerNodes(t *testing.T) {
 	)
 }
 
+func TestUpdateInternalLoadBalancerNodesWithEmptyZone(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	nodeName := "test-node-1"
+	node1Name := []string{nodeName}
+
+	svc := fakeLoadbalancerService(string(LBTypeInternal))
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+	nodes, err := createAndInsertNodes(gce, node1Name, vals.ZoneName)
+	require.NoError(t, err)
+
+	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	assert.NoError(t, err)
+
+	// Ensure Node has been added to instance group
+	igName := makeInstanceGroupName(vals.ClusterID)
+	instances, err := gce.ListInstancesInInstanceGroup(igName, vals.ZoneName, "ALL")
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(instances))
+	assert.Contains(
+		t,
+		instances[0].Instance,
+		fmt.Sprintf("%s/zones/%s/instances/%s", vals.ProjectID, vals.ZoneName, nodeName),
+	)
+
+	// Remove Zone from node
+	nodes[0].Labels[v1.LabelTopologyZone] = "" // empty zone
+
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+	existingFwdRule := &compute.ForwardingRule{
+		Name:                lbName,
+		IPAddress:           "",
+		Ports:               []string{"123"},
+		IPProtocol:          "TCP",
+		LoadBalancingScheme: string(cloud.SchemeInternal),
+		Description:         fmt.Sprintf(`{"kubernetes.io/service-name":"%s"}`, types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}.String()),
+	}
+
+	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
+	assert.NoError(t, err)
+
+	// Expect load balancer to not have deleted node test-node-1
+	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: nodeName}}
+	exist, err := gce.InstanceExists(context.TODO(), node)
+	require.NoError(t, err)
+	assert.Equal(t, exist, true)
+}
+
 func TestEnsureInternalLoadBalancerDeleted(t *testing.T) {
 	t.Parallel()
 
