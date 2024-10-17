@@ -11,11 +11,13 @@ require (
 	google.golang.org/api v0.151.0
 	k8s.io/api v0.30.0
 	k8s.io/apimachinery v0.30.0
+	k8s.io/apiserver v0.30.0
 	k8s.io/client-go v0.30.0
 	k8s.io/cloud-provider v0.30.0
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
 	k8s.io/kubernetes v1.30.0
 	k8s.io/pod-security-admission v0.30.0
+	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 )
 
 require (
@@ -124,7 +126,6 @@ require (
 	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect
 	k8s.io/kubectl v0.0.0 // indirect
 	k8s.io/kubelet v0.30.0 // indirect
-	k8s.io/utils v0.0.0-20230726121419-3b25d923346b // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.29.0 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
