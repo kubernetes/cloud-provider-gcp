@@ -2235,6 +2235,9 @@ function start-kube-controller-manager {
   if [[ -n "${FEATURE_GATES:-}" ]]; then
     params+=("--feature-gates=${FEATURE_GATES}")
   fi
+  if [[ -n "${KUBE_EMULATED_VERSION:-}" ]]; then
+    params+=("--emulated-version=kube=${KUBE_EMULATED_VERSION}")
+  fi
   if [[ -n "${VOLUME_PLUGIN_DIR:-}" ]]; then
     params+=("--flex-volume-plugin-dir=${VOLUME_PLUGIN_DIR}")
   fi
@@ -2442,6 +2445,9 @@ function start-kube-scheduler {
   params=("${SCHEDULER_TEST_LOG_LEVEL:-"--v=2"}" "${SCHEDULER_TEST_ARGS:-}")
   if [[ -n "${FEATURE_GATES:-}" ]]; then
     params+=("--feature-gates=${FEATURE_GATES}")
+  fi
+  if [[ -n "${KUBE_EMULATED_VERSION:-}" ]]; then
+    params+=("--emulated-version=kube=${KUBE_EMULATED_VERSION}")
   fi
 
   # Scheduler Component Config takes precedence over some flags.
