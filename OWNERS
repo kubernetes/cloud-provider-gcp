@@ -1,19 +1,16 @@
 # See the OWNERS docs at https://go.k8s.io/owners
 
 approvers:
-- aojea
-- bentheelder
 - cheftako
 - bowei
 - jprzychodzen
 - SergeyKanzhelev
-- sdmodi
 - vinayakankugoyal
 emeritus_approvers:
+- aojea
+- bentheelder
 - dnardo
 - nicksardo
 reviewers:
-- aojea
-- bentheelder
 - justinsb
 - seans3
