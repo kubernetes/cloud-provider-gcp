@@ -213,7 +213,7 @@ func TestEnsureInstanceGroupFromDefaultNetworkMultiSubnetClusterMode(t *testing.
 	nodes[0].Labels[labelGKESubnetworkName] = "defaultSubnet"
 	// node with a label of a non-matching subnet
 	nodes[1].Labels[labelGKESubnetworkName] = "anotherSubnet"
-	// node with no label but a PodCIDR
+	// node with no label but with PodCIDR
 	nodes[2].Spec.PodCIDR = "10.0.5.0/24"
 	// node[3] has no label nor PodCIDR
 	nodes[3].Spec.PodCIDR = ""
@@ -230,7 +230,7 @@ func TestEnsureInstanceGroupFromDefaultNetworkMultiSubnetClusterMode(t *testing.
 	require.NoError(t, err)
 	instances, err := gce.ListInstancesInInstanceGroup(url.Key.Name, url.Key.Zone, "ALL")
 	require.NoError(t, err)
-	assert.Len(t, instances, 3, "Incorrect number of Instances in the group")
+	assert.Len(t, instances, 4, "Incorrect number of Instances in the group")
 	var instanceURLs []string
 	for _, inst := range instances {
 		instanceURLs = append(instanceURLs, inst.Instance)
@@ -244,8 +244,8 @@ func TestEnsureInstanceGroupFromDefaultNetworkMultiSubnetClusterMode(t *testing.
 	if !hasInstanceForNode(instances, nodes[2]) {
 		t.Errorf("expected n3 to be in instances but it contained %+v", instanceURLs)
 	}
-	if hasInstanceForNode(instances, nodes[3]) {
-		t.Errorf("expected n4 to NOT be in instances but it was included %+v", instanceURLs)
+	if !hasInstanceForNode(instances, nodes[3]) {
+		t.Errorf("expected n4 to be in instances but it contained %+v", instanceURLs)
 	}
 	if !hasInstanceForNode(instances, nodes[4]) {
 		t.Errorf("expected n5 to be in instances but it contained %+v", instanceURLs)
@@ -348,7 +348,7 @@ func TestRemoveNodesInNonDefaultNetworks(t *testing.T) {
 					Name: "nodeInUnknownSubnet",
 				},
 			},
-			shouldBeInDefaultSubnet: false,
+			shouldBeInDefaultSubnet: true,
 		},
 	}
 	var nodes []*v1.Node
