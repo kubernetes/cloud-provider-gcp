@@ -261,17 +261,18 @@ func removeNodesInNonDefaultNetworks(nodes []*v1.Node, defaultSubnetName string)
 	var skippedNodes []string
 	for _, node := range nodes {
 		subnetLabel, ok := node.Labels[labelGKESubnetworkName]
-		// nodes that have no label and no PodCIDR should be filtered out.
-		// This translates to: if node doesn't have the label but has PodCIDR then it is assumed to be in the default network.
-		// This check is a safeguard for situations when the cluster might be running older node controller that does not know multi-subnet or multi-subnet feature misbehaves.
-		if !ok && node.Spec.PodCIDR == "" {
-			skippedNodes = append(skippedNodes, node.Name)
-			continue
-		}
 		// For clusters that become multi-subnet the label on existing nodes from the default network can be present with an emtpy value.
 		if ok && subnetLabel != "" && subnetLabel != defaultSubnetName {
 			skippedNodes = append(skippedNodes, node.Name)
 			continue
+		}
+		// nodes that have no label and no PodCIDR could potentially be in the non-default subnet so log it here.
+		// The reason for this is that PodCIDR is set in the same place as the label,
+		// So if PodCIDR is not there, and the label is not there, it means the controller that attaches labels has not yet run.
+		// We can't filter these nodes out, because the shared CCM code may decide not to sync this node again
+		// https://github.com/kubernetes/kubernetes/blob/da215bf06a3b8ac3da4e0adb110dc5acc7f61fe1/staging/src/k8s.io/cloud-provider/controllers/service/controller.go#L756
+		if !ok && node.Spec.PodCIDR == "" {
+			klog.V(2).Infof("Node %s has no PodCIDR and no subnet label, assuming default network.", node.Name)
 		}
 		newList = append(newList, node)
 	}
