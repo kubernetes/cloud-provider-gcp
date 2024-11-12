@@ -37,10 +37,11 @@ var gkenetworkparamsetlistsKind = v1alpha1.SchemeGroupVersion.WithKind("GKENetwo
 
 // Get takes name of the gKENetworkParamSetList, and returns the corresponding gKENetworkParamSetList object, and an error if there is any.
 func (c *FakeGKENetworkParamSetLists) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.GKENetworkParamSetList, err error) {
+	emptyResult := &v1alpha1.GKENetworkParamSetList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(gkenetworkparamsetlistsResource, name), &v1alpha1.GKENetworkParamSetList{})
+		Invokes(testing.NewRootGetActionWithOptions(gkenetworkparamsetlistsResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1alpha1.GKENetworkParamSetList), err
 }

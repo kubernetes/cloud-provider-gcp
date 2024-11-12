@@ -37,10 +37,11 @@ var networklistsKind = v1alpha1.SchemeGroupVersion.WithKind("NetworkList")
 
 // Get takes name of the networkList, and returns the corresponding networkList object, and an error if there is any.
 func (c *FakeNetworkLists) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.NetworkList, err error) {
+	emptyResult := &v1alpha1.NetworkList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(networklistsResource, name), &v1alpha1.NetworkList{})
+		Invokes(testing.NewRootGetActionWithOptions(networklistsResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1alpha1.NetworkList), err
 }

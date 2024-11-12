@@ -21,7 +21,9 @@ go_library(
     deps = [
         "//vendor/golang.org/x/net/http2",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
+        "//vendor/k8s.io/apimachinery/pkg/api/meta",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/conversion",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/streaming",
@@ -29,6 +31,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/net",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/watch",
+        "//vendor/k8s.io/client-go/features",
         "//vendor/k8s.io/client-go/pkg/apis/clientauthentication",
         "//vendor/k8s.io/client-go/pkg/version",
         "//vendor/k8s.io/client-go/plugin/pkg/client/auth/exec",

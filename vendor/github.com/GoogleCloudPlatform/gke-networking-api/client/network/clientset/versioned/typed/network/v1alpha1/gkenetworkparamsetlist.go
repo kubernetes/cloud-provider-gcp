@@ -24,7 +24,7 @@ import (
 	v1alpha1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1alpha1"
 	scheme "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	rest "k8s.io/client-go/rest"
+	gentype "k8s.io/client-go/gentype"
 )
 
 // GKENetworkParamSetListsGetter has a method to return a GKENetworkParamSetListInterface.
@@ -41,24 +41,17 @@ type GKENetworkParamSetListInterface interface {
 
 // gKENetworkParamSetLists implements GKENetworkParamSetListInterface
 type gKENetworkParamSetLists struct {
-	client rest.Interface
+	*gentype.Client[*v1alpha1.GKENetworkParamSetList]
 }
 
 // newGKENetworkParamSetLists returns a GKENetworkParamSetLists
 func newGKENetworkParamSetLists(c *NetworkingV1alpha1Client) *gKENetworkParamSetLists {
 	return &gKENetworkParamSetLists{
-		client: c.RESTClient(),
+		gentype.NewClient[*v1alpha1.GKENetworkParamSetList](
+			"gkenetworkparamsetlists",
+			c.RESTClient(),
+			scheme.ParameterCodec,
+			"",
+			func() *v1alpha1.GKENetworkParamSetList { return &v1alpha1.GKENetworkParamSetList{} }),
 	}
-}
-
-// Get takes name of the gKENetworkParamSetList, and returns the corresponding gKENetworkParamSetList object, and an error if there is any.
-func (c *gKENetworkParamSetLists) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.GKENetworkParamSetList, err error) {
-	result = &v1alpha1.GKENetworkParamSetList{}
-	err = c.client.Get().
-		Resource("gkenetworkparamsetlists").
-		Name(name).
-		VersionedParams(&options, scheme.ParameterCodec).
-		Do(ctx).
-		Into(result)
-	return
 }

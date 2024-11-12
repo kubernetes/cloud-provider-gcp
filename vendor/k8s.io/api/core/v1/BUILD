@@ -17,6 +17,7 @@ go_library(
         "well_known_labels.go",
         "well_known_taints.go",
         "zz_generated.deepcopy.go",
+        "zz_generated.prerelease-lifecycle.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/api/core/v1",
     importpath = "k8s.io/api/core/v1",

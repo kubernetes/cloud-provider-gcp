@@ -12,7 +12,10 @@ go_library(
     deps = [
         "//pkg/controller/nodeipam/ipam",
         "//pkg/controller/nodeipam/ipam/sync",
+        "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1:nodetopology",
         "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1:network",
+        "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned",
+        "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/typed/nodetopology/v1:nodetopology",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/client-go/informers/core/v1:core",
         "//vendor/k8s.io/client-go/kubernetes",

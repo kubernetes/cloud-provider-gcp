@@ -25,6 +25,9 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
 	networkinformer "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1"
+	nodetopology "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
+	nodetopologyclient "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
+	nodetopologyclientv1 "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/typed/nodetopology/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
