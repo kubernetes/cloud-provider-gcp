@@ -30,7 +30,7 @@ require (
 )
 
 require (
-	github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240703141847-066e11533e15
+	github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.30.0

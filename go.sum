@@ -8,8 +8,8 @@ cloud.google.com/go/compute/metadata v0.5.2/go.mod h1:C66sj2AluDcIqakBq/M8lw8/yb
 github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 h1:UQHMgLO+TxOElx5B5HZ4hJQsoJ/PvUvKRhJHDQXO8P8=
 github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
-github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240703141847-066e11533e15 h1:UBDSMOhRBmlQaFwx0zd/yiFXhhJExFl5MIus0DksRAk=
-github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240703141847-066e11533e15/go.mod h1:hngDInU0bLls5Nk7vssNbT6noFXS6ZwldjRhHwu85uE=
+github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f h1:OPE+MYCwdQNms+QAXgHjR03TKCHXoqlurXiuhYDuEdI=
+github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f/go.mod h1:YnoYXo/cwpqFmIXKblHOV5jFEpsSL3PZeo0zaR3oGTI=
 github.com/GoogleCloudPlatform/k8s-cloud-provider v1.25.0 h1:lwL1vLWmdBJ5h+StMEN6+GMz1J/Y0yUU3RDv+QBy+Q4=
 github.com/GoogleCloudPlatform/k8s-cloud-provider v1.25.0/go.mod h1:UTfhBnADaj2rybPT049NScSh7Eall3u2ib43wmz3deg=
 github.com/NYTimes/gziphandler v1.1.1 h1:ZUDjpQae29j0ryrS0u/B8HZfJBtBQHjqw2rQ2cqUQ3I=
