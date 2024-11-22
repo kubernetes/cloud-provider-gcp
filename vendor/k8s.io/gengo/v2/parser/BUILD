@@ -5,6 +5,8 @@ go_library(
     srcs = [
         "doc.go",
         "parse.go",
+        "parse_122.go",
+        "parse_pre_122.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/gengo/v2/parser",
     importpath = "k8s.io/gengo/v2/parser",

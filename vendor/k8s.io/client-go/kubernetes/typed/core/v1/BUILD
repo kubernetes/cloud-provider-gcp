@@ -44,6 +44,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/net",
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/applyconfigurations/core/v1:core",
+        "//vendor/k8s.io/client-go/gentype",
         "//vendor/k8s.io/client-go/kubernetes/scheme",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/tools/reference",

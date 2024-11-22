@@ -6,6 +6,8 @@ go_library(
         "doc.go",
         "kube_features.go",
         "options.go",
+        "options_no_slog.go",
+        "options_slog.go",
         "pflags.go",
         "registry.go",
         "text.go",

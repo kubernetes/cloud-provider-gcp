@@ -32,6 +32,7 @@ go_library(
     importpath = "github.com/google/cel-go/common/types",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/cel.dev/expr",
         "//vendor/github.com/google/cel-go/checker/decls",
         "//vendor/github.com/google/cel-go/common/overloads",
         "//vendor/github.com/google/cel-go/common/types/pb",

@@ -10,4 +10,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/go.opentelemetry.io/otel/sdk/instrumentation",
     importpath = "go.opentelemetry.io/otel/sdk/instrumentation",
     visibility = ["//visibility:public"],
+    deps = ["//vendor/go.opentelemetry.io/otel/attribute"],
 )
