@@ -37,6 +37,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/features",
         "//vendor/k8s.io/apiserver/pkg/storage",
         "//vendor/k8s.io/apiserver/pkg/storage/cacher/metrics",
+        "//vendor/k8s.io/apiserver/pkg/storage/feature",
         "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol",
         "//vendor/k8s.io/client-go/tools/cache",

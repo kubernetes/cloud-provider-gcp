@@ -4,7 +4,6 @@ go_library(
     name = "aliases",
     srcs = [
         "aliases.go",
-        "aliases_go121.go",
         "aliases_go122.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/internal/aliases",

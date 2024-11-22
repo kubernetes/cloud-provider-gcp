@@ -24,7 +24,6 @@ go_library(
         "//vendor/k8s.io/client-go/kubernetes",
         "//vendor/k8s.io/client-go/listers/core/v1:core",
         "//vendor/k8s.io/client-go/tools/cache",
-        "//vendor/k8s.io/client-go/util/cert",
         "//vendor/k8s.io/client-go/util/workqueue",
         "//vendor/k8s.io/klog/v2:klog",
     ],

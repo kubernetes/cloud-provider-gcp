@@ -13,6 +13,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
+        "//vendor/k8s.io/apiserver/pkg/apis/apiserver",
         "//vendor/k8s.io/apiserver/pkg/authentication/authenticator",
         "//vendor/k8s.io/apiserver/pkg/authentication/group",
         "//vendor/k8s.io/apiserver/pkg/authentication/request/anonymous",

@@ -34,6 +34,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/conversion",
         "//vendor/k8s.io/apimachinery/pkg/conversion/queryparams",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/cbor/direct",
         "//vendor/k8s.io/apimachinery/pkg/util/errors",
         "//vendor/k8s.io/apimachinery/pkg/util/json",
         "//vendor/k8s.io/apimachinery/pkg/util/naming",

@@ -48,7 +48,7 @@ go_rules_dependencies()
 
 go_download_sdk(
     name = "go_sdk",
-    version = "1.23.1",
+    version = "1.23.3",
 )
 
 go_register_toolchains()
@@ -79,11 +79,11 @@ container_pull(
 container_pull(
     name = "go-runner",
     # this digest is actually go-runner-amd64
-    digest = "sha256:ff9d9b20255f11611cdcaf3ccd6f395ce2fa02a78c546ec93b4e06eb77359d46",
+    digest = "sha256:4decba1ba68d6db721b8ce9bcd1e8567829f0b5bec9a6ceea0b0c094d027c1ac",
     registry = "registry.k8s.io",
     repository = "build-image/go-runner",
     # 'tag' is also supported, but digest is encouraged for reproducibility.
-    tag = "v2.3.1-go1.21.7-bullseye.0",
+    tag = "v2.4.0-go1.23.3-bookworm.0",
 )
 
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
@@ -101,10 +101,10 @@ load("//defs:repo_rules.bzl", "fetch_kube_release")
 fetch_kube_release(
     name = "io_k8s_release",
     archives = {
-        "kubernetes-node-linux-amd64.tar.gz": "1870c8ec9a38af4d2e86d2ed22c3a4840e1bfe12aa08e7c70c9a86d21f04c375",
-        "kubernetes-manifests.tar.gz": "4bdcbde160458bb664bf682aad25f37a19cd1a2b2baa5a0f7bab216a11513d7d",
-        "kubernetes-server-linux-amd64.tar.gz": "aced340e01320ee9ae488bf7ad3ccb4853185316aa290597ca195754146d08af",
-        "kubernetes-node-windows-amd64.tar.gz": "c9b8e681ff5b2633e6ac0cfe66b1d0795b22b6daf51ec029f5793009c82fcd8c",
+        "kubernetes-node-linux-amd64.tar.gz": "c8d7ba8b68fbb83d9c0f9c97b30e7601ef37abb2bfa94ea699d28e55f844ffd7",
+        "kubernetes-manifests.tar.gz": "0b4a876cf33e96f59e25053d71e248e57f91cec4fc38d09ab09dabccc4c899e5",
+        "kubernetes-server-linux-amd64.tar.gz": "0de1d89860ae860c180d30c88afbec44c23e6d540ef478279c27b067d01f7cd2",
+        "kubernetes-node-windows-amd64.tar.gz": "d3d5b75c4db9a4e5810066d09aeb323d1f5e36582ed160dc0f41a2d6cf0a6a21",
     },
-    version = "v1.30.0",
+    version = "v1.31.2",
 )

@@ -11,7 +11,6 @@ go_library(
         "longrunning.go",
         "maxinflight.go",
         "priority-and-fairness.go",
-        "routine.go",
         "timeout.go",
         "waitgroup.go",
         "watch_termination.go",
