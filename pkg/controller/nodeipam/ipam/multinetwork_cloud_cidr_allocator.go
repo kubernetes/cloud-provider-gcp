@@ -99,6 +99,8 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 				northInterfaces = append(northInterfaces, networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP})
 				if _, ok := upStatusNetworks[network.Name]; ok {
 					additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{inf.NetworkIP + "/32"}})
+				} else {
+					klog.V(2).InfoS("skipping network %s on node %s in networking.gke.io/networks annotation due to missing network-status", network.Name, node.Name)
 				}
 				continue
 			}
@@ -136,6 +138,8 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 					northInterfaces = append(northInterfaces, networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP})
 					if _, ok := upStatusNetworks[network.Name]; ok {
 						additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{ipRange.IpCidrRange}})
+					} else {
+						klog.V(2).InfoS("skipping network %s on node %s in networking.gke.io/networks annotation due to missing network-status", network.Name, node.Name)
 					}
 				}
 				break
