@@ -1204,20 +1204,19 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 
 }
 
-func TestHandleGKENetworkParamSetDelete_NetworkInUse(t *testing.T) {
+func TestHandleGKENetworkParamSetDelete_NetworkPresent(t *testing.T) {
 
 	tests := []struct {
 		name            string
 		networkUpdateFn func(ctx context.Context, networkName string, networkClient *networkfake.Clientset)
 	}{
-		{name: "Network no longer InUse",
+		{name: "Network no longer refer to GNP",
 			networkUpdateFn: func(ctx context.Context, networkName string, networkClient *networkfake.Clientset) {
 				network, err := networkClient.NetworkingV1().Networks().Get(ctx, networkName, metav1.GetOptions{})
 				if err != nil {
 					t.Fatalf("Failed to get Network: %v", err)
 				}
-				// change Network to not in use
-				network.SetAnnotations(map[string]string{})
+				network.Spec.ParametersRef.Name = "non-existent"
 				_, err = networkClient.NetworkingV1().Networks().Update(ctx, network, metav1.UpdateOptions{})
 				if err != nil {
 					t.Fatalf("Failed to update Network status: %v", err)
@@ -1266,9 +1265,6 @@ func TestHandleGKENetworkParamSetDelete_NetworkInUse(t *testing.T) {
 			network := &networkv1.Network{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: networkName,
-					Annotations: map[string]string{
-						networkv1.NetworkInUseAnnotationKey: networkv1.NetworkInUseAnnotationValTrue,
-					},
 				},
 				Spec: networkv1.NetworkSpec{
 					Type:          networkv1.DeviceNetworkType,
