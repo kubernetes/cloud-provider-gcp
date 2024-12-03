@@ -12,8 +12,8 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/admission/plugin/webhook/mutating",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/evanphx/json-patch",
         "//vendor/go.opentelemetry.io/otel/attribute",
+        "//vendor/gopkg.in/evanphx/json-patch.v4:json-patch_v4",
         "//vendor/k8s.io/api/admission/v1:admission",
         "//vendor/k8s.io/api/admissionregistration/v1:admissionregistration",
         "//vendor/k8s.io/apimachinery/pkg/api/equality",

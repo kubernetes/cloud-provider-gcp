@@ -6,5 +6,9 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/google/cel-go/common/debug",
     importpath = "github.com/google/cel-go/common/debug",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/google.golang.org/genproto/googleapis/api/expr/v1alpha1"],
+    deps = [
+        "//vendor/github.com/google/cel-go/common/ast",
+        "//vendor/github.com/google/cel-go/common/types",
+        "//vendor/github.com/google/cel-go/common/types/ref",
+    ],
 )

@@ -18,9 +18,9 @@ go_library(
     importpath = "sigs.k8s.io/structured-merge-diff/v4/typed",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/gopkg.in/yaml.v2:yaml_v2",
         "//vendor/sigs.k8s.io/structured-merge-diff/v4/fieldpath",
         "//vendor/sigs.k8s.io/structured-merge-diff/v4/schema",
         "//vendor/sigs.k8s.io/structured-merge-diff/v4/value",
+        "//vendor/sigs.k8s.io/yaml/goyaml.v2:goyaml_v2",
     ],
 )

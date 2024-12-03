@@ -14,11 +14,12 @@ go_library(
     importpath = "github.com/prometheus/common/expfmt",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/matttproud/golang_protobuf_extensions/pbutil",
+        "//vendor/github.com/munnerz/goautoneg",
         "//vendor/github.com/prometheus/client_model/go",
-        "//vendor/github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg",
         "//vendor/github.com/prometheus/common/model",
+        "//vendor/google.golang.org/protobuf/encoding/protodelim",
         "//vendor/google.golang.org/protobuf/encoding/prototext",
         "//vendor/google.golang.org/protobuf/proto",
+        "//vendor/google.golang.org/protobuf/types/known/timestamppb",
     ],
 )

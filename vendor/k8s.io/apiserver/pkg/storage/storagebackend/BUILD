@@ -8,6 +8,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/go.opentelemetry.io/otel/trace",
+        "//vendor/go.opentelemetry.io/otel/trace/noop",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apiserver/pkg/server/egressselector",
