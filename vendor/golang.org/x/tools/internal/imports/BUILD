@@ -14,6 +14,7 @@ go_library(
     visibility = ["//vendor/golang.org/x/tools:__subpackages__"],
     deps = [
         "//vendor/golang.org/x/mod/module",
+        "//vendor/golang.org/x/sync/errgroup",
         "//vendor/golang.org/x/tools/go/ast/astutil",
         "//vendor/golang.org/x/tools/internal/event",
         "//vendor/golang.org/x/tools/internal/gocommand",

@@ -38,11 +38,12 @@ var networkinterfacelistsKind = v1alpha1.SchemeGroupVersion.WithKind("NetworkInt
 
 // Get takes name of the networkInterfaceList, and returns the corresponding networkInterfaceList object, and an error if there is any.
 func (c *FakeNetworkInterfaceLists) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.NetworkInterfaceList, err error) {
+	emptyResult := &v1alpha1.NetworkInterfaceList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(networkinterfacelistsResource, c.ns, name), &v1alpha1.NetworkInterfaceList{})
+		Invokes(testing.NewGetActionWithOptions(networkinterfacelistsResource, c.ns, name, options), emptyResult)
 
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1alpha1.NetworkInterfaceList), err
 }

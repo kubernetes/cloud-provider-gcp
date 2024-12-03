@@ -26,6 +26,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/utils/ptr",
         "//vendor/sigs.k8s.io/controller-tools/pkg/crd/markers",
         "//vendor/sigs.k8s.io/controller-tools/pkg/genall",
         "//vendor/sigs.k8s.io/controller-tools/pkg/loader",

@@ -6,6 +6,8 @@ go_library(
         "ingress.go",
         "ingressclass.go",
         "interface.go",
+        "ipaddress.go",
+        "servicecidr.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/informers/networking/v1beta1",
     importpath = "k8s.io/client-go/informers/networking/v1beta1",

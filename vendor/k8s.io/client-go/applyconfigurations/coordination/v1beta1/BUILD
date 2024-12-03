@@ -10,6 +10,7 @@ go_library(
     importpath = "k8s.io/client-go/applyconfigurations/coordination/v1beta1",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/api/coordination/v1:coordination",
         "//vendor/k8s.io/api/coordination/v1beta1",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/types",
