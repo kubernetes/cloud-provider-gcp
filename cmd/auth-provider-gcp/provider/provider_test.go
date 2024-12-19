@@ -44,8 +44,7 @@ func hasURL(url string, response *credentialproviderapi.CredentialProviderRespon
 }
 
 func TestContainerRegistry(t *testing.T) {
-	// Taken from from pkg/credentialprovider/gcp/metadata_test.go in kubernetes/kubernetes
-	registryURL := "container.cloud.google.com"
+	registryURL := strings.Split(dummyImage, "/")[0]
 	token := &gcpcredential.TokenBlob{AccessToken: dummyToken} // Fake value for testing.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defaultPrefix := "/computeMetadata/v1/instance/service-accounts/default/"
@@ -84,6 +83,9 @@ func TestContainerRegistry(t *testing.T) {
 	response, err := GetResponse(dummyImage, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
+	}
+	if len(response.Auth) != 1 {
+		t.Errorf("Expected 1 auth in response, found %d", len(response.Auth))
 	}
 	if hasURL(registryURL, response) == false {
 		t.Errorf("URL %s expected in response, not found (response: %s)", registryURL, response.Auth)

@@ -82,6 +82,7 @@ type DockerConfigURLKeyProvider struct {
 //	Password: "{access token from metadata}"
 type ContainerRegistryProvider struct {
 	MetadataProvider
+	SkipContainerRegistryUrlsMatching bool
 }
 
 // Returns true if it finds a local GCE VM.
@@ -257,6 +258,15 @@ func (g *ContainerRegistryProvider) Provide(image string) credentialconfig.Docke
 		Username: "_token",
 		Password: parsedBlob.AccessToken,
 		Email:    string(email),
+	}
+
+	// If SkipContainerRegistryUrlsMatching is true, we won't examine if it's matching containerRegistryUrls.
+	// Currently, this is only used by auth-provider-gcp.
+	if g.SkipContainerRegistryUrlsMatching {
+		if registry, _, found := strings.Cut(image, "/"); found {
+			cfg[registry] = entry
+		}
+		return cfg
 	}
 
 	// Add our entry for each of the supported container registry URLs
