@@ -82,6 +82,7 @@ type DockerConfigURLKeyProvider struct {
 //	Password: "{access token from metadata}"
 type ContainerRegistryProvider struct {
 	MetadataProvider
+	UseRegistryFromImage bool
 }
 
 // Returns true if it finds a local GCE VM.
@@ -259,9 +260,20 @@ func (g *ContainerRegistryProvider) Provide(image string) credentialconfig.Docke
 		Email:    string(email),
 	}
 
-	// Add our entry for each of the supported container registry URLs
-	for _, k := range containerRegistryUrls {
-		cfg[k] = entry
+	// If UseRegistryFromImage is true, we won't examine if it's matching containerRegistryUrls.
+	// Currently, this is only used by auth-provider-gcp.
+	if g.UseRegistryFromImage {
+		if registry, _, found := strings.Cut(image, "/"); found {
+			cfg[registry] = entry
+		} else {
+			klog.Errorf("Invalid image registry URL: %s. The URL must contain a '/' character to separate the registry domain from the image path. Please check the URL and ensure it's correctly formatted.", image)
+			return cfg
+		}
+	} else {
+		// Add our entry for each of the supported container registry URLs
+		for _, k := range containerRegistryUrls {
+			cfg[k] = entry
+		}
 	}
 	return cfg
 }
