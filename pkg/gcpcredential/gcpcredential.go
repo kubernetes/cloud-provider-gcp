@@ -265,13 +265,15 @@ func (g *ContainerRegistryProvider) Provide(image string) credentialconfig.Docke
 	if g.UseRegistryFromImage {
 		if registry, _, found := strings.Cut(image, "/"); found {
 			cfg[registry] = entry
+		} else {
+			klog.Errorf("Invalid image registry URL: %s. The URL must contain a '/' character to separate the registry domain from the image path. Please check the URL and ensure it's correctly formatted.", image)
+			return cfg
 		}
-		return cfg
-	}
-
-	// Add our entry for each of the supported container registry URLs
-	for _, k := range containerRegistryUrls {
-		cfg[k] = entry
+	} else {
+		// Add our entry for each of the supported container registry URLs
+		for _, k := range containerRegistryUrls {
+			cfg[k] = entry
+		}
 	}
 	return cfg
 }
