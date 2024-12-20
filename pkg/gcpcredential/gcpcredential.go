@@ -82,7 +82,7 @@ type DockerConfigURLKeyProvider struct {
 //	Password: "{access token from metadata}"
 type ContainerRegistryProvider struct {
 	MetadataProvider
-	SkipContainerRegistryUrlsMatching bool
+	UseRegistryFromImage bool
 }
 
 // Returns true if it finds a local GCE VM.
@@ -260,9 +260,9 @@ func (g *ContainerRegistryProvider) Provide(image string) credentialconfig.Docke
 		Email:    string(email),
 	}
 
-	// If SkipContainerRegistryUrlsMatching is true, we won't examine if it's matching containerRegistryUrls.
+	// If UseRegistryFromImage is true, we won't examine if it's matching containerRegistryUrls.
 	// Currently, this is only used by auth-provider-gcp.
-	if g.SkipContainerRegistryUrlsMatching {
+	if g.UseRegistryFromImage {
 		if registry, _, found := strings.Cut(image, "/"); found {
 			cfg[registry] = entry
 		}
