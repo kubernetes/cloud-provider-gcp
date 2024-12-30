@@ -7,7 +7,12 @@ go_library(
     importpath = "google.golang.org/api/transport/http",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/cloud.google.com/go/auth",
+        "//vendor/cloud.google.com/go/auth/credentials",
+        "//vendor/cloud.google.com/go/auth/httptransport",
+        "//vendor/cloud.google.com/go/auth/oauth2adapt",
         "//vendor/go.opencensus.io/plugin/ochttp",
+        "//vendor/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
         "//vendor/golang.org/x/net/http2",
         "//vendor/golang.org/x/oauth2",
         "//vendor/google.golang.org/api/googleapi/transport",

@@ -6,6 +6,7 @@ go_library(
         "crd.go",
         "doc.go",
         "package.go",
+        "priority.go",
         "register.go",
         "topology.go",
         "validation.go",

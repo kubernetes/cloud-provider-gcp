@@ -2,7 +2,11 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "compute",
-    srcs = ["compute-gen.go"],
+    srcs = [
+        "compute-gen.go",
+        "compute2-gen.go",
+        "compute3-gen.go",
+    ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/api/compute/v1",
     importpath = "google.golang.org/api/compute/v1",
     visibility = ["//visibility:public"],

@@ -13,8 +13,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/internal/grpcutil",
     importpath = "google.golang.org/grpc/internal/grpcutil",
     visibility = ["//vendor/google.golang.org/grpc:__subpackages__"],
-    deps = [
-        "//vendor/google.golang.org/grpc/internal/envconfig",
-        "//vendor/google.golang.org/grpc/metadata",
-    ],
+    deps = ["//vendor/google.golang.org/grpc/metadata"],
 )

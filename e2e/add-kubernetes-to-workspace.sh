@@ -28,7 +28,6 @@ cd "${REPO_ROOT}"
 go work init
 
 go work use .
-go work use crd
 go work use providers
 
 # Add kubernetes to workspace
