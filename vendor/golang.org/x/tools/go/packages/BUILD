@@ -15,6 +15,7 @@ go_library(
     importpath = "golang.org/x/tools/go/packages",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/golang.org/x/sync/errgroup",
         "//vendor/golang.org/x/tools/go/gcexportdata",
         "//vendor/golang.org/x/tools/go/internal/packagesdriver",
         "//vendor/golang.org/x/tools/internal/gocommand",

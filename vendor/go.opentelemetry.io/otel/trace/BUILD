@@ -17,5 +17,6 @@ go_library(
     deps = [
         "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/go.opentelemetry.io/otel/codes",
+        "//vendor/go.opentelemetry.io/otel/trace/embedded",
     ],
 )

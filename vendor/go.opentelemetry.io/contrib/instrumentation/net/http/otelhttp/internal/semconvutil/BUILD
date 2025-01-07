@@ -13,6 +13,6 @@ go_library(
     deps = [
         "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/go.opentelemetry.io/otel/codes",
-        "//vendor/go.opentelemetry.io/otel/semconv/v1.17.0:v1_17_0",
+        "//vendor/go.opentelemetry.io/otel/semconv/v1.20.0:v1_20_0",
     ],
 )

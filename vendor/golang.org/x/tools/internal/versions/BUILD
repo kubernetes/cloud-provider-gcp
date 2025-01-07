@@ -3,7 +3,12 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "versions",
     srcs = [
+        "features.go",
         "gover.go",
+        "toolchain.go",
+        "toolchain_go119.go",
+        "toolchain_go120.go",
+        "toolchain_go121.go",
         "types.go",
         "types_go121.go",
         "types_go122.go",

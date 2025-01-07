@@ -41,9 +41,6 @@ type controllerContext struct {
 	recorder                              record.EventRecorder
 	gcpCfg                                gcpConfig
 	clusterSigningGKEKubeconfig           string
-	csrApproverVerifyClusterMembership    bool
-	csrApproverAllowLegacyKubelet         bool
-	csrApproverListReferrersConfig        gceInstanceListReferrersConfig
 	authAuthorizeServiceAccountMappingURL string
 	authSyncNodeURL                       string
 	hmsAuthorizeSAMappingURL              string
@@ -108,7 +105,7 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 			nodeAnnotateController, err := newNodeAnnotator(
 				controllerCtx.client,
 				controllerCtx.sharedInformers.Core().V1().Nodes(),
-				controllerCtx.gcpCfg.Compute,
+				controllerCtx.gcpCfg.BetaCompute,
 			)
 			if err != nil {
 				return err
@@ -119,19 +116,6 @@ func loops() map[string]func(context.Context, *controllerContext) error {
 	}
 	if *directPath {
 		ll["direct-path-with-workload-identity"] = directPathV2Loop
-	}
-	if *kubeletReadOnlyCSRApprover {
-		ll["kubelet-readonly-approver"] = func(ctx context.Context, controllerCtx *controllerContext) error {
-			approver := newKubeletReadonlyCSRApprover(controllerCtx)
-			approveController := certificates.NewCertificateController(ctx,
-				"kubelet-readonly-approver",
-				controllerCtx.client,
-				controllerCtx.sharedInformers.Certificates().V1().CertificateSigningRequests(),
-				approver.handle,
-			)
-			go approveController.Run(ctx, 20)
-			return nil
-		}
 	}
 	return ll
 }

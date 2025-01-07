@@ -28,6 +28,10 @@ import (
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 
+	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
+	networkclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned"
+	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
+	networkinformer "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1"
 	"github.com/hashicorp/go-multierror"
 	"google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
@@ -39,10 +43,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	networkv1 "k8s.io/cloud-provider-gcp/crd/apis/network/v1"
-	networkclientset "k8s.io/cloud-provider-gcp/crd/client/network/clientset/versioned"
-	networkinformers "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions"
-	networkinformer "k8s.io/cloud-provider-gcp/crd/client/network/informers/externalversions/network/v1"
 	"k8s.io/cloud-provider-gcp/pkg/controllermetrics"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider-gcp/providers/gce"
@@ -406,6 +406,27 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 	}
 
 	addFinalizerInPlace(params)
+
+	// Validate that the fields set are a valid combination.
+	presenceValidation := c.validateFieldCombinations(ctx, params)
+	if !presenceValidation.IsValid {
+		meta.SetStatusCondition(&params.Status.Conditions, presenceValidation.toCondition())
+		return nil
+	}
+
+	// Validate specific fields once field combination is valid.
+	netAttachment := params.Spec.NetworkAttachment
+	if netAttachment != "" {
+		networkAttachmentValidation := c.validateNetworkAttachment(ctx, netAttachment)
+		meta.SetStatusCondition(&params.Status.Conditions, networkAttachmentValidation.toCondition())
+		if !networkAttachmentValidation.IsValid {
+			return nil
+		}
+
+		return c.getAndSyncNetworkForGNP(ctx, params)
+	}
+
+	// Validate params with (VPC + VPCSubnet).
 	subnet, subnetValidation := c.getAndValidateSubnet(ctx, params)
 	meta.SetStatusCondition(&params.Status.Conditions, subnetValidation.toCondition())
 	if !subnetValidation.IsValid {
@@ -436,6 +457,13 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 		CIDRBlocks: cidrs,
 	}
 
+	return c.getAndSyncNetworkForGNP(ctx, params)
+}
+
+// getAndSyncNetworkForGNP gets the network that refers to this GNP object, and
+// then does the cross sync of Network with GNP. GNP is guaranteed to have
+// minimum fields set (either NetworkAttachment or [VPC + VPCSubnet]).
+func (c *Controller) getAndSyncNetworkForGNP(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
 	network, err := c.getNetworkReferringToGNP(params.Name)
 	if err != nil {
 		return err

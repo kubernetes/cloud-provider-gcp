@@ -5,5 +5,4 @@ go_library(
     srcs = ["id.go"],
     importpath = "k8s.io/cloud-provider-gcp/pkg/nodeidentity",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/cloud.google.com/go/compute/metadata"],
 )

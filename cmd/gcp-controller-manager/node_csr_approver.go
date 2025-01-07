@@ -14,30 +14,19 @@ limitations under the License.
 package main
 
 import (
-	"bytes"
 	"context"
-	"crypto"
-	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"path"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/google/go-tpm/tpm2"
-	betacompute "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
-	container "google.golang.org/api/container/v1"
 	"google.golang.org/api/googleapi"
-	"k8s.io/apimachinery/pkg/util/wait"
 
 	authorization "k8s.io/api/authorization/v1"
 	capi "k8s.io/api/certificates/v1"
@@ -47,10 +36,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/cloud-provider-gcp/pkg/csrmetrics"
-	"k8s.io/cloud-provider-gcp/pkg/nodeidentity"
-	"k8s.io/cloud-provider-gcp/pkg/tpmattest"
 	"k8s.io/klog/v2"
 	apipod "k8s.io/kubernetes/pkg/api/v1/pod"
 	certutil "k8s.io/kubernetes/pkg/apis/certificates/v1"
@@ -64,8 +50,6 @@ const (
 	tpmKubeletUsername    = "kubelet-bootstrap"
 
 	authFlowLabelNone = "unknown"
-
-	createdByInstanceMetadataKey = "created-by"
 )
 
 var (
@@ -91,23 +75,13 @@ type nodeApprover struct {
 func newNodeApprover(ctx *controllerContext) *nodeApprover {
 	return &nodeApprover{
 		ctx:        ctx,
-		validators: csrValidators(ctx),
+		validators: csrValidators(),
 	}
 }
 
-func csrValidators(ctx *controllerContext) []csrValidator {
+func csrValidators() []csrValidator {
 	// More specific validators go first.
 	validators := []csrValidator{
-		{
-			name:          "kubelet client certificate with TPM attestation and SubjectAccessReview",
-			authFlowLabel: "kubelet_client_tpm",
-			recognize:     isNodeClientCertWithAttestation,
-			validate:      validateTPMAttestation,
-			permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "nodeclient"},
-			approveMsg:    "Auto approving kubelet client certificate with TPM attestation after SubjectAccessReview.",
-
-			preApproveHook: ensureNodeMatchesMetadataOrDelete,
-		},
 		{
 			name:          "kubelet server certificate SubjectAccessReview",
 			authFlowLabel: "kubelet_server_self",
@@ -116,9 +90,7 @@ func csrValidators(ctx *controllerContext) []csrValidator {
 			permission:    authorization.ResourceAttributes{Group: "certificates.k8s.io", Resource: "certificatesigningrequests", Verb: "create", Subresource: "selfnodeclient"},
 			approveMsg:    "Auto approving kubelet server certificate after SubjectAccessReview.",
 		},
-	}
-	if ctx.csrApproverAllowLegacyKubelet {
-		validators = append(validators, csrValidator{
+		{
 			name:          "kubelet client certificate SubjectAccessReview",
 			authFlowLabel: "kubelet_client_legacy",
 			recognize:     isLegacyNodeClientCert,
@@ -126,8 +98,9 @@ func csrValidators(ctx *controllerContext) []csrValidator {
 			approveMsg:    "Auto approving kubelet client certificate after SubjectAccessReview.",
 
 			preApproveHook: ensureNodeMatchesMetadataOrDelete,
-		})
+		},
 	}
+
 	return validators
 }
 
@@ -447,441 +420,6 @@ func getInstanceIps(ifaces []*compute.NetworkInterface) []string {
 		}
 	}
 	return ips
-}
-
-var tpmAttestationBlocks = []string{
-	"CERTIFICATE REQUEST",
-	"VM IDENTITY",
-	"ATTESTATION DATA",
-	"ATTESTATION SIGNATURE",
-}
-
-func isNodeClientCertWithAttestation(csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) bool {
-	if !isNodeClientCert(csr, x509cr) {
-		return false
-	}
-	if csr.Spec.Username != tpmKubeletUsername {
-		return false
-	}
-	blocks, err := parsePEMBlocks(csr.Spec.Request)
-	if err != nil {
-		klog.Errorf("parsing csr.Spec.Request: %v", err)
-		return false
-	}
-	for _, name := range tpmAttestationBlocks {
-		if _, ok := blocks[name]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func getInstanceMetadata(inst *compute.Instance, key string) string {
-	if inst == nil || inst.Metadata == nil || inst.Metadata.Items == nil {
-		return ""
-	}
-
-	for _, item := range inst.Metadata.Items {
-		if item.Key == key && item.Value != nil {
-			return *item.Value
-		}
-	}
-	return ""
-}
-
-func validateTPMAttestation(ctx *controllerContext, csr *capi.CertificateSigningRequest, x509cr *x509.CertificateRequest) (bool, error) {
-	blocks, err := parsePEMBlocks(csr.Spec.Request)
-	if err != nil {
-		klog.Infof("deny CSR %q: parsing csr.Spec.Request: %v", csr.Name, err)
-		return false, nil
-	}
-	attestDataRaw := blocks["ATTESTATION DATA"].Bytes
-	attestSig := blocks["ATTESTATION SIGNATURE"].Bytes
-
-	// TODO(awly): call ekPubAndIDFromCert instead of ekPubAndIDFromAPI when
-	// ATTESTATION CERTIFICATE is reliably present in CSRs.
-	aikPub, nodeID, err := ekPubAndIDFromAPI(ctx, blocks)
-	if err != nil {
-		if _, ok := err.(temporaryError); ok {
-			return false, fmt.Errorf("fetching EK public key from API: %v", err)
-		}
-		klog.Infof("deny CSR %q: fetching EK public key from API: %v", csr.Name, err)
-		return false, nil
-	}
-
-	hostname := strings.TrimPrefix(x509cr.Subject.CommonName, "system:node:")
-	if nodeID.Name != hostname {
-		klog.Infof("deny CSR %q: VM name in ATTESTATION CERTIFICATE (%q) doesn't match CommonName in x509 CSR (%q)", csr.Name, nodeID.Name, x509cr.Subject.CommonName)
-		return false, nil
-	}
-	if fmt.Sprint(nodeID.ProjectName) != ctx.gcpCfg.ProjectID {
-		klog.Infof("deny CSR %q: received CSR for a different project Name (%q)", csr.Name, nodeID.ProjectName)
-		return false, nil
-	}
-
-	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.Get")
-	srv := compute.NewInstancesService(ctx.gcpCfg.Compute)
-	inst, err := srv.Get(fmt.Sprint(nodeID.ProjectID), nodeID.Zone, nodeID.Name).Do()
-	if err != nil {
-		if isNotFound(err) {
-			klog.Infof("deny CSR %q: VM doesn't exist in GCE API: %v", csr.Name, err)
-			recordMetric(csrmetrics.OutboundRPCStatusNotFound)
-			return false, nil
-		}
-		recordMetric(csrmetrics.OutboundRPCStatusError)
-		return false, fmt.Errorf("fetching VM data from GCE API: %v", err)
-	}
-	recordMetric(csrmetrics.OutboundRPCStatusOK)
-	if ctx.csrApproverVerifyClusterMembership {
-		// get the instance group of this instance from the metadata.
-		// the metadata is user controlled, clusterHasInstance verifies
-		// that the group is indeed part of the cluster.
-		instanceGroupHint := getInstanceMetadata(inst, createdByInstanceMetadataKey)
-		klog.V(3).Infof("inst[%d] has instanceGroupHint %q", inst.Id, instanceGroupHint)
-		ok, err := clusterHasInstance(ctx, inst, instanceGroupHint)
-		if err != nil {
-			return false, fmt.Errorf("checking VM membership in cluster: %v", err)
-		}
-		if !ok {
-			klog.Infof("deny CSR %q: VM %q doesn't belong to cluster %q", csr.Name, inst.Name, ctx.gcpCfg.ClusterName)
-			return false, nil
-		}
-	}
-
-	attestHash := sha256.Sum256(attestDataRaw)
-	if err := rsa.VerifyPKCS1v15(aikPub, crypto.SHA256, attestHash[:], attestSig); err != nil {
-		klog.Infof("deny CSR %q: verifying certification signature with AIK public key: %v", csr.Name, err)
-		return false, nil
-	}
-
-	// Verify that attestDataRaw matches certificate.
-	pub, err := tpmattest.MakePublic(x509cr.PublicKey)
-	if err != nil {
-		klog.Infof("deny CSR %q: converting public key in CSR to TPM Public structure: %v", csr.Name, err)
-		return false, nil
-	}
-	attestData, err := tpm2.DecodeAttestationData(attestDataRaw)
-	if err != nil {
-		klog.Infof("deny CSR %q: parsing attestation data in CSR: %v", csr.Name, err)
-		return false, nil
-	}
-	ok, err := attestData.AttestedCertifyInfo.Name.MatchesPublic(pub)
-	if err != nil {
-		klog.Infof("deny CSR %q: comparing ATTESTATION DATA to CSR public key: %v", csr.Name, err)
-		return false, nil
-	}
-	if !ok {
-		klog.Infof("deny CSR %q: ATTESTATION DATA doesn't match CSR public key", csr.Name)
-		return false, nil
-	}
-	return true, nil
-}
-
-// Delete func ekPubAndIDFromCert(#200)
-
-func ekPubAndIDFromAPI(ctx *controllerContext, blocks map[string]*pem.Block) (*rsa.PublicKey, *nodeidentity.Identity, error) {
-	nodeIDRaw := blocks["VM IDENTITY"].Bytes
-	nodeID := new(nodeidentity.Identity)
-	if err := json.Unmarshal(nodeIDRaw, nodeID); err != nil {
-		return nil, nil, fmt.Errorf("failed parsing VM IDENTITY block: %v", err)
-	}
-
-	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.GetShieldedVmIdentity")
-	srv := betacompute.NewInstancesService(ctx.gcpCfg.BetaCompute)
-	resp, err := srv.GetShieldedVmIdentity(fmt.Sprint(nodeID.ProjectID), nodeID.Zone, nodeID.Name).Do()
-	if err != nil {
-		if isNotFound(err) {
-			recordMetric(csrmetrics.OutboundRPCStatusNotFound)
-			return nil, nil, fmt.Errorf("fetching Shielded VM identity: %v", err)
-		}
-		recordMetric(csrmetrics.OutboundRPCStatusError)
-		return nil, nil, temporaryError(fmt.Errorf("fetching Shielded VM identity: %v", err))
-	}
-	recordMetric(csrmetrics.OutboundRPCStatusOK)
-	if resp.SigningKey == nil {
-		return nil, nil, fmt.Errorf("VM %q doesn't have a signing key in ShieldedVmIdentity", nodeID.Name)
-	}
-	block, _ := pem.Decode([]byte(resp.SigningKey.EkPub))
-	if block == nil {
-		return nil, nil, fmt.Errorf("failed parsing PEM block from EkPub %q", resp.SigningKey.EkPub)
-	}
-	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed parsing EK public key: %v", err)
-	}
-	rsaPub, ok := pub.(*rsa.PublicKey)
-	if !ok {
-		return nil, nil, fmt.Errorf("EK public key is %T, expected *rsa.PublickKey", pub)
-	}
-	return rsaPub, nodeID, nil
-}
-
-// temporaryError is used within validators to decide between hard-deny and
-// temporary inability to validate.
-type temporaryError error
-
-func parsePEMBlocks(raw []byte) (map[string]*pem.Block, error) {
-	blocks := make(map[string]*pem.Block)
-	for {
-		// Just in case there are extra newlines between blocks.
-		raw = bytes.TrimSpace(raw)
-
-		var b *pem.Block
-		b, raw = pem.Decode(raw)
-		if b == nil {
-			break
-		}
-		blocks[b.Type] = b
-	}
-	if len(blocks) == 0 {
-		return nil, errors.New("no valid PEM blocks found in CSR")
-	}
-	if len(raw) != 0 {
-		return nil, errors.New("trailing non-PEM data in CSR")
-	}
-	return blocks, nil
-}
-
-// getClusterInstanceGroupUrls returns a list of instance groups for all node pools in the cluster.
-func getClusterInstanceGroupUrls(ctx *controllerContext) ([]string, error) {
-	var instanceGroupUrls []string
-	clusterName := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", ctx.gcpCfg.ProjectID, ctx.gcpCfg.Location, ctx.gcpCfg.ClusterName)
-
-	recordMetric := csrmetrics.OutboundRPCStartRecorder("container.ProjectsLocationsClustersService.Get")
-	cluster, err := container.NewProjectsLocationsClustersService(ctx.gcpCfg.Container).Get(clusterName).Do()
-	if err != nil {
-		recordMetric(csrmetrics.OutboundRPCStatusError)
-		return nil, fmt.Errorf("fetching cluster info: %v", err)
-	}
-
-	recordMetric(csrmetrics.OutboundRPCStatusOK)
-	for _, np := range cluster.NodePools {
-		instanceGroupUrls = append(instanceGroupUrls, np.InstanceGroupUrls...)
-	}
-	return instanceGroupUrls, nil
-}
-
-// InstanceGroupHint is the name of the instancegroup obtained from the instance metadata.
-// Since this is user-modifiable, we should still verify membership.
-// However, we can avoid some GCE API ListManagedInstanceGroupInstances calls using the hint.
-
-// Verify that the instanceGroupHint is in fact
-// part of the cluster's known instance groups
-//
-// if it is: return the resolved instanceGroup
-// else: ""
-func validateInstanceGroupHint(instanceGroupUrls []string, instanceGroupHint string) (string, error) {
-	if instanceGroupHint == "" {
-		return "", fmt.Errorf("validateInstanceGroupHint: hint is empty")
-	}
-
-	igName, location, err := parseInstanceGroupURL(instanceGroupHint)
-	if err != nil {
-		return "", err
-	}
-
-	var resolved string
-	for _, g := range instanceGroupUrls {
-		gn, gl, err := parseInstanceGroupURL(g)
-		if err != nil {
-			return "", err
-		}
-		if gl == location && gn == igName {
-			resolved = g
-		}
-	}
-
-	if resolved == "" {
-		return "", fmt.Errorf("hinted instance group %q not found in cluster", instanceGroupHint)
-	}
-
-	return resolved, nil
-}
-
-var errNotFoundListReferrers = errors.New("not found the entry in ListReferrers")
-
-func checkInstanceReferrersBackOff(ctx *controllerContext, instance *compute.Instance, clusterInstanceGroupUrls []string) bool {
-	if !ctx.csrApproverListReferrersConfig.enabled {
-		return false
-	}
-	klog.Infof("Using compute.InstancesService.ListReferrers to verify cluster membership of instance %q", instance.Name)
-
-	var found bool
-	startTime := time.Now()
-	backoffPolicy := wait.Backoff{
-		Duration: ctx.csrApproverListReferrersConfig.initialInterval,
-		Factor:   1.5,
-		Jitter:   0.2,
-		Steps:    ctx.csrApproverListReferrersConfig.retryCount,
-	}
-	webhook.WithExponentialBackoff(context.TODO(), backoffPolicy, func() error {
-		var retryErr error
-		found, retryErr = checkInstanceReferrers(ctx, instance, clusterInstanceGroupUrls)
-		if retryErr != nil || !found {
-			return errNotFoundListReferrers
-		}
-		return nil
-	},
-		func(err error) bool {
-			return err != nil
-		},
-	)
-
-	if found {
-		klog.V(2).Infof("Determined cluster membership of instance %q using compute.InstancesService.ListReferrers after %v", instance.Name, time.Since(startTime))
-	} else {
-		klog.Warningf("Could not determine cluster membership of instance %q using compute.InstancesService.ListReferrers after %v; falling back to checking all instance groups", instance.Name, time.Since(startTime))
-	}
-	return found
-}
-
-func checkInstanceReferrers(ctx *controllerContext, instance *compute.Instance, clusterInstanceGroupUrls []string) (bool, error) {
-	// instanceZone looks like
-	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
-	// Extract the bare zone name just "us-central1-c".
-	instanceZoneName := path.Base(instance.Zone)
-	clusterInstanceGroupMap := map[string]bool{}
-	for _, ig := range clusterInstanceGroupUrls {
-		// GKE's cluster.NodePools[].instanceGroupUrls are of the form:
-		// https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/instanceGroupManagers/instance-group-1.
-		// Where as instance referrers are one of the forms:
-		// https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/instanceGroupManagers/instance-group-1.
-		// https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c/instanceGroups/instance-group-1.
-		// We pass the string as it is for the first kind and use a string replace below we convert them to the second form.
-		clusterInstanceGroupMap[ig] = true
-		clusterInstanceGroupMap[strings.Replace(ig, "/instanceGroupManagers/", "/instanceGroups/", 1)] = true
-	}
-
-	filter := func(referres *compute.InstanceListReferrers) error {
-		for _, referrer := range referres.Items {
-			if clusterInstanceGroupMap[referrer.Referrer] {
-				return &foundError{}
-			}
-		}
-		return nil
-	}
-
-	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstancesService.ListReferrers")
-	err := compute.NewInstancesService(ctx.gcpCfg.Compute).ListReferrers(ctx.gcpCfg.ProjectID, instanceZoneName, instance.Name).Pages(context.TODO(), filter)
-	if err != nil {
-		switch err.(type) {
-		case *foundError:
-			klog.Infof("found matching instance group using compute.InstancesService.ListReferrers for instance %q", instance.Name)
-			recordMetric(csrmetrics.OutboundRPCStatusOK)
-			return true, nil
-		default:
-			recordMetric(csrmetrics.OutboundRPCStatusError)
-			return false, err
-		}
-	}
-
-	recordMetric(csrmetrics.OutboundRPCStatusOK)
-	return false, nil
-}
-
-func clusterHasInstance(ctx *controllerContext, instance *compute.Instance, instanceGroupHint string) (bool, error) {
-	clusterInstanceGroupUrls, err := getClusterInstanceGroupUrls(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	ok := checkInstanceReferrersBackOff(ctx, instance, clusterInstanceGroupUrls)
-	if ok {
-		return true, nil
-	}
-
-	validatedInstanceGroupHint, err := validateInstanceGroupHint(clusterInstanceGroupUrls, instanceGroupHint)
-	if err != nil {
-		klog.Warningf("error validating instance group: %v", err)
-	} else {
-		clusterInstanceGroupUrls = append([]string{validatedInstanceGroupHint}, clusterInstanceGroupUrls...)
-	}
-
-	klog.V(3).Infof("clusterInstanceGroupUrls %+v", clusterInstanceGroupUrls)
-
-	// instanceZone looks like
-	// "https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-c"
-	// Extract the bare zone name just "us-central1-c".
-	instanceZoneName := path.Base(instance.Zone)
-
-	var errors []error
-
-	for _, ig := range clusterInstanceGroupUrls {
-		igName, igLocation, err := parseInstanceGroupURL(ig)
-		if err != nil {
-			errors = append(errors, err)
-			continue
-		}
-
-		// InstanceGroups can be regional, igLocation can be either region
-		// or a zone. Match them to instanceZone by prefix to cover both.
-		if !strings.HasPrefix(instanceZoneName, igLocation) {
-			klog.V(2).Infof("instance group %q is in zone/region %q, node sending the CSR is in %q; skipping instance group", ig, igLocation, instanceZoneName)
-			continue
-		}
-
-		// Note: use igLocation here instead of instanceZone.
-		// InstanceGroups can be regional, instances are always zonal.
-		ok, err := groupHasInstance(ctx, igLocation, igName, instance.Id)
-		if err != nil {
-			errors = append(errors, fmt.Errorf("checking that group %q contains instance %v: %v", igName, instance.Id, err))
-			continue
-		}
-		if ok {
-			return true, nil
-		}
-	}
-
-	if len(errors) > 0 {
-		return false, fmt.Errorf("clusterHasInstance failed: %q", errors)
-	}
-
-	return false, nil
-}
-
-type foundError struct{}
-
-func (*foundError) Error() string {
-	return "found"
-}
-
-func groupHasInstance(ctx *controllerContext, groupLocation, groupName string, instanceID uint64) (bool, error) {
-	recordMetric := csrmetrics.OutboundRPCStartRecorder("compute.InstanceGroupManagersService.ListManagedInstances")
-	filter := func(response *compute.InstanceGroupManagersListManagedInstancesResponse) error {
-		for _, instance := range response.ManagedInstances {
-			// If the instance is found we return foundError which allows us to exit early and
-			// not go through the rest of the pages. The ListManagedInstances call does not
-			// support filtering so we have to resort to this hack.
-			if instance.Id == instanceID {
-				return &foundError{}
-			}
-		}
-		return nil
-	}
-	err := compute.NewInstanceGroupManagersService(ctx.gcpCfg.Compute).ListManagedInstances(ctx.gcpCfg.ProjectID, groupLocation, groupName).Pages(context.TODO(), filter)
-	if err != nil {
-		switch err.(type) {
-		case *foundError:
-			recordMetric(csrmetrics.OutboundRPCStatusOK)
-			return true, nil
-		default:
-			recordMetric(csrmetrics.OutboundRPCStatusError)
-			return false, err
-		}
-
-	}
-	recordMetric(csrmetrics.OutboundRPCStatusOK)
-	return false, nil
-}
-
-func parseInstanceGroupURL(ig string) (name, location string, err error) {
-	igParts := strings.Split(ig, "/")
-	if len(igParts) < 4 {
-		return "", "", fmt.Errorf("instance group URL is invalid %q; expect a URL with zone and instance group names", ig)
-	}
-	name = igParts[len(igParts)-1]
-	location = igParts[len(igParts)-3]
-	return name, location, nil
 }
 
 func isNotFound(err error) bool {

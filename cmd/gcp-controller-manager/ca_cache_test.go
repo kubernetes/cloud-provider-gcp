@@ -41,6 +41,8 @@ func TestCACacheVerify(t *testing.T) {
 			}
 		})
 		for desc, invalidCert := range ca.invalidCerts {
+			desc := desc
+			invalidCert := invalidCert
 			t.Run(desc, func(t *testing.T) {
 				t.Parallel()
 				if err := c.verify(invalidCert); err == nil {
