@@ -8,6 +8,7 @@ go_library(
         "register.go",
         "types.go",
         "zz_generated.deepcopy.go",
+        "zz_generated.prerelease-lifecycle.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/api/apidiscovery/v2",
     importpath = "k8s.io/api/apidiscovery/v2",

@@ -8,8 +8,12 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/spf13/pflag",
+        "//vendor/k8s.io/apimachinery/pkg/util/errors",
         "//vendor/k8s.io/apimachinery/pkg/util/naming",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/apimachinery/pkg/util/version",
         "//vendor/k8s.io/component-base/metrics/prometheus/feature",
+        "//vendor/k8s.io/component-base/version",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )

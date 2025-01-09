@@ -14,6 +14,5 @@ go_library(
         "//vendor/github.com/google/cel-go/common/types",
         "//vendor/github.com/google/cel-go/common/types/ref",
         "//vendor/github.com/google/cel-go/common/types/traits",
-        "//vendor/google.golang.org/genproto/googleapis/api/expr/v1alpha1",
     ],
 )

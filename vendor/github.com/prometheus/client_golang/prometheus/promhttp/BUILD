@@ -13,6 +13,8 @@ go_library(
     importpath = "github.com/prometheus/client_golang/prometheus/promhttp",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/klauspost/compress/zstd",
+        "//vendor/github.com/prometheus/client_golang/internal/github.com/golang/gddo/httputil",
         "//vendor/github.com/prometheus/client_golang/prometheus",
         "//vendor/github.com/prometheus/client_model/go",
         "//vendor/github.com/prometheus/common/expfmt",

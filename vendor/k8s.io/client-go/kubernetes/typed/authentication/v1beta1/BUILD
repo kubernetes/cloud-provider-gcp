@@ -15,6 +15,7 @@ go_library(
     deps = [
         "//vendor/k8s.io/api/authentication/v1beta1",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/client-go/gentype",
         "//vendor/k8s.io/client-go/kubernetes/scheme",
         "//vendor/k8s.io/client-go/rest",
     ],
