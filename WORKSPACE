@@ -48,7 +48,7 @@ go_rules_dependencies()
 
 go_download_sdk(
     name = "go_sdk",
-    version = "1.22.4",
+    version = "1.23.1",
 )
 
 go_register_toolchains()

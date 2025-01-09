@@ -4,7 +4,7 @@ timeout: 3600s
 options:
   substitution_option: ALLOW_LOOSE
 steps:
-  - name: 'golang:1.22.4'
+  - name: 'golang:1.23.1'
     env:
       - IMAGE_REPO=${_IMAGE_REPO}
       - IMAGE_TAG=${_PULL_BASE_REF}
