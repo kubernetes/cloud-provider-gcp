@@ -44,8 +44,9 @@ func hasURL(url string, response *credentialproviderapi.CredentialProviderRespon
 }
 
 func TestContainerRegistry(t *testing.T) {
+	registryURL := strings.Split(dummyImage, "/")[0]
 	// Taken from from pkg/credentialprovider/gcp/metadata_test.go in kubernetes/kubernetes
-	registryURL := "container.cloud.google.com"
+	gcpRegistryURL := "container.cloud.google.com"
 	token := &gcpcredential.TokenBlob{AccessToken: dummyToken} // Fake value for testing.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defaultPrefix := "/computeMetadata/v1/instance/service-accounts/default/"
@@ -85,8 +86,14 @@ func TestContainerRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
-	if hasURL(registryURL, response) == false {
-		t.Errorf("URL %s expected in response, not found (response: %s)", registryURL, response.Auth)
+
+	if !hasURL(registryURL, response) || !hasURL(gcpRegistryURL, response) {
+		if !hasURL(registryURL, response) {
+			t.Errorf("URL %s expected in response, not found (response: %s)", registryURL, response.Auth)
+		}
+		if !hasURL(gcpRegistryURL, response) {
+			t.Errorf("URL %s expected in response, not found (response: %s)", gcpRegistryURL, response.Auth)
+		}
 	}
 	if expectedCacheKey != response.CacheKeyType {
 		t.Errorf("Expected %s as cache key (found %s instead)", expectedCacheKey, response.CacheKeyType)

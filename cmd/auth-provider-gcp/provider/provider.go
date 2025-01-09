@@ -43,7 +43,8 @@ const (
 func MakeRegistryProvider(transport *http.Transport) *gcpcredential.ContainerRegistryProvider {
 	httpClient := makeHTTPClient(transport)
 	provider := &gcpcredential.ContainerRegistryProvider{
-		MetadataProvider: gcpcredential.MetadataProvider{Client: httpClient},
+		MetadataProvider:     gcpcredential.MetadataProvider{Client: httpClient},
+		UseRegistryFromImage: true,
 	}
 	return provider
 }
