@@ -30,7 +30,6 @@ go_library(
     importpath = "k8s.io/client-go/tools/cache",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/api/meta",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
@@ -52,6 +51,7 @@ go_library(
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/tools/cache/synctrack",
         "//vendor/k8s.io/client-go/tools/pager",
+        "//vendor/k8s.io/client-go/util/consistencydetector",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/buffer",
         "//vendor/k8s.io/utils/clock",

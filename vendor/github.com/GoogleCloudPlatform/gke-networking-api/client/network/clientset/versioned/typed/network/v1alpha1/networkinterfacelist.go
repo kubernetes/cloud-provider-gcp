@@ -24,7 +24,7 @@ import (
 	v1alpha1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1alpha1"
 	scheme "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	rest "k8s.io/client-go/rest"
+	gentype "k8s.io/client-go/gentype"
 )
 
 // NetworkInterfaceListsGetter has a method to return a NetworkInterfaceListInterface.
@@ -41,27 +41,17 @@ type NetworkInterfaceListInterface interface {
 
 // networkInterfaceLists implements NetworkInterfaceListInterface
 type networkInterfaceLists struct {
-	client rest.Interface
-	ns     string
+	*gentype.Client[*v1alpha1.NetworkInterfaceList]
 }
 
 // newNetworkInterfaceLists returns a NetworkInterfaceLists
 func newNetworkInterfaceLists(c *NetworkingV1alpha1Client, namespace string) *networkInterfaceLists {
 	return &networkInterfaceLists{
-		client: c.RESTClient(),
-		ns:     namespace,
+		gentype.NewClient[*v1alpha1.NetworkInterfaceList](
+			"networkinterfacelists",
+			c.RESTClient(),
+			scheme.ParameterCodec,
+			namespace,
+			func() *v1alpha1.NetworkInterfaceList { return &v1alpha1.NetworkInterfaceList{} }),
 	}
-}
-
-// Get takes name of the networkInterfaceList, and returns the corresponding networkInterfaceList object, and an error if there is any.
-func (c *networkInterfaceLists) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.NetworkInterfaceList, err error) {
-	result = &v1alpha1.NetworkInterfaceList{}
-	err = c.client.Get().
-		Namespace(c.ns).
-		Resource("networkinterfacelists").
-		Name(name).
-		VersionedParams(&options, scheme.ParameterCodec).
-		Do(ctx).
-		Into(result)
-	return
 }
