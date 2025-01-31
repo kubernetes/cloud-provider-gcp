@@ -16,12 +16,13 @@ go_library(
     importpath = "github.com/google/cel-go/parser",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/antlr/antlr4/runtime/Go/antlr/v4:antlr",
+        "//vendor/github.com/antlr4-go/antlr/v4:antlr",
         "//vendor/github.com/google/cel-go/common",
+        "//vendor/github.com/google/cel-go/common/ast",
         "//vendor/github.com/google/cel-go/common/operators",
         "//vendor/github.com/google/cel-go/common/runes",
+        "//vendor/github.com/google/cel-go/common/types",
+        "//vendor/github.com/google/cel-go/common/types/ref",
         "//vendor/github.com/google/cel-go/parser/gen",
-        "//vendor/google.golang.org/genproto/googleapis/api/expr/v1alpha1",
-        "//vendor/google.golang.org/protobuf/types/known/structpb",
     ],
 )

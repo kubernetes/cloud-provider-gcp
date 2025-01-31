@@ -26,6 +26,8 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/rules",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizer",
         "//vendor/k8s.io/apiserver/pkg/cel/environment",
+        "//vendor/k8s.io/apiserver/pkg/features",
+        "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/apiserver/pkg/util/webhook",
         "//vendor/k8s.io/client-go/informers",
         "//vendor/k8s.io/client-go/kubernetes",

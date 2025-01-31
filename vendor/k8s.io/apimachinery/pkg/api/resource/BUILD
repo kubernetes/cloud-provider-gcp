@@ -18,5 +18,6 @@ go_library(
     deps = [
         "//vendor/github.com/gogo/protobuf/proto",
         "//vendor/gopkg.in/inf.v0:inf_v0",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/cbor/direct",
     ],
 )

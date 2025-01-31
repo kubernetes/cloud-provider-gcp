@@ -13,6 +13,8 @@ go_library(
     importpath = "k8s.io/code-generator/cmd/client-gen/generators",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/golang.org/x/text/cases",
+        "//vendor/golang.org/x/text/language",
         "//vendor/k8s.io/code-generator/cmd/client-gen/args",
         "//vendor/k8s.io/code-generator/cmd/client-gen/generators/fake",
         "//vendor/k8s.io/code-generator/cmd/client-gen/generators/scheme",

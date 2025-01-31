@@ -15,7 +15,6 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/google/cel-go/common/runes",
-        "//vendor/golang.org/x/text/width",
         "//vendor/google.golang.org/genproto/googleapis/api/expr/v1alpha1",
     ],
 )

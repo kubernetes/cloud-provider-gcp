@@ -33,6 +33,7 @@ go_library(
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/tools/clientcmd",
         "//vendor/k8s.io/client-go/tools/clientcmd/api",
+        "//vendor/k8s.io/client-go/transport",
         "//vendor/k8s.io/component-base/metrics",
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/component-base/tracing",

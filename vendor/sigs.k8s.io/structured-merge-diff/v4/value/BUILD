@@ -25,6 +25,6 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/json-iterator/go",
-        "//vendor/gopkg.in/yaml.v2:yaml_v2",
+        "//vendor/sigs.k8s.io/yaml/goyaml.v2:goyaml_v2",
     ],
 )

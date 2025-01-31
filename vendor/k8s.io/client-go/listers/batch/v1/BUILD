@@ -14,9 +14,9 @@ go_library(
     deps = [
         "//vendor/k8s.io/api/batch/v1:batch",
         "//vendor/k8s.io/api/core/v1:core",
-        "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/labels",
+        "//vendor/k8s.io/client-go/listers",
         "//vendor/k8s.io/client-go/tools/cache",
     ],
 )

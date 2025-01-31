@@ -14,7 +14,7 @@ go_library(
     deps = [
         "//vendor/github.com/google/gnostic-models/openapiv2",
         "//vendor/github.com/google/gnostic-models/openapiv3",
-        "//vendor/gopkg.in/yaml.v2:yaml_v2",
         "//vendor/gopkg.in/yaml.v3:yaml_v3",
+        "//vendor/sigs.k8s.io/yaml/goyaml.v2:goyaml_v2",
     ],
 )

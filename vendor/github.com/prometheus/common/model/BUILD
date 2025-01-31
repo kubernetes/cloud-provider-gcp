@@ -8,6 +8,8 @@ go_library(
         "fnv.go",
         "labels.go",
         "labelset.go",
+        "labelset_string.go",
+        "metadata.go",
         "metric.go",
         "model.go",
         "signature.go",
@@ -21,4 +23,8 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/prometheus/common/model",
     importpath = "github.com/prometheus/common/model",
     visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/prometheus/client_model/go",
+        "//vendor/google.golang.org/protobuf/proto",
+    ],
 )

@@ -14,6 +14,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/endpoints/metrics",
         "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/apiserver/pkg/endpoints/responsewriter",
+        "//vendor/k8s.io/apiserver/pkg/server/routine",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )

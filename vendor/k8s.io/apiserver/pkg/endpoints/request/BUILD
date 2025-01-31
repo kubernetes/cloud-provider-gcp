@@ -20,6 +20,8 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apiserver/pkg/authentication/user",
+        "//vendor/k8s.io/apiserver/pkg/features",
+        "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/clock",
     ],

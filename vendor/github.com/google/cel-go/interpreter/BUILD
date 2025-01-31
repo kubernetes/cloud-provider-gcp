@@ -9,7 +9,6 @@ go_library(
         "decorators.go",
         "dispatcher.go",
         "evalstate.go",
-        "formatting.go",
         "interpretable.go",
         "interpreter.go",
         "optimizations.go",
@@ -30,7 +29,5 @@ go_library(
         "//vendor/github.com/google/cel-go/common/types",
         "//vendor/github.com/google/cel-go/common/types/ref",
         "//vendor/github.com/google/cel-go/common/types/traits",
-        "//vendor/google.golang.org/genproto/googleapis/api/expr/v1alpha1",
-        "//vendor/google.golang.org/protobuf/types/known/structpb",
     ],
 )

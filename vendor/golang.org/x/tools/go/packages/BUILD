@@ -17,10 +17,8 @@ go_library(
     deps = [
         "//vendor/golang.org/x/sync/errgroup",
         "//vendor/golang.org/x/tools/go/gcexportdata",
-        "//vendor/golang.org/x/tools/go/internal/packagesdriver",
         "//vendor/golang.org/x/tools/internal/gocommand",
         "//vendor/golang.org/x/tools/internal/packagesinternal",
         "//vendor/golang.org/x/tools/internal/typesinternal",
-        "//vendor/golang.org/x/tools/internal/versions",
     ],
 )
