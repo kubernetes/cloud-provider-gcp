@@ -46,9 +46,3 @@ if [[ "${COMPONENT:-ccm}" == "ccm" ]]; then
 else
   echo "Skipping CCM build, because component is ${COMPONENT}"
 fi
-
-if [[ "${COMPONENT:-gcm}" == "gcm" ]]; then
-  go run github.com/google/ko@v0.14.1 build --tags=${IMAGE_TAG} --base-import-paths --push=true ./cmd/gcp-controller-manager/
-else
-  echo "Skipping GCM build, because component is ${COMPONENT}"
-fi
