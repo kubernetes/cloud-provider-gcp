@@ -1,27 +1,5 @@
 # cloud-provider-gcp
 
-This repository holds the code for gcp-controller-manager as well as cloud-controller-manager
-
-## Publishing gcp-controller-manager image
-
-This command will build and publish gcp-controller-manager
-`gcr.io/k8s-image-staging/gcp-controller-manager:latest`:
-
-```
-bazel run //cmd/gcp-controller-manager:publish
-```
-
-Environment variables `IMAGE_REGISTRY`, `IMAGE_REPO` and `IMAGE_TAG` can be
-used to override destination GCR repository and tag.
-
-This command will build and publish
-`example.com/my-repo/gcp-controller-manager:v1`:
-
-
-```
-IMAGE_REGISTRY=example.com IMAGE_REPO=my-repo IMAGE_TAG=v1 bazel run //cmd/gcp-controller-manager:publish
-```
-
 ## Publishing cloud-controller-manager image
 
 This command will build and publish cloud-controller-manager
