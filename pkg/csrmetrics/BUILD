@@ -5,7 +5,6 @@ go_library(
     srcs = ["csrmetrics.go"],
     importpath = "k8s.io/cloud-provider-gcp/pkg/csrmetrics",
     visibility = [
-        "//cmd/gcp-controller-manager:__subpackages__",
         "//pkg/csrapproval:__subpackages__",
     ],
     deps = [
