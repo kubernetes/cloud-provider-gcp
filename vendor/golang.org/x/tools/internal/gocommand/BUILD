@@ -4,6 +4,8 @@ go_library(
     name = "gocommand",
     srcs = [
         "invoke.go",
+        "invoke_notunix.go",
+        "invoke_unix.go",
         "vendor.go",
         "version.go",
     ],

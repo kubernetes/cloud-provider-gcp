@@ -13,6 +13,7 @@ go_library(
         "//vendor/google.golang.org/protobuf/internal/filedesc",
         "//vendor/google.golang.org/protobuf/internal/filetype",
         "//vendor/google.golang.org/protobuf/internal/impl",
+        "//vendor/google.golang.org/protobuf/internal/protolazy",
         "//vendor/google.golang.org/protobuf/internal/version",
     ],
 )
