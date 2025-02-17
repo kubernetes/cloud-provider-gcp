@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "OpenAPIv3.go",
         "OpenAPIv3.pb.go",
+        "annotations.pb.go",
         "document.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/google/gnostic-models/openapiv3",
@@ -14,6 +15,7 @@ go_library(
         "//vendor/github.com/google/gnostic-models/compiler",
         "//vendor/google.golang.org/protobuf/reflect/protoreflect",
         "//vendor/google.golang.org/protobuf/runtime/protoimpl",
+        "//vendor/google.golang.org/protobuf/types/descriptorpb",
         "//vendor/google.golang.org/protobuf/types/known/anypb",
         "//vendor/gopkg.in/yaml.v3:yaml_v3",
     ],

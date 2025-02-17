@@ -12,10 +12,10 @@ go_library(
     deps = [
         "//vendor/github.com/NYTimes/gziphandler",
         "//vendor/github.com/emicklei/go-restful/v3:go-restful",
-        "//vendor/github.com/golang/protobuf/proto",
         "//vendor/github.com/google/gnostic-models/openapiv2",
         "//vendor/github.com/google/uuid",
         "//vendor/github.com/munnerz/goautoneg",
+        "//vendor/google.golang.org/protobuf/proto",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/kube-openapi/pkg/builder",
         "//vendor/k8s.io/kube-openapi/pkg/cached",

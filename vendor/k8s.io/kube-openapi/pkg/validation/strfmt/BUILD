@@ -15,7 +15,7 @@ go_library(
     importpath = "k8s.io/kube-openapi/pkg/validation/strfmt",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/asaskevich/govalidator",
+        "//vendor/k8s.io/kube-openapi/pkg/internal/third_party/govalidator",
         "//vendor/k8s.io/kube-openapi/pkg/validation/errors",
         "//vendor/k8s.io/kube-openapi/pkg/validation/strfmt/bson",
         "//vendor/k8s.io/utils/net",

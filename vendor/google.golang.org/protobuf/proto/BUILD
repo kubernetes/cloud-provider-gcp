@@ -18,6 +18,7 @@ go_library(
         "reset.go",
         "size.go",
         "size_gen.go",
+        "wrapperopaque.go",
         "wrappers.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/protobuf/proto",

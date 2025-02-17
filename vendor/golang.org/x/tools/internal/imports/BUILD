@@ -10,6 +10,7 @@ go_library(
         "sortimports.go",
         "source.go",
         "source_env.go",
+        "source_modindex.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/internal/imports",
     importpath = "golang.org/x/tools/internal/imports",
@@ -21,6 +22,7 @@ go_library(
         "//vendor/golang.org/x/tools/internal/event",
         "//vendor/golang.org/x/tools/internal/gocommand",
         "//vendor/golang.org/x/tools/internal/gopathwalk",
+        "//vendor/golang.org/x/tools/internal/modindex",
         "//vendor/golang.org/x/tools/internal/stdlib",
     ],
 )
