@@ -20,7 +20,7 @@ set -o nounset
 set -o pipefail
 
 cd $(mktemp -d)
-KUBE_VERSION="${KUBE_VERSION:-v1.30.0}"
+KUBE_VERSION="${KUBE_VERSION:-v1.31.5}"
 
 WORKSPACE_TARGETS=(
   "kubernetes-server-linux-amd64.tar.gz"

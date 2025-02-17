@@ -705,6 +705,58 @@ func TestUpdateInternalLoadBalancerNodes(t *testing.T) {
 	)
 }
 
+func TestUpdateInternalLoadBalancerNodesWithEmptyZone(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	nodeName := "test-node-1"
+	node1Name := []string{nodeName}
+
+	svc := fakeLoadbalancerService(string(LBTypeInternal))
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+	nodes, err := createAndInsertNodes(gce, node1Name, vals.ZoneName)
+	require.NoError(t, err)
+
+	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	assert.NoError(t, err)
+
+	// Ensure Node has been added to instance group
+	igName := makeInstanceGroupName(vals.ClusterID)
+	instances, err := gce.ListInstancesInInstanceGroup(igName, vals.ZoneName, "ALL")
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(instances))
+	assert.Contains(
+		t,
+		instances[0].Instance,
+		fmt.Sprintf("%s/zones/%s/instances/%s", vals.ProjectID, vals.ZoneName, nodeName),
+	)
+
+	// Remove Zone from node
+	nodes[0].Labels[v1.LabelTopologyZone] = "" // empty zone
+
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+	existingFwdRule := &compute.ForwardingRule{
+		Name:                lbName,
+		IPAddress:           "",
+		Ports:               []string{"123"},
+		IPProtocol:          "TCP",
+		LoadBalancingScheme: string(cloud.SchemeInternal),
+		Description:         fmt.Sprintf(`{"kubernetes.io/service-name":"%s"}`, types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}.String()),
+	}
+
+	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
+	assert.NoError(t, err)
+
+	// Expect load balancer to not have deleted node test-node-1
+	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: nodeName}}
+	exist, err := gce.InstanceExists(context.TODO(), node)
+	require.NoError(t, err)
+	assert.Equal(t, exist, true)
+}
+
 func TestEnsureInternalLoadBalancerDeleted(t *testing.T) {
 	t.Parallel()
 
@@ -1036,75 +1088,6 @@ func TestEnsureLoadBalancerDeletedSucceedsOnXPN(t *testing.T) {
 	err = gce.ensureInternalLoadBalancerDeleted(vals.ClusterName, vals.ClusterID, fakeLoadbalancerService(string(LBTypeInternal)))
 	assert.NoError(t, err)
 	checkEvent(t, recorder, FirewallChangeMsg, true)
-}
-
-func TestEnsureInternalInstanceGroupsReuseGroups(t *testing.T) {
-	vals := DefaultTestClusterValues()
-	gce, err := fakeGCECloud(vals)
-	require.NoError(t, err)
-	gce.externalInstanceGroupsPrefix = "pre-existing"
-
-	igName := makeInstanceGroupName(vals.ClusterID)
-	nodesA, err := createAndInsertNodes(gce, []string{"test-node-1", "test-node-2"}, vals.ZoneName)
-	require.NoError(t, err)
-	nodesB, err := createAndInsertNodes(gce, []string{"test-node-3"}, vals.SecondaryZoneName)
-	require.NoError(t, err)
-
-	preIGName := "pre-existing-ig"
-	err = gce.CreateInstanceGroup(&compute.InstanceGroup{Name: preIGName}, vals.ZoneName)
-	require.NoError(t, err)
-	err = gce.CreateInstanceGroup(&compute.InstanceGroup{Name: preIGName}, vals.SecondaryZoneName)
-	require.NoError(t, err)
-	err = gce.AddInstancesToInstanceGroup(preIGName, vals.ZoneName, gce.ToInstanceReferences(vals.ZoneName, []string{"test-node-1"}))
-	require.NoError(t, err)
-	err = gce.AddInstancesToInstanceGroup(preIGName, vals.SecondaryZoneName, gce.ToInstanceReferences(vals.SecondaryZoneName, []string{"test-node-3"}))
-	require.NoError(t, err)
-
-	anotherPreIGName := "another-existing-ig"
-	err = gce.CreateInstanceGroup(&compute.InstanceGroup{Name: anotherPreIGName}, vals.ZoneName)
-	require.NoError(t, err)
-	err = gce.AddInstancesToInstanceGroup(anotherPreIGName, vals.ZoneName, gce.ToInstanceReferences(vals.ZoneName, []string{"test-node-2"}))
-	require.NoError(t, err)
-
-	svc := fakeLoadbalancerService(string(LBTypeInternal))
-	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
-	assert.NoError(t, err)
-	_, err = gce.ensureInternalLoadBalancer(
-		vals.ClusterName, vals.ClusterID,
-		svc,
-		nil,
-		append(nodesA, nodesB...),
-	)
-	assert.NoError(t, err)
-
-	backendServiceName := makeBackendServiceName(gce.GetLoadBalancerName(context.TODO(), "", svc), vals.ClusterID, shareBackendService(svc), cloud.SchemeInternal, "TCP", svc.Spec.SessionAffinity)
-	bs, err := gce.GetRegionBackendService(backendServiceName, gce.region)
-	require.NoError(t, err)
-	assert.Equal(t, 3, len(bs.Backends), "Want three backends referencing three instances groups")
-
-	igRef := func(zone, name string) string {
-		return fmt.Sprintf("zones/%s/instanceGroups/%s", zone, name)
-	}
-	for _, name := range []string{igRef(vals.ZoneName, preIGName), igRef(vals.SecondaryZoneName, preIGName), igRef(vals.ZoneName, igName)} {
-		var found bool
-		for _, be := range bs.Backends {
-			if strings.Contains(be.Group, name) {
-				found = true
-				break
-			}
-		}
-		assert.True(t, found, "Expected list of backends to have group %q", name)
-	}
-
-	// Expect initial zone to have test-node-2
-	instances, err := gce.ListInstancesInInstanceGroup(igName, vals.ZoneName, "ALL")
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(instances))
-	assert.Contains(
-		t,
-		instances[0].Instance,
-		fmt.Sprintf("%s/zones/%s/instances/%s", vals.ProjectID, vals.ZoneName, "test-node-2"),
-	)
 }
 
 func TestEnsureInternalInstanceGroupsDeleted(t *testing.T) {

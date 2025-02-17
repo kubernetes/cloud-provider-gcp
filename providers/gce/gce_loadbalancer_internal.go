@@ -604,26 +604,35 @@ func (g *Cloud) ensureInternalHealthCheck(name string, svcName types.NamespacedN
 	return hc, nil
 }
 
-func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []string) (string, error) {
-	klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): checking group that it contains %v nodes [node names limited, total number of nodes: %d]", name, zone, nodes, len(nodes))
+func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []*v1.Node, emptyZoneNodes []*v1.Node) (string, error) {
+	klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): checking group that it contains %v nodes [node names limited, total number of nodes: %d], the following nodes have empty string in the zone field and won't be deleted: %v", name, zone, loggableNodeNames(nodes), len(nodes), loggableNodeNames(emptyZoneNodes))
 	ig, err := g.GetInstanceGroup(name, zone)
 	if err != nil && !isNotFound(err) {
 		return "", err
 	}
 
-	gceNodes := sets.NewString(nodes...)
-	// Individual InstanceGroups have a limit for 1000 instances.
-	// As a result, it's not possible to add more.
+	kubeNodes := sets.NewString()
+	for _, n := range nodes {
+		kubeNodes.Insert(n.Name)
+	}
+
+	emptyZoneNodesNames := sets.NewString()
+	for _, n := range emptyZoneNodes {
+		emptyZoneNodesNames.Insert(n.Name)
+	}
+
+	// Individual InstanceGroup has a limit for 1000 instances in it.
+	// As a result, it's not possible to add more to it.
 	// Given that the long-term fix (AlphaFeatureILBSubsets) is already in-progress,
 	// to stop the bleeding we now simply cut down the contents to first 1000
 	// instances in the alphabetical order. Since there is a limitation for
 	// 250 backend VMs for ILB, this isn't making things worse.
-	if len(gceNodes) > maxInstancesPerInstanceGroup {
+	if len(kubeNodes) > maxInstancesPerInstanceGroup {
 		klog.Warningf("Limiting number of VMs for InstanceGroup %s to %d", name, maxInstancesPerInstanceGroup)
-		gceNodes = sets.NewString(gceNodes.List()[:maxInstancesPerInstanceGroup]...)
+		kubeNodes = sets.NewString(kubeNodes.List()[:maxInstancesPerInstanceGroup]...)
 	}
 
-	igNodes := sets.NewString()
+	gceNodes := sets.NewString()
 	if ig == nil {
 		klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): creating instance group", name, zone)
 		newIG := &compute.InstanceGroup{Name: name}
@@ -643,12 +652,12 @@ func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []string) (
 
 		for _, ins := range instances {
 			parts := strings.Split(ins.Instance, "/")
-			igNodes.Insert(parts[len(parts)-1])
+			gceNodes.Insert(parts[len(parts)-1])
 		}
 	}
 
-	removeNodes := igNodes.Difference(gceNodes).List()
-	addNodes := gceNodes.Difference(igNodes).List()
+	removeNodes := gceNodes.Difference(kubeNodes).Difference(emptyZoneNodesNames).List()
+	addNodes := kubeNodes.Difference(gceNodes).List()
 
 	if len(removeNodes) != 0 {
 		klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): removing nodes: %v", name, zone, removeNodes)
@@ -687,10 +696,21 @@ func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]s
 	zonedNodes := splitNodesByZone(nodes)
 	klog.V(2).Infof("ensureInternalInstanceGroups(%v): %d nodes over %d zones in region %v", name, len(nodes), len(zonedNodes), g.region)
 
+	emptyZoneNodesNames := sets.NewString()
+	for _, n := range zonedNodes[""] {
+		emptyZoneNodesNames.Insert(n.Name)
+	}
+
+	if len(emptyZoneNodesNames) > 0 {
+		klog.V(2).Infof("%d nodes have empty zone: %v in region %v", len(emptyZoneNodesNames), emptyZoneNodesNames, g.region)
+	}
+
 	var igLinks []string
-	gceZonedNodes := map[string][]string{}
-	for zone, zNodes := range zonedNodes {
-		// Skip managing instance groups altogether, using any matching the prefix within the zone.
+	for zone, nodes := range zonedNodes {
+		if zone == "" {
+			continue // skip ensuring nodes with empty zone
+		}
+
 		if g.AlphaFeatureGate.Enabled(AlphaFeatureSkipIGsManagement) {
 			igs, err := g.FilterInstanceGroupsByNamePrefix(name, zone)
 			if err != nil {
@@ -699,72 +719,16 @@ func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]s
 			for _, ig := range igs {
 				igLinks = append(igLinks, ig.SelfLink)
 			}
-			break
-		}
-
-		hosts, err := g.getFoundInstanceByNames(nodeNames(zNodes))
-		if err != nil {
-			return nil, err
-		}
-
-		names := sets.NewString()
-		for _, h := range hosts {
-			names.Insert(h.Name)
-		}
-		skip := sets.NewString()
-
-		igs, err := g.candidateExternalInstanceGroups(zone)
-		if err != nil {
-			return nil, err
-		}
-		for _, ig := range igs {
-			if strings.EqualFold(ig.Name, name) {
-				continue
-			}
-			instances, err := g.ListInstancesInInstanceGroup(ig.Name, zone, allInstances)
+		} else {
+			igLink, err := g.ensureInternalInstanceGroup(name, zone, nodes, zonedNodes[""])
 			if err != nil {
 				return nil, err
 			}
-			groupInstances := sets.NewString()
-			for _, ins := range instances {
-				parts := strings.Split(ins.Instance, "/")
-				groupInstances.Insert(parts[len(parts)-1])
-			}
-			groupInstanceNames := groupInstances.UnsortedList()
-			if names.HasAll(groupInstanceNames...) || g.allHaveNodePrefix(groupInstanceNames) {
-				igLinks = append(igLinks, ig.SelfLink)
-				skip.Insert(groupInstances.UnsortedList()...)
-			}
+			igLinks = append(igLinks, igLink)
 		}
-		if remaining := names.Difference(skip).UnsortedList(); len(remaining) > 0 {
-			gceZonedNodes[zone] = remaining
-		}
-	}
-	for zone, gceNodes := range gceZonedNodes {
-		igLink, err := g.ensureInternalInstanceGroup(name, zone, gceNodes)
-		if err != nil {
-			return []string{}, err
-		}
-		igLinks = append(igLinks, igLink)
 	}
 
 	return igLinks, nil
-}
-
-func (g *Cloud) candidateExternalInstanceGroups(zone string) ([]*compute.InstanceGroup, error) {
-	if g.externalInstanceGroupsPrefix == "" {
-		return nil, nil
-	}
-	return g.ListInstanceGroupsWithPrefix(zone, g.externalInstanceGroupsPrefix)
-}
-
-func (g *Cloud) allHaveNodePrefix(instances []string) bool {
-	for _, instance := range instances {
-		if !strings.HasPrefix(instance, g.nodeInstancePrefix) {
-			return false
-		}
-	}
-	return true
 }
 
 func (g *Cloud) ensureInternalInstanceGroupsDeleted(name string) error {
