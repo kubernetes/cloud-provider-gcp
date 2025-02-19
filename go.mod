@@ -13,18 +13,18 @@ require (
 	google.golang.org/api v0.187.0
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/warnings.v0 v0.1.2
-	k8s.io/api v0.30.0
-	k8s.io/apimachinery v0.30.0
-	k8s.io/apiserver v0.30.0
-	k8s.io/client-go v0.30.0
-	k8s.io/code-generator v0.30.0
-	k8s.io/component-base v0.30.0
-	k8s.io/component-helpers v0.30.0
-	k8s.io/controller-manager v0.30.0
+	k8s.io/api v0.30.1
+	k8s.io/apimachinery v0.30.1
+	k8s.io/apiserver v0.30.1
+	k8s.io/client-go v0.30.1
+	k8s.io/code-generator v0.30.1
+	k8s.io/component-base v0.30.1
+	k8s.io/component-helpers v0.30.1
+	k8s.io/controller-manager v0.30.1
 	k8s.io/klog/v2 v2.120.1
 	k8s.io/kube-controller-manager v0.30.0
-	k8s.io/kubelet v0.30.0
-	k8s.io/metrics v0.30.0
+	k8s.io/kubelet v0.30.1
+	k8s.io/metrics v0.30.1
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 	sigs.k8s.io/controller-tools v0.15.0
 )
@@ -34,9 +34,9 @@ require (
 	github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240703141847-066e11533e15
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
-	k8s.io/cloud-provider v0.30.0
+	k8s.io/cloud-provider v0.30.1
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
-	k8s.io/kubernetes v1.30.0
+	k8s.io/kubernetes v1.30.1
 )
 
 require (
