@@ -82,6 +82,7 @@ type DockerConfigURLKeyProvider struct {
 //	Password: "{access token from metadata}"
 type ContainerRegistryProvider struct {
 	MetadataProvider
+	UseRegistryFromImage bool
 }
 
 // Returns true if it finds a local GCE VM.
@@ -257,6 +258,14 @@ func (g *ContainerRegistryProvider) Provide(image string) credentialconfig.Docke
 		Username: "_token",
 		Password: parsedBlob.AccessToken,
 		Email:    string(email),
+	}
+
+	// If UseRegistryFromImage is true, we will directly give the credential to the registry of the image.
+	// Currently, this is only used by auth-provider-gcp.
+	if g.UseRegistryFromImage {
+		if registry, _, found := strings.Cut(image, "/"); found {
+			cfg[registry] = entry
+		}
 	}
 
 	// Add our entry for each of the supported container registry URLs

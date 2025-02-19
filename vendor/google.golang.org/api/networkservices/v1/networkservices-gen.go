@@ -671,7 +671,7 @@ type EndpointPolicy struct {
 	// Labels: Optional. Set of label tags associated with the EndpointPolicy
 	// resource.
 	Labels map[string]string `json:"labels,omitempty"`
-	// Name: Required. Name of the EndpointPolicy resource. It matches pattern
+	// Name: Identifier. Name of the EndpointPolicy resource. It matches pattern
 	// `projects/{project}/locations/global/endpointPolicies/{endpoint_policy}`.
 	Name string `json:"name,omitempty"`
 	// ServerTlsPolicy: Optional. A URL referring to ServerTlsPolicy resource.
@@ -953,7 +953,7 @@ type Gateway struct {
 	IpVersion string `json:"ipVersion,omitempty"`
 	// Labels: Optional. Set of label tags associated with the Gateway resource.
 	Labels map[string]string `json:"labels,omitempty"`
-	// Name: Required. Name of the Gateway resource. It matches pattern
+	// Name: Identifier. Name of the Gateway resource. It matches pattern
 	// `projects/*/locations/*/gateways/`.
 	Name string `json:"name,omitempty"`
 	// Network: Optional. The relative resource name identifying the VPC network
@@ -967,6 +967,19 @@ type Gateway struct {
 	// 'OPEN_MESH' listen on 0.0.0.0 for IPv4 and :: for IPv6 and support multiple
 	// ports.
 	Ports []int64 `json:"ports,omitempty"`
+	// RoutingMode: Optional. The routing mode of the Gateway. This field is
+	// configurable only for gateways of type SECURE_WEB_GATEWAY. This field is
+	// required for gateways of type SECURE_WEB_GATEWAY.
+	//
+	// Possible values:
+	//   "EXPLICIT_ROUTING_MODE" - The routing mode is explicit; clients are
+	// configured to send traffic through the gateway. This is the default routing
+	// mode.
+	//   "NEXT_HOP_ROUTING_MODE" - The routing mode is next-hop. Clients are
+	// unaware of the gateway, and a route (advanced route or other route type) can
+	// be configured to direct traffic from client to gateway. The gateway then
+	// acts as a next-hop to the destination.
+	RoutingMode string `json:"routingMode,omitempty"`
 	// Scope: Optional. Scope determines how configuration across multiple Gateway
 	// instances are merged. The configuration for multiple Gateway instances with
 	// the same scope will be merged as presented as a single coniguration to the
@@ -1058,7 +1071,7 @@ type GrpcRoute struct {
 	// Each mesh reference should match the pattern:
 	// `projects/*/locations/global/meshes/`
 	Meshes []string `json:"meshes,omitempty"`
-	// Name: Required. Name of the GrpcRoute resource. It matches pattern
+	// Name: Identifier. Name of the GrpcRoute resource. It matches pattern
 	// `projects/*/locations/global/grpcRoutes/`
 	Name string `json:"name,omitempty"`
 	// Rules: Required. A list of detailed rules defining how to route traffic.
@@ -1278,7 +1291,8 @@ func (s GrpcRouteMethodMatch) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// GrpcRouteRetryPolicy: The specifications for retries.
+// GrpcRouteRetryPolicy: The specifications for retries. Specifies one or more
+// conditions for which this retry rule applies. Valid values are:
 type GrpcRouteRetryPolicy struct {
 	// NumRetries: Specifies the allowed number of retries. This number must be >
 	// 0. If not specified, default to 1.
@@ -1486,7 +1500,7 @@ type HttpRoute struct {
 	// `projects/*/locations/global/meshes/` The attached Mesh should be of a type
 	// SIDECAR
 	Meshes []string `json:"meshes,omitempty"`
-	// Name: Required. Name of the HttpRoute resource. It matches pattern
+	// Name: Identifier. Name of the HttpRoute resource. It matches pattern
 	// `projects/*/locations/global/httpRoutes/http_route_name>`.
 	Name string `json:"name,omitempty"`
 	// Rules: Required. Rules that define how traffic is routed and handled. Rules
@@ -2240,7 +2254,8 @@ type LbRouteExtension struct {
 	// available under the namespace `com.google.lb_route_extension.`. The
 	// following variables are supported in the metadata Struct:
 	// `{forwarding_rule_id}` - substituted with the forwarding rule's fully
-	// qualified resource name.
+	// qualified resource name. Only one of the resource level metadata and
+	// extension level metadata can be set.
 	Metadata googleapi.RawMessage `json:"metadata,omitempty"`
 	// Name: Required. Identifier. Name of the `LbRouteExtension` resource in the
 	// following format:
@@ -2313,7 +2328,8 @@ type LbTrafficExtension struct {
 	// `ProcessingRequest.metadata_context.filter_metadata` map field. The metadata
 	// is available under the key `com.google.lb_traffic_extension.`. The following
 	// variables are supported in the metadata: `{forwarding_rule_id}` -
-	// substituted with the forwarding rule's fully qualified resource name.
+	// substituted with the forwarding rule's fully qualified resource name. Only
+	// one of the resource level metadata and extension level metadata can be set.
 	Metadata googleapi.RawMessage `json:"metadata,omitempty"`
 	// Name: Required. Identifier. Name of the `LbTrafficExtension` resource in the
 	// following format:
@@ -2774,6 +2790,47 @@ func (s Location) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// LoggingConfig: The configuration for Platform Telemetry logging for Eventarc
+// Avdvanced resources.
+type LoggingConfig struct {
+	// LogSeverity: Optional. The minimum severity of logs that will be sent to
+	// Stackdriver/Platform Telemetry. Logs at severitiy ≥ this value will be
+	// sent, unless it is NONE.
+	//
+	// Possible values:
+	//   "LOG_SEVERITY_UNSPECIFIED" - Log severity is not specified. This value is
+	// treated the same as NONE, but is used to distinguish between no update and
+	// update to NONE in update_masks.
+	//   "NONE" - Default value at resource creation, presence of this value must
+	// be treated as no logging/disable logging.
+	//   "DEBUG" - Debug or trace level logging.
+	//   "INFO" - Routine information, such as ongoing status or performance.
+	//   "NOTICE" - Normal but significant events, such as start up, shut down, or
+	// a configuration change.
+	//   "WARNING" - Warning events might cause problems.
+	//   "ERROR" - Error events are likely to cause problems.
+	//   "CRITICAL" - Critical events cause more severe problems or outages.
+	//   "ALERT" - A person must take action immediately.
+	//   "EMERGENCY" - One or more systems are unusable.
+	LogSeverity string `json:"logSeverity,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "LogSeverity") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "LogSeverity") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s LoggingConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod LoggingConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // Mesh: Mesh represents a logical configuration grouping for workload to
 // workload communication within a service mesh. Routes that point to mesh
 // dictate how requests are routed within this logical mesh boundary.
@@ -2804,7 +2861,7 @@ type Mesh struct {
 	InterceptionPort int64 `json:"interceptionPort,omitempty"`
 	// Labels: Optional. Set of label tags associated with the Mesh resource.
 	Labels map[string]string `json:"labels,omitempty"`
-	// Name: Required. Name of the Mesh resource. It matches pattern
+	// Name: Identifier. Name of the Mesh resource. It matches pattern
 	// `projects/*/locations/global/meshes/`.
 	Name string `json:"name,omitempty"`
 	// SelfLink: Output only. Server-defined URL of this resource
@@ -3009,6 +3066,27 @@ func (s Policy) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+type RetryFilterPerRouteConfig struct {
+	// CryptoKeyName: The name of the crypto key to use for encrypting event data.
+	CryptoKeyName string `json:"cryptoKeyName,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "CryptoKeyName") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CryptoKeyName") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s RetryFilterPerRouteConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod RetryFilterPerRouteConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // ServiceBinding: ServiceBinding is the resource that defines a Service
 // Directory Service to be used in a BackendService resource.
 type ServiceBinding struct {
@@ -3020,7 +3098,7 @@ type ServiceBinding struct {
 	// Labels: Optional. Set of label tags associated with the ServiceBinding
 	// resource.
 	Labels map[string]string `json:"labels,omitempty"`
-	// Name: Required. Name of the ServiceBinding resource. It matches pattern
+	// Name: Identifier. Name of the ServiceBinding resource. It matches pattern
 	// `projects/*/locations/global/serviceBindings/service_binding_name`.
 	Name string `json:"name,omitempty"`
 	// Service: Required. The full Service Directory Service name of the format
@@ -3254,7 +3332,7 @@ type TcpRoute struct {
 	// `projects/*/locations/global/meshes/` The attached Mesh should be of a type
 	// SIDECAR
 	Meshes []string `json:"meshes,omitempty"`
-	// Name: Required. Name of the TcpRoute resource. It matches pattern
+	// Name: Identifier. Name of the TcpRoute resource. It matches pattern
 	// `projects/*/locations/global/tcpRoutes/tcp_route_name>`.
 	Name string `json:"name,omitempty"`
 	// Rules: Required. Rules that define how traffic is routed and handled. At
@@ -5413,7 +5491,7 @@ type ProjectsLocationsEndpointPoliciesPatchCall struct {
 
 // Patch: Updates the parameters of a single EndpointPolicy.
 //
-//   - name: Name of the EndpointPolicy resource. It matches pattern
+//   - name: Identifier. Name of the EndpointPolicy resource. It matches pattern
 //     `projects/{project}/locations/global/endpointPolicies/{endpoint_policy}`.
 func (r *ProjectsLocationsEndpointPoliciesService) Patch(name string, endpointpolicy *EndpointPolicy) *ProjectsLocationsEndpointPoliciesPatchCall {
 	c := &ProjectsLocationsEndpointPoliciesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -5985,7 +6063,7 @@ type ProjectsLocationsGatewaysPatchCall struct {
 
 // Patch: Updates the parameters of a single Gateway.
 //
-//   - name: Name of the Gateway resource. It matches pattern
+//   - name: Identifier. Name of the Gateway resource. It matches pattern
 //     `projects/*/locations/*/gateways/`.
 func (r *ProjectsLocationsGatewaysService) Patch(name string, gateway *Gateway) *ProjectsLocationsGatewaysPatchCall {
 	c := &ProjectsLocationsGatewaysPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -6556,7 +6634,7 @@ type ProjectsLocationsGrpcRoutesPatchCall struct {
 
 // Patch: Updates the parameters of a single GrpcRoute.
 //
-//   - name: Name of the GrpcRoute resource. It matches pattern
+//   - name: Identifier. Name of the GrpcRoute resource. It matches pattern
 //     `projects/*/locations/global/grpcRoutes/`.
 func (r *ProjectsLocationsGrpcRoutesService) Patch(name string, grpcroute *GrpcRoute) *ProjectsLocationsGrpcRoutesPatchCall {
 	c := &ProjectsLocationsGrpcRoutesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -7128,7 +7206,7 @@ type ProjectsLocationsHttpRoutesPatchCall struct {
 
 // Patch: Updates the parameters of a single HttpRoute.
 //
-//   - name: Name of the HttpRoute resource. It matches pattern
+//   - name: Identifier. Name of the HttpRoute resource. It matches pattern
 //     `projects/*/locations/global/httpRoutes/http_route_name>`.
 func (r *ProjectsLocationsHttpRoutesService) Patch(name string, httproute *HttpRoute) *ProjectsLocationsHttpRoutesPatchCall {
 	c := &ProjectsLocationsHttpRoutesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -8981,7 +9059,7 @@ type ProjectsLocationsMeshesPatchCall struct {
 
 // Patch: Updates the parameters of a single Mesh.
 //
-//   - name: Name of the Mesh resource. It matches pattern
+//   - name: Identifier. Name of the Mesh resource. It matches pattern
 //     `projects/*/locations/global/meshes/`.
 func (r *ProjectsLocationsMeshesService) Patch(name string, mesh *Mesh) *ProjectsLocationsMeshesPatchCall {
 	c := &ProjectsLocationsMeshesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -11396,7 +11474,7 @@ type ProjectsLocationsTcpRoutesPatchCall struct {
 
 // Patch: Updates the parameters of a single TcpRoute.
 //
-//   - name: Name of the TcpRoute resource. It matches pattern
+//   - name: Identifier. Name of the TcpRoute resource. It matches pattern
 //     `projects/*/locations/global/tcpRoutes/tcp_route_name>`.
 func (r *ProjectsLocationsTcpRoutesService) Patch(name string, tcproute *TcpRoute) *ProjectsLocationsTcpRoutesPatchCall {
 	c := &ProjectsLocationsTcpRoutesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}

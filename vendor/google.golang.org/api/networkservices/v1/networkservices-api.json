@@ -581,7 +581,7 @@
                   ],
                   "parameters": {
                     "name": {
-                      "description": "Required. Name of the EndpointPolicy resource. It matches pattern `projects/{project}/locations/global/endpointPolicies/{endpoint_policy}`.",
+                      "description": "Identifier. Name of the EndpointPolicy resource. It matches pattern `projects/{project}/locations/global/endpointPolicies/{endpoint_policy}`.",
                       "location": "path",
                       "pattern": "^projects/[^/]+/locations/[^/]+/endpointPolicies/[^/]+$",
                       "required": true,
@@ -738,7 +738,7 @@
                   ],
                   "parameters": {
                     "name": {
-                      "description": "Required. Name of the Gateway resource. It matches pattern `projects/*/locations/*/gateways/`.",
+                      "description": "Identifier. Name of the Gateway resource. It matches pattern `projects/*/locations/*/gateways/`.",
                       "location": "path",
                       "pattern": "^projects/[^/]+/locations/[^/]+/gateways/[^/]+$",
                       "required": true,
@@ -895,7 +895,7 @@
                   ],
                   "parameters": {
                     "name": {
-                      "description": "Required. Name of the GrpcRoute resource. It matches pattern `projects/*/locations/global/grpcRoutes/`",
+                      "description": "Identifier. Name of the GrpcRoute resource. It matches pattern `projects/*/locations/global/grpcRoutes/`",
                       "location": "path",
                       "pattern": "^projects/[^/]+/locations/[^/]+/grpcRoutes/[^/]+$",
                       "required": true,
@@ -1052,7 +1052,7 @@
                   ],
                   "parameters": {
                     "name": {
-                      "description": "Required. Name of the HttpRoute resource. It matches pattern `projects/*/locations/global/httpRoutes/http_route_name\u003e`.",
+                      "description": "Identifier. Name of the HttpRoute resource. It matches pattern `projects/*/locations/global/httpRoutes/http_route_name\u003e`.",
                       "location": "path",
                       "pattern": "^projects/[^/]+/locations/[^/]+/httpRoutes/[^/]+$",
                       "required": true,
@@ -1573,7 +1573,7 @@
                   ],
                   "parameters": {
                     "name": {
-                      "description": "Required. Name of the Mesh resource. It matches pattern `projects/*/locations/global/meshes/`.",
+                      "description": "Identifier. Name of the Mesh resource. It matches pattern `projects/*/locations/global/meshes/`.",
                       "location": "path",
                       "pattern": "^projects/[^/]+/locations/[^/]+/meshes/[^/]+$",
                       "required": true,
@@ -2220,7 +2220,7 @@
                   ],
                   "parameters": {
                     "name": {
-                      "description": "Required. Name of the TcpRoute resource. It matches pattern `projects/*/locations/global/tcpRoutes/tcp_route_name\u003e`.",
+                      "description": "Identifier. Name of the TcpRoute resource. It matches pattern `projects/*/locations/global/tcpRoutes/tcp_route_name\u003e`.",
                       "location": "path",
                       "pattern": "^projects/[^/]+/locations/[^/]+/tcpRoutes/[^/]+$",
                       "required": true,
@@ -2408,7 +2408,7 @@
       }
     }
   },
-  "revision": "20240707",
+  "revision": "20240913",
   "rootUrl": "https://networkservices.googleapis.com/",
   "schemas": {
     "AuditConfig": {
@@ -2581,7 +2581,7 @@
           "type": "object"
         },
         "name": {
-          "description": "Required. Name of the EndpointPolicy resource. It matches pattern `projects/{project}/locations/global/endpointPolicies/{endpoint_policy}`.",
+          "description": "Identifier. Name of the EndpointPolicy resource. It matches pattern `projects/{project}/locations/global/endpointPolicies/{endpoint_policy}`.",
           "type": "string"
         },
         "serverTlsPolicy": {
@@ -2799,7 +2799,7 @@
           "type": "object"
         },
         "name": {
-          "description": "Required. Name of the Gateway resource. It matches pattern `projects/*/locations/*/gateways/`.",
+          "description": "Identifier. Name of the Gateway resource. It matches pattern `projects/*/locations/*/gateways/`.",
           "type": "string"
         },
         "network": {
@@ -2813,6 +2813,18 @@
             "type": "integer"
           },
           "type": "array"
+        },
+        "routingMode": {
+          "description": "Optional. The routing mode of the Gateway. This field is configurable only for gateways of type SECURE_WEB_GATEWAY. This field is required for gateways of type SECURE_WEB_GATEWAY.",
+          "enum": [
+            "EXPLICIT_ROUTING_MODE",
+            "NEXT_HOP_ROUTING_MODE"
+          ],
+          "enumDescriptions": [
+            "The routing mode is explicit; clients are configured to send traffic through the gateway. This is the default routing mode.",
+            "The routing mode is next-hop. Clients are unaware of the gateway, and a route (advanced route or other route type) can be configured to direct traffic from client to gateway. The gateway then acts as a next-hop to the destination."
+          ],
+          "type": "string"
         },
         "scope": {
           "description": "Optional. Scope determines how configuration across multiple Gateway instances are merged. The configuration for multiple Gateway instances with the same scope will be merged as presented as a single coniguration to the proxy/load balancer. Max length 64 characters. Scope should start with a letter and can only have letters, numbers, hyphens.",
@@ -2897,7 +2909,7 @@
           "type": "array"
         },
         "name": {
-          "description": "Required. Name of the GrpcRoute resource. It matches pattern `projects/*/locations/global/grpcRoutes/`",
+          "description": "Identifier. Name of the GrpcRoute resource. It matches pattern `projects/*/locations/global/grpcRoutes/`",
           "type": "string"
         },
         "rules": {
@@ -3049,7 +3061,7 @@
       "type": "object"
     },
     "GrpcRouteRetryPolicy": {
-      "description": "The specifications for retries.",
+      "description": "The specifications for retries. Specifies one or more conditions for which this retry rule applies. Valid values are:",
       "id": "GrpcRouteRetryPolicy",
       "properties": {
         "numRetries": {
@@ -3194,7 +3206,7 @@
           "type": "array"
         },
         "name": {
-          "description": "Required. Name of the HttpRoute resource. It matches pattern `projects/*/locations/global/httpRoutes/http_route_name\u003e`.",
+          "description": "Identifier. Name of the HttpRoute resource. It matches pattern `projects/*/locations/global/httpRoutes/http_route_name\u003e`.",
           "type": "string"
         },
         "rules": {
@@ -3765,7 +3777,7 @@
             "description": "Properties of the object.",
             "type": "any"
           },
-          "description": "Optional. The metadata provided here is included as part of the `metadata_context` (of type `google.protobuf.Struct`) in the `ProcessingRequest` message sent to the extension server. The metadata is available under the namespace `com.google.lb_route_extension.`. The following variables are supported in the metadata Struct: `{forwarding_rule_id}` - substituted with the forwarding rule's fully qualified resource name.",
+          "description": "Optional. The metadata provided here is included as part of the `metadata_context` (of type `google.protobuf.Struct`) in the `ProcessingRequest` message sent to the extension server. The metadata is available under the namespace `com.google.lb_route_extension.`. The following variables are supported in the metadata Struct: `{forwarding_rule_id}` - substituted with the forwarding rule's fully qualified resource name. Only one of the resource level metadata and extension level metadata can be set.",
           "type": "object"
         },
         "name": {
@@ -3835,7 +3847,7 @@
             "description": "Properties of the object.",
             "type": "any"
           },
-          "description": "Optional. The metadata provided here is included in the `ProcessingRequest.metadata_context.filter_metadata` map field. The metadata is available under the key `com.google.lb_traffic_extension.`. The following variables are supported in the metadata: `{forwarding_rule_id}` - substituted with the forwarding rule's fully qualified resource name.",
+          "description": "Optional. The metadata provided here is included in the `ProcessingRequest.metadata_context.filter_metadata` map field. The metadata is available under the key `com.google.lb_traffic_extension.`. The following variables are supported in the metadata: `{forwarding_rule_id}` - substituted with the forwarding rule's fully qualified resource name. Only one of the resource level metadata and extension level metadata can be set.",
           "type": "object"
         },
         "name": {
@@ -4140,6 +4152,41 @@
       },
       "type": "object"
     },
+    "LoggingConfig": {
+      "description": "The configuration for Platform Telemetry logging for Eventarc Avdvanced resources.",
+      "id": "LoggingConfig",
+      "properties": {
+        "logSeverity": {
+          "description": "Optional. The minimum severity of logs that will be sent to Stackdriver/Platform Telemetry. Logs at severitiy ≥ this value will be sent, unless it is NONE.",
+          "enum": [
+            "LOG_SEVERITY_UNSPECIFIED",
+            "NONE",
+            "DEBUG",
+            "INFO",
+            "NOTICE",
+            "WARNING",
+            "ERROR",
+            "CRITICAL",
+            "ALERT",
+            "EMERGENCY"
+          ],
+          "enumDescriptions": [
+            "Log severity is not specified. This value is treated the same as NONE, but is used to distinguish between no update and update to NONE in update_masks.",
+            "Default value at resource creation, presence of this value must be treated as no logging/disable logging.",
+            "Debug or trace level logging.",
+            "Routine information, such as ongoing status or performance.",
+            "Normal but significant events, such as start up, shut down, or a configuration change.",
+            "Warning events might cause problems.",
+            "Error events are likely to cause problems.",
+            "Critical events cause more severe problems or outages.",
+            "A person must take action immediately.",
+            "One or more systems are unusable."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "Mesh": {
       "description": "Mesh represents a logical configuration grouping for workload to workload communication within a service mesh. Routes that point to mesh dictate how requests are routed within this logical mesh boundary.",
       "id": "Mesh",
@@ -4181,7 +4228,7 @@
           "type": "object"
         },
         "name": {
-          "description": "Required. Name of the Mesh resource. It matches pattern `projects/*/locations/global/meshes/`.",
+          "description": "Identifier. Name of the Mesh resource. It matches pattern `projects/*/locations/global/meshes/`.",
           "type": "string"
         },
         "selfLink": {
@@ -4308,6 +4355,16 @@
       },
       "type": "object"
     },
+    "RetryFilterPerRouteConfig": {
+      "id": "RetryFilterPerRouteConfig",
+      "properties": {
+        "cryptoKeyName": {
+          "description": "The name of the crypto key to use for encrypting event data.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "ServiceBinding": {
       "description": "ServiceBinding is the resource that defines a Service Directory Service to be used in a BackendService resource.",
       "id": "ServiceBinding",
@@ -4330,7 +4387,7 @@
           "type": "object"
         },
         "name": {
-          "description": "Required. Name of the ServiceBinding resource. It matches pattern `projects/*/locations/global/serviceBindings/service_binding_name`.",
+          "description": "Identifier. Name of the ServiceBinding resource. It matches pattern `projects/*/locations/global/serviceBindings/service_binding_name`.",
           "type": "string"
         },
         "service": {
@@ -4513,7 +4570,7 @@
           "type": "array"
         },
         "name": {
-          "description": "Required. Name of the TcpRoute resource. It matches pattern `projects/*/locations/global/tcpRoutes/tcp_route_name\u003e`.",
+          "description": "Identifier. Name of the TcpRoute resource. It matches pattern `projects/*/locations/global/tcpRoutes/tcp_route_name\u003e`.",
           "type": "string"
         },
         "rules": {

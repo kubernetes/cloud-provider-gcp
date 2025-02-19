@@ -50,6 +50,9 @@ import (
 const (
 	// NetLBFinalizerV2 is the finalizer used by newer controllers that manage L4 External LoadBalancer services.
 	NetLBFinalizerV2 = "gke.networking.io/l4-netlb-v2"
+
+	// NetLBFinalizerV3 is the finalizer used by newer controllers that manage L4 External LoadBalancer services (similar to V2 but this one is for NEG based LBs).
+	NetLBFinalizerV3 = "gke.networking.io/l4-netlb-v3"
 )
 
 func fakeGCECloud(vals TestClusterValues) (*Cloud, error) {
@@ -406,7 +409,7 @@ func usesL4RBS(service *v1.Service, forwardingRule *compute.ForwardingRule) bool
 		return true
 	}
 	// Detect RBS by finalizer
-	if hasFinalizer(service, NetLBFinalizerV2) {
+	if hasFinalizer(service, NetLBFinalizerV2) || hasFinalizer(service, NetLBFinalizerV3) {
 		return true
 	}
 	// Detect RBS by existing forwarding rule with Backend Service attached
