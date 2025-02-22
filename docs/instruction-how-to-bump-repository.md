@@ -16,14 +16,22 @@ VERSION_FILES=(
 LIBRARY_FILES=(
     go.mod
     providers/go.mod
+    test/e2e/go.mod
 )
 ```
 2. Bump library versions.
 ```bash
 sed -i s/v1.$MINOR_OLD.$PATCH_OLD/v1.$MINOR.$PATCH/ "${VERSION_FILES[@]}"
 sed -i s/v0.$MINOR_OLD.$PATCH_OLD/v0.$MINOR.$PATCH/ "${LIBRARY_FILES[@]}"
-go mod tidy
-./tools/update_version.sh
+sed -i s/v1.$MINOR_OLD.$PATCH_OLD/v1.$MINOR.$PATCH/ "${LIBRARY_FILES[@]}"
+for go_mod_file in "${LIBRARY_FILES[@]}"; do
+  dir=$(dirname "$go_mod_file")
+  pushd $dir
+  echo "Tidying $dir"
+  go mod tidy
+  popd
+done
+./tools/update_vendor.sh
 ```
 3. In [WORKSPACE](https://github.com/kubernetes/cloud-provider-gcp/blob/master/WORKSPACE), update `fetch_kube_release` sha to the desired release version.
     * Note: The current Kubernetes release is using sha512 hash while cloud-provider-gcp is using sha256. Re-sha with command `sha256sum` if needed. Use this command to generate values automatically.
