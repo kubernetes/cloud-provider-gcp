@@ -535,12 +535,7 @@ func (c *Controller) handleGNPDelete(ctx context.Context, params *networkv1.GKEN
 		return c.executeGNPDelete(ctx, params, network)
 	}
 
-	if networkStillRefersToGNP && !network.InUse() {
-		return c.executeGNPDelete(ctx, params, network)
-	}
-
-	// if the network is in use, this GNP object will get reconciled again when the network's in use status changes.
-
+	// Prevent removal if there is still a network refering to this GNP
 	return nil
 }
 
