@@ -241,7 +241,13 @@ func (g *Cloud) NodeAddressesByProviderID(ctx context.Context, providerID string
 		return []v1.NodeAddress{}, err
 	}
 
-	instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	var instance *compute.Instance
+	if g.multiProject {
+		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	} else {
+		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	}
+
 	if err != nil {
 		return []v1.NodeAddress{}, fmt.Errorf("error while querying for providerID %q: %v", providerID, err)
 	}
@@ -377,7 +383,12 @@ func (g *Cloud) InstanceMetadata(ctx context.Context, node *v1.Node) (*cloudprov
 
 	var addresses []v1.NodeAddress
 	var instanceType string
-	instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	var instance *compute.Instance
+	if g.multiProject {
+		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	} else {
+		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("error while querying for providerID %q: %v", providerID, err)
 	}
@@ -584,7 +595,11 @@ func (g *Cloud) AliasRangesByProviderID(providerID string) (cidrs []string, err 
 	}
 
 	var res *compute.Instance
-	res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	if g.multiProject {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	} else {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	}
 	if err != nil {
 		return
 	}
@@ -628,7 +643,12 @@ func (g *Cloud) AddAliasToInstanceByProviderID(providerID string, alias *net.IPN
 		return err
 	}
 
-	instance, err := g.c.BetaInstances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	var instance *computebeta.Instance
+	if g.multiProject {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	} else {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	}
 	if err != nil {
 		return err
 	}
@@ -651,7 +671,11 @@ func (g *Cloud) AddAliasToInstanceByProviderID(providerID string, alias *net.IPN
 	})
 
 	mc := newInstancesMetricContext("add_alias", zone)
-	err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(instance.Name, lastComponent(instance.Zone)), iface.Name, iface)
+	if g.multiProject {
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(instance.Name, lastComponent(instance.Zone)), iface.Name, iface, cloud.ForceProjectID(project))
+	} else {
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(instance.Name, lastComponent(instance.Zone)), iface.Name, iface)
+	}
 	return mc.Observe(err)
 }
 
@@ -763,7 +787,13 @@ func (g *Cloud) getInstanceFromProjectInZoneByName(project, zone, name string) (
 
 	name = canonicalizeInstanceName(name)
 	mc := newInstancesMetricContext("get", zone)
-	res, err := g.c.Instances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
+	var res *compute.Instance
+	var err error
+	if g.multiProject {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
+	} else {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(name, zone))
+	}
 	mc.Observe(err)
 	if err != nil {
 		return nil, err
@@ -921,8 +951,12 @@ func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, 
 	if err != nil {
 		return nil, err
 	}
+	if g.multiProject {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	} else {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	}
 
-	res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
 	if err != nil {
 		return nil, err
 	}
