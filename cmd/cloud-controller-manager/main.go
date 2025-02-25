@@ -27,6 +27,7 @@ import (
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
+	"k8s.io/cloud-provider-gcp/providers/gce"
 	_ "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/cloud-provider/app"
 	"k8s.io/cloud-provider/app/config"
@@ -40,6 +41,16 @@ import (
 	kcmnames "k8s.io/kubernetes/cmd/kube-controller-manager/names"
 )
 
+// enableMultiProject is bound to a command-line flag. When true, it enables the
+// multiProject option of the GCE cloud provider, instructing it to use the
+// project specified in the Node's providerID for GCE API calls.
+//
+// This flag should only be enabled when the Node's providerID can be fully
+// trusted.
+//
+// Flag binding occurs in main()
+var enableMultiProject bool
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
@@ -52,10 +63,14 @@ func main() {
 
 	controllerInitializers := app.DefaultInitFuncConstructors
 
+	fss := cliflag.NamedFlagSets{}
+
+	cloudProviderFS := fss.FlagSet("GCE Cloud Provider")
+	cloudProviderFS.BoolVar(&enableMultiProject, "enable-multi-project", false, "Enables project selection from Node providerID for GCE API calls. CAUTION: Only enable if Node providerID is configured by a trusted source.")
+
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
 	nodeIpamController.nodeIPAMControllerOptions.NodeIPAMControllerConfiguration = &nodeIpamController.nodeIPAMControllerConfiguration
-	fss := cliflag.NamedFlagSets{}
 	nodeIpamController.nodeIPAMControllerOptions.AddFlags(fss.FlagSet("nodeipam controller"))
 	controllerInitializers[kcmnames.NodeIpamController] = app.ControllerInitFuncConstructor{
 		Constructor: nodeIpamController.startNodeIpamControllerWrapper,
@@ -98,5 +113,17 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 			klog.Fatalf("no ClusterID found.  A ClusterID is required for the cloud provider to function properly.  This check can be bypassed by setting the allow-untagged-cloud option")
 		}
 	}
+
+	if enableMultiProject {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			// Fail-fast: If enableMultiProject is set, the cloud provider MUST
+			// be GCE. A non-GCE provider indicates a misconfiguration. Ideally,
+			// we never expect this to be executed.
+			klog.Fatalf("multi-project mode requires GCE cloud provider, but got %T", cloud)
+		}
+		gceCloud.EnableMultiProject()
+	}
+
 	return cloud
 }
