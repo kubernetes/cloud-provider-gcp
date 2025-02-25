@@ -22,7 +22,6 @@ pkg_tar(
     files = {
         "//cluster/gce/gci/mounter": "gci-mounter",
         "configure-helper.sh": "gci-configure-helper.sh",
-        "health-monitor.sh": "health-monitor.sh",
         "configure-kubeapiserver.sh": "configure-kubeapiserver.sh",
     },
     mode = "0755",
