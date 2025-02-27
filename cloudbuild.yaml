@@ -7,7 +7,7 @@ steps:
   - name: 'golang:1.23.3'
     env:
       - IMAGE_REPO=${_IMAGE_REPO}
-      - IMAGE_TAG=${_PULL_BASE_REF}
+      - IMAGE_TAG=${_GIT_TAG}
     entrypoint: tools/push-images
   # build gke-gcloud-auth-plugin binary
   - name: 'gcr.io/cloud-builders/bazel'
