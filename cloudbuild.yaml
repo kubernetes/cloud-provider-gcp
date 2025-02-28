@@ -93,4 +93,3 @@ substitutions:
 tags:
   - 'cloud-provider-gcp'
   - ${_GIT_TAG}
-  - ${_PULL_BASE_REF}
