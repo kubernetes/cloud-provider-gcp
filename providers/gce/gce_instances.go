@@ -242,7 +242,7 @@ func (g *Cloud) NodeAddressesByProviderID(ctx context.Context, providerID string
 	}
 
 	var instance *compute.Instance
-	if g.multiProject {
+	if g.projectFromNodeProviderID {
 		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
 	} else {
 		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
@@ -384,7 +384,7 @@ func (g *Cloud) InstanceMetadata(ctx context.Context, node *v1.Node) (*cloudprov
 	var addresses []v1.NodeAddress
 	var instanceType string
 	var instance *compute.Instance
-	if g.multiProject {
+	if g.projectFromNodeProviderID {
 		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
 	} else {
 		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
@@ -595,7 +595,7 @@ func (g *Cloud) AliasRangesByProviderID(providerID string) (cidrs []string, err 
 	}
 
 	var res *compute.Instance
-	if g.multiProject {
+	if g.projectFromNodeProviderID {
 		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
 	} else {
 		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
@@ -644,7 +644,7 @@ func (g *Cloud) AddAliasToInstanceByProviderID(providerID string, alias *net.IPN
 	}
 
 	var instance *computebeta.Instance
-	if g.multiProject {
+	if g.projectFromNodeProviderID {
 		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
 	} else {
 		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
@@ -671,7 +671,7 @@ func (g *Cloud) AddAliasToInstanceByProviderID(providerID string, alias *net.IPN
 	})
 
 	mc := newInstancesMetricContext("add_alias", zone)
-	if g.multiProject {
+	if g.projectFromNodeProviderID {
 		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(instance.Name, lastComponent(instance.Zone)), iface.Name, iface, cloud.ForceProjectID(project))
 	} else {
 		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(instance.Name, lastComponent(instance.Zone)), iface.Name, iface)
@@ -789,7 +789,7 @@ func (g *Cloud) getInstanceFromProjectInZoneByName(project, zone, name string) (
 	mc := newInstancesMetricContext("get", zone)
 	var res *compute.Instance
 	var err error
-	if g.multiProject {
+	if g.projectFromNodeProviderID {
 		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
 	} else {
 		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(name, zone))
@@ -951,7 +951,7 @@ func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, 
 	if err != nil {
 		return nil, err
 	}
-	if g.multiProject {
+	if g.projectFromNodeProviderID {
 		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
 	} else {
 		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
