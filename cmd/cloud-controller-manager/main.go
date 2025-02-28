@@ -42,8 +42,8 @@ import (
 )
 
 // enableMultiProject is bound to a command-line flag. When true, it enables the
-// multiProject option of the GCE cloud provider, instructing it to use the
-// project specified in the Node's providerID for GCE API calls.
+// projectFromNodeProviderID option of the GCE cloud provider, instructing it to
+// use the project specified in the Node's providerID for GCE API calls.
 //
 // This flag should only be enabled when the Node's providerID can be fully
 // trusted.
@@ -122,7 +122,7 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 			// we never expect this to be executed.
 			klog.Fatalf("multi-project mode requires GCE cloud provider, but got %T", cloud)
 		}
-		gceCloud.EnableMultiProject()
+		gceCloud.SetProjectFromNodeProviderID(true)
 	}
 
 	return cloud

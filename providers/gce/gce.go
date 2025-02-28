@@ -196,12 +196,12 @@ type Cloud struct {
 	// stack IPv6 or a dual stack cluster
 	stackType StackType
 
-	// multiProject determines whether the project derived through the Node's
-	// .spec.providerID can be used to change the project used when making GCE
-	// API calls.
+	// projectFromNodeProviderID determines whether the project derived through
+	// the Node's .spec.providerID can be used to change the project used when
+	// making GCE API calls.
 	//
 	// Enable this ony when the Node's .spec.providerID can be fully trusted.
-	multiProject bool
+	projectFromNodeProviderID bool
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -847,16 +847,11 @@ func (g *Cloud) HasClusterID() bool {
 	return true
 }
 
-// EnableMultiProject enables multiProject option.
+// SetProjectFromNodeProviderID configures projectFromNodeProviderID option.
 //
 // Enable this ony when the Node's .spec.providerID can be fully trusted.
-func (g *Cloud) EnableMultiProject() {
-	g.multiProject = true
-}
-
-// DisableMultiProject disables multiProject option.
-func (g *Cloud) DisableMultiProject() {
-	g.multiProject = false
+func (g *Cloud) SetProjectFromNodeProviderID(enabled bool) {
+	g.projectFromNodeProviderID = enabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.

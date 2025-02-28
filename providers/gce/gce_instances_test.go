@@ -559,18 +559,19 @@ func TestGetZone(t *testing.T) {
 	}
 }
 
-// TestMultiProject verifies the behaviour of various functions under the
-// influence of multiProject option.
+// TestProjectFromNodeProviderID verifies the behaviour of various functions under the
+// influence of projectFromNodeProviderID option.
 //
 // Test setup involves creating two instances which have the same name and are
 // in the same zone but differ in their projects. A K8s Node is created with the
 // providerID pointing to the non-default project.
-//   - When multiProject is not enabled, the instance from the default project
-//     should be returned (since the project from providerID should be ignored.)
-//   - When multiProject is enabled, the instance from the non-default project
-//     should be returned (since the project from providerID would be
-//     considered.)
-func TestMultiProject(t *testing.T) {
+//   - When projectFromNodeProviderID is not enabled, the instance from the
+//     default project should be returned (since the project from providerID
+//     should be ignored.)
+//   - When projectFromNodeProviderID is enabled, the instance from the
+//     non-default project should be returned (since the project from providerID
+//     would be considered.)
+func TestProjectFromNodeProviderID(t *testing.T) {
 	defaultValues := DefaultTestClusterValues()
 	gce, err := fakeGCECloud(defaultValues)
 	require.NoError(t, err)
@@ -630,41 +631,39 @@ func TestMultiProject(t *testing.T) {
 		},
 	}
 
-	////////////////////////////////////////////////////////////////////////////
 	// Invoke functions under test
-	////////////////////////////////////////////////////////////////////////////
 
 	testCases := []struct {
-		multiProject bool
-		wantInstance *ga.Instance
+		projectFromNodeProviderID bool
+		wantInstance              *ga.Instance
 	}{
 		{
-			multiProject: false,
-			wantInstance: instanceFromDefaultProject,
+			projectFromNodeProviderID: false,
+			wantInstance:              instanceFromDefaultProject,
 		},
 		{
-			multiProject: true,
-			wantInstance: instanceFromNonDefaultProject,
+			projectFromNodeProviderID: true,
+			wantInstance:              instanceFromNonDefaultProject,
 		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("instanceByProviderID() when multiProject=%v", tc.multiProject), func(t *testing.T) {
-			gce.multiProject = tc.multiProject
+		t.Run(fmt.Sprintf("instanceByProviderID() when projectFromNodeProviderID=%v", tc.projectFromNodeProviderID), func(t *testing.T) {
+			gce.projectFromNodeProviderID = tc.projectFromNodeProviderID
 			gotGCEInstance, err := gce.instanceByProviderID(node.Spec.ProviderID)
 			if err != nil {
-				t.Fatalf("instanceByProviderID(%v) returned error %v; want no error", node.Spec.ProviderID, err)
+				t.Fatalf("instanceByProviderID(%v) = %v; want nil", node.Spec.ProviderID, err)
 			}
 			if gotGCEInstance.ID != tc.wantInstance.Id {
 				t.Errorf("instanceByProviderID(%v) returned instance with ID = %v; want instance with ID = %v", node.Spec.ProviderID, gotGCEInstance.ID, instanceFromDefaultProject.Id)
 			}
 		})
 
-		t.Run(fmt.Sprintf("InstanceMetadata() when multiProject=%v", tc.multiProject), func(t *testing.T) {
-			gce.multiProject = tc.multiProject
+		t.Run(fmt.Sprintf("InstanceMetadata() when projectFromNodeProviderID=%v", tc.projectFromNodeProviderID), func(t *testing.T) {
+			gce.projectFromNodeProviderID = tc.projectFromNodeProviderID
 			gotInstanceMetadata, err := gce.InstanceMetadata(context.TODO(), node)
 			if err != nil {
-				t.Fatalf("InstanceMetadata(%v) returned error %v; want no error", node.Spec.ProviderID, err)
+				t.Fatalf("InstanceMetadata(%v) = %v; want nil", node.Spec.ProviderID, err)
 			}
 			gotAddress := gotInstanceMetadata.NodeAddresses[0].Address
 			wantAddress := tc.wantInstance.NetworkInterfaces[0].NetworkIP
@@ -673,11 +672,11 @@ func TestMultiProject(t *testing.T) {
 			}
 		})
 
-		t.Run(fmt.Sprintf("AliasRangesByProviderID() when multiProject=%v", tc.multiProject), func(t *testing.T) {
-			gce.multiProject = tc.multiProject
+		t.Run(fmt.Sprintf("AliasRangesByProviderID() when projectFromNodeProviderID=%v", tc.projectFromNodeProviderID), func(t *testing.T) {
+			gce.projectFromNodeProviderID = tc.projectFromNodeProviderID
 			gotAliasRanges, err := gce.AliasRangesByProviderID(node.Spec.ProviderID)
 			if err != nil {
-				t.Fatalf("AliasRangesByProviderID(%v) returned error %v; want no error", node.Spec.ProviderID, err)
+				t.Fatalf("AliasRangesByProviderID(%v) = %v; want nil", node.Spec.ProviderID, err)
 			}
 			if len(gotAliasRanges) != 1 {
 				t.Fatalf("AliasRangesByProviderID(%v) returned %d ranges; want only 1", node.Spec.ProviderID, len(gotAliasRanges))
