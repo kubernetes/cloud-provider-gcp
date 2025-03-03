@@ -121,6 +121,7 @@ func PatchNodeMultiNetwork(c clientset.Interface, node *v1.Node) error {
 		if _, err := c.CoreV1().Nodes().Patch(context.TODO(), node.Name, types.StrategicMergePatchType, []byte(fmt.Sprintf(`{"metadata":{"annotations":%s}}`, raw)), metav1.PatchOptions{}); err != nil {
 			return fmt.Errorf("unable to apply patch for multi-network annotation: %v", err)
 		}
+		klog.V(4).Infof("Patched multi-network annotation of node %q to %s", node.Name, raw)
 	}
 	// Prepare patch bytes for the node update.
 	patchBytes, err := json.Marshal([]interface{}{
@@ -138,5 +139,6 @@ func PatchNodeMultiNetwork(c clientset.Interface, node *v1.Node) error {
 	if _, err = c.CoreV1().Nodes().Patch(context.TODO(), node.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{}, "status"); err != nil {
 		return fmt.Errorf("failed to patch node for multi-networking: %w", err)
 	}
+	klog.V(4).Infof("Patched capacity of node %q to %s", node.Name, patchBytes)
 	return nil
 }
