@@ -155,7 +155,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 				return ca.AllocateOrOccupyCIDR(newNode)
 			}
 
-			// Process Node if multi-netowrk related information changed
+			// Process Node if multi-network related information changed
 			if nodeMultiNetworkChanged(oldNode, newNode) {
 				return ca.AllocateOrOccupyCIDR(newNode)
 			}
@@ -531,8 +531,8 @@ func isIP6(ipnet *net.IPNet) bool {
 	return ipnet.IP.To4() == nil && ipnet.IP.To16() != nil
 }
 
-// filterMultiNetworkAnnotaion filteres a node annotation with all multi-network annotations that is watched/updated by CCM
-func filterMultiNetworkAnnotaion(annotations map[string]string) map[string]string {
+// filterMultiNetworkAnnotations filters a node annotation with all multi-network annotations that is watched/updated by CCM
+func filterMultiNetworkAnnotations(annotations map[string]string) map[string]string {
 	if annotations == nil {
 		return nil
 	}
@@ -565,7 +565,7 @@ func filterMultiNetworkCapacity(capacity v1.ResourceList) v1.ResourceList {
 }
 
 func nodeMultiNetworkChanged(oldNode *v1.Node, newNode *v1.Node) bool {
-	if !reflect.DeepEqual(filterMultiNetworkAnnotaion(oldNode.GetAnnotations()), filterMultiNetworkAnnotaion(newNode.GetAnnotations())) {
+	if !reflect.DeepEqual(filterMultiNetworkAnnotations(oldNode.GetAnnotations()), filterMultiNetworkAnnotations(newNode.GetAnnotations())) {
 		return true
 	}
 	if !reflect.DeepEqual(filterMultiNetworkCapacity(oldNode.Status.Capacity), filterMultiNetworkCapacity(newNode.Status.Capacity)) {
