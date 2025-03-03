@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"strings"
 	"time"
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
@@ -154,15 +155,8 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 				return ca.AllocateOrOccupyCIDR(newNode)
 			}
 
-			// Process Node for Multi-Network network-status annotation change
-			var oldVal, newVal string
-			if newNode.Annotations != nil {
-				newVal = newNode.Annotations[networkv1.NodeNetworkAnnotationKey]
-			}
-			if oldNode.Annotations != nil {
-				oldVal = oldNode.Annotations[networkv1.NodeNetworkAnnotationKey]
-			}
-			if oldVal != newVal {
+			// Process Node if multi-netowrk related information changed
+			if nodeMultiNetworkChanged(oldNode, newNode) {
 				return ca.AllocateOrOccupyCIDR(newNode)
 			}
 
@@ -535,4 +529,47 @@ func isIP6(ipnet *net.IPNet) bool {
 		return false
 	}
 	return ipnet.IP.To4() == nil && ipnet.IP.To16() != nil
+}
+
+// filterMultiNetworkAnnotaion filteres a node annotation with all multi-network annotations that is watched/updated by CCM
+func filterMultiNetworkAnnotaion(annotations map[string]string) map[string]string {
+	if annotations == nil {
+		return nil
+	}
+	filtered := map[string]string{}
+	if val, ok := annotations[networkv1.NodeNetworkAnnotationKey]; ok {
+		filtered[networkv1.NodeNetworkAnnotationKey] = val
+	}
+	if val, ok := annotations[networkv1.MultiNetworkAnnotationKey]; ok {
+		filtered[networkv1.MultiNetworkAnnotationKey] = val
+	}
+	if val, ok := annotations[networkv1.NorthInterfacesAnnotationKey]; ok {
+		filtered[networkv1.NorthInterfacesAnnotationKey] = val
+	}
+	return filtered
+}
+
+// filterMultiNetworkCapacity filters a node capacity with all multi-network IP resources
+func filterMultiNetworkCapacity(capacity v1.ResourceList) v1.ResourceList {
+	if capacity == nil {
+		return nil
+	}
+	filtered := v1.ResourceList{}
+	for k, v := range capacity {
+		resourceName := k.String()
+		if strings.HasPrefix(resourceName, networkv1.NetworkResourceKeyPrefix) && strings.HasSuffix(resourceName, ".IP") {
+			filtered[k] = v.DeepCopy()
+		}
+	}
+	return filtered
+}
+
+func nodeMultiNetworkChanged(oldNode *v1.Node, newNode *v1.Node) bool {
+	if !reflect.DeepEqual(filterMultiNetworkAnnotaion(oldNode.GetAnnotations()), filterMultiNetworkAnnotaion(newNode.GetAnnotations())) {
+		return true
+	}
+	if !reflect.DeepEqual(filterMultiNetworkCapacity(oldNode.Status.Capacity), filterMultiNetworkCapacity(newNode.Status.Capacity)) {
+		return true
+	}
+	return false
 }
