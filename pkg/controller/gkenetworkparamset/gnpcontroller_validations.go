@@ -26,6 +26,7 @@ import (
 	"google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
@@ -229,11 +230,11 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 
 	//if GNP with deviceMode and referencing Subnet is referenced in any other existing GNP
 	if isDeviceModeSpecified {
-		gnpList, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().List(ctx, metav1.ListOptions{})
+		gnpList, err := c.gkeNetworkParamsInformer.Lister().List(labels.Everything())
 		if err != nil {
 			return nil, err
 		}
-		for _, otherGNP := range gnpList.Items {
+		for _, otherGNP := range gnpList {
 			isDifferentGNP := params.Name != otherGNP.Name
 			isMatchingSubnet := params.Spec.VPCSubnet == otherGNP.Spec.VPCSubnet
 			isParamsNewer := params.CreationTimestamp.After(otherGNP.CreationTimestamp.Time)
