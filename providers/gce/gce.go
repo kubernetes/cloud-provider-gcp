@@ -43,7 +43,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
@@ -195,6 +195,13 @@ type Cloud struct {
 	// stackType indicates whether the cluster is a single stack IPv4, single
 	// stack IPv6 or a dual stack cluster
 	stackType StackType
+
+	// projectFromNodeProviderID determines whether the project derived through
+	// the Node's .spec.providerID can be used to change the project used when
+	// making GCE API calls.
+	//
+	// Enable this ony when the Node's .spec.providerID can be fully trusted.
+	projectFromNodeProviderID bool
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -838,6 +845,13 @@ func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
 // HasClusterID returns true if the cluster has a clusterID
 func (g *Cloud) HasClusterID() bool {
 	return true
+}
+
+// SetProjectFromNodeProviderID configures projectFromNodeProviderID option.
+//
+// Enable this ony when the Node's .spec.providerID can be fully trusted.
+func (g *Cloud) SetProjectFromNodeProviderID(enabled bool) {
+	g.projectFromNodeProviderID = enabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.
