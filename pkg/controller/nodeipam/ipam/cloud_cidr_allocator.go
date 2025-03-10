@@ -397,7 +397,7 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		return err
 	}
 
-	if !reflect.DeepEqual(node.Annotations, oldNode.Annotations) {
+	if !reflect.DeepEqual(node.Annotations, oldNode.Annotations) || !reflect.DeepEqual(node.Status.Capacity, oldNode.Status.Capacity) {
 		// retain old north interfaces annotation
 		var oldNorthInterfacesAnnotation networkv1.NorthInterfacesAnnotation
 		if ann, exists := oldNode.Annotations[networkv1.NorthInterfacesAnnotationKey]; exists {
