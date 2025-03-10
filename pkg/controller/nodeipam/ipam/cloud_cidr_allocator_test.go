@@ -2067,3 +2067,81 @@ func TestIsIP6(t *testing.T) {
 		}
 	}
 }
+
+func TestNodeMultiNetworkChanged(t *testing.T) {
+	oldNode := &v1.Node{}
+	oldNode.Annotations = map[string]string{
+		networkv1.NodeNetworkAnnotationKey:     "abc",
+		networkv1.MultiNetworkAnnotationKey:    "123",
+		networkv1.NorthInterfacesAnnotationKey: "def",
+	}
+	oldNode.Status.Capacity = v1.ResourceList{
+		v1.ResourceName(networkv1.NetworkResourceKeyPrefix + "fake-net.IP"): *resource.NewQuantity(1, resource.DecimalSI),
+	}
+	tests := []struct {
+		desc           string
+		newNodeMutator func(*v1.Node)
+		want           bool
+	}{
+		{
+			desc:           "no change",
+			newNodeMutator: nil,
+			want:           false,
+		},
+		{
+			desc: "IP resource changed",
+			newNodeMutator: func(n *v1.Node) {
+				n.Status.Capacity[v1.ResourceName(networkv1.NetworkResourceKeyPrefix+"fake-net.IP")] = *resource.NewQuantity(0, resource.DecimalSI)
+			},
+			want: true,
+		},
+		{
+			desc: "north-interface changed",
+			newNodeMutator: func(n *v1.Node) {
+				n.Annotations[networkv1.NorthInterfacesAnnotationKey] = "changed"
+			},
+			want: true,
+		},
+		{
+			desc: "networks changed",
+			newNodeMutator: func(n *v1.Node) {
+				n.Annotations[networkv1.MultiNetworkAnnotationKey] = "changed"
+			},
+			want: true,
+		},
+		{
+			desc: "network-status changed",
+			newNodeMutator: func(n *v1.Node) {
+				n.Annotations[networkv1.NodeNetworkAnnotationKey] = "changed"
+			},
+			want: true,
+		},
+		{
+			desc: "annotation cleared",
+			newNodeMutator: func(n *v1.Node) {
+				delete(n.Annotations, networkv1.NorthInterfacesAnnotationKey)
+			},
+			want: true,
+		},
+		{
+			desc: "nil annotation",
+			newNodeMutator: func(n *v1.Node) {
+				n.Annotations = nil
+			},
+			want: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			newNode := oldNode.DeepCopy()
+			if tc.newNodeMutator != nil {
+				tc.newNodeMutator(newNode)
+			}
+
+			got := nodeMultiNetworkChanged(oldNode, newNode)
+			if got != tc.want {
+				t.Fatalf("nodeMultiNetworkChanged(%+v, %+v) return %t, but want %t", oldNode, newNode, got, tc.want)
+			}
+		})
+	}
+}
