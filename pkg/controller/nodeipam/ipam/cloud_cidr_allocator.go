@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"strings"
 	"time"
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
@@ -154,15 +155,8 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 				return ca.AllocateOrOccupyCIDR(newNode)
 			}
 
-			// Process Node for Multi-Network network-status annotation change
-			var oldVal, newVal string
-			if newNode.Annotations != nil {
-				newVal = newNode.Annotations[networkv1.NodeNetworkAnnotationKey]
-			}
-			if oldNode.Annotations != nil {
-				oldVal = oldNode.Annotations[networkv1.NodeNetworkAnnotationKey]
-			}
-			if oldVal != newVal {
+			// Process Node if multi-network related information changed
+			if nodeMultiNetworkChanged(oldNode, newNode) {
 				return ca.AllocateOrOccupyCIDR(newNode)
 			}
 
@@ -403,7 +397,7 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		return err
 	}
 
-	if !reflect.DeepEqual(node.Annotations, oldNode.Annotations) {
+	if !reflect.DeepEqual(node.Annotations, oldNode.Annotations) || !reflect.DeepEqual(node.Status.Capacity, oldNode.Status.Capacity) {
 		// retain old north interfaces annotation
 		var oldNorthInterfacesAnnotation networkv1.NorthInterfacesAnnotation
 		if ann, exists := oldNode.Annotations[networkv1.NorthInterfacesAnnotationKey]; exists {
@@ -535,4 +529,47 @@ func isIP6(ipnet *net.IPNet) bool {
 		return false
 	}
 	return ipnet.IP.To4() == nil && ipnet.IP.To16() != nil
+}
+
+// filterMultiNetworkAnnotations filters a node annotation with all multi-network annotations that is watched/updated by CCM
+func filterMultiNetworkAnnotations(annotations map[string]string) map[string]string {
+	if annotations == nil {
+		return nil
+	}
+	filtered := map[string]string{}
+	if val, ok := annotations[networkv1.NodeNetworkAnnotationKey]; ok {
+		filtered[networkv1.NodeNetworkAnnotationKey] = val
+	}
+	if val, ok := annotations[networkv1.MultiNetworkAnnotationKey]; ok {
+		filtered[networkv1.MultiNetworkAnnotationKey] = val
+	}
+	if val, ok := annotations[networkv1.NorthInterfacesAnnotationKey]; ok {
+		filtered[networkv1.NorthInterfacesAnnotationKey] = val
+	}
+	return filtered
+}
+
+// filterMultiNetworkCapacity filters a node capacity with all multi-network IP resources
+func filterMultiNetworkCapacity(capacity v1.ResourceList) v1.ResourceList {
+	if capacity == nil {
+		return nil
+	}
+	filtered := v1.ResourceList{}
+	for k, v := range capacity {
+		resourceName := k.String()
+		if strings.HasPrefix(resourceName, networkv1.NetworkResourceKeyPrefix) && strings.HasSuffix(resourceName, ".IP") {
+			filtered[k] = v.DeepCopy()
+		}
+	}
+	return filtered
+}
+
+func nodeMultiNetworkChanged(oldNode *v1.Node, newNode *v1.Node) bool {
+	if !reflect.DeepEqual(filterMultiNetworkAnnotations(oldNode.GetAnnotations()), filterMultiNetworkAnnotations(newNode.GetAnnotations())) {
+		return true
+	}
+	if !reflect.DeepEqual(filterMultiNetworkCapacity(oldNode.Status.Capacity), filterMultiNetworkCapacity(newNode.Status.Capacity)) {
+		return true
+	}
+	return false
 }
