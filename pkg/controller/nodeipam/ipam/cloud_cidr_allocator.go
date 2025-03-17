@@ -35,6 +35,7 @@ import (
 
 	networkinformer "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1"
 	networklister "github.com/GoogleCloudPlatform/gke-networking-api/client/network/listers/network/v1"
+	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -88,6 +89,8 @@ type cloudCIDRAllocator struct {
 	nodeLister corelisters.NodeLister
 	// nodesSynced returns true if the node shared informer has been synced at least once.
 	nodesSynced cache.InformerSynced
+	// nodeTopologyClient will be used to read/patch the nodetopology CR.
+	nodeTopologyClient nodetopologyclientset.Interface
 
 	recorder record.EventRecorder
 	queue    workqueue.RateLimitingInterface
@@ -98,7 +101,7 @@ type cloudCIDRAllocator struct {
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
 
 // NewCloudCIDRAllocator creates a new cloud CIDR allocator.
-func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeInformer informers.NodeInformer, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
+func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, nodeInformer informers.NodeInformer, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
 	if client == nil {
 		klog.Fatalf("kubeClient is nil when starting NodeController")
 	}
@@ -130,15 +133,16 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 	}
 
 	ca := &cloudCIDRAllocator{
-		client:         client,
-		cloud:          gceCloud,
-		networksLister: nwInformer.Lister(),
-		gnpLister:      gnpInformer.Lister(),
-		nodeLister:     nodeInformer.Lister(),
-		nodesSynced:    nodeInformer.Informer().HasSynced,
-		recorder:       recorder,
-		queue:          workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
-		stackType:      stackType,
+		client:             client,
+		cloud:              gceCloud,
+		networksLister:     nwInformer.Lister(),
+		gnpLister:          gnpInformer.Lister(),
+		nodeLister:         nodeInformer.Lister(),
+		nodesSynced:        nodeInformer.Informer().HasSynced,
+		nodeTopologyClient: nodeTopologyClient,
+		recorder:           recorder,
+		queue:              workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
+		stackType:          stackType,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

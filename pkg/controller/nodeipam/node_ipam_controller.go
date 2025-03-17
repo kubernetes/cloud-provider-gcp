@@ -25,6 +25,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
 	networkinformer "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1"
+	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -77,6 +78,7 @@ func NewNodeIpamController(
 	kubeClient clientset.Interface,
 	nwInformer networkinformer.NetworkInformer,
 	gnpInformer networkinformer.GKENetworkParamSetInformer,
+	nodeTopologyClient nodetopologyclientset.Interface,
 	clusterCIDRs []*net.IPNet,
 	serviceCIDR *net.IPNet,
 	secondaryServiceCIDR *net.IPNet,
@@ -133,7 +135,7 @@ func NewNodeIpamController(
 			NodeCIDRMaskSizes:    nodeCIDRMaskSizes,
 		}
 
-		ic.cidrAllocator, err = ipam.New(kubeClient, cloud, nodeInformer, nwInformer, gnpInformer, ic.allocatorType, allocatorParams)
+		ic.cidrAllocator, err = ipam.New(kubeClient, cloud, nodeInformer, nwInformer, gnpInformer, nodeTopologyClient, ic.allocatorType, allocatorParams)
 		if err != nil {
 			return nil, err
 		}

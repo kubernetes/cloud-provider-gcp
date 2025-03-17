@@ -26,6 +26,7 @@ go_library(
         "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1:network",
         "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1:network",
         "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/network/listers/network/v1:network",
+        "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned",
         "//vendor/google.golang.org/api/compute/v1:compute",
         "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
