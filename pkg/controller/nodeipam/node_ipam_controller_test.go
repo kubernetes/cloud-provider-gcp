@@ -29,6 +29,7 @@ import (
 
 	networkfake "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/fake"
 	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
+	nodetopologyfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/fake"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -55,12 +56,13 @@ func newTestNodeIpamController(clusterCIDR []*net.IPNet, serviceCIDR *net.IPNet,
 		fakeNodeInformer.Informer().GetStore().Add(node)
 	}
 	networkFakeClient := &networkfake.Clientset{}
+	nodeTopologyFakeClient := &nodetopologyfake.Clientset{}
 	fakeNwInformerFactory := networkinformers.NewSharedInformerFactory(networkFakeClient, 0*time.Second)
 	fakeNwInformer := fakeNwInformerFactory.Networking().V1().Networks()
 	fakeGNPInformer := fakeNwInformerFactory.Networking().V1().GKENetworkParamSets()
 	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
 	return NewNodeIpamController(
-		fakeNodeInformer, fakeGCE, clientSet, fakeNwInformer, fakeGNPInformer,
+		fakeNodeInformer, fakeGCE, clientSet, fakeNwInformer, fakeGNPInformer, nodeTopologyFakeClient,
 		clusterCIDR, serviceCIDR, secondaryServiceCIDR, nodeCIDRMaskSizes, allocatorType,
 	)
 }
