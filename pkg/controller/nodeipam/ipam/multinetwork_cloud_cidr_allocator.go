@@ -154,7 +154,7 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 
 // getNodeDefaultLabels returns true if the node has labels for subnet and Pod range
 func getNodeDefaultLabels(node *v1.Node) (bool, string, string) {
-	defaultSubnet, foundSubnet := node.Labels[utilnode.NodePoolSubnetLabelPrefix]
+	defaultSubnet, foundSubnet := node.Labels[utilnode.DefaultSubnetLabelPrefix]
 	defaultPodRange, foundRange := node.Labels[utilnode.NodePoolPodRangeLabelPrefix]
 	if !foundSubnet || defaultSubnet == "" || !foundRange || defaultPodRange == "" {
 		return false, "", ""

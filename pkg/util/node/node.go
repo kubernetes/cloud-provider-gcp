@@ -35,9 +35,10 @@ const (
 	// NodePoolPodRangeLabelPrefix is the prefix for the default Pod range
 	// name for the node and it can be different with cluster Pod range
 	NodePoolPodRangeLabelPrefix = "cloud.google.com/gke-np-default-pod-range"
-	// NodePoolSubnetLabelPrefix is the prefix for the default subnet
-	// name for the node
-	NodePoolSubnetLabelPrefix = "cloud.google.com/gke-np-default-subnet"
+	// DefaultSubnetLabelPrefix is the prefix for the default subnet name for the node
+	DefaultSubnetLabelPrefix = "cloud.google.com/gke-np-default-subnet"
+	// NodePoolSubnetLabelPrefix is the prefix for the subnet name for this node
+	NodePoolSubnetLabelPrefix = "cloud.google.com/gke-node-pool-subnet"
 )
 
 type nodeForConditionPatch struct {
