@@ -155,6 +155,7 @@ func TestGetSubnetWithPrefixFromURL(t *testing.T) {
 func TestUpdateNodeTopology(t *testing.T) {
 
 	testClusterValues := gce.DefaultTestClusterValues()
+	testClusterValues.SubnetworkURL = "https://www.googleapis.com/compute/v1/projects/my-project/regions/us-central1/subnetworks/subnet-def"
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
 
 	emptyNodeTopologyCR := &ntv1.NodeTopology{

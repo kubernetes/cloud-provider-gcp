@@ -50,9 +50,9 @@ func (ca *cloudCIDRAllocator) updateNodeTopology(node *v1.Node) error {
 		if updateErr != nil {
 			klog.Errorf("Error updating the CR: %v, err: %v", nodeTopologyCRName, updateErr)
 			return updateErr
-		} else {
-			klog.V(2).Infof("Successfully added the default subnet %v to nodetopology CR", defaultSubnet)
 		}
+
+		klog.V(2).Infof("Successfully added the default subnet %v to nodetopology CR", defaultSubnet)
 
 		return nil
 	}
@@ -86,9 +86,9 @@ func (ca *cloudCIDRAllocator) updateNodeTopology(node *v1.Node) error {
 	if updateErr != nil {
 		klog.Errorf("Error updating the CR: %v, err: %v", nodeTopologyCRName, updateErr)
 		return updateErr
-	} else {
-		klog.V(2).Infof("Successfully add the subnet %v to the nodetopology CR", nodeSubnet)
 	}
+
+	klog.V(2).Infof("Successfully add the subnet %v to the nodetopology CR", nodeSubnet)
 
 	return nil
 
@@ -106,7 +106,7 @@ func getNodeSubnetLabel(node *v1.Node) (bool, string) {
 func getSubnetWithPrefixFromURL(url string) (subnetName string, subnetPrefix string, err error) {
 	projectsPrefix := "projects/"
 
-	// 1. Get the path starting from "projects"
+	// Get the path starting from "projects"
 	startIndex := strings.Index(url, projectsPrefix)
 	if startIndex == -1 {
 		err = fmt.Errorf("'projects/' not found in the url string")

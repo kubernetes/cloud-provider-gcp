@@ -54,7 +54,6 @@ func DefaultTestClusterValues() TestClusterValues {
 		ClusterID:         "test-cluster-id",
 		ClusterName:       "Test-Cluster-Name",
 		StackType:         clusterStackIPV4,
-		SubnetworkURL:     "https://www.googleapis.com/compute/v1/projects/my-project/regions/us-central1/subnetworks/subnet-def",
 	}
 }
 
