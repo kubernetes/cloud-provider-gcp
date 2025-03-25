@@ -31,6 +31,10 @@ func (ca *cloudCIDRAllocator) updateNodeTopology(node *v1.Node) error {
 	}
 
 	crSubnets := nodeTopologyCR.Status.Subnets
+	// We will always add the default subnet to the CR.
+	// We do not let additional subnetworks to be added during cluster creation.
+	// Hence, we are sure to always add the default subnet first.
+	// The reconciliation logic will also ensure this behavior.
 	if crSubnets == nil {
 		// Add the default subnet to the node topology CR
 		klog.V(2).Infof("No subnets found in the cr, adding the default subnet")
@@ -111,10 +115,9 @@ func getSubnetWithPrefixFromURL(url string) (subnetName string, subnetPrefix str
 	}
 	projectsPath := url[startIndex:]
 
-	// Split the path into two parts
 	parts := strings.Split(projectsPath, "/")
 	if len(parts) < 2 {
-		err = fmt.Errorf("Could not split the path into resource type and name")
+		err = fmt.Errorf("Could not split the path into its parts")
 		return
 	}
 

@@ -13,7 +13,11 @@ import (
 )
 
 // Mock the utilnode.NodePoolSubnetLabelPrefix for testing purposes
-const testNodePoolSubnetLabelPrefix = "cloud.google.com/gke-node-pool-subnet"
+const (
+	testNodePoolSubnetLabelPrefix = "cloud.google.com/gke-node-pool-subnet"
+	exampleSubnetURL              = "https://www.googleapis.com/compute/v1/projects/my-project/regions/us-central1/subnetworks/subnet-def"
+	exampleSubnetPathPrefix       = "projects/my-project/regions/us-central1/subnetworks/"
+)
 
 func TestGetNodeSubnetLabel(t *testing.T) {
 	tests := []struct {
@@ -155,7 +159,7 @@ func TestGetSubnetWithPrefixFromURL(t *testing.T) {
 func TestUpdateNodeTopology(t *testing.T) {
 
 	testClusterValues := gce.DefaultTestClusterValues()
-	testClusterValues.SubnetworkURL = "https://www.googleapis.com/compute/v1/projects/my-project/regions/us-central1/subnetworks/subnet-def"
+	testClusterValues.SubnetworkURL = exampleSubnetURL
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
 
 	emptyNodeTopologyCR := &ntv1.NodeTopology{
@@ -209,6 +213,16 @@ func TestUpdateNodeTopology(t *testing.T) {
 			existingSubnets: []string{},
 			wantSubnets:     []string{"subnet-def"},
 		},
+		{
+			name: "node has no subnet label and ensure we add the default subnet to cr",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{},
+				},
+			},
+			existingSubnets: []string{},
+			wantSubnets:     []string{"subnet-def"},
+		},
 	}
 
 	for _, tc := range tests {
@@ -246,9 +260,8 @@ func addSubnetsToCR(subnets []string, client ntclient.Interface) {
 	}
 	for _, subnet := range subnets {
 		cr.Status.Subnets = append(cr.Status.Subnets, ntv1.SubnetConfig{
-			Name: subnet,
-			// We are ignoring the path field here on purpose.
-			// It is tested separately on it's own.
+			Name:       subnet,
+			SubnetPath: exampleSubnetPathPrefix + subnet,
 		})
 	}
 	client.NetworkingV1().NodeTopologies().UpdateStatus(ctx, cr, metav1.UpdateOptions{})
@@ -263,8 +276,14 @@ func verifySubnetsInCR(t *testing.T, subnets []string, client ntclient.Interface
 
 	cr, _ := client.NetworkingV1().NodeTopologies().Get(ctx, "default", metav1.GetOptions{})
 
+	if len(subnets) != len(cr.Status.Subnets) {
+		return false
+	}
 	for _, subnetConfig := range cr.Status.Subnets {
 		if _, found := hm[subnetConfig.Name]; !found {
+			return false
+		}
+		if subnetConfig.SubnetPath != (exampleSubnetPathPrefix + subnetConfig.Name) {
 			return false
 		}
 	}
