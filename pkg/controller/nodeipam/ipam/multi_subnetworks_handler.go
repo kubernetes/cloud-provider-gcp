@@ -17,9 +17,6 @@ func (ca *cloudCIDRAllocator) updateNodeTopology(node *v1.Node) error {
 	ctx := context.Background()
 
 	hasSubnetLabel, nodeSubnet := getNodeSubnetLabel(node)
-	if !hasSubnetLabel {
-		klog.V(2).Infof("Cannot find the subnet label on the node: %v", node.Name)
-	}
 
 	defaultSubnet, subnetPrefix, err := getSubnetWithPrefixFromURL(ca.cloud.SubnetworkURL())
 	if err != nil {
@@ -58,7 +55,7 @@ func (ca *cloudCIDRAllocator) updateNodeTopology(node *v1.Node) error {
 	}
 
 	if !hasSubnetLabel {
-		klog.V(2).Infof("Default subnetwork is already updated in the CR.")
+		klog.V(2).Infof("No additional subnet detected. Default subnetwork is added to the CR.")
 		return nil
 	}
 
