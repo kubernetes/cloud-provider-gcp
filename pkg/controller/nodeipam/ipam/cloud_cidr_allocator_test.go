@@ -30,6 +30,7 @@ import (
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	clSetFake "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/fake"
 	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
+	ntfakeclient "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/fake"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/api/compute/v1"
@@ -647,7 +648,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test",
 							Labels: map[string]string{
-								utilnode.NodePoolSubnetLabelPrefix:   "default",
+								utilnode.DefaultSubnetLabelPrefix:    "default",
 								utilnode.NodePoolPodRangeLabelPrefix: defaultSecondaryRangeA,
 							},
 						},
@@ -1921,6 +1922,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				}
 			}
 			fakeNodeInformer := getFakeNodeInformer(tc.fakeNodeHandler)
+			fakeNTClient := ntfakeclient.NewSimpleClientset()
 
 			wantNode := tc.fakeNodeHandler.Existing[0].DeepCopy()
 			tc.nodeChanges(wantNode)
@@ -1931,14 +1933,15 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			}
 
 			ca := &cloudCIDRAllocator{
-				client:         tc.fakeNodeHandler,
-				cloud:          fakeGCE,
-				recorder:       testutil.NewFakeRecorder(),
-				nodeLister:     fakeNodeInformer.Lister(),
-				nodesSynced:    fakeNodeInformer.Informer().HasSynced,
-				networksLister: nwInformer.Lister(),
-				gnpLister:      gnpInformer.Lister(),
-				stackType:      stackType,
+				client:             tc.fakeNodeHandler,
+				cloud:              fakeGCE,
+				recorder:           testutil.NewFakeRecorder(),
+				nodeLister:         fakeNodeInformer.Lister(),
+				nodesSynced:        fakeNodeInformer.Informer().HasSynced,
+				networksLister:     nwInformer.Lister(),
+				gnpLister:          gnpInformer.Lister(),
+				stackType:          stackType,
+				nodeTopologyClient: fakeNTClient,
 			}
 
 			// test

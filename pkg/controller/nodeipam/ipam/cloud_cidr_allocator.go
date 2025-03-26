@@ -432,6 +432,12 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 			}
 		}
 	}
+
+	if err := ca.updateNodeTopology(node); err != nil {
+		// This is only required for multi subnet clusters. Log and ignore the error.
+		klog.ErrorS(err, "Failed to update the node topology resource", "nodeName", node.Name)
+	}
+
 	return err
 }
 
@@ -516,6 +522,7 @@ func (ca *cloudCIDRAllocator) updateNodeCIDR(node, oldNode *v1.Node) error {
 func (ca *cloudCIDRAllocator) ReleaseCIDR(node *v1.Node) error {
 	klog.V(2).Infof("Node %v PodCIDR (%v) will be released by external cloud provider (not managed by controller)",
 		node.Name, node.Spec.PodCIDR)
+	// TODO: Handle the nodetopology CR subnet deletion here
 	return nil
 }
 
