@@ -3,6 +3,7 @@ package ipam
 import (
 	"context"
 	"testing"
+	"time"
 
 	ntv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
 	ntclient "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
@@ -10,6 +11,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cloud-provider-gcp/providers/gce"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 // Mock the utilnode.NodePoolSubnetLabelPrefix for testing purposes
@@ -156,25 +159,28 @@ func TestGetSubnetWithPrefixFromURL(t *testing.T) {
 	}
 }
 
-func TestUpdateNodeTopology(t *testing.T) {
-
-	testClusterValues := gce.DefaultTestClusterValues()
-	testClusterValues.SubnetworkURL = exampleSubnetURL
-	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
-
+func testClient() *ntfakeclient.Clientset {
 	emptyNodeTopologyCR := &ntv1.NodeTopology{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "default",
 		},
-		// Status is initially left empty
 	}
-	ntClient := ntfakeclient.NewSimpleClientset(emptyNodeTopologyCR)
+	return ntfakeclient.NewSimpleClientset(emptyNodeTopologyCR)
+}
+
+func TestNodeTopologySync(t *testing.T) {
+	testClusterValues := gce.DefaultTestClusterValues()
+	testClusterValues.SubnetworkURL = exampleSubnetURL
+	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+	ntClient := testClient()
 
 	tests := []struct {
 		name            string
 		node            *v1.Node
+		nodeListInCache	[]*v1.Node
 		existingSubnets []string
 		wantSubnets     []string
+		wantErr 		bool
 	}{
 		{
 			name: "node's subnet already exists in the cr",
@@ -223,27 +229,102 @@ func TestUpdateNodeTopology(t *testing.T) {
 			existingSubnets: []string{},
 			wantSubnets:     []string{"subnet-def"},
 		},
+		{
+			name: "delete node is reconciliation - delete default node",
+			node: nodeTopologyReconciliationKey,
+			nodeListInCache: []*v1.Node{},
+			existingSubnets: []string{"subnet-def"},
+			wantSubnets:     []string{"subnet-def"},
+		},
+		{
+			name: "delete node is reconciliation - delete msc node",
+			node: nodeTopologyReconciliationKey,
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{},
+					},
+				},
+			},
+			existingSubnets: []string{"new-subnet"},
+			wantSubnets:     []string{"subnet-def"},
+		},
+		{
+			name: "delete node is reconciliation - delete one msc node among multiple msc nodes",
+			node: nodeTopologyReconciliationKey,
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "additional-subnet-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "remaining-subnet",
+							"another-label":               "value",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "additional-subnet-2",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "remaining-subnet-2",
+							"another-label":               "value2",
+						},
+					},
+				},
+			},
+			existingSubnets: []string{"new-subnet", "remaining-subnet", "remaining-subnet-2"},
+			wantSubnets:     []string{"subnet-def", "remaining-subnet", "remaining-subnet-2"},
+		},
+		{
+			name: "delete node is reconciliation - delete all msc nodes",
+			node: nodeTopologyReconciliationKey,
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "random-subnet",
+						Labels: map[string]string{
+							"random-label": "remaining-subnet",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "default-subnet",
+						Labels: map[string]string{},
+					},
+				},
+			},
+			existingSubnets: []string{},
+			wantSubnets:     []string{"subnet-def"},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// populate the def subnet URL
-			// pass the fake nodetopology client
-			// create a fake default cr (outside this loop. at the begining of the test)
-			// populate the existingSubnets in the cr
-			// call the ca.updateNodeTopology and read the subnets
-			// verify the subnets with wantSubnets
 			addSubnetsToCR(tc.existingSubnets, ntClient)
-			ca := &cloudCIDRAllocator{
+			fakeClient := &fake.Clientset{}
+			fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, 0*time.Second)
+			fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
+			for _, node :=range tc.nodeListInCache {
+				fakeNodeInformer.Informer().GetStore().Add(node)
+			}
+			syncer := &NodeTopologySyncer{
 				cloud:              fakeGCE,
 				nodeTopologyClient: ntClient,
+				nodeLister: fakeNodeInformer.Lister(),
 			}
-			err := ca.updateNodeTopology(tc.node)
+			err := syncer.sync(tc.node)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("NodeTopologySyncer.sync() returns nil but want error")
+				}
+				return
+			}
 			if err != nil {
-				t.Errorf("ca.updateNodeTopology() returned error: %v", err)
+				t.Fatalf("NodeTopologySyncer.sync() returned error: %v", err)
 			}
 			if !verifySubnetsInCR(t, tc.wantSubnets, ntClient) {
-				t.Errorf("ca.updateNodeTopology() returned incorrect subnets")
+				t.Errorf("NodeTopologySyncer.sync() returned incorrect subnets")
 			}
 		})
 	}

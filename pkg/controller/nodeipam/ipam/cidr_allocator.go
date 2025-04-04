@@ -76,6 +76,9 @@ const (
 
 	// updateMaxRetries is the max retries for a failed node
 	updateMaxRetries = 10
+
+	// The no. of workers in parallel to update nodetopology CR
+	nodeTopologyWorkers = 30
 )
 
 // nodePollInterval is used in listing node
