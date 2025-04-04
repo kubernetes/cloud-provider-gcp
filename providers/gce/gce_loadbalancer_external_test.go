@@ -172,6 +172,69 @@ func TestVerifyRequestedIP(t *testing.T) {
 	}
 }
 
+func TestMinMaxPortRange(t *testing.T) {
+	for _, tc := range []struct {
+		svcPorts      []v1.ServicePort
+		expectedRange string
+		expectError   bool
+	}{
+		{
+			svcPorts: []v1.ServicePort{
+				{Port: 1},
+				{Port: 10},
+				{Port: 100}},
+			expectedRange: "1-100",
+			expectError:   false,
+		},
+		{
+			svcPorts: []v1.ServicePort{
+				{Port: 10},
+				{Port: 1},
+				{Port: 50},
+				{Port: 100},
+				{Port: 90}},
+			expectedRange: "1-100",
+			expectError:   false,
+		},
+		{
+			svcPorts: []v1.ServicePort{
+				{Port: 10}},
+			expectedRange: "10-10",
+			expectError:   false,
+		},
+		{
+			svcPorts: []v1.ServicePort{
+				{Port: 100},
+				{Port: 10}},
+			expectedRange: "10-100",
+			expectError:   false,
+		},
+		{
+			svcPorts: []v1.ServicePort{
+				{Port: 100},
+				{Port: 50},
+				{Port: 10}},
+			expectedRange: "10-100",
+			expectError:   false,
+		},
+		{
+			svcPorts:      []v1.ServicePort{},
+			expectedRange: "",
+			expectError:   true,
+		},
+	} {
+		portsRange, err := loadBalancerPortRange(tc.svcPorts)
+		if portsRange != tc.expectedRange {
+			t.Errorf("PortRange mismatch %v != %v", tc.expectedRange, portsRange)
+		}
+		if tc.expectError {
+			assert.Error(t, err, "Should return an error, expected range "+tc.expectedRange)
+		} else {
+			assert.NoError(t, err, "Should not return an error, expected range "+tc.expectedRange)
+		}
+	}
+}
+
 func TestCreateForwardingRuleWithTier(t *testing.T) {
 	t.Parallel()
 
@@ -221,12 +284,135 @@ func TestCreateForwardingRuleWithTier(t *testing.T) {
 			lbName := tc.expectedRule.Name
 			ipAddr := tc.expectedRule.IPAddress
 
-			err = createForwardingRule(s, lbName, serviceName, s.region, ipAddr, target, ports, tc.netTier)
+			err = createForwardingRule(s, lbName, serviceName, s.region, ipAddr, target, ports, tc.netTier, false)
 			assert.NoError(t, err)
 
 			Rule, err := s.GetRegionForwardingRule(lbName, s.region)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedRule, Rule)
+		})
+	}
+}
+
+func TestCreateForwardingRulePorts(t *testing.T) {
+	t.Parallel()
+
+	// Common variables among the tests.
+	target := "test-target-pool"
+	vals := DefaultTestClusterValues()
+	serviceName := "foo-svc"
+	ipAddr := "1.1.1.1"
+
+	onePortUDP := []v1.ServicePort{
+		{Name: "udp1", Protocol: v1.ProtocolUDP, Port: int32(80)},
+	}
+
+	basePortsTCP := []v1.ServicePort{
+		{Name: "tcp1", Protocol: v1.ProtocolTCP, Port: int32(80)},
+		{Name: "tcp2", Protocol: v1.ProtocolTCP, Port: int32(81)},
+		{Name: "tcp3", Protocol: v1.ProtocolTCP, Port: int32(82)},
+		{Name: "tcp4", Protocol: v1.ProtocolTCP, Port: int32(83)},
+		{Name: "tcp5", Protocol: v1.ProtocolTCP, Port: int32(84)},
+		{Name: "tcp6", Protocol: v1.ProtocolTCP, Port: int32(85)},
+		{Name: "tcp7", Protocol: v1.ProtocolTCP, Port: int32(8080)},
+	}
+
+	fivePortsTCP := basePortsTCP[:5]
+	sixPortsTCP := basePortsTCP[:6]
+	wideRangePortsTCP := basePortsTCP[:]
+
+	for _, tc := range []struct {
+		desc                   string
+		frName                 string
+		ports                  []v1.ServicePort
+		discretePortForwarding bool
+		expectedPorts          []string
+		expectedPortRange      string
+	}{
+		{
+			desc:                   "Single Port, discretePorts enabled",
+			frName:                 "fwd-rule1",
+			ports:                  onePortUDP,
+			discretePortForwarding: true,
+			expectedPorts:          []string{"80"},
+			expectedPortRange:      "",
+		},
+		{
+			desc:                   "Individual Ports, discretePorts enabled",
+			frName:                 "fwd-rule2",
+			ports:                  fivePortsTCP,
+			discretePortForwarding: true,
+			expectedPorts:          []string{"80", "81", "82", "83", "84"},
+			expectedPortRange:      "",
+		},
+		{
+			desc:                   "PortRange, discretePorts enabled",
+			frName:                 "fwd-rule3",
+			ports:                  sixPortsTCP,
+			discretePortForwarding: true,
+			expectedPorts:          []string{},
+			expectedPortRange:      "80-85",
+		},
+		{
+			desc:                   "Wide PortRange, discretePorts enabled",
+			frName:                 "fwd-rule4",
+			ports:                  wideRangePortsTCP,
+			discretePortForwarding: true,
+			expectedPorts:          []string{},
+			expectedPortRange:      "80-8080",
+		},
+		{
+			desc:                   "Single Port (PortRange)",
+			frName:                 "fwd-rule5",
+			ports:                  onePortUDP,
+			discretePortForwarding: false,
+			expectedPorts:          []string{},
+			expectedPortRange:      "80-80",
+		},
+		{
+			desc:                   "5 Ports PortRange",
+			frName:                 "fwd-rule6",
+			ports:                  fivePortsTCP,
+			discretePortForwarding: false,
+			expectedPorts:          []string{},
+			expectedPortRange:      "80-84",
+		},
+		{
+			desc:                   "6 ports PortRange",
+			frName:                 "fwd-rule7",
+			ports:                  sixPortsTCP,
+			discretePortForwarding: false,
+			expectedPorts:          []string{},
+			expectedPortRange:      "80-85",
+		},
+		{
+			desc:                   "Wide PortRange",
+			frName:                 "fwd-rule8",
+			ports:                  wideRangePortsTCP,
+			discretePortForwarding: false,
+			expectedPorts:          []string{},
+			expectedPortRange:      "80-8080",
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			gce, err := fakeGCECloud(vals)
+			require.NoError(t, err)
+
+			if tc.discretePortForwarding {
+				gce.SetEnableDiscretePortForwarding(true)
+			}
+
+			frName := tc.frName
+			ports := tc.ports
+
+			err = createForwardingRule(gce, frName, serviceName, gce.region, ipAddr, target, ports, cloud.NetworkTierStandard, tc.discretePortForwarding)
+			assert.NoError(t, err)
+
+			fwdRule, err := gce.GetRegionForwardingRule(frName, gce.region)
+			assert.NoError(t, err)
+
+			assert.Equal(t, true, tc.expectedPortRange == fwdRule.PortRange)
+			assert.Equal(t, true, equalStringSets(tc.expectedPorts, fwdRule.Ports))
 		})
 	}
 }
@@ -523,6 +709,7 @@ func TestLoadBalancerWrongTierResourceDeletion(t *testing.T) {
 		gce.targetPoolURL(lbName),
 		svc.Spec.Ports,
 		cloud.NetworkTierStandard,
+		false,
 	)
 	require.NoError(t, err)
 
@@ -826,9 +1013,337 @@ func TestForwardingRuleNeedsUpdate(t *testing.T) {
 			assert.Equal(t, tc.needsUpdate, needsUpdate, "'needsUpdate' didn't return as expected "+desc)
 			assert.Equal(t, tc.expectIPAddr, ipAddress, "'ipAddress' didn't return as expected "+desc)
 			if tc.expectError {
-				assert.Error(t, err, "Should returns an error "+desc)
+				assert.Error(t, err, "Should return an error "+desc)
 			} else {
-				assert.NoError(t, err, "Should not returns an error "+desc)
+				assert.NoError(t, err, "Should not return an error "+desc)
+			}
+		})
+	}
+}
+
+func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
+	t.Parallel()
+
+	// Common variables among the tests.
+	target := "test-target-pool"
+	vals := DefaultTestClusterValues()
+	serviceName := "foo-svc"
+
+	onePortTCP8080 := []v1.ServicePort{
+		{Name: "tcp1", Protocol: v1.ProtocolTCP, Port: int32(8080)},
+	}
+
+	onePortUDP := []v1.ServicePort{
+		{Name: "udp1", Protocol: v1.ProtocolUDP, Port: int32(80)},
+	}
+
+	basePortsTCP := []v1.ServicePort{
+		{Name: "tcp1", Protocol: v1.ProtocolTCP, Port: int32(80)},
+		{Name: "tcp2", Protocol: v1.ProtocolTCP, Port: int32(81)},
+		{Name: "tcp3", Protocol: v1.ProtocolTCP, Port: int32(82)},
+		{Name: "tcp4", Protocol: v1.ProtocolTCP, Port: int32(83)},
+		{Name: "tcp5", Protocol: v1.ProtocolTCP, Port: int32(84)},
+		{Name: "tcp6", Protocol: v1.ProtocolTCP, Port: int32(85)},
+		{Name: "tcp7", Protocol: v1.ProtocolTCP, Port: int32(86)},
+	}
+
+	onePortTCP := basePortsTCP[:1]
+	fivePortsTCP := basePortsTCP[:5]
+	sixPortsTCP := basePortsTCP[:6]
+	sevenPortsTCP := basePortsTCP[:]
+
+	for _, tc := range []struct {
+		desc                   string
+		oldFwdRule             *compute.ForwardingRule
+		oldPorts               []v1.ServicePort
+		newlbIP                string
+		newPorts               []v1.ServicePort
+		discretePortForwarding bool
+		needsUpdate            bool
+		expectError            bool
+	}{
+		{
+			desc: "different ip address on update",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule1",
+				IPAddress: "1.1.1.1",
+			},
+			oldPorts:               onePortTCP,
+			newlbIP:                "2.2.2.2",
+			newPorts:               onePortTCP,
+			discretePortForwarding: true,
+			needsUpdate:            true,
+			expectError:            false,
+		},
+		{
+			desc: "different protocol",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule2",
+				IPAddress: "1.1.1.1",
+			},
+			oldPorts:               onePortTCP,
+			newlbIP:                "1.1.1.1",
+			newPorts:               onePortUDP,
+			discretePortForwarding: true,
+			needsUpdate:            true,
+			expectError:            false,
+		},
+		{
+			desc: "same ports (PortRange)",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule3",
+				IPAddress: "1.1.1.1",
+			},
+			// "80-80"
+			oldPorts: onePortTCP,
+			newlbIP:  "1.1.1.1",
+			// "80-80"
+			newPorts:               onePortTCP,
+			discretePortForwarding: false,
+			needsUpdate:            false,
+			expectError:            false,
+		},
+		{
+			desc: "same ports, discretePorts enabled",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule4",
+				IPAddress: "1.1.1.1",
+			},
+			// ["8080"]
+			oldPorts: onePortTCP8080,
+			newlbIP:  "1.1.1.1",
+			// ["8080"]
+			newPorts:               onePortTCP8080,
+			discretePortForwarding: true,
+			needsUpdate:            false,
+			expectError:            false,
+		},
+		{
+			desc: "same Port Range",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule5",
+				IPAddress: "1.1.1.1",
+			},
+			// "80-85"
+			oldPorts: sixPortsTCP,
+			newlbIP:  "1.1.1.1",
+			// "80-85"
+			newPorts:               sixPortsTCP,
+			discretePortForwarding: false,
+			needsUpdate:            false,
+			expectError:            false,
+		},
+		{
+			desc: "same Port Range, discretePorts enabled",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule6",
+				IPAddress: "1.1.1.1",
+			},
+			// "80-86"
+			oldPorts: sevenPortsTCP,
+			newlbIP:  "1.1.1.1",
+			// "80-86"
+			newPorts:               sevenPortsTCP,
+			discretePortForwarding: true,
+			needsUpdate:            false,
+			expectError:            false,
+		},
+		{
+			desc: "port range mismatch",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule7",
+				IPAddress: "1.1.1.1",
+			},
+			// "80-85"
+			oldPorts: sixPortsTCP,
+			newlbIP:  "1.1.1.1",
+			// "80-86"
+			newPorts:               sevenPortsTCP,
+			discretePortForwarding: false,
+			needsUpdate:            true,
+			expectError:            false,
+		},
+		{
+			desc: "port range mismatch, discretePorts enabled",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule8",
+				IPAddress: "1.1.1.1",
+			},
+			// "80-85"
+			oldPorts: sixPortsTCP,
+			newlbIP:  "1.1.1.1",
+			// "80-86"
+			newPorts:               sevenPortsTCP,
+			discretePortForwarding: true,
+			needsUpdate:            true,
+			expectError:            false,
+		},
+		{
+			desc: "ports mismatch (PortRange)",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule9",
+				IPAddress: "1.1.1.1",
+			},
+			// "80-80"
+			oldPorts: onePortTCP,
+			newlbIP:  "1.1.1.1",
+			// "80-84"
+			newPorts:               fivePortsTCP,
+			discretePortForwarding: false,
+			needsUpdate:            true,
+			expectError:            false,
+		},
+		{
+			desc: "ports mismatch, discretePorts enabled",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule10",
+				IPAddress: "1.1.1.1",
+			},
+			// ["80", "81", "82", "83", "84"]
+			oldPorts: fivePortsTCP,
+			newlbIP:  "1.1.1.1",
+			// ["80"]
+			newPorts:               onePortTCP,
+			discretePortForwarding: true,
+			needsUpdate:            true,
+			expectError:            false,
+		},
+		{
+			desc: "PortRange to ports (PortRange)",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule11",
+				IPAddress: "1.1.1.1",
+			},
+			// "80-85"
+			oldPorts: sixPortsTCP,
+			newlbIP:  "1.1.1.1",
+			// "80-84" five ports are still considered PortRange since discretePorts is disabled
+			newPorts:               fivePortsTCP,
+			discretePortForwarding: false,
+			needsUpdate:            true,
+			expectError:            false,
+		},
+		{
+			desc: "PortRange to ports discretePorts enabled",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule12",
+				IPAddress: "1.1.1.1",
+			},
+			// "80-85"
+			oldPorts: sixPortsTCP,
+			newlbIP:  "1.1.1.1",
+			// ["80", "81", "82", "83", "84"]
+			newPorts:               fivePortsTCP,
+			discretePortForwarding: true,
+			needsUpdate:            true,
+			expectError:            false,
+		},
+		{
+			desc: "PortRange to ports within existing port range discretePorts enabled",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule13",
+				IPAddress: "1.1.1.1",
+			},
+			// "80-85"
+			oldPorts: sixPortsTCP,
+			newlbIP:  "1.1.1.1",
+			// ["80", "85"]
+			newPorts: []v1.ServicePort{
+				{Name: "tcp1", Protocol: v1.ProtocolTCP, Port: int32(80)},
+				{Name: "tcp2", Protocol: v1.ProtocolTCP, Port: int32(85)},
+			},
+			discretePortForwarding: true,
+			// we don't want to unnecessarily recreate forwarding rules
+			// when upgrading from port ranges to distinct ports, because recreating
+			// forwarding rules is traffic impacting.
+			needsUpdate: false,
+			expectError: false,
+		},
+		{
+			desc: "PortRange to ports, discretePorts enabled, port outside of PortRange",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule14",
+				IPAddress: "1.1.1.1",
+			},
+			// "80-85"
+			oldPorts: sixPortsTCP,
+			newlbIP:  "1.1.1.1",
+			// ["8080"]
+			newPorts:               onePortTCP8080,
+			discretePortForwarding: true,
+			// Since port is outside of portrange we expect to recreate forwarding rule
+			needsUpdate: true,
+			expectError: false,
+		},
+		{
+			desc: "ports (PortRange) to PortRange",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule15",
+				IPAddress: "1.1.1.1",
+			},
+			// "80-84"
+			oldPorts: fivePortsTCP,
+			newlbIP:  "1.1.1.1",
+			// "80-85"
+			newPorts:               sixPortsTCP,
+			discretePortForwarding: false,
+			needsUpdate:            true,
+			expectError:            false,
+		},
+		{
+			desc: "ports to PortRange, discretePorts enabled",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule16",
+				IPAddress: "1.1.1.1",
+			},
+			// ["80", "81", "82", "83", "84"]
+			oldPorts: fivePortsTCP,
+			newlbIP:  "1.1.1.1",
+			// "80-85"
+			newPorts:               sixPortsTCP,
+			discretePortForwarding: true,
+			needsUpdate:            true,
+			expectError:            false,
+		},
+		{
+			desc: "update to empty ports, discretePorts enabled",
+			oldFwdRule: &compute.ForwardingRule{
+				Name:      "fwd-rule17",
+				IPAddress: "1.1.1.1",
+			},
+			// ["80", "81", "82", "83", "84"]
+			oldPorts:               fivePortsTCP,
+			newlbIP:                "1.1.1.1",
+			newPorts:               []v1.ServicePort{},
+			discretePortForwarding: true,
+			needsUpdate:            false,
+			expectError:            true,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			gce, err := fakeGCECloud(vals)
+			require.NoError(t, err)
+
+			if tc.discretePortForwarding {
+				gce.SetEnableDiscretePortForwarding(true)
+			}
+
+			frName := tc.oldFwdRule.Name
+			ipAddr := tc.oldFwdRule.IPAddress
+			ports := tc.oldPorts
+			newlbIP := tc.newlbIP
+			newPorts := tc.newPorts
+
+			err = createForwardingRule(gce, frName, serviceName, gce.region, ipAddr, target, ports, cloud.NetworkTierStandard, tc.discretePortForwarding)
+			assert.NoError(t, err)
+
+			exists, needsUpdate, _, err := gce.forwardingRuleNeedsUpdate(frName, vals.Region, newlbIP, newPorts)
+			assert.Equal(t, true, exists, "'exists' didn't return as expected "+tc.desc)
+			assert.Equal(t, tc.needsUpdate, needsUpdate, "'needsUpdate' didn't return as expected "+tc.desc)
+			if tc.expectError {
+				assert.Error(t, err, "Should return an error "+tc.desc)
+			} else {
+				assert.NoError(t, err, "Should not return an error "+tc.desc)
 			}
 		})
 	}
