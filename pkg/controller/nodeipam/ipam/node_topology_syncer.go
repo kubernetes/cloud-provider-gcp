@@ -30,7 +30,6 @@ type NodeTopologySyncer struct {
 	nodeTopologyClient nodetopologyclientset.Interface
 	cloud              *gce.Cloud
 	nodeLister         corelisters.NodeLister
-	ctx                context.Context
 }
 
 func (syncer *NodeTopologySyncer) sync(node *v1.Node) error {
@@ -84,7 +83,7 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 		SubnetPath: subnetPrefix + defaultSubnet,
 	}
 
-	nodeTopologyCR, err := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().Get(syncer.ctx, nodeTopologyCRName, metav1.GetOptions{})
+	nodeTopologyCR, err := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().Get(context.TODO(), nodeTopologyCRName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("Failed to get NodeTopology: %v, err: %v", nodeTopologyCRName, err)
 		return err
@@ -95,7 +94,7 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 		updatedSubnets = append(updatedSubnets, s)
 	}
 	updatedNodeTopologyCR.Status.Subnets = updatedSubnets
-	_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(syncer.ctx, updatedNodeTopologyCR, metav1.UpdateOptions{})
+	_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), updatedNodeTopologyCR, metav1.UpdateOptions{})
 	if updateErr != nil {
 		klog.Errorf("Error updating nodeTopology CR: %v, err: %v", nodeTopologyCRName, updateErr)
 		return updateErr
@@ -113,7 +112,7 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		return err
 	}
 
-	nodeTopologyCR, err := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().Get(syncer.ctx, nodeTopologyCRName, metav1.GetOptions{})
+	nodeTopologyCR, err := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().Get(context.TODO(), nodeTopologyCRName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("Failed to get NodeTopology: %v, err: %v", nodeTopologyCRName, err)
 		return err
@@ -136,7 +135,7 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		if updatedCR.Status.Zones == nil {
 			updatedCR.Status.Zones = []string{}
 		}
-		_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(syncer.ctx, updatedCR, metav1.UpdateOptions{})
+		_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), updatedCR, metav1.UpdateOptions{})
 		if updateErr != nil {
 			klog.Errorf("Error updating the CR: %v, err: %v", nodeTopologyCRName, updateErr)
 			return updateErr
@@ -172,7 +171,7 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		updatedCR.Status.Zones = []string{}
 	}
 
-	_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(syncer.ctx, updatedCR, metav1.UpdateOptions{})
+	_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), updatedCR, metav1.UpdateOptions{})
 	if updateErr != nil {
 		klog.Errorf("Error updating the CR: %v, err: %v", nodeTopologyCRName, updateErr)
 		return updateErr
