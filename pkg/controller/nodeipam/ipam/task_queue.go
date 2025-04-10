@@ -21,13 +21,14 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// TaskQueue is a wrapper of workqueue that can have multiple workers processing queue items in parallel
 type TaskQueue[T comparable] struct {
-  	// resource is used for logging to distinguish the queue being used.
+	// resource is used for logging to distinguish the queue being used.
 	resource string
 	// queue is the work queue the workers poll.
 	queue workqueue.TypedRateLimitingInterface[T]
 	// sync is called for each item in the queue.
-	sync func(item T) error
+	sync       func(item T) error
 	workerDone []chan struct{}
 	// numWorkers indicates the number of worker routines processing the queue.
 	numWorkers int
@@ -36,25 +37,25 @@ type TaskQueue[T comparable] struct {
 // Run spawns off n parallel worker routines and returns immediately.
 func (t *TaskQueue[T]) Run() {
 	for worker := 0; worker < t.numWorkers; worker++ {
-		klog.V(3).Infof("Spawning off worker for taskQueue", "workerId", worker, "resource", t.resource)
+		klog.V(3).Infof("Spawning off worker for taskQueue workerId:%q resource:%q", worker, t.resource)
 		go t.runInternal(worker)
 	}
 }
 
 // runInternal invokes the worker routine to pick up and process an item from the queue. This blocks until ShutDown is called.
-func (t *TaskQueue[T]) runInternal(workerId int) {
+func (t *TaskQueue[T]) runInternal(workerID int) {
 	for {
 		item, quit := t.queue.Get()
 		if quit {
-			close(t.workerDone[workerId])
+			close(t.workerDone[workerID])
 			return
 		}
-		klog.V(4).Infof("Syncing", "workerId", workerId, "item", item, "resource", t.resource)
+		klog.V(4).Infof("Syncing workerId %q item %v resource %q ", workerID, item, t.resource)
 		if err := t.sync(item); err != nil {
-			klog.Error(err, "Requeuing due to error", "workerId", workerId, "item", item, "resource", t.resource)
+			klog.Error(err, "Requeuing due to error", "workerId", workerID, "item", item, "resource", t.resource)
 			t.queue.AddRateLimited(item)
 		} else {
-			klog.V(4).Infof("Finished syncing", "workerId", workerId, "item", item)
+			klog.V(4).Infof("Finished syncing workerId:%q item:%v", workerID, item)
 			t.queue.Forget(item)
 		}
 		t.queue.Done(item)
@@ -62,7 +63,7 @@ func (t *TaskQueue[T]) runInternal(workerId int) {
 }
 
 func (t *TaskQueue[T]) Enqueue(item T) {
-	klog.V(4).Infof("Enqueue object ", t.resource)
+	klog.V(4).Infof("Enqueue object %q", t.resource)
 	t.queue.Add(item)
 }
 
@@ -79,7 +80,7 @@ func (t *TaskQueue[T]) Shutdown() {
 // and rate limiter. The sync function is called for every element inserted into the queue.
 func NewTaskQueue[T comparable](name, resource string, numWorkers int, syncFn func(T) error) *TaskQueue[T] {
 	if numWorkers <= 0 {
-		klog.V(3).Infof( "Invalid worker count", "numWorkers", numWorkers)
+		klog.V(3).Infof("Invalid worker count numWorkers:%q", numWorkers)
 		return nil
 	}
 	rl := workqueue.DefaultTypedControllerRateLimiter[T]()

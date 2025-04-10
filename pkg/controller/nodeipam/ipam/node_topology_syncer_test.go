@@ -10,9 +10,9 @@ import (
 	ntfakeclient "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/fake"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/cloud-provider-gcp/providers/gce"
 )
 
 // Mock the utilnode.NodePoolSubnetLabelPrefix for testing purposes
@@ -177,10 +177,10 @@ func TestNodeTopologySync(t *testing.T) {
 	tests := []struct {
 		name            string
 		node            *v1.Node
-		nodeListInCache	[]*v1.Node
+		nodeListInCache []*v1.Node
 		existingSubnets []string
 		wantSubnets     []string
-		wantErr 		bool
+		wantErr         bool
 	}{
 		{
 			name: "node's subnet already exists in the cr",
@@ -230,8 +230,8 @@ func TestNodeTopologySync(t *testing.T) {
 			wantSubnets:     []string{"subnet-def"},
 		},
 		{
-			name: "delete node is reconciliation - delete default node",
-			node: nodeTopologyReconciliationKey,
+			name:            "delete node is reconciliation - delete default node",
+			node:            nodeTopologyReconciliationKey,
 			nodeListInCache: []*v1.Node{},
 			existingSubnets: []string{"subnet-def"},
 			wantSubnets:     []string{"subnet-def"},
@@ -289,7 +289,7 @@ func TestNodeTopologySync(t *testing.T) {
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: "default-subnet",
+						Name:   "default-subnet",
 						Labels: map[string]string{},
 					},
 				},
@@ -305,13 +305,13 @@ func TestNodeTopologySync(t *testing.T) {
 			fakeClient := &fake.Clientset{}
 			fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, 0*time.Second)
 			fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
-			for _, node :=range tc.nodeListInCache {
+			for _, node := range tc.nodeListInCache {
 				fakeNodeInformer.Informer().GetStore().Add(node)
 			}
 			syncer := &NodeTopologySyncer{
 				cloud:              fakeGCE,
 				nodeTopologyClient: ntClient,
-				nodeLister: fakeNodeInformer.Lister(),
+				nodeLister:         fakeNodeInformer.Lister(),
 			}
 			err := syncer.sync(tc.node)
 			if tc.wantErr {

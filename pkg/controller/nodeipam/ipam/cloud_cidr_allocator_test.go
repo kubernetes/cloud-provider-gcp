@@ -28,10 +28,10 @@ import (
 	"time"
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
+	ntv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
 	clSetFake "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/fake"
 	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
 	ntfakeclient "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/fake"
-	ntv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/api/compute/v1"
@@ -134,7 +134,6 @@ func TestNodeTopologyQueue(t *testing.T) {
 	nodetopologyQueue.Shutdown()
 }
 
-
 func TestNodeTopologyQueue_AddOrUpdate(t *testing.T) {
 	testClusterValues := gce.DefaultTestClusterValues()
 	testClusterValues.SubnetworkURL = exampleSubnetURL
@@ -146,20 +145,20 @@ func TestNodeTopologyQueue_AddOrUpdate(t *testing.T) {
 	gnpInformer := nwInfFactory.V1().GKENetworkParamSets()
 
 	defaultnode := &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "testNodeTopologyLifecycle",
-			},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "testNodeTopologyLifecycle",
+		},
 	}
 	mscnode := &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "testNode",
-				Labels: map[string]string{
-					testNodePoolSubnetLabelPrefix: "subnet1",
-				},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "testNode",
+			Labels: map[string]string{
+				testNodePoolSubnetLabelPrefix: "subnet1",
 			},
+		},
 	}
 	fakeClient := fake.NewSimpleClientset(defaultnode, mscnode)
-	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, time.Second) 
+	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, time.Second)
 	fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
 
 	ensuredNodeTopologyCR := &ntv1.NodeTopology{
@@ -183,8 +182,8 @@ func TestNodeTopologyQueue_AddOrUpdate(t *testing.T) {
 	expectedSubnets := []string{"subnet-def", "subnet1"}
 	i := 0
 	for i < 5 {
-		if verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient){
-				break
+		if verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient) {
+			break
 		} else {
 			i++
 		}
@@ -205,15 +204,15 @@ func TestNodeTopologyCR_DELETION(t *testing.T) {
 	gnpInformer := nwInfFactory.V1().GKENetworkParamSets()
 
 	mscnode := &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "testNode",
-				Labels: map[string]string{
-					testNodePoolSubnetLabelPrefix: "subnet1",
-				},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "testNode",
+			Labels: map[string]string{
+				testNodePoolSubnetLabelPrefix: "subnet1",
 			},
+		},
 	}
 	fakeClient := fake.NewSimpleClientset()
-	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, time.Second) 
+	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, time.Second)
 	fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
 
 	ensuredNodeTopologyCR := &ntv1.NodeTopology{
@@ -234,12 +233,12 @@ func TestNodeTopologyCR_DELETION(t *testing.T) {
 
 	fakeNodeInformer.Informer().GetStore().Add(mscnode)
 	time.Sleep(time.Second * 2)
-	
+
 	expectedSubnets := []string{"subnet-def"}
 	i := 0
 	for i < 5 {
-		if verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient){
-				break
+		if verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient) {
+			break
 		} else {
 			i++
 		}

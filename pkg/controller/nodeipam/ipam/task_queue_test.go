@@ -18,12 +18,12 @@ package ipam
 
 import (
 	"errors"
-	"testing"
-	"reflect"
-	"sync"
-	"time"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"reflect"
+	"sync"
+	"testing"
+	"time"
 )
 
 func TestTaskQueue(t *testing.T) {
@@ -75,7 +75,7 @@ func TestTaskQueue(t *testing.T) {
 	}
 }
 
-func makeNode(name string) *v1.Node{
+func makeNode(name string) *v1.Node {
 	return &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,

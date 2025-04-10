@@ -90,9 +90,9 @@ type cloudCIDRAllocator struct {
 	// nodesSynced returns true if the node shared informer has been synced at least once.
 	nodesSynced cache.InformerSynced
 
-	recorder record.EventRecorder
-	queue    workqueue.RateLimitingInterface
-	nodeTopologyQueue *TaskQueue[*v1.Node] 
+	recorder          record.EventRecorder
+	queue             workqueue.RateLimitingInterface
+	nodeTopologyQueue *TaskQueue[*v1.Node]
 
 	stackType clusterStackType
 }
@@ -133,22 +133,22 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 
 	nodeTopologySyncer := &NodeTopologySyncer{
 		nodeTopologyClient: nodeTopologyClient,
-		cloud: 				gceCloud,
+		cloud:              gceCloud,
 		nodeLister:         nodeInformer.Lister(),
 	}
 	nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueue", "nodetopologyCRD", nodeTopologyWorkers, nodeTopologySyncer.sync)
 
 	ca := &cloudCIDRAllocator{
-		client:             client,
-		cloud:              gceCloud,
-		networksLister:     nwInformer.Lister(),
-		gnpLister:          gnpInformer.Lister(),
-		nodeLister:         nodeInformer.Lister(),
-		nodesSynced:        nodeInformer.Informer().HasSynced,
-		recorder:           recorder,
-		queue:              workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
-		nodeTopologyQueue: 	nodetopologyQueue,
-		stackType:          stackType,
+		client:            client,
+		cloud:             gceCloud,
+		networksLister:    nwInformer.Lister(),
+		gnpLister:         gnpInformer.Lister(),
+		nodeLister:        nodeInformer.Lister(),
+		nodesSynced:       nodeInformer.Informer().HasSynced,
+		recorder:          recorder,
+		queue:             workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
+		nodeTopologyQueue: nodetopologyQueue,
+		stackType:         stackType,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

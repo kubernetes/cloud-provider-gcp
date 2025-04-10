@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"strings"
 
-	corelisters "k8s.io/client-go/listers/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	nodetopologyv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
 	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
-	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/klog/v2"
 )
@@ -25,11 +25,12 @@ var (
 	}
 )
 
+// NodeTopologySyncer processes nodetopology CR based on node add/update/delete events.
 type NodeTopologySyncer struct {
-	nodeTopologyClient 	nodetopologyclientset.Interface
-	cloud              	*gce.Cloud
-	nodeLister 			corelisters.NodeLister
-	ctx                	context.Context
+	nodeTopologyClient nodetopologyclientset.Interface
+	cloud              *gce.Cloud
+	nodeLister         corelisters.NodeLister
+	ctx                context.Context
 }
 
 func (syncer *NodeTopologySyncer) sync(node *v1.Node) error {
@@ -46,7 +47,7 @@ func (syncer *NodeTopologySyncer) sync(node *v1.Node) error {
 			klog.Errorf("Failed to add or update nodeTopology CR")
 			return err
 		}
-		
+
 	}
 	return nil
 }
