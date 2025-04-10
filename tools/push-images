@@ -17,7 +17,11 @@
 set -e
 set -x
 
-source $(git rev-parse --show-toplevel)/tools/common
+# Find the top-level directory.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "${REPO_ROOT}"
+
+source ${REPO_ROOT}/tools/common
 
 # IMAGE_REPO is used to upload images
 if [[ -z "${IMAGE_REPO:-}" ]]; then
@@ -25,7 +29,6 @@ if [[ -z "${IMAGE_REPO:-}" ]]; then
   exit 1
 fi
 echo "IMAGE_REPO=${IMAGE_REPO}"
-export KO_DOCKER_REPO="${IMAGE_REPO}"
 
 # We default IMAGE_TAG to a unique value that combines the sha and the (real) build date
 if [[ -z "${IMAGE_TAG:-}" ]]; then
@@ -42,7 +45,7 @@ else
 fi
 
 if [[ "${COMPONENT:-ccm}" == "ccm" ]]; then
-  go run github.com/google/ko@v0.14.1 build --tags=${IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
+  docker build --push -t ${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG} .
 else
   echo "Skipping CCM build, because component is ${COMPONENT}"
 fi
