@@ -2285,3 +2285,89 @@ func TestSubnetNameFromURL(t *testing.T) {
 	}
 
 }
+
+func TestEnsureInternalLoadBalancerClass(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	for _, tc := range []struct {
+		desc              string
+		loadBalancerClass string
+		shouldProcess     bool
+	}{
+		{
+			desc:              "Custom loadBalancerClass should not process",
+			loadBalancerClass: "customLBClass",
+			shouldProcess:     false,
+		},
+		{
+			desc:              "Use legacy ILB loadBalancerClass",
+			loadBalancerClass: LegacyRegionalInternalLoadBalancerClass,
+			shouldProcess:     true,
+		},
+		{
+			desc:              "Use legacy NetLB loadBalancerClass",
+			loadBalancerClass: LegacyRegionalExternalLoadBalancerClass,
+			shouldProcess:     false,
+		},
+		{
+			desc:              "Unset loadBalancerClass",
+			loadBalancerClass: "",
+			shouldProcess:     true,
+		},
+	} {
+		gce, err := fakeGCECloud(vals)
+		assert.NoError(t, err)
+		// Enable FeatureGate GKE Subsetting
+		gce.AlphaFeatureGate = NewAlphaFeatureGate([]string{AlphaFeatureILBSubsets})
+		recorder := record.NewFakeRecorder(1024)
+		gce.eventRecorder = recorder
+		nodeNames := []string{"test-node-1"}
+
+		svc := fakeLoadbalancerService("")
+		if tc.loadBalancerClass == "" {
+			svc = fakeLoadbalancerService(string(LBTypeInternal))
+		}
+		svc.Spec.LoadBalancerClass = &tc.loadBalancerClass
+		svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+		assert.NoError(t, err)
+
+		// Create ILB
+		status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+		if tc.shouldProcess {
+			assert.NoError(t, err)
+			assert.NotEmpty(t, status.Ingress)
+			svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+			assert.NoError(t, err)
+			if !hasFinalizer(svc, ILBFinalizerV1) {
+				t.Errorf("Expected finalizer '%s' not found in Finalizer list - %v", ILBFinalizerV1, svc.Finalizers)
+			}
+		} else {
+			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+			assert.Empty(t, status)
+		}
+
+		nodeNames = []string{"test-node-1", "test-node-2"}
+		nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+		assert.NoError(t, err)
+
+		// Update ILB
+		err = gce.UpdateLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
+		if tc.shouldProcess {
+			assert.NoError(t, err)
+			svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+			assert.NoError(t, err)
+			if !hasFinalizer(svc, ILBFinalizerV1) {
+				t.Errorf("Expected finalizer '%s' not found in Finalizer list - %v", ILBFinalizerV1, svc.Finalizers)
+			}
+		} else {
+			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+			assert.Empty(t, status)
+		}
+
+		// Delete ILB
+		err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, svc)
+		assert.NoError(t, err)
+		assertInternalLbResourcesDeleted(t, gce, svc, vals, true)
+	}
+}

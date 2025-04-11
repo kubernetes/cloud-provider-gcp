@@ -35,6 +35,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/mock"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/json"
@@ -2264,4 +2265,85 @@ func copyFirewallObj(firewall *compute.Firewall) (*compute.Firewall, error) {
 		return nil, err
 	}
 	return &fw, nil
+}
+
+func TestEnsureExternalLoadBalancerClass(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	for _, tc := range []struct {
+		desc              string
+		loadBalancerClass string
+		shouldProcess     bool
+	}{
+		{
+			desc:              "Custom loadBalancerClass should not process",
+			loadBalancerClass: "customLBClass",
+			shouldProcess:     false,
+		},
+		{
+			desc:              "Use legacy ILB loadBalancerClass",
+			loadBalancerClass: LegacyRegionalInternalLoadBalancerClass,
+			shouldProcess:     false,
+		},
+		{
+			desc:              "Use legacy NetLB loadBalancerClass",
+			loadBalancerClass: LegacyRegionalExternalLoadBalancerClass,
+			shouldProcess:     true,
+		},
+		{
+			desc:              "Unset loadBalancerClass",
+			loadBalancerClass: "",
+			shouldProcess:     true,
+		},
+	} {
+		gce, err := fakeGCECloud(vals)
+		assert.NoError(t, err)
+		recorder := record.NewFakeRecorder(1024)
+		gce.eventRecorder = recorder
+		nodeNames := []string{"test-node-1"}
+
+		svc := fakeLoadbalancerService("")
+		svc.Spec.LoadBalancerClass = &tc.loadBalancerClass
+		svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+		assert.NoError(t, err)
+
+		// Create NetLB
+		status, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+		if tc.shouldProcess {
+			assert.NoError(t, err)
+			require.NotNil(t, status)
+			svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+			assert.NoError(t, err)
+			if !hasFinalizer(svc, NetLBFinalizerV1) {
+				t.Errorf("Expected finalizer '%s' not found in Finalizer list - %v", NetLBFinalizerV1, svc.Finalizers)
+			}
+		} else {
+			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+			assert.Empty(t, status)
+		}
+
+		nodeNames = []string{"test-node-1", "test-node-2"}
+		nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+		assert.NoError(t, err)
+
+		// Update NetLB
+		err = gce.updateExternalLoadBalancer(vals.ClusterName, svc, nodes)
+		if tc.shouldProcess {
+			assert.NoError(t, err)
+			svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+			assert.NoError(t, err)
+			if !hasFinalizer(svc, NetLBFinalizerV1) {
+				t.Errorf("Expected finalizer '%s' not found in Finalizer list - %v", NetLBFinalizerV1, svc.Finalizers)
+			}
+		} else {
+			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+			assert.Empty(t, status)
+		}
+
+		// Delete ILB
+		err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, svc)
+		assert.NoError(t, err)
+		assertExternalLbResourcesDeleted(t, gce, svc, vals, true)
+	}
 }
