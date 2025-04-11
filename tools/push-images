@@ -46,6 +46,13 @@ fi
 
 if [[ "${COMPONENT:-ccm}" == "ccm" ]]; then
   docker build -t ${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG} .
+
+  # Test the image to make sure that the image works with and without the well-known entrypoint
+  echo "Running image with explicit entrypoint"
+  docker run --entrypoint /cloud-controller-manager ${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG} --version
+  echo "Running image with default entrypoint"
+  docker run ${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG} --version
+
   docker push ${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}
 else
   echo "Skipping CCM build, because component is ${COMPONENT}"
