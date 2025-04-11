@@ -45,7 +45,8 @@ else
 fi
 
 if [[ "${COMPONENT:-ccm}" == "ccm" ]]; then
-  docker build --push -t ${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG} .
+  docker build -t ${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG} .
+  docker push ${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}
 else
   echo "Skipping CCM build, because component is ${COMPONENT}"
 fi
