@@ -55,8 +55,14 @@ const (
 )
 
 func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
-	if existingFwdRule == nil && !hasFinalizer(svc, ILBFinalizerV1) {
+	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-internal-legacy" used for this controller.
+	// LoadBalancerClass can't be updated so we know this controller should process the ILB.
+	if existingFwdRule == nil && !hasFinalizer(svc, ILBFinalizerV1) && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
 		// Neither the forwarding rule nor the V1 finalizer exists. This is most likely a new service.
+		if svc.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
+			klog.V(2).Infof("Skipped ensureInternalLoadBalancer for service %s/%s, as service contains %q loadBalancerClass.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
+			return nil, cloudprovider.ImplementedElsewhere
+		}
 		if g.AlphaFeatureGate.Enabled(AlphaFeatureILBSubsets) {
 			// When ILBSubsets is enabled, new ILB services will not be processed here.
 			// Services that have existing GCE resources created by this controller or the v1 finalizer
@@ -331,8 +337,16 @@ func (g *Cloud) clearPreviousInternalResources(svc *v1.Service, loadBalancerName
 // updateInternalLoadBalancer is called when the list of nodes has changed. Therefore, only the instance groups
 // and possibly the backend service need to be updated.
 func (g *Cloud) updateInternalLoadBalancer(clusterName, clusterID string, svc *v1.Service, nodes []*v1.Node) error {
-	if g.AlphaFeatureGate.Enabled(AlphaFeatureILBSubsets) && !hasFinalizer(svc, ILBFinalizerV1) {
+	// Skip update of services which don't have v1 finalizer. If LegacyRegionalInternalLoadBalancerClass
+	// is set, v1 finalizer should already be present and this controller should process the update.
+	// LoadBalancerClass can't be updated so we know this controller should process the ILB.
+	if g.AlphaFeatureGate.Enabled(AlphaFeatureILBSubsets) && !hasFinalizer(svc, ILBFinalizerV1) && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
 		klog.V(2).Infof("Skipped updateInternalLoadBalancer for service %s/%s since it does not contain %q finalizer.", svc.Namespace, svc.Name, ILBFinalizerV1)
+		return cloudprovider.ImplementedElsewhere
+	}
+	// Ignore services handled by other controllers
+	if svc.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
+		klog.V(2).Infof("Skipped updateInternalLoadBalancer for service %s/%s as service contains %q loadBalancerClass.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
 		return cloudprovider.ImplementedElsewhere
 	}
 	g.sharedResourceLock.Lock()
@@ -354,6 +368,19 @@ func (g *Cloud) updateInternalLoadBalancer(clusterName, clusterID string, svc *v
 }
 
 func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string, svc *v1.Service) error {
+	// Skip deletion of services which don't have v1 finalizer. If LegacyRegionalInternalLoadBalancerClass
+	// is set, v1 finalizer should already be present and this controller should process the update.
+	// LoadBalancerClass can't be updated so we know this controller should process the ILB.
+	if g.AlphaFeatureGate.Enabled(AlphaFeatureILBSubsets) && !hasFinalizer(svc, ILBFinalizerV1) && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
+		klog.V(2).Infof("Skipped ensureInternalLoadBalancerDeleted for service %s/%s since it does not contain %q finalizer.", svc.Namespace, svc.Name, ILBFinalizerV1)
+		return cloudprovider.ImplementedElsewhere
+	}
+	// Ignore services handled by other controllers
+	if svc.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
+		klog.V(2).Infof("Skipped ensureInternalLoadBalancerDeleted for service %s/%s as service contains %q loadBalancerClass.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
+		return cloudprovider.ImplementedElsewhere
+	}
+
 	loadBalancerName := g.GetLoadBalancerName(context.TODO(), clusterName, svc)
 	svcNamespacedName := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
 	_, _, protocol := getPortsAndProtocol(svc.Spec.Ports)

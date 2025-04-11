@@ -130,10 +130,11 @@ func (g *Cloud) GetLoadBalancerName(ctx context.Context, clusterName string, svc
 
 // EnsureLoadBalancer is an implementation of LoadBalancer.EnsureLoadBalancer.
 func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
-	// GCE load balancers do not support services with LoadBalancerClass set. LoadBalancerClass can't be updated for an existing load balancer, so here we don't need to clean any resources.
-	// Check API documentation for .Spec.LoadBalancerClass for details on when this field is allowed to be changed.
-	if svc.Spec.LoadBalancerClass != nil {
-		klog.Infof("Ignoring service %s/%s using load balancer class %s, it is not supported by this controller.", svc.Namespace, svc.Name, svc.Spec.LoadBalancerClass)
+	// Ignore services with LoadBalancerClass different than "networking.gke.io/l4-regional-external-legacy" or
+	// "networking.gke.io/l4-regional-internal-legacy" used for these controllers.
+	// LoadBalancerClass can't be updated (see the field API doc) so we don't need to clean any resources.
+	if svc.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) && !hasLoadBalancerClass(svc, LegacyRegionalExternalLoadBalancerClass) {
+		klog.Infof("Ignoring service %s/%s using load balancer class %q, it is not supported by this controller.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
 		return nil, cloudprovider.ImplementedElsewhere
 	}
 
@@ -212,10 +213,11 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 
 // UpdateLoadBalancer is an implementation of LoadBalancer.UpdateLoadBalancer.
 func (g *Cloud) UpdateLoadBalancer(ctx context.Context, clusterName string, svc *v1.Service, nodes []*v1.Node) error {
-	// GCE load balancers do not support services with LoadBalancerClass set. LoadBalancerClass can't be updated for an existing load balancer, so here we don't need to clean any resources.
-	// Check API documentation for .Spec.LoadBalancerClass for details on when this field is allowed to be changed.
-	if svc.Spec.LoadBalancerClass != nil {
-		klog.Infof("Ignoring service %s/%s using load balancer class %s, it is not supported by this controller.", svc.Namespace, svc.Name, svc.Spec.LoadBalancerClass)
+	// Ignore services with LoadBalancerClass different than "networking.gke.io/l4-regional-external-legacy" or
+	// "networking.gke.io/l4-regional-internal-legacy" used for these controllers.
+	// LoadBalancerClass can't be updated (see the field API doc) so we don't need to clean any resources.
+	if svc.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) && !hasLoadBalancerClass(svc, LegacyRegionalExternalLoadBalancerClass) {
+		klog.Infof("Ignoring service %s/%s using load balancer class %q, it is not supported by this controller.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
 		return cloudprovider.ImplementedElsewhere
 	}
 
@@ -259,6 +261,14 @@ func (g *Cloud) UpdateLoadBalancer(ctx context.Context, clusterName string, svc 
 
 // EnsureLoadBalancerDeleted is an implementation of LoadBalancer.EnsureLoadBalancerDeleted.
 func (g *Cloud) EnsureLoadBalancerDeleted(ctx context.Context, clusterName string, svc *v1.Service) error {
+	// Ignore services with LoadBalancerClass different than "networking.gke.io/l4-regional-external-legacy" or
+	// "networking.gke.io/l4-regional-internal-legacy" used for these controllers.
+	// LoadBalancerClass can't be updated (see the field API doc) so we don't need to clean any resources.
+	if svc.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) && !hasLoadBalancerClass(svc, LegacyRegionalExternalLoadBalancerClass) {
+		klog.Infof("Ignoring service %s/%s using load balancer class %q, it is not supported by this controller.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
+		return cloudprovider.ImplementedElsewhere
+	}
+
 	loadBalancerName := g.GetLoadBalancerName(ctx, clusterName, svc)
 	scheme := getSvcScheme(svc)
 	clusterID, err := g.ClusterID.GetID()
