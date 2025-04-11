@@ -22,10 +22,10 @@ package gce
 import (
 	"fmt"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
-	"k8s.io/api/core/v1"
 )
 
 // LoadBalancerType defines a specific type for holding load balancer types (eg. Internal)
@@ -45,6 +45,14 @@ const (
 
 	// Deprecating the lowercase spelling of Internal.
 	deprecatedTypeInternalLowerCase LoadBalancerType = "internal"
+
+	// LegacyRegionalInternalLoadBalancerClass is the loadBalancerClass name used to select the
+	// GKE CCM ILB implementation.
+	LegacyRegionalInternalLoadBalancerClass = "networking.gke.io/l4-regional-internal-legacy"
+
+	// LegacyRegionalExternalLoadBalancerClass is the loadBalancerClass name used to select the
+	// GKE CCM NetLB implementation.
+	LegacyRegionalExternalLoadBalancerClass = "networking.gke.io/l4-regional-external-legacy"
 
 	// ServiceAnnotationILBBackendShare is annotated on a service with "true" when users
 	// want to share GCP Backend Services for a set of internal load balancers.
@@ -86,6 +94,12 @@ const (
 // GetLoadBalancerAnnotationType returns the type of GCP load balancer which should be assembled.
 func GetLoadBalancerAnnotationType(service *v1.Service) LoadBalancerType {
 	var lbType LoadBalancerType
+	// Check LoadBalancerClass before load balancer type annotation since it has precedence.
+	if hasLoadBalancerClass(service, LegacyRegionalInternalLoadBalancerClass) {
+		return LBTypeInternal
+	} else if hasLoadBalancerClass(service, LegacyRegionalExternalLoadBalancerClass) {
+		return lbType
+	}
 	for _, ann := range []string{
 		ServiceAnnotationLoadBalancerType,
 		deprecatedServiceAnnotationLoadBalancerType,
