@@ -79,6 +79,12 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		return nil, err
 	}
 
+	klog.Infof("ensureExternalLoadBalancer(%v): Attaching %q finalizer", apiService.Name, NetLBFinalizerV1)
+	if err := addFinalizer(apiService, g.client.CoreV1(), NetLBFinalizerV1); err != nil {
+		klog.Errorf("Failed to attach finalizer '%s' on service %s/%s - %v", NetLBFinalizerV1, apiService.Namespace, apiService.Name, err)
+		return nil, err
+	}
+
 	loadBalancerName := g.GetLoadBalancerName(context.TODO(), clusterName, apiService)
 	klog.Infof("ensureExternalLoadBalancer(%v): Attaching %q finalizer to service %s", loadBalancerName, NetLBFinalizerV1, apiService.Name)
 	if err := addFinalizer(apiService, g.client.CoreV1(), NetLBFinalizerV1); err != nil {
