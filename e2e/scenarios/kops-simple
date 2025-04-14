@@ -127,43 +127,17 @@ if [[ -z "${IMAGE_TAG:-}" ]]; then
 fi
 echo "IMAGE_TAG=${IMAGE_TAG}"
 
-
 # Build and push cloud-controller-manager
 cd ${REPO_ROOT}
-export KO_DOCKER_REPO="${IMAGE_REPO}"
 
 export KUBE_ROOT=${REPO_ROOT}
 source "${REPO_ROOT}/tools/version.sh"
 get_version_vars
 unset KUBE_ROOT
 
-BUILD_DATE=$(date ${SOURCE_DATE_EPOCH:+"--date=@${SOURCE_DATE_EPOCH}"} -u +'%Y-%m-%dT%H:%M:%SZ')
-
-cat > ${WORKDIR}/.ko.yaml <<EOF
-builds:
-- id: cloud-controller-manager
-  dir: .
-  main: cmd/cloud-controller-manager
-  ldflags:
-  - -X k8s.io/component-base/version/verflag.programName=cloud-controller-manager
-
-  - -X k8s.io/component-base/version.buildDate=${BUILD_DATE}
-  - -X k8s.io/component-base/version.gitCommit=${KUBE_GIT_COMMIT}
-  - -X k8s.io/component-base/version.gitMajor=${KUBE_GIT_MAJOR}
-  - -X k8s.io/component-base/version.gitMinor=${KUBE_GIT_MINOR}
-  - -X k8s.io/component-base/version.gitTreeState=${KUBE_GIT_TREE_STATE}
-  - -X k8s.io/component-base/version.gitVersion=${KUBE_GIT_VERSION}
-
-  - -X k8s.io/client-go/pkg/version.buildDate=${BUILD_DATE}
-  - -X k8s.io/client-go/pkg/version.gitCommit=${KUBE_GIT_COMMIT}
-  - -X k8s.io/client-go/pkg/version.gitMajor=${KUBE_GIT_MAJOR}
-  - -X k8s.io/client-go/pkg/version.gitMinor=${KUBE_GIT_MINOR}
-  - -X k8s.io/client-go/pkg/version.gitTreeState=${KUBE_GIT_TREE_STATE}
-  - -X k8s.io/client-go/pkg/version.gitVersion=${KUBE_GIT_VERSION}
-EOF
-
-# KO_CONFIG_PATH is the directory, not the path, until https://github.com/ko-build/ko/pull/731 lands in a tag (it's not in 0.12)
-KO_CONFIG_PATH=${WORKDIR}/ go run github.com/google/ko@v0.12.0 build --tags ${IMAGE_TAG} --base-import-paths --push=true ./cmd/cloud-controller-manager/
+echo "git status:"
+git status
+IMAGE_REPO=${IMAGE_REPO} IMAGE_TAG=${IMAGE_TAG} tools/push-images
 
 if [[ -z "${ADMIN_ACCESS:-}" ]]; then
   ADMIN_ACCESS="0.0.0.0/0" # Or use your IPv4 with /32
@@ -185,11 +159,9 @@ cp "${REPO_ROOT}/deploy/packages/default/manifest.yaml" "${WORKDIR}/cloud-provid
 sed -i -e "s@k8scloudprovidergcp/cloud-controller-manager:latest@${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}@g" "${WORKDIR}/cloud-provider-gcp.yaml"
 create_args="${create_args} --add=${WORKDIR}/cloud-provider-gcp.yaml"
 
-
 # Enable cluster addons, this enables us to replace the built-in manifest
 KOPS_FEATURE_FLAGS="ClusterAddons,${KOPS_FEATURE_FLAGS:-}"
 echo "KOPS_FEATURE_FLAGS=${KOPS_FEATURE_FLAGS}"
-
 
 # Note that these arguments for kubetest2 and kOps, not (for example) the arguments passed to the cloud-provider-gcp
 KUBETEST2_ARGS=""
