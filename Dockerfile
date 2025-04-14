@@ -11,7 +11,7 @@ COPY go.mod go.mod
 COPY go.sum go.sum
 COPY providers/go.mod providers/go.mod
 COPY providers/go.sum providers/go.sum
-RUN go mod download
+COPY vendor/ vendor/
 COPY cmd/ cmd/
 COPY pkg/ pkg/
 COPY providers/ providers/
