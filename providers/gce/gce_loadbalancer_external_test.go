@@ -706,6 +706,11 @@ func TestEnsureExternalLoadBalancerDeleted(t *testing.T) {
 	assert.NoError(t, err)
 
 	assertExternalLbResourcesDeleted(t, gce, svc, vals, true)
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	if hasFinalizer(svc, NetLBFinalizerV1) {
+		t.Fatalf("Finalizer '%s' not deleted as part of ELB delete", NetLBFinalizerV1)
+	}
 }
 
 func TestLoadBalancerWrongTierResourceDeletion(t *testing.T) {
