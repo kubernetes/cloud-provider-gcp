@@ -418,7 +418,7 @@ func removeString(slice []string, s string) []string {
 
 // shouldProcessNetLB checks if service uses CCM as controller.
 // It should be handled by Service Controller.
-func shouldProcessNetLB(service *v1.Service, forwardingRule *compute.ForwardingRule) bool {
+func shouldProcessNetLB(service *v1.Service, forwardingRule *compute.ForwardingRule, isRbsDefault bool) bool {
 	// Detect by load balancer class
 	if service.Spec.LoadBalancerClass != nil {
 		return hasLoadBalancerClass(service, LegacyRegionalExternalLoadBalancerClass)
@@ -431,7 +431,7 @@ func shouldProcessNetLB(service *v1.Service, forwardingRule *compute.ForwardingR
 	if usesL4RBS(service, forwardingRule) {
 		return false
 	}
-	return true
+	return !isRbsDefault
 }
 
 // usesL4RBS checks if service uses Regional Backend Service as a Backend.
