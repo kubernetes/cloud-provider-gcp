@@ -18,23 +18,25 @@ package ipam
 
 import (
 	"errors"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
 )
 
+func simpleKeyFun(obj interface{}) (string, error) {
+	key, _ := obj.(string)
+	return key, nil
+}
+
 func TestTaskQueue(t *testing.T) {
 	t.Parallel()
-	synced := map[*v1.Node]bool{}
+	synced := map[string]bool{}
 	doneCh := make(chan struct{}, 1)
 
-	// var tq TaskQueue[*v1.Node]
-	sync := func(key *v1.Node) error {
+	sync := func(key string) error {
 		synced[key] = true
-		switch key.Name {
+		switch key {
 		case "err":
 			return errors.New("injected error")
 		case "stop":
@@ -45,93 +47,29 @@ func TestTaskQueue(t *testing.T) {
 		return nil
 	}
 
-	tq := NewTaskQueue("", "test", 2, sync)
+	tq := NewTaskQueue("", "test", 2, simpleKeyFun, sync)
 
 	go tq.Run()
-	nodeA := makeNode("a")
-	nodeB := makeNode("b")
-	nodeErr := makeNode("err")
-	nodeStop := makeNode("stop")
-	tq.Enqueue(nodeA)
-	tq.Enqueue(nodeB)
-	tq.Enqueue(nodeErr)
-	tq.Enqueue(nodeStop)
+	tq.Enqueue("a")
+	tq.Enqueue("b")
+	tq.Enqueue("err")
+	tq.Enqueue("stop")
 
 	<-doneCh
 	tq.Shutdown()
 
 	// Enqueue after Shutdown isn't going to be synced.
-	tq.Enqueue(makeNode("more"))
+	tq.Enqueue("more")
 
-	expected := map[*v1.Node]bool{
-		nodeA:    true,
-		nodeB:    true,
-		nodeErr:  true,
-		nodeStop: true,
+	expected := map[string]bool{
+		"a":    true,
+		"b":    true,
+		"err":  true,
+		"stop": true,
 	}
 
 	if !reflect.DeepEqual(synced, expected) {
 		t.Errorf("task queue synced %+v, want %+v", synced, expected)
-	}
-}
-
-func makeNode(name string) *v1.Node {
-	return &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				testNodePoolSubnetLabelPrefix: "subnet1",
-			},
-		},
-	}
-}
-
-func TestQueueWithNodeObject(t *testing.T) {
-	synced := sync.Map{}
-	sync := func(key *v1.Node) error {
-		synced.Store(key, true)
-		switch key.Name {
-		case "err":
-			return errors.New("injected error")
-		}
-		return nil
-	}
-	errObj := makeNode("err")
-	inputObjsWithErr := []*v1.Node{makeNode("a"), makeNode("b"), makeNode("c"), makeNode("d"), makeNode("e"), makeNode("f"), errObj, makeNode("g")}
-
-	tq := NewTaskQueue("multiple-workers", "test", 5, sync)
-	// Spawn off worker routines in parallel.
-	tq.Run()
-
-	for _, obj := range inputObjsWithErr {
-		tq.Enqueue(obj)
-	}
-
-	for tq.queue.Len() > 0 {
-		time.Sleep(1 * time.Second)
-	}
-
-	if tq.queue.NumRequeues(errObj) == 0 {
-		t.Errorf("Got 0 requeues for %q, expected non-zero requeue on error.", "err")
-	}
-	tq.Shutdown()
-
-	// Enqueue after Shutdown isn't going to be synced.
-	tq.Enqueue(makeNode("more"))
-
-	syncedLen := 0
-	synced.Range(func(_, _ interface{}) bool {
-		syncedLen++
-		return true
-	})
-
-	if syncedLen != len(inputObjsWithErr) {
-		t.Errorf("Synced %d keys, but %d input keys were provided.", syncedLen, len(inputObjsWithErr))
-	}
-	for _, key := range inputObjsWithErr {
-		if _, ok := synced.Load(key); !ok {
-			t.Errorf("Did not sync input key - %s.", key)
-		}
 	}
 }
 
@@ -163,7 +101,7 @@ func TestQueueWithMultipleWorkers(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			tq := NewTaskQueue("multiple-workers", "test", tc.numWorkers, sync)
+			tq := NewTaskQueue("multiple-workers", "test", tc.numWorkers, simpleKeyFun, sync)
 			gotNil := tq == nil
 			if gotNil != tc.expectNil {
 				t.Errorf("gotNilQueue - %v, expectNilQueue - %v.", gotNil, tc.expectNil)

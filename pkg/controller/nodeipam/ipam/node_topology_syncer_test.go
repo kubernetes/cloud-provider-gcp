@@ -186,9 +186,17 @@ func TestNodeTopologySync(t *testing.T) {
 			name: "node's subnet already exists in the cr",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						testNodePoolSubnetLabelPrefix: "subnet-def",
-						"another-label":               "value",
+					Name: "a-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "a-node",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
 					},
 				},
 			},
@@ -199,8 +207,16 @@ func TestNodeTopologySync(t *testing.T) {
 			name: "node has a new subnet",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						testNodePoolSubnetLabelPrefix: "new-subnet",
+					Name: "a-new-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "a-new-node",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "new-subnet",
+						},
 					},
 				},
 			},
@@ -211,8 +227,16 @@ func TestNodeTopologySync(t *testing.T) {
 			name: "node has a subnet and cr's subnets is empty",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						testNodePoolSubnetLabelPrefix: "subnet-def",
+					Name: "a-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "a-node",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+						},
 					},
 				},
 			},
@@ -223,22 +247,39 @@ func TestNodeTopologySync(t *testing.T) {
 			name: "node has no subnet label and ensure we add the default subnet to cr",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
+					Name:   "a-node",
 					Labels: map[string]string{},
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "a-node",
+						Labels: map[string]string{},
+					},
 				},
 			},
 			existingSubnets: []string{},
 			wantSubnets:     []string{"subnet-def"},
 		},
 		{
-			name:            "delete node is reconciliation - delete default node",
-			node:            nodeTopologyReconciliationKey,
+			name: "delete node is reconciliation - delete default node",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "not-exist-node",
+				},
+			},
 			nodeListInCache: []*v1.Node{},
 			existingSubnets: []string{"subnet-def"},
 			wantSubnets:     []string{"subnet-def"},
 		},
 		{
 			name: "delete node is reconciliation - delete msc node",
-			node: nodeTopologyReconciliationKey,
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "not-exist-node",
+				},
+			},
 			nodeListInCache: []*v1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -251,7 +292,11 @@ func TestNodeTopologySync(t *testing.T) {
 		},
 		{
 			name: "delete node is reconciliation - delete one msc node among multiple msc nodes",
-			node: nodeTopologyReconciliationKey,
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "not-exist-node",
+				},
+			},
 			nodeListInCache: []*v1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -277,7 +322,11 @@ func TestNodeTopologySync(t *testing.T) {
 		},
 		{
 			name: "delete node is reconciliation - delete all msc nodes",
-			node: nodeTopologyReconciliationKey,
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "not-exist-node",
+				},
+			},
 			nodeListInCache: []*v1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -313,7 +362,8 @@ func TestNodeTopologySync(t *testing.T) {
 				nodeTopologyClient: ntClient,
 				nodeLister:         fakeNodeInformer.Lister(),
 			}
-			err := syncer.sync(tc.node)
+			key, _ := nodeTopologyKeyFun(tc.node)
+			err := syncer.sync(key)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("NodeTopologySyncer.sync() returns nil but want error")
@@ -323,8 +373,8 @@ func TestNodeTopologySync(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NodeTopologySyncer.sync() returned error: %v", err)
 			}
-			if !verifySubnetsInCR(t, tc.wantSubnets, ntClient) {
-				t.Errorf("NodeTopologySyncer.sync() returned incorrect subnets")
+			if ok, cr := verifySubnetsInCR(t, tc.wantSubnets, ntClient); !ok {
+				t.Errorf("NodeTopologySyncer.sync() returned incorrect subnets, got %v, expected %v", cr.Status.Subnets, tc.wantSubnets)
 			}
 		})
 	}
@@ -348,7 +398,7 @@ func addSubnetsToCR(subnets []string, client ntclient.Interface) {
 	client.NetworkingV1().NodeTopologies().UpdateStatus(ctx, cr, metav1.UpdateOptions{})
 }
 
-func verifySubnetsInCR(t *testing.T, subnets []string, client ntclient.Interface) bool {
+func verifySubnetsInCR(t *testing.T, subnets []string, client ntclient.Interface) (bool, *ntv1.NodeTopology) {
 	ctx := context.Background()
 	hm := make(map[string]bool)
 	for _, subnet := range subnets {
@@ -358,15 +408,15 @@ func verifySubnetsInCR(t *testing.T, subnets []string, client ntclient.Interface
 	cr, _ := client.NetworkingV1().NodeTopologies().Get(ctx, "default", metav1.GetOptions{})
 
 	if len(subnets) != len(cr.Status.Subnets) {
-		return false
+		return false, cr
 	}
 	for _, subnetConfig := range cr.Status.Subnets {
 		if _, found := hm[subnetConfig.Name]; !found {
-			return false
+			return false, cr
 		}
 		if subnetConfig.SubnetPath != (exampleSubnetPathPrefix + subnetConfig.Name) {
-			return false
+			return false, cr
 		}
 	}
-	return true
+	return true, nil
 }

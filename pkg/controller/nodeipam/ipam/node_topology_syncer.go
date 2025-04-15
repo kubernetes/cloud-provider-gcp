@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/klog/v2"
@@ -19,10 +20,8 @@ import (
 const nodeTopologyCRName = "default"
 
 var (
-	// nodeTopologyReconciliationKey is a queue entry for nodeTopology reconciliation (used for node deletion).
-	nodeTopologyReconciliationKey = &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: "nodeTopologyReconciliationKey"},
-	}
+	// nodeTopologyKeyFun maps node to a namespaced name as key for the task queue.
+	nodeTopologyKeyFun = cache.DeletionHandlingMetaNamespaceKeyFunc
 )
 
 // NodeTopologySyncer processes nodetopology CR based on node add/update/delete events.
@@ -32,18 +31,25 @@ type NodeTopologySyncer struct {
 	nodeLister         corelisters.NodeLister
 }
 
-func (syncer *NodeTopologySyncer) sync(node *v1.Node) error {
-	klog.V(0).Infof("syncing node topology CR for node item %v", node.GetName())
-	if node == nodeTopologyReconciliationKey {
+func (syncer *NodeTopologySyncer) sync(key string) error {
+	klog.InfoS("Syncing node topology CR for node", "key", key)
+	_, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		klog.ErrorS(err, "Failed to split namespace", "key", key)
+		return nil
+	}
+	node, err := syncer.nodeLister.Get(name)
+	if node == nil || err != nil {
+		klog.InfoS("Node not found or error, reconcile.", "node key", key, "error", err)
 		err := syncer.reconcile()
 		if err != nil {
-			klog.Errorf("Failed to reconcile nodeTopology CR")
+			klog.ErrorS(err, "Failed to reconcile nodeTopology CR")
 			return err
 		}
 	} else {
 		err := syncer.updateNodeTopology(node)
 		if err != nil {
-			klog.Errorf("Failed to add or update nodeTopology CR")
+			klog.ErrorS(err, "Failed to add or update nodeTopology CR")
 			return err
 		}
 
@@ -52,19 +58,18 @@ func (syncer *NodeTopologySyncer) sync(node *v1.Node) error {
 }
 
 func (syncer *NodeTopologySyncer) reconcile() error {
-	klog.V(0).Infof("Reconciling node topology CR.")
 	if syncer.nodeLister == nil {
 		return nil
 	}
 	allNodes, err := syncer.nodeLister.List(labels.NewSelector())
 	if err != nil {
-		klog.Errorf("Failed to list all nodes from nodeInformer lister.")
+		klog.ErrorS(err, "Failed to list all nodes from nodeInformer lister")
 		return err
 	}
 
 	defaultSubnet, subnetPrefix, err := getSubnetWithPrefixFromURL(syncer.cloud.SubnetworkURL())
 	if err != nil {
-		klog.Errorf("Error parsing the default subnetworkURL, err: %v", err)
+		klog.ErrorS(err, "Error parsing the default subnetworkURL")
 		return err
 	}
 	updatedSubnetsMap := make(map[string]nodetopologyv1.SubnetConfig, 0)
@@ -75,7 +80,7 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 				Name:       nodeSubnet,
 				SubnetPath: subnetPrefix + nodeSubnet,
 			}
-			klog.V(0).Infof("Making node topology subnets list, adding subnet %v.", nodeSubnet)
+			klog.InfoS("Making node topology subnets list for all nodes for subnet", "subnet", nodeSubnet)
 		}
 	}
 	updatedSubnetsMap[defaultSubnet] = nodetopologyv1.SubnetConfig{
@@ -85,7 +90,7 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 
 	nodeTopologyCR, err := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().Get(context.TODO(), nodeTopologyCRName, metav1.GetOptions{})
 	if err != nil {
-		klog.Errorf("Failed to get NodeTopology: %v, err: %v", nodeTopologyCRName, err)
+		klog.ErrorS(err, "Failed to get NodeTopology", "nodeTopologyCR", nodeTopologyCRName)
 		return err
 	}
 	updatedNodeTopologyCR := nodeTopologyCR.DeepCopy()
@@ -94,12 +99,16 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 		updatedSubnets = append(updatedSubnets, s)
 	}
 	updatedNodeTopologyCR.Status.Subnets = updatedSubnets
+
+	if updatedNodeTopologyCR.Status.Zones == nil {
+		updatedNodeTopologyCR.Status.Zones = []string{}
+	}
 	_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), updatedNodeTopologyCR, metav1.UpdateOptions{})
 	if updateErr != nil {
-		klog.Errorf("Error updating nodeTopology CR: %v, err: %v", nodeTopologyCRName, updateErr)
+		klog.ErrorS(updateErr, "Error updating nodeTopology CR", "nodetopologyCR", nodeTopologyCRName)
 		return updateErr
 	}
-	klog.V(2).Infof("Successfully reconciled nodeTopolody CR.")
+	klog.InfoS("Successfully reconciled nodeTopolody CR")
 	return nil
 }
 
@@ -141,7 +150,7 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 			return updateErr
 		}
 
-		klog.V(2).Infof("Successfully added the default subnet %v to nodetopology CR", defaultSubnet)
+		klog.Infof("Successfully added the default subnet %v to nodetopology CR", defaultSubnet)
 
 		return nil
 	}

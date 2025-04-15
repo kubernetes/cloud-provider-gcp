@@ -92,7 +92,7 @@ type cloudCIDRAllocator struct {
 
 	recorder          record.EventRecorder
 	queue             workqueue.RateLimitingInterface
-	nodeTopologyQueue *TaskQueue[*v1.Node]
+	nodeTopologyQueue *TaskQueue
 
 	stackType clusterStackType
 }
@@ -136,7 +136,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		cloud:              gceCloud,
 		nodeLister:         nodeInformer.Lister(),
 	}
-	nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueue", "nodetopologyCRD", nodeTopologyWorkers, nodeTopologySyncer.sync)
+	nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueue", "nodetopologyCRD", nodeTopologyWorkers, nodeTopologyKeyFun, nodeTopologySyncer.sync)
 
 	ca := &cloudCIDRAllocator{
 		client:            client,
@@ -188,7 +188,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 			return nil
 		}),
 		DeleteFunc: nodeutil.CreateDeleteNodeHandler(func(node *v1.Node) error {
-			nodetopologyQueue.Enqueue(nodeTopologyReconciliationKey)
+			nodetopologyQueue.Enqueue(node)
 			return nil
 		}),
 	})

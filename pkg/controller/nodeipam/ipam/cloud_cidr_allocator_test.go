@@ -114,7 +114,7 @@ func TestNodeTopologyQueue(t *testing.T) {
 		nodeTopologyClient: ntfakeclient.NewSimpleClientset(),
 		cloud:              fakeGCE,
 	}
-	nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueueForTest", "nodetopologyCRD", 1, nodeTopologySyncer.sync)
+	nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueueForTest", "nodetopologyCRD", 1, nodeTopologyKeyFun, nodeTopologySyncer.sync)
 	clientSet := fake.NewSimpleClientset()
 	sharedInfomer := informers.NewSharedInformerFactory(clientSet, 1*time.Hour)
 	ca := &cloudCIDRAllocator{
@@ -182,7 +182,7 @@ func TestNodeTopologyQueue_AddOrUpdate(t *testing.T) {
 	expectedSubnets := []string{"subnet-def", "subnet1"}
 	i := 0
 	for i < 5 {
-		if verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient) {
+		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
 			break
 		} else {
 			i++
@@ -237,7 +237,7 @@ func TestNodeTopologyCR_DELETION(t *testing.T) {
 	expectedSubnets := []string{"subnet-def"}
 	i := 0
 	for i < 5 {
-		if verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient) {
+		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
 			break
 		} else {
 			i++
@@ -2080,7 +2080,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				nodeTopologyClient: ntfakeclient.NewSimpleClientset(),
 				cloud:              fakeGCE,
 			}
-			nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueueForTest", "nodetopologyCRD", 1, nodeTopologySyncer.sync)
+			nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueueForTest", "nodetopologyCRD", 1, nodeTopologyKeyFun, nodeTopologySyncer.sync)
 
 			ca := &cloudCIDRAllocator{
 				client:            tc.fakeNodeHandler,
