@@ -137,6 +137,11 @@ unset KUBE_ROOT
 
 echo "git status:"
 git status
+
+echo "Configuring docker auth with gcloud"
+gcloud auth configure-docker
+
+echo "Building and pushing images"
 IMAGE_REPO=${IMAGE_REPO} IMAGE_TAG=${IMAGE_TAG} tools/push-images
 
 if [[ -z "${ADMIN_ACCESS:-}" ]]; then
