@@ -22,6 +22,12 @@ const nodeTopologyCRName = "default"
 var (
 	// nodeTopologyKeyFun maps node to a namespaced name as key for the task queue.
 	nodeTopologyKeyFun = cache.DeletionHandlingMetaNamespaceKeyFunc
+	// nodeTopologyReconcileFakeNode is used for periodic re-sync
+	nodeTopologyReconcileFakeNode = &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "/",
+			},
+	}
 )
 
 // NodeTopologySyncer processes nodetopology CR based on node add/update/delete events.
@@ -36,6 +42,10 @@ func (syncer *NodeTopologySyncer) sync(key string) error {
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		klog.ErrorS(err, "Failed to split namespace", "key", key)
+		return nil
+	}
+	if syncer.nodeLister == nil {
+		klog.ErrorS(err, "Nil syncer.nodeLister.")
 		return nil
 	}
 	node, err := syncer.nodeLister.Get(name)
@@ -58,9 +68,6 @@ func (syncer *NodeTopologySyncer) sync(key string) error {
 }
 
 func (syncer *NodeTopologySyncer) reconcile() error {
-	if syncer.nodeLister == nil {
-		return nil
-	}
 	allNodes, err := syncer.nodeLister.List(labels.NewSelector())
 	if err != nil {
 		klog.ErrorS(err, "Failed to list all nodes from nodeInformer lister")
@@ -80,7 +87,7 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 				Name:       nodeSubnet,
 				SubnetPath: subnetPrefix + nodeSubnet,
 			}
-			klog.InfoS("Making node topology subnets list for all nodes for subnet", "subnet", nodeSubnet)
+			klog.InfoS("Making node topology subnets list for all nodes with additional subnet", "subnet", nodeSubnet)
 		}
 	}
 	updatedSubnetsMap[defaultSubnet] = nodetopologyv1.SubnetConfig{

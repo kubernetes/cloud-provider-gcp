@@ -79,6 +79,9 @@ const (
 
 	// The no. of workers in parallel to update nodetopology CR
 	nodeTopologyWorkers = 30
+
+	// The duration of periodic reconciliation on the nodetopology CR
+	nodeTopologyReconcileInterval = 10 * time.Minute
 )
 
 // nodePollInterval is used in listing node

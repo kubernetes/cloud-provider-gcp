@@ -346,6 +346,28 @@ func TestNodeTopologySync(t *testing.T) {
 			existingSubnets: []string{},
 			wantSubnets:     []string{"subnet-def"},
 		},
+		{
+			name: "delete node is reconciliation - use fake reconciliation node ",
+			node: nodeTopologyReconcileFakeNode,
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "random-subnet",
+						Labels: map[string]string{
+							"random-label": "remaining-subnet",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "default-subnet",
+						Labels: map[string]string{},
+					},
+				},
+			},
+			existingSubnets: []string{},
+			wantSubnets:     []string{"subnet-def"},
+		},
 	}
 
 	for _, tc := range tests {
