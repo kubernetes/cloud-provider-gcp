@@ -64,6 +64,7 @@ func (t *TaskQueue) runInternal(workerID int) {
 	}
 }
 
+// Enqueue adds a new item to the queue.
 func (t *TaskQueue) Enqueue(obj interface{}) {
 	key, err := t.keyFunc(obj)
 	if err != nil {
