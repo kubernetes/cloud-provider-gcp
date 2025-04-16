@@ -24,9 +24,9 @@ var (
 	nodeTopologyKeyFun = cache.DeletionHandlingMetaNamespaceKeyFunc
 	// nodeTopologyReconcileFakeNode is used for periodic re-sync
 	nodeTopologyReconcileFakeNode = &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "/",
-			},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "/",
+		},
 	}
 )
 
