@@ -178,13 +178,36 @@ func TestNodeTopologyQueue_AddOrUpdate(t *testing.T) {
 
 	// TODO: Fix node_topology_syncer addOrUpdate should add default subnet regardless of nodes ordering on the informer
 	fakeNodeInformer.Informer().GetStore().Add(mscnode)
-	time.Sleep(time.Second * 2)
 	expectedSubnets := []string{"subnet-def", "subnet1"}
 	i := 0
 	for i < 5 {
 		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
 			break
 		} else {
+			time.Sleep(time.Millisecond * 500)
+			i++
+		}
+	}
+	if i >= 5 {
+		t.Fatalf("AddOrUpdate node topology CRD not working as expected")
+	}
+
+	mscnode2 := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "testNode2",
+			Labels: map[string]string{
+				testNodePoolSubnetLabelPrefix: "subnet2",
+			},
+		},
+	}
+	fakeClient.Tracker().Add(mscnode2)
+	expectedSubnets = []string{"subnet-def", "subnet1", "subnet2"}
+	i = 0
+	for i < 5 {
+		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
+			break
+		} else {
+			time.Sleep(time.Millisecond * 500)
 			i++
 		}
 	}
@@ -228,11 +251,9 @@ func TestNodeTopologyCR_DELETION(t *testing.T) {
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
 	fakeInformerFactory.Start(wait.NeverStop)
-	cloudAllocator.nodesSynced = alwaysReady
 	go cloudAllocator.Run(wait.NeverStop)
 
 	fakeNodeInformer.Informer().GetStore().Add(mscnode)
-	time.Sleep(time.Second * 2)
 
 	expectedSubnets := []string{"subnet-def"}
 	i := 0
@@ -240,6 +261,7 @@ func TestNodeTopologyCR_DELETION(t *testing.T) {
 		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
 			break
 		} else {
+			time.Sleep(time.Millisecond * 500)
 			i++
 		}
 	}
