@@ -284,11 +284,14 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 		ca.nodeTopologyQueue.Run()
 	}
 
-	go wait.Until(
-		func() {
-			ca.nodeTopologyQueue.Enqueue(nodeTopologyReconcileFakeNode)
-		},
-		nodeTopologyReconcileInterval, stopCh)
+	go func() {
+		time.Sleep(nodeTopologyReconcileInterval)
+		wait.Until(
+			func() {
+				ca.nodeTopologyQueue.Enqueue(nodeTopologyReconcileFakeNode)
+			},
+			nodeTopologyReconcileInterval, stopCh)
+	}()
 
 	<-stopCh
 }

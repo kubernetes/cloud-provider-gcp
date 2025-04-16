@@ -107,31 +107,84 @@ func TestBoundedRetries(t *testing.T) {
 	}
 }
 
-func TestNodeTopologyQueue(t *testing.T) {
+func TestNodeTopologyQueuePeriodicSync(t *testing.T) {
 	testClusterValues := gce.DefaultTestClusterValues()
+	testClusterValues.SubnetworkURL = exampleSubnetURL
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
-	nodeTopologySyncer := &NodeTopologySyncer{
-		nodeTopologyClient: ntfakeclient.NewSimpleClientset(),
-		cloud:              fakeGCE,
-	}
-	nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueueForTest", "nodetopologyCRD", 1, nodeTopologyKeyFun, nodeTopologySyncer.sync)
-	clientSet := fake.NewSimpleClientset()
-	sharedInfomer := informers.NewSharedInformerFactory(clientSet, 1*time.Hour)
-	ca := &cloudCIDRAllocator{
-		client:            clientSet,
-		nodeLister:        sharedInfomer.Core().V1().Nodes().Lister(),
-		nodesSynced:       sharedInfomer.Core().V1().Nodes().Informer().HasSynced,
-		nodeTopologyQueue: nodetopologyQueue,
-		queue:             workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "cloudCIDRAllocator"}),
-	}
-	nodetopologyQueue.Run()
-	nodeName := "testNode"
-	ca.AllocateOrOccupyCIDR(&v1.Node{
+
+	clientSet := clSetFake.NewSimpleClientset()
+	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, noResyncPeriodFunc()).Networking()
+	nwInformer := nwInfFactory.V1().Networks()
+	gnpInformer := nwInfFactory.V1().GKENetworkParamSets()
+
+	defaultnode := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
+			Name: "testNodeTopologyLifecycle",
 		},
-	})
-	nodetopologyQueue.Shutdown()
+	}
+	mscnode := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "testNode",
+			Labels: map[string]string{
+				testNodePoolSubnetLabelPrefix: "subnet1",
+			},
+		},
+	}
+	fakeClient := fake.NewSimpleClientset(defaultnode, mscnode)
+	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, time.Second)
+	fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
+
+	ensuredNodeTopologyCR := &ntv1.NodeTopology{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "default",
+		},
+	}
+	nodeTopologyClient := ntfakeclient.NewSimpleClientset(ensuredNodeTopologyCR)
+	allocatorParams := CIDRAllocatorParams{}
+
+	KuberntesClientSet := fake.NewSimpleClientset()
+	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, fakeNodeInformer, allocatorParams)
+	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
+	cloudAllocator.nodeTopologyQueue.Run()
+
+	stopCh := make(chan struct{})
+	fakeInformerFactory.Start(wait.NeverStop)
+	go wait.Until(
+		func() {
+			cloudAllocator.nodeTopologyQueue.Enqueue(nodeTopologyReconcileFakeNode)
+		},
+		time.Millisecond*500, stopCh)
+
+	i := 0
+	expectedSubnets := []string{"subnet-def", "subnet1"}
+	for i < 5 {
+		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
+			break
+		} else {
+			time.Sleep(time.Millisecond * 500)
+			i++
+		}
+	}
+	if i >= 5 {
+		t.Fatalf("Periodic sync node topology queue in not working.")
+	}
+
+	stopCh <- struct{}{}
+	cloudAllocator.nodeTopologyQueue.Shutdown()
+	time.Sleep(time.Second * 1)
+	mscnode2 := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "testNode2",
+			Labels: map[string]string{
+				testNodePoolSubnetLabelPrefix: "subnet2",
+			},
+		},
+	}
+	fakeClient.Tracker().Add(mscnode2)
+	time.Sleep(time.Second * 1)
+	if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); !ok {
+		t.Fatalf("After queue shutdown there should be no sync.")
+	}
 }
 
 func TestNodeTopologyQueue_AddOrUpdate(t *testing.T) {
