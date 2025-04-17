@@ -188,7 +188,9 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 			return nil
 		}),
 		DeleteFunc: nodeutil.CreateDeleteNodeHandler(func(node *v1.Node) error {
-			nodetopologyQueue.Enqueue(node)
+			if ca.nodeTopologyQueue != nil {
+				nodetopologyQueue.Enqueue(node)
+			}
 			return nil
 		}),
 	})

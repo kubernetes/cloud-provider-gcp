@@ -17,6 +17,8 @@ limitations under the License.
 package ipam
 
 import (
+	"sync"
+
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 )
@@ -30,8 +32,9 @@ type TaskQueue struct {
 	// keyFunc translates an object to a string-based key.
 	keyFunc func(obj interface{}) (string, error)
 	// sync is called for each item in the queue.
-	sync       func(item string) error
-	workerDone []chan struct{}
+	sync func(item string) error
+	// wait for multiple workers to finish
+	wg sync.WaitGroup
 	// numWorkers indicates the number of worker routines processing the queue.
 	numWorkers int
 }
@@ -40,7 +43,10 @@ type TaskQueue struct {
 func (t *TaskQueue) Run() {
 	for worker := 0; worker < t.numWorkers; worker++ {
 		klog.InfoS("Spawning off worker for taskQueue", "workerId", worker, "resource", t.resource)
-		go t.runInternal(worker)
+		t.wg.Add(1)
+		go func() {
+			t.runInternal(worker)
+		}()
 	}
 }
 
@@ -49,7 +55,7 @@ func (t *TaskQueue) runInternal(workerID int) {
 	for {
 		item, quit := t.queue.Get()
 		if quit {
-			close(t.workerDone[workerID])
+			t.wg.Done()
 			return
 		}
 		klog.InfoS("Syncing worker item", "workerID", workerID, "item", item, "resource", t.resource)
@@ -79,9 +85,7 @@ func (t *TaskQueue) Enqueue(obj interface{}) {
 func (t *TaskQueue) Shutdown() {
 	klog.InfoS("Shutdown")
 	t.queue.ShutDown()
-	for _, workerDone := range t.workerDone {
-		<-workerDone
-	}
+	t.wg.Wait()
 }
 
 // NewTaskQueue creates a new task queue with the given sync function
@@ -107,9 +111,7 @@ func NewTaskQueue(name, resource string, numWorkers int, keyFn func(obj interfac
 		keyFunc:    keyFn,
 		sync:       syncFn,
 		numWorkers: numWorkers,
-	}
-	for worker := 0; worker < numWorkers; worker++ {
-		taskQueue.workerDone = append(taskQueue.workerDone, make(chan struct{}))
+		wg:         sync.WaitGroup{},
 	}
 	return taskQueue
 }
