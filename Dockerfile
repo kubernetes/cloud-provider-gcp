@@ -7,14 +7,14 @@ ARG GOOS=linux
 ENV CGO_ENABLED=0
 
 WORKDIR /go/src/app
-COPY go.mod go.mod
-COPY go.sum go.sum
-COPY providers/go.mod providers/go.mod
-COPY providers/go.sum providers/go.sum
+COPY go.mod go.sum .
+COPY providers/go.mod providers/go.sum providers/
 COPY vendor/ vendor/
+
 COPY cmd/ cmd/
 COPY pkg/ pkg/
 COPY providers/ providers/
+
 RUN CGO_ENABLED=0 go build -o /go/bin/cloud-controller-manager ./cmd/cloud-controller-manager
 
 FROM registry.k8s.io/build-image/go-runner:v2.4.0-go1.24.0-bookworm.0
