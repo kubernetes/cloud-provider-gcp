@@ -44,9 +44,7 @@ func (t *TaskQueue) Run() {
 	for worker := 0; worker < t.numWorkers; worker++ {
 		klog.InfoS("Spawning off worker for taskQueue", "workerId", worker, "resource", t.resource)
 		t.wg.Add(1)
-		go func() {
-			t.runInternal(worker)
-		}()
+		go t.runInternal(worker)
 	}
 }
 
