@@ -22,7 +22,9 @@ const nodeTopologyCRName = "default"
 var (
 	// nodeTopologyKeyFun maps node to a namespaced name as key for the task queue.
 	nodeTopologyKeyFun = cache.DeletionHandlingMetaNamespaceKeyFunc
-	// nodeTopologyReconcileFakeNode is used for periodic re-sync
+	// nodeTopologyReconcileFakeNode triggers periodic re-synchronization. Because
+	// its fake node name won't match any real node, the syncer won't find it in the
+	// nodeInformer cache, forcing a full reconciliation of the nodeTopology custom resource.
 	nodeTopologyReconcileFakeNode = &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "/",
