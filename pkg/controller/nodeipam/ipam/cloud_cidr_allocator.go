@@ -73,7 +73,7 @@ const (
 
 // enableNodeTopology is bound to a command-line flag. When true, it enables
 // generating nodeTopology custom resource based on node's subnetwork configuration,
-// which is represented a node label. Enabling this feature also ensures that a 
+// which is represented a node label. Enabling this feature also ensures that a
 // nodeTopology CR named 'default' is already installed.
 var enableNodeTopology bool
 
@@ -137,17 +137,16 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		stackType = stackIPv6
 	}
 
-
 	ca := &cloudCIDRAllocator{
-		client:            client,
-		cloud:             gceCloud,
-		networksLister:    nwInformer.Lister(),
-		gnpLister:         gnpInformer.Lister(),
-		nodeLister:        nodeInformer.Lister(),
-		nodesSynced:       nodeInformer.Informer().HasSynced,
-		recorder:          recorder,
-		queue:             workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
-		stackType:         stackType,
+		client:         client,
+		cloud:          gceCloud,
+		networksLister: nwInformer.Lister(),
+		gnpLister:      gnpInformer.Lister(),
+		nodeLister:     nodeInformer.Lister(),
+		nodesSynced:    nodeInformer.Informer().HasSynced,
+		recorder:       recorder,
+		queue:          workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
+		stackType:      stackType,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
