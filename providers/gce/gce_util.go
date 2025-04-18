@@ -431,7 +431,7 @@ func shouldProcessNetLB(service *v1.Service, forwardingRule *compute.ForwardingR
 	if usesL4RBS(service, forwardingRule) {
 		return false
 	}
-	return true
+	return !isRbsDefault
 }
 
 // usesL4RBS checks if service uses Regional Backend Service as a Backend.
