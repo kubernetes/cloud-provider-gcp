@@ -89,11 +89,10 @@ type cloudCIDRAllocator struct {
 	nodeLister corelisters.NodeLister
 	// nodesSynced returns true if the node shared informer has been synced at least once.
 	nodesSynced cache.InformerSynced
-	// nodeTopologyClient will be used to read/patch the nodetopology CR.
-	nodeTopologyClient nodetopologyclientset.Interface
 
-	recorder record.EventRecorder
-	queue    workqueue.RateLimitingInterface
+	recorder          record.EventRecorder
+	queue             workqueue.RateLimitingInterface
+	nodeTopologyQueue *TaskQueue
 
 	stackType clusterStackType
 }
@@ -132,17 +131,24 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		stackType = stackIPv6
 	}
 
-	ca := &cloudCIDRAllocator{
-		client:             client,
-		cloud:              gceCloud,
-		networksLister:     nwInformer.Lister(),
-		gnpLister:          gnpInformer.Lister(),
-		nodeLister:         nodeInformer.Lister(),
-		nodesSynced:        nodeInformer.Informer().HasSynced,
+	nodeTopologySyncer := &NodeTopologySyncer{
 		nodeTopologyClient: nodeTopologyClient,
-		recorder:           recorder,
-		queue:              workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
-		stackType:          stackType,
+		cloud:              gceCloud,
+		nodeLister:         nodeInformer.Lister(),
+	}
+	nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueue", "nodetopologyCRD", nodeTopologyWorkers, nodeTopologyKeyFun, nodeTopologySyncer.sync)
+
+	ca := &cloudCIDRAllocator{
+		client:            client,
+		cloud:             gceCloud,
+		networksLister:    nwInformer.Lister(),
+		gnpLister:         gnpInformer.Lister(),
+		nodeLister:        nodeInformer.Lister(),
+		nodesSynced:       nodeInformer.Informer().HasSynced,
+		recorder:          recorder,
+		queue:             workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
+		nodeTopologyQueue: nodetopologyQueue,
+		stackType:         stackType,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -167,6 +173,26 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 			return nil
 		}),
 		DeleteFunc: nodeutil.CreateDeleteNodeHandler(ca.ReleaseCIDR),
+	})
+	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: nodeutil.CreateAddNodeHandler(func(node *v1.Node) error {
+			if ca.nodeTopologyQueue != nil {
+				ca.nodeTopologyQueue.Enqueue(node)
+			}
+			return nil
+		}),
+		UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(oldNode, newNode *v1.Node) error {
+			if ca.nodeTopologyQueue != nil {
+				nodetopologyQueue.Enqueue(newNode)
+			}
+			return nil
+		}),
+		DeleteFunc: nodeutil.CreateDeleteNodeHandler(func(node *v1.Node) error {
+			if ca.nodeTopologyQueue != nil {
+				nodetopologyQueue.Enqueue(node)
+			}
+			return nil
+		}),
 	})
 
 	nwInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -244,6 +270,7 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 	ctx, cancelFn := context.WithCancel(context.Background())
 	defer cancelFn()
 	defer ca.queue.ShutDown()
+	defer ca.nodeTopologyQueue.Shutdown()
 
 	klog.Infof("Starting cloud CIDR allocator")
 	defer klog.Infof("Shutting down cloud CIDR allocator")
@@ -255,6 +282,18 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 	for i := 0; i < cidrUpdateWorkers; i++ {
 		go wait.UntilWithContext(ctx, ca.runWorker, time.Second)
 	}
+	if ca.nodeTopologyQueue != nil {
+		ca.nodeTopologyQueue.Run()
+	}
+
+	go func() {
+		time.Sleep(nodeTopologyReconcileInterval)
+		wait.Until(
+			func() {
+				ca.nodeTopologyQueue.Enqueue(nodeTopologyReconcileFakeNode)
+			},
+			nodeTopologyReconcileInterval, stopCh)
+	}()
 
 	<-stopCh
 }
@@ -433,11 +472,6 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		}
 	}
 
-	if err := ca.updateNodeTopology(node); err != nil {
-		// This is only required for multi subnet clusters. Log and ignore the error.
-		klog.ErrorS(err, "Failed to update the node topology resource", "nodeName", node.Name)
-	}
-
 	return err
 }
 
@@ -522,7 +556,6 @@ func (ca *cloudCIDRAllocator) updateNodeCIDR(node, oldNode *v1.Node) error {
 func (ca *cloudCIDRAllocator) ReleaseCIDR(node *v1.Node) error {
 	klog.V(2).Infof("Node %v PodCIDR (%v) will be released by external cloud provider (not managed by controller)",
 		node.Name, node.Spec.PodCIDR)
-	// TODO: Handle the nodetopology CR subnet deletion here
 	return nil
 }
 

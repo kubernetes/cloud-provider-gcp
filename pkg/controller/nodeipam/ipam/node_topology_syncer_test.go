@@ -3,12 +3,15 @@ package ipam
 import (
 	"context"
 	"testing"
+	"time"
 
 	ntv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
 	ntclient "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	ntfakeclient "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/fake"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 )
 
@@ -156,33 +159,44 @@ func TestGetSubnetWithPrefixFromURL(t *testing.T) {
 	}
 }
 
-func TestUpdateNodeTopology(t *testing.T) {
-
-	testClusterValues := gce.DefaultTestClusterValues()
-	testClusterValues.SubnetworkURL = exampleSubnetURL
-	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
-
+func testClient() *ntfakeclient.Clientset {
 	emptyNodeTopologyCR := &ntv1.NodeTopology{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "default",
 		},
-		// Status is initially left empty
 	}
-	ntClient := ntfakeclient.NewSimpleClientset(emptyNodeTopologyCR)
+	return ntfakeclient.NewSimpleClientset(emptyNodeTopologyCR)
+}
+
+func TestNodeTopologySync(t *testing.T) {
+	testClusterValues := gce.DefaultTestClusterValues()
+	testClusterValues.SubnetworkURL = exampleSubnetURL
+	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+	ntClient := testClient()
 
 	tests := []struct {
 		name            string
 		node            *v1.Node
+		nodeListInCache []*v1.Node
 		existingSubnets []string
 		wantSubnets     []string
+		wantErr         bool
 	}{
 		{
 			name: "node's subnet already exists in the cr",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						testNodePoolSubnetLabelPrefix: "subnet-def",
-						"another-label":               "value",
+					Name: "a-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "a-node",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
 					},
 				},
 			},
@@ -193,8 +207,16 @@ func TestUpdateNodeTopology(t *testing.T) {
 			name: "node has a new subnet",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						testNodePoolSubnetLabelPrefix: "new-subnet",
+					Name: "a-new-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "a-new-node",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "new-subnet",
+						},
 					},
 				},
 			},
@@ -205,8 +227,16 @@ func TestUpdateNodeTopology(t *testing.T) {
 			name: "node has a subnet and cr's subnets is empty",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						testNodePoolSubnetLabelPrefix: "subnet-def",
+					Name: "a-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "a-node",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+						},
 					},
 				},
 			},
@@ -217,7 +247,122 @@ func TestUpdateNodeTopology(t *testing.T) {
 			name: "node has no subnet label and ensure we add the default subnet to cr",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
+					Name:   "a-node",
 					Labels: map[string]string{},
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "a-node",
+						Labels: map[string]string{},
+					},
+				},
+			},
+			existingSubnets: []string{},
+			wantSubnets:     []string{"subnet-def"},
+		},
+		{
+			name: "delete node is reconciliation - delete default node",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "not-exist-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{},
+			existingSubnets: []string{"subnet-def"},
+			wantSubnets:     []string{"subnet-def"},
+		},
+		{
+			name: "delete node is reconciliation - delete msc node",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "not-exist-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{},
+					},
+				},
+			},
+			existingSubnets: []string{"new-subnet"},
+			wantSubnets:     []string{"subnet-def"},
+		},
+		{
+			name: "delete node is reconciliation - delete one msc node among multiple msc nodes",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "not-exist-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "additional-subnet-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "remaining-subnet",
+							"another-label":               "value",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "additional-subnet-2",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "remaining-subnet-2",
+							"another-label":               "value2",
+						},
+					},
+				},
+			},
+			existingSubnets: []string{"new-subnet", "remaining-subnet", "remaining-subnet-2"},
+			wantSubnets:     []string{"subnet-def", "remaining-subnet", "remaining-subnet-2"},
+		},
+		{
+			name: "delete node is reconciliation - delete all msc nodes",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "not-exist-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "random-subnet",
+						Labels: map[string]string{
+							"random-label": "remaining-subnet",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "default-subnet",
+						Labels: map[string]string{},
+					},
+				},
+			},
+			existingSubnets: []string{},
+			wantSubnets:     []string{"subnet-def"},
+		},
+		{
+			name: "delete node is reconciliation - use fake reconciliation node ",
+			node: nodeTopologyReconcileFakeNode,
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "random-subnet",
+						Labels: map[string]string{
+							"random-label": "remaining-subnet",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "default-subnet",
+						Labels: map[string]string{},
+					},
 				},
 			},
 			existingSubnets: []string{},
@@ -227,23 +372,31 @@ func TestUpdateNodeTopology(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// populate the def subnet URL
-			// pass the fake nodetopology client
-			// create a fake default cr (outside this loop. at the begining of the test)
-			// populate the existingSubnets in the cr
-			// call the ca.updateNodeTopology and read the subnets
-			// verify the subnets with wantSubnets
 			addSubnetsToCR(tc.existingSubnets, ntClient)
-			ca := &cloudCIDRAllocator{
+			fakeClient := &fake.Clientset{}
+			fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, 0*time.Second)
+			fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
+			for _, node := range tc.nodeListInCache {
+				fakeNodeInformer.Informer().GetStore().Add(node)
+			}
+			syncer := &NodeTopologySyncer{
 				cloud:              fakeGCE,
 				nodeTopologyClient: ntClient,
+				nodeLister:         fakeNodeInformer.Lister(),
 			}
-			err := ca.updateNodeTopology(tc.node)
+			key, _ := nodeTopologyKeyFun(tc.node)
+			err := syncer.sync(key)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("NodeTopologySyncer.sync() returns nil but want error")
+				}
+				return
+			}
 			if err != nil {
-				t.Errorf("ca.updateNodeTopology() returned error: %v", err)
+				t.Fatalf("NodeTopologySyncer.sync() returned error: %v", err)
 			}
-			if !verifySubnetsInCR(t, tc.wantSubnets, ntClient) {
-				t.Errorf("ca.updateNodeTopology() returned incorrect subnets")
+			if ok, cr := verifySubnetsInCR(t, tc.wantSubnets, ntClient); !ok {
+				t.Errorf("NodeTopologySyncer.sync() returned incorrect subnets, got %v, expected %v", cr.Status.Subnets, tc.wantSubnets)
 			}
 		})
 	}
@@ -267,7 +420,7 @@ func addSubnetsToCR(subnets []string, client ntclient.Interface) {
 	client.NetworkingV1().NodeTopologies().UpdateStatus(ctx, cr, metav1.UpdateOptions{})
 }
 
-func verifySubnetsInCR(t *testing.T, subnets []string, client ntclient.Interface) bool {
+func verifySubnetsInCR(t *testing.T, subnets []string, client ntclient.Interface) (bool, *ntv1.NodeTopology) {
 	ctx := context.Background()
 	hm := make(map[string]bool)
 	for _, subnet := range subnets {
@@ -277,15 +430,15 @@ func verifySubnetsInCR(t *testing.T, subnets []string, client ntclient.Interface
 	cr, _ := client.NetworkingV1().NodeTopologies().Get(ctx, "default", metav1.GetOptions{})
 
 	if len(subnets) != len(cr.Status.Subnets) {
-		return false
+		return false, cr
 	}
 	for _, subnetConfig := range cr.Status.Subnets {
 		if _, found := hm[subnetConfig.Name]; !found {
-			return false
+			return false, cr
 		}
 		if subnetConfig.SubnetPath != (exampleSubnetPathPrefix + subnetConfig.Name) {
-			return false
+			return false, cr
 		}
 	}
-	return true
+	return true, nil
 }
