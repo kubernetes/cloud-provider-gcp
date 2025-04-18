@@ -59,9 +59,10 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-	if (apiService.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(apiService, LegacyRegionalExternalLoadBalancerClass)) || usesL4RBS(apiService, existingFwdRule) {
+	if !shouldProcessNetLB(apiService, existingFwdRule) {
 		return nil, cloudprovider.ImplementedElsewhere
 	}
+
 	if hasLoadBalancerClass(apiService, LegacyRegionalExternalLoadBalancerClass) {
 		if apiService.Annotations[ServiceAnnotationLoadBalancerType] == string(LBTypeInternal) {
 			g.eventRecorder.Event(apiService, v1.EventTypeWarning, "ConflictingConfiguration", fmt.Sprintf("loadBalancerClass conflicts with %s: %s annotation. External LoadBalancer Service provisioned.", ServiceAnnotationLoadBalancerType, string(LBTypeInternal)))
@@ -79,6 +80,12 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	}
 
 	loadBalancerName := g.GetLoadBalancerName(context.TODO(), clusterName, apiService)
+	klog.Infof("ensureExternalLoadBalancer(%v): Attaching %q finalizer to service %s", loadBalancerName, NetLBFinalizerV1, apiService.Name)
+	if err := addFinalizer(apiService, g.client.CoreV1(), NetLBFinalizerV1); err != nil {
+		klog.Errorf("Failed to attach finalizer '%s' on service %s/%s - %v", NetLBFinalizerV1, apiService.Namespace, apiService.Name, err)
+		return nil, err
+	}
+
 	requestedIP := apiService.Spec.LoadBalancerIP
 	ports := apiService.Spec.Ports
 	portStr := []string{}
@@ -300,8 +307,13 @@ func (g *Cloud) updateExternalLoadBalancer(clusterName string, service *v1.Servi
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-	if (service.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(service, LegacyRegionalExternalLoadBalancerClass)) || usesL4RBS(service, nil) {
+	if !shouldProcessNetLB(service, nil) {
 		return cloudprovider.ImplementedElsewhere
+	}
+
+	if err := addFinalizer(service, g.client.CoreV1(), NetLBFinalizerV1); err != nil {
+		klog.Errorf("Failed to attach finalizer '%s' on service %s/%s - %v", NetLBFinalizerV1, service.Namespace, service.Name, err)
+		return err
 	}
 
 	hosts, err := g.getInstancesByNames(nodeNames(nodes))
@@ -318,7 +330,7 @@ func (g *Cloud) ensureExternalLoadBalancerDeleted(clusterName, clusterID string,
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-	if (service.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(service, LegacyRegionalExternalLoadBalancerClass)) || usesL4RBS(service, nil) {
+	if !shouldProcessNetLB(service, nil) {
 		return cloudprovider.ImplementedElsewhere
 	}
 
@@ -381,6 +393,12 @@ func (g *Cloud) ensureExternalLoadBalancerDeleted(clusterName, clusterID string,
 	)
 	if errs != nil {
 		return utilerrors.Flatten(errs)
+	}
+
+	klog.Infof("ensureExternalLoadBalancerDeleted(%v): Removing %q finalizer from service %s", loadBalancerName, NetLBFinalizerV1, service.Name)
+	if err := removeFinalizer(service, g.client.CoreV1(), NetLBFinalizerV1); err != nil {
+		klog.Errorf("Failed to remove finalizer '%s' from service %s - %v", NetLBFinalizerV1, service.Name, err)
+		return err
 	}
 	return nil
 }

@@ -40,6 +40,9 @@ func TestGetLoadBalancer(t *testing.T) {
 
 	apiService := fakeLoadbalancerService("")
 
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+
 	// When a loadbalancer has not been created
 	status, found, err := gce.GetLoadBalancer(context.Background(), vals.ClusterName, apiService)
 	assert.Nil(t, status)
@@ -70,6 +73,10 @@ func TestEnsureLoadBalancerCreatesExternalLb(t *testing.T) {
 	require.NoError(t, err)
 
 	apiService := fakeLoadbalancerService("")
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+
 	status, err := gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
@@ -108,6 +115,10 @@ func TestEnsureLoadBalancerDeletesExistingInternalLb(t *testing.T) {
 	require.NoError(t, err)
 
 	apiService := fakeLoadbalancerService("")
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+
 	createInternalLoadBalancer(gce, apiService, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 
 	status, err := gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
@@ -130,11 +141,17 @@ func TestEnsureLoadBalancerDeletesExistingExternalLb(t *testing.T) {
 	require.NoError(t, err)
 
 	apiService := fakeLoadbalancerService("")
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+
 	createExternalLoadBalancer(gce, apiService, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 
 	apiService = fakeLoadbalancerService(string(LBTypeInternal))
-	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Update(context.TODO(), apiService, metav1.UpdateOptions{})
 	require.NoError(t, err)
+
 	status, err := gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
@@ -155,7 +172,14 @@ func TestEnsureLoadBalancerDeletedDeletesExternalLb(t *testing.T) {
 	require.NoError(t, err)
 
 	apiService := fakeLoadbalancerService("")
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+
 	createExternalLoadBalancer(gce, apiService, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Get(context.TODO(), apiService.Name, metav1.GetOptions{})
+	require.NoError(t, err)
 
 	err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, apiService)
 	assert.NoError(t, err)

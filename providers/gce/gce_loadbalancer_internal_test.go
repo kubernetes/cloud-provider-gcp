@@ -417,6 +417,9 @@ func TestEnsureInternalLoadBalancerDeprecatedAnnotation(t *testing.T) {
 
 	// Now add the latest annotation and change scheme to external
 	svc.Annotations[ServiceAnnotationLoadBalancerType] = ""
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
 	status, err = gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
@@ -424,6 +427,12 @@ func TestEnsureInternalLoadBalancerDeprecatedAnnotation(t *testing.T) {
 	assert.NotEmpty(t, status.Ingress)
 	assertInternalLbResourcesDeleted(t, gce, svc, vals, false)
 	assertExternalLbResources(t, gce, svc, vals, nodeNames)
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	if !hasFinalizer(svc, NetLBFinalizerV1) {
+		t.Fatalf("Expected finalizer '%s' not found in Finalizer list - %v", NetLBFinalizerV1, svc.Finalizers)
+	}
 	// Delete the service
 	err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, svc)
 	if err != nil {
@@ -1440,6 +1449,7 @@ func TestEnsureInternalLoadBalancerDeletedSubsetting(t *testing.T) {
 	// mock scenario where user updates the service to use a different IP, this should be processed here.
 	svc.Spec.LoadBalancerIP = "1.2.3.4"
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
+	require.NoError(t, err)
 	err = gce.UpdateLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
 	assert.NoError(t, err)
 	// ensure service is still managed by this controller
@@ -1639,6 +1649,10 @@ func TestGlobalAccessChangeScheme(t *testing.T) {
 	assert.NotEmpty(t, status.Ingress)
 	// Change service to include the global access annotation
 	svc.Annotations[ServiceAnnotationILBAllowGlobalAccess] = "true"
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
 	status, err = gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
@@ -1653,6 +1667,10 @@ func TestGlobalAccessChangeScheme(t *testing.T) {
 	}
 	// change the scheme to externalLoadBalancer
 	delete(svc.Annotations, ServiceAnnotationLoadBalancerType)
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
 	status, err = gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
@@ -1666,6 +1684,12 @@ func TestGlobalAccessChangeScheme(t *testing.T) {
 	}
 	if fwdRule.AllowGlobalAccess {
 		t.Errorf("Unexpected true value for AllowGlobalAccess")
+	}
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	if !hasFinalizer(svc, NetLBFinalizerV1) {
+		t.Fatalf("Expected finalizer '%s' not found in Finalizer list - %v", NetLBFinalizerV1, svc.Finalizers)
 	}
 	// Delete the service
 	err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, svc)
