@@ -115,7 +115,7 @@ type CIDRAllocatorParams struct {
 }
 
 // New creates a new CIDR range allocator.
-func New(kubeClient clientset.Interface, cloud cloudprovider.Interface, nodeInformer informers.NodeInformer, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, allocatorType CIDRAllocatorType, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
+func New(kubeClient clientset.Interface, cloud cloudprovider.Interface, nodeInformer informers.NodeInformer, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, enableMultiSubnetCluster bool, allocatorType CIDRAllocatorType, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
 	nodeList, err := listNodes(kubeClient)
 	if err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func New(kubeClient clientset.Interface, cloud cloudprovider.Interface, nodeInfo
 	case RangeAllocatorType:
 		return NewCIDRRangeAllocator(kubeClient, nodeInformer, allocatorParams, nodeList)
 	case CloudAllocatorType:
-		return NewCloudCIDRAllocator(kubeClient, cloud, nwInformer, gnpInformer, nodeTopologyClient, nodeInformer, allocatorParams)
+		return NewCloudCIDRAllocator(kubeClient, cloud, nwInformer, gnpInformer, nodeTopologyClient, enableMultiSubnetCluster, nodeInformer, allocatorParams)
 	default:
 		return nil, fmt.Errorf("invalid CIDR allocator type: %v", allocatorType)
 	}

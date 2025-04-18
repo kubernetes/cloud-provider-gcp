@@ -31,4 +31,9 @@ type NodeIPAMControllerConfiguration struct {
 	// NodeCIDRMaskSizeIPv6 is the mask size for IPv6 node cidr in dual-stack cluster.
 	// This can be used only with dual stack clusters and is incompatible with single stack clusters.
 	NodeCIDRMaskSizeIPv6 int32
+	// EnableMultiSubnetCluster is bound to a command-line flag. When true, it enables
+	// generating nodeTopology custom resource based on node's subnetwork configuration,
+	// which is represented a node label. Enabling this feature also ensures that a
+	// nodeTopology CR named 'default' is already installed.
+	EnableMultiSubnetCluster bool
 }
