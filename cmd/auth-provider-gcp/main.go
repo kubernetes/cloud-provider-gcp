@@ -39,7 +39,7 @@ func main() {
 	}
 	credCmd, err := app.NewGetCredentialsCommand()
 	if err != nil {
-		klog.Errorf(err.Error())
+		klog.Errorf("%s", err.Error())
 		os.Exit(1)
 	}
 	rootCmd.AddCommand(credCmd)
@@ -47,7 +47,7 @@ func main() {
 	flag.Parse()
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	if err := rootCmd.Execute(); err != nil {
-		klog.Errorf(err.Error())
+		klog.Errorf("%s", err.Error())
 		os.Exit(1)
 	}
 }
