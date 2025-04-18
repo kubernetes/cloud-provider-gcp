@@ -24,9 +24,9 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/go-openapi/swag",
-        "//vendor/github.com/google/gofuzz",
         "//vendor/k8s.io/kube-openapi/pkg/internal",
         "//vendor/k8s.io/kube-openapi/pkg/internal/third_party/go-json-experiment/json",
         "//vendor/k8s.io/kube-openapi/pkg/validation/spec",
+        "//vendor/sigs.k8s.io/randfill",
     ],
 )

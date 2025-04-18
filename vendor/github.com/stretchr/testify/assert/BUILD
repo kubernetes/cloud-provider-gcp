@@ -19,6 +19,6 @@ go_library(
     deps = [
         "//vendor/github.com/davecgh/go-spew/spew",
         "//vendor/github.com/pmezard/go-difflib/difflib",
-        "//vendor/gopkg.in/yaml.v3:yaml_v3",
+        "//vendor/github.com/stretchr/testify/assert/yaml",
     ],
 )
