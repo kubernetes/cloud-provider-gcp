@@ -59,11 +59,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-<<<<<<< HEAD
-	if !shouldProcessNetLB(apiService, existingFwdRule) {
-=======
-	if !usesCCMforNetLB(apiService, existingFwdRule, g.enableRBSDefaultForL4NetLB) {
->>>>>>> c5dd0bff (feat(gcp/ccm/l4lb): Add flag to default L4 NetLB controller)
+	if !shouldProcessNetLB(apiService, existingFwdRule, g.enableRBSDefaultForL4NetLB) {
 		return nil, cloudprovider.ImplementedElsewhere
 	}
 
@@ -317,11 +313,7 @@ func (g *Cloud) updateExternalLoadBalancer(clusterName string, service *v1.Servi
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-<<<<<<< HEAD
-	if !shouldProcessNetLB(service, nil) {
-=======
-	if !usesCCMforNetLB(service, nil, g.enableRBSDefaultForL4NetLB) {
->>>>>>> c5dd0bff (feat(gcp/ccm/l4lb): Add flag to default L4 NetLB controller)
+	if !shouldProcessNetLB(service, nil, g.enableRBSDefaultForL4NetLB) {
 		return cloudprovider.ImplementedElsewhere
 	}
 
@@ -344,11 +336,7 @@ func (g *Cloud) ensureExternalLoadBalancerDeleted(clusterName, clusterID string,
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-<<<<<<< HEAD
-	if !shouldProcessNetLB(service, nil) {
-=======
-	if !usesCCMforNetLB(service, nil, g.enableRBSDefaultForL4NetLB) {
->>>>>>> c5dd0bff (feat(gcp/ccm/l4lb): Add flag to default L4 NetLB controller)
+	if !shouldProcessNetLB(service, nil, g.enableRBSDefaultForL4NetLB) {
 		return cloudprovider.ImplementedElsewhere
 	}
 
