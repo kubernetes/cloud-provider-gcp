@@ -185,21 +185,15 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 
 		nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: nodeutil.CreateAddNodeHandler(func(node *v1.Node) error {
-				if ca.nodeTopologyQueue != nil {
-					ca.nodeTopologyQueue.Enqueue(node)
-				}
+				ca.nodeTopologyQueue.Enqueue(node)
 				return nil
 			}),
 			UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(oldNode, newNode *v1.Node) error {
-				if ca.nodeTopologyQueue != nil {
-					nodetopologyQueue.Enqueue(newNode)
-				}
+				nodetopologyQueue.Enqueue(newNode)
 				return nil
 			}),
 			DeleteFunc: nodeutil.CreateDeleteNodeHandler(func(node *v1.Node) error {
-				if ca.nodeTopologyQueue != nil {
-					nodetopologyQueue.Enqueue(node)
-				}
+				nodetopologyQueue.Enqueue(node)
 				return nil
 			}),
 		})
@@ -281,7 +275,9 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 	defer cancelFn()
 	defer ca.queue.ShutDown()
 	if enableNodeTopology {
-		defer ca.nodeTopologyQueue.Shutdown()
+		if ca.nodeTopologyQueue != nil {
+			defer ca.nodeTopologyQueue.Shutdown()
+		}
 	}
 	klog.Infof("Starting cloud CIDR allocator")
 	defer klog.Infof("Shutting down cloud CIDR allocator")
@@ -302,7 +298,9 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 			time.Sleep(nodeTopologyReconcileInterval)
 			wait.Until(
 				func() {
-					ca.nodeTopologyQueue.Enqueue(nodeTopologyReconcileFakeNode)
+					if ca.nodeTopologyQueue != nil {
+						ca.nodeTopologyQueue.Enqueue(nodeTopologyReconcileFakeNode)
+					}
 				},
 				nodeTopologyReconcileInterval, stopCh)
 		}()
