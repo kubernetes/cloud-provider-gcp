@@ -71,6 +71,12 @@ const (
 	stackIPv6     clusterStackType = "IPv6"
 )
 
+// enableNodeTopology is bound to a command-line flag. When true, it enables
+// generating nodeTopology custom resource based on node's subnetwork configuration,
+// which is represented by a node label. Enabling this feature also assumes that a
+// nodeTopology CR named 'default' is already installed.
+var enableNodeTopology bool
+
 // cloudCIDRAllocator allocates node CIDRs according to IP address aliases
 // assigned by the cloud provider. In this case, the allocation and
 // deallocation is delegated to the external provider, and the controller
@@ -100,7 +106,7 @@ type cloudCIDRAllocator struct {
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
 
 // NewCloudCIDRAllocator creates a new cloud CIDR allocator.
-func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, nodeInformer informers.NodeInformer, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
+func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, enableMultiSubnetCluster bool, nodeInformer informers.NodeInformer, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
 	if client == nil {
 		klog.Fatalf("kubeClient is nil when starting NodeController")
 	}
@@ -131,24 +137,16 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		stackType = stackIPv6
 	}
 
-	nodeTopologySyncer := &NodeTopologySyncer{
-		nodeTopologyClient: nodeTopologyClient,
-		cloud:              gceCloud,
-		nodeLister:         nodeInformer.Lister(),
-	}
-	nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueue", "nodetopologyCRD", nodeTopologyWorkers, nodeTopologyKeyFun, nodeTopologySyncer.sync)
-
 	ca := &cloudCIDRAllocator{
-		client:            client,
-		cloud:             gceCloud,
-		networksLister:    nwInformer.Lister(),
-		gnpLister:         gnpInformer.Lister(),
-		nodeLister:        nodeInformer.Lister(),
-		nodesSynced:       nodeInformer.Informer().HasSynced,
-		recorder:          recorder,
-		queue:             workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
-		nodeTopologyQueue: nodetopologyQueue,
-		stackType:         stackType,
+		client:         client,
+		cloud:          gceCloud,
+		networksLister: nwInformer.Lister(),
+		gnpLister:      gnpInformer.Lister(),
+		nodeLister:     nodeInformer.Lister(),
+		nodesSynced:    nodeInformer.Informer().HasSynced,
+		recorder:       recorder,
+		queue:          workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
+		stackType:      stackType,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -174,26 +172,32 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		}),
 		DeleteFunc: nodeutil.CreateDeleteNodeHandler(ca.ReleaseCIDR),
 	})
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: nodeutil.CreateAddNodeHandler(func(node *v1.Node) error {
-			if ca.nodeTopologyQueue != nil {
+
+	enableNodeTopology = enableMultiSubnetCluster
+	if enableNodeTopology {
+		nodeTopologySyncer := &NodeTopologySyncer{
+			nodeTopologyClient: nodeTopologyClient,
+			cloud:              gceCloud,
+			nodeLister:         nodeInformer.Lister(),
+		}
+		nodetopologyQueue := NewTaskQueue("nodetopologyTaskQueue", "nodetopologyCRD", nodeTopologyWorkers, nodeTopologyKeyFun, nodeTopologySyncer.sync)
+		ca.nodeTopologyQueue = nodetopologyQueue
+
+		nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: nodeutil.CreateAddNodeHandler(func(node *v1.Node) error {
 				ca.nodeTopologyQueue.Enqueue(node)
-			}
-			return nil
-		}),
-		UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(oldNode, newNode *v1.Node) error {
-			if ca.nodeTopologyQueue != nil {
+				return nil
+			}),
+			UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(oldNode, newNode *v1.Node) error {
 				nodetopologyQueue.Enqueue(newNode)
-			}
-			return nil
-		}),
-		DeleteFunc: nodeutil.CreateDeleteNodeHandler(func(node *v1.Node) error {
-			if ca.nodeTopologyQueue != nil {
+				return nil
+			}),
+			DeleteFunc: nodeutil.CreateDeleteNodeHandler(func(node *v1.Node) error {
 				nodetopologyQueue.Enqueue(node)
-			}
-			return nil
-		}),
-	})
+				return nil
+			}),
+		})
+	}
 
 	nwInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(originalObj interface{}) {
@@ -270,8 +274,6 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 	ctx, cancelFn := context.WithCancel(context.Background())
 	defer cancelFn()
 	defer ca.queue.ShutDown()
-	defer ca.nodeTopologyQueue.Shutdown()
-
 	klog.Infof("Starting cloud CIDR allocator")
 	defer klog.Infof("Shutting down cloud CIDR allocator")
 
@@ -282,18 +284,26 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 	for i := 0; i < cidrUpdateWorkers; i++ {
 		go wait.UntilWithContext(ctx, ca.runWorker, time.Second)
 	}
-	if ca.nodeTopologyQueue != nil {
-		ca.nodeTopologyQueue.Run()
-	}
 
-	go func() {
-		time.Sleep(nodeTopologyReconcileInterval)
-		wait.Until(
-			func() {
-				ca.nodeTopologyQueue.Enqueue(nodeTopologyReconcileFakeNode)
-			},
-			nodeTopologyReconcileInterval, stopCh)
-	}()
+	if enableNodeTopology {
+		if ca.nodeTopologyQueue != nil {
+			defer ca.nodeTopologyQueue.Shutdown()
+			ca.nodeTopologyQueue.Run()
+		}
+		go func() {
+			time.Sleep(nodeTopologyReconcileInterval)
+			wait.Until(
+				func() {
+					if ca.nodeTopologyQueue != nil {
+						// nodeTopologyReconcileFakeNode triggers reconciliation. Node_topology_syncer
+						// will not find the fake node in nodeInformer cache, forcing a full reconciliation
+						// of the nodeTopology custom resource.
+						ca.nodeTopologyQueue.Enqueue(nodeTopologyReconcileFakeNode)
+					}
+				},
+				nodeTopologyReconcileInterval, stopCh)
+		}()
+	}
 
 	<-stopCh
 }
