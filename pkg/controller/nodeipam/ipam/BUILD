@@ -89,7 +89,6 @@ go_test(
         "//vendor/google.golang.org/api/compute/v1:compute",
         "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/apimachinery/pkg/api/resource",
-        "//vendor/k8s.io/apimachinery/pkg/api/meta",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/client-go/informers",

@@ -180,7 +180,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 			cloud:              gceCloud,
 			nodeLister:         nodeInformer.Lister(),
 		}
-		nodetopologyQueue := NewTaskQueue("nodetopologyTaskQueue", "nodetopologyCRD", nodeTopologyWorkers, nodeTopologyKeyFun, nodeTopologySyncer.sync)
+		nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueue", "nodetopologyCRD", nodeTopologyWorkers, nodeTopologyKeyFun, nodeTopologySyncer.sync)
 		ca.nodeTopologyQueue = nodetopologyQueue
 
 		nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -189,12 +189,6 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 				return nil
 			}),
 			UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(oldNode, newNode *v1.Node) error {
-				_, oldNodeLabel := getNodeSubnetLabel(oldNode)
-				_, newNodeLabel := getNodeSubnetLabel(newNode)
-				if oldNodeLabel == newNodeLabel {
-					klog.V(0).InfoS("Node subnet label does not change, skip enqueue item, label key: cloud.google.com/gke-node-pool-subnet", "node name", newNode.GetName(), "old node label", oldNodeLabel, "new node label", newNodeLabel)
-					return nil
-				}
 				nodetopologyQueue.Enqueue(newNode)
 				return nil
 			}),
