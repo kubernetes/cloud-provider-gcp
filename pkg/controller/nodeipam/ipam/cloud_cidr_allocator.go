@@ -73,7 +73,7 @@ const (
 
 // enableNodeTopology is bound to a command-line flag. When true, it enables
 // generating nodeTopology custom resource based on node's subnetwork configuration,
-// which is represented a node label. Enabling this feature also ensures that a
+// which is represented by a node label. Enabling this feature also ensures that a
 // nodeTopology CR named 'default' is already installed.
 var enableNodeTopology bool
 
