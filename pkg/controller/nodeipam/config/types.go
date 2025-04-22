@@ -33,7 +33,7 @@ type NodeIPAMControllerConfiguration struct {
 	NodeCIDRMaskSizeIPv6 int32
 	// EnableMultiSubnetCluster is bound to a command-line flag. When true, it enables
 	// generating nodeTopology custom resource based on node's subnetwork configuration,
-	// which is represented by a node label. Enabling this feature also ensures that a
+	// which is represented by a node label. Enabling this feature also assumes that a
 	// nodeTopology CR named 'default' is already installed.
 	EnableMultiSubnetCluster bool
 }

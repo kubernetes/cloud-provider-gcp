@@ -73,7 +73,7 @@ const (
 
 // enableNodeTopology is bound to a command-line flag. When true, it enables
 // generating nodeTopology custom resource based on node's subnetwork configuration,
-// which is represented by a node label. Enabling this feature also ensures that a
+// which is represented by a node label. Enabling this feature also assumes that a
 // nodeTopology CR named 'default' is already installed.
 var enableNodeTopology bool
 
@@ -295,6 +295,9 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 			wait.Until(
 				func() {
 					if ca.nodeTopologyQueue != nil {
+						// nodeTopologyReconcileFakeNode triggers reconciliation. Node_topology_syncer
+						// will not find the fake node in nodeInformer cache, forcing a full reconciliation
+						// of the nodeTopology custom resource.
 						ca.nodeTopologyQueue.Enqueue(nodeTopologyReconcileFakeNode)
 					}
 				},
