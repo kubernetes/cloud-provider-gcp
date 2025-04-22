@@ -36,6 +36,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -210,7 +211,7 @@ func TestNodeTopologyQueue_AddOrUpdate(t *testing.T) {
 			},
 		},
 	}
-	fakeClient := fake.NewSimpleClientset(defaultnode, mscnode)
+	fakeClient := fake.NewSimpleClientset(defaultnode)
 	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, time.Second)
 	fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
 
@@ -230,7 +231,8 @@ func TestNodeTopologyQueue_AddOrUpdate(t *testing.T) {
 	go cloudAllocator.Run(wait.NeverStop)
 
 	// TODO: Fix node_topology_syncer addOrUpdate should add default subnet regardless of nodes ordering on the informer
-	fakeNodeInformer.Informer().GetStore().Add(mscnode)
+	time.Sleep(time.Millisecond * 500)
+	fakeClient.Tracker().Add(mscnode)
 	expectedSubnets := []string{"subnet-def", "subnet1"}
 	i := 0
 	for i < 5 {
@@ -265,6 +267,29 @@ func TestNodeTopologyQueue_AddOrUpdate(t *testing.T) {
 		}
 	}
 	if i >= 5 {
+		t.Fatalf("AddOrUpdate node topology CRD not working as expected")
+	}
+	mscnode2.ObjectMeta.Labels[testNodePoolSubnetLabelPrefix] = "subnet3"
+	fakeNodeInformer.Informer().GetStore().Update(mscnode2)
+	// TODO: fix update from tracker so that it triggers nodeInformer update operation
+	gvr, _ := apimeta.UnsafeGuessKindToResource(mscnode2.TypeMeta.GroupVersionKind())
+	fakeClient.Tracker().Update(gvr, mscnode2, mscnode2.GetNamespace(), metav1.UpdateOptions{})
+	i = 0
+	for i < 5 {
+		if ok, cr := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
+			break
+		} else {
+			fmt.Printf("current cr %v", cr)
+			time.Sleep(time.Millisecond * 500)
+			i++
+		}
+	}
+	if i >= 5 {
+		t.Fatalf("AddOrUpdate node topology CRD not working as expected")
+	}
+	mscnode2.ObjectMeta.Labels[testNodePoolSubnetLabelPrefix] = "subnet2"
+	fakeClient.Tracker().Update(gvr, mscnode2, mscnode2.GetNamespace(), metav1.UpdateOptions{})
+	if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); !ok {
 		t.Fatalf("AddOrUpdate node topology CRD not working as expected")
 	}
 }
