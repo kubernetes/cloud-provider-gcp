@@ -180,7 +180,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 			cloud:              gceCloud,
 			nodeLister:         nodeInformer.Lister(),
 		}
-		nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueue", "nodetopologyCRD", nodeTopologyWorkers, nodeTopologyKeyFun, nodeTopologySyncer.sync)
+		nodetopologyQueue := NewTaskQueue("nodetopologyTaskQueue", "nodetopologyCRD", nodeTopologyWorkers, nodeTopologyKeyFun, nodeTopologySyncer.sync)
 		ca.nodeTopologyQueue = nodetopologyQueue
 
 		nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -274,11 +274,6 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 	ctx, cancelFn := context.WithCancel(context.Background())
 	defer cancelFn()
 	defer ca.queue.ShutDown()
-	if enableNodeTopology {
-		if ca.nodeTopologyQueue != nil {
-			defer ca.nodeTopologyQueue.Shutdown()
-		}
-	}
 	klog.Infof("Starting cloud CIDR allocator")
 	defer klog.Infof("Shutting down cloud CIDR allocator")
 
@@ -292,6 +287,7 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 
 	if enableNodeTopology {
 		if ca.nodeTopologyQueue != nil {
+			defer ca.nodeTopologyQueue.Shutdown()
 			ca.nodeTopologyQueue.Run()
 		}
 		go func() {
