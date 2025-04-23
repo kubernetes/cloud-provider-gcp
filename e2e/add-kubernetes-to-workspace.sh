@@ -22,20 +22,26 @@ cd ${REPO_ROOT}
 cd ..
 WORKSPACE=$(pwd)
 
-# Set up go workspace to build with this version
 cd "${REPO_ROOT}"
 
-go work init
+# We used to build with a go workspace in our tests, but that means we were testing something different from what we were shipping.
+# We keep the workspace support around (for now), but guard it behind an env var (USE_GO_WORKSPACE) which we don't set.
 
-go work use .
-go work use providers
+# Set up go workspace to build with this version
+if [[ -n "${USE_GO_WORKSPACE:-}" ]]; then
+  echo "Setting up go workspace including kubernetes"
+  go work init
 
-# Add kubernetes to workspace
-go work use ${WORKSPACE}/kubernetes
-for d in ${WORKSPACE}/kubernetes/staging/src/k8s.io/*; do
-  go work use $d
-done
+  go work use .
+  go work use providers
 
-# Workaround for go.mod replacements
-sed -i 's/^\s*k8s.io.*//g' go.mod
-go work sync
+  # Add kubernetes to workspace
+  go work use ${WORKSPACE}/kubernetes
+  for d in ${WORKSPACE}/kubernetes/staging/src/k8s.io/*; do
+    go work use $d
+  done
+
+  # Workaround for go.mod replacements
+  sed -i 's/^\s*k8s.io.*//g' go.mod
+  go work sync
+fi
