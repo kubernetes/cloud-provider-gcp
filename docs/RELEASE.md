@@ -21,6 +21,8 @@ Update library versions in each release branch, including master, corresponding 
 
 1. Set common variable. Many of the following commands expect release-specific variables to be set. Set them before continuing, and set them again when resuming.
 ```bash
+# MINOR_OLD.PATCH_OLD is the currently used versions, it can be found here: https://github.com/kubernetes/cloud-provider-gcp/blob/31010ab151485d7dce6c8126657973bc8a033b44/go.mod#L16-L23
+# MINOR.PATCH is the new versions we want to use.
 MINOR_OLD=31 PATCH_OLD=0 MINOR=32 PATCH=0 # Set appropriately for the release for kubernetes versions
 VERSION_FILES=(
   ginko-test-package-version.env
@@ -34,6 +36,7 @@ LIBRARY_FILES=(
 )
 ```
 2. Bump library versions.
+Note that `update_vendor.sh` requires Bazel 5.4.0, please install it before running the command.
 ```bash
 sed -i s/v1.$MINOR_OLD.$PATCH_OLD/v1.$MINOR.$PATCH/ "${VERSION_FILES[@]}"
 sed -i s/v0.$MINOR_OLD.$PATCH_OLD/v0.$MINOR.$PATCH/ "${LIBRARY_FILES[@]}"

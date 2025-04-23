@@ -51,7 +51,7 @@ done
 
 echo "
 
-Please review all remaning chagnes. We want to keep:
+Please review all remaining changes. We want to keep:
   * PDSCI plugin
   * Enabled CCM
   * Credential provider specific code (look for credential sidecar)
