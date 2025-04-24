@@ -17,6 +17,7 @@ go_library(
     deps = [
         "//vendor/github.com/go-logr/logr",
         "//vendor/github.com/go-logr/stdr",
+        "//vendor/go.opentelemetry.io/auto/sdk",
         "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/go.opentelemetry.io/otel/codes",
         "//vendor/go.opentelemetry.io/otel/metric",
