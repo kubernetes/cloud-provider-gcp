@@ -7,7 +7,7 @@ ARG GOOS=linux
 ENV CGO_ENABLED=0
 
 WORKDIR /go/src/app
-COPY go.mod go.sum .
+COPY go.mod go.sum ./
 COPY providers/go.mod providers/go.sum providers/
 COPY vendor/ vendor/
 
