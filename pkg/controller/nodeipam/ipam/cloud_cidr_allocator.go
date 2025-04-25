@@ -189,7 +189,13 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 				return nil
 			}),
 			UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(oldNode, newNode *v1.Node) error {
-				nodetopologyQueue.Enqueue(newNode)
+				_, oldNodeLabel := getNodeSubnetLabel(oldNode)
+				_, newNodeLabel := getNodeSubnetLabel(newNode)
+				if oldNodeLabel != newNodeLabel {
+					nodetopologyQueue.Enqueue(newNode)
+				} else {
+					klog.InfoS("Node subnet label does not change, skip enqueue item, label key: cloud.google.com/gke-node-pool-subnet", "node name", newNode.GetName(), "old node label", oldNodeLabel, "new node label", newNodeLabel)
+				}
 				return nil
 			}),
 			DeleteFunc: nodeutil.CreateDeleteNodeHandler(func(node *v1.Node) error {
