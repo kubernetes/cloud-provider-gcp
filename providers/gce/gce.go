@@ -206,6 +206,9 @@ type Cloud struct {
 	// enableDiscretePortForwarding enables forwarding of individual ports
 	// instead of port ranges in Forwarding Rules for external load balancers.
 	enableDiscretePortForwarding bool
+
+	// enableRBSDefaultForL4NetLB disable Service controller from picking up services by default
+	enableRBSDefaultForL4NetLB bool
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -861,6 +864,10 @@ func (g *Cloud) SetProjectFromNodeProviderID(enabled bool) {
 // SetEnableDiscretePortForwarding configures enableDiscretePortForwarding option.
 func (g *Cloud) SetEnableDiscretePortForwarding(enabled bool) {
 	g.enableDiscretePortForwarding = enabled
+}
+
+func (g *Cloud) SetEnableRBSDefaultForL4NetLB(enabled bool) {
+	g.enableRBSDefaultForL4NetLB = enabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.
