@@ -473,8 +473,6 @@ function load-docker-images {
   if [[ "${KUBERNETES_MASTER:-}" == "true" ]]; then
     try-load-docker-image "${img_dir}/kube-apiserver.tar"
     try-load-docker-image "${img_dir}/kube-controller-manager.tar"
-    # (TODO/cloud-provider-gcp): Figure out how to inject
-    try-load-docker-image "${img_dir}/cloud-controller-manager.tar"
     try-load-docker-image "${img_dir}/kube-scheduler.tar"
   else
     try-load-docker-image "${img_dir}/kube-proxy.tar"
@@ -720,16 +718,12 @@ function install-kube-binary-config {
     else
       cp "${src_dir}/kube-apiserver.tar" "${dst_dir}"
       cp "${src_dir}/kube-controller-manager.tar" "${dst_dir}"
-      # (TODO/cloud-provider-gcp): Figure out how to inject
-      cp "${src_dir}/cloud-controller-manager.tar" "${dst_dir}"
       cp "${src_dir}/kube-scheduler.tar" "${dst_dir}"
       cp -r "${KUBE_HOME}/kubernetes/addons" "${dst_dir}"
     fi
     log-wrap "LoadDockerImages" load-docker-images
     mv "${src_dir}/kubelet" "${KUBE_BIN}"
     mv "${src_dir}/kubectl" "${KUBE_BIN}"
-    # (TODO/cloud-provider-gcp): Figure out how to inject
-    mv "${src_dir}/auth-provider-gcp" "${KUBE_BIN}"
 
     # Some older images have LICENSES baked-in as a file. Presumably they will
     # have the directory baked-in eventually.
