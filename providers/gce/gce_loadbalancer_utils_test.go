@@ -58,20 +58,6 @@ func fakeLoadBalancerServiceDeprecatedAnnotation(lbType string) *v1.Service {
 	return fakeLoadbalancerServiceHelper(lbType, deprecatedServiceAnnotationLoadBalancerType)
 }
 
-func fakeLoadbalancerServiceWithLoadBalancerClass(lbType, lbClass string) *v1.Service {
-	return &v1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        fakeSvcName,
-			Annotations: map[string]string{ServiceAnnotationLoadBalancerType: lbType},
-		},
-		Spec: v1.ServiceSpec{
-			LoadBalancerClass: &lbClass,
-			Type:              v1.ServiceTypeLoadBalancer,
-			Ports:             []v1.ServicePort{{Protocol: v1.ProtocolTCP, Port: int32(123)}},
-		},
-	}
-}
-
 func fakeLoadbalancerServiceHelper(lbType string, annotationKey string) *v1.Service {
 	return &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
