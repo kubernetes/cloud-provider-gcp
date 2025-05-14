@@ -56,16 +56,9 @@ const (
 // new load balancers and updating existing load balancers, recognizing when
 // each is needed.
 func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
-	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
-	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-	if (apiService.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(apiService, LegacyRegionalExternalLoadBalancerClass)) || usesL4RBS(apiService, existingFwdRule) {
+	if usesL4RBS(apiService, existingFwdRule) {
 		return nil, cloudprovider.ImplementedElsewhere
-	}
-	if hasLoadBalancerClass(apiService, LegacyRegionalExternalLoadBalancerClass) {
-		if apiService.Annotations[ServiceAnnotationLoadBalancerType] == string(LBTypeInternal) {
-			g.eventRecorder.Event(apiService, v1.EventTypeWarning, "ConflictingConfiguration", fmt.Sprintf("loadBalancerClass conflicts with %s: %s annotation. External LoadBalancer Service provisioned.", ServiceAnnotationLoadBalancerType, string(LBTypeInternal)))
-		}
 	}
 
 	if len(nodes) == 0 {
@@ -297,10 +290,8 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 
 // updateExternalLoadBalancer is the external implementation of LoadBalancer.UpdateLoadBalancer.
 func (g *Cloud) updateExternalLoadBalancer(clusterName string, service *v1.Service, nodes []*v1.Node) error {
-	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
-	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
-	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-	if (service.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(service, LegacyRegionalExternalLoadBalancerClass)) || usesL4RBS(service, nil) {
+	// Skip service update if it uses Regional Backend Services and handled by other controllers
+	if usesL4RBS(service, nil) {
 		return cloudprovider.ImplementedElsewhere
 	}
 
@@ -315,10 +306,8 @@ func (g *Cloud) updateExternalLoadBalancer(clusterName string, service *v1.Servi
 
 // ensureExternalLoadBalancerDeleted is the external implementation of LoadBalancer.EnsureLoadBalancerDeleted
 func (g *Cloud) ensureExternalLoadBalancerDeleted(clusterName, clusterID string, service *v1.Service) error {
-	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
-	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
-	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-	if (service.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(service, LegacyRegionalExternalLoadBalancerClass)) || usesL4RBS(service, nil) {
+	// Skip service deletion if it uses Regional Backend Services and handled by other controllers
+	if usesL4RBS(service, nil) {
 		return cloudprovider.ImplementedElsewhere
 	}
 

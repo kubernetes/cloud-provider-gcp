@@ -48,10 +48,6 @@ import (
 )
 
 const (
-	// RegionalExternalLoadBalancerClass is the loadBalancerClass name used to select the
-	// RBS LB implementation.
-	RegionalExternalLoadBalancerClass = "networking.gke.io/l4-regional-external"
-
 	// NetLBFinalizerV2 is the finalizer used by newer controllers that manage L4 External LoadBalancer services.
 	NetLBFinalizerV2 = "gke.networking.io/l4-netlb-v2"
 
@@ -392,15 +388,6 @@ func hasFinalizer(service *v1.Service, key string) bool {
 	return false
 }
 
-func hasLoadBalancerClass(service *v1.Service, key string) bool {
-	if service.Spec.LoadBalancerClass != nil {
-		if *service.Spec.LoadBalancerClass == key {
-			return true
-		}
-	}
-	return false
-}
-
 // removeString returns a newly created []string that contains all items from slice that
 // are not equal to s.
 func removeString(slice []string, s string) []string {
@@ -417,10 +404,6 @@ func removeString(slice []string, s string) []string {
 // Such services implemented in other controllers and
 // should not be handled by Service Controller.
 func usesL4RBS(service *v1.Service, forwardingRule *compute.ForwardingRule) bool {
-	// Detect RBS by loadBalancerClass
-	if hasLoadBalancerClass(service, RegionalExternalLoadBalancerClass) {
-		return true
-	}
 	// Detect RBS by annotation
 	if val, ok := service.Annotations[RBSAnnotationKey]; ok && val == RBSEnabled {
 		return true
