@@ -202,10 +202,6 @@ type Cloud struct {
 	//
 	// Enable this ony when the Node's .spec.providerID can be fully trusted.
 	projectFromNodeProviderID bool
-
-	// enableDiscretePortForwarding enables forwarding of individual ports
-	// instead of port ranges in Forwarding Rules for external load balancers.
-	enableDiscretePortForwarding bool
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -856,11 +852,6 @@ func (g *Cloud) HasClusterID() bool {
 // Enable this ony when the Node's .spec.providerID can be fully trusted.
 func (g *Cloud) SetProjectFromNodeProviderID(enabled bool) {
 	g.projectFromNodeProviderID = enabled
-}
-
-// SetEnableDiscretePortForwarding configures enableDiscretePortForwarding option.
-func (g *Cloud) SetEnableDiscretePortForwarding(enabled bool) {
-	g.enableDiscretePortForwarding = enabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.
