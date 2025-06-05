@@ -194,7 +194,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 				if oldNodeLabel != newNodeLabel {
 					nodetopologyQueue.Enqueue(newNode)
 				} else {
-					klog.InfoS("Node subnet label does not change, skip enqueue item, label key: cloud.google.com/gke-node-pool-subnet", "node name", newNode.GetName(), "old node label", oldNodeLabel, "new node label", newNodeLabel)
+					klog.InfoS("Node subnet label does not change, skip enqueue item, label key: cloud.google.com/gke-node-pool-subnet", "node", newNode.GetName(), "oldlabel", oldNodeLabel, "newlabel", newNodeLabel)
 				}
 				return nil
 			}),
