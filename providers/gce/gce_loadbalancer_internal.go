@@ -125,23 +125,31 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 		}
 	}
 
-	// Lock the sharedResourceLock to prevent any deletions of shared resources while assembling shared resources here
-	g.sharedResourceLock.Lock()
-	defer g.sharedResourceLock.Unlock()
+	hc, hcPort, sharedHealthCheck, err := func() (*compute.HealthCheck, int32, bool, error) {
+		// Lock the sharedResourceLock to prevent any deletions of shared resources while assembling shared resources here
+		g.sharedResourceLock.Lock()
+		klog.V(2).Infof("ensureInternalLoadBalancer(%v): Locked shared resource lock to assemble shared health check", loadBalancerName)
+		defer func() {
+			g.sharedResourceLock.Unlock()
+			klog.V(2).Infof("ensureInternalLoadBalancer(%v): Unlocked shared resource lock after assembling shared health check", loadBalancerName)
+		}()
 
-	// Ensure health check exists before creating the backend service. The health check is shared
-	// if externalTrafficPolicy=Cluster.
-	sharedHealthCheck := !servicehelpers.RequestsOnlyLocalTraffic(svc)
-	hcName := makeHealthCheckName(loadBalancerName, clusterID, sharedHealthCheck)
-	hcPath, hcPort := GetNodesHealthCheckPath(), GetNodesHealthCheckPort()
-	if !sharedHealthCheck {
-		// Service requires a special health check, retrieve the OnlyLocal port & path
-		hcPath, hcPort = servicehelpers.GetServiceHealthCheckPathPort(svc)
-	}
-	hc, err := g.ensureInternalHealthCheck(hcName, nm, sharedHealthCheck, hcPath, hcPort)
+		// Ensure health check exists before creating the backend service. The health check is shared
+		// if externalTrafficPolicy=Cluster.
+		sharedHealthCheck := !servicehelpers.RequestsOnlyLocalTraffic(svc)
+		hcName := makeHealthCheckName(loadBalancerName, clusterID, sharedHealthCheck)
+		hcPath, hcPort := GetNodesHealthCheckPath(), GetNodesHealthCheckPort()
+		if !sharedHealthCheck {
+			// Service requires a special health check, retrieve the OnlyLocal port & path
+			hcPath, hcPort = servicehelpers.GetServiceHealthCheckPathPort(svc)
+		}
+		hc, err := g.ensureInternalHealthCheck(hcName, nm, sharedHealthCheck, hcPath, hcPort)
+		return hc, hcPort, sharedHealthCheck, err
+	}()
 	if err != nil {
 		return nil, err
 	}
+	hcName := hc.Name
 
 	subnetworkURL := g.SubnetworkURL()
 	// Any subnet specified using the subnet annotation will be picked up and reflected in the forwarding rule.
@@ -1046,8 +1054,9 @@ func ilbIPToUse(svc *v1.Service, fwdRule *compute.ForwardingRule, requestedSubne
 }
 
 func getILBOptions(svc *v1.Service) ILBOptions {
-	return ILBOptions{AllowGlobalAccess: GetLoadBalancerAnnotationAllowGlobalAccess(svc),
-		SubnetName: GetLoadBalancerAnnotationSubnet(svc),
+	return ILBOptions{
+		AllowGlobalAccess: GetLoadBalancerAnnotationAllowGlobalAccess(svc),
+		SubnetName:        GetLoadBalancerAnnotationSubnet(svc),
 	}
 }
 
