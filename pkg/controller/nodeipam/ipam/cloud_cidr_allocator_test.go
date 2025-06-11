@@ -381,6 +381,117 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 	}
 }
 
+func TestUpdateUniqueNode(t *testing.T) {
+	testClusterValues := gce.DefaultTestClusterValues()
+	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+	nodeTopologySyncer := &NodeTopologySyncer{
+		nodeTopologyClient: ntfakeclient.NewSimpleClientset(),
+		cloud:              fakeGCE,
+	}
+	tests := []struct {
+		name    string
+		oldNode *v1.Node
+		newNode *v1.Node
+		queued  bool
+	}{
+		{
+			name: "DuplicatedNodeLabel",
+			oldNode: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testNode",
+					Labels: map[string]string{
+						testNodePoolSubnetLabelPrefix: "subnet1",
+					},
+				},
+			},
+			newNode: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testNode",
+					Labels: map[string]string{
+						testNodePoolSubnetLabelPrefix: "subnet1",
+					},
+				},
+			},
+			queued: false,
+		},
+		{
+			name: "UpdatedNodeLable",
+			oldNode: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testNode",
+					Labels: map[string]string{
+						testNodePoolSubnetLabelPrefix: "subnet1",
+					},
+				},
+			},
+			newNode: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testNode",
+					Labels: map[string]string{
+						testNodePoolSubnetLabelPrefix: "subnet2",
+					},
+				},
+			},
+			queued: true,
+		},
+		{
+			name: "UpdatedNodeLable",
+			oldNode: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testNode",
+					Labels: map[string]string{
+						"cloud.google.com/unrelated": "subnet1",
+					},
+				},
+			},
+			newNode: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testNode",
+					Labels: map[string]string{
+						testNodePoolSubnetLabelPrefix: "subnet1",
+					},
+				},
+			},
+			queued: true,
+		},
+		{
+			name: "UpdatedNodeLable",
+			oldNode: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "testNode",
+					Labels: map[string]string{},
+				},
+			},
+			newNode: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testNode",
+					Labels: map[string]string{
+						testNodePoolSubnetLabelPrefix: "subnet1",
+					},
+				},
+			},
+			queued: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueueForTest", "nodetopologyCRD", 1, nodeTopologyKeyFun, nodeTopologySyncer.sync)
+			ca := &cloudCIDRAllocator{
+				nodeTopologyQueue: nodetopologyQueue,
+			}
+			ca.updateUniqueNode(tc.oldNode, tc.newNode)
+			expectLen := 0
+			if tc.queued {
+				expectLen = 1
+			}
+			got := nodetopologyQueue.queue.Len()
+			if got != expectLen {
+				t.Errorf("updateUniqueNode(%v, %v) returned queued %v, but want %v", tc.oldNode, tc.newNode, got, expectLen)
+			}
+		})
+	}
+}
+
 func TestUpdateCIDRAllocation(t *testing.T) {
 	ipv4ipv6Stack := stackIPv4IPv6
 	ipv6ipv4Stack := stackIPv6IPv4

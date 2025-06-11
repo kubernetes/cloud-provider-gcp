@@ -188,16 +188,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 				ca.nodeTopologyQueue.Enqueue(node)
 				return nil
 			}),
-			UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(oldNode, newNode *v1.Node) error {
-				_, oldNodeLabel := getNodeSubnetLabel(oldNode)
-				_, newNodeLabel := getNodeSubnetLabel(newNode)
-				if oldNodeLabel != newNodeLabel {
-					nodetopologyQueue.Enqueue(newNode)
-				} else {
-					klog.InfoS("Node subnet label does not change, skip enqueue item, label key: cloud.google.com/gke-node-pool-subnet", "node", newNode.GetName(), "oldlabel", oldNodeLabel, "newlabel", newNodeLabel)
-				}
-				return nil
-			}),
+			UpdateFunc: nodeutil.CreateUpdateNodeHandler(ca.updateUniqueNode),
 			DeleteFunc: nodeutil.CreateDeleteNodeHandler(func(node *v1.Node) error {
 				nodetopologyQueue.Enqueue(node)
 				return nil
@@ -272,6 +263,17 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 
 	klog.V(0).Infof("Using cloud CIDR allocator (provider: %v)", cloud.ProviderName())
 	return ca, nil
+}
+
+func (ca *cloudCIDRAllocator) updateUniqueNode(oldNode, newNode *v1.Node) error {
+	_, oldNodeLabel := getNodeSubnetLabel(oldNode)
+	_, newNodeLabel := getNodeSubnetLabel(newNode)
+	if oldNodeLabel != newNodeLabel {
+		ca.nodeTopologyQueue.Enqueue(newNode)
+	} else {
+		klog.InfoS("Node subnet label does not change, skip enqueue item, label key: cloud.google.com/gke-node-pool-subnet", "node", newNode.GetName(), "oldlabel", oldNodeLabel, "newlabel", newNodeLabel)
+	}
+	return nil
 }
 
 func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
