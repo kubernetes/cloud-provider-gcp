@@ -435,7 +435,7 @@ func TestUpdateUniqueNode(t *testing.T) {
 			queued: true,
 		},
 		{
-			name: "UpdatedNodeLable",
+			name: "DifferentLabelName",
 			oldNode: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testNode",
@@ -455,7 +455,7 @@ func TestUpdateUniqueNode(t *testing.T) {
 			queued: true,
 		},
 		{
-			name: "UpdatedNodeLable",
+			name: "EmptyLabel",
 			oldNode: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "testNode",
