@@ -106,5 +106,5 @@ fetch_kube_release(
         "kubernetes-server-linux-amd64.tar.gz": "1ef6dd5300f955006a7fa168996a6cbd6e49ac2d7869e7867eb9623963e65fd7",
         "kubernetes-node-windows-amd64.tar.gz": "91da0be2b0e059f82ac1c05427d1892f3ae4c8515c9c2aa76f5323dfc8f60e7c",
     },
-    version = "v1.33.0",
+    version = "v1.33.1",
 )

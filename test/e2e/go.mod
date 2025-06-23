@@ -9,13 +9,13 @@ require (
 	github.com/onsi/ginkgo/v2 v2.21.0
 	github.com/onsi/gomega v1.35.1
 	google.golang.org/api v0.199.0
-	k8s.io/api v0.33.0
-	k8s.io/apimachinery v0.33.0
-	k8s.io/client-go v0.33.0
-	k8s.io/cloud-provider v0.33.0
+	k8s.io/api v0.33.1
+	k8s.io/apimachinery v0.33.1
+	k8s.io/client-go v0.33.1
+	k8s.io/cloud-provider v0.33.1
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
 	k8s.io/kubernetes v1.31.5
-	k8s.io/pod-security-admission v0.33.0
+	k8s.io/pod-security-admission v0.33.1
 )
 
 require (
@@ -85,12 +85,12 @@ require (
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.58.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.58.0 // indirect
-	go.opentelemetry.io/otel v1.33.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.33.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.33.0 // indirect
-	go.opentelemetry.io/otel/metric v1.33.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.33.0 // indirect
-	go.opentelemetry.io/otel/trace v1.33.0 // indirect
+	go.opentelemetry.io/otel v1.33.1 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.33.1 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.33.1 // indirect
+	go.opentelemetry.io/otel/metric v1.33.1 // indirect
+	go.opentelemetry.io/otel/sdk v1.33.1 // indirect
+	go.opentelemetry.io/otel/trace v1.33.1 // indirect
 	go.opentelemetry.io/proto/otlp v1.4.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
@@ -116,12 +116,12 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.0.0 // indirect
-	k8s.io/apiserver v0.33.0 // indirect
-	k8s.io/component-base v0.33.0 // indirect
-	k8s.io/component-helpers v0.33.0 // indirect
-	k8s.io/controller-manager v0.33.0 // indirect
+	k8s.io/apiserver v0.33.1 // indirect
+	k8s.io/component-base v0.33.1 // indirect
+	k8s.io/component-helpers v0.33.1 // indirect
+	k8s.io/controller-manager v0.33.1 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
-	k8s.io/kms v0.33.0 // indirect
+	k8s.io/kms v0.33.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff // indirect
 	k8s.io/kubectl v0.0.0 // indirect
 	k8s.io/kubelet v0.30.0 // indirect
@@ -134,7 +134,7 @@ require (
 )
 
 replace (
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.33.0
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.33.1
 	k8s.io/cloud-provider-gcp/providers => ../../providers
-	k8s.io/kubectl => k8s.io/kubectl v0.33.0
+	k8s.io/kubectl => k8s.io/kubectl v0.33.1
 )
