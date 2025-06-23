@@ -90,6 +90,7 @@ go_test(
         "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/apimachinery/pkg/api/resource",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/client-go/informers",
         "//vendor/k8s.io/client-go/informers/core/v1:core",
