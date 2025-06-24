@@ -15,18 +15,18 @@ require (
 	google.golang.org/api v0.199.0
 	gopkg.in/gcfg.v1 v1.2.3 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	k8s.io/api v0.33.1
-	k8s.io/apimachinery v0.33.1
-	k8s.io/apiserver v0.33.1
-	k8s.io/client-go v0.33.1
-	k8s.io/code-generator v0.33.1
-	k8s.io/component-base v0.33.1
-	k8s.io/component-helpers v0.33.1
-	k8s.io/controller-manager v0.33.1
+	k8s.io/api v0.33.0
+	k8s.io/apimachinery v0.33.0
+	k8s.io/apiserver v0.33.0
+	k8s.io/client-go v0.33.0
+	k8s.io/code-generator v0.33.0
+	k8s.io/component-base v0.33.0
+	k8s.io/component-helpers v0.33.0
+	k8s.io/controller-manager v0.33.0
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/kube-controller-manager v0.33.1
-	k8s.io/kubelet v0.33.1
-	k8s.io/metrics v0.33.1
+	k8s.io/kube-controller-manager v0.33.0
+	k8s.io/kubelet v0.33.0
+	k8s.io/metrics v0.33.0
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	sigs.k8s.io/controller-tools v0.17.2
 )
@@ -35,9 +35,9 @@ require (
 	github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
-	k8s.io/cloud-provider v0.33.1
+	k8s.io/cloud-provider v0.33.0
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
-	k8s.io/kubernetes v1.33.1
+	k8s.io/kubernetes v1.33.0
 )
 
 require (
@@ -119,12 +119,12 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.58.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.58.0 // indirect
-	go.opentelemetry.io/otel v1.33.1 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.33.1 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.33.1 // indirect
-	go.opentelemetry.io/otel/metric v1.33.1 // indirect
-	go.opentelemetry.io/otel/sdk v1.33.1 // indirect
-	go.opentelemetry.io/otel/trace v1.33.1 // indirect
+	go.opentelemetry.io/otel v1.33.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.33.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.33.0 // indirect
+	go.opentelemetry.io/otel/metric v1.33.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.33.0 // indirect
+	go.opentelemetry.io/otel/trace v1.33.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.4.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
