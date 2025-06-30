@@ -25,6 +25,27 @@ cd ${REPO_ROOT}
 cd ..
 WORKSPACE=$(pwd)
 
+# Default workdir
+if [[ -z "${WORKDIR:-}" ]]; then
+  WORKDIR="${WORKSPACE}/clusters/${CLUSTER_NAME}"
+fi
+mkdir -p "${WORKDIR}"
+
+if [[ -z "${GCP_PROJECT:-}" ]]; then
+  echo "GCP_PROJECT must be set"
+  exit 1
+fi
+
+# Ensure we have an SSH key; needed to dump the node information to artifacts/
+if [[ -z "${SSH_PRIVATE_KEY_PATH:-}" ]]; then
+  echo "SSH_PRIVATE_KEY_PATH not set, creating one"
+
+  SSH_PRIVATE_KEY_PATH="${WORKDIR}/google_compute_engine"
+  # This will create a new key if one doesn't exist, and add it to the project metadata.
+  gcloud compute config-ssh --project="${GCP_PROJECT}" --ssh-key-file="${SSH_PRIVATE_KEY_PATH}" --quiet
+  export KUBE_SSH_USER="${USER}"
+fi
+
 # Create bindir
 BINDIR=${WORKSPACE}/bin
 export PATH=${BINDIR}:${PATH}
@@ -45,27 +66,8 @@ if [[ -z "${CLUSTER_NAME:-}" ]]; then
 fi
 echo "CLUSTER_NAME=${CLUSTER_NAME}"
 
-# Default workdir
-if [[ -z "${WORKDIR:-}" ]]; then
-  WORKDIR="${WORKSPACE}/clusters/${CLUSTER_NAME}"
-fi
-mkdir -p "${WORKDIR}"
-
-if [[ -z "${GCP_PROJECT:-}" ]]; then
-  echo "GCP_PROJECT must be set"
-  exit 1
-fi
 echo "GCP_PROJECT=${GCP_PROJECT}"
 
-# Ensure we have an SSH key; needed to dump the node information to artifacts/
-if [[ -z "${SSH_PRIVATE_KEY_PATH:-}" ]]; then
-  echo "SSH_PRIVATE_KEY_PATH not set, creating one"
-
-  SSH_PRIVATE_KEY_PATH="${WORKDIR}/google_compute_engine"
-  # This will create a new key if one doesn't exist, and add it to the project metadata.
-  gcloud compute config-ssh --project="${GCP_PROJECT}" --ssh-key-file="${SSH_PRIVATE_KEY_PATH}" --quiet
-  export KUBE_SSH_USER="${USER}"
-fi
 echo "SSH_PRIVATE_KEY_PATH=${SSH_PRIVATE_KEY_PATH}"
 export KUBE_SSH_PUBLIC_KEY_PATH="${SSH_PRIVATE_KEY_PATH}.pub"
 
