@@ -14,6 +14,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This script brings up a Kubernetes cluster using kops and a local CCM image.
+# It is based on the e2e test script in e2e/scenarios/kops-simple.
+#
+# Usage:
+#
+# # Set required environment variables
+# export GCP_PROJECT="your-gcp-project-id"
+# export CLUSTER_NAME="your-cluster-name.k8s.local"
+#
+# # Optional: To prevent the script from deleting the cluster after creation, set:
+# export DELETE_CLUSTER="false"
+#
+# # Run the script
+# ./tools/kops_local_ccm.sh
+
 set -e
 set -x
 
@@ -60,9 +75,9 @@ function cleanup {
 trap cleanup EXIT
 
 # Default cluster name
-SCRIPT_NAME=$(basename $0 .sh)
 if [[ -z "${CLUSTER_NAME:-}" ]]; then
-  CLUSTER_NAME="${SCRIPT_NAME}.k8s.local"
+  echo "CLUSTER_NAME must be set"
+  exit 1
 fi
 echo "CLUSTER_NAME=${CLUSTER_NAME}"
 
