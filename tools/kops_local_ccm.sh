@@ -58,16 +58,16 @@ fi
 echo "GCP_PROJECT=${GCP_PROJECT}"
 
 # Ensure we have an SSH key; needed to dump the node information to artifacts/
-if [[ -z "${SSH_PRIVATE_KEY:-}" ]]; then
-  echo "SSH_PRIVATE_KEY not set, creating one"
+if [[ -z "${SSH_PRIVATE_KEY_PATH:-}" ]]; then
+  echo "SSH_PRIVATE_KEY_PATH not set, creating one"
 
-  SSH_PRIVATE_KEY="${WORKDIR}/google_compute_engine"
+  SSH_PRIVATE_KEY_PATH="${WORKDIR}/google_compute_engine"
   # This will create a new key if one doesn't exist, and add it to the project metadata.
-  gcloud compute config-ssh --project="${GCP_PROJECT}" --ssh-key-file="${SSH_PRIVATE_KEY}" --quiet
+  gcloud compute config-ssh --project="${GCP_PROJECT}" --ssh-key-file="${SSH_PRIVATE_KEY_PATH}" --quiet
   export KUBE_SSH_USER="${USER}"
 fi
-echo "SSH_PRIVATE_KEY=${SSH_PRIVATE_KEY}"
-export KUBE_SSH_PUBLIC_KEY_PATH="${SSH_PRIVATE_KEY}.pub"
+echo "SSH_PRIVATE_KEY_PATH=${SSH_PRIVATE_KEY_PATH}"
+export KUBE_SSH_PUBLIC_KEY_PATH="${SSH_PRIVATE_KEY_PATH}.pub"
 
 
 if [[ -z "${K8S_VERSION:-}" ]]; then
