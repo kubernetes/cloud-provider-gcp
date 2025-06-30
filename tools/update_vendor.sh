@@ -40,4 +40,4 @@ rm -fr "${KUBE_ROOT}/vendor/k8s.io/cloud-provider-gcp/providers"
 ln -s "../../../providers" "${KUBE_ROOT}/vendor/k8s.io/cloud-provider-gcp/providers"
 
 # restore BUILD files in vendor/
-bazelisk run //:gazelle
+bazel run //:gazelle
