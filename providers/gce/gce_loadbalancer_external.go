@@ -59,7 +59,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-	if !shouldProcessNetLB(apiService, existingFwdRule) {
+	if !shouldProcessNetLB(apiService, existingFwdRule, g.enableRBSDefaultForL4NetLB) {
 		return nil, cloudprovider.ImplementedElsewhere
 	}
 
@@ -76,6 +76,12 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	hostNames := nodeNames(nodes)
 	hosts, err := g.getInstancesByNames(hostNames)
 	if err != nil {
+		return nil, err
+	}
+
+	klog.Infof("ensureExternalLoadBalancer(%v): Attaching %q finalizer", apiService.Name, NetLBFinalizerV1)
+	if err := addFinalizer(apiService, g.client.CoreV1(), NetLBFinalizerV1); err != nil {
+		klog.Errorf("Failed to attach finalizer '%s' on service %s/%s - %v", NetLBFinalizerV1, apiService.Namespace, apiService.Name, err)
 		return nil, err
 	}
 
@@ -307,7 +313,7 @@ func (g *Cloud) updateExternalLoadBalancer(clusterName string, service *v1.Servi
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-	if !shouldProcessNetLB(service, nil) {
+	if !shouldProcessNetLB(service, nil, g.enableRBSDefaultForL4NetLB) {
 		return cloudprovider.ImplementedElsewhere
 	}
 
@@ -330,7 +336,7 @@ func (g *Cloud) ensureExternalLoadBalancerDeleted(clusterName, clusterID string,
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-	if !shouldProcessNetLB(service, nil) {
+	if !shouldProcessNetLB(service, nil, g.enableRBSDefaultForL4NetLB) {
 		return cloudprovider.ImplementedElsewhere
 	}
 
