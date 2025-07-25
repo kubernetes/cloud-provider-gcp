@@ -46,10 +46,7 @@ load("@io_bazel_rules_go//go:deps.bzl", "go_download_sdk", "go_register_toolchai
 
 go_rules_dependencies()
 
-go_download_sdk(
-    name = "go_sdk",
-    version = "1.24.1",
-)
+go_download_sdk(name = "go_sdk",version = "1.24.5")
 
 go_register_toolchains()
 
