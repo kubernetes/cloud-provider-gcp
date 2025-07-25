@@ -54,10 +54,10 @@ const (
 	labelGKESubnetworkName = "cloud.google.com/gke-node-pool-subnet"
 )
 
-func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
+func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v1.Service, op *loadBalancerSync, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-internal-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the ILB.
-	if existingFwdRule == nil && !hasFinalizer(svc, ILBFinalizerV1) && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
+	if op.actualForwardingRule == nil && !hasFinalizer(svc, ILBFinalizerV1) && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
 		// Neither the forwarding rule nor the V1 finalizer exists. This is most likely a new service.
 		if svc.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
 			klog.V(2).Infof("Skipped ensureInternalLoadBalancer for service %s/%s, as service contains %q loadBalancerClass.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
@@ -118,8 +118,8 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 
 	// Get existing backend service (if exists)
 	var existingBackendService *compute.BackendService
-	if existingFwdRule != nil && existingFwdRule.BackendService != "" {
-		existingBSName := getNameFromLink(existingFwdRule.BackendService)
+	if op.actualForwardingRule != nil && op.actualForwardingRule.BackendService != "" {
+		existingBSName := getNameFromLink(op.actualForwardingRule.BackendService)
 		if existingBackendService, err = g.GetRegionBackendService(existingBSName, g.region); err != nil && !isNotFound(err) {
 			return nil, err
 		}
@@ -153,7 +153,7 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	}
 	// Determine IP which will be used for this LB. If no forwarding rule has been established
 	// or specified in the Service spec, then requestedIP = "".
-	ipToUse := ilbIPToUse(svc, existingFwdRule, subnetworkURL)
+	ipToUse := ilbIPToUse(svc, op.actualForwardingRule, subnetworkURL)
 
 	klog.V(2).Infof("ensureInternalLoadBalancer(%v): Using subnet %s for LoadBalancer IP %s", loadBalancerName, options.SubnetName, ipToUse)
 
@@ -199,20 +199,20 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 		newFwdRule.Ports = nil
 		newFwdRule.AllPorts = true
 	}
+	op.desiredForwardingRule = newFwdRule
 
-	fwdRuleDeleted := false
-	if existingFwdRule != nil && !forwardingRulesEqual(existingFwdRule, newFwdRule) {
+	if op.actualForwardingRule != nil && !forwardingRulesEqual(op.actualForwardingRule, op.desiredForwardingRule) {
 		// Delete existing forwarding rule before making changes to the backend service. For example - changing protocol
 		// of backend service without first deleting forwarding rule will throw an error since the linked forwarding
 		// rule would show the old protocol.
 		if klogV := klog.V(2); klogV.Enabled() {
-			frDiff := cmp.Diff(existingFwdRule, newFwdRule)
-			klogV.Infof("ensureInternalLoadBalancer(%v): forwarding rule changed - Existing - %+v\n, New - %+v\n, Diff(-existing, +new) - %s\n. Deleting existing forwarding rule.", loadBalancerName, existingFwdRule, newFwdRule, frDiff)
+			frDiff := cmp.Diff(op.actualForwardingRule, op.desiredForwardingRule)
+			klogV.Infof("ensureInternalLoadBalancer(%v): forwarding rule changed - Existing - %+v\n, New - %+v\n, Diff(-existing, +new) - %s\n. Deleting existing forwarding rule.", loadBalancerName, op.actualForwardingRule, op.desiredForwardingRule, frDiff)
 		}
 		if err = ignoreNotFound(g.DeleteRegionForwardingRule(loadBalancerName, g.region)); err != nil {
 			return nil, err
 		}
-		fwdRuleDeleted = true
+		op.actualForwardingRule = nil
 	}
 
 	bsDescription := makeBackendServiceDescription(nm, sharedBackend)
@@ -221,9 +221,9 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 		return nil, err
 	}
 
-	if fwdRuleDeleted || existingFwdRule == nil {
-		// existing rule has been deleted, pass in nil
-		if err := g.ensureInternalForwardingRule(nil, newFwdRule); err != nil {
+	if op.actualForwardingRule == nil {
+		// existing rule has been deleted
+		if err := g.ensureInternalForwardingRule(op); err != nil {
 			return nil, err
 		}
 	}
@@ -1084,24 +1084,24 @@ func getFwdRuleAPIVersion(rule *compute.ForwardingRule) (meta.Version, error) {
 	return d.APIVersion, nil
 }
 
-func (g *Cloud) ensureInternalForwardingRule(existingFwdRule, newFwdRule *compute.ForwardingRule) (err error) {
-	if existingFwdRule != nil {
-		if forwardingRulesEqual(existingFwdRule, newFwdRule) {
-			klog.V(4).Infof("existingFwdRule == newFwdRule, no updates needed (existingFwdRule == %+v)", existingFwdRule)
+func (g *Cloud) ensureInternalForwardingRule(op *loadBalancerSync) (err error) {
+	if op.actualForwardingRule != nil {
+		if forwardingRulesEqual(op.actualForwardingRule, op.desiredForwardingRule) {
+			klog.V(4).Infof("actualForwardingRule == desiredForwardingRule, no updates needed (actualForwardingRule == %+v)", op.actualForwardingRule)
 			return nil
 		}
-		klog.V(2).Infof("ensureInternalLoadBalancer(%v): deleting existing forwarding rule with IP address %v", existingFwdRule.Name, existingFwdRule.IPAddress)
-		if err = ignoreNotFound(g.DeleteRegionForwardingRule(existingFwdRule.Name, g.region)); err != nil {
+		klog.V(2).Infof("ensureInternalLoadBalancer(%v): deleting existing forwarding rule with IP address %v", op.actualForwardingRule.Name, op.actualForwardingRule.IPAddress)
+		if err = ignoreNotFound(g.DeleteRegionForwardingRule(op.actualForwardingRule.Name, g.region)); err != nil {
 			return err
 		}
 	}
 	// At this point, the existing rule has been deleted if required.
 	// Create the rule based on the api version determined
-	klog.V(2).Infof("ensureInternalLoadBalancer(%v): creating forwarding rule", newFwdRule.Name)
-	if err = g.CreateRegionForwardingRule(newFwdRule, g.region); err != nil {
+	klog.V(2).Infof("ensureInternalLoadBalancer(%v): creating forwarding rule", op.desiredForwardingRule.Name)
+	if err = g.CreateRegionForwardingRule(op.desiredForwardingRule, g.region); err != nil {
 		return err
 	}
-	klog.V(2).Infof("ensureInternalLoadBalancer(%v): created forwarding rule", newFwdRule.Name)
+	klog.V(2).Infof("ensureInternalLoadBalancer(%v): created forwarding rule", op.desiredForwardingRule.Name)
 	return nil
 }
 

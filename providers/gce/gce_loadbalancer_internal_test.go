@@ -48,11 +48,14 @@ func createInternalLoadBalancer(gce *Cloud, svc *v1.Service, existingFwdRule *co
 		return nil, err
 	}
 
+	op := &loadBalancerSync{}
+	op.actualForwardingRule = existingFwdRule
+
 	return gce.ensureInternalLoadBalancer(
 		clusterName,
 		clusterID,
 		svc,
-		existingFwdRule,
+		op,
 		nodes,
 	)
 }
@@ -660,7 +663,10 @@ func TestUpdateInternalLoadBalancerNodes(t *testing.T) {
 	nodes, err := createAndInsertNodes(gce, node1Name, vals.ZoneName)
 	require.NoError(t, err)
 
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	op := &loadBalancerSync{}
+	op.actualForwardingRule = nil
+
+	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, op, nodes)
 	assert.NoError(t, err)
 
 	// Replace the node in initial zone; add new node in a new zone.
@@ -729,7 +735,10 @@ func TestUpdateInternalLoadBalancerNodesWithEmptyZone(t *testing.T) {
 	nodes, err := createAndInsertNodes(gce, node1Name, vals.ZoneName)
 	require.NoError(t, err)
 
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	op := &loadBalancerSync{}
+	op.actualForwardingRule = nil
+
+	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, op, nodes)
 	assert.NoError(t, err)
 
 	// Ensure Node has been added to instance group
@@ -747,7 +756,7 @@ func TestUpdateInternalLoadBalancerNodesWithEmptyZone(t *testing.T) {
 	nodes[0].Labels[v1.LabelTopologyZone] = "" // empty zone
 
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
-	existingFwdRule := &compute.ForwardingRule{
+	op.actualForwardingRule = &compute.ForwardingRule{
 		Name:                lbName,
 		IPAddress:           "",
 		Ports:               []string{"123"},
@@ -756,7 +765,7 @@ func TestUpdateInternalLoadBalancerNodesWithEmptyZone(t *testing.T) {
 		Description:         fmt.Sprintf(`{"kubernetes.io/service-name":"%s"}`, types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}.String()),
 	}
 
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
+	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, op, nodes)
 	assert.NoError(t, err)
 
 	// Expect load balancer to not have deleted node test-node-1
@@ -1232,11 +1241,15 @@ func TestEnsureInternalLoadBalancerErrors(t *testing.T) {
 			}
 			_, err = gce.client.CoreV1().Services(params.service.Namespace).Create(context.TODO(), params.service, metav1.CreateOptions{})
 			require.NoError(t, err)
+
+			op := &loadBalancerSync{}
+			op.actualForwardingRule = params.existingFwdRule
+
 			status, err := gce.ensureInternalLoadBalancer(
 				params.clusterName,
 				params.clusterID,
 				params.service,
-				params.existingFwdRule,
+				op,
 				params.nodes,
 			)
 			assert.Error(t, err, "Should return an error when "+desc)
