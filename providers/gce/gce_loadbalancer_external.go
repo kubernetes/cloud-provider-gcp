@@ -112,46 +112,49 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		g.deleteWrongNetworkTieredResources(loadBalancerName, lbRefStr, netTier)
 	}
 
-	groupedPorts := groupPortsByProtocol(ports)
-	if !g.AlphaFeatureGate.Enabled(AlphaFeatureMultiProtocolLB) && len(groupedPorts) > 1 {
-		var protocols []string
-		for p := range groupedPorts {
-			protocols = append(protocols, string(p))
-		}
-		return nil, fmt.Errorf("load balancer with multiple protocols (%s) is not supported when AlphaFeatureMultiProtocolLB is disabled", strings.Join(protocols, ","))
+	existingFRs, err := g.getExistingForwardingRules(loadBalancerName)
+	if err != nil {
+		return nil, fmt.Errorf("error getting existing forwarding rules for %s: %v", loadBalancerName, err)
 	}
 
+	// Check if a forwarding rule exists, and if so, what the IP is.
 	var fwdRuleIP string
-	// We need to determine the IP address for all forwarding rules.
-	// We check if any of the forwarding rules already exist and use their IP.
-	for protocol := range groupedPorts {
-		frName := g.getProtocolForwardingRuleName(loadBalancerName, protocol)
-		fwd, err := g.GetRegionForwardingRule(frName, g.region)
-		if err != nil && !isNotFound(err) {
-			return nil, err
-		}
-		if fwd != nil {
-			fwdRuleIP = fwd.IPAddress
-			break
-		}
-	}
-	// If no forwarding rule exists, check for the old one.
-	if fwdRuleIP == "" {
-		fwd, err := g.GetRegionForwardingRule(loadBalancerName, g.region)
-		if err != nil && !isNotFound(err) {
-			return nil, err
-		}
-		if fwd != nil {
-			fwdRuleIP = fwd.IPAddress
+	for _, fr := range existingFRs {
+		if fr.IPAddress != "" {
+			if fwdRuleIP == "" {
+				fwdRuleIP = fr.IPAddress
+			} else if fwdRuleIP != fr.IPAddress {
+				return nil, fmt.Errorf("found multiple forwarding rules with different IP addresses (%s and %s) for load balancer %s", fwdRuleIP, fr.IPAddress, loadBalancerName)
+			}
 		}
 	}
 
 	// Make sure we know which IP address will be used and have properly reserved
 	// it as static before moving forward with the rest of our operations.
+	//
+	// We use static IP addresses when updating a load balancer to ensure that we
+	// can replace the load balancer's other components without changing the
+	// address its service is reachable on. We do it this way rather than always
+	// keeping the static IP around even though this is more complicated because
+	// it makes it less likely that we'll run into quota issues. Only 7 static
+	// IP addresses are allowed per region by default.
+	//
+	// We could let an IP be allocated for us when the forwarding rule is created,
+	// but we need the IP to set up the firewall rule, and we want to keep the
+	// forwarding rule creation as the last thing that needs to be done in this
+	// function in order to maintain the invariant that "if the forwarding rule
+	// exists, the LB has been fully created".
 	ipAddressToUse := ""
-	isUserOwnedIP := false
-	isSafeToReleaseIP := false
 
+	// Through this process we try to keep track of whether it is safe to
+	// release the IP that was allocated.  If the user specifically asked for
+	// an IP, we assume they are managing it themselves.  Otherwise, we will
+	// release the IP in case of early-terminating failure or upon successful
+	// creating of the LB.
+	// TODO(#36535): boil this logic down into a set of component functions
+	// and key the flag values off of errors returned.
+	isUserOwnedIP := false // if this is set, we never release the IP
+	isSafeToReleaseIP := false
 	defer func() {
 		if isUserOwnedIP {
 			return
@@ -193,6 +196,12 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		// not release the IP unless it is explicitly flagged as OK.
 		isSafeToReleaseIP = !existed
 		ipAddressToUse = ipAddr
+	}
+
+	// Now we have the IP address we can build the desired forwarding rules.
+	desiredFRs, err := g.buildDesiredForwardingRules(loadBalancerName, serviceName.String(), ipAddressToUse, g.targetPoolURL(loadBalancerName), apiService, netTier, existingFRs)
+	if err != nil {
+		return nil, fmt.Errorf("error building desired forwarding rules for %s: %v", loadBalancerName, err)
 	}
 
 	// Deal with the firewall next. The reason we do this here rather than last
@@ -257,6 +266,9 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	} else {
 		klog.V(4).Infof("ensureExternalLoadBalancer(%s): Service needs nodes health checks.", lbRefStr)
 		if hcLocalTrafficExisting != nil {
+			// This logic exists to detect a transition from OnlyLocal to non-OnlyLocal service
+			// and turn on the tpNeedsRecreation flag to delete/recreate fwdrule/tpool updating the
+			// target pool to use nodes health check.
 			klog.V(2).Infof("ensureExternalLoadBalancer(%s): Updating from local traffic health checks to nodes health checks.", lbRefStr)
 			hcToDelete = hcLocalTrafficExisting
 			tpNeedsRecreation = true
@@ -264,26 +276,32 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		hcToCreate = makeHTTPHealthCheck(MakeNodesHealthCheckName(clusterID), GetNodesHealthCheckPath(), GetNodesHealthCheckPort())
 	}
 
+	// Now we get to some slightly more interesting logic.
+	// First, neither target pools nor forwarding rules can be updated in place -
+	// they have to be deleted and recreated.
+	// Second, forwarding rules are layered on top of target pools in that you
+	// can't delete a target pool that's currently in use by a forwarding rule.
+	// Thus, we have to tear down a forwarding rule if either it or the target
+	// pool needs to be updated.
+	if len(existingFRs) > 0 && tpNeedsRecreation {
+		// Begin critical section. If we have to delete the forwarding rule,
+		// and something should fail before we recreate it, don't release the
+		// IP.  That way we can come back to it later.
+		isSafeToReleaseIP = false
+
+		for _, fr := range existingFRs {
+			if err := g.DeleteRegionForwardingRule(fr.Name, g.region); err != nil && !isNotFound(err) {
+				return nil, fmt.Errorf("failed to delete existing forwarding rule for load balancer (%s) update: %v", lbRefStr, err)
+			}
+		}
+		klog.Infof("ensureExternalLoadBalancer(%s): Deleted forwarding rule(s).", lbRefStr)
+
+		// Clear the existing forwarding rules so we don't try to delete them again.
+		existingFRs = nil
+	}
+
 	if err := g.ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation, apiService, loadBalancerName, clusterID, ipAddressToUse, hosts, hcToCreate, hcToDelete); err != nil {
 		return nil, err
-	}
-
-	// Forwarding rule logic
-	// We build the desired forwarding rules and then sync them with what exists.
-	existingFRs, err := g.getExistingForwardingRules(loadBalancerName)
-	if err != nil {
-		return nil, fmt.Errorf("error getting existing forwarding rules for %s: %v", loadBalancerName, err)
-	}
-
-	// Get the old forwarding rule for backward compatibility.
-	var oldFwdRule *compute.ForwardingRule
-	if fwd, ok := existingFRs[loadBalancerName]; ok {
-		oldFwdRule = fwd
-	}
-
-	desiredFRs, err := g.buildDesiredForwardingRules(loadBalancerName, serviceName.String(), ipAddressToUse, g.targetPoolURL(loadBalancerName), apiService, netTier, oldFwdRule)
-	if err != nil {
-		return nil, fmt.Errorf("error building desired forwarding rules for %s: %v", loadBalancerName, err)
 	}
 
 	// Delete unwanted forwarding rules.
@@ -299,31 +317,34 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	// Create or update forwarding rules.
 	for _, desiredFR := range desiredFRs {
 		existingFR, exists := existingFRs[desiredFR.Name]
-
-		needsUpdate := false
 		if exists {
-			if !g.forwardingRulesEqual(existingFR, desiredFR) {
-				needsUpdate = true
+			if g.forwardingRulesEqual(existingFR, desiredFR) {
+				continue
 			}
 		}
 
-		if !exists || needsUpdate || tpNeedsRecreation {
-			if exists {
-				klog.Infof("ensureExternalLoadBalancer(%s): Deleting forwarding rule %s to update.", lbRefStr, desiredFR.Name)
-				if err := g.DeleteRegionForwardingRule(desiredFR.Name, g.region); err != nil && !isNotFound(err) {
-					return nil, err
-				}
+		// We can't update a forwarding rule in place, so we have to delete it and recreate it.
+		if exists {
+			klog.Infof("ensureExternalLoadBalancer(%s): Deleting forwarding rule %s to update.", lbRefStr, desiredFR.Name)
+			if err := g.DeleteRegionForwardingRule(desiredFR.Name, g.region); err != nil && !isNotFound(err) {
+				return nil, err
 			}
-			klog.Infof("ensureExternalLoadBalancer(%s): Creating forwarding rule %s for protocol %s, IP %s (tier: %s).", lbRefStr, desiredFR.Name, desiredFR.IPProtocol, ipAddressToUse, netTier)
-			// The desiredFR is a complete spec, so we can just pass it to CreateRegionForwardingRule.
-			if err := g.CreateRegionForwardingRule(desiredFR, g.region); err != nil && !isHTTPErrorCode(err, http.StatusConflict) {
-				return nil, fmt.Errorf("failed to create forwarding rule for load balancer (%s): %v", lbRefStr, err)
-			}
-			klog.Infof("ensureExternalLoadBalancer(%s): Created forwarding rule %s.", lbRefStr, desiredFR.Name)
 		}
+		klog.Infof("ensureExternalLoadBalancer(%s): Creating forwarding rule %s for protocol %s, IP %s (tier: %s).", lbRefStr, desiredFR.Name, desiredFR.IPProtocol, ipAddressToUse, netTier)
+		// The desiredFR is a complete spec, so we can just pass it to CreateRegionForwardingRule.
+		// TODO: Why do we ignore the conflict error?
+		if err := g.CreateRegionForwardingRule(desiredFR, g.region); err != nil && !isHTTPErrorCode(err, http.StatusConflict) {
+			return nil, fmt.Errorf("failed to create forwarding rule for load balancer (%s): %v", lbRefStr, err)
+		}
+		klog.Infof("ensureExternalLoadBalancer(%s): Created forwarding rule %s.", lbRefStr, desiredFR.Name)
 	}
 
+	// End critical section.  It is safe to release the static IP (which
+	// just demotes it to ephemeral) now that it is attached.  In the case
+	// of a user-requested IP, the "is user-owned" flag will be set,
+	// preventing it from actually being released.
 	isSafeToReleaseIP = true
+
 	status := &v1.LoadBalancerStatus{}
 	status.Ingress = []v1.LoadBalancerIngress{{IP: ipAddressToUse}}
 
@@ -339,7 +360,14 @@ func (g *Cloud) getExistingForwardingRules(loadBalancerName string) (map[string]
 
 	existingFRs := make(map[string]*compute.ForwardingRule)
 	for _, fr := range frs {
-		if strings.HasPrefix(fr.Name, loadBalancerName) {
+		isMatch := false
+		if fr.Name == loadBalancerName {
+			isMatch = true
+		} else if fr.Name == g.getProtocolForwardingRuleName(loadBalancerName, v1.Protocol(fr.IPProtocol)) {
+			isMatch = true
+		}
+
+		if isMatch {
 			existingFRs[fr.Name] = fr
 		}
 	}
@@ -347,10 +375,16 @@ func (g *Cloud) getExistingForwardingRules(loadBalancerName string) (map[string]
 }
 
 // buildDesiredForwardingRules builds the desired forwarding rules for the given load balancer.
-func (g *Cloud) buildDesiredForwardingRules(loadBalancerName, serviceName, ipAddress, targetPoolURL string, apiService *v1.Service, netTier cloud.NetworkTier, oldFwdRule *compute.ForwardingRule) (map[string]*compute.ForwardingRule, error) {
+func (g *Cloud) buildDesiredForwardingRules(loadBalancerName, serviceName, ipAddress, targetPoolURL string, apiService *v1.Service, netTier cloud.NetworkTier, existingFRs map[string]*compute.ForwardingRule) (map[string]*compute.ForwardingRule, error) {
 	desiredFRs := make(map[string]*compute.ForwardingRule)
 	groupedPorts := groupPortsByProtocol(apiService.Spec.Ports)
 	desc := makeServiceDescription(serviceName)
+
+	// Find the legacy forwarding rule to minimize changes.
+	var oldFwdRule *compute.ForwardingRule
+	if fwd, ok := existingFRs[loadBalancerName]; ok {
+		oldFwdRule = fwd
+	}
 
 	for protocol, protocolPorts := range groupedPorts {
 		var frName string
@@ -364,7 +398,6 @@ func (g *Cloud) buildDesiredForwardingRules(loadBalancerName, serviceName, ipAdd
 			frName = loadBalancerName
 		}
 
-		frPorts := getPorts(protocolPorts)
 		portRange, err := loadBalancerPortRange(protocolPorts)
 		if err != nil {
 			return nil, err
@@ -380,8 +413,10 @@ func (g *Cloud) buildDesiredForwardingRules(loadBalancerName, serviceName, ipAdd
 			NetworkTier: netTier.ToGCEValue(),
 		}
 
-		if len(frPorts) <= maxForwardedPorts && g.enableDiscretePortForwarding {
-			rule.Ports = frPorts
+		if len(protocolPorts) <= maxForwardedPorts && g.enableDiscretePortForwarding {
+			for _, p := range protocolPorts {
+				rule.Ports = append(rule.Ports, strconv.Itoa(int(p.Port)))
+			}
 			rule.PortRange = ""
 		}
 
@@ -392,6 +427,14 @@ func (g *Cloud) buildDesiredForwardingRules(loadBalancerName, serviceName, ipAdd
 
 // forwardingRulesEqual checks if two forwarding rules are equal.
 func (g *Cloud) forwardingRulesEqual(existing, desired *compute.ForwardingRule) bool {
+	if existing.Name != desired.Name {
+		klog.V(3).Infof("Forwarding rule %s name changed from %s to %s", existing.Name, existing.Name, desired.Name)
+		return false
+	}
+	if existing.Description != desired.Description {
+		klog.V(3).Infof("Forwarding rule %s description changed from %s to %s", existing.Name, existing.Description, desired.Description)
+		return false
+	}
 	if existing.IPAddress != desired.IPAddress {
 		klog.V(3).Infof("Forwarding rule %s IP changed from %s to %s", existing.Name, existing.IPAddress, desired.IPAddress)
 		return false
@@ -414,7 +457,6 @@ func (g *Cloud) forwardingRulesEqual(existing, desired *compute.ForwardingRule) 
 
 	return true
 }
-
 
 // updateExternalLoadBalancer is the external implementation of LoadBalancer.UpdateLoadBalancer.
 func (g *Cloud) updateExternalLoadBalancer(clusterName string, service *v1.Service, nodes []*v1.Node) error {
@@ -500,17 +542,16 @@ func (g *Cloud) ensureExternalLoadBalancerDeleted(clusterName, clusterID string,
 			}
 
 			// TODO: Always or just with alpha feature flag?
-			frs, err := g.ListRegionForwardingRules(g.region)
+			existingFRs, err := g.getExistingForwardingRules(loadBalancerName)
 			if err != nil {
 				return err
 			}
+
 			var deleteErrs []error
-			for _, fr := range frs {
-				if strings.HasPrefix(fr.Name, loadBalancerName) {
-					klog.Infof("ensureExternalLoadBalancerDeleted(%s): Deleting forwarding rule %s.", lbRefStr, fr.Name)
-					if err := ignoreNotFound(g.DeleteRegionForwardingRule(fr.Name, g.region)); err != nil {
-						deleteErrs = append(deleteErrs, err)
-					}
+			for _, fr := range existingFRs {
+				klog.Infof("ensureExternalLoadBalancerDeleted(%s): Deleting forwarding rule %s.", lbRefStr, fr.Name)
+				if err := ignoreNotFound(g.DeleteRegionForwardingRule(fr.Name, g.region)); err != nil {
+					deleteErrs = append(deleteErrs, err)
 				}
 			}
 			if len(deleteErrs) > 0 {
@@ -908,8 +949,6 @@ func (g *Cloud) ensureHTTPHealthCheck(name, path string, port int32) (hc *comput
 	return hc, nil
 }
 
-
-
 // Doesn't check whether the hosts have changed, since host updating is handled
 // separately.
 func (g *Cloud) targetPoolNeedsRecreation(name, region string, affinityType v1.ServiceAffinity) (exists bool, needsRecreation bool, err error) {
@@ -964,26 +1003,14 @@ func hostURLToComparablePath(hostURL string) string {
 	return hostURL[idx:]
 }
 
-func getProtocol(svcPorts []v1.ServicePort) (v1.Protocol, error) {
-	if len(svcPorts) == 0 {
-		return v1.ProtocolTCP, nil
-	}
-	// The service controller verified all the protocols match on the ports, just check and use the first one
-	protocol := svcPorts[0].Protocol
-	if protocol != v1.ProtocolTCP && protocol != v1.ProtocolUDP {
-		return v1.ProtocolTCP, fmt.Errorf("invalid protocol %s, only TCP and UDP are supported", string(protocol))
-	}
-	return protocol, nil
-}
+// func getPorts(svcPorts []v1.ServicePort) []string {
+// 	ports := []string{}
+// 	for _, p := range svcPorts {
+// 		ports = append(ports, strconv.Itoa(int(p.Port)))
+// 	}
 
-func getPorts(svcPorts []v1.ServicePort) []string {
-	ports := []string{}
-	for _, p := range svcPorts {
-		ports = append(ports, strconv.Itoa(int(p.Port)))
-	}
-
-	return ports
-}
+// 	return ports
+// }
 
 func minMaxPort[T v1.ServicePort | string](svcPorts []T) (int32, int32) {
 	minPort := int32(65536)
@@ -1144,8 +1171,6 @@ func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAd
 	}
 	return nil
 }
-
-
 
 func (g *Cloud) createFirewall(svc *v1.Service, name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance) error {
 	firewall, err := g.firewallObject(name, desc, destinationIP, sourceRanges, ports, hosts)
