@@ -52,9 +52,9 @@ const (
 // IP address, a firewall rule, a target pool, and a forwarding rule. This
 // function has to manage all of them.
 //
-// Due to an interesting series of design decisions, this handles both creating
-// new load balancers and updating existing load balancers, recognizing when
-// each is needed.
+// This function handles both creating new load balancers and updating existing load balancers,
+// recognizing when each is needed.
+// This approach is resilient, for example if we are interrupted part-way during creation.
 func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
@@ -253,11 +253,37 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		}
 	}
 
-	ipAddressToUse, isSafeToReleaseIP, err := g.ensureIPAddress(loadBalancerName, lbRefStr, requestedIP, fwdRuleIP, netTier)
-	if err != nil {
-		return nil, err
-	}
+	// Make sure we know which IP address will be used and have properly reserved
+	// it as static before moving forward with the rest of our operations.
+	//
+	// We use static IP addresses when updating a load balancer to ensure that we
+	// can replace the load balancer's other components without changing the
+	// address its service is reachable on. We do it this way rather than always
+	// keeping the static IP around even though this is more complicated because
+	// it makes it less likely that we'll run into quota issues. Only 7 static
+	// IP addresses are allowed per region by default.
+	//
+	// We could let an IP be allocated for us when the forwarding rule is created,
+	// but we need the IP to set up the firewall rule, and we want to keep the
+	// forwarding rule creation as the last thing that needs to be done in this
+	// function in order to maintain the invariant that "if the forwarding rule
+	// exists, the LB has been fully created".
+	ipAddressToUse := ""
+
+	// Through this process we try to keep track of whether it is safe to
+	// release the IP that was allocated.  If the user specifically asked for
+	// an IP, we assume they are managing it themselves.  Otherwise, we will
+	// release the IP in case of early-terminating failure or upon successful
+	// creating of the LB.
+	// TODO(#36535): boil this logic down into a set of component functions
+	// and key the flag values off of errors returned.
+	isUserOwnedIP := false // if this is set, we never release the IP
+	isSafeToReleaseIP := false
+
 	defer func() {
+		if isUserOwnedIP {
+			return
+		}
 		if isSafeToReleaseIP {
 			if err := g.DeleteRegionAddress(loadBalancerName, g.region); err != nil && !isNotFound(err) {
 				klog.Errorf("ensureExternalLoadBalancer(%s): Failed to release static IP %s in region %v: %v.", lbRefStr, ipAddressToUse, g.region, err)
@@ -271,6 +297,36 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		}
 	}()
 
+	if requestedIP != "" {
+		// If user requests a specific IP address, verify first. No mutation to
+		// the GCE resources will be performed in the verification process.
+		isUserOwnedIP, err = verifyUserRequestedIP(g, g.region, requestedIP, fwdRuleIP, lbRefStr, netTier)
+		if err != nil {
+			return nil, err
+		}
+		ipAddressToUse = requestedIP
+	}
+
+	if !isUserOwnedIP {
+		// If we are not using the user-owned IP, either promote the
+		// emphemeral IP used by the fwd rule, or create a new static IP.
+		ipAddr, existed, err := ensureStaticIP(g, loadBalancerName, serviceName.String(), g.region, fwdRuleIP, netTier)
+		if err != nil {
+			return nil, fmt.Errorf("failed to ensure a static IP for load balancer (%s): %v", lbRefStr, err)
+		}
+		klog.Infof("ensureExternalLoadBalancer(%s): Ensured IP address %s (tier: %s).", lbRefStr, ipAddr, netTier)
+		// If the IP was not owned by the user, but it already existed, it
+		// could indicate that the previous update cycle failed. We can use
+		// this IP and try to run through the process again, but we should
+		// not release the IP unless it is explicitly flagged as OK.
+		isSafeToReleaseIP = !existed
+		ipAddressToUse = ipAddr
+	}
+
+	// Deal with the firewall next. The reason we do this here rather than last
+	// is because the forwarding rule is used as the indicator that the load
+	// balancer is fully created - it's what getLoadBalancer checks for.
+	// Check if user specified the allow source range
 	sourceRanges, err := servicehelpers.GetLoadBalancerSourceRanges(apiService)
 	if err != nil {
 		return nil, err
@@ -308,7 +364,8 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		klog.Infof("ensureExternalLoadBalancer(%s): Target pool for service doesn't exist.", lbRefStr)
 	}
 
-	// Health check logic...
+	// Check which health check needs to create and which health check needs to delete.
+	// Health check management is coupled with target pool operation to prevent leaking.
 	var hcToCreate, hcToDelete *compute.HttpHealthCheck
 	hcLocalTrafficExisting, err := g.GetHTTPHealthCheck(loadBalancerName)
 	if err != nil && !isHTTPErrorCode(err, http.StatusNotFound) {
@@ -317,6 +374,9 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	if path, healthCheckNodePort := servicehelpers.GetServiceHealthCheckPathPort(apiService); path != "" {
 		klog.V(4).Infof("ensureExternalLoadBalancer(%s): Service needs local traffic health checks on: %d%s.", lbRefStr, healthCheckNodePort, path)
 		if hcLocalTrafficExisting == nil {
+			// This logic exists to detect a transition for non-OnlyLocal to OnlyLocal service
+			// turn on the tpNeedsRecreation flag to delete/recreate fwdrule/tpool updating the
+			// target pool to use local traffic health check.
 			klog.V(2).Infof("ensureExternalLoadBalancer(%s): Updating from nodes health checks to local traffic health checks.", lbRefStr)
 			hcToDelete = makeHTTPHealthCheck(MakeNodesHealthCheckName(clusterID), GetNodesHealthCheckPath(), GetNodesHealthCheckPort())
 			tpNeedsRecreation = true
@@ -534,8 +594,13 @@ func (g *Cloud) ensureExternalLoadBalancerDeleted(clusterName, clusterID string,
 		},
 		func() error {
 			klog.Infof("ensureExternalLoadBalancerDeleted(%s): Deleting forwarding rules.", lbRefStr)
-			// The forwarding rule must be deleted before either the target pool can,
-			// unfortunately, so we have to do these two serially.
+			// The forwarding rule must be deleted before the target pool can be deleted,
+			// unfortunately, so we have to delete forwarding rules then target pools serially.
+			if err := ignoreNotFound(g.DeleteRegionForwardingRule(loadBalancerName, g.region)); err != nil {
+				return err
+			}
+
+			// TODO: Always or just with alpha feature flag?
 			frs, err := g.ListRegionForwardingRules(g.region)
 			if err != nil {
 				return err
@@ -1125,8 +1190,7 @@ func equalPorts(existingPorts, newPorts []string, existingPortRange, newPortRang
 
 func groupPortsByProtocol(ports []v1.ServicePort) map[v1.Protocol][]v1.ServicePort {
 	grouped := make(map[v1.Protocol][]v1.ServicePort)
-	for _, p := range ports {
-		port := p
+	for _, port := range ports {
 		grouped[port.Protocol] = append(grouped[port.Protocol], port)
 	}
 	return grouped
@@ -1194,7 +1258,6 @@ func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports [
 
 	return true, false, nil
 }
-
 
 func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAddress, region, clusterID string, hosts []*gceInstance, hcName string, hcPort int32, isNodesHealthCheck bool) error {
 	// Prepare the firewall params for creating / checking.
@@ -1310,6 +1373,8 @@ func (g *Cloud) updateFirewall(svc *v1.Service, name, desc, destinationIP string
 func (g *Cloud) firewallObject(name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance) (*compute.Firewall, error) {
 	// destinationIP can be empty string "" and this means that it is not set.
 	// GCE considers empty destinationRanges as "all" for ingress firewall-rules.
+	// Concatenate service ports into port ranges. This help to workaround the gce firewall limitation where only
+	// 100 ports or port ranges can be used in a firewall rule.
 	groupedPorts := groupPortsByProtocol(ports)
 	var allowed []*compute.FirewallAllowed
 	for protocol, protocolPorts := range groupedPorts {
