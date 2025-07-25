@@ -66,6 +66,14 @@ The necessary changes would be localized within the GCP-specific implementation 
   * gce.EnsureLoadBalancerDeleted: This function would need to be updated to iterate through all potential forwarding rules based on the new naming scheme and delete them.  
   * **Resource Naming Functions:** Helper functions that generate names for GCP resources would need to be adapted to produce the protocol-specific forwarding rule names.
 
+### 5. Production Readiness
+
+For ease of introduction, we will implement a feature flag for the support.  If the feature flag is not set,
+the existing behaviour will be used - specifying a service with multiple protocols will be an error.
+
+So that traffic is not interrupted, if a ForwardingRule exists with the "old" naming convention (`k8s-fw-\[service-uid\]`),
+that name will be used for the matching desired ForwardingRule.
+
 ### **5\. Alternatives Considered**
 
 * **Continue with Dual-Service Workaround:** This is the current state. It is not a true implementation of the Kubernetes feature and places an unnecessary operational burden on users.  
