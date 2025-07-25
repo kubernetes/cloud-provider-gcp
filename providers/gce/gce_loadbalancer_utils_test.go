@@ -248,7 +248,8 @@ func assertInternalLbResources(t *testing.T, gce *Cloud, apiService *v1.Service,
 
 	// Check that BackendService exists
 	sharedBackend := shareBackendService(apiService)
-	backendServiceName := makeBackendServiceName(lbName, vals.ClusterID, sharedBackend, cloud.SchemeInternal, "TCP", apiService.Spec.SessionAffinity)
+	groupedPorts := getPortsAndProtocols(apiService.Spec.Ports)
+	backendServiceName := makeBackendServiceName(lbName, vals.ClusterID, sharedBackend, cloud.SchemeInternal, groupedPorts, apiService.Spec.SessionAffinity)
 	backendServiceLink := gce.getBackendServiceLink(backendServiceName)
 
 	bs, err := gce.GetRegionBackendService(backendServiceName, gce.region)

@@ -94,10 +94,13 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 		return nil, err
 	}
 
-	ports, _, protocol := getPortsAndProtocol(svc.Spec.Ports)
-	if protocol != v1.ProtocolTCP && protocol != v1.ProtocolUDP {
-		return nil, fmt.Errorf("Invalid protocol %s, only TCP and UDP are supported", string(protocol))
+	groupedPorts := getPortsAndProtocols(svc.Spec.Ports)
+	for protocol := range groupedPorts {
+		if protocol != v1.ProtocolTCP && protocol != v1.ProtocolUDP {
+			return nil, fmt.Errorf("Invalid protocol %s, only TCP and UDP are supported", string(protocol))
+		}
 	}
+
 	scheme := cloud.SchemeInternal
 	options := getILBOptions(svc)
 	if g.IsLegacyNetwork() {
@@ -106,7 +109,7 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	}
 
 	sharedBackend := shareBackendService(svc)
-	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, sharedBackend, scheme, protocol, svc.Spec.SessionAffinity)
+	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, sharedBackend, scheme, groupedPorts, svc.Spec.SessionAffinity)
 	backendServiceLink := g.getBackendServiceLink(backendServiceName)
 
 	// Ensure instance groups exist and nodes are assigned to groups
@@ -359,10 +362,10 @@ func (g *Cloud) updateInternalLoadBalancer(clusterName, clusterID string, svc *v
 	}
 
 	// Generate the backend service name
-	_, _, protocol := getPortsAndProtocol(svc.Spec.Ports)
+	groupedPorts := getPortsAndProtocols(svc.Spec.Ports)
 	scheme := cloud.SchemeInternal
 	loadBalancerName := g.GetLoadBalancerName(context.TODO(), clusterName, svc)
-	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, shareBackendService(svc), scheme, protocol, svc.Spec.SessionAffinity)
+	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, shareBackendService(svc), scheme, groupedPorts, svc.Spec.SessionAffinity)
 	// Ensure the backend service has the proper backend/instance-group links
 	return g.ensureInternalBackendServiceGroups(backendServiceName, igLinks)
 }
@@ -383,7 +386,7 @@ func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string,
 
 	loadBalancerName := g.GetLoadBalancerName(context.TODO(), clusterName, svc)
 	svcNamespacedName := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
-	_, _, protocol := getPortsAndProtocol(svc.Spec.Ports)
+	groupedPorts := getPortsAndProtocols(svc.Spec.Ports)
 	scheme := cloud.SchemeInternal
 	sharedBackend := shareBackendService(svc)
 	sharedHealthCheck := !servicehelpers.RequestsOnlyLocalTraffic(svc)
@@ -399,7 +402,7 @@ func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string,
 		return err
 	}
 
-	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, sharedBackend, scheme, protocol, svc.Spec.SessionAffinity)
+	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, sharedBackend, scheme, groupedPorts, svc.Spec.SessionAffinity)
 	klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): deleting region backend service %v", loadBalancerName, backendServiceName)
 	if err := g.teardownInternalBackendService(backendServiceName); err != nil {
 		return err
@@ -495,7 +498,7 @@ func (g *Cloud) teardownInternalHealthCheckAndFirewall(svc *v1.Service, hcName s
 	return nil
 }
 
-func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinationIP string, sourceRanges []string, portRanges []string, protocol v1.Protocol, nodes []*v1.Node, legacyFwName string) error {
+func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinationIP string, sourceRanges []string, groupedPorts map[v1.Protocol]ProtocolPorts, nodes []*v1.Node, legacyFwName string) error {
 	klog.V(2).Infof("ensureInternalFirewall(%v): checking existing firewall", fwName)
 	targetTags, err := g.GetNodeTags(nodeNames(nodes))
 	if err != nil {
@@ -536,12 +539,13 @@ func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinat
 		Network:      g.networkURL,
 		SourceRanges: sourceRanges,
 		TargetTags:   targetTags,
-		Allowed: []*compute.FirewallAllowed{
-			{
-				IPProtocol: strings.ToLower(string(protocol)),
-				Ports:      portRanges,
-			},
-		},
+	}
+
+	for protocol, protocolPorts := range groupedPorts {
+		expectedFirewall.Allowed = append(expectedFirewall.Allowed, &compute.FirewallAllowed{
+			IPProtocol: strings.ToLower(string(protocol)),
+			Ports:      protocolPorts.portRanges,
+		})
 	}
 
 	if destinationIP != "" {
@@ -576,12 +580,12 @@ func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinat
 func (g *Cloud) ensureInternalFirewalls(loadBalancerName, ipAddress, clusterID string, nm types.NamespacedName, svc *v1.Service, healthCheckPort string, sharedHealthCheck bool, nodes []*v1.Node) error {
 	// First firewall is for ingress traffic
 	fwDesc := makeFirewallDescription(nm.String(), ipAddress)
-	_, portRanges, protocol := getPortsAndProtocol(svc.Spec.Ports)
+	groupedPorts := getPortsAndProtocols(svc.Spec.Ports)
 	sourceRanges, err := servicehelpers.GetLoadBalancerSourceRanges(svc)
 	if err != nil {
 		return err
 	}
-	err = g.ensureInternalFirewall(svc, MakeFirewallName(loadBalancerName), fwDesc, ipAddress, sourceRanges.StringSlice(), portRanges, protocol, nodes, loadBalancerName)
+	err = g.ensureInternalFirewall(svc, MakeFirewallName(loadBalancerName), fwDesc, ipAddress, sourceRanges.StringSlice(), groupedPorts, nodes, loadBalancerName)
 	if err != nil {
 		return err
 	}
@@ -957,20 +961,28 @@ func backendSvcEqual(a, b *compute.BackendService) bool {
 		backendsListEqual(a.Backends, b.Backends)
 }
 
-func getPortsAndProtocol(svcPorts []v1.ServicePort) (ports []string, portRanges []string, protocol v1.Protocol) {
+type ProtocolPorts struct {
+	ports      []int
+	portRanges []string
+}
+
+func getPortsAndProtocols(svcPorts []v1.ServicePort) map[v1.Protocol]ProtocolPorts {
 	if len(svcPorts) == 0 {
-		return []string{}, []string{}, v1.ProtocolUDP
+		return nil
 	}
 
-	// GCP doesn't support multiple protocols for a single load balancer
-	protocol = svcPorts[0].Protocol
-	portInts := []int{}
+	m := make(map[v1.Protocol]ProtocolPorts)
 	for _, p := range svcPorts {
-		ports = append(ports, strconv.Itoa(int(p.Port)))
-		portInts = append(portInts, int(p.Port))
+		ports := m[p.Protocol]
+		ports.ports = append(ports.ports, int(p.Port))
 	}
 
-	return ports, getPortRanges(portInts), protocol
+	for protocol, ports := range m {
+		ports.portRanges = getPortRanges(ports.ports)
+		m[protocol] = ports
+	}
+
+	return m
 }
 
 func getPortRanges(ports []int) (ranges []string) {

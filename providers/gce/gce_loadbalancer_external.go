@@ -377,7 +377,7 @@ func (g *Cloud) getExistingForwardingRules(loadBalancerName string) (map[string]
 // buildDesiredForwardingRules builds the desired forwarding rules for the given load balancer.
 func (g *Cloud) buildDesiredForwardingRules(loadBalancerName, serviceName, ipAddress, targetPoolURL string, apiService *v1.Service, netTier cloud.NetworkTier, existingFRs map[string]*compute.ForwardingRule) (map[string]*compute.ForwardingRule, error) {
 	desiredFRs := make(map[string]*compute.ForwardingRule)
-	groupedPorts := groupPortsByProtocol(apiService.Spec.Ports)
+	groupedPorts := getPortsAndProtocols(apiService.Spec.Ports)
 	desc := makeServiceDescription(serviceName)
 
 	// Find the legacy forwarding rule to minimize changes.
@@ -398,7 +398,7 @@ func (g *Cloud) buildDesiredForwardingRules(loadBalancerName, serviceName, ipAdd
 			frName = loadBalancerName
 		}
 
-		portRange, err := loadBalancerPortRange(protocolPorts)
+		portRange, err := loadBalancerPortRange(protocolPorts.ports)
 		if err != nil {
 			return nil, err
 		}
@@ -413,9 +413,9 @@ func (g *Cloud) buildDesiredForwardingRules(loadBalancerName, serviceName, ipAdd
 			NetworkTier: netTier.ToGCEValue(),
 		}
 
-		if len(protocolPorts) <= maxForwardedPorts && g.enableDiscretePortForwarding {
-			for _, p := range protocolPorts {
-				rule.Ports = append(rule.Ports, strconv.Itoa(int(p.Port)))
+		if len(protocolPorts.ports) <= maxForwardedPorts && g.enableDiscretePortForwarding {
+			for _, p := range protocolPorts.ports {
+				rule.Ports = append(rule.Ports, strconv.Itoa(p))
 			}
 			rule.PortRange = ""
 		}
@@ -1003,30 +1003,15 @@ func hostURLToComparablePath(hostURL string) string {
 	return hostURL[idx:]
 }
 
-// func getPorts(svcPorts []v1.ServicePort) []string {
-// 	ports := []string{}
-// 	for _, p := range svcPorts {
-// 		ports = append(ports, strconv.Itoa(int(p.Port)))
-// 	}
+func loadBalancerPortRange(ports []int) (string, error) {
+	if len(ports) == 0 {
+		return "", fmt.Errorf("no ports specified for GCE load balancer")
+	}
 
-// 	return ports
-// }
+	minPort := 65536
+	maxPort := 0
 
-func minMaxPort[T v1.ServicePort | string](svcPorts []T) (int32, int32) {
-	minPort := int32(65536)
-	maxPort := int32(0)
-	for _, svcPort := range svcPorts {
-		port := func(value any) int32 {
-			switch value.(type) {
-			case v1.ServicePort:
-				return value.(v1.ServicePort).Port
-			case string:
-				i, _ := strconv.ParseInt(value.(string), 10, 32)
-				return int32(i)
-			default:
-				return 0
-			}
-		}(svcPort)
+	for _, port := range ports {
 		if port < minPort {
 			minPort = port
 		}
@@ -1034,15 +1019,6 @@ func minMaxPort[T v1.ServicePort | string](svcPorts []T) (int32, int32) {
 			maxPort = port
 		}
 	}
-	return minPort, maxPort
-}
-
-func loadBalancerPortRange[T v1.ServicePort | string](svcPorts []T) (string, error) {
-	if len(svcPorts) == 0 {
-		return "", fmt.Errorf("no ports specified for GCE load balancer")
-	}
-
-	minPort, maxPort := minMaxPort(svcPorts)
 	return fmt.Sprintf("%d-%d", minPort, maxPort), nil
 }
 
@@ -1058,17 +1034,17 @@ func equalPorts(existingPorts, newPorts []string, existingPortRange, newPortRang
 	// Existing forwarding rule contains a port range. To keep it that way,
 	// compare new list of ports as if it was a port range, too.
 	if len(newPorts) != 0 {
-		newPortRange, _ = loadBalancerPortRange(newPorts)
+		var portInts []int
+		for _, port := range newPorts {
+			portInt, err := strconv.Atoi(port)
+			if err != nil {
+				klog.Errorf("invalid port %s: %v", port, err)
+			}
+			portInts = append(portInts, portInt)
+		}
+		newPortRange, _ = loadBalancerPortRange(portInts)
 	}
 	return existingPortRange == newPortRange
-}
-
-func groupPortsByProtocol(ports []v1.ServicePort) map[v1.Protocol][]v1.ServicePort {
-	grouped := make(map[v1.Protocol][]v1.ServicePort)
-	for _, port := range ports {
-		grouped[port.Protocol] = append(grouped[port.Protocol], port)
-	}
-	return grouped
 }
 
 // translate from what K8s supports to what the cloud provider supports for session affinity.
@@ -1096,11 +1072,10 @@ func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports [
 		return true, true, nil
 	}
 
-	groupedPorts := groupPortsByProtocol(ports)
+	groupedPorts := getPortsAndProtocols(ports)
 	expectedAllowed := make(map[string][]string)
 	for protocol, protocolPorts := range groupedPorts {
-		_, portRanges, _ := getPortsAndProtocol(protocolPorts)
-		expectedAllowed[strings.ToLower(string(protocol))] = portRanges
+		expectedAllowed[strings.ToLower(string(protocol))] = protocolPorts.portRanges
 	}
 
 	actualAllowed := make(map[string][]string)
@@ -1214,13 +1189,12 @@ func (g *Cloud) firewallObject(name, desc, destinationIP string, sourceRanges ut
 	// GCE considers empty destinationRanges as "all" for ingress firewall-rules.
 	// Concatenate service ports into port ranges. This help to workaround the gce firewall limitation where only
 	// 100 ports or port ranges can be used in a firewall rule.
-	groupedPorts := groupPortsByProtocol(ports)
+	groupedPorts := getPortsAndProtocols(ports)
 	var allowed []*compute.FirewallAllowed
 	for protocol, protocolPorts := range groupedPorts {
-		_, portRanges, _ := getPortsAndProtocol(protocolPorts)
 		allowed = append(allowed, &compute.FirewallAllowed{
 			IPProtocol: strings.ToLower(string(protocol)),
-			Ports:      portRanges,
+			Ports:      protocolPorts.portRanges,
 		})
 	}
 
