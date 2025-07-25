@@ -27,6 +27,9 @@ const (
 	// AlphaFeatureSkipIGsManagement enabled L4 Regional Backend Services and
 	// disables instance group management in service controller
 	AlphaFeatureSkipIGsManagement = "SkipIGsManagement"
+
+	// AlphaFeatureMultiProtocolLB allows services to use multiple protocols in the same LoadBalancer.
+	AlphaFeatureMultiProtocolLB = "MultiProtocolLB"
 )
 
 // AlphaFeatureGate contains a mapping of alpha features to whether they are enabled
