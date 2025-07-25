@@ -112,123 +112,16 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		g.deleteWrongNetworkTieredResources(loadBalancerName, lbRefStr, netTier)
 	}
 
-	// If the feature gate is not enabled, we check for multiple protocols and error out.
-	if !g.AlphaFeatureGate.Enabled(AlphaFeatureMultiProtocolLB) {
-		fwdRuleExists, fwdRuleNeedsUpdate, fwdRuleIP, err := g.forwardingRuleNeedsUpdate(loadBalancerName, g.region, requestedIP, ports)
-		if err != nil {
-			return nil, err
+	groupedPorts := groupPortsByProtocol(ports)
+	if !g.AlphaFeatureGate.Enabled(AlphaFeatureMultiProtocolLB) && len(groupedPorts) > 1 {
+		var protocols []string
+		for p := range groupedPorts {
+			protocols = append(protocols, string(p))
 		}
-		if !fwdRuleExists {
-			klog.V(2).Infof("ensureExternalLoadBalancer(%s): Forwarding rule %v doesn't exist.", lbRefStr, loadBalancerName)
-		}
-		// Single-protocol logic
-		ipAddressToUse, isSafeToReleaseIP, err := g.ensureIPAddress(loadBalancerName, lbRefStr, apiService.Spec.LoadBalancerIP, fwdRuleIP, netTier)
-		if err != nil {
-			return nil, err
-		}
-		defer func() {
-			if isSafeToReleaseIP {
-				if err := g.DeleteRegionAddress(loadBalancerName, g.region); err != nil && !isNotFound(err) {
-					klog.Errorf("ensureExternalLoadBalancer(%s): Failed to release static IP %s in region %v: %v.", lbRefStr, ipAddressToUse, g.region, err)
-				} else if isNotFound(err) {
-					klog.V(2).Infof("ensureExternalLoadBalancer(%s): IP address %s is not reserved.", lbRefStr, ipAddressToUse)
-				} else {
-					klog.Infof("ensureExternalLoadBalancer(%s): Released static IP %s.", lbRefStr, ipAddressToUse)
-				}
-			} else {
-				klog.Warningf("ensureExternalLoadBalancer(%s): Orphaning static IP %s in region %v: %v.", lbRefStr, ipAddressToUse, g.region, err)
-			}
-		}()
-
-		sourceRanges, err := servicehelpers.GetLoadBalancerSourceRanges(apiService)
-		if err != nil {
-			return nil, err
-		}
-
-		firewallExists, firewallNeedsUpdate, err := g.firewallNeedsUpdate(loadBalancerName, serviceName.String(), ipAddressToUse, ports, sourceRanges)
-		if err != nil {
-			return nil, err
-		}
-
-		if firewallNeedsUpdate {
-			desc := makeFirewallDescription(serviceName.String(), ipAddressToUse)
-			if firewallExists {
-				klog.Infof("ensureExternalLoadBalancer(%s): Updating firewall.", lbRefStr)
-				if err := g.updateFirewall(apiService, MakeFirewallName(loadBalancerName), desc, ipAddressToUse, sourceRanges, ports, hosts); err != nil {
-					return nil, err
-				}
-				klog.Infof("ensureExternalLoadBalancer(%s): Updated firewall.", lbRefStr)
-			} else {
-				klog.Infof("ensureExternalLoadBalancer(%s): Creating firewall.", lbRefStr)
-				if err := g.createFirewall(apiService, MakeFirewallName(loadBalancerName), desc, ipAddressToUse, sourceRanges, ports, hosts); err != nil {
-					return nil, err
-				}
-				klog.Infof("ensureExternalLoadBalancer(%s): Created firewall.", lbRefStr)
-			}
-		}
-
-		tpExists, tpNeedsRecreation, err := g.targetPoolNeedsRecreation(loadBalancerName, g.region, apiService.Spec.SessionAffinity)
-		if err != nil {
-			return nil, err
-		}
-		if !tpExists {
-			klog.Infof("ensureExternalLoadBalancer(%s): Target pool for service doesn't exist.", lbRefStr)
-		}
-
-		var hcToCreate, hcToDelete *compute.HttpHealthCheck
-		hcLocalTrafficExisting, err := g.GetHTTPHealthCheck(loadBalancerName)
-		if err != nil && !isHTTPErrorCode(err, http.StatusNotFound) {
-			return nil, fmt.Errorf("error checking HTTP health check for load balancer (%s): %v", lbRefStr, err)
-		}
-		if path, healthCheckNodePort := servicehelpers.GetServiceHealthCheckPathPort(apiService); path != "" {
-			klog.V(4).Infof("ensureExternalLoadBalancer(%s): Service needs local traffic health checks on: %d%s.", lbRefStr, healthCheckNodePort, path)
-			if hcLocalTrafficExisting == nil {
-				klog.V(2).Infof("ensureExternalLoadBalancer(%s): Updating from nodes health checks to local traffic health checks.", lbRefStr)
-				hcToDelete = makeHTTPHealthCheck(MakeNodesHealthCheckName(clusterID), GetNodesHealthCheckPath(), GetNodesHealthCheckPort())
-				tpNeedsRecreation = true
-			}
-			hcToCreate = makeHTTPHealthCheck(loadBalancerName, path, healthCheckNodePort)
-		} else {
-			klog.V(4).Infof("ensureExternalLoadBalancer(%s): Service needs nodes health checks.", lbRefStr)
-			if hcLocalTrafficExisting != nil {
-				klog.V(2).Infof("ensureExternalLoadBalancer(%s): Updating from local traffic health checks to nodes health checks.", lbRefStr)
-				hcToDelete = hcLocalTrafficExisting
-				tpNeedsRecreation = true
-			}
-			hcToCreate = makeHTTPHealthCheck(MakeNodesHealthCheckName(clusterID), GetNodesHealthCheckPath(), GetNodesHealthCheckPort())
-		}
-
-		if fwdRuleExists && (fwdRuleNeedsUpdate || tpNeedsRecreation) {
-			isSafeToReleaseIP = false
-			if err := g.DeleteRegionForwardingRule(loadBalancerName, g.region); err != nil && !isNotFound(err) {
-				return nil, fmt.Errorf("failed to delete existing forwarding rule for load balancer (%s) update: %v", lbRefStr, err)
-			}
-			klog.Infof("ensureExternalLoadBalancer(%s): Deleted forwarding rule.", lbRefStr)
-		}
-
-		if err := g.ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation, apiService, loadBalancerName, clusterID, ipAddressToUse, hosts, hcToCreate, hcToDelete); err != nil {
-			return nil, err
-		}
-
-		if tpNeedsRecreation || fwdRuleNeedsUpdate {
-			klog.Infof("ensureExternalLoadBalancer(%s): Creating forwarding rule, IP %s (tier: %s).", lbRefStr, ipAddressToUse, netTier)
-			if err := createForwardingRule(g, loadBalancerName, serviceName.String(), g.region, ipAddressToUse, g.targetPoolURL(loadBalancerName), ports, netTier, g.enableDiscretePortForwarding); err != nil {
-				return nil, fmt.Errorf("failed to create forwarding rule for load balancer (%s): %v", lbRefStr, err)
-			}
-			isSafeToReleaseIP = true
-			klog.Infof("ensureExternalLoadBalancer(%s): Created forwarding rule, IP %s.", lbRefStr, ipAddressToUse)
-		}
-
-		status := &v1.LoadBalancerStatus{}
-		status.Ingress = []v1.LoadBalancerIngress{{IP: ipAddressToUse}}
-
-		return status, nil
+		return nil, fmt.Errorf("load balancer with multiple protocols (%s) is not supported when AlphaFeatureMultiProtocolLB is disabled", strings.Join(protocols, ","))
 	}
 
-	// Multi-protocol logic starts here
-	groupedPorts := groupPortsByProtocol(ports)
 	var fwdRuleIP string
-
 	// We need to determine the IP address for all forwarding rules.
 	// We check if any of the forwarding rules already exist and use their IP.
 	for protocol := range groupedPorts {
@@ -255,29 +148,8 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 
 	// Make sure we know which IP address will be used and have properly reserved
 	// it as static before moving forward with the rest of our operations.
-	//
-	// We use static IP addresses when updating a load balancer to ensure that we
-	// can replace the load balancer's other components without changing the
-	// address its service is reachable on. We do it this way rather than always
-	// keeping the static IP around even though this is more complicated because
-	// it makes it less likely that we'll run into quota issues. Only 7 static
-	// IP addresses are allowed per region by default.
-	//
-	// We could let an IP be allocated for us when the forwarding rule is created,
-	// but we need the IP to set up the firewall rule, and we want to keep the
-	// forwarding rule creation as the last thing that needs to be done in this
-	// function in order to maintain the invariant that "if the forwarding rule
-	// exists, the LB has been fully created".
 	ipAddressToUse := ""
-
-	// Through this process we try to keep track of whether it is safe to
-	// release the IP that was allocated.  If the user specifically asked for
-	// an IP, we assume they are managing it themselves.  Otherwise, we will
-	// release the IP in case of early-terminating failure or upon successful
-	// creating of the LB.
-	// TODO(#36535): boil this logic down into a set of component functions
-	// and key the flag values off of errors returned.
-	isUserOwnedIP := false // if this is set, we never release the IP
+	isUserOwnedIP := false
 	isSafeToReleaseIP := false
 
 	defer func() {
@@ -419,9 +291,14 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 
 	// Then, iterate over the protocols and create/update forwarding rules.
 	for protocol, protocolPorts := range groupedPorts {
-		frName := g.getProtocolForwardingRuleName(loadBalancerName, protocol)
-		// If the old forwarding rule matches this protocol, use its name.
-		if fwd != nil && fwd.IPProtocol == string(protocol) {
+		var frName string
+		if g.AlphaFeatureGate.Enabled(AlphaFeatureMultiProtocolLB) {
+			frName = g.getProtocolForwardingRuleName(loadBalancerName, protocol)
+			// If the old forwarding rule matches this protocol, use its name.
+			if fwd != nil && fwd.IPProtocol == string(protocol) {
+				frName = loadBalancerName
+			}
+		} else {
 			frName = loadBalancerName
 		}
 
@@ -430,7 +307,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 			return nil, err
 		}
 
-		if needsUpdate {
+		if needsUpdate || tpNeedsRecreation {
 			if exists {
 				if err := g.DeleteRegionForwardingRule(frName, g.region); err != nil && !isNotFound(err) {
 					return nil, err
@@ -445,31 +322,33 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	}
 
 	// Garbage collect old forwarding rules.
-	activeFRNames := sets.NewString()
-	for protocol := range groupedPorts {
-		activeFRNames.Insert(g.getProtocolForwardingRuleName(loadBalancerName, protocol))
-	}
-	// Check for the old forwarding rule name.
-	if fwd != nil {
-		protocol, err := getProtocol(fwd.IPProtocol)
+	if g.AlphaFeatureGate.Enabled(AlphaFeatureMultiProtocolLB) {
+		activeFRNames := sets.NewString()
+		for protocol := range groupedPorts {
+			activeFRNames.Insert(g.getProtocolForwardingRuleName(loadBalancerName, protocol))
+		}
+		// Check for the old forwarding rule name.
+		if fwd != nil {
+			protocol, err := getProtocol(fwd.IPProtocol)
+			if err != nil {
+				return nil, err
+			}
+			if _, ok := groupedPorts[protocol]; ok {
+				activeFRNames.Insert(loadBalancerName)
+			}
+		}
+
+		// List all forwarding rules for this service and delete the ones that are not active.
+		frs, err := g.ListRegionForwardingRules(g.region)
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := groupedPorts[protocol]; ok {
-			activeFRNames.Insert(loadBalancerName)
-		}
-	}
-
-	// List all forwarding rules for this service and delete the ones that are not active.
-	frs, err := g.ListRegionForwardingRules(g.region)
-	if err != nil {
-		return nil, err
-	}
-	for _, fr := range frs {
-		if strings.HasPrefix(fr.Name, loadBalancerName) && !activeFRNames.Has(fr.Name) {
-			klog.Infof("ensureExternalLoadBalancer(%s): Deleting orphaned forwarding rule %s.", lbRefStr, fr.Name)
-			if err := g.DeleteRegionForwardingRule(fr.Name, g.region); err != nil && !isNotFound(err) {
-				return nil, err
+		for _, fr := range frs {
+			if strings.HasPrefix(fr.Name, loadBalancerName) && !activeFRNames.Has(fr.Name) {
+				klog.Infof("ensureExternalLoadBalancer(%s): Deleting orphaned forwarding rule %s.", lbRefStr, fr.Name)
+				if err := g.DeleteRegionForwardingRule(fr.Name, g.region); err != nil && !isNotFound(err) {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -479,41 +358,6 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	status.Ingress = []v1.LoadBalancerIngress{{IP: ipAddressToUse}}
 
 	return status, nil
-}
-
-func (g *Cloud) ensureIPAddress(loadBalancerName, lbRefStr, requestedIP, fwdRuleIP string, netTier cloud.NetworkTier) (ipAddress string, isSafeToReleaseIP bool, err error) {
-	// Make sure we know which IP address will be used and have properly reserved
-	// it as static before moving forward with the rest of our operations.
-	ipAddressToUse := ""
-	isUserOwnedIP := false
-
-	if requestedIP != "" {
-		// If user requests a specific IP address, verify first. No mutation to
-		// the GCE resources will be performed in the verification process.
-		isUserOwnedIP, err = verifyUserRequestedIP(g, g.region, requestedIP, fwdRuleIP, lbRefStr, netTier)
-		if err != nil {
-			return "", false, err
-		}
-		ipAddressToUse = requestedIP
-	}
-
-	if !isUserOwnedIP {
-		// If we are not using the user-owned IP, either promote the
-		// emphemeral IP used by the fwd rule, or create a new static IP.
-		ipAddr, existed, err := ensureStaticIP(g, loadBalancerName, lbRefStr, g.region, fwdRuleIP, netTier)
-		if err != nil {
-			return "", false, fmt.Errorf("failed to ensure a static IP for load balancer (%s): %v", lbRefStr, err)
-		}
-		klog.Infof("ensureExternalLoadBalancer(%s): Ensured IP address %s (tier: %s).", lbRefStr, ipAddr, netTier)
-		// If the IP was not owned by the user, but it already existed, it
-		// could indicate that the previous update cycle failed. We can use
-		// this IP and try to run through the process again, but we should
-		// not release the IP unless it is explicitly flagged as OK.
-		isSafeToReleaseIP = !existed
-		ipAddressToUse = ipAddr
-	}
-
-	return ipAddressToUse, isSafeToReleaseIP, nil
 }
 
 
