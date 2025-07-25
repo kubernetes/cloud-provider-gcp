@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import urllib.request
+import subprocess
+import glob
+
+def find_go_modules():
+    """Finds all go.mod files in the repository."""
+    go_mod_files = []
+    for file in glob.glob("**/go.mod", recursive=True):
+        # Ignore matches under vendor and bazel-*
+        if file.startswith("vendor/") or file.startswith("bazel-"):
+            continue
+        go_mod_files.append(file)
+    if os.path.exists("go.mod"):
+        go_mod_files.append("go.mod")
+    return go_mod_files
+
+
+def main():
+    """
+    Runs go tests for all go modules in the repository.
+    """
+    for mod_path in find_go_modules():
+        dir = os.path.dirname(mod_path) or "."
+        if dir == "test/e2e":
+            continue
+        print(f"Running go test in {dir}")
+        subprocess.run(["go", "test", "-v", "./..."], cwd=dir, check=True)
+
+if __name__ == "__main__":
+    main()
