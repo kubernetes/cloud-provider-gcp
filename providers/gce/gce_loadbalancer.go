@@ -145,10 +145,12 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 		return nil, err
 	}
 
-	// Services with multiples protocols are not supported by this controller, warn the users and sets
-	// the corresponding Service Status Condition.
+	// Services with multiples protocols are not supported by this controller (without AlphaFeatureMultiProtocolLB),
+	// warn the users and set the corresponding Service Status Condition.
 	// https://github.com/kubernetes/enhancements/tree/master/keps/sig-network/1435-mixed-protocol-lb
-	if err := checkMixedProtocol(svc.Spec.Ports); err != nil {
+	if g.AlphaFeatureGate.Enabled(AlphaFeatureMultiProtocolLB) {
+		klog.Infof("AlphaFeatureMultiProtocolLB feature gate is enabled")
+	} else if err := checkMixedProtocol(svc.Spec.Ports); err != nil {
 		if hasLoadBalancerPortsError(svc) {
 			return nil, err
 		}
@@ -228,10 +230,12 @@ func (g *Cloud) UpdateLoadBalancer(ctx context.Context, clusterName string, svc 
 		return err
 	}
 
-	// Services with multiples protocols are not supported by this controller, warn the users and sets
+	// Services with multiples protocols are not supported by this controller (without AlphaFeatureMultiProtocolLB), warn the users and sets
 	// the corresponding Service Status Condition, but keep processing the Update to not break upgrades.
 	// https://github.com/kubernetes/enhancements/tree/master/keps/sig-network/1435-mixed-protocol-lb
-	if err := checkMixedProtocol(svc.Spec.Ports); err != nil && !hasLoadBalancerPortsError(svc) {
+	if g.AlphaFeatureGate.Enabled(AlphaFeatureMultiProtocolLB) {
+		klog.Infof("AlphaFeatureMultiProtocolLB feature gate is enabled")
+	} else if err := checkMixedProtocol(svc.Spec.Ports); err != nil && !hasLoadBalancerPortsError(svc) {
 		klog.Warningf("Ignoring update for service %s/%s using different ports protocols", svc.Namespace, svc.Name)
 		g.eventRecorder.Event(svc, v1.EventTypeWarning, v1.LoadBalancerPortsErrorReason, "LoadBalancer with multiple protocols are not supported.")
 		svcApplyStatus := corev1apply.ServiceStatus().WithConditions(
