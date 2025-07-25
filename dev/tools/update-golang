@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+import json
+import os
+import urllib.request
+import subprocess
+import glob
+
+# The file paths to update.
+# Assumes the script is run from the root of the repository.
+WORKSPACE_PATH = "WORKSPACE"
+
+def find_go_modules():
+    """Finds all go.mod files in the repository."""
+    go_mod_files = []
+    for file in glob.glob("**/go.mod", recursive=True):
+        # Ignore matches under vendor and bazel-*
+        if file.startswith("vendor/") or file.startswith("bazel-"):
+            continue
+        go_mod_files.append(file)
+    if os.path.exists("go.mod"):
+        go_mod_files.append("go.mod")
+    return go_mod_files
+
+def find_dockerfiles():
+    """Finds all Dockerfiles in the repository."""
+    dockerfile_files = []
+    for file in glob.glob("**/Dockerfile", recursive=True):
+        # Ignore matches under vendor and bazel-*
+        if file.startswith("vendor/") or file.startswith("bazel-"):
+            continue
+        dockerfile_files.append(file)
+    if os.path.exists("Dockerfile"):
+        dockerfile_files.append("Dockerfile")
+    return dockerfile_files
+
+def get_latest_go_version():
+    """Fetches the latest stable Go version from the official Go website."""
+    url = "https://go.dev/dl/?mode=json"
+    print(f"Fetching latest Go versions from {url}...")
+    with urllib.request.urlopen(url) as response:
+        if response.status != 200:
+            raise RuntimeError(f"Failed to fetch Go versions: HTTP {response.status}")
+        releases = json.loads(response.read().decode())
+
+    for release in releases:
+        if release["stable"]:
+            version = release["version"].replace("go", "")
+            print(f"Latest stable Go version is {version}")
+            return version
+    raise RuntimeError("Could not find a stable Go release.")
+
+def _replace_file_contents(file_path, fn):
+    """Replaces the contents of a file with the result of a function, applied line-by-line."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Could not find file at {file_path}")
+    
+    with open(file_path, "r") as f:
+        lines = f.readlines()
+
+    count = 0
+    updated_lines = []
+    for line in lines:
+        new_line = fn(line)
+        if new_line != line:
+            count += 1
+        updated_lines.append(fn(line))
+
+    if count == 0:
+        print(f"No changes made to {file_path}.")
+        return
+
+    with open(file_path, "w") as f:
+        f.writelines(updated_lines)
+    print(f"Successfully updated {file_path}")
+
+def update_go_toolchain(file_path, new_version):
+    """Updates the go toolchain directive in a go.mod file."""
+    def fn(line):
+        # Replace lines like `toolchain go1.22.3`
+        if line.lstrip().startswith("toolchain go"):
+            return f"toolchain go{new_version}\n"
+        return line
+
+    _replace_file_contents(file_path, fn)
+
+
+def update_bazel_workspace(file_path, go_version):
+    """Updates the Go SDK version in the WORKSPACE file."""
+    def fn(line):
+        # Replace lines like `go_download_sdk(name = "go_sdk",version = "1.24.1")`
+        if line.lstrip().startswith("go_download_sdk("):
+            return f"go_download_sdk(name = \"go_sdk\",version = \"{go_version}\")\n"
+        return line
+
+    _replace_file_contents(file_path, fn)
+
+def update_dockerfile(file_path, go_version):
+    """Updates the Go version in the Dockerfile."""
+    def fn(line):
+        # Replace lines like `FROM golang:1.24.1` or `FROM golang:1.24.1 AS builder`
+        if line.lstrip().startswith("FROM golang:"):
+            tokens = line.split()
+            tokens[1] = "golang:" + go_version
+            return " ".join(tokens) + "\n"
+        return line
+
+    _replace_file_contents(file_path, fn)
+
+
+def main():
+    """
+    Main function to orchestrate the update process.
+    1. Fetches the latest Go version.
+    2. Updates all go.mod files.
+    3. Updates the WORKSPACE file.
+    """
+    latest_version = get_latest_go_version()
+
+    # Update go.mod files
+    for mod_path in find_go_modules():
+        update_go_toolchain(mod_path, latest_version)
+        print(f"Running go mod tidy for {mod_path}")
+        subprocess.run(["go", "mod", "tidy"], cwd=os.path.dirname(mod_path) or ".", check=True)
+
+    # Update Dockerfiles
+    for dockerfile_path in find_dockerfiles():
+        update_dockerfile(dockerfile_path, latest_version)
+
+    # Update (bazel) WORKSPACE file
+    update_bazel_workspace(WORKSPACE_PATH, latest_version)
+    print("Running bazel sync...")
+    subprocess.run(["bazel", "sync"], check=True)
+
+    print("\nGo version update complete!")
+
+if __name__ == "__main__":
+    # Ensure the script is run from the repository root
+    if not os.path.exists(WORKSPACE_PATH):
+        print(f"Error: This script must be run from the repository root directory containing the WORKSPACE file.")
+    else:
+        main()
