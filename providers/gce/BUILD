@@ -26,6 +26,7 @@ go_library(
         "gce_loadbalancer_internal.go",
         "gce_loadbalancer_metrics.go",
         "gce_loadbalancer_naming.go",
+        "gce_loadbalancer_sync.go",
         "gce_networkendpointgroup.go",
         "gce_networks.go",
         "gce_routes.go",
