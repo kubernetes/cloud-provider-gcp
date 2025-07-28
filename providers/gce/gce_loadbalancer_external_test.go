@@ -706,6 +706,11 @@ func TestEnsureExternalLoadBalancerDeleted(t *testing.T) {
 	assert.NoError(t, err)
 
 	assertExternalLbResourcesDeleted(t, gce, svc, vals, true)
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	if hasFinalizer(svc, NetLBFinalizerV1) {
+		t.Fatalf("Finalizer '%s' not deleted as part of ELB delete", NetLBFinalizerV1)
+	}
 }
 
 func TestLoadBalancerWrongTierResourceDeletion(t *testing.T) {
@@ -808,20 +813,39 @@ func TestEnsureExternalLoadBalancerRBSAnnotation(t *testing.T) {
 	t.Parallel()
 
 	for desc, tc := range map[string]struct {
-		annotations map[string]string
-		wantError   *error
+		annotations  map[string]string
+		isRBSDefault bool
+		wantError    *error
 	}{
 		"When RBS enabled": {
-			annotations: map[string]string{RBSAnnotationKey: RBSEnabled},
-			wantError:   &cloudprovider.ImplementedElsewhere,
+			annotations:  map[string]string{RBSAnnotationKey: RBSEnabled},
+			isRBSDefault: false,
+			wantError:    &cloudprovider.ImplementedElsewhere,
 		},
 		"When RBS not enabled": {
-			annotations: map[string]string{},
-			wantError:   nil,
+			annotations:  map[string]string{},
+			isRBSDefault: false,
+			wantError:    nil,
 		},
 		"When RBS annotation has wrong value": {
-			annotations: map[string]string{RBSAnnotationKey: "WrongValue"},
-			wantError:   nil,
+			annotations:  map[string]string{RBSAnnotationKey: "WrongValue"},
+			isRBSDefault: false,
+			wantError:    nil,
+		},
+		"When RBS enabled and default": {
+			annotations:  map[string]string{RBSAnnotationKey: RBSEnabled},
+			isRBSDefault: true,
+			wantError:    &cloudprovider.ImplementedElsewhere,
+		},
+		"When RBS not enabled but default": {
+			annotations:  map[string]string{},
+			isRBSDefault: true,
+			wantError:    &cloudprovider.ImplementedElsewhere,
+		},
+		"When RBS annotation has wrong value and RBS is default": {
+			annotations:  map[string]string{RBSAnnotationKey: "WrongValue"},
+			isRBSDefault: true,
+			wantError:    &cloudprovider.ImplementedElsewhere,
 		},
 	} {
 		t.Run(desc, func(t *testing.T) {
@@ -829,6 +853,10 @@ func TestEnsureExternalLoadBalancerRBSAnnotation(t *testing.T) {
 			gce, err := fakeGCECloud(vals)
 			if err != nil {
 				t.Fatalf("fakeGCECloud(%v) returned error %v, want nil", vals, err)
+			}
+
+			if tc.isRBSDefault {
+				gce.SetEnableRBSDefaultForL4NetLB(true)
 			}
 
 			nodeNames := []string{"test-node-1"}
@@ -871,24 +899,49 @@ func TestEnsureExternalLoadBalancerRBSFinalizer(t *testing.T) {
 	t.Parallel()
 
 	for desc, tc := range map[string]struct {
-		finalizers []string
-		wantError  *error
+		finalizers   []string
+		isRBSDefault bool
+		wantError    *error
 	}{
-		"When has ELBRbsFinalizer V2": {
-			finalizers: []string{NetLBFinalizerV2},
-			wantError:  &cloudprovider.ImplementedElsewhere,
+		"When has ELBRBSFinalizer V2": {
+			finalizers:   []string{NetLBFinalizerV2},
+			isRBSDefault: false,
+			wantError:    &cloudprovider.ImplementedElsewhere,
 		},
-		"When has ELBRbsFinalizer V3": {
-			finalizers: []string{NetLBFinalizerV3},
-			wantError:  &cloudprovider.ImplementedElsewhere,
+		"When has ELBRBSFinalizer V3": {
+			finalizers:   []string{NetLBFinalizerV3},
+			isRBSDefault: false,
+			wantError:    &cloudprovider.ImplementedElsewhere,
 		},
 		"When has no finalizer": {
-			finalizers: []string{},
-			wantError:  nil,
+			finalizers:   []string{},
+			isRBSDefault: false,
+			wantError:    nil,
 		},
 		"When has ELBFinalizer V1": {
-			finalizers: []string{NetLBFinalizerV1},
-			wantError:  nil,
+			finalizers:   []string{NetLBFinalizerV1},
+			isRBSDefault: false,
+			wantError:    nil,
+		},
+		"When has ELBRBSFinalizer V2 and RBS is default": {
+			finalizers:   []string{NetLBFinalizerV2},
+			isRBSDefault: false,
+			wantError:    &cloudprovider.ImplementedElsewhere,
+		},
+		"When has ELBRBSFinalizer V3 and RBS is default": {
+			finalizers:   []string{NetLBFinalizerV3},
+			isRBSDefault: true,
+			wantError:    &cloudprovider.ImplementedElsewhere,
+		},
+		"When has no finalizer and RBS is default": {
+			finalizers:   []string{},
+			isRBSDefault: true,
+			wantError:    &cloudprovider.ImplementedElsewhere,
+		},
+		"When has ELBFinalizer V1 and RBS is default": {
+			finalizers:   []string{NetLBFinalizerV1},
+			isRBSDefault: true,
+			wantError:    nil,
 		},
 	} {
 		t.Run(desc, func(t *testing.T) {
@@ -897,6 +950,10 @@ func TestEnsureExternalLoadBalancerRBSFinalizer(t *testing.T) {
 			gce, err := fakeGCECloud(vals)
 			if err != nil {
 				t.Fatalf("fakeGCECloud(%v) returned error %v, want nil", vals, err)
+			}
+
+			if tc.isRBSDefault {
+				gce.SetEnableRBSDefaultForL4NetLB(true)
 			}
 
 			nodeNames := []string{"test-node-1"}
@@ -955,11 +1012,11 @@ func TestDeleteExternalLoadBalancerWithFinalizer(t *testing.T) {
 		finalizers []string
 		wantError  *error
 	}{
-		"When has ELBRbsFinalizer V2": {
+		"When has ELBRBSFinalizer V2": {
 			finalizers: []string{NetLBFinalizerV2},
 			wantError:  &cloudprovider.ImplementedElsewhere,
 		},
-		"When has ELBRbsFinalizer V3": {
+		"When has ELBRBSFinalizer V3": {
 			finalizers: []string{NetLBFinalizerV3},
 			wantError:  &cloudprovider.ImplementedElsewhere,
 		},
@@ -2432,31 +2489,65 @@ func TestEnsureExternalLoadBalancerClass(t *testing.T) {
 	for _, tc := range []struct {
 		desc              string
 		loadBalancerClass string
+		isRBSDefault      bool
 		shouldProcess     bool
 	}{
 		{
 			desc:              "Custom loadBalancerClass should not process",
 			loadBalancerClass: "customLBClass",
+			isRBSDefault:      false,
 			shouldProcess:     false,
 		},
 		{
 			desc:              "Use legacy ILB loadBalancerClass",
 			loadBalancerClass: LegacyRegionalInternalLoadBalancerClass,
+			isRBSDefault:      false,
 			shouldProcess:     false,
 		},
 		{
 			desc:              "Use legacy NetLB loadBalancerClass",
 			loadBalancerClass: LegacyRegionalExternalLoadBalancerClass,
+			isRBSDefault:      false,
 			shouldProcess:     true,
 		},
 		{
 			desc:              "Unset loadBalancerClass",
 			loadBalancerClass: "",
+			isRBSDefault:      false,
 			shouldProcess:     true,
+		},
+		{
+			desc:              "Custom loadBalancerClass should not process and RBS is default",
+			loadBalancerClass: "customLBClass",
+			isRBSDefault:      true,
+			shouldProcess:     false,
+		},
+		{
+			desc:              "Use legacy ILB loadBalancerClass and RBS is default",
+			loadBalancerClass: LegacyRegionalInternalLoadBalancerClass,
+			isRBSDefault:      true,
+			shouldProcess:     false,
+		},
+		{
+			desc:              "Use legacy NetLB loadBalancerClass and RBS is default",
+			loadBalancerClass: LegacyRegionalExternalLoadBalancerClass,
+			isRBSDefault:      true,
+			shouldProcess:     true,
+		},
+		{
+			desc:              "Unset loadBalancerClass and RBS is default",
+			loadBalancerClass: "",
+			isRBSDefault:      true,
+			shouldProcess:     false,
 		},
 	} {
 		gce, err := fakeGCECloud(vals)
 		assert.NoError(t, err)
+
+		if tc.isRBSDefault {
+			gce.SetEnableRBSDefaultForL4NetLB(true)
+		}
+
 		recorder := record.NewFakeRecorder(1024)
 		gce.eventRecorder = recorder
 		nodeNames := []string{"test-node-1"}
