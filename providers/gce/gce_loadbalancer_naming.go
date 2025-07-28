@@ -23,10 +23,11 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -42,7 +43,7 @@ func makeInstanceGroupName(clusterID string) string {
 	return fmt.Sprintf("%s--%s", prefix, clusterID)
 }
 
-func makeBackendServiceName(loadBalancerName, clusterID string, shared bool, scheme cloud.LbScheme, protocol v1.Protocol, svcAffinity v1.ServiceAffinity) string {
+func makeBackendServiceName(loadBalancerName, clusterID string, shared bool, scheme cloud.LbScheme, protocols map[v1.Protocol]ProtocolPorts, svcAffinity v1.ServiceAffinity) string {
 	if shared {
 		hash := sha1.New()
 
@@ -52,6 +53,19 @@ func makeBackendServiceName(loadBalancerName, clusterID string, shared bool, sch
 		hashed := hex.EncodeToString(hash.Sum(nil))
 		hashed = hashed[:16]
 
+		// We pick TCP as the default, otherwise we pick the first protocol alphabetically.
+		chosenProtocol := ""
+		if _, found := protocols[v1.ProtocolTCP]; found {
+			chosenProtocol = "tcp"
+		} else {
+			var keys []string
+			for protocol := range protocols {
+				keys = append(keys, strings.ToLower(string(protocol)))
+			}
+			sort.Strings(keys)
+			chosenProtocol = keys[0]
+		}
+
 		// k8s-          4
 		// {clusterid}-  17
 		// {scheme}-     9   (internal/external)
@@ -60,7 +74,7 @@ func makeBackendServiceName(loadBalancerName, clusterID string, shared bool, sch
 		// {suffix}      16  (hash of settings)
 		// -----------------
 		//               55  characters used
-		return fmt.Sprintf("k8s-%s-%s-%s-nmv1-%s", clusterID, strings.ToLower(string(scheme)), strings.ToLower(string(protocol)), hashed)
+		return fmt.Sprintf("k8s-%s-%s-%s-nmv1-%s", clusterID, strings.ToLower(string(scheme)), chosenProtocol, hashed)
 	}
 	return loadBalancerName
 }
