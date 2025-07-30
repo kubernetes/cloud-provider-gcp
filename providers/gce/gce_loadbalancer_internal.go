@@ -396,9 +396,6 @@ func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string,
 	sharedBackend := shareBackendService(svc)
 	sharedHealthCheck := !servicehelpers.RequestsOnlyLocalTraffic(svc)
 
-	g.sharedResourceLock.Lock()
-	defer g.sharedResourceLock.Unlock()
-
 	klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): attempting delete of region internal address", loadBalancerName)
 	ensureAddressDeleted(g, loadBalancerName, g.region)
 
@@ -476,6 +473,10 @@ func (g *Cloud) teardownInternalBackendService(bsName string) error {
 }
 
 func (g *Cloud) teardownInternalHealthCheckAndFirewall(svc *v1.Service, hcName string) error {
+	// Health Check is a shared resource
+	g.sharedResourceLock.Lock()
+	defer g.sharedResourceLock.Unlock()
+
 	if err := g.DeleteHealthCheck(hcName); err != nil {
 		if isNotFound(err) {
 			klog.V(2).Infof("teardownInternalHealthCheckAndFirewall(%v): health check does not exist.", hcName)
