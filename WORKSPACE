@@ -46,10 +46,7 @@ load("@io_bazel_rules_go//go:deps.bzl", "go_download_sdk", "go_register_toolchai
 
 go_rules_dependencies()
 
-go_download_sdk(
-    name = "go_sdk",
-    version = "1.23.3",
-)
+go_download_sdk(name = "go_sdk",version = "1.24.5")
 
 go_register_toolchains()
 
@@ -101,10 +98,10 @@ load("//defs:repo_rules.bzl", "fetch_kube_release")
 fetch_kube_release(
     name = "io_k8s_release",
     archives = {
-        "kubernetes-node-linux-amd64.tar.gz": "875428cedb5b30487d0c5d79f376993d70b75cef716098d600722fb6d7d84b38",
-        "kubernetes-manifests.tar.gz": "09e2e62c18efa61e1635cd6192bc398f2e51b4553aafcf43e2e0ccb82c2a5510",
-        "kubernetes-server-linux-amd64.tar.gz": "e947928df861138d32bb72d743bd59cb7394683c1474f7f78f9fec3abef6490c",
-        "kubernetes-node-windows-amd64.tar.gz": "08bfab262d617d71ca33e4df0dcf26ec23e29b84c478b5cfbdf8ae8e2e2716c2",
+        "kubernetes-node-linux-amd64.tar.gz": "d9bb696806691697cee7b76fb51ca3c7746eafed9c021af2794a5aef8b4778f5",
+        "kubernetes-manifests.tar.gz": "1fb63926b6aafe6da1bd98122cf54986be771f12f13bd8537ff35d0331b06691",
+        "kubernetes-server-linux-amd64.tar.gz": "3e1f74decd5d653b35082539a4ce04c8497a2adcc126c51238a0382082eb92d8",
+        "kubernetes-node-windows-amd64.tar.gz": "03c7eb36cb11b1b1eca4bab273d0532155e3b822f335055284a7874cac0f39af",
     },
-    version = "v1.32.2",
+    version = "v1.33.1",
 )

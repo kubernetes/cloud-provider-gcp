@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "crd",
+    srcs = [
+        "conv.go",
+        "desc_visitor.go",
+        "doc.go",
+        "flatten.go",
+        "gen.go",
+        "known_types.go",
+        "parser.go",
+        "schema.go",
+        "schema_visitor.go",
+        "spec.go",
+        "zz_generated.markerhelp.go",
+    ],
+    importmap = "k8s.io/cloud-provider-gcp/vendor/sigs.k8s.io/controller-tools/pkg/crd",
+    importpath = "sigs.k8s.io/controller-tools/pkg/crd",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/gobuffalo/flect",
+        "//vendor/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions",
+        "//vendor/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1:apiextensions",
+        "//vendor/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/utils/ptr",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/crd/markers",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/genall",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/loader",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/markers",
+        "//vendor/sigs.k8s.io/controller-tools/pkg/version",
+    ],
+)

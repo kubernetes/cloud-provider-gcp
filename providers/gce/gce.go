@@ -43,7 +43,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
@@ -196,7 +196,16 @@ type Cloud struct {
 	// stack IPv6 or a dual stack cluster
 	stackType StackType
 
-	externalInstanceGroupsPrefix string // If non-"", finds prefixed instance groups for ILB.
+	// projectFromNodeProviderID determines whether the project derived through
+	// the Node's .spec.providerID can be used to change the project used when
+	// making GCE API calls.
+	//
+	// Enable this ony when the Node's .spec.providerID can be fully trusted.
+	projectFromNodeProviderID bool
+
+	// enableDiscretePortForwarding enables forwarding of individual ports
+	// instead of port ranges in Forwarding Rules for external load balancers.
+	enableDiscretePortForwarding bool
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -234,9 +243,6 @@ type ConfigGlobal struct {
 	// Default to none.
 	// For example: MyFeatureFlag
 	AlphaFeatures []string `gcfg:"alpha-features"`
-	// ExternalInstanceGroupsPrefix, when not-empty, is used to filter instance groups
-	// and include them in the backend for ILB.
-	ExternalInstanceGroupsPrefix string `gcfg:"external-instance-groups-prefix"`
 }
 
 // ConfigFile is the struct used to parse the /etc/gce.conf configuration file.
@@ -264,14 +270,13 @@ type CloudConfig struct {
 	SubnetworkName       string
 	SubnetworkURL        string
 	// DEPRECATED: Do not rely on this value as it may be incorrect.
-	SecondaryRangeName           string
-	NodeTags                     []string
-	NodeInstancePrefix           string
-	TokenSource                  oauth2.TokenSource
-	UseMetadataServer            bool
-	AlphaFeatureGate             *AlphaFeatureGate
-	StackType                    string
-	ExternalInstanceGroupsPrefix string
+	SecondaryRangeName string
+	NodeTags           []string
+	NodeInstancePrefix string
+	TokenSource        oauth2.TokenSource
+	UseMetadataServer  bool
+	AlphaFeatureGate   *AlphaFeatureGate
+	StackType          string
 }
 
 func init() {
@@ -361,7 +366,6 @@ func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 
 		cloudConfig.NodeTags = configFile.Global.NodeTags
 		cloudConfig.NodeInstancePrefix = configFile.Global.NodeInstancePrefix
-		cloudConfig.ExternalInstanceGroupsPrefix = configFile.Global.ExternalInstanceGroupsPrefix
 		cloudConfig.AlphaFeatureGate = NewAlphaFeatureGate(configFile.Global.AlphaFeatures)
 	}
 
@@ -541,32 +545,31 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 	operationPollRateLimiter := flowcontrol.NewTokenBucketRateLimiter(5, 5) // 5 qps, 5 burst.
 
 	gce := &Cloud{
-		service:                      service,
-		serviceAlpha:                 serviceAlpha,
-		serviceBeta:                  serviceBeta,
-		containerService:             containerService,
-		tpuService:                   tpuService,
-		projectID:                    projID,
-		networkProjectID:             netProjID,
-		onXPN:                        onXPN,
-		region:                       config.Region,
-		regional:                     config.Regional,
-		localZone:                    config.Zone,
-		managedZones:                 config.ManagedZones,
-		networkURL:                   networkURL,
-		unsafeIsLegacyNetwork:        isLegacyNetwork,
-		unsafeSubnetworkURL:          subnetURL,
-		secondaryRangeName:           config.SecondaryRangeName,
-		nodeTags:                     config.NodeTags,
-		nodeInstancePrefix:           config.NodeInstancePrefix,
-		useMetadataServer:            config.UseMetadataServer,
-		operationPollRateLimiter:     operationPollRateLimiter,
-		AlphaFeatureGate:             config.AlphaFeatureGate,
-		nodeZones:                    map[string]sets.String{},
-		metricsCollector:             newLoadBalancerMetrics(),
-		projectsBasePath:             getProjectsBasePath(service.BasePath),
-		stackType:                    StackType(config.StackType),
-		externalInstanceGroupsPrefix: config.ExternalInstanceGroupsPrefix,
+		service:                  service,
+		serviceAlpha:             serviceAlpha,
+		serviceBeta:              serviceBeta,
+		containerService:         containerService,
+		tpuService:               tpuService,
+		projectID:                projID,
+		networkProjectID:         netProjID,
+		onXPN:                    onXPN,
+		region:                   config.Region,
+		regional:                 config.Regional,
+		localZone:                config.Zone,
+		managedZones:             config.ManagedZones,
+		networkURL:               networkURL,
+		unsafeIsLegacyNetwork:    isLegacyNetwork,
+		unsafeSubnetworkURL:      subnetURL,
+		secondaryRangeName:       config.SecondaryRangeName,
+		nodeTags:                 config.NodeTags,
+		nodeInstancePrefix:       config.NodeInstancePrefix,
+		useMetadataServer:        config.UseMetadataServer,
+		operationPollRateLimiter: operationPollRateLimiter,
+		AlphaFeatureGate:         config.AlphaFeatureGate,
+		nodeZones:                map[string]sets.String{},
+		metricsCollector:         newLoadBalancerMetrics(),
+		projectsBasePath:         getProjectsBasePath(service.BasePath),
+		stackType:                StackType(config.StackType),
 	}
 
 	gce.manager = &gceServiceManager{gce}
@@ -846,6 +849,18 @@ func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
 // HasClusterID returns true if the cluster has a clusterID
 func (g *Cloud) HasClusterID() bool {
 	return true
+}
+
+// SetProjectFromNodeProviderID configures projectFromNodeProviderID option.
+//
+// Enable this ony when the Node's .spec.providerID can be fully trusted.
+func (g *Cloud) SetProjectFromNodeProviderID(enabled bool) {
+	g.projectFromNodeProviderID = enabled
+}
+
+// SetEnableDiscretePortForwarding configures enableDiscretePortForwarding option.
+func (g *Cloud) SetEnableDiscretePortForwarding(enabled bool) {
+	g.enableDiscretePortForwarding = enabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.

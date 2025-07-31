@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "app",
+    srcs = [
+        "controllercontext.go",
+        "helper.go",
+        "serve.go",
+    ],
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/controller-manager/app",
+    importpath = "k8s.io/controller-manager/app",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/apimachinery/pkg/util/wait",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/filters",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/request",
+        "//vendor/k8s.io/apiserver/pkg/server",
+        "//vendor/k8s.io/apiserver/pkg/server/filters",
+        "//vendor/k8s.io/apiserver/pkg/server/mux",
+        "//vendor/k8s.io/apiserver/pkg/server/routes",
+        "//vendor/k8s.io/client-go/informers",
+        "//vendor/k8s.io/client-go/kubernetes",
+        "//vendor/k8s.io/client-go/kubernetes/scheme",
+        "//vendor/k8s.io/client-go/restmapper",
+        "//vendor/k8s.io/component-base/config",
+        "//vendor/k8s.io/component-base/configz",
+        "//vendor/k8s.io/component-base/logs",
+        "//vendor/k8s.io/component-base/metrics/legacyregistry",
+        "//vendor/k8s.io/component-base/metrics/prometheus/controllers",
+        "//vendor/k8s.io/component-base/metrics/prometheus/workqueue",
+        "//vendor/k8s.io/controller-manager/pkg/clientbuilder",
+        "//vendor/k8s.io/controller-manager/pkg/informerfactory",
+        "//vendor/k8s.io/klog/v2:klog",
+    ],
+)

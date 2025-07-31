@@ -58,6 +58,20 @@ func fakeLoadBalancerServiceDeprecatedAnnotation(lbType string) *v1.Service {
 	return fakeLoadbalancerServiceHelper(lbType, deprecatedServiceAnnotationLoadBalancerType)
 }
 
+func fakeLoadbalancerServiceWithLoadBalancerClass(lbType, lbClass string) *v1.Service {
+	return &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        fakeSvcName,
+			Annotations: map[string]string{ServiceAnnotationLoadBalancerType: lbType},
+		},
+		Spec: v1.ServiceSpec{
+			LoadBalancerClass: &lbClass,
+			Type:              v1.ServiceTypeLoadBalancer,
+			Ports:             []v1.ServicePort{{Protocol: v1.ProtocolTCP, Port: int32(123)}},
+		},
+	}
+}
+
 func fakeLoadbalancerServiceHelper(lbType string, annotationKey string) *v1.Service {
 	return &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -196,6 +210,11 @@ func assertExternalLbResourcesDeleted(t *testing.T, gce *Cloud, apiService *v1.S
 	require.Error(t, err)
 	assert.Nil(t, healthcheck)
 
+	// Check finalizer is removed
+	svc, err := gce.client.CoreV1().Services(apiService.Namespace).Get(context.TODO(), apiService.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	hasFinalizer := hasFinalizer(svc, NetLBFinalizerV1)
+	assert.False(t, hasFinalizer)
 }
 
 func assertInternalLbResources(t *testing.T, gce *Cloud, apiService *v1.Service, vals TestClusterValues, nodeNames []string) {

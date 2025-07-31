@@ -417,6 +417,9 @@ func TestEnsureInternalLoadBalancerDeprecatedAnnotation(t *testing.T) {
 
 	// Now add the latest annotation and change scheme to external
 	svc.Annotations[ServiceAnnotationLoadBalancerType] = ""
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
 	status, err = gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
@@ -424,6 +427,12 @@ func TestEnsureInternalLoadBalancerDeprecatedAnnotation(t *testing.T) {
 	assert.NotEmpty(t, status.Ingress)
 	assertInternalLbResourcesDeleted(t, gce, svc, vals, false)
 	assertExternalLbResources(t, gce, svc, vals, nodeNames)
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	if !hasFinalizer(svc, NetLBFinalizerV1) {
+		t.Fatalf("Expected finalizer '%s' not found in Finalizer list - %v", NetLBFinalizerV1, svc.Finalizers)
+	}
 	// Delete the service
 	err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, svc)
 	if err != nil {
@@ -1090,75 +1099,6 @@ func TestEnsureLoadBalancerDeletedSucceedsOnXPN(t *testing.T) {
 	checkEvent(t, recorder, FirewallChangeMsg, true)
 }
 
-func TestEnsureInternalInstanceGroupsReuseGroups(t *testing.T) {
-	vals := DefaultTestClusterValues()
-	gce, err := fakeGCECloud(vals)
-	require.NoError(t, err)
-	gce.externalInstanceGroupsPrefix = "pre-existing"
-
-	igName := makeInstanceGroupName(vals.ClusterID)
-	nodesA, err := createAndInsertNodes(gce, []string{"test-node-1", "test-node-2"}, vals.ZoneName)
-	require.NoError(t, err)
-	nodesB, err := createAndInsertNodes(gce, []string{"test-node-3"}, vals.SecondaryZoneName)
-	require.NoError(t, err)
-
-	preIGName := "pre-existing-ig"
-	err = gce.CreateInstanceGroup(&compute.InstanceGroup{Name: preIGName}, vals.ZoneName)
-	require.NoError(t, err)
-	err = gce.CreateInstanceGroup(&compute.InstanceGroup{Name: preIGName}, vals.SecondaryZoneName)
-	require.NoError(t, err)
-	err = gce.AddInstancesToInstanceGroup(preIGName, vals.ZoneName, gce.ToInstanceReferences(vals.ZoneName, []string{"test-node-1"}))
-	require.NoError(t, err)
-	err = gce.AddInstancesToInstanceGroup(preIGName, vals.SecondaryZoneName, gce.ToInstanceReferences(vals.SecondaryZoneName, []string{"test-node-3"}))
-	require.NoError(t, err)
-
-	anotherPreIGName := "another-existing-ig"
-	err = gce.CreateInstanceGroup(&compute.InstanceGroup{Name: anotherPreIGName}, vals.ZoneName)
-	require.NoError(t, err)
-	err = gce.AddInstancesToInstanceGroup(anotherPreIGName, vals.ZoneName, gce.ToInstanceReferences(vals.ZoneName, []string{"test-node-2"}))
-	require.NoError(t, err)
-
-	svc := fakeLoadbalancerService(string(LBTypeInternal))
-	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
-	assert.NoError(t, err)
-	_, err = gce.ensureInternalLoadBalancer(
-		vals.ClusterName, vals.ClusterID,
-		svc,
-		nil,
-		append(nodesA, nodesB...),
-	)
-	assert.NoError(t, err)
-
-	backendServiceName := makeBackendServiceName(gce.GetLoadBalancerName(context.TODO(), "", svc), vals.ClusterID, shareBackendService(svc), cloud.SchemeInternal, "TCP", svc.Spec.SessionAffinity)
-	bs, err := gce.GetRegionBackendService(backendServiceName, gce.region)
-	require.NoError(t, err)
-	assert.Equal(t, 3, len(bs.Backends), "Want three backends referencing three instances groups")
-
-	igRef := func(zone, name string) string {
-		return fmt.Sprintf("zones/%s/instanceGroups/%s", zone, name)
-	}
-	for _, name := range []string{igRef(vals.ZoneName, preIGName), igRef(vals.SecondaryZoneName, preIGName), igRef(vals.ZoneName, igName)} {
-		var found bool
-		for _, be := range bs.Backends {
-			if strings.Contains(be.Group, name) {
-				found = true
-				break
-			}
-		}
-		assert.True(t, found, "Expected list of backends to have group %q", name)
-	}
-
-	// Expect initial zone to have test-node-2
-	instances, err := gce.ListInstancesInInstanceGroup(igName, vals.ZoneName, "ALL")
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(instances))
-	assert.Contains(
-		t,
-		instances[0].Instance,
-		fmt.Sprintf("%s/zones/%s/instances/%s", vals.ProjectID, vals.ZoneName, "test-node-2"),
-	)
-}
-
 func TestEnsureInternalInstanceGroupsDeleted(t *testing.T) {
 	vals := DefaultTestClusterValues()
 	gce, err := fakeGCECloud(vals)
@@ -1401,12 +1341,32 @@ func TestEnsureInternalLoadBalancerSubsetting(t *testing.T) {
 		createForwardingRule bool
 		expectErrorMsg       string
 	}{
-		{desc: "New service creation fails with Implemented Elsewhere", expectErrorMsg: cloudprovider.ImplementedElsewhere.Error()},
-		{desc: "Service with existing ForwardingRule is processed", createForwardingRule: true},
-		{desc: "Service with v1 finalizer is processed", finalizers: []string{ILBFinalizerV1}},
-		{desc: "Service with v2 finalizer is skipped", finalizers: []string{ILBFinalizerV2}, expectErrorMsg: cloudprovider.ImplementedElsewhere.Error()},
-		{desc: "Service with v2 finalizer and existing ForwardingRule is processed", finalizers: []string{ILBFinalizerV2}, createForwardingRule: true},
-		{desc: "Service with v1 and v2 finalizers is processed", finalizers: []string{ILBFinalizerV1, ILBFinalizerV2}},
+		{
+			desc:           "New service creation fails with Implemented Elsewhere",
+			expectErrorMsg: cloudprovider.ImplementedElsewhere.Error(),
+		},
+		{
+			desc:                 "Service with existing ForwardingRule is processed",
+			createForwardingRule: true,
+		},
+		{
+			desc:       "Service with v1 finalizer is processed",
+			finalizers: []string{ILBFinalizerV1},
+		},
+		{
+			desc:           "Service with v2 finalizer is skipped",
+			finalizers:     []string{ILBFinalizerV2},
+			expectErrorMsg: cloudprovider.ImplementedElsewhere.Error(),
+		},
+		{
+			desc:                 "Service with v2 finalizer and existing ForwardingRule is processed",
+			finalizers:           []string{ILBFinalizerV2},
+			createForwardingRule: true,
+		},
+		{
+			desc:       "Service with v1 and v2 finalizers is processed",
+			finalizers: []string{ILBFinalizerV1, ILBFinalizerV2},
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			vals := DefaultTestClusterValues()
@@ -1447,13 +1407,15 @@ func TestEnsureInternalLoadBalancerSubsetting(t *testing.T) {
 				assert.Empty(t, status)
 				assertInternalLbResourcesDeleted(t, gce, svc, vals, true)
 			} else {
+				svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+				assert.NoError(t, err)
 				assert.NotEmpty(t, status.Ingress)
 				assertInternalLbResources(t, gce, svc, vals, nodeNames)
+				// Ensure that cleanup is successful, if applicable.
+				err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, svc)
+				assert.NoError(t, err)
+				assertInternalLbResourcesDeleted(t, gce, svc, vals, true)
 			}
-			// Ensure that cleanup is successful, if applicable.
-			err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, svc)
-			assert.NoError(t, err)
-			assertInternalLbResourcesDeleted(t, gce, svc, vals, true)
 		})
 	}
 }
@@ -1477,14 +1439,27 @@ func TestEnsureInternalLoadBalancerDeletedSubsetting(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+	assert.NoError(t, err)
+	if !hasFinalizer(svc, ILBFinalizerV1) {
+		t.Errorf("Expected finalizer '%s' not found in Finalizer list - %v", ILBFinalizerV1, svc.Finalizers)
+	}
 	// Enable FeatureGate
 	gce.AlphaFeatureGate = NewAlphaFeatureGate([]string{AlphaFeatureILBSubsets})
 	// mock scenario where user updates the service to use a different IP, this should be processed here.
 	svc.Spec.LoadBalancerIP = "1.2.3.4"
-	status, err = gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
+	require.NoError(t, err)
+	err = gce.UpdateLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
 	assert.NoError(t, err)
+	// ensure service is still managed by this controller
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+	assert.NoError(t, err)
+	if !hasFinalizer(svc, ILBFinalizerV1) {
+		t.Errorf("Expected finalizer '%s' not found in Finalizer list - %v", ILBFinalizerV1, svc.Finalizers)
+	}
 	// ensure that the status has the new IP
-	assert.Equal(t, status.Ingress[0].IP, "1.2.3.4")
+	assert.Equal(t, svc.Spec.LoadBalancerIP, "1.2.3.4")
 	// Invoked when service is deleted.
 	err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, svc)
 	assert.NoError(t, err)
@@ -1674,6 +1649,10 @@ func TestGlobalAccessChangeScheme(t *testing.T) {
 	assert.NotEmpty(t, status.Ingress)
 	// Change service to include the global access annotation
 	svc.Annotations[ServiceAnnotationILBAllowGlobalAccess] = "true"
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
 	status, err = gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
@@ -1688,6 +1667,10 @@ func TestGlobalAccessChangeScheme(t *testing.T) {
 	}
 	// change the scheme to externalLoadBalancer
 	delete(svc.Annotations, ServiceAnnotationLoadBalancerType)
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
 	status, err = gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
@@ -1701,6 +1684,12 @@ func TestGlobalAccessChangeScheme(t *testing.T) {
 	}
 	if fwdRule.AllowGlobalAccess {
 		t.Errorf("Unexpected true value for AllowGlobalAccess")
+	}
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	if !hasFinalizer(svc, NetLBFinalizerV1) {
+		t.Fatalf("Expected finalizer '%s' not found in Finalizer list - %v", NetLBFinalizerV1, svc.Finalizers)
 	}
 	// Delete the service
 	err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, svc)
@@ -2353,4 +2342,124 @@ func TestSubnetNameFromURL(t *testing.T) {
 		})
 	}
 
+}
+
+func TestEnsureInternalLoadBalancerClass(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	for _, tc := range []struct {
+		desc                 string
+		loadBalancerClass    string
+		shouldProcess        bool
+		gkeSubsettingEnabled bool
+	}{
+		{
+			desc:                 "Custom loadBalancerClass should not process",
+			loadBalancerClass:    "customLBClass",
+			shouldProcess:        false,
+			gkeSubsettingEnabled: true,
+		},
+		{
+			desc:                 "Use legacy ILB loadBalancerClass",
+			loadBalancerClass:    LegacyRegionalInternalLoadBalancerClass,
+			shouldProcess:        true,
+			gkeSubsettingEnabled: true,
+		},
+		{
+			desc:                 "Use legacy NetLB loadBalancerClass",
+			loadBalancerClass:    LegacyRegionalExternalLoadBalancerClass,
+			shouldProcess:        false,
+			gkeSubsettingEnabled: true,
+		},
+		{
+			desc:                 "don't process Unset loadBalancerClass with Subsetting enabled",
+			loadBalancerClass:    "",
+			shouldProcess:        false,
+			gkeSubsettingEnabled: true,
+		},
+		{
+			desc:                 "Custom loadBalancerClass should never process",
+			loadBalancerClass:    "customLBClass",
+			shouldProcess:        false,
+			gkeSubsettingEnabled: false,
+		},
+		{
+			desc:                 "Use legacy ILB loadBalancerClass",
+			loadBalancerClass:    LegacyRegionalInternalLoadBalancerClass,
+			shouldProcess:        true,
+			gkeSubsettingEnabled: false,
+		},
+		{
+			desc:                 "Use legacy NetLB loadBalancerClass",
+			loadBalancerClass:    LegacyRegionalExternalLoadBalancerClass,
+			shouldProcess:        false,
+			gkeSubsettingEnabled: false,
+		},
+		{
+			desc:                 "Subsetting disabled, process unset loadBalancerClass",
+			loadBalancerClass:    "",
+			shouldProcess:        true,
+			gkeSubsettingEnabled: false,
+		},
+	} {
+		gce, err := fakeGCECloud(vals)
+		assert.NoError(t, err)
+		// Enable FeatureGate GKE Subsetting
+		if tc.gkeSubsettingEnabled {
+			gce.AlphaFeatureGate = NewAlphaFeatureGate([]string{AlphaFeatureILBSubsets})
+		}
+		recorder := record.NewFakeRecorder(1024)
+		gce.eventRecorder = recorder
+		nodeNames := []string{"test-node-1"}
+
+		svc := fakeLoadbalancerServiceWithLoadBalancerClass("", tc.loadBalancerClass)
+		if tc.loadBalancerClass == "" {
+			svc = fakeLoadbalancerService(string(LBTypeInternal))
+		}
+		svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+		assert.NoError(t, err)
+
+		// Create ILB
+		status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+		if tc.shouldProcess {
+			assert.NoError(t, err)
+			assert.NotEmpty(t, status.Ingress)
+			svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+			assert.NoError(t, err)
+			if !hasFinalizer(svc, ILBFinalizerV1) {
+				t.Errorf("Expected finalizer '%s' not found in Finalizer list - %v", ILBFinalizerV1, svc.Finalizers)
+			}
+		} else {
+			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+			assert.Empty(t, status)
+		}
+
+		nodeNames = []string{"test-node-1", "test-node-2"}
+		nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+		assert.NoError(t, err)
+
+		// Update ILB
+		err = gce.updateInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nodes)
+		if tc.shouldProcess {
+			assert.NoError(t, err)
+			svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+			assert.NoError(t, err)
+			if !hasFinalizer(svc, ILBFinalizerV1) {
+				t.Errorf("Expected finalizer '%s' not found in Finalizer list - %v", ILBFinalizerV1, svc.Finalizers)
+			}
+		} else {
+			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+			assert.Empty(t, status)
+		}
+
+		// Delete ILB
+		err = gce.ensureInternalLoadBalancerDeleted(vals.ClusterName, vals.ClusterID, svc)
+		if tc.shouldProcess {
+			assert.NoError(t, err)
+			assertInternalLbResourcesDeleted(t, gce, svc, vals, true)
+		} else {
+			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+		}
+	}
 }

@@ -22,6 +22,7 @@ package gce
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -555,5 +556,136 @@ func TestGetZone(t *testing.T) {
 		if gotZone != tc.expectedZone {
 			t.Errorf("Wrong labels from node labels: %v, got: %v, want: %v", tc.nodeLabels, gotZone, tc.expectedZone)
 		}
+	}
+}
+
+// TestProjectFromNodeProviderID verifies the behaviour of various functions under the
+// influence of projectFromNodeProviderID option.
+//
+// Test setup involves creating two instances which have the same name and are
+// in the same zone but differ in their projects. A K8s Node is created with the
+// providerID pointing to the non-default project.
+//   - When projectFromNodeProviderID is not enabled, the instance from the
+//     default project should be returned (since the project from providerID
+//     should be ignored.)
+//   - When projectFromNodeProviderID is enabled, the instance from the
+//     non-default project should be returned (since the project from providerID
+//     would be considered.)
+func TestProjectFromNodeProviderID(t *testing.T) {
+	defaultValues := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(defaultValues)
+	require.NoError(t, err)
+
+	// instanceMap maps the instance's selfLink to the instance.
+	instanceMap := map[string]*ga.Instance{}
+
+	// Instance in the default project.
+	instanceFromDefaultProject := &ga.Instance{
+		SelfLink: fmt.Sprintf("projects/%v/zones/us-central1-c/instances/instance-1", defaultValues.ProjectID),
+		Id:       1,
+		NetworkInterfaces: []*ga.NetworkInterface{{
+			NetworkIP: "1.1.1.1",
+			StackType: "IPV4",
+			AliasIpRanges: []*ga.AliasIpRange{
+				{IpCidrRange: "10.10.10.10/24"},
+			},
+		}},
+	}
+	instanceMap[instanceFromDefaultProject.SelfLink] = instanceFromDefaultProject
+
+	// Instance in a different project.
+	nonDefaultProject := "non-default-project"
+	instanceFromNonDefaultProject := &ga.Instance{
+		SelfLink: fmt.Sprintf("projects/%v/zones/us-central1-c/instances/instance-1", nonDefaultProject),
+		Id:       2,
+		NetworkInterfaces: []*ga.NetworkInterface{{
+			NetworkIP: "2.2.2.2",
+			StackType: "IPV4",
+			AliasIpRanges: []*ga.AliasIpRange{
+				{IpCidrRange: "20.20.20.20/24"},
+			},
+		}},
+	}
+	instanceMap[instanceFromNonDefaultProject.SelfLink] = instanceFromNonDefaultProject
+	forceNonDefaultProject := cloud.ForceProjectID(nonDefaultProject)
+
+	// Setup mock response.
+	mockGCE := gce.c.(*cloud.MockGCE)
+	mi := mockGCE.Instances().(*cloud.MockInstances)
+	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
+		projectID := defaultValues.ProjectID
+		if len(options) == 1 && reflect.DeepEqual(options[0], forceNonDefaultProject) {
+			projectID = nonDefaultProject
+		}
+		selfLink := fmt.Sprintf("projects/%v/zones/%v/instances/%v", projectID, key.Zone, key.Name)
+		ret, ok := instanceMap[selfLink]
+		if !ok {
+			return true, nil, fmt.Errorf("instance not found")
+		}
+		return true, ret, nil
+	}
+
+	node := &v1.Node{
+		Spec: v1.NodeSpec{
+			ProviderID: fmt.Sprintf("gce://%v/us-central1-c/instance-1", nonDefaultProject),
+		},
+	}
+
+	// Invoke functions under test
+
+	testCases := []struct {
+		projectFromNodeProviderID bool
+		wantInstance              *ga.Instance
+	}{
+		{
+			projectFromNodeProviderID: false,
+			wantInstance:              instanceFromDefaultProject,
+		},
+		{
+			projectFromNodeProviderID: true,
+			wantInstance:              instanceFromNonDefaultProject,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("instanceByProviderID() when projectFromNodeProviderID=%v", tc.projectFromNodeProviderID), func(t *testing.T) {
+			gce.projectFromNodeProviderID = tc.projectFromNodeProviderID
+			gotGCEInstance, err := gce.instanceByProviderID(node.Spec.ProviderID)
+			if err != nil {
+				t.Fatalf("instanceByProviderID(%v) = %v; want nil", node.Spec.ProviderID, err)
+			}
+			if gotGCEInstance.ID != tc.wantInstance.Id {
+				t.Errorf("instanceByProviderID(%v) returned instance with ID = %v; want instance with ID = %v", node.Spec.ProviderID, gotGCEInstance.ID, instanceFromDefaultProject.Id)
+			}
+		})
+
+		t.Run(fmt.Sprintf("InstanceMetadata() when projectFromNodeProviderID=%v", tc.projectFromNodeProviderID), func(t *testing.T) {
+			gce.projectFromNodeProviderID = tc.projectFromNodeProviderID
+			gotInstanceMetadata, err := gce.InstanceMetadata(context.TODO(), node)
+			if err != nil {
+				t.Fatalf("InstanceMetadata(%v) = %v; want nil", node.Spec.ProviderID, err)
+			}
+			gotAddress := gotInstanceMetadata.NodeAddresses[0].Address
+			wantAddress := tc.wantInstance.NetworkInterfaces[0].NetworkIP
+			if gotAddress != wantAddress {
+				t.Errorf("InstanceMetadata(%v) returned instance with IP address = %v; want instance with IP address = %v", node.Spec.ProviderID, gotAddress, wantAddress)
+			}
+		})
+
+		t.Run(fmt.Sprintf("AliasRangesByProviderID() when projectFromNodeProviderID=%v", tc.projectFromNodeProviderID), func(t *testing.T) {
+			gce.projectFromNodeProviderID = tc.projectFromNodeProviderID
+			gotAliasRanges, err := gce.AliasRangesByProviderID(node.Spec.ProviderID)
+			if err != nil {
+				t.Fatalf("AliasRangesByProviderID(%v) = %v; want nil", node.Spec.ProviderID, err)
+			}
+			if len(gotAliasRanges) != 1 {
+				t.Fatalf("AliasRangesByProviderID(%v) returned %d ranges; want only 1", node.Spec.ProviderID, len(gotAliasRanges))
+			}
+			gotAliasRange := gotAliasRanges[0]
+			wantAliasRange := tc.wantInstance.NetworkInterfaces[0].AliasIpRanges[0].IpCidrRange
+			if gotAliasRange != wantAliasRange {
+				t.Errorf("AliasRangesByProviderID(%v) returned instance with alias IP range = %v; want instance with alias IP range = %v", node.Spec.ProviderID, gotAliasRange, wantAliasRange)
+			}
+		})
 	}
 }
