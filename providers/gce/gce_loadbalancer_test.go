@@ -59,6 +59,26 @@ func TestGetLoadBalancer(t *testing.T) {
 	assert.Equal(t, expectedStatus, status)
 	assert.True(t, found)
 	assert.NoError(t, err)
+
+	err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, apiService)
+	require.NoError(t, err)
+
+	status, found, err = gce.GetLoadBalancer(context.Background(), vals.ClusterName, apiService)
+	assert.Nil(t, status)
+	assert.False(t, found)
+	assert.NoError(t, err)
+
+	apiService.Finalizers = []string{NetLBFinalizerV1}
+	status, found, err = gce.GetLoadBalancer(context.Background(), vals.ClusterName, apiService)
+	assert.Equal(t, &v1.LoadBalancerStatus{}, status)
+	assert.True(t, found)
+	assert.NoError(t, err)
+
+	apiService.Finalizers = []string{NetLBFinalizerV1}
+	status, found, err = gce.GetLoadBalancer(context.Background(), vals.ClusterName, apiService)
+	assert.Equal(t, &v1.LoadBalancerStatus{}, status)
+	assert.True(t, found)
+	assert.NoError(t, err)
 }
 
 func TestEnsureLoadBalancerCreatesExternalLb(t *testing.T) {
