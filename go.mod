@@ -1,6 +1,8 @@
 module k8s.io/cloud-provider-gcp
 
-go 1.22
+go 1.24.0
+
+toolchain go1.24.6
 
 // k8s.io/kubernetes imports dynamic-resource-allocation from the staging repos as of 1.26.0.
 // This means that `go list -mod readonly -m -f '{{ if not .Main }}{{ .String }}{{ end }}' all` fails
