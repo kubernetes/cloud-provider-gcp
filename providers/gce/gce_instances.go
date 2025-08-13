@@ -236,12 +236,18 @@ func (g *Cloud) NodeAddressesByProviderID(ctx context.Context, providerID string
 	timeoutCtx, cancel := context.WithTimeout(ctx, 1*time.Hour)
 	defer cancel()
 
-	_, zone, name, err := splitProviderID(providerID)
+	project, zone, name, err := splitProviderID(providerID)
 	if err != nil {
 		return []v1.NodeAddress{}, err
 	}
 
-	instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	var instance *compute.Instance
+	if g.projectFromNodeProviderID {
+		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	} else {
+		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	}
+
 	if err != nil {
 		return []v1.NodeAddress{}, fmt.Errorf("error while querying for providerID %q: %v", providerID, err)
 	}
@@ -365,7 +371,7 @@ func (g *Cloud) InstanceMetadata(ctx context.Context, node *v1.Node) (*cloudprov
 		}
 	}
 
-	_, zone, name, err := splitProviderID(providerID)
+	project, zone, name, err := splitProviderID(providerID)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +383,12 @@ func (g *Cloud) InstanceMetadata(ctx context.Context, node *v1.Node) (*cloudprov
 
 	var addresses []v1.NodeAddress
 	var instanceType string
-	instance, err := g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	var instance *compute.Instance
+	if g.projectFromNodeProviderID {
+		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	} else {
+		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("error while querying for providerID %q: %v", providerID, err)
 	}
@@ -578,13 +589,17 @@ func (g *Cloud) AliasRangesByProviderID(providerID string) (cidrs []string, err 
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
-	_, zone, name, err := splitProviderID(providerID)
+	project, zone, name, err := splitProviderID(providerID)
 	if err != nil {
 		return nil, err
 	}
 
 	var res *compute.Instance
-	res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	if g.projectFromNodeProviderID {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	} else {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	}
 	if err != nil {
 		return
 	}
@@ -623,12 +638,17 @@ func (g *Cloud) AddAliasToInstanceByProviderID(providerID string, alias *net.IPN
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
-	_, zone, name, err := splitProviderID(providerID)
+	project, zone, name, err := splitProviderID(providerID)
 	if err != nil {
 		return err
 	}
 
-	instance, err := g.c.BetaInstances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	var instance *computebeta.Instance
+	if g.projectFromNodeProviderID {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	} else {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	}
 	if err != nil {
 		return err
 	}
@@ -651,7 +671,11 @@ func (g *Cloud) AddAliasToInstanceByProviderID(providerID string, alias *net.IPN
 	})
 
 	mc := newInstancesMetricContext("add_alias", zone)
-	err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(instance.Name, lastComponent(instance.Zone)), iface.Name, iface)
+	if g.projectFromNodeProviderID {
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(instance.Name, lastComponent(instance.Zone)), iface.Name, iface, cloud.ForceProjectID(project))
+	} else {
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(instance.Name, lastComponent(instance.Zone)), iface.Name, iface)
+	}
 	return mc.Observe(err)
 }
 
@@ -763,7 +787,13 @@ func (g *Cloud) getInstanceFromProjectInZoneByName(project, zone, name string) (
 
 	name = canonicalizeInstanceName(name)
 	mc := newInstancesMetricContext("get", zone)
-	res, err := g.c.Instances().Get(ctx, meta.ZonalKey(name, zone))
+	var res *compute.Instance
+	var err error
+	if g.projectFromNodeProviderID {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
+	} else {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(name, zone))
+	}
 	mc.Observe(err)
 	if err != nil {
 		return nil, err
@@ -917,12 +947,16 @@ func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, 
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
-	_, zone, name, err := splitProviderID(providerID)
+	project, zone, name, err := splitProviderID(providerID)
 	if err != nil {
 		return nil, err
 	}
+	if g.projectFromNodeProviderID {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+	} else {
+		res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+	}
 
-	res, err = g.c.Instances().Get(ctx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
 	if err != nil {
 		return nil, err
 	}

@@ -40,6 +40,9 @@ func TestGetLoadBalancer(t *testing.T) {
 
 	apiService := fakeLoadbalancerService("")
 
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+
 	// When a loadbalancer has not been created
 	status, found, err := gce.GetLoadBalancer(context.Background(), vals.ClusterName, apiService)
 	assert.Nil(t, status)
@@ -70,6 +73,10 @@ func TestEnsureLoadBalancerCreatesExternalLb(t *testing.T) {
 	require.NoError(t, err)
 
 	apiService := fakeLoadbalancerService("")
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+
 	status, err := gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
@@ -108,6 +115,10 @@ func TestEnsureLoadBalancerDeletesExistingInternalLb(t *testing.T) {
 	require.NoError(t, err)
 
 	apiService := fakeLoadbalancerService("")
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+
 	createInternalLoadBalancer(gce, apiService, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 
 	status, err := gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
@@ -130,11 +141,17 @@ func TestEnsureLoadBalancerDeletesExistingExternalLb(t *testing.T) {
 	require.NoError(t, err)
 
 	apiService := fakeLoadbalancerService("")
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+
 	createExternalLoadBalancer(gce, apiService, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 
 	apiService = fakeLoadbalancerService(string(LBTypeInternal))
-	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Update(context.TODO(), apiService, metav1.UpdateOptions{})
 	require.NoError(t, err)
+
 	status, err := gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
@@ -155,7 +172,14 @@ func TestEnsureLoadBalancerDeletedDeletesExternalLb(t *testing.T) {
 	require.NoError(t, err)
 
 	apiService := fakeLoadbalancerService("")
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+
 	createExternalLoadBalancer(gce, apiService, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Get(context.TODO(), apiService.Name, metav1.GetOptions{})
+	require.NoError(t, err)
 
 	err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, apiService)
 	assert.NoError(t, err)
@@ -450,52 +474,130 @@ func Test_hasLoadBalancerPortsError(t *testing.T) {
 	}
 }
 
-func TestEnsureLoadBalancerIgnoresServiceWithLoadBalancerClass(t *testing.T) {
+func TestEnsureLoadBalancerServiceWithLoadBalancerClass(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		desc              string
+		loadBalancerClass string
+		shouldProcess     bool
+	}{
+		{
+			desc:              "Custom loadBalancerClass should not process",
+			loadBalancerClass: "customLBClass",
+			shouldProcess:     false,
+		},
+		{
+			desc:              "Use legacy ILB loadBalancerClass",
+			loadBalancerClass: LegacyRegionalInternalLoadBalancerClass,
+			shouldProcess:     true,
+		},
+		{
+			desc:              "Use legacy NetLB loadBalancerClass",
+			loadBalancerClass: LegacyRegionalExternalLoadBalancerClass,
+			shouldProcess:     true,
+		},
+		{
+			desc:              "Unset loadBalancerClass",
+			loadBalancerClass: "",
+			shouldProcess:     true,
+		},
+	} {
 
-	vals := DefaultTestClusterValues()
-	gce, err := fakeGCECloud(vals)
-	require.NoError(t, err)
+		vals := DefaultTestClusterValues()
+		gce, err := fakeGCECloud(vals)
+		require.NoError(t, err)
 
-	nodeNames := []string{"test-node-1"}
-	nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
-	require.NoError(t, err)
+		nodeNames := []string{"test-node-1"}
+		nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+		require.NoError(t, err)
 
-	apiService := fakeLoadbalancerService("")
-	testClass := "TestClass"
-	apiService.Spec.LoadBalancerClass = &testClass
-	status, err := gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
-	assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
-	assert.Empty(t, status)
+		apiService := fakeLoadbalancerServiceWithLoadBalancerClass("", tc.loadBalancerClass)
+		if tc.loadBalancerClass == "" {
+			apiService = fakeLoadbalancerService("")
+		}
+
+		apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+		assert.NoError(t, err)
+		expectedStatus, err := gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
+
+		if tc.shouldProcess {
+			require.NoError(t, err)
+			status, found, err := gce.GetLoadBalancer(context.Background(), vals.ClusterName, apiService)
+			assert.Equal(t, expectedStatus, status)
+			assert.True(t, found)
+			assert.NoError(t, err)
+		} else {
+			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+			assert.Empty(t, expectedStatus)
+		}
+	}
 }
 
 func TestUpdateLoadBalancerWithLoadBalancerClass(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		desc              string
+		loadBalancerClass string
+		shouldProcess     bool
+	}{
+		{
+			desc:              "Update with custom loadBalancerClass, should not process",
+			loadBalancerClass: "customLBClass",
+			shouldProcess:     false,
+		},
+		{
+			desc:              "Update with legacy ILB loadBalancerClass",
+			loadBalancerClass: LegacyRegionalInternalLoadBalancerClass,
+			shouldProcess:     true,
+		},
+		{
+			desc:              "Update with legacy NetLB loadBalancerClass",
+			loadBalancerClass: LegacyRegionalExternalLoadBalancerClass,
+			shouldProcess:     true,
+		},
+		{
+			desc:              "Update with loadBalancerClass unset",
+			loadBalancerClass: "",
+			shouldProcess:     true,
+		},
+	} {
+		vals := DefaultTestClusterValues()
+		gce, err := fakeGCECloud(vals)
+		require.NoError(t, err)
 
-	vals := DefaultTestClusterValues()
-	gce, err := fakeGCECloud(vals)
-	require.NoError(t, err)
+		nodeNames := []string{"test-node-1"}
+		nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+		require.NoError(t, err)
 
-	nodeNames := []string{"test-node-1"}
-	nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
-	require.NoError(t, err)
+		apiService := fakeLoadbalancerServiceWithLoadBalancerClass("", tc.loadBalancerClass)
+		if tc.loadBalancerClass == "" {
+			apiService = fakeLoadbalancerService("")
+		}
 
-	apiService := fakeLoadbalancerService("")
-	apiService.Spec.Ports = append(apiService.Spec.Ports, v1.ServicePort{
-		Protocol: v1.ProtocolUDP,
-		Port:     int32(8080),
-	})
-	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
-	require.NoError(t, err)
+		apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+		assert.NoError(t, err)
+		gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
 
-	// create an external loadbalancer to simulate an upgrade scenario where the loadbalancer exists
-	// before the new controller is running and later the Service is updated
-	_, err = createExternalLoadBalancer(gce, apiService, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
-	assert.NoError(t, err)
+		apiService.Spec.Ports = append(apiService.Spec.Ports, v1.ServicePort{
+			Protocol: v1.ProtocolTCP,
+			Port:     int32(80),
+		})
+		err = gce.UpdateLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
 
-	testClass := "testClass"
-	apiService.Spec.LoadBalancerClass = &testClass
+		if tc.shouldProcess {
+			require.NoError(t, err)
+			_, found, err := gce.GetLoadBalancer(context.Background(), vals.ClusterName, apiService)
+			assert.True(t, found)
+			assert.NoError(t, err)
+		} else {
+			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+		}
 
-	err = gce.UpdateLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
-	assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+		err = gce.EnsureLoadBalancerDeleted(context.Background(), vals.ClusterName, apiService)
+		if tc.shouldProcess {
+			assert.NoError(t, err)
+		} else {
+			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+		}
+	}
 }

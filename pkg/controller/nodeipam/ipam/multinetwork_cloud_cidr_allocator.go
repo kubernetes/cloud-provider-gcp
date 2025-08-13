@@ -75,7 +75,7 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 				continue
 			}
 
-			klog.V(4).InfoS("allotting pod CIDRs", "nodeName", node.Name, "networkName", network.Name)
+			klog.V(4).InfoS("allotting pod CIDRs", "nodeName", node.Name, "networkName", network.Name, "networkInterface", inf.Name)
 			gnp, err := ca.gnpLister.Get(network.Spec.ParametersRef.Name)
 			if err != nil {
 				return nil, err
@@ -100,7 +100,7 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 				if _, ok := upStatusNetworks[network.Name]; ok {
 					additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{inf.NetworkIP + "/32"}})
 				} else {
-					klog.V(2).InfoS("skipping network %s on node %s in networking.gke.io/networks annotation due to missing network-status", network.Name, node.Name)
+					klog.V(2).Infof("skipping network %s on node %s in networking.gke.io/networks annotation due to missing network-status", network.Name, node.Name)
 				}
 				continue
 			}
@@ -139,7 +139,7 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 					if _, ok := upStatusNetworks[network.Name]; ok {
 						additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{ipRange.IpCidrRange}})
 					} else {
-						klog.V(2).InfoS("skipping network %s on node %s in networking.gke.io/networks annotation due to missing network-status", network.Name, node.Name)
+						klog.V(2).Infof("skipping network %s on node %s in networking.gke.io/networks annotation due to missing network-status", network.Name, node.Name)
 					}
 				}
 				break
@@ -154,7 +154,7 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 
 // getNodeDefaultLabels returns true if the node has labels for subnet and Pod range
 func getNodeDefaultLabels(node *v1.Node) (bool, string, string) {
-	defaultSubnet, foundSubnet := node.Labels[utilnode.NodePoolSubnetLabelPrefix]
+	defaultSubnet, foundSubnet := node.Labels[utilnode.DefaultSubnetLabelPrefix]
 	defaultPodRange, foundRange := node.Labels[utilnode.NodePoolPodRangeLabelPrefix]
 	if !foundSubnet || defaultSubnet == "" || !foundRange || defaultPodRange == "" {
 		return false, "", ""

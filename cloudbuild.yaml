@@ -4,7 +4,7 @@ timeout: 3600s
 options:
   substitution_option: ALLOW_LOOSE
 steps:
-  - name: 'golang:1.23.3'
+  - name: 'gcr.io/cloud-builders/docker'
     env:
       - IMAGE_REPO=${_IMAGE_REPO}
       - IMAGE_TAG=${_PULL_BASE_REF}
@@ -93,4 +93,3 @@ substitutions:
 tags:
   - 'cloud-provider-gcp'
   - ${_GIT_TAG}
-  - ${_PULL_BASE_REF}

@@ -30,6 +30,7 @@ import (
 
 	networkclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned"
 	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
+	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	cloudprovider "k8s.io/cloud-provider"
 	nodeipamcontrolleroptions "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/options"
 	nodeipamcontroller "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam"
@@ -134,6 +135,10 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 	if err != nil {
 		return nil, false, err
 	}
+	nodeTopologyClient, err := nodetopologyclientset.NewForConfig(kubeConfig)
+	if err != nil {
+		return nil, false, err
+	}
 	nwInfFactory := networkinformers.NewSharedInformerFactory(networkClient, 30*time.Second)
 	nwInformer := nwInfFactory.Networking().V1().Networks()
 	gnpInformer := nwInfFactory.Networking().V1().GKENetworkParamSets()
@@ -143,6 +148,8 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 		ccmConfig.ClientBuilder.ClientOrDie("node-controller"),
 		nwInformer,
 		gnpInformer,
+		nodeTopologyClient,
+		nodeIPAMConfig.EnableMultiSubnetCluster,
 		clusterCIDRs,
 		serviceCIDR,
 		secondaryServiceCIDR,

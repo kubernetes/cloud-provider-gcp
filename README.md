@@ -93,16 +93,3 @@ To re-generate `BUILD` files:
 ```sh
 tools/update_bazel.sh
 ```
-
-# Tagging for new cloud-controller-manager versions
-
-To trigger a new image for cloud-controller-manager, you need to add a git tag.
-This needs to have the format `ccm/vX.Y.Z`. For example.
-
-```
-git tag -a ccm/v27.1.0 -m "CCM build for Kubernetes v1.27.1"
-```
-
-The major version X corresponds to the Kubernetes minor version. The minor
-version Y corresponds to the Kubernetes patch version and the patch version Z
-corresponds to the CCM patch version.

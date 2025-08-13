@@ -23,6 +23,7 @@ import (
 	"time"
 
 	networkinformer "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1"
+	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	"k8s.io/klog/v2"
 
 	v1 "k8s.io/api/core/v1"
@@ -75,6 +76,12 @@ const (
 
 	// updateMaxRetries is the max retries for a failed node
 	updateMaxRetries = 10
+
+	// The no. of workers in parallel to update nodetopology CR
+	nodeTopologyWorkers = 30
+
+	// The duration of periodic reconciliation on the nodetopology CR
+	nodeTopologyReconcileInterval = 10 * time.Minute
 )
 
 // nodePollInterval is used in listing node
@@ -108,7 +115,7 @@ type CIDRAllocatorParams struct {
 }
 
 // New creates a new CIDR range allocator.
-func New(kubeClient clientset.Interface, cloud cloudprovider.Interface, nodeInformer informers.NodeInformer, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, allocatorType CIDRAllocatorType, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
+func New(kubeClient clientset.Interface, cloud cloudprovider.Interface, nodeInformer informers.NodeInformer, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, enableMultiSubnetCluster bool, allocatorType CIDRAllocatorType, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
 	nodeList, err := listNodes(kubeClient)
 	if err != nil {
 		return nil, err
@@ -118,7 +125,7 @@ func New(kubeClient clientset.Interface, cloud cloudprovider.Interface, nodeInfo
 	case RangeAllocatorType:
 		return NewCIDRRangeAllocator(kubeClient, nodeInformer, allocatorParams, nodeList)
 	case CloudAllocatorType:
-		return NewCloudCIDRAllocator(kubeClient, cloud, nwInformer, gnpInformer, nodeInformer, allocatorParams)
+		return NewCloudCIDRAllocator(kubeClient, cloud, nwInformer, gnpInformer, nodeTopologyClient, enableMultiSubnetCluster, nodeInformer, allocatorParams)
 	default:
 		return nil, fmt.Errorf("invalid CIDR allocator type: %v", allocatorType)
 	}

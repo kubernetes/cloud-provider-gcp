@@ -35,9 +35,10 @@ const (
 	// NodePoolPodRangeLabelPrefix is the prefix for the default Pod range
 	// name for the node and it can be different with cluster Pod range
 	NodePoolPodRangeLabelPrefix = "cloud.google.com/gke-np-default-pod-range"
-	// NodePoolSubnetLabelPrefix is the prefix for the default subnet
-	// name for the node
-	NodePoolSubnetLabelPrefix = "cloud.google.com/gke-np-default-subnet"
+	// DefaultSubnetLabelPrefix is the prefix for the default subnet name for the node
+	DefaultSubnetLabelPrefix = "cloud.google.com/gke-np-default-subnet"
+	// NodePoolSubnetLabelPrefix is the prefix for the subnet name for this node
+	NodePoolSubnetLabelPrefix = "cloud.google.com/gke-node-pool-subnet"
 )
 
 type nodeForConditionPatch struct {
@@ -113,14 +114,19 @@ func PatchNodeMultiNetwork(c clientset.Interface, node *v1.Node) error {
 		annotation[networkv1.MultiNetworkAnnotationKey] = val
 	}
 
+	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Minute)
+	defer cancel()
+
 	if len(annotation) > 0 {
 		raw, err := json.Marshal(annotation)
 		if err != nil {
 			return fmt.Errorf("failed to build patch bytes for multi-networking: %w", err)
 		}
-		if _, err := c.CoreV1().Nodes().Patch(context.TODO(), node.Name, types.StrategicMergePatchType, []byte(fmt.Sprintf(`{"metadata":{"annotations":%s}}`, raw)), metav1.PatchOptions{}); err != nil {
+
+		if _, err := c.CoreV1().Nodes().Patch(ctx, node.Name, types.StrategicMergePatchType, []byte(fmt.Sprintf(`{"metadata":{"annotations":%s}}`, raw)), metav1.PatchOptions{}); err != nil {
 			return fmt.Errorf("unable to apply patch for multi-network annotation: %v", err)
 		}
+		klog.V(4).Infof("Patched multi-network annotation of node %q to %s", node.Name, raw)
 	}
 	// Prepare patch bytes for the node update.
 	patchBytes, err := json.Marshal([]interface{}{
@@ -135,8 +141,9 @@ func PatchNodeMultiNetwork(c clientset.Interface, node *v1.Node) error {
 	}
 	// Since dynamic network addition/deletion is a use case to be supported, we aspire to build these annotations and IP capacities every time from scratch.
 	// Hence, we are using a JSON patch merge strategy instead of strategic merge strategy on the node during update.
-	if _, err = c.CoreV1().Nodes().Patch(context.TODO(), node.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{}, "status"); err != nil {
+	if _, err = c.CoreV1().Nodes().Patch(ctx, node.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{}, "status"); err != nil {
 		return fmt.Errorf("failed to patch node for multi-networking: %w", err)
 	}
+	klog.V(4).Infof("Patched capacity of node %q to %s", node.Name, patchBytes)
 	return nil
 }
