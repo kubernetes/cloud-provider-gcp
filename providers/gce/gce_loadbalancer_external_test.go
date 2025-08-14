@@ -483,11 +483,14 @@ func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string,
 		return nil, err
 	}
 
+	op := &loadBalancerSync{}
+	op.actualForwardingRule = nil
+
 	return gce.ensureExternalLoadBalancer(
 		clusterName,
 		clusterID,
 		svc,
-		nil,
+		op,
 		nodes,
 	)
 }
@@ -554,7 +557,11 @@ func TestShouldNotRecreateLBWhenNetworkTiersMismatch(t *testing.T) {
 		},
 	} {
 		tc.mutateSvc(svc)
-		status, err := gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+
+		op := &loadBalancerSync{}
+		op.actualForwardingRule = nil
+
+		status, err := gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, op, nodes)
 		if tc.expectError {
 			if err == nil {
 				t.Errorf("for test case %q, expect errror != nil, but got %v", tc.desc, err)
@@ -782,7 +789,10 @@ func TestEnsureExternalLoadBalancerFailsIfInvalidNetworkTier(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	op := &loadBalancerSync{}
+	op.actualForwardingRule = nil
+
+	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, op, nodes)
 	require.Error(t, err)
 	assert.EqualError(t, err, errStrUnsupportedTier)
 }
@@ -799,7 +809,10 @@ func TestEnsureExternalLoadBalancerFailsWithNoNodes(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, []*v1.Node{})
+	op := &loadBalancerSync{}
+	op.actualForwardingRule = nil
+
+	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, op, []*v1.Node{})
 	require.Error(t, err)
 	assert.EqualError(t, err, errStrLbNoHosts)
 }
@@ -843,7 +856,10 @@ func TestEnsureExternalLoadBalancerRBSAnnotation(t *testing.T) {
 			svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+			op := &loadBalancerSync{}
+			op.actualForwardingRule = nil
+
+			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, op, nodes)
 			if tc.wantError != nil {
 				assert.EqualError(t, err, (*tc.wantError).Error())
 			} else {
@@ -911,7 +927,10 @@ func TestEnsureExternalLoadBalancerRBSFinalizer(t *testing.T) {
 			svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+			op := &loadBalancerSync{}
+			op.actualForwardingRule = nil
+
+			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, op, nodes)
 			if tc.wantError != nil {
 				assert.EqualError(t, err, (*tc.wantError).Error())
 			} else {
@@ -991,7 +1010,10 @@ func TestDeleteExternalLoadBalancerWithFinalizer(t *testing.T) {
 			svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+			op := &loadBalancerSync{}
+			op.actualForwardingRule = nil
+
+			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, op, nodes)
 			if err != nil {
 				assert.NoError(t, err, "Should not return an error "+desc)
 			}
@@ -1055,7 +1077,10 @@ func TestEnsureExternalLoadBalancerExistingFwdRule(t *testing.T) {
 			svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, tc.existingForwardingRule, nodes)
+			op := &loadBalancerSync{}
+			op.actualForwardingRule = tc.existingForwardingRule
+
+			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, op, nodes)
 			if tc.wantError != nil {
 				assert.EqualError(t, err, (*tc.wantError).Error())
 			} else {
@@ -1868,11 +1893,14 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
+	op := &loadBalancerSync{}
+	op.actualForwardingRule = nil
+
 	status, err := gce.ensureExternalLoadBalancer(
 		vals.ClusterName,
 		vals.ClusterID,
 		svc,
-		nil,
+		op,
 		nodes,
 	)
 	require.NotNil(t, status)
@@ -2121,11 +2149,15 @@ func TestEnsureExternalLoadBalancerErrors(t *testing.T) {
 			if tc.injectMock != nil {
 				tc.injectMock(gce.c.(*cloud.MockGCE))
 			}
+
+			op := &loadBalancerSync{}
+			op.actualForwardingRule = params.existingFwdRule
+
 			status, err := gce.ensureExternalLoadBalancer(
 				params.clusterName,
 				params.clusterID,
 				params.service,
-				params.existingFwdRule,
+				op,
 				params.nodes,
 			)
 			assert.Error(t, err, "Should return an error when "+desc)

@@ -169,13 +169,15 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 
 	klog.V(4).Infof("EnsureLoadBalancer(%v, %v, %v, %v, %v): ensure %v loadbalancer", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, desiredScheme)
 
-	existingFwdRule, err := g.GetRegionForwardingRule(loadBalancerName, g.region)
+	actualForwardingRule, err := g.GetRegionForwardingRule(loadBalancerName, g.region)
 	if err != nil && !isNotFound(err) {
 		return nil, err
 	}
+	op := &loadBalancerSync{}
+	op.actualForwardingRule = actualForwardingRule
 
-	if existingFwdRule != nil {
-		existingScheme := cloud.LbScheme(strings.ToUpper(existingFwdRule.LoadBalancingScheme))
+	if op.actualForwardingRule != nil {
+		existingScheme := cloud.LbScheme(strings.ToUpper(op.actualForwardingRule.LoadBalancingScheme))
 
 		// If the loadbalancer type changes between INTERNAL and EXTERNAL, the old load balancer should be deleted.
 		if existingScheme != desiredScheme {
@@ -192,16 +194,16 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 			}
 
 			// Assume the ensureDeleted function successfully deleted the forwarding rule.
-			existingFwdRule = nil
+			op.actualForwardingRule = nil
 		}
 	}
 
 	var status *v1.LoadBalancerStatus
 	switch desiredScheme {
 	case cloud.SchemeInternal:
-		status, err = g.ensureInternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
+		status, err = g.ensureInternalLoadBalancer(clusterName, clusterID, svc, op, nodes)
 	default:
-		status, err = g.ensureExternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
+		status, err = g.ensureExternalLoadBalancer(clusterName, clusterID, svc, op, nodes)
 	}
 	if err != nil {
 		klog.Errorf("Failed to EnsureLoadBalancer(%s, %s, %s, %s, %s), err: %v", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, err)
