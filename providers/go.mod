@@ -12,17 +12,17 @@ require (
 	google.golang.org/api v0.199.0
 	gopkg.in/gcfg.v1 v1.2.0
 	gopkg.in/warnings.v0 v0.1.1 // indirect
-	k8s.io/api v0.33.1
-	k8s.io/apimachinery v0.33.1
-	k8s.io/client-go v0.33.1
-	k8s.io/component-base v0.33.1
+	k8s.io/api v0.33.4
+	k8s.io/apimachinery v0.33.4
+	k8s.io/client-go v0.33.4
+	k8s.io/component-base v0.33.4
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 )
 
 require (
 	cloud.google.com/go/compute/metadata v0.5.2
-	k8s.io/cloud-provider v0.33.1
+	k8s.io/cloud-provider v0.33.4
 )
 
 require (
