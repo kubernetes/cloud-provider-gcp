@@ -29,7 +29,6 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
-	"github.com/google/go-cmp/cmp"
 	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -94,10 +93,13 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 		return nil, err
 	}
 
-	ports, _, protocol := getPortsAndProtocol(svc.Spec.Ports)
-	if protocol != v1.ProtocolTCP && protocol != v1.ProtocolUDP {
-		return nil, fmt.Errorf("Invalid protocol %s, only TCP and UDP are supported", string(protocol))
+	groupedPorts := getPortsAndProtocols(svc.Spec.Ports)
+	for protocol := range groupedPorts {
+		if protocol != v1.ProtocolTCP && protocol != v1.ProtocolUDP {
+			return nil, fmt.Errorf("Invalid protocol %s, only TCP and UDP are supported", string(protocol))
+		}
 	}
+
 	scheme := cloud.SchemeInternal
 	options := getILBOptions(svc)
 	if g.IsLegacyNetwork() {
@@ -106,7 +108,7 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	}
 
 	sharedBackend := shareBackendService(svc)
-	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, sharedBackend, scheme, protocol, svc.Spec.SessionAffinity)
+	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, sharedBackend, scheme, groupedPorts, svc.Spec.SessionAffinity)
 	backendServiceLink := g.getBackendServiceLink(backendServiceName)
 
 	// Ensure instance groups exist and nodes are assigned to groups
@@ -179,57 +181,121 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	if err != nil {
 		return nil, err
 	}
-	newFwdRule := &compute.ForwardingRule{
-		Name:                loadBalancerName,
-		Description:         fwdRuleDescriptionString,
-		IPAddress:           ipToUse,
-		BackendService:      backendServiceLink,
-		Ports:               ports,
-		IPProtocol:          string(protocol),
-		LoadBalancingScheme: string(scheme),
-		// Given that CreateGCECloud will attempt to determine the subnet based off the network,
-		// the subnetwork should rarely be unknown.
-		Subnetwork: subnetworkURL,
-		Network:    g.networkURL,
-	}
-	if options.AllowGlobalAccess {
-		newFwdRule.AllowGlobalAccess = options.AllowGlobalAccess
-	}
-	if len(ports) > maxL4ILBPorts {
-		newFwdRule.Ports = nil
-		newFwdRule.AllPorts = true
-	}
 
-	fwdRuleDeleted := false
-	if existingFwdRule != nil && !forwardingRulesEqual(existingFwdRule, newFwdRule) {
-		// Delete existing forwarding rule before making changes to the backend service. For example - changing protocol
-		// of backend service without first deleting forwarding rule will throw an error since the linked forwarding
-		// rule would show the old protocol.
-		if klogV := klog.V(2); klogV.Enabled() {
-			frDiff := cmp.Diff(existingFwdRule, newFwdRule)
-			klogV.Infof("ensureInternalLoadBalancer(%v): forwarding rule changed - Existing - %+v\n, New - %+v\n, Diff(-existing, +new) - %s\n. Deleting existing forwarding rule.", loadBalancerName, existingFwdRule, newFwdRule, frDiff)
-		}
-		if err = ignoreNotFound(g.DeleteRegionForwardingRule(loadBalancerName, g.region)); err != nil {
-			return nil, err
-		}
-		fwdRuleDeleted = true
-	}
+	// Logic to handle multiple forwarding rules, one per protocol.
+	// Based on the logic for external load balancers.
 
-	bsDescription := makeBackendServiceDescription(nm, sharedBackend)
-	err = g.ensureInternalBackendService(backendServiceName, bsDescription, svc.Spec.SessionAffinity, scheme, protocol, igLinks, hc.SelfLink)
+	// Get all existing forwarding rules for this service.
+	// A service can have a forwarding rule with the base name, or with a protocol suffix.
+	// TODO: Remove existingFwdRules and use the one from the function.
+	// Check for forwarding rules with protocol suffixes.
+	op := &ensureOperation{}
+	g.findActualBackendServiceInternal(backendServiceName, op)
+
+	existingForwardingRules, err := g.getExistingForwardingRules(loadBalancerName)
 	if err != nil {
 		return nil, err
 	}
+	op.forwardingRulesActual = existingForwardingRules
 
-	if fwdRuleDeleted || existingFwdRule == nil {
-		// existing rule has been deleted, pass in nil
-		if err := g.ensureInternalForwardingRule(nil, newFwdRule); err != nil {
+	var createdFwdRules []*compute.ForwardingRule
+
+	var desiredForwardingRules []*compute.ForwardingRule
+	for protocol, protocolPorts := range groupedPorts {
+		// Each protocol gets its own forwarding rule.
+		// If there's only one protocol, the forwarding rule name is the load balancer name.
+		// Otherwise, it's load-balancer-name-<protocol>.
+		frName := loadBalancerName
+		if len(groupedPorts) > 1 {
+			frName = fmt.Sprintf("%s-%s", loadBalancerName, strings.ToLower(string(protocol)))
+		}
+
+		forwardingRule := &compute.ForwardingRule{
+			Name:                frName,
+			Description:         fwdRuleDescriptionString,
+			IPAddress:           ipToUse,
+			BackendService:      backendServiceLink,
+			IPProtocol:          string(protocol),
+			LoadBalancingScheme: string(scheme),
+			Subnetwork:          subnetworkURL,
+			Network:             g.networkURL,
+		}
+		if options.AllowGlobalAccess {
+			forwardingRule.AllowGlobalAccess = options.AllowGlobalAccess
+		}
+		if len(protocolPorts.ports) > maxL4ILBPorts {
+			forwardingRule.Ports = nil
+			forwardingRule.AllPorts = true
+		} else {
+			for _, port := range protocolPorts.ports {
+				forwardingRule.Ports = append(forwardingRule.Ports, strconv.Itoa(port))
+			}
+		}
+
+		// Check if a forwarding rule for this protocol already exists; reuse the same name if possible.
+		for _, existingFwdRule := range existingForwardingRules {
+			if existingFwdRule.IPProtocol == forwardingRule.IPProtocol {
+				forwardingRule.Name = existingFwdRule.Name
+				break
+			}
+		}
+
+		desiredForwardingRules = append(desiredForwardingRules, forwardingRule)
+	}
+	op.forwardingRulesDesired = desiredForwardingRules
+
+	bsDescription := makeBackendServiceDescription(nm, sharedBackend)
+	backendServiceProtocol := "UNSPECIFIED"
+	if len(desiredForwardingRules) == 1 {
+		backendServiceProtocol = desiredForwardingRules[0].IPProtocol
+	}
+	g.buildDesiredBackendServiceInternal(backendServiceName, bsDescription, svc.Spec.SessionAffinity, scheme, backendServiceProtocol, igLinks, hc.SelfLink, op)
+
+	if err := g.ensureInternalBackendService(backendServiceName, op); err != nil {
+		return nil, err
+	}
+
+	for _, desiredForwardingRule := range desiredForwardingRules {
+		var existingFwdRuleForProtocol *compute.ForwardingRule
+		for _, existingFwdRule := range existingForwardingRules {
+			if existingFwdRule.IPProtocol == desiredForwardingRule.IPProtocol {
+				existingFwdRuleForProtocol = existingFwdRule
+				break
+			}
+		}
+
+		if err := g.ensureInternalForwardingRule(existingFwdRuleForProtocol, desiredForwardingRule); err != nil {
+			return nil, err
+		}
+		createdFwdRules = append(createdFwdRules, desiredForwardingRule)
+	}
+
+	// Delete any forwarding rules that are no longer needed.
+	for frName, fr := range existingForwardingRules {
+		var matching *compute.ForwardingRule
+		for _, desiredForwardingRule := range desiredForwardingRules {
+			if desiredForwardingRule.Name == fr.Name {
+				matching = desiredForwardingRule
+				continue
+			}
+		}
+		if matching != nil {
+			continue
+		}
+
+		klog.V(2).Infof("ensureInternalLoadBalancer(%v): deleting stale forwarding rule %s", loadBalancerName, frName)
+		if err := ignoreNotFound(g.DeleteRegionForwardingRule(frName, g.region)); err != nil {
 			return nil, err
 		}
 	}
 
+	if len(desiredForwardingRules) == 0 {
+		klog.V(2).Infof("ensureInternalLoadBalancer(%v): no forwarding rules needed, all deleted.", loadBalancerName)
+		return &v1.LoadBalancerStatus{}, nil
+	}
+
 	// Get the most recent forwarding rule for the address.
-	updatedFwdRule, err := g.GetRegionForwardingRule(loadBalancerName, g.region)
+	updatedFwdRule, err := g.GetRegionForwardingRule(createdFwdRules[0].Name, g.region)
 	if err != nil {
 		return nil, err
 	}
@@ -238,11 +304,6 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	// Ensure firewall rules if necessary
 	if err = g.ensureInternalFirewalls(loadBalancerName, ipToUse, clusterID, nm, svc, strconv.Itoa(int(hcPort)), sharedHealthCheck, nodes); err != nil {
 		return nil, err
-	}
-
-	// Delete the previous internal load balancer resources if necessary
-	if existingBackendService != nil {
-		g.clearPreviousInternalResources(svc, loadBalancerName, existingBackendService, backendServiceName, hcName)
 	}
 
 	serviceState.InSuccess = true
@@ -359,12 +420,18 @@ func (g *Cloud) updateInternalLoadBalancer(clusterName, clusterID string, svc *v
 	}
 
 	// Generate the backend service name
-	_, _, protocol := getPortsAndProtocol(svc.Spec.Ports)
+	groupedPorts := getPortsAndProtocols(svc.Spec.Ports)
 	scheme := cloud.SchemeInternal
 	loadBalancerName := g.GetLoadBalancerName(context.TODO(), clusterName, svc)
-	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, shareBackendService(svc), scheme, protocol, svc.Spec.SessionAffinity)
+	sharedBackend := shareBackendService(svc)
+
+	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, sharedBackend, scheme, groupedPorts, svc.Spec.SessionAffinity)
 	// Ensure the backend service has the proper backend/instance-group links
-	return g.ensureInternalBackendServiceGroups(backendServiceName, igLinks)
+	if err := g.ensureInternalBackendServiceGroups(backendServiceName, igLinks); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string, svc *v1.Service) error {
@@ -383,7 +450,7 @@ func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string,
 
 	loadBalancerName := g.GetLoadBalancerName(context.TODO(), clusterName, svc)
 	svcNamespacedName := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
-	_, _, protocol := getPortsAndProtocol(svc.Spec.Ports)
+	groupedPorts := getPortsAndProtocols(svc.Spec.Ports)
 	scheme := cloud.SchemeInternal
 	sharedBackend := shareBackendService(svc)
 	sharedHealthCheck := !servicehelpers.RequestsOnlyLocalTraffic(svc)
@@ -394,12 +461,22 @@ func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string,
 	klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): attempting delete of region internal address", loadBalancerName)
 	ensureAddressDeleted(g, loadBalancerName, g.region)
 
-	klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): deleting region internal forwarding rule", loadBalancerName)
-	if err := ignoreNotFound(g.DeleteRegionForwardingRule(loadBalancerName, g.region)); err != nil {
+	// Get existing forwarding rules.
+	existingForwardingRules, err := g.getExistingForwardingRules(loadBalancerName)
+	if err != nil {
 		return err
 	}
 
-	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, sharedBackend, scheme, protocol, svc.Spec.SessionAffinity)
+	// Delete existing forwarding rules.
+	for _, existingForwardingRule := range existingForwardingRules {
+		klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): deleting region internal forwarding rule %s", loadBalancerName, existingForwardingRule.Name)
+		if err := ignoreNotFound(g.DeleteRegionForwardingRule(existingForwardingRule.Name, g.region)); err != nil {
+			return err
+		}
+	}
+
+	// Delete existing backend service.
+	backendServiceName := makeBackendServiceName(loadBalancerName, clusterID, sharedBackend, scheme, groupedPorts, svc.Spec.SessionAffinity)
 	klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): deleting region backend service %v", loadBalancerName, backendServiceName)
 	if err := g.teardownInternalBackendService(backendServiceName); err != nil {
 		return err
@@ -495,7 +572,7 @@ func (g *Cloud) teardownInternalHealthCheckAndFirewall(svc *v1.Service, hcName s
 	return nil
 }
 
-func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinationIP string, sourceRanges []string, portRanges []string, protocol v1.Protocol, nodes []*v1.Node, legacyFwName string) error {
+func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinationIP string, sourceRanges []string, groupedPorts map[v1.Protocol]ProtocolPorts, nodes []*v1.Node, legacyFwName string) error {
 	klog.V(2).Infof("ensureInternalFirewall(%v): checking existing firewall", fwName)
 	targetTags, err := g.GetNodeTags(nodeNames(nodes))
 	if err != nil {
@@ -536,12 +613,13 @@ func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinat
 		Network:      g.networkURL,
 		SourceRanges: sourceRanges,
 		TargetTags:   targetTags,
-		Allowed: []*compute.FirewallAllowed{
-			{
-				IPProtocol: strings.ToLower(string(protocol)),
-				Ports:      portRanges,
-			},
-		},
+	}
+
+	for protocol, protocolPorts := range groupedPorts {
+		expectedFirewall.Allowed = append(expectedFirewall.Allowed, &compute.FirewallAllowed{
+			IPProtocol: strings.ToLower(string(protocol)),
+			Ports:      protocolPorts.portRanges,
+		})
 	}
 
 	if destinationIP != "" {
@@ -576,12 +654,12 @@ func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinat
 func (g *Cloud) ensureInternalFirewalls(loadBalancerName, ipAddress, clusterID string, nm types.NamespacedName, svc *v1.Service, healthCheckPort string, sharedHealthCheck bool, nodes []*v1.Node) error {
 	// First firewall is for ingress traffic
 	fwDesc := makeFirewallDescription(nm.String(), ipAddress)
-	_, portRanges, protocol := getPortsAndProtocol(svc.Spec.Ports)
+	groupedPorts := getPortsAndProtocols(svc.Spec.Ports)
 	sourceRanges, err := servicehelpers.GetLoadBalancerSourceRanges(svc)
 	if err != nil {
 		return err
 	}
-	err = g.ensureInternalFirewall(svc, MakeFirewallName(loadBalancerName), fwDesc, ipAddress, sourceRanges.StringSlice(), portRanges, protocol, nodes, loadBalancerName)
+	err = g.ensureInternalFirewall(svc, MakeFirewallName(loadBalancerName), fwDesc, ipAddress, sourceRanges.StringSlice(), groupedPorts, nodes, loadBalancerName)
 	if err != nil {
 		return err
 	}
@@ -777,17 +855,18 @@ func (g *Cloud) ensureInternalInstanceGroupsDeleted(name string) error {
 	return nil
 }
 
-func (g *Cloud) ensureInternalBackendService(name, description string, affinityType v1.ServiceAffinity, scheme cloud.LbScheme, protocol v1.Protocol, igLinks []string, hcLink string) error {
-	klog.V(2).Infof("ensureInternalBackendService(%v, %v, %v): checking existing backend service with %d groups", name, scheme, protocol, len(igLinks))
-	bs, err := g.GetRegionBackendService(name, g.region)
-	if err != nil && !isNotFound(err) {
-		return err
-	}
+type ensureOperation struct {
+	backendServiceDesired  *compute.BackendService
+	backendServiceActual   *compute.BackendService
+	forwardingRulesDesired []*compute.ForwardingRule
+	forwardingRulesActual  map[string]*compute.ForwardingRule
+}
 
+func (g *Cloud) buildDesiredBackendServiceInternal(name, description string, affinityType v1.ServiceAffinity, scheme cloud.LbScheme, protocol string, igLinks []string, hcLink string, op *ensureOperation) error {
 	backends := backendsFromGroupLinks(igLinks)
-	expectedBS := &compute.BackendService{
+	bs := &compute.BackendService{
 		Name:                name,
-		Protocol:            string(protocol),
+		Protocol:            protocol,
 		Description:         description,
 		HealthChecks:        []string{hcLink},
 		Backends:            backends,
@@ -795,10 +874,27 @@ func (g *Cloud) ensureInternalBackendService(name, description string, affinityT
 		LoadBalancingScheme: string(scheme),
 	}
 
+	op.backendServiceDesired = bs
+	return nil
+}
+
+func (g *Cloud) findActualBackendServiceInternal(name string, op *ensureOperation) error {
+	klog.V(2).Infof("findActualBackendServiceInternal(%v): checking existing backend services", name)
+
+	bs, err := g.GetRegionBackendService(name, g.region)
+	if err != nil && !isNotFound(err) {
+		return err
+	}
+
+	op.backendServiceActual = bs
+	return nil
+}
+
+func (g *Cloud) ensureInternalBackendService(name string, op *ensureOperation) error {
 	// Create backend service if none was found
-	if bs == nil {
+	if op.backendServiceActual == nil {
 		klog.V(2).Infof("ensureInternalBackendService: creating backend service %v", name)
-		err := g.CreateRegionBackendService(expectedBS, g.region)
+		err := g.CreateRegionBackendService(op.backendServiceDesired, g.region)
 		if err != nil {
 			return err
 		}
@@ -806,14 +902,25 @@ func (g *Cloud) ensureInternalBackendService(name, description string, affinityT
 		return nil
 	}
 
-	if backendSvcEqual(expectedBS, bs) {
+	if backendSvcEqual(op.backendServiceActual, op.backendServiceDesired) {
 		return nil
 	}
 
+	// Delete existing forwarding rule before making changes to the backend service. For example - changing protocol
+	// of backend service without first deleting forwarding rule will throw an error since the linked forwarding
+	// rule would show the old protocol.
+	for _, fr := range op.forwardingRulesActual {
+		klog.V(2).Infof("ensureInternalBackendService: deleting forwarding rule %v", fr.Name)
+		if err := g.DeleteRegionForwardingRule(fr.Name, g.region); ignoreNotFound(err) != nil {
+			return err
+		}
+	}
+	op.forwardingRulesActual = nil
+
 	klog.V(2).Infof("ensureInternalBackendService: updating backend service %v", name)
 	// Set fingerprint for optimistic locking
-	expectedBS.Fingerprint = bs.Fingerprint
-	if err := g.UpdateRegionBackendService(expectedBS, g.region); err != nil {
+	op.backendServiceDesired.Fingerprint = op.backendServiceActual.Fingerprint
+	if err := g.UpdateRegionBackendService(op.backendServiceDesired, g.region); err != nil {
 		return err
 	}
 	klog.V(2).Infof("ensureInternalBackendService: updated backend service %v successfully", name)
@@ -957,20 +1064,28 @@ func backendSvcEqual(a, b *compute.BackendService) bool {
 		backendsListEqual(a.Backends, b.Backends)
 }
 
-func getPortsAndProtocol(svcPorts []v1.ServicePort) (ports []string, portRanges []string, protocol v1.Protocol) {
+type ProtocolPorts struct {
+	ports      []int
+	portRanges []string
+}
+
+func getPortsAndProtocols(svcPorts []v1.ServicePort) map[v1.Protocol]ProtocolPorts {
 	if len(svcPorts) == 0 {
-		return []string{}, []string{}, v1.ProtocolUDP
+		return nil
 	}
 
-	// GCP doesn't support multiple protocols for a single load balancer
-	protocol = svcPorts[0].Protocol
-	portInts := []int{}
+	m := make(map[v1.Protocol]ProtocolPorts)
 	for _, p := range svcPorts {
-		ports = append(ports, strconv.Itoa(int(p.Port)))
-		portInts = append(portInts, int(p.Port))
+		ports := m[p.Protocol]
+		ports.ports = append(ports.ports, int(p.Port))
 	}
 
-	return ports, getPortRanges(portInts), protocol
+	for protocol, ports := range m {
+		ports.portRanges = getPortRanges(ports.ports)
+		m[protocol] = ports
+	}
+
+	return m
 }
 
 func getPortRanges(ports []int) (ranges []string) {
