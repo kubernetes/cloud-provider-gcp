@@ -32,10 +32,13 @@ func simpleKeyFun(obj interface{}) (string, error) {
 func TestTaskQueue(t *testing.T) {
 	t.Parallel()
 	synced := map[string]bool{}
+	var syncedMutex sync.Mutex
 	doneCh := make(chan struct{}, 1)
 
 	sync := func(key string) error {
+		syncedMutex.Lock()
 		synced[key] = true
+		syncedMutex.Unlock()
 		switch key {
 		case "err":
 			return errors.New("injected error")
