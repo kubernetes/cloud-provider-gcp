@@ -1,3 +1,4 @@
+// This file is a fork of k8s.io/cloud-provider/controllers/service/doc.go
 /*
 Copyright 2015 The Kubernetes Authors.
 
@@ -16,4 +17,4 @@ limitations under the License.
 
 // Package service contains code for syncing cloud load balancers
 // with the service registry.
-package service // import "k8s.io/cloud-provider/controllers/service"
+package service // import "k8s.io/cloud-provider-gcp/pkg/controller/service"

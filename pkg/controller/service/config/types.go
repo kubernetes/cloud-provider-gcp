@@ -1,3 +1,4 @@
+// This file is a fork of k8s.io/cloud-provider/controllers/service/config/types.go
 /*
 Copyright 2019 The Kubernetes Authors.
 

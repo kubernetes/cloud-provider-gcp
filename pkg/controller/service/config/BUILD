@@ -7,7 +7,6 @@ go_library(
         "types.go",
         "zz_generated.deepcopy.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/cloud-provider/controllers/service/config",
-    importpath = "k8s.io/cloud-provider/controllers/service/config",
+    importpath = "k8s.io/cloud-provider-gcp/pkg/controller/service/config",
     visibility = ["//visibility:public"],
 )

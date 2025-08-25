@@ -60,7 +60,6 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	pflag.CommandLine.SetNormalizeFunc(cliflag.WordSepNormalizeFunc)
-
 	ccmOptions, err := options.NewCloudControllerManagerOptions()
 	if err != nil {
 		klog.Fatalf("unable to initialize command options: %v", err)
@@ -80,6 +79,16 @@ func main() {
 	nodeIpamController.nodeIPAMControllerOptions.AddFlags(fss.FlagSet("nodeipam controller"))
 	controllerInitializers[kcmnames.NodeIpamController] = app.ControllerInitFuncConstructor{
 		Constructor: nodeIpamController.startNodeIpamControllerWrapper,
+	}
+
+	gkeServiceController := gkeServiceController{}
+	gkeServiceController.gkeServiceControllerOptions.AddFlags(cloudProviderFS)
+
+	controllerInitializers[names.ServiceLBController] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: "service-controller",
+		},
+		Constructor: gkeServiceController.startGkeServiceControllerWrapper,
 	}
 
 	controllerInitializers["gkenetworkparamset"] = app.ControllerInitFuncConstructor{

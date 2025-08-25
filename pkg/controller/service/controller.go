@@ -1,3 +1,4 @@
+// This file is a fork of k8s.io/cloud-provider/controllers/service/controller.go
 /*
 Copyright 2015 The Kubernetes Authors.
 
@@ -62,6 +63,11 @@ const (
 	// ToBeDeletedTaint is a taint used by the CLuster Autoscaler before marking a node for deletion. Defined in
 	// https://github.com/kubernetes/autoscaler/blob/e80ab518340f88f364fe3ef063f8303755125971/cluster-autoscaler/utils/deletetaint/delete.go#L36
 	ToBeDeletedTaint = "ToBeDeletedByClusterAutoscaler"
+)
+
+var gkeCCMClasses = sets.NewString(
+	"networking.gke.io/l4-regional-external-legacy",
+	"networking.gke.io/l4-regional-internal-legacy",
 )
 
 type cachedService struct {
@@ -134,7 +140,7 @@ func New(
 				svc, ok := cur.(*v1.Service)
 				// Check cleanup here can provide a remedy when controller failed to handle
 				// changes before it exiting (e.g. crashing, restart, etc.).
-				if ok && (wantsLoadBalancer(svc) || needsCleanup(svc)) {
+				if ok && (WantsLoadBalancer(svc) || needsCleanup(svc)) {
 					s.enqueueService(cur)
 				}
 			},
@@ -371,7 +377,7 @@ func (c *Controller) syncLoadBalancerIfNeeded(ctx context.Context, service *v1.S
 	var op loadBalancerOperation
 	var err error
 
-	if !wantsLoadBalancer(service) || needsCleanup(service) {
+	if !WantsLoadBalancer(service) || needsCleanup(service) {
 		// Delete the load balancer if service no longer wants one, or if service needs cleanup.
 		op = deleteLoadBalancer
 		newStatus = &v1.LoadBalancerStatus{}
@@ -555,16 +561,16 @@ func needsCleanup(service *v1.Service) bool {
 
 // needsUpdate checks if load balancer needs to be updated due to change in attributes.
 func (c *Controller) needsUpdate(oldService *v1.Service, newService *v1.Service) bool {
-	if !wantsLoadBalancer(oldService) && !wantsLoadBalancer(newService) {
+	if !WantsLoadBalancer(oldService) && !WantsLoadBalancer(newService) {
 		return false
 	}
-	if wantsLoadBalancer(oldService) != wantsLoadBalancer(newService) {
+	if WantsLoadBalancer(oldService) != WantsLoadBalancer(newService) {
 		c.eventRecorder.Eventf(newService, v1.EventTypeNormal, "Type", "%v -> %v",
 			oldService.Spec.Type, newService.Spec.Type)
 		return true
 	}
 
-	if wantsLoadBalancer(newService) && !reflect.DeepEqual(oldService.Spec.LoadBalancerSourceRanges, newService.Spec.LoadBalancerSourceRanges) {
+	if WantsLoadBalancer(newService) && !reflect.DeepEqual(oldService.Spec.LoadBalancerSourceRanges, newService.Spec.LoadBalancerSourceRanges) {
 		c.eventRecorder.Eventf(newService, v1.EventTypeNormal, "LoadBalancerSourceRanges", "%v -> %v",
 			oldService.Spec.LoadBalancerSourceRanges, newService.Spec.LoadBalancerSourceRanges)
 		return true
@@ -751,7 +757,7 @@ func (c *Controller) syncNodes(ctx context.Context, workers int) sets.String {
 func (c *Controller) nodeSyncService(svc *v1.Service) bool {
 	const retSuccess = false
 	const retNeedRetry = true
-	if svc == nil || !wantsLoadBalancer(svc) {
+	if svc == nil || !WantsLoadBalancer(svc) {
 		return retSuccess
 	}
 	newNodes, err := listWithPredicates(c.nodeLister)
@@ -873,9 +879,17 @@ func (c *Controller) lockedUpdateLoadBalancerHosts(service *v1.Service, hosts []
 	return err
 }
 
-func wantsLoadBalancer(service *v1.Service) bool {
-	// if LoadBalancerClass is set, the user does not want the default cloud-provider Load Balancer
-	return service.Spec.Type == v1.ServiceTypeLoadBalancer && service.Spec.LoadBalancerClass == nil
+// WantsLoadBalancer returns true if the service wants a load balancer.
+func WantsLoadBalancer(service *v1.Service) bool {
+	if service.Spec.Type != v1.ServiceTypeLoadBalancer {
+		return false
+	}
+	// If LoadBalancerClass is not set, we process it.
+	if service.Spec.LoadBalancerClass == nil {
+		return true
+	}
+	// If LoadBalancerClass is set, we only process it if it's one of the GKE CCM classes.
+	return gkeCCMClasses.Has(*service.Spec.LoadBalancerClass)
 }
 
 func loadBalancerIPsAreEqual(oldService, newService *v1.Service) bool {
@@ -933,7 +947,7 @@ func (c *Controller) processServiceDeletion(ctx context.Context, key string) err
 
 func (c *Controller) processLoadBalancerDelete(ctx context.Context, service *v1.Service, key string) error {
 	// delete load balancer info only if the service type is LoadBalancer
-	if !wantsLoadBalancer(service) {
+	if !WantsLoadBalancer(service) {
 		return nil
 	}
 	c.eventRecorder.Event(service, v1.EventTypeNormal, "DeletingLoadBalancer", "Deleting load balancer")
