@@ -206,6 +206,10 @@ type Cloud struct {
 	// enableDiscretePortForwarding enables forwarding of individual ports
 	// instead of port ranges in Forwarding Rules for external load balancers.
 	enableDiscretePortForwarding bool
+
+	// externalInstanceGroupsPrefix if set, finds instance groups with
+	// the provided prefix and considers them for ILB backends.
+	externalInstanceGroupsPrefix string
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -243,6 +247,10 @@ type ConfigGlobal struct {
 	// Default to none.
 	// For example: MyFeatureFlag
 	AlphaFeatures []string `gcfg:"alpha-features"`
+
+	// ExternalInstanceGroupsPrefix, when not-empty, is used to filter instance groups (from an external GCP Project)
+	// and include them in the backend for ILB.
+	ExternalInstanceGroupsPrefix string `gcfg:"external-instance-groups-prefix"`
 }
 
 // ConfigFile is the struct used to parse the /etc/gce.conf configuration file.
@@ -270,13 +278,14 @@ type CloudConfig struct {
 	SubnetworkName       string
 	SubnetworkURL        string
 	// DEPRECATED: Do not rely on this value as it may be incorrect.
-	SecondaryRangeName string
-	NodeTags           []string
-	NodeInstancePrefix string
-	TokenSource        oauth2.TokenSource
-	UseMetadataServer  bool
-	AlphaFeatureGate   *AlphaFeatureGate
-	StackType          string
+	SecondaryRangeName           string
+	NodeTags                     []string
+	NodeInstancePrefix           string
+	TokenSource                  oauth2.TokenSource
+	UseMetadataServer            bool
+	AlphaFeatureGate             *AlphaFeatureGate
+	StackType                    string
+	ExternalInstanceGroupsPrefix string
 }
 
 func init() {
@@ -367,6 +376,7 @@ func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 		cloudConfig.NodeTags = configFile.Global.NodeTags
 		cloudConfig.NodeInstancePrefix = configFile.Global.NodeInstancePrefix
 		cloudConfig.AlphaFeatureGate = NewAlphaFeatureGate(configFile.Global.AlphaFeatures)
+		cloudConfig.ExternalInstanceGroupsPrefix = configFile.Global.ExternalInstanceGroupsPrefix
 	}
 
 	// retrieve projectID and zone
@@ -545,31 +555,32 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 	operationPollRateLimiter := flowcontrol.NewTokenBucketRateLimiter(5, 5) // 5 qps, 5 burst.
 
 	gce := &Cloud{
-		service:                  service,
-		serviceAlpha:             serviceAlpha,
-		serviceBeta:              serviceBeta,
-		containerService:         containerService,
-		tpuService:               tpuService,
-		projectID:                projID,
-		networkProjectID:         netProjID,
-		onXPN:                    onXPN,
-		region:                   config.Region,
-		regional:                 config.Regional,
-		localZone:                config.Zone,
-		managedZones:             config.ManagedZones,
-		networkURL:               networkURL,
-		unsafeIsLegacyNetwork:    isLegacyNetwork,
-		unsafeSubnetworkURL:      subnetURL,
-		secondaryRangeName:       config.SecondaryRangeName,
-		nodeTags:                 config.NodeTags,
-		nodeInstancePrefix:       config.NodeInstancePrefix,
-		useMetadataServer:        config.UseMetadataServer,
-		operationPollRateLimiter: operationPollRateLimiter,
-		AlphaFeatureGate:         config.AlphaFeatureGate,
-		nodeZones:                map[string]sets.String{},
-		metricsCollector:         newLoadBalancerMetrics(),
-		projectsBasePath:         getProjectsBasePath(service.BasePath),
-		stackType:                StackType(config.StackType),
+		service:                      service,
+		serviceAlpha:                 serviceAlpha,
+		serviceBeta:                  serviceBeta,
+		containerService:             containerService,
+		tpuService:                   tpuService,
+		projectID:                    projID,
+		networkProjectID:             netProjID,
+		onXPN:                        onXPN,
+		region:                       config.Region,
+		regional:                     config.Regional,
+		localZone:                    config.Zone,
+		managedZones:                 config.ManagedZones,
+		networkURL:                   networkURL,
+		unsafeIsLegacyNetwork:        isLegacyNetwork,
+		unsafeSubnetworkURL:          subnetURL,
+		secondaryRangeName:           config.SecondaryRangeName,
+		nodeTags:                     config.NodeTags,
+		nodeInstancePrefix:           config.NodeInstancePrefix,
+		useMetadataServer:            config.UseMetadataServer,
+		operationPollRateLimiter:     operationPollRateLimiter,
+		AlphaFeatureGate:             config.AlphaFeatureGate,
+		nodeZones:                    map[string]sets.String{},
+		metricsCollector:             newLoadBalancerMetrics(),
+		projectsBasePath:             getProjectsBasePath(service.BasePath),
+		stackType:                    StackType(config.StackType),
+		externalInstanceGroupsPrefix: config.ExternalInstanceGroupsPrefix,
 	}
 
 	gce.manager = &gceServiceManager{gce}
