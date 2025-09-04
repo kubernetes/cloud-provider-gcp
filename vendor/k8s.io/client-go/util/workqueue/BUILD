@@ -17,6 +17,7 @@ go_library(
     deps = [
         "//vendor/golang.org/x/time/rate",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/clock",
     ],
 )

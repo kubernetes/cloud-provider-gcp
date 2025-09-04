@@ -13,7 +13,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/authentication/v1:authentication",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/client-go/gentype",
         "//vendor/k8s.io/client-go/kubernetes/typed/authentication/v1:authentication",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/testing",

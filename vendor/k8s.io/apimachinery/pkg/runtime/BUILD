@@ -31,6 +31,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/gogo/protobuf/proto",
+        "//vendor/k8s.io/apimachinery/pkg/api/operation",
         "//vendor/k8s.io/apimachinery/pkg/conversion",
         "//vendor/k8s.io/apimachinery/pkg/conversion/queryparams",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
@@ -40,6 +41,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/naming",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/sigs.k8s.io/structured-merge-diff/v4/value",
     ],

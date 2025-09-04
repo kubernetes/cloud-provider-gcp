@@ -10,6 +10,7 @@ go_library(
         "ip.go",
         "limits.go",
         "quantity.go",
+        "semver.go",
         "types.go",
         "url.go",
         "value.go",
@@ -18,6 +19,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/cel",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/blang/semver/v4:semver",
         "//vendor/github.com/google/cel-go/cel",
         "//vendor/github.com/google/cel-go/checker/decls",
         "//vendor/github.com/google/cel-go/common/types",

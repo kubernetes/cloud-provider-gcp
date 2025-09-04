@@ -17,6 +17,5 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/validation",
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
         "//vendor/k8s.io/klog/v2:klog",
-        "//vendor/k8s.io/utils/strings/slices",
     ],
 )

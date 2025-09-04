@@ -15,6 +15,7 @@ go_library(
     importpath = "k8s.io/client-go/transport",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/go-logr/logr",
         "//vendor/golang.org/x/oauth2",
         "//vendor/k8s.io/apimachinery/pkg/util/net",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",

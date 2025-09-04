@@ -25,5 +25,6 @@ go_library(
         "//vendor/k8s.io/client-go/gentype",
         "//vendor/k8s.io/client-go/kubernetes/scheme",
         "//vendor/k8s.io/client-go/rest",
+        "//vendor/k8s.io/client-go/util/apply",
     ],
 )
