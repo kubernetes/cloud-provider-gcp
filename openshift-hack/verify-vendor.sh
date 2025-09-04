@@ -68,6 +68,15 @@ pushd "${KUBE_ROOT}" > /dev/null 2>&1
     ret=1
   fi
 
+  if ! _out="$(diff -Naupr --ignore-matching-lines='^\s*\"GoVersion\":' go.work "${_kubetmp}/go.work")"; then
+    echo "Your go.work file is different:" >&2
+    echo "${_out}" >&2
+    echo "Vendor Verify failed." >&2
+    echo "If you're seeing this locally, run the below command to fix your go.work:" >&2
+    echo "openshift-hack/update-vendor.sh" >&2
+    ret=1
+  fi
+
   if ! _out="$(diff -Naupr -x "BUILD" -x "AUTHORS*" -x "CONTRIBUTORS*" vendor "${_kubetmp}/vendor")"; then
     echo "Your vendored results are different:" >&2
     echo "${_out}" >&2

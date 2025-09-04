@@ -23,12 +23,28 @@ cd "$(pwd -P)"
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
+# rebuild go.work
+cat go.mod | grep '^go' > go.work
+go work use .
+go work use providers
+# Note: we can't add test/e2e to go.work because of getting dependency issues otherwise.
+# go work use test/e2e
+echo -e "\nreplace (" >> go.work
+cat go.mod | grep '=>' | sort | uniq | \
+    grep -v "k8s.io/cloud-provider-gcp/providers" | \
+    sed 's/replace /\t/' \
+    >> go.work
+echo -e ")" >> go.work
+
+# sync go.md of providers
+go work sync
+
 # update vendor/
-go mod vendor
+go work vendor
 
 # clean up unused dependencies
+cd providers
 go mod tidy
-# create a symlink in vendor directory pointing cloud-provider-gcp/providers to the //providers.
-# This lets other packages and tools use the local staging components as if they were vendored.
-rm -fr "${KUBE_ROOT}/vendor/k8s.io/cloud-provider-gcp/providers"
-ln -s "../../../providers" "${KUBE_ROOT}/vendor/k8s.io/cloud-provider-gcp/providers"
+cd ..
+
+go mod tidy
