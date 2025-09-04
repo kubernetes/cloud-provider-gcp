@@ -3,10 +3,12 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "cel",
     srcs = [
+        "activation.go",
         "compile.go",
         "composition.go",
-        "filter.go",
+        "condition.go",
         "interface.go",
+        "mutation.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/admission/plugin/cel",
     importpath = "k8s.io/apiserver/pkg/admission/plugin/cel",
@@ -28,8 +30,10 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/apis/cel",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizer",
         "//vendor/k8s.io/apiserver/pkg/cel",
+        "//vendor/k8s.io/apiserver/pkg/cel/common",
         "//vendor/k8s.io/apiserver/pkg/cel/environment",
         "//vendor/k8s.io/apiserver/pkg/cel/lazy",
         "//vendor/k8s.io/apiserver/pkg/cel/library",
+        "//vendor/k8s.io/apiserver/pkg/cel/mutation",
     ],
 )

@@ -37,7 +37,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/admission/plugin/policy/matching",
         "//vendor/k8s.io/apiserver/pkg/admission/plugin/webhook/generic",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizer",
-        "//vendor/k8s.io/apiserver/pkg/features",
         "//vendor/k8s.io/client-go/dynamic",
         "//vendor/k8s.io/client-go/dynamic/dynamicinformer",
         "//vendor/k8s.io/client-go/dynamic/fake",

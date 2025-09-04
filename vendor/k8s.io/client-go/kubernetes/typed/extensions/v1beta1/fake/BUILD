@@ -18,10 +18,9 @@ go_library(
     deps = [
         "//vendor/k8s.io/api/extensions/v1beta1",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
-        "//vendor/k8s.io/apimachinery/pkg/labels",
         "//vendor/k8s.io/apimachinery/pkg/types",
-        "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/applyconfigurations/extensions/v1beta1",
+        "//vendor/k8s.io/client-go/gentype",
         "//vendor/k8s.io/client-go/kubernetes/typed/extensions/v1beta1",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/testing",

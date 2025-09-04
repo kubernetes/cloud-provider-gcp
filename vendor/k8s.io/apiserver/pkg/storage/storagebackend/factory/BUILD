@@ -14,6 +14,7 @@ go_library(
         "//vendor/go.etcd.io/etcd/client/pkg/v3/logutil",
         "//vendor/go.etcd.io/etcd/client/pkg/v3/transport",
         "//vendor/go.etcd.io/etcd/client/v3:client",
+        "//vendor/go.etcd.io/etcd/client/v3/kubernetes",
         "//vendor/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc",
         "//vendor/go.uber.org/zap",
         "//vendor/go.uber.org/zap/zapcore",

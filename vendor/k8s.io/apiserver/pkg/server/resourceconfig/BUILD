@@ -12,6 +12,7 @@ go_library(
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/version",
         "//vendor/k8s.io/apiserver/pkg/server/storage",
         "//vendor/k8s.io/component-base/cli/flag",
     ],

@@ -8,6 +8,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
+        "//vendor/k8s.io/apimachinery/pkg/util/version",
         "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/component-base/featuregate",
     ],

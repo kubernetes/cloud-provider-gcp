@@ -24,6 +24,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/api/resource",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
+        "//vendor/k8s.io/apimachinery/pkg/util/version",
         "//vendor/k8s.io/component-base/cli/flag",
         "//vendor/k8s.io/component-base/featuregate",
         "//vendor/k8s.io/component-base/logs/internal/setverbositylevel",

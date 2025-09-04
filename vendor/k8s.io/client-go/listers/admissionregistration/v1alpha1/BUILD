@@ -4,6 +4,8 @@ go_library(
     name = "v1alpha1",
     srcs = [
         "expansion_generated.go",
+        "mutatingadmissionpolicy.go",
+        "mutatingadmissionpolicybinding.go",
         "validatingadmissionpolicy.go",
         "validatingadmissionpolicybinding.go",
     ],

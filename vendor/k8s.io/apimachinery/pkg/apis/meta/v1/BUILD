@@ -33,7 +33,6 @@ go_library(
     deps = [
         "//vendor/github.com/gogo/protobuf/proto",
         "//vendor/github.com/gogo/protobuf/sortkeys",
-        "//vendor/github.com/google/gofuzz",
         "//vendor/k8s.io/apimachinery/pkg/api/resource",
         "//vendor/k8s.io/apimachinery/pkg/conversion",
         "//vendor/k8s.io/apimachinery/pkg/fields",
@@ -48,5 +47,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/utils/ptr",
+        "//vendor/sigs.k8s.io/randfill",
     ],
 )

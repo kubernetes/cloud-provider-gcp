@@ -11,6 +11,7 @@ go_library(
     importpath = "k8s.io/component-base/metrics/testutil",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/prometheus/client_golang/prometheus",
         "//vendor/github.com/prometheus/client_golang/prometheus/testutil",
         "//vendor/github.com/prometheus/client_golang/prometheus/testutil/promlint",
         "//vendor/github.com/prometheus/client_model/go",

@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "registry",
     srcs = [
+        "corrupt_obj_deleter.go",
         "decorated_watcher.go",
         "doc.go",
         "dryrun.go",
@@ -46,6 +47,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol/request",
         "//vendor/k8s.io/client-go/tools/cache",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/utils/ptr",
         "//vendor/sigs.k8s.io/structured-merge-diff/v4/fieldpath",
     ],
 )
