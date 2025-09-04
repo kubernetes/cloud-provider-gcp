@@ -20,7 +20,8 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/cel",
         "//vendor/k8s.io/apiserver/pkg/cel/library",
         "//vendor/k8s.io/apiserver/pkg/features",
+        "//vendor/k8s.io/apiserver/pkg/util/compatibility",
         "//vendor/k8s.io/apiserver/pkg/util/feature",
-        "//vendor/k8s.io/apiserver/pkg/util/version",
+        "//vendor/k8s.io/component-base/compatibility",
     ],
 )

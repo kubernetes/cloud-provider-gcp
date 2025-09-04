@@ -17,6 +17,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver",
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver/v1:apiserver",
         "//vendor/k8s.io/apiserver/pkg/apis/apiserver/validation",
+        "//vendor/k8s.io/apiserver/pkg/endpoints/request",
         "//vendor/k8s.io/apiserver/pkg/features",
         "//vendor/k8s.io/apiserver/pkg/server/healthz",
         "//vendor/k8s.io/apiserver/pkg/server/options/encryptionconfig/metrics",

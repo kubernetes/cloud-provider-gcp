@@ -19,5 +19,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/net",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/utils/ptr",
     ],
 )

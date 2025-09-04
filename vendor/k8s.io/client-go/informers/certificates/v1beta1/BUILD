@@ -4,6 +4,7 @@ go_library(
     name = "v1beta1",
     srcs = [
         "certificatesigningrequest.go",
+        "clustertrustbundle.go",
         "interface.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/informers/certificates/v1beta1",

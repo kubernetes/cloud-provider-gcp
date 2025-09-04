@@ -12,8 +12,8 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/gogo/protobuf/proto",
-        "//vendor/github.com/google/gofuzz",
         "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/cbor/direct",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/sigs.k8s.io/randfill",
     ],
 )

@@ -12,11 +12,8 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/autoscaling/v2beta2",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
-        "//vendor/k8s.io/apimachinery/pkg/labels",
-        "//vendor/k8s.io/apimachinery/pkg/types",
-        "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/applyconfigurations/autoscaling/v2beta2",
+        "//vendor/k8s.io/client-go/gentype",
         "//vendor/k8s.io/client-go/kubernetes/typed/autoscaling/v2beta2",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/testing",

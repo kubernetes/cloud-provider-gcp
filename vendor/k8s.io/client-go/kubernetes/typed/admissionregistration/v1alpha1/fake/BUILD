@@ -5,6 +5,8 @@ go_library(
     srcs = [
         "doc.go",
         "fake_admissionregistration_client.go",
+        "fake_mutatingadmissionpolicy.go",
+        "fake_mutatingadmissionpolicybinding.go",
         "fake_validatingadmissionpolicy.go",
         "fake_validatingadmissionpolicybinding.go",
     ],
@@ -13,11 +15,8 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/admissionregistration/v1alpha1",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
-        "//vendor/k8s.io/apimachinery/pkg/labels",
-        "//vendor/k8s.io/apimachinery/pkg/types",
-        "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/applyconfigurations/admissionregistration/v1alpha1",
+        "//vendor/k8s.io/client-go/gentype",
         "//vendor/k8s.io/client-go/kubernetes/typed/admissionregistration/v1alpha1",
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/testing",

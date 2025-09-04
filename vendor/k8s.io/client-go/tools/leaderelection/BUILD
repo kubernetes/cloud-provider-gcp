@@ -13,7 +13,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/coordination/v1:coordination",
-        "//vendor/k8s.io/api/coordination/v1alpha1",
+        "//vendor/k8s.io/api/coordination/v1beta1",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/fields",
@@ -21,7 +21,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/client-go/informers",
         "//vendor/k8s.io/client-go/kubernetes",
-        "//vendor/k8s.io/client-go/kubernetes/typed/coordination/v1alpha1",
+        "//vendor/k8s.io/client-go/kubernetes/typed/coordination/v1beta1",
         "//vendor/k8s.io/client-go/tools/cache",
         "//vendor/k8s.io/client-go/tools/leaderelection/resourcelock",
         "//vendor/k8s.io/client-go/util/workqueue",

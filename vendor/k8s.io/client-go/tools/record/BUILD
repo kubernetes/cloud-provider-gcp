@@ -12,7 +12,6 @@ go_library(
     importpath = "k8s.io/client-go/tools/record",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/groupcache/lru",
         "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
@@ -28,5 +27,6 @@ go_library(
         "//vendor/k8s.io/client-go/util/flowcontrol",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/clock",
+        "//vendor/k8s.io/utils/lru",
     ],
 )

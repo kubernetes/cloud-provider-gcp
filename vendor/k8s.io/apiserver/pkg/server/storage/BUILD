@@ -19,7 +19,8 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/util/version",
         "//vendor/k8s.io/apiserver/pkg/storage/storagebackend",
-        "//vendor/k8s.io/apiserver/pkg/util/version",
+        "//vendor/k8s.io/apiserver/pkg/util/compatibility",
+        "//vendor/k8s.io/component-base/compatibility",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )

@@ -4,9 +4,9 @@ go_library(
     name = "v1alpha3",
     srcs = [
         "deviceclass.go",
+        "devicetaintrule.go",
         "doc.go",
         "generated_expansion.go",
-        "podschedulingcontext.go",
         "resource_client.go",
         "resourceclaim.go",
         "resourceclaimtemplate.go",

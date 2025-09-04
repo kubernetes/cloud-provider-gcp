@@ -17,7 +17,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
-        "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/client-go/informers/core/v1:core",
         "//vendor/k8s.io/client-go/kubernetes",
         "//vendor/k8s.io/client-go/kubernetes/scheme",
@@ -33,7 +32,6 @@ go_library(
         "//vendor/k8s.io/component-base/metrics",
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/component-base/metrics/prometheus/controllers",
-        "//vendor/k8s.io/controller-manager/pkg/features",
         "//vendor/k8s.io/klog/v2:klog",
     ],
 )

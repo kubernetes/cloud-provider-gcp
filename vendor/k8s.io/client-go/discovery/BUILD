@@ -12,8 +12,8 @@ go_library(
     importpath = "k8s.io/client-go/discovery",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/protobuf/proto",
         "//vendor/github.com/google/gnostic-models/openapiv2",
+        "//vendor/google.golang.org/protobuf/proto",
         "//vendor/k8s.io/api/apidiscovery/v2:apidiscovery",
         "//vendor/k8s.io/api/apidiscovery/v2beta1",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",

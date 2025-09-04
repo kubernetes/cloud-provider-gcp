@@ -4,6 +4,8 @@ go_library(
     name = "v1beta1",
     srcs = [
         "lease.go",
+        "leasecandidate.go",
+        "leasecandidatespec.go",
         "leasespec.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/applyconfigurations/coordination/v1beta1",
