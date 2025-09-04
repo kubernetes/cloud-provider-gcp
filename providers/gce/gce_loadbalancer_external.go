@@ -55,11 +55,11 @@ const (
 // Due to an interesting series of design decisions, this handles both creating
 // new load balancers and updating existing load balancers, recognizing when
 // each is needed.
-func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
+func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, op *loadBalancerSync, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
-	if !shouldProcessNetLB(apiService, existingFwdRule) {
+	if !shouldProcessNetLB(apiService, op.actualForwardingRule) {
 		return nil, cloudprovider.ImplementedElsewhere
 	}
 
