@@ -7,6 +7,7 @@ go_library(
         "equality.go",
         "maplist.go",
         "schemas.go",
+        "typeprovider.go",
         "values.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apiserver/pkg/cel/common",

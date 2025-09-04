@@ -7,6 +7,8 @@ go_library(
         "certificatesigningrequestcondition.go",
         "certificatesigningrequestspec.go",
         "certificatesigningrequeststatus.go",
+        "clustertrustbundle.go",
+        "clustertrustbundlespec.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/applyconfigurations/certificates/v1beta1",
     importpath = "k8s.io/client-go/applyconfigurations/certificates/v1beta1",

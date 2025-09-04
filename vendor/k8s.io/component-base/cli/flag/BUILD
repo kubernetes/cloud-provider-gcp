@@ -16,6 +16,7 @@ go_library(
         "sectioned.go",
         "string_flag.go",
         "string_slice_flag.go",
+        "tracker_flag.go",
         "tristate.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/component-base/cli/flag",

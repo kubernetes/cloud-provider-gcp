@@ -19,6 +19,7 @@ go_library(
     importpath = "k8s.io/client-go/rest",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/munnerz/goautoneg",
         "//vendor/golang.org/x/net/http2",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/api/meta",
@@ -26,6 +27,8 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/conversion",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/cbor",
         "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/streaming",
         "//vendor/k8s.io/apimachinery/pkg/types",
         "//vendor/k8s.io/apimachinery/pkg/util/net",
