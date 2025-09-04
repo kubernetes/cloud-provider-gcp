@@ -3,11 +3,13 @@
 # to be added to the owners-gen input data.
 approvers:
 - JoelSpeed
+- damdo
 - elmiko
 - nrb
 - theobarberbany
 reviewers:
 - RadekManak
+- chrischdi
 - damdo
 - mdbooth
 - nrb
