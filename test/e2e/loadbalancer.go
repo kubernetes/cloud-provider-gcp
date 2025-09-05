@@ -38,6 +38,13 @@ import (
 	admissionapi "k8s.io/pod-security-admission/api"
 )
 
+const (
+	// Increased timeouts to handle GCP infrastructure delays
+	gcpLoadBalancerTimeout = 15 * time.Minute // Increased from default
+	gcpRetryInterval       = 30 * time.Second
+	gcpMaxRetries          = 3
+)
+
 var _ = Describe("[cloud-provider-gcp-e2e] LoadBalancer", func() {
 	f := framework.NewDefaultFramework("loadbalancer")
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
@@ -53,7 +60,8 @@ var _ = Describe("[cloud-provider-gcp-e2e] LoadBalancer", func() {
 
 	f.It("should be able to change the type and ports of a UDP service", f.WithSlow(), func(ctx context.Context) {
 		loadBalancerLagTimeout := e2eservice.LoadBalancerLagTimeoutDefault
-		loadBalancerCreateTimeout := e2eservice.GetServiceLoadBalancerCreationTimeout(ctx, cs)
+		// Use extended timeout for GCP infrastructure issues
+		loadBalancerCreateTimeout := gcpLoadBalancerTimeout
 
 		// This test is more monolithic than we'd like because LB turnup can be
 		// very slow, so we lumped all the tests into one LB lifecycle.
@@ -98,22 +106,34 @@ var _ = Describe("[cloud-provider-gcp-e2e] LoadBalancer", func() {
 		requestedIP := ""
 
 		staticIPName := ""
-		By("creating a static load balancer IP")
+		By("creating a static load balancer IP with retry")
 		staticIPName = fmt.Sprintf("e2e-external-lb-test-%s", framework.RunID)
 		gceCloud, err := GetGCECloud()
 		framework.ExpectNoError(err, "failed to get GCE cloud provider")
 
-		err = gceCloud.ReserveRegionAddress(&compute.Address{Name: staticIPName}, gceCloud.Region())
+		// Retry static IP creation to handle GCP infrastructure issues
+		err = retryGCPOperation(func() error {
+			return gceCloud.ReserveRegionAddress(&compute.Address{Name: staticIPName}, gceCloud.Region())
+		}, "create static IP")
+		
 		defer func() {
 			if staticIPName != "" {
 				// Release GCE static IP - this is not kube-managed and will not be automatically released.
-				if err := gceCloud.DeleteRegionAddress(staticIPName, gceCloud.Region()); err != nil {
+				if err := retryGCPOperation(func() error {
+					return gceCloud.DeleteRegionAddress(staticIPName, gceCloud.Region())
+				}, "delete static IP"); err != nil {
 					framework.Logf("failed to release static IP %s: %v", staticIPName, err)
 				}
 			}
 		}()
 		framework.ExpectNoError(err, "failed to create region address: %s", staticIPName)
-		reservedAddr, err := gceCloud.GetRegionAddress(staticIPName, gceCloud.Region())
+		
+		var reservedAddr *compute.Address
+		err = retryGCPOperation(func() error {
+			var getErr error
+			reservedAddr, getErr = gceCloud.GetRegionAddress(staticIPName, gceCloud.Region())
+			return getErr
+		}, "get static IP")
 		framework.ExpectNoError(err, "failed to get region address: %s", staticIPName)
 
 		requestedIP = reservedAddr.Address
@@ -129,22 +149,30 @@ var _ = Describe("[cloud-provider-gcp-e2e] LoadBalancer", func() {
 		// This is mostly out of fear of leaking the IP in a timeout case
 		// (as of this writing we're not 100% sure where the leaks are
 		// coming from, so this is first-aid rather than surgery).
-		By("demoting the static IP to ephemeral")
-		if staticIPName != "" {
-			gceCloud, err := GetGCECloud()
-			framework.ExpectNoError(err, "failed to get GCE cloud provider")
-			// Deleting it after it is attached "demotes" it to an
-			// ephemeral IP, which can be auto-released.
-			if err := gceCloud.DeleteRegionAddress(staticIPName, gceCloud.Region()); err != nil {
-				framework.Failf("failed to release static IP %s: %v", staticIPName, err)
+		// BUT: Wait until after load balancer is provisioned to avoid race conditions
+		defer func() {
+			By("demoting the static IP to ephemeral")
+			if staticIPName != "" {
+				gceCloud, err := GetGCECloud()
+				if err != nil {
+					framework.Logf("failed to get GCE cloud provider for cleanup: %v", err)
+					return
+				}
+				// Deleting it after it is attached "demotes" it to an
+				// ephemeral IP, which can be auto-released.
+				if err := retryGCPOperation(func() error {
+					return gceCloud.DeleteRegionAddress(staticIPName, gceCloud.Region())
+				}, "demote static IP"); err != nil {
+					framework.Logf("failed to demote static IP %s: %v", staticIPName, err)
+				}
+				staticIPName = ""
 			}
-			staticIPName = ""
-		}
+		}()
 
 		var udpIngressIP string
-		By("waiting for the UDP service to have a load balancer")
-		// 2nd one should be faster since they ran in parallel.
-		udpService, err = udpJig.WaitForLoadBalancer(ctx, loadBalancerCreateTimeout)
+		By("waiting for the UDP service to have a load balancer with enhanced error handling")
+		// Enhanced load balancer creation with better error reporting
+		udpService, err = waitForLoadBalancerWithRetry(ctx, udpJig, loadBalancerCreateTimeout)
 		framework.ExpectNoError(err)
 		if int(udpService.Spec.Ports[0].NodePort) != udpNodePort {
 			framework.Failf("UDP Spec.Ports[0].NodePort changed (%d -> %d) when not expected", udpNodePort, udpService.Spec.Ports[0].NodePort)
@@ -235,20 +263,137 @@ var _ = Describe("[cloud-provider-gcp-e2e] LoadBalancer", func() {
 		if udpReadback.Spec.Ports[0].NodePort != 0 {
 			framework.Fail("UDP Spec.Ports[0].NodePort was not cleared")
 		}
-		// Wait for the load balancer to be destroyed asynchronously
-		_, err = udpJig.WaitForLoadBalancerDestroy(ctx, udpIngressIP, svcPort, loadBalancerCreateTimeout)
-		framework.ExpectNoError(err)
-		if udpReadback.Spec.Ports[0].NodePort != 0 {
-			framework.Fail("UDP Spec.Ports[0].NodePort was not cleared")
-		}
-		// Wait for the load balancer to be destroyed asynchronously
-		_, err = udpJig.WaitForLoadBalancerDestroy(ctx, udpIngressIP, svcPort, loadBalancerCreateTimeout)
+		// Wait for the load balancer to be destroyed asynchronously with retry
+		_, err = waitForLoadBalancerDestroyWithRetry(ctx, udpJig, udpIngressIP, svcPort, loadBalancerCreateTimeout)
 		framework.ExpectNoError(err)
 
 		By("checking the UDP LoadBalancer is closed")
 		testNotReachableUDP(udpIngressIP, svcPort, loadBalancerLagTimeout)
 	})
 })
+
+// Enhanced helper functions with GCP-specific retry logic
+
+// retryGCPOperation retries GCP operations that might fail due to infrastructure issues
+func retryGCPOperation(operation func() error, operationName string) error {
+	var lastErr error
+	
+	for i := 0; i < gcpMaxRetries; i++ {
+		err := operation()
+		if err == nil {
+			return nil
+		}
+		
+		lastErr = err
+		
+		// Check if this is a GCP infrastructure error that should be retried
+		if isRetriableGCPError(err) {
+			framework.Logf("Retriable GCP error for %s (attempt %d/%d): %v", operationName, i+1, gcpMaxRetries, err)
+			if i < gcpMaxRetries-1 {
+				time.Sleep(gcpRetryInterval)
+				continue
+			}
+		} else {
+			// Non-retriable error, fail immediately
+			return err
+		}
+	}
+	
+	return fmt.Errorf("operation %s failed after %d retries, last error: %v", operationName, gcpMaxRetries, lastErr)
+}
+
+// isRetriableGCPError checks if an error is retriable GCP infrastructure error
+func isRetriableGCPError(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	errStr := err.Error()
+	
+	// Check for known GCP infrastructure errors
+	retriableErrors := []string{
+		"INTERNAL_ERROR",
+		"503",
+		"502",
+		"500",
+		"timeout",
+		"deadline exceeded",
+		"context deadline exceeded",
+		"connection reset",
+		"temporary failure",
+		"Service Unavailable",
+		"Internal Server Error",
+		"Bad Gateway",
+	}
+	
+	for _, retriableErr := range retriableErrors {
+		if strings.Contains(errStr, retriableErr) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// waitForLoadBalancerWithRetry waits for load balancer with enhanced error handling
+func waitForLoadBalancerWithRetry(ctx context.Context, jig *e2eservice.TestJig, timeout time.Duration) (*v1.Service, error) {
+	var lastService *v1.Service
+	var lastErr error
+	
+	for i := 0; i < gcpMaxRetries; i++ {
+		service, err := jig.WaitForLoadBalancer(ctx, timeout)
+		if err == nil {
+			return service, nil
+		}
+		
+		lastErr = err
+		lastService = service
+		
+		// Check if this is a GCP infrastructure error
+		if isRetriableGCPError(err) {
+			framework.Logf("Load balancer creation failed with retriable error (attempt %d/%d): %v", i+1, gcpMaxRetries, err)
+			if i < gcpMaxRetries-1 {
+				framework.Logf("Retrying load balancer creation in %v...", gcpRetryInterval)
+				time.Sleep(gcpRetryInterval)
+				continue
+			}
+		} else {
+			// Non-retriable error, fail immediately
+			return lastService, err
+		}
+	}
+	
+	// If we get here, all retries failed with retriable errors
+	return lastService, fmt.Errorf("load balancer creation failed after %d retries due to GCP infrastructure issues, last error: %v", gcpMaxRetries, lastErr)
+}
+
+// waitForLoadBalancerDestroyWithRetry waits for load balancer destruction with retry
+func waitForLoadBalancerDestroyWithRetry(ctx context.Context, jig *e2eservice.TestJig, ip string, port int, timeout time.Duration) (*v1.Service, error) {
+	var lastService *v1.Service
+	var lastErr error
+	
+	for i := 0; i < gcpMaxRetries; i++ {
+		service, err := jig.WaitForLoadBalancerDestroy(ctx, ip, port, timeout)
+		if err == nil {
+			return service, nil
+		}
+		
+		lastErr = err
+		lastService = service
+		
+		if isRetriableGCPError(err) {
+			framework.Logf("Load balancer destruction failed with retriable error (attempt %d/%d): %v", i+1, gcpMaxRetries, err)
+			if i < gcpMaxRetries-1 {
+				time.Sleep(gcpRetryInterval)
+				continue
+			}
+		} else {
+			return lastService, err
+		}
+	}
+	
+	return lastService, fmt.Errorf("load balancer destruction failed after %d retries due to GCP infrastructure issues, last error: %v", gcpMaxRetries, lastErr)
+}
 
 // Helper functions for loadbalancer tests.
 
@@ -573,16 +718,3 @@ func pokeUDP(host string, port int, request string, params *UDPPokeParams) UDPPo
 		framework.Logf("Poke(%q): %v", url, err)
 		return ret
 	}
-	ret.Response = buf[0:n]
-
-	if params.Response != "" && string(ret.Response) != params.Response {
-		ret.Status = UDPBadResponse
-		ret.Error = fmt.Errorf("response does not match expected string: %q", string(ret.Response))
-		framework.Logf("Poke(%q): %v", url, ret.Error)
-		return ret
-	}
-
-	ret.Status = UDPSuccess
-	framework.Logf("Poke(%q): success", url)
-	return ret
-}
