@@ -16,6 +16,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/version",
         "//vendor/k8s.io/component-base/cli/flag",
         "//vendor/k8s.io/component-base/featuregate",
+        "//vendor/k8s.io/component-base/metrics/prometheus/compatversion",
         "//vendor/k8s.io/component-base/version",
         "//vendor/k8s.io/klog/v2:klog",
     ],

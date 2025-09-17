@@ -11,5 +11,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/version",
         "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/component-base/featuregate",
+        "//vendor/k8s.io/component-base/zpages/features",
     ],
 )

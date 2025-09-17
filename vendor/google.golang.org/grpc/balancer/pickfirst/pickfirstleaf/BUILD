@@ -10,6 +10,7 @@ go_library(
         "//vendor/google.golang.org/grpc/balancer",
         "//vendor/google.golang.org/grpc/balancer/pickfirst/internal",
         "//vendor/google.golang.org/grpc/connectivity",
+        "//vendor/google.golang.org/grpc/experimental/stats",
         "//vendor/google.golang.org/grpc/grpclog",
         "//vendor/google.golang.org/grpc/internal/envconfig",
         "//vendor/google.golang.org/grpc/internal/grpclog",

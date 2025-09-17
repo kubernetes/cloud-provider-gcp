@@ -9,6 +9,7 @@ go_library(
         "doc.go",
         "duration.go",
         "format.go",
+        "kubernetes-extensions.go",
         "time.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kube-openapi/pkg/validation/strfmt",

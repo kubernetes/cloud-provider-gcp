@@ -4,6 +4,7 @@ go_library(
     name = "logutil",
     srcs = [
         "doc.go",
+        "log_format.go",
         "log_level.go",
         "zap.go",
         "zap_journal.go",

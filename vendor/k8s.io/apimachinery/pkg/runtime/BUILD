@@ -43,6 +43,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
         "//vendor/k8s.io/klog/v2:klog",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/value",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v6/value",
     ],
 )

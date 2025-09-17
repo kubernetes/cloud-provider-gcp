@@ -6,6 +6,7 @@ go_library(
         "doc.go",
         "fake_certificates_client.go",
         "fake_clustertrustbundle.go",
+        "fake_podcertificaterequest.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/certificates/v1alpha1/fake",
     importpath = "k8s.io/client-go/kubernetes/typed/certificates/v1alpha1/fake",

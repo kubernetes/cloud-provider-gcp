@@ -12,5 +12,6 @@ go_library(
     deps = [
         "//vendor/google.golang.org/grpc/grpclog",
         "//vendor/google.golang.org/grpc/internal",
+        "//vendor/google.golang.org/grpc/stats",
     ],
 )

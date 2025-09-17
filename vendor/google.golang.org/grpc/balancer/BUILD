@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "balancer.go",
         "conn_state_evaluator.go",
+        "subconn.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/balancer",
     importpath = "google.golang.org/grpc/balancer",

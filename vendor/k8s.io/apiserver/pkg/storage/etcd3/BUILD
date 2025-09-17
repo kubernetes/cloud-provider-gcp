@@ -12,6 +12,7 @@ go_library(
         "latency_tracker.go",
         "lease_manager.go",
         "logger.go",
+        "stats.go",
         "store.go",
         "watcher.go",
     ],
@@ -51,5 +52,6 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/util/flowcontrol",
         "//vendor/k8s.io/component-base/tracing",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/utils/clock",
     ],
 )

@@ -27,6 +27,7 @@ go_library(
     deps = [
         "//vendor/github.com/google/uuid",
         "//vendor/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
+        "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/go.opentelemetry.io/otel/semconv/v1.17.0:v1_17_0",
         "//vendor/go.opentelemetry.io/otel/trace",
         "//vendor/k8s.io/api/authentication/v1:authentication",

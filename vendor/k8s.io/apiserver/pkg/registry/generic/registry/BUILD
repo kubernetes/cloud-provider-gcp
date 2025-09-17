@@ -48,6 +48,6 @@ go_library(
         "//vendor/k8s.io/client-go/tools/cache",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/ptr",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/fieldpath",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v6/fieldpath",
     ],
 )

@@ -16,8 +16,8 @@ go_library(
     deps = [
         "//vendor/github.com/google/gnostic-models/extensions",
         "//vendor/github.com/google/gnostic-models/jsonschema",
+        "//vendor/go.yaml.in/yaml/v3:yaml",
         "//vendor/google.golang.org/protobuf/proto",
         "//vendor/google.golang.org/protobuf/types/known/anypb",
-        "//vendor/gopkg.in/yaml.v3:yaml_v3",
     ],
 )

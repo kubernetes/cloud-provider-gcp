@@ -35,12 +35,12 @@ go_library(
         "//vendor/github.com/prometheus/client_model/go",
         "//vendor/github.com/spf13/pflag",
         "//vendor/go.opentelemetry.io/otel/trace",
+        "//vendor/go.yaml.in/yaml/v2:yaml",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/version",
         "//vendor/k8s.io/component-base/metrics/prometheusextension",
         "//vendor/k8s.io/component-base/version",
         "//vendor/k8s.io/klog/v2:klog",
-        "//vendor/sigs.k8s.io/yaml/goyaml.v2:goyaml_v2",
     ] + select({
         "@io_bazel_rules_go//go/platform:aix": [
             "//vendor/github.com/prometheus/procfs",

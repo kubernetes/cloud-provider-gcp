@@ -28,7 +28,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/strategicpatch",
         "//vendor/k8s.io/apimachinery/pkg/watch",
         "//vendor/k8s.io/client-go/rest",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/typed",
         "//vendor/sigs.k8s.io/yaml",
     ],
 )
