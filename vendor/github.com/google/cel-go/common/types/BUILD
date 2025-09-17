@@ -11,6 +11,7 @@ go_library(
         "double.go",
         "duration.go",
         "err.go",
+        "format.go",
         "int.go",
         "iterator.go",
         "json_value.go",

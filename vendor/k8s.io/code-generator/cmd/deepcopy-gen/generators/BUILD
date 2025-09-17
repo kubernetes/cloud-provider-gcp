@@ -8,6 +8,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/code-generator/cmd/deepcopy-gen/args",
+        "//vendor/k8s.io/code-generator/pkg/util",
         "//vendor/k8s.io/gengo/v2:gengo",
         "//vendor/k8s.io/gengo/v2/generator",
         "//vendor/k8s.io/gengo/v2/namer",

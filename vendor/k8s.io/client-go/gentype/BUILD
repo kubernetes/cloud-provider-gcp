@@ -20,8 +20,5 @@ go_library(
         "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/client-go/testing",
         "//vendor/k8s.io/client-go/util/apply",
-        "//vendor/k8s.io/client-go/util/consistencydetector",
-        "//vendor/k8s.io/client-go/util/watchlist",
-        "//vendor/k8s.io/klog/v2:klog",
     ],
 )

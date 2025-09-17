@@ -9,5 +9,6 @@ go_library(
     deps = [
         "//vendor/github.com/gogo/protobuf/gogoproto",
         "//vendor/github.com/golang/protobuf/proto",
+        "//vendor/go.etcd.io/etcd/api/v3/versionpb",
     ],
 )

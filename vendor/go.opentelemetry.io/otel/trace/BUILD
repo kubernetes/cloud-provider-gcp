@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "trace",
     srcs = [
+        "auto.go",
         "config.go",
         "context.go",
         "doc.go",
@@ -20,6 +21,8 @@ go_library(
     deps = [
         "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/go.opentelemetry.io/otel/codes",
+        "//vendor/go.opentelemetry.io/otel/semconv/v1.26.0:v1_26_0",
         "//vendor/go.opentelemetry.io/otel/trace/embedded",
+        "//vendor/go.opentelemetry.io/otel/trace/internal/telemetry",
     ],
 )

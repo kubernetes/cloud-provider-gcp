@@ -5,6 +5,9 @@ go_library(
     srcs = [
         "clustertrustbundle.go",
         "clustertrustbundlespec.go",
+        "podcertificaterequest.go",
+        "podcertificaterequestspec.go",
+        "podcertificaterequeststatus.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/applyconfigurations/certificates/v1alpha1",
     importpath = "k8s.io/client-go/applyconfigurations/certificates/v1alpha1",

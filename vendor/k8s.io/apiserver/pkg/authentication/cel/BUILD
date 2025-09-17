@@ -13,7 +13,8 @@ go_library(
     deps = [
         "//vendor/github.com/google/cel-go/cel",
         "//vendor/github.com/google/cel-go/common/types/ref",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1/unstructured",
+        "//vendor/github.com/google/cel-go/common/types/traits",
+        "//vendor/github.com/google/cel-go/interpreter",
         "//vendor/k8s.io/apimachinery/pkg/util/version",
         "//vendor/k8s.io/apiserver/pkg/cel",
         "//vendor/k8s.io/apiserver/pkg/cel/environment",

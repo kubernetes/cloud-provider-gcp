@@ -12,6 +12,7 @@ go_library(
     deps = [
         "//vendor/k8s.io/code-generator/cmd/client-gen/types",
         "//vendor/k8s.io/code-generator/cmd/register-gen/args",
+        "//vendor/k8s.io/code-generator/pkg/util",
         "//vendor/k8s.io/gengo/v2:gengo",
         "//vendor/k8s.io/gengo/v2/generator",
         "//vendor/k8s.io/gengo/v2/namer",

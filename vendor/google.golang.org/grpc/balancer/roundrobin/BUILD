@@ -8,7 +8,9 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/google.golang.org/grpc/balancer",
-        "//vendor/google.golang.org/grpc/balancer/base",
+        "//vendor/google.golang.org/grpc/balancer/endpointsharding",
+        "//vendor/google.golang.org/grpc/balancer/pickfirst/pickfirstleaf",
         "//vendor/google.golang.org/grpc/grpclog",
+        "//vendor/google.golang.org/grpc/internal/grpclog",
     ],
 )

@@ -8,7 +8,9 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/google/cel-go/checker/decls",
+        "//vendor/github.com/google/cel-go/common",
         "//vendor/github.com/google/cel-go/common/functions",
+        "//vendor/github.com/google/cel-go/common/operators",
         "//vendor/github.com/google/cel-go/common/types",
         "//vendor/github.com/google/cel-go/common/types/ref",
         "//vendor/google.golang.org/genproto/googleapis/api/expr/v1alpha1",

@@ -15,7 +15,6 @@ go_library(
         "//vendor/golang.org/x/sync/singleflight",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/util/cache",
-        "//vendor/k8s.io/apiserver/pkg/apis/audit",
         "//vendor/k8s.io/apiserver/pkg/audit",
         "//vendor/k8s.io/apiserver/pkg/authentication/authenticator",
         "//vendor/k8s.io/apiserver/pkg/warning",

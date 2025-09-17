@@ -11,11 +11,11 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/storage/value/encrypt/envelope/kmsv2",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/gogo/protobuf/proto",
         "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/golang.org/x/crypto/cryptobyte",
         "//vendor/google.golang.org/grpc",
         "//vendor/google.golang.org/grpc/credentials/insecure",
+        "//vendor/google.golang.org/protobuf/proto",
         "//vendor/k8s.io/apimachinery/pkg/util/cache",
         "//vendor/k8s.io/apimachinery/pkg/util/errors",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",

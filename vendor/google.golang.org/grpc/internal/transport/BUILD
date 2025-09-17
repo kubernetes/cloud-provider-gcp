@@ -4,6 +4,7 @@ go_library(
     name = "transport",
     srcs = [
         "bdp_estimator.go",
+        "client_stream.go",
         "controlbuf.go",
         "defaults.go",
         "flowcontrol.go",
@@ -13,6 +14,7 @@ go_library(
         "http_util.go",
         "logging.go",
         "proxy.go",
+        "server_stream.go",
         "transport.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/grpc/internal/transport",
@@ -32,6 +34,7 @@ go_library(
         "//vendor/google.golang.org/grpc/internal/grpcutil",
         "//vendor/google.golang.org/grpc/internal/metadata",
         "//vendor/google.golang.org/grpc/internal/pretty",
+        "//vendor/google.golang.org/grpc/internal/proxyattributes",
         "//vendor/google.golang.org/grpc/internal/status",
         "//vendor/google.golang.org/grpc/internal/syscall",
         "//vendor/google.golang.org/grpc/internal/transport/networktype",

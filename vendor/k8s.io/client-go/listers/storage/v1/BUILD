@@ -9,6 +9,7 @@ go_library(
         "expansion_generated.go",
         "storageclass.go",
         "volumeattachment.go",
+        "volumeattributesclass.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/listers/storage/v1",
     importpath = "k8s.io/client-go/listers/storage/v1",

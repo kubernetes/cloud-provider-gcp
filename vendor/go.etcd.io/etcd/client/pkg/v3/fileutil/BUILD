@@ -29,6 +29,7 @@ go_library(
     importpath = "go.etcd.io/etcd/client/pkg/v3/fileutil",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/go.etcd.io/etcd/client/pkg/v3/verify",
         "//vendor/go.uber.org/zap",
     ] + select({
         "@io_bazel_rules_go//go/platform:android": [
@@ -42,6 +43,9 @@ go_library(
         ],
         "@io_bazel_rules_go//go/platform:linux": [
             "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:windows": [
+            "//vendor/golang.org/x/sys/windows",
         ],
         "//conditions:default": [],
     }),

@@ -7,6 +7,7 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/endpoints/handlers/metrics",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
         "//vendor/k8s.io/component-base/metrics",
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
     ],
