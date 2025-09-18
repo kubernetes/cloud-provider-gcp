@@ -4,12 +4,8 @@ go_library(
     name = "fake",
     srcs = [
         "doc.go",
-        "fake_deviceclass.go",
         "fake_devicetaintrule.go",
         "fake_resource_client.go",
-        "fake_resourceclaim.go",
-        "fake_resourceclaimtemplate.go",
-        "fake_resourceslice.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/client-go/kubernetes/typed/resource/v1alpha3/fake",
     importpath = "k8s.io/client-go/kubernetes/typed/resource/v1alpha3/fake",

@@ -5,10 +5,9 @@ go_library(
     srcs = [
         "fields.go",
         "yaml.go",
-        "yaml_go110.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/sigs.k8s.io/yaml",
     importpath = "sigs.k8s.io/yaml",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/sigs.k8s.io/yaml/goyaml.v2:goyaml_v2"],
+    deps = ["//vendor/go.yaml.in/yaml/v2:yaml"],
 )

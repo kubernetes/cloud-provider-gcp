@@ -18,7 +18,6 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/util/flowcontrol",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/google/go-cmp/cmp",
         "//vendor/k8s.io/api/flowcontrol/v1:flowcontrol",
         "//vendor/k8s.io/apimachinery/pkg/api/equality",
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
@@ -27,6 +26,7 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
         "//vendor/k8s.io/apimachinery/pkg/labels",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apimachinery/pkg/util/diff",
         "//vendor/k8s.io/apimachinery/pkg/util/errors",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime",
         "//vendor/k8s.io/apimachinery/pkg/util/sets",

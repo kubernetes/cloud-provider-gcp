@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "context.go",
         "doc.go",
+        "methods.go",
         "received_time.go",
         "requestinfo.go",
         "server_shutdown_signal.go",

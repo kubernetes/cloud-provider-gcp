@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "metadata",
     srcs = [
+        "log.go",
         "metadata.go",
         "retry.go",
         "retry_linux.go",

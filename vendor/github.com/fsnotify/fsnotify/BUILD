@@ -9,6 +9,7 @@ go_library(
         "backend_other.go",
         "backend_windows.go",
         "fsnotify.go",
+        "shared.go",
         "system_bsd.go",
         "system_darwin.go",
     ],

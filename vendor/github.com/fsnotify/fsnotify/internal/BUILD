@@ -56,9 +56,6 @@ go_library(
         "@io_bazel_rules_go//go/platform:openbsd": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:plan9": [
-            "//vendor/golang.org/x/sys/unix",
-        ],
         "@io_bazel_rules_go//go/platform:solaris": [
             "//vendor/golang.org/x/sys/unix",
         ],

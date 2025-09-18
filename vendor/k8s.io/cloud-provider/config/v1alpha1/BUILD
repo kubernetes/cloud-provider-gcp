@@ -24,6 +24,6 @@ go_library(
         "//vendor/k8s.io/cloud-provider/controllers/node/config/v1alpha1",
         "//vendor/k8s.io/cloud-provider/controllers/service/config/v1alpha1",
         "//vendor/k8s.io/controller-manager/config/v1alpha1",
-        "//vendor/k8s.io/utils/pointer",
+        "//vendor/k8s.io/utils/ptr",
     ],
 )

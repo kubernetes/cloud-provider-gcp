@@ -35,9 +35,9 @@ go_library(
         "//vendor/k8s.io/client-go/openapi",
         "//vendor/k8s.io/kube-openapi/pkg/spec3",
         "//vendor/k8s.io/utils/ptr",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/fieldpath",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/schema",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/typed",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/value",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v6/fieldpath",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v6/schema",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v6/typed",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v6/value",
     ],
 )

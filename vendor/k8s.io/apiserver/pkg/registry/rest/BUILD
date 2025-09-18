@@ -19,6 +19,7 @@ go_library(
     deps = [
         "//vendor/k8s.io/apimachinery/pkg/api/errors",
         "//vendor/k8s.io/apimachinery/pkg/api/meta",
+        "//vendor/k8s.io/apimachinery/pkg/api/operation",
         "//vendor/k8s.io/apimachinery/pkg/api/validation",
         "//vendor/k8s.io/apimachinery/pkg/api/validation/path",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/internalversion",
@@ -26,7 +27,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1/validation",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
-        "//vendor/k8s.io/apimachinery/pkg/util/sets",
         "//vendor/k8s.io/apimachinery/pkg/util/uuid",
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field",
         "//vendor/k8s.io/apimachinery/pkg/watch",
@@ -36,7 +36,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/validation",
         "//vendor/k8s.io/apiserver/pkg/warning",
         "//vendor/k8s.io/klog/v2:klog",
-        "//vendor/k8s.io/utils/pointer",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/fieldpath",
+        "//vendor/k8s.io/utils/ptr",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v6/fieldpath",
     ],
 )

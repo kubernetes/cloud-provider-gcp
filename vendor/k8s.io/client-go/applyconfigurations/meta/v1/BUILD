@@ -25,6 +25,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/managedfields",
         "//vendor/k8s.io/client-go/discovery",
         "//vendor/k8s.io/kube-openapi/pkg/util/proto",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/typed",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v6/typed",
     ],
 )

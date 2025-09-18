@@ -75,6 +75,7 @@ go_library(
         "//vendor/k8s.io/apiserver/pkg/server/healthz",
         "//vendor/k8s.io/apiserver/pkg/server/options/encryptionconfig",
         "//vendor/k8s.io/apiserver/pkg/server/options/encryptionconfig/controller",
+        "//vendor/k8s.io/apiserver/pkg/server/options/encryptionconfig/metrics",
         "//vendor/k8s.io/apiserver/pkg/server/resourceconfig",
         "//vendor/k8s.io/apiserver/pkg/server/storage",
         "//vendor/k8s.io/apiserver/pkg/storage/etcd3/metrics",

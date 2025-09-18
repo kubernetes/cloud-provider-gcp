@@ -19,6 +19,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/conversion",
         "//vendor/k8s.io/apimachinery/pkg/runtime",
         "//vendor/k8s.io/component-base/config",
-        "//vendor/k8s.io/utils/pointer",
+        "//vendor/k8s.io/utils/ptr",
     ],
 )

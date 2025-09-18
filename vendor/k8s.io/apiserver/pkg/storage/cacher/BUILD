@@ -6,6 +6,7 @@ go_library(
         "cache_watcher.go",
         "cacher.go",
         "caching_object.go",
+        "compactor.go",
         "delegator.go",
         "lister_watcher.go",
         "ready.go",
@@ -49,6 +50,5 @@ go_library(
         "//vendor/k8s.io/component-base/tracing",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/clock",
-        "//vendor/k8s.io/utils/ptr",
     ],
 )

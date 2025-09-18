@@ -14,6 +14,7 @@ go_library(
         "sockopt.go",
         "sockopt_solaris.go",
         "sockopt_unix.go",
+        "sockopt_wasm.go",
         "sockopt_windows.go",
         "timeout_conn.go",
         "timeout_dialer.go",
@@ -29,45 +30,130 @@ go_library(
     deps = [
         "//vendor/go.etcd.io/etcd/client/pkg/v3/fileutil",
         "//vendor/go.etcd.io/etcd/client/pkg/v3/tlsutil",
+        "//vendor/go.etcd.io/etcd/client/pkg/v3/verify",
         "//vendor/go.uber.org/zap",
     ] + select({
-        "@io_bazel_rules_go//go/platform:aix": [
+        "@io_bazel_rules_go//go/platform:aix_ppc64": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:android": [
+        "@io_bazel_rules_go//go/platform:android_386": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:darwin": [
+        "@io_bazel_rules_go//go/platform:android_amd64": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:dragonfly": [
+        "@io_bazel_rules_go//go/platform:android_arm": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:freebsd": [
+        "@io_bazel_rules_go//go/platform:android_arm64": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:illumos": [
+        "@io_bazel_rules_go//go/platform:darwin_386": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:ios": [
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:js": [
+        "@io_bazel_rules_go//go/platform:darwin_arm": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:linux": [
+        "@io_bazel_rules_go//go/platform:darwin_arm64": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:netbsd": [
+        "@io_bazel_rules_go//go/platform:dragonfly_amd64": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:openbsd": [
+        "@io_bazel_rules_go//go/platform:freebsd_386": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:plan9": [
+        "@io_bazel_rules_go//go/platform:freebsd_amd64": [
             "//vendor/golang.org/x/sys/unix",
         ],
-        "@io_bazel_rules_go//go/platform:solaris": [
+        "@io_bazel_rules_go//go/platform:freebsd_arm": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd_arm64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:illumos_amd64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:ios_amd64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:ios_arm64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_386": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_arm": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_arm64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_mips": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_mips64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_mips64le": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_mipsle": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_ppc64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_ppc64le": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_riscv64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_s390x": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd_386": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd_amd64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd_arm": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd_arm64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd_386": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd_amd64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd_arm": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd_arm64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:plan9_386": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:plan9_amd64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:plan9_arm": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:solaris_amd64": [
             "//vendor/golang.org/x/sys/unix",
         ],
         "//conditions:default": [],

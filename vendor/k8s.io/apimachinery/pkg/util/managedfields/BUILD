@@ -22,8 +22,8 @@ go_library(
         "//vendor/k8s.io/kube-openapi/pkg/schemaconv",
         "//vendor/k8s.io/kube-openapi/pkg/util/proto",
         "//vendor/k8s.io/kube-openapi/pkg/validation/spec",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/fieldpath",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/schema",
-        "//vendor/sigs.k8s.io/structured-merge-diff/v4/typed",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v6/fieldpath",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v6/schema",
+        "//vendor/sigs.k8s.io/structured-merge-diff/v6/typed",
     ],
 )

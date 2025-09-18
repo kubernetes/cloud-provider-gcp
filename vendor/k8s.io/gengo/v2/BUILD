@@ -10,6 +10,7 @@ go_library(
     importpath = "k8s.io/gengo/v2",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/gengo/v2/codetags",
         "//vendor/k8s.io/gengo/v2/generator",
         "//vendor/k8s.io/gengo/v2/namer",
         "//vendor/k8s.io/gengo/v2/parser",

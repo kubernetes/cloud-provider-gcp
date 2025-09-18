@@ -7,6 +7,7 @@ go_library(
     importpath = "github.com/google/cel-go/common/stdlib",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/google/cel-go/common",
         "//vendor/github.com/google/cel-go/common/decls",
         "//vendor/github.com/google/cel-go/common/functions",
         "//vendor/github.com/google/cel-go/common/operators",

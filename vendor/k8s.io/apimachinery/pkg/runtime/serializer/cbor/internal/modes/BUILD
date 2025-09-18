@@ -4,13 +4,16 @@ go_library(
     name = "modes",
     srcs = [
         "buffers.go",
-        "custom.go",
         "decode.go",
         "diagnostic.go",
         "encode.go",
+        "transcoding.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/apimachinery/pkg/runtime/serializer/cbor/internal/modes",
     importpath = "k8s.io/apimachinery/pkg/runtime/serializer/cbor/internal/modes",
     visibility = ["//vendor/k8s.io/apimachinery/pkg/runtime/serializer/cbor:__subpackages__"],
-    deps = ["//vendor/github.com/fxamacker/cbor/v2:cbor"],
+    deps = [
+        "//vendor/github.com/fxamacker/cbor/v2:cbor",
+        "//vendor/sigs.k8s.io/json",
+    ],
 )

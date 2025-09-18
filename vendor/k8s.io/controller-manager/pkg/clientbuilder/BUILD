@@ -24,6 +24,6 @@ go_library(
         "//vendor/k8s.io/client-go/transport",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/utils/clock",
-        "//vendor/k8s.io/utils/pointer",
+        "//vendor/k8s.io/utils/ptr",
     ],
 )

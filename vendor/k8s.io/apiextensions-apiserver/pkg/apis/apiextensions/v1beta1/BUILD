@@ -31,6 +31,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/runtime/serializer/cbor/direct",
         "//vendor/k8s.io/apimachinery/pkg/types",
         "//vendor/k8s.io/apimachinery/pkg/util/json",
-        "//vendor/k8s.io/utils/pointer",
+        "//vendor/k8s.io/utils/ptr",
     ],
 )

@@ -13,5 +13,5 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/github.com/google/gnostic-models/jsonschema",
     importpath = "github.com/google/gnostic-models/jsonschema",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/gopkg.in/yaml.v3:yaml_v3"],
+    deps = ["//vendor/go.yaml.in/yaml/v3:yaml"],
 )

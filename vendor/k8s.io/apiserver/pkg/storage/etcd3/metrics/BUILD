@@ -7,6 +7,10 @@ go_library(
     importpath = "k8s.io/apiserver/pkg/storage/etcd3/metrics",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema",
+        "//vendor/k8s.io/apiserver/pkg/features",
+        "//vendor/k8s.io/apiserver/pkg/storage",
+        "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/component-base/metrics",
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/klog/v2:klog",
