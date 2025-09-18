@@ -2,7 +2,10 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "options",
-    srcs = ["nodeipamcontroller.go"],
+    srcs = [
+        "gkeservicecontroller.go",
+        "nodeipamcontroller.go",
+    ],
     importpath = "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/options",
     visibility = ["//visibility:public"],
     deps = [

@@ -19,6 +19,7 @@ go_library(
     name = "cloud-controller-manager_lib",
     srcs = [
         "gkenetworkparamsetcontroller.go",
+        "gkeservicecontroller.go",
         "main.go",
         "nodeipamcontroller.go",
     ],
@@ -29,12 +30,14 @@ go_library(
         "//pkg/controller/nodeipam",
         "//pkg/controller/nodeipam/config",
         "//pkg/controller/nodeipam/ipam",
+        "//pkg/controller/service",
         "//providers/gce",
         "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned",
         "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions",
         "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned",
         "//vendor/github.com/spf13/pflag",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
+        "//vendor/k8s.io/apiserver/pkg/util/feature",
         "//vendor/k8s.io/cloud-provider",
         "//vendor/k8s.io/cloud-provider/app",
         "//vendor/k8s.io/cloud-provider/app/config",
@@ -58,10 +61,15 @@ image(binary = ":cloud-controller-manager")
 
 go_test(
     name = "cloud-controller-manager_test",
-    srcs = ["nodeipamcontroller_test.go"],
+    srcs = [
+        "gkeservicecontroller_test.go",
+        "nodeipamcontroller_test.go",
+    ],
     embed = [":cloud-controller-manager_lib"],
     deps = [
         "//pkg/controller/nodeipam/config",
+        "//pkg/controller/service",
+        "//vendor/k8s.io/api/core/v1:core",
         "//vendor/k8s.io/cloud-provider",
         "//vendor/k8s.io/cloud-provider/app/config",
         "//vendor/k8s.io/cloud-provider/config",
