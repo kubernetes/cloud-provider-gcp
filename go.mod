@@ -69,7 +69,7 @@ require (
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
-	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.25.0
+	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.27.0
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
@@ -173,11 +173,11 @@ replace (
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.34.0
 	k8s.io/kubectl => k8s.io/kubectl v0.34.0
 	k8s.io/kubelet => k8s.io/kubelet v0.34.0
+
+	k8s.io/kubernetes => k8s.io/kubernetes v1.34.0
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.34.0
 	k8s.io/metrics => k8s.io/metrics v0.34.0
 	k8s.io/mount-utils => k8s.io/mount-utils v0.34.0
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.34.0
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.0
-	
-	k8s.io/kubernetes => k8s.io/kubernetes v1.34.0
 )
