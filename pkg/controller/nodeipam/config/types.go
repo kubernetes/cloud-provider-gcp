@@ -36,4 +36,8 @@ type NodeIPAMControllerConfiguration struct {
 	// which is represented by a node label. Enabling this feature also assumes that a
 	// nodeTopology CR named 'default' is already installed.
 	EnableMultiSubnetCluster bool
+	// enableMultiNetworking is bound to a command-line flag. It should be set to true
+	// when the cluster-level "enable-multi-networking" flag is true to enable
+	// the multi-networking related logics such as multi-networking IPAM.
+	EnableMultiNetworking bool
 }

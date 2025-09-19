@@ -28,6 +28,7 @@ import (
 	"time"
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
+	"google.golang.org/api/compute/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
@@ -101,12 +102,14 @@ type cloudCIDRAllocator struct {
 	nodeTopologyQueue *TaskQueue
 
 	stackType clusterStackType
+
+	enableMultiNetworking bool
 }
 
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
 
 // NewCloudCIDRAllocator creates a new cloud CIDR allocator.
-func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, enableMultiSubnetCluster bool, nodeInformer informers.NodeInformer, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
+func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, enableMultiSubnetCluster bool, enableMultiNetworking bool, nodeInformer informers.NodeInformer, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
 	if client == nil {
 		klog.Fatalf("kubeClient is nil when starting NodeController")
 	}
@@ -138,15 +141,16 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 	}
 
 	ca := &cloudCIDRAllocator{
-		client:         client,
-		cloud:          gceCloud,
-		networksLister: nwInformer.Lister(),
-		gnpLister:      gnpInformer.Lister(),
-		nodeLister:     nodeInformer.Lister(),
-		nodesSynced:    nodeInformer.Informer().HasSynced,
-		recorder:       recorder,
-		queue:          workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
-		stackType:      stackType,
+		client:                client,
+		cloud:                 gceCloud,
+		networksLister:        nwInformer.Lister(),
+		gnpLister:             gnpInformer.Lister(),
+		nodeLister:            nodeInformer.Lister(),
+		nodesSynced:           nodeInformer.Informer().HasSynced,
+		recorder:              recorder,
+		queue:                 workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
+		stackType:             stackType,
+		enableMultiNetworking: enableMultiNetworking,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -410,20 +414,32 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 	// Sets the v1.NodeNetworkUnavailable condition to False.
 	ca.setNetworkCondition(node)
 
-	// Nodes in clusters WITHOUT multi-networking are expected to have only 1 network-interface
-	// with 1 alias IPv4 range and/or 1 IPv6 address. Multi-network clusters may have 1 interface
-	// with multiple aliases.
-	if len(instance.NetworkInterfaces) == 1 &&
-		(len(instance.NetworkInterfaces[0].AliasIpRanges) == 1 ||
-			ca.cloud.GetIPV6Address(instance.NetworkInterfaces[0]) != nil) {
+	// Retrieve the default network interface of the node.
+	// According to https://cloud.google.com/compute/docs/reference/rest/v1/instances/get
+	// "The default interface value is nic0" for the NIC name.
+	var defaultNetworkInterface *compute.NetworkInterface
+	for _, nic := range instance.NetworkInterfaces {
+		if nic.Name == "nic0" {
+			defaultNetworkInterface = nic
+			break
+		}
+	}
+	if defaultNetworkInterface == nil {
+		klog.V(5).Infof("cannot find nic0 in node %v, pick the first NIC as default NIC", node.Name)
+		defaultNetworkInterface = instance.NetworkInterfaces[0]
+	}
 
+	// In the newly-possible case where a cluster with multi-networking disabled but
+	// contains multi-NIC nodes, IPAM only executes the normal logic on the default
+	// network interface and ignores any additional network interfaces.
+	if !ca.enableMultiNetworking {
 		ipv4CIDR := ""
-		if len(instance.NetworkInterfaces[0].AliasIpRanges) > 0 {
-			ipv4CIDR = instance.NetworkInterfaces[0].AliasIpRanges[0].IpCidrRange
+		if len(defaultNetworkInterface.AliasIpRanges) > 0 {
+			ipv4CIDR = defaultNetworkInterface.AliasIpRanges[0].IpCidrRange
 		}
 
 		ipv6CIDR := ""
-		if addr := ca.cloud.GetIPV6Address(instance.NetworkInterfaces[0]); addr != nil {
+		if addr := ca.cloud.GetIPV6Address(defaultNetworkInterface); addr != nil {
 			ipv6CIDR = addr.String()
 		}
 
