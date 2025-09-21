@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,12 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package service
 
-// ServiceControllerConfiguration contains elements describing ServiceController.
-type ServiceControllerConfiguration struct {
-	// concurrentServiceSyncs is the number of services that are
-	// allowed to sync concurrently. Larger number = more responsive service
-	// management, but more CPU (and network) load.
-	ConcurrentServiceSyncs int32
-}
+import "k8s.io/apimachinery/pkg/util/sets"
+
+var gkeCCMClasses = sets.NewString(
+	"networking.gke.io/l4-regional-external-legacy",
+	"networking.gke.io/l4-regional-internal-legacy",
+)

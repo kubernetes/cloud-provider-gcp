@@ -1,3 +1,4 @@
+// This file is a fork of k8s.io/cloud-provider/controllers/service/metrics.go
 /*
 Copyright 2020 The Kubernetes Authors.
 
@@ -25,7 +26,7 @@ import (
 
 const (
 	// subSystemName is the name of this subsystem name used for prometheus metrics.
-	subSystemName = "service_controller"
+	subSystemName = "gke_service_controller"
 )
 
 var register sync.Once

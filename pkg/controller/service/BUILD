@@ -4,11 +4,11 @@ go_library(
     name = "service",
     srcs = [
         "controller.go",
+        "controller_gke.go",
         "doc.go",
         "metrics.go",
     ],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/cloud-provider/controllers/service",
-    importpath = "k8s.io/cloud-provider/controllers/service",
+    importpath = "k8s.io/cloud-provider-gcp/pkg/controller/service",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/api/core/v1:core",

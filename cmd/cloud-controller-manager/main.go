@@ -41,6 +41,12 @@ import (
 	kcmnames "k8s.io/kubernetes/cmd/kube-controller-manager/names"
 )
 
+const (
+	gkeServiceLBControllerName     = "gke-service-lb-controller"
+	gkeServiceControllerClientName = "gke-service-controller"
+	gkeServiceAlias                = "gke-service"
+)
+
 // enableMultiProject is bound to a command-line flag. When true, it enables the
 // projectFromNodeProviderID option of the GCE cloud provider, instructing it to
 // use the project specified in the Node's providerID for GCE API calls.
@@ -92,10 +98,19 @@ func main() {
 		Constructor: startGkeNetworkParamSetControllerWrapper,
 	}
 
+	controllerInitializers[gkeServiceLBControllerName] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: gkeServiceControllerClientName,
+		},
+		Constructor: startGkeServiceControllerWrapper,
+	}
+
 	// add controllers disabled by default
 	app.ControllersDisabledByDefault.Insert("gkenetworkparamset")
+	app.ControllersDisabledByDefault.Insert(gkeServiceLBControllerName)
 	aliasMap := names.CCMControllerAliases()
 	aliasMap["nodeipam"] = kcmnames.NodeIpamController
+	aliasMap[gkeServiceAlias] = gkeServiceLBControllerName
 	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, aliasMap, fss, wait.NeverStop)
 
 	logs.InitLogs()
