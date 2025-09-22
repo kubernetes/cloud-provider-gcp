@@ -150,6 +150,7 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 		gnpInformer,
 		nodeTopologyClient,
 		nodeIPAMConfig.EnableMultiSubnetCluster,
+		nodeIPAMConfig.EnableMultiNetworking,
 		clusterCIDRs,
 		serviceCIDR,
 		secondaryServiceCIDR,
