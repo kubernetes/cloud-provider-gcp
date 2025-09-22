@@ -429,9 +429,8 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		defaultNetworkInterface = instance.NetworkInterfaces[0]
 	}
 
-	// In the newly-possible case where a cluster with multi-networking disabled but
-	// contains multi-NIC nodes, IPAM only executes the normal logic on the default
-	// network interface and ignores any additional network interfaces.
+	// For multi-NIC nodes with "multi-networking" disabled, IPAM only executes the normal
+	// logic on the default network interface and ignores any additional network interfaces.
 	if !ca.enableMultiNetworking {
 		ipv4CIDR := ""
 		if len(defaultNetworkInterface.AliasIpRanges) > 0 {
