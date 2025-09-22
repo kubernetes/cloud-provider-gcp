@@ -25,7 +25,9 @@ KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
 # rebuild go.work
 cat go.mod | grep '^go' > go.work
-go work use -r .
+# On purpose ignoring ./test here because its not used via bazel and ginkgo would break gazelle.
+go work use .
+go work use ./providers
 
 # Copy over replace directives from go.mod to go.work
 echo -e "\nreplace (" >> go.work
@@ -54,4 +56,5 @@ go mod tidy
 # This lets other packages and tools use the local staging components as if they were vendored.
 
 # restore BUILD files in vendor/
+# Note: Workaround for vendor/github.com/onsi/ginkgo/v2/ginkgo to use `BUILD.bazel` because it contains a directory named `build`.
 bazel run //:gazelle
