@@ -197,14 +197,21 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 	}
 
 	var status *v1.LoadBalancerStatus
+	var resourcesURLs []string
 	switch desiredScheme {
 	case cloud.SchemeInternal:
-		status, err = g.ensureInternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
+		status, resourcesURLs, err = g.ensureInternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
 	default:
-		status, err = g.ensureExternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
+		status, resourcesURLs, err = g.ensureExternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
 	}
 	if err != nil {
 		klog.Errorf("Failed to EnsureLoadBalancer(%s, %s, %s, %s, %s), err: %v", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, err)
+		return status, err
+	}
+	klog.V(4).Infof("EnsureLoadBalancer(%s, %s, %s, %s, %s): done ensuring loadbalancer resources: %v", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, resourcesURLs)
+	err = g.EnsureServiceLoadBalancerStatusCR(svc, resourcesURLs)
+	if err != nil {
+		klog.Errorf("Failed to update ServiceLoadBalancerStatus CR, err: %v", err)
 		return status, err
 	}
 	klog.V(4).Infof("EnsureLoadBalancer(%s, %s, %s, %s, %s): done ensuring loadbalancer.", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region)

@@ -48,13 +48,15 @@ func createInternalLoadBalancer(gce *Cloud, svc *v1.Service, existingFwdRule *co
 		return nil, err
 	}
 
-	return gce.ensureInternalLoadBalancer(
+	lb, _, err := gce.ensureInternalLoadBalancer(
 		clusterName,
 		clusterID,
 		svc,
 		existingFwdRule,
 		nodes,
 	)
+
+	return lb, err
 }
 
 func TestEnsureInternalBackendServiceUpdates(t *testing.T) {
@@ -660,7 +662,7 @@ func TestUpdateInternalLoadBalancerNodes(t *testing.T) {
 	nodes, err := createAndInsertNodes(gce, node1Name, vals.ZoneName)
 	require.NoError(t, err)
 
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, _, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	assert.NoError(t, err)
 
 	// Replace the node in initial zone; add new node in a new zone.
@@ -729,7 +731,7 @@ func TestUpdateInternalLoadBalancerNodesWithEmptyZone(t *testing.T) {
 	nodes, err := createAndInsertNodes(gce, node1Name, vals.ZoneName)
 	require.NoError(t, err)
 
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, _, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	assert.NoError(t, err)
 
 	// Ensure Node has been added to instance group
@@ -756,7 +758,7 @@ func TestUpdateInternalLoadBalancerNodesWithEmptyZone(t *testing.T) {
 		Description:         fmt.Sprintf(`{"kubernetes.io/service-name":"%s"}`, types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}.String()),
 	}
 
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
+	_, _, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
 	assert.NoError(t, err)
 
 	// Expect load balancer to not have deleted node test-node-1
@@ -954,7 +956,7 @@ func TestEnsureInternalFirewallDeletesLegacyFirewall(t *testing.T) {
 	}
 
 	// Now ensure the firewall again with the correct name to simulate a sync after updating to new code.
-	err = gce.ensureInternalFirewall(
+	_, err = gce.ensureInternalFirewall(
 		svc,
 		fwName,
 		"firewall with new name",
@@ -977,7 +979,7 @@ func TestEnsureInternalFirewallDeletesLegacyFirewall(t *testing.T) {
 	require.NotNil(t, existingLegacyFirewall)
 
 	// Now ensure the firewall again to simulate a second sync where the old rule will be deleted.
-	err = gce.ensureInternalFirewall(
+	_, err = gce.ensureInternalFirewall(
 		svc,
 		fwName,
 		"firewall with new name",
@@ -1232,7 +1234,7 @@ func TestEnsureInternalLoadBalancerErrors(t *testing.T) {
 			}
 			_, err = gce.client.CoreV1().Services(params.service.Namespace).Create(context.TODO(), params.service, metav1.CreateOptions{})
 			require.NoError(t, err)
-			status, err := gce.ensureInternalLoadBalancer(
+			status, _, err := gce.ensureInternalLoadBalancer(
 				params.clusterName,
 				params.clusterID,
 				params.service,
@@ -1971,7 +1973,7 @@ func TestEnsureInternalFirewallPortRanges(t *testing.T) {
 	destinationIP := "10.1.2.3"
 	sourceRange := []string{"10.0.0.0/20"}
 	// Manually create a firewall rule with the legacy name - lbName
-	err = gce.ensureInternalFirewall(
+	_, err = gce.ensureInternalFirewall(
 		svc,
 		fwName,
 		"firewall with legacy name",
@@ -2008,7 +2010,7 @@ func TestEnsureInternalFirewallDestinations(t *testing.T) {
 	destinationIP := "10.1.2.3"
 	sourceRange := []string{"10.0.0.0/20"}
 
-	err = gce.ensureInternalFirewall(
+	_, err = gce.ensureInternalFirewall(
 		svc,
 		fwName,
 		"firewall with legacy name",
@@ -2028,7 +2030,7 @@ func TestEnsureInternalFirewallDestinations(t *testing.T) {
 
 	newDestinationIP := "20.1.2.3"
 
-	err = gce.ensureInternalFirewall(
+	_, err = gce.ensureInternalFirewall(
 		svc,
 		fwName,
 		"firewall with legacy name",

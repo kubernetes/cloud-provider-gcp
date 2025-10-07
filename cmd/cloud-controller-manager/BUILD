@@ -35,6 +35,7 @@ go_library(
         "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned",
         "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions",
         "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned",
+        "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/serviceloadbalancerstatus/clientset/versioned",
         "//vendor/github.com/spf13/pflag",
         "//vendor/k8s.io/apimachinery/pkg/util/wait",
         "//vendor/k8s.io/apiserver/pkg/util/feature",

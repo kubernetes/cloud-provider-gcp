@@ -22,6 +22,7 @@ require (
 
 require (
 	cloud.google.com/go/compute/metadata v0.6.0
+	github.com/GoogleCloudPlatform/gke-networking-api v0.0.0-00010101000000-000000000000
 	k8s.io/cloud-provider v0.34.0
 )
 
@@ -87,3 +88,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/GoogleCloudPlatform/gke-networking-api => github.com/08volt/gke-networking-api v0.2.1-0.20251008085853-5c4fe6638e59

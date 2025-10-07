@@ -55,13 +55,15 @@ const (
 // Due to an interesting series of design decisions, this handles both creating
 // new load balancers and updating existing load balancers, recognizing when
 // each is needed.
-func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
+func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, []string, error) {
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
 	if !shouldProcessNetLB(apiService, existingFwdRule, g.enableRBSDefaultForL4NetLB) {
-		return nil, cloudprovider.ImplementedElsewhere
+		return nil, []string{}, cloudprovider.ImplementedElsewhere
 	}
+
+	resourcesURLs := []string{}
 
 	if hasLoadBalancerClass(apiService, LegacyRegionalExternalLoadBalancerClass) {
 		if apiService.Annotations[ServiceAnnotationLoadBalancerType] == string(LBTypeInternal) {
@@ -70,20 +72,20 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	}
 
 	if len(nodes) == 0 {
-		return nil, fmt.Errorf(errStrLbNoHosts)
+		return nil, []string{}, fmt.Errorf(errStrLbNoHosts)
 	}
 
 	hostNames := nodeNames(nodes)
 	hosts, err := g.getInstancesByNames(hostNames)
 	if err != nil {
-		return nil, err
+		return nil, []string{}, err
 	}
 
 	loadBalancerName := g.GetLoadBalancerName(context.TODO(), clusterName, apiService)
 	klog.Infof("ensureExternalLoadBalancer(%v): Attaching %q finalizer to service %s", loadBalancerName, NetLBFinalizerV1, apiService.Name)
 	if err := addFinalizer(apiService, g.client.CoreV1(), NetLBFinalizerV1); err != nil {
 		klog.Errorf("Failed to attach finalizer '%s' on service %s/%s - %v", NetLBFinalizerV1, apiService.Namespace, apiService.Name, err)
-		return nil, err
+		return nil, []string{}, err
 	}
 
 	requestedIP := apiService.Spec.LoadBalancerIP
@@ -102,7 +104,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	netTier, err := g.getServiceNetworkTier(apiService)
 	if err != nil {
 		klog.Errorf("ensureExternalLoadBalancer(%s): Failed to get the desired network tier: %v.", lbRefStr, err)
-		return nil, err
+		return nil, []string{}, err
 	}
 	klog.V(4).Infof("ensureExternalLoadBalancer(%s): Desired network tier %q.", lbRefStr, netTier)
 	// TODO: distinguish between unspecified and specified network tiers annotation properly in forwardingrule creation
@@ -113,12 +115,15 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	}
 
 	// Check if the forwarding rule exists, and if so, what its IP is.
-	fwdRuleExists, fwdRuleNeedsUpdate, fwdRuleIP, err := g.forwardingRuleNeedsUpdate(loadBalancerName, g.region, requestedIP, ports)
+	fwdRuleExists, fwdRuleNeedsUpdate, fwdSelfLink, fwdRuleIP, err := g.forwardingRuleNeedsUpdate(loadBalancerName, g.region, requestedIP, ports)
 	if err != nil {
-		return nil, err
+		return nil, []string{}, err
 	}
 	if !fwdRuleExists {
 		klog.V(2).Infof("ensureExternalLoadBalancer(%s): Forwarding rule %v doesn't exist.", lbRefStr, loadBalancerName)
+	}
+	if fwdRuleExists && !fwdRuleNeedsUpdate && fwdSelfLink != "" {
+		resourcesURLs = append(resourcesURLs, fwdSelfLink)
 	}
 
 	// Make sure we know which IP address will be used and have properly reserved
@@ -169,7 +174,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		// the GCE resources will be performed in the verification process.
 		isUserOwnedIP, err = verifyUserRequestedIP(g, g.region, requestedIP, fwdRuleIP, lbRefStr, netTier)
 		if err != nil {
-			return nil, err
+			return nil, []string{}, err
 		}
 		ipAddressToUse = requestedIP
 	}
@@ -179,7 +184,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		// emphemeral IP used by the fwd rule, or create a new static IP.
 		ipAddr, existed, err := ensureStaticIP(g, loadBalancerName, serviceName.String(), g.region, fwdRuleIP, netTier)
 		if err != nil {
-			return nil, fmt.Errorf("failed to ensure a static IP for load balancer (%s): %v", lbRefStr, err)
+			return nil, []string{}, fmt.Errorf("failed to ensure a static IP for load balancer (%s): %v", lbRefStr, err)
 		}
 		klog.Infof("ensureExternalLoadBalancer(%s): Ensured IP address %s (tier: %s).", lbRefStr, ipAddr, netTier)
 		// If the IP was not owned by the user, but it already existed, it
@@ -196,12 +201,16 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	// Check if user specified the allow source range
 	sourceRanges, err := servicehelpers.GetLoadBalancerSourceRanges(apiService)
 	if err != nil {
-		return nil, err
+		return nil, []string{}, err
 	}
 
-	firewallExists, firewallNeedsUpdate, err := g.firewallNeedsUpdate(loadBalancerName, serviceName.String(), ipAddressToUse, ports, sourceRanges)
+	firewallExists, firewallNeedsUpdate, firewallSelfLink, err := g.firewallNeedsUpdate(loadBalancerName, serviceName.String(), ipAddressToUse, ports, sourceRanges)
 	if err != nil {
-		return nil, err
+		return nil, []string{}, err
+	}
+	if firewallExists {
+		klog.V(2).Infof("ensureExternalLoadBalancer(%s): Firewall for load balancer already exists", lbRefStr)
+		resourcesURLs = append(resourcesURLs, firewallSelfLink)
 	}
 
 	if firewallNeedsUpdate {
@@ -211,32 +220,38 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		if firewallExists {
 			klog.Infof("ensureExternalLoadBalancer(%s): Updating firewall.", lbRefStr)
 			if err := g.updateFirewall(apiService, MakeFirewallName(loadBalancerName), desc, ipAddressToUse, sourceRanges, ports, hosts); err != nil {
-				return nil, err
+				return nil, []string{}, err
 			}
 			klog.Infof("ensureExternalLoadBalancer(%s): Updated firewall.", lbRefStr)
 		} else {
 			klog.Infof("ensureExternalLoadBalancer(%s): Creating firewall.", lbRefStr)
 			if err := g.createFirewall(apiService, MakeFirewallName(loadBalancerName), desc, ipAddressToUse, sourceRanges, ports, hosts); err != nil {
-				return nil, err
+				return nil, []string{}, err
 			}
 			klog.Infof("ensureExternalLoadBalancer(%s): Created firewall.", lbRefStr)
 		}
 	}
 
-	tpExists, tpNeedsRecreation, err := g.targetPoolNeedsRecreation(loadBalancerName, g.region, apiService.Spec.SessionAffinity)
+	tpExists, tpSelfLink, tpNeedsRecreation, err := g.targetPoolNeedsRecreation(loadBalancerName, g.region, apiService.Spec.SessionAffinity)
 	if err != nil {
-		return nil, err
+		return nil, []string{}, err
 	}
-	if !tpExists {
-		klog.Infof("ensureExternalLoadBalancer(%s): Target pool for service doesn't exist.", lbRefStr)
+	if tpExists && tpSelfLink != "" {
+		resourcesURLs = append(resourcesURLs, tpSelfLink)
 	}
+
+	g.client.CoreV1().Services(apiService.Namespace)
 
 	// Check which health check needs to create and which health check needs to delete.
 	// Health check management is coupled with target pool operation to prevent leaking.
 	var hcToCreate, hcToDelete *compute.HttpHealthCheck
 	hcLocalTrafficExisting, err := g.GetHTTPHealthCheck(loadBalancerName)
 	if err != nil && !isHTTPErrorCode(err, http.StatusNotFound) {
-		return nil, fmt.Errorf("error checking HTTP health check for load balancer (%s): %v", lbRefStr, err)
+		return nil, []string{}, fmt.Errorf("error checking HTTP health check for load balancer (%s): %v", lbRefStr, err)
+	}
+	if hcLocalTrafficExisting != nil {
+		klog.V(4).Infof("ensureExternalLoadBalancer(%s): Found existing local traffic health check %q for load balancer.", lbRefStr, hcLocalTrafficExisting.Name)
+		resourcesURLs = append(resourcesURLs, hcLocalTrafficExisting.SelfLink)
 	}
 	if path, healthCheckNodePort := servicehelpers.GetServiceHealthCheckPathPort(apiService); path != "" {
 		klog.V(4).Infof("ensureExternalLoadBalancer(%s): Service needs local traffic health checks on: %d%s.", lbRefStr, healthCheckNodePort, path)
@@ -274,19 +289,19 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		// IP.  That way we can come back to it later.
 		isSafeToReleaseIP = false
 		if err := g.DeleteRegionForwardingRule(loadBalancerName, g.region); err != nil && !isNotFound(err) {
-			return nil, fmt.Errorf("failed to delete existing forwarding rule for load balancer (%s) update: %v", lbRefStr, err)
+			return nil, []string{}, fmt.Errorf("failed to delete existing forwarding rule for load balancer (%s) update: %v", lbRefStr, err)
 		}
 		klog.Infof("ensureExternalLoadBalancer(%s): Deleted forwarding rule.", lbRefStr)
 	}
 
 	if err := g.ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation, apiService, loadBalancerName, clusterID, ipAddressToUse, hosts, hcToCreate, hcToDelete); err != nil {
-		return nil, err
+		return nil, []string{}, err
 	}
 
 	if tpNeedsRecreation || fwdRuleNeedsUpdate {
 		klog.Infof("ensureExternalLoadBalancer(%s): Creating forwarding rule, IP %s (tier: %s).", lbRefStr, ipAddressToUse, netTier)
 		if err := createForwardingRule(g, loadBalancerName, serviceName.String(), g.region, ipAddressToUse, g.targetPoolURL(loadBalancerName), ports, netTier, g.enableDiscretePortForwarding); err != nil {
-			return nil, fmt.Errorf("failed to create forwarding rule for load balancer (%s): %v", lbRefStr, err)
+			return nil, []string{}, fmt.Errorf("failed to create forwarding rule for load balancer (%s): %v", lbRefStr, err)
 		}
 		// End critical section.  It is safe to release the static IP (which
 		// just demotes it to ephemeral) now that it is attached.  In the case
@@ -299,7 +314,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	status := &v1.LoadBalancerStatus{}
 	status.Ingress = []v1.LoadBalancerIngress{{IP: ipAddressToUse}}
 
-	return status, nil
+	return status, resourcesURLs, nil
 }
 
 // updateExternalLoadBalancer is the external implementation of LoadBalancer.UpdateLoadBalancer.
@@ -775,15 +790,15 @@ func (g *Cloud) ensureHTTPHealthCheck(name, path string, port int32) (hc *comput
 // IP is being requested.
 // Returns whether the forwarding rule exists, whether it needs to be updated,
 // what its IP address is (if it exists), and any error we encountered.
-func (g *Cloud) forwardingRuleNeedsUpdate(name, region string, loadBalancerIP string, ports []v1.ServicePort) (exists bool, needsUpdate bool, ipAddress string, err error) {
+func (g *Cloud) forwardingRuleNeedsUpdate(name, region string, loadBalancerIP string, ports []v1.ServicePort) (exists bool, needsUpdate bool, fwdSelfLink string, ipAddress string, err error) {
 	fwd, err := g.GetRegionForwardingRule(name, region)
 	if err != nil {
 		if isHTTPErrorCode(err, http.StatusNotFound) {
-			return false, true, "", nil
+			return false, true, "", "", nil
 		}
 		// Err on the side of caution in case of errors. Caller should notice the error and retry.
 		// We never want to end up recreating resources because g api flaked.
-		return true, false, "", fmt.Errorf("error getting load balancer's forwarding rule: %v", err)
+		return true, false, "", "", fmt.Errorf("error getting load balancer's forwarding rule: %v", err)
 	}
 	// If the user asks for a specific static ip through the Service spec,
 	// check that we're actually using it.
@@ -791,19 +806,19 @@ func (g *Cloud) forwardingRuleNeedsUpdate(name, region string, loadBalancerIP st
 	// that matches the forwarding rule as well.
 	if loadBalancerIP != "" && loadBalancerIP != fwd.IPAddress {
 		klog.Infof("LoadBalancer ip for forwarding rule %v was expected to be %v, but was actually %v", fwd.Name, fwd.IPAddress, loadBalancerIP)
-		return true, true, fwd.IPAddress, nil
+		return true, true, fwd.SelfLink, fwd.IPAddress, nil
 	}
 
 	protocol, err := getProtocol(ports)
 	if err != nil {
-		return true, false, "", err
+		return true, false, "", "", err
 	}
 
 	newPortRange, err := loadBalancerPortRange(ports)
 	if err != nil {
 		// Err on the side of caution in case of errors. Caller should notice the error and retry.
 		// We never want to end up recreating resources because g api flaked.
-		return true, false, "", err
+		return true, false, "", "", err
 	}
 	newPorts := []string{}
 	if frPorts := getPorts(ports); len(frPorts) <= maxForwardedPorts && g.enableDiscretePortForwarding {
@@ -813,28 +828,28 @@ func (g *Cloud) forwardingRuleNeedsUpdate(name, region string, loadBalancerIP st
 	frEqualPorts := equalPorts(fwd.Ports, newPorts, fwd.PortRange, newPortRange, g.enableDiscretePortForwarding)
 	if !frEqualPorts {
 		klog.Infof("Forwarding rule port range / ports are not equal, old (port range: %v, ports: %v), new (port range: %v, ports: %v)", fwd.PortRange, fwd.Ports, newPortRange, newPorts)
-		return true, true, fwd.IPAddress, nil
+		return true, true, fwd.SelfLink, fwd.IPAddress, nil
 	}
 
 	if string(protocol) != fwd.IPProtocol {
 		klog.Infof("LoadBalancer protocol for forwarding rule %v was expected to be %v, but was actually %v", fwd.Name, fwd.IPProtocol, string(protocol))
-		return true, true, fwd.IPAddress, nil
+		return true, true, fwd.SelfLink, fwd.IPAddress, nil
 	}
 
-	return true, false, fwd.IPAddress, nil
+	return true, false, fwd.SelfLink, fwd.IPAddress, nil
 }
 
 // Doesn't check whether the hosts have changed, since host updating is handled
 // separately.
-func (g *Cloud) targetPoolNeedsRecreation(name, region string, affinityType v1.ServiceAffinity) (exists bool, needsRecreation bool, err error) {
+func (g *Cloud) targetPoolNeedsRecreation(name, region string, affinityType v1.ServiceAffinity) (exists bool, tpSelfLinks string, needsRecreation bool, err error) {
 	tp, err := g.GetTargetPool(name, region)
 	if err != nil {
 		if isHTTPErrorCode(err, http.StatusNotFound) {
-			return false, true, nil
+			return false, "", true, nil
 		}
 		// Err on the side of caution in case of errors. Caller should notice the error and retry.
 		// We never want to end up recreating resources because g api flaked.
-		return true, false, fmt.Errorf("error getting load balancer's target pool: %v", err)
+		return true, "", false, fmt.Errorf("error getting load balancer's target pool: %v", err)
 	}
 	// TODO: If the user modifies their Service's session affinity, it *should*
 	// reflect in the associated target pool. However, currently not setting the
@@ -846,9 +861,9 @@ func (g *Cloud) targetPoolNeedsRecreation(name, region string, affinityType v1.S
 	// defined the defaults on either side.
 	if tp.SessionAffinity != "" && translateAffinityType(affinityType) != tp.SessionAffinity {
 		klog.Infof("LoadBalancer target pool %v changed affinity from %v to %v", name, tp.SessionAffinity, affinityType)
-		return true, true, nil
+		return true, tp.SelfLink, true, nil
 	}
-	return true, false, nil
+	return true, tp.SelfLink, false, nil
 }
 
 func (h *gceInstance) makeComparableHostPath() string {
@@ -963,19 +978,19 @@ func translateAffinityType(affinityType v1.ServiceAffinity) string {
 	}
 }
 
-func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports []v1.ServicePort, sourceRanges utilnet.IPNetSet) (exists bool, needsUpdate bool, err error) {
+func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports []v1.ServicePort, sourceRanges utilnet.IPNetSet) (exists bool, needsUpdate bool, selfLink string, err error) {
 	fw, err := g.GetFirewall(MakeFirewallName(name))
 	if err != nil {
 		if isHTTPErrorCode(err, http.StatusNotFound) {
-			return false, true, nil
+			return false, true, "", nil
 		}
-		return false, false, fmt.Errorf("error getting load balancer's firewall: %v", err)
+		return false, false, "", fmt.Errorf("error getting load balancer's firewall: %v", err)
 	}
 	if fw.Description != makeFirewallDescription(serviceName, ipAddress) {
-		return true, true, nil
+		return true, true, fw.SelfLink, nil
 	}
 	if len(fw.Allowed) != 1 || (fw.Allowed[0].IPProtocol != "tcp" && fw.Allowed[0].IPProtocol != "udp") {
-		return true, true, nil
+		return true, true, "", nil
 	}
 	// Make sure the allowed ports match.
 	portNums, portRanges, _ := getPortsAndProtocol(ports)
@@ -983,7 +998,7 @@ func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports [
 	// This is to prevent unnecessary noop updates to the firewall rule when the existing firewall rule is
 	// set up via the previous pattern using enumerated ports instead of port ranges.
 	if !equalStringSets(portNums, fw.Allowed[0].Ports) && !equalStringSets(portRanges, fw.Allowed[0].Ports) {
-		return true, true, nil
+		return true, true, "", nil
 	}
 
 	// The service controller already verified that the protocol matches on all ports, no need to check.
@@ -992,20 +1007,20 @@ func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports [
 		// This really shouldn't happen... GCE has returned something unexpected
 		klog.Warningf("Error parsing firewall SourceRanges: %v", fw.SourceRanges)
 		// We don't return the error, because we can hopefully recover from this by reconfiguring the firewall
-		return true, true, nil
+		return true, true, "", nil
 	}
 
 	if !sourceRanges.Equal(actualSourceRanges) {
-		return true, true, nil
+		return true, true, "", nil
 	}
 
 	destinationRanges := []string{ipAddress}
 
 	if !reflect.DeepEqual(destinationRanges, fw.DestinationRanges) {
-		return true, true, nil
+		return true, true, "", nil
 	}
 
-	return true, false, nil
+	return true, false, fw.SelfLink, nil
 }
 
 func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAddress, region, clusterID string, hosts []*gceInstance, hcName string, hcPort int32, isNodesHealthCheck bool) error {
@@ -1032,10 +1047,10 @@ func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAd
 	}
 	// Validate firewall fields.
 	if fw.Description != desc ||
-		len(fw.Allowed) != 1 ||
-		fw.Allowed[0].IPProtocol != string(ports[0].Protocol) ||
-		!equalStringSets(fw.Allowed[0].Ports, []string{strconv.Itoa(int(ports[0].Port))}) ||
-		!equalStringSets(fw.SourceRanges, sourceRanges.StringSlice()) {
+			len(fw.Allowed) != 1 ||
+			fw.Allowed[0].IPProtocol != string(ports[0].Protocol) ||
+			!equalStringSets(fw.Allowed[0].Ports, []string{strconv.Itoa(int(ports[0].Port))}) ||
+			!equalStringSets(fw.SourceRanges, sourceRanges.StringSlice()) {
 		klog.Warningf("Firewall %v exists but parameters have drifted - updating...", fwName)
 		if err := g.updateFirewall(svc, fwName, desc, ipAddress, sourceRanges, ports, hosts); err != nil {
 			klog.Warningf("Failed to reconcile firewall %v parameters.", fwName)
