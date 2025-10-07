@@ -31,6 +31,7 @@ import (
 	"time"
 
 	gcfg "gopkg.in/gcfg.v1"
+	restclient "k8s.io/client-go/rest"
 
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2"
@@ -43,6 +44,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 
+	svclbstatusclient "github.com/GoogleCloudPlatform/gke-networking-api/client/serviceloadbalancerstatus/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
@@ -209,6 +211,9 @@ type Cloud struct {
 
 	// enableRBSDefaultForL4NetLB disable Service controller from picking up services by default
 	enableRBSDefaultForL4NetLB bool
+
+	// enableServiceLBStatusCR enables the Service Load Balancer Status CRD support in GCE cloud provider
+	serviceLBStatusClient svclbstatusclient.Interface
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -868,6 +873,13 @@ func (g *Cloud) SetEnableDiscretePortForwarding(enabled bool) {
 
 func (g *Cloud) SetEnableRBSDefaultForL4NetLB(enabled bool) {
 	g.enableRBSDefaultForL4NetLB = enabled
+}
+
+func (g *Cloud) SetServiceLoadBalancerStatusCRDClient(kubeConfig *restclient.Config) {
+	client, err := svclbstatusclient.NewForConfig(kubeConfig)
+	if err != nil {
+		g.serviceLBStatusClient = client
+	}
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.

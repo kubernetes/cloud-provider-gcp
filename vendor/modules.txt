@@ -26,11 +26,12 @@ cloud.google.com/go/compute/metadata
 ## explicit; go 1.16
 github.com/Azure/go-ansiterm
 github.com/Azure/go-ansiterm/winterm
-# github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f
+# github.com/GoogleCloudPlatform/gke-networking-api v0.2.1-0.20250318085121-e88f4ed9f50a => github.com/08volt/gke-networking-api v0.2.1-0.20251009151344-cc8d454f80f8
 ## explicit; go 1.22.0
 github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1
 github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1alpha1
 github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1
+github.com/GoogleCloudPlatform/gke-networking-api/apis/serviceloadbalancerstatus/v1
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/fake
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/scheme
@@ -50,6 +51,9 @@ github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/scheme
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/typed/nodetopology/v1
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/typed/nodetopology/v1/fake
+github.com/GoogleCloudPlatform/gke-networking-api/client/serviceloadbalancerstatus/clientset/versioned
+github.com/GoogleCloudPlatform/gke-networking-api/client/serviceloadbalancerstatus/clientset/versioned/scheme
+github.com/GoogleCloudPlatform/gke-networking-api/client/serviceloadbalancerstatus/clientset/versioned/typed/serviceloadbalancerstatus/v1
 # github.com/GoogleCloudPlatform/k8s-cloud-provider v1.25.0
 ## explicit; go 1.20
 github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud
@@ -1642,3 +1646,4 @@ sigs.k8s.io/yaml
 # k8s.io/mount-utils => k8s.io/mount-utils v0.34.0
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.34.0
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.0
+# github.com/GoogleCloudPlatform/gke-networking-api => github.com/08volt/gke-networking-api v0.2.1-0.20251009151344-cc8d454f80f8

@@ -31,6 +31,7 @@ import (
 	"sync"
 
 	"cloud.google.com/go/compute/metadata"
+	svclbstatusclient "github.com/GoogleCloudPlatform/gke-networking-api/client/serviceloadbalancerstatus/clientset/versioned/fake"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/mock"
@@ -68,6 +69,7 @@ func fakeGCECloud(vals TestClusterValues) (*Cloud, error) {
 	gce.AlphaFeatureGate = NewAlphaFeatureGate([]string{})
 	gce.nodeInformerSynced = func() bool { return true }
 	gce.client = fake.NewSimpleClientset()
+	gce.serviceLBStatusClient = svclbstatusclient.NewSimpleClientset()
 	gce.eventRecorder = &record.FakeRecorder{}
 
 	mockGCE := gce.c.(*cloud.MockGCE)

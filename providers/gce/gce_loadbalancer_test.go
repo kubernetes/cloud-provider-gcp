@@ -22,8 +22,11 @@ package gce
 import (
 	"context"
 	"fmt"
+	"sort"
 	"testing"
 
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
@@ -101,6 +104,31 @@ func TestEnsureLoadBalancerCreatesExternalLb(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
 	assertExternalLbResources(t, gce, apiService, vals, nodeNames)
+	// Reconstruct the expected list of resource URLs.
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", apiService)
+	clusterID, err := gce.ClusterID.GetID()
+	require.NoError(t, err)
+
+	// Determine the names of all created resources.
+	fwName := MakeFirewallName(lbName)
+	hcName := MakeNodesHealthCheckName(clusterID)
+	hcFwName := MakeHealthCheckFirewallName(clusterID, hcName, true) // true for isNodesHealthCheck
+
+	// Build the expected self-link URLs for each resource.
+	expectedResourceURLs := []string{
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "firewalls", meta.GlobalKey(fwName)),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "firewalls", meta.GlobalKey(hcFwName)),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "httpHealthChecks", meta.GlobalKey(hcName)),
+		gce.targetPoolURL(lbName),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "forwardingRules", meta.RegionalKey(lbName, vals.Region)),
+	}
+
+	// Verify that the ServiceLoadBalancerStatus CR was updated with the correct URLs.
+	slbs, err := gce.serviceLBStatusClient.NetworkingV1().ServiceLoadBalancerStatuses(apiService.Namespace).Get(context.Background(), apiService.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, slbs)
+
+	assert.ElementsMatch(t, expectedResourceURLs, slbs.Status.GceResources)
 }
 
 func TestEnsureLoadBalancerCreatesInternalLb(t *testing.T) {
@@ -121,6 +149,41 @@ func TestEnsureLoadBalancerCreatesInternalLb(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
 	assertInternalLbResources(t, gce, apiService, vals, nodeNames)
+
+	// Reconstruct the expected list of resource URLs for an internal load balancer.
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", apiService)
+	clusterID, err := gce.ClusterID.GetID()
+	require.NoError(t, err)
+
+	// Determine resource names using the same logic as the controller.
+	// For the default test service, traffic is not local, so health checks are shared.
+	sharedHealthCheck := true
+	hcName := makeHealthCheckName(lbName, clusterID, sharedHealthCheck)
+	hcFwName := makeHealthCheckFirewallName(lbName, clusterID, sharedHealthCheck)
+	// Backend service is not shared by default.
+	sharedBackend := false
+	bsName := makeBackendServiceName(lbName, clusterID, sharedBackend, cloud.SchemeInternal, v1.ProtocolTCP, apiService.Spec.SessionAffinity)
+	fwName := MakeFirewallName(lbName)
+
+	// Build the expected self-link URLs for each resource.
+	expectedResourceURLs := []string{
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "healthChecks", meta.GlobalKey(hcName)),
+		gce.getBackendServiceLink(bsName), // Uses a specific helper for regional path
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "forwardingRules", meta.RegionalKey(lbName, vals.Region)),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "firewalls", meta.GlobalKey(fwName)),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "firewalls", meta.GlobalKey(hcFwName)),
+	}
+
+	// Verify that the ServiceLoadBalancerStatus CR was updated correctly.
+	slbs, err := gce.serviceLBStatusClient.NetworkingV1().ServiceLoadBalancerStatuses(apiService.Namespace).Get(context.Background(), apiService.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, slbs)
+
+	// Sort both slices for a consistent comparison.
+	sort.Strings(expectedResourceURLs)
+	sort.Strings(slbs.Status.LoadBalancer.NetworkResources)
+
+	assert.Equal(t, expectedResourceURLs, slbs.Status.LoadBalancer.NetworkResources)
 }
 
 func TestEnsureLoadBalancerDeletesExistingInternalLb(t *testing.T) {
@@ -296,7 +359,7 @@ func TestUpdateLoadBalancerMixedProtocols(t *testing.T) {
 
 	// create an external loadbalancer to simulate an upgrade scenario where the loadbalancer exists
 	// before the new controller is running and later the Service is updated
-	_, err = createExternalLoadBalancer(gce, apiService, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createExternalLoadBalancer(gce, apiService, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 
 	err = gce.UpdateLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
