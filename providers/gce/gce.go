@@ -30,8 +30,6 @@ import (
 	"sync"
 	"time"
 
-	gcfg "gopkg.in/gcfg.v1"
-
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -40,6 +38,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
 	"google.golang.org/api/option"
+	gcfg "gopkg.in/gcfg.v1"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 
@@ -209,6 +208,9 @@ type Cloud struct {
 
 	// enableRBSDefaultForL4NetLB disable Service controller from picking up services by default
 	enableRBSDefaultForL4NetLB bool
+
+	// enableL4LBServiceConditions enable conditions on service status
+	enableL4LBServiceConditions bool
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -868,6 +870,10 @@ func (g *Cloud) SetEnableDiscretePortForwarding(enabled bool) {
 
 func (g *Cloud) SetEnableRBSDefaultForL4NetLB(enabled bool) {
 	g.enableRBSDefaultForL4NetLB = enabled
+}
+
+func (g *Cloud) SetEnableL4LBServiceConditions(enabled bool) {
+	g.enableL4LBServiceConditions = enabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.

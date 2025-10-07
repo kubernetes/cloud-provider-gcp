@@ -32,6 +32,8 @@ import (
 	"github.com/google/go-cmp/cmp"
 	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
+	metaapi "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	cloudprovider "k8s.io/cloud-provider"
@@ -54,7 +56,7 @@ const (
 	labelGKESubnetworkName = "cloud.google.com/gke-node-pool-subnet"
 )
 
-func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
+func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.ServiceStatus, error) {
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-internal-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the ILB.
 	if existingFwdRule == nil && !hasFinalizer(svc, ILBFinalizerV1) && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
@@ -129,6 +131,8 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	g.sharedResourceLock.Lock()
 	defer g.sharedResourceLock.Unlock()
 
+	expectedConditions := append([]metav1.Condition(nil), svc.Status.Conditions...)
+
 	// Ensure health check exists before creating the backend service. The health check is shared
 	// if externalTrafficPolicy=Cluster.
 	sharedHealthCheck := !servicehelpers.RequestsOnlyLocalTraffic(svc)
@@ -142,7 +146,7 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	if err != nil {
 		return nil, err
 	}
-
+	metaapi.SetStatusCondition(&expectedConditions, NewHealthCheckCondition(hcName))
 	subnetworkURL := g.SubnetworkURL()
 	// Any subnet specified using the subnet annotation will be picked up and reflected in the forwarding rule.
 	// Removing the annotation will set the forwarding rule to use the default subnet and result in a VIP change.
@@ -192,6 +196,7 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 		Subnetwork: subnetworkURL,
 		Network:    g.networkURL,
 	}
+
 	if options.AllowGlobalAccess {
 		newFwdRule.AllowGlobalAccess = options.AllowGlobalAccess
 	}
@@ -220,6 +225,7 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	if err != nil {
 		return nil, err
 	}
+	metaapi.SetStatusCondition(&expectedConditions, NewBackendServiceCondition(backendServiceName))
 
 	if fwdRuleDeleted || existingFwdRule == nil {
 		// existing rule has been deleted, pass in nil
@@ -233,10 +239,12 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	if err != nil {
 		return nil, err
 	}
+	metaapi.SetStatusCondition(&expectedConditions, NewForwardingRuleCondition(loadBalancerName))
 
 	ipToUse = updatedFwdRule.IPAddress
 	// Ensure firewall rules if necessary
-	if err = g.ensureInternalFirewalls(loadBalancerName, ipToUse, clusterID, nm, svc, strconv.Itoa(int(hcPort)), sharedHealthCheck, nodes); err != nil {
+	err = g.ensureInternalFirewalls(loadBalancerName, ipToUse, clusterID, nm, svc, strconv.Itoa(int(hcPort)), sharedHealthCheck, nodes, &expectedConditions)
+	if err != nil {
 		return nil, err
 	}
 
@@ -257,8 +265,13 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	}
 	klog.V(6).Infof("Internal Loadbalancer for Service %s ensured, updating its state %v in metrics cache", nm, serviceState)
 
-	status := &v1.LoadBalancerStatus{}
-	status.Ingress = []v1.LoadBalancerIngress{{IP: updatedFwdRule.IPAddress}}
+	lbstatus := &v1.LoadBalancerStatus{}
+	lbstatus.Ingress = []v1.LoadBalancerIngress{{IP: updatedFwdRule.IPAddress}}
+
+	status := &v1.ServiceStatus{
+		LoadBalancer: *lbstatus,
+		Conditions:   expectedConditions,
+	}
 	return status, nil
 }
 
@@ -570,10 +583,13 @@ func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinat
 		g.raiseFirewallChangeNeededEvent(svc, FirewallToGCloudUpdateCmd(expectedFirewall, g.NetworkProjectID()))
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (g *Cloud) ensureInternalFirewalls(loadBalancerName, ipAddress, clusterID string, nm types.NamespacedName, svc *v1.Service, healthCheckPort string, sharedHealthCheck bool, nodes []*v1.Node) error {
+func (g *Cloud) ensureInternalFirewalls(loadBalancerName, ipAddress, clusterID string, nm types.NamespacedName, svc *v1.Service, healthCheckPort string, sharedHealthCheck bool, nodes []*v1.Node, conditions *[]metav1.Condition) error {
 	// First firewall is for ingress traffic
 	fwDesc := makeFirewallDescription(nm.String(), ipAddress)
 	_, portRanges, protocol := getPortsAndProtocol(svc.Spec.Ports)
@@ -581,15 +597,22 @@ func (g *Cloud) ensureInternalFirewalls(loadBalancerName, ipAddress, clusterID s
 	if err != nil {
 		return err
 	}
-	err = g.ensureInternalFirewall(svc, MakeFirewallName(loadBalancerName), fwDesc, ipAddress, sourceRanges.StringSlice(), portRanges, protocol, nodes, loadBalancerName)
+	fwName := MakeFirewallName(loadBalancerName)
+	err = g.ensureInternalFirewall(svc, fwName, fwDesc, ipAddress, sourceRanges.StringSlice(), portRanges, protocol, nodes, loadBalancerName)
 	if err != nil {
 		return err
 	}
+	metaapi.SetStatusCondition(conditions, NewFirewallCondition(fwName))
 
 	// Second firewall is for health checking nodes / services
 	fwHCName := makeHealthCheckFirewallName(loadBalancerName, clusterID, sharedHealthCheck)
 	hcSrcRanges := L4LoadBalancerSrcRanges()
-	return g.ensureInternalFirewall(svc, fwHCName, "", "", hcSrcRanges, []string{healthCheckPort}, v1.ProtocolTCP, nodes, "")
+	err = g.ensureInternalFirewall(svc, fwHCName, "", "", hcSrcRanges, []string{healthCheckPort}, v1.ProtocolTCP, nodes, "")
+	if err != nil {
+		return err
+	}
+	metaapi.SetStatusCondition(conditions, NewFirewallHealthCheckCondition(fwHCName))
+	return nil
 }
 
 func (g *Cloud) ensureInternalHealthCheck(name string, svcName types.NamespacedName, shared bool, path string, port int32) (*compute.HealthCheck, error) {
