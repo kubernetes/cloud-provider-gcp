@@ -960,6 +960,14 @@ EOF
 regional = ${MULTIMASTER}
 EOF
   fi
+# ManageFirewallRules indicates that the firewall
+# rules should be managed by the provider.
+  if [[ -n "${MANAGEFIREWALLRULES:-}" ]]; then
+    use_cloud_config="true"
+    cat <<EOF >>/etc/gce.conf
+manage-firewall-rules = ${MANAGEFIREWALLRULES}
+EOF
+  fi
   if [[ -n "${GCE_ALPHA_FEATURES:-}" ]]; then
     use_cloud_config="true"
     # split GCE_ALPHA_FEATURES into an array by comma.

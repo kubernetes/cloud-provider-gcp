@@ -89,6 +89,7 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 		networkURL:          vals.NetworkURL,
 		unsafeSubnetworkURL: vals.SubnetworkURL,
 		stackType:           vals.StackType,
+		manageFirewallRules: true,
 	}
 	c := cloud.NewMockGCE(&gceProjectRouter{gce})
 	gce.c = c

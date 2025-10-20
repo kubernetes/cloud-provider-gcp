@@ -1087,6 +1087,9 @@ func (g *Cloud) createFirewall(svc *v1.Service, name, desc, destinationIP string
 	if err != nil {
 		return err
 	}
+	if firewall == nil {
+		return nil
+	}
 	if err = g.CreateFirewall(firewall); err != nil {
 		if isHTTPErrorCode(err, http.StatusConflict) {
 			return nil
@@ -1105,6 +1108,9 @@ func (g *Cloud) updateFirewall(svc *v1.Service, name, desc, destinationIP string
 	if err != nil {
 		return err
 	}
+	if firewall == nil {
+		return nil
+	}
 
 	if err = g.PatchFirewall(firewall); err != nil {
 		if isHTTPErrorCode(err, http.StatusConflict) {
@@ -1120,6 +1126,10 @@ func (g *Cloud) updateFirewall(svc *v1.Service, name, desc, destinationIP string
 }
 
 func (g *Cloud) firewallObject(name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance) (*compute.Firewall, error) {
+	if !g.manageFirewallRules {
+		return nil, nil
+	}
+
 	// destinationIP can be empty string "" and this means that it is not set.
 	// GCE considers empty destinationRanges as "all" for ingress firewall-rules.
 	// Concatenate service ports into port ranges. This help to workaround the gce firewall limitation where only

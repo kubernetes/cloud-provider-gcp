@@ -210,6 +210,8 @@ type Cloud struct {
 	// externalInstanceGroupsPrefix if set, finds instance groups with
 	// the provided prefix and considers them for ILB backends.
 	externalInstanceGroupsPrefix string
+
+	manageFirewallRules bool
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -251,6 +253,12 @@ type ConfigGlobal struct {
 	// ExternalInstanceGroupsPrefix, when not-empty, is used to filter instance groups (from an external GCP Project)
 	// and include them in the backend for ILB.
 	ExternalInstanceGroupsPrefix string `gcfg:"external-instance-groups-prefix"`
+
+	// ManageFirewallRules should be set to true when the provider should create, delete, and
+	// update firewall rules. For instance, when a user does not have the permissions to
+	// create firewall rules (precreating the firewall rules), the rule creation should
+	// be skipped to avoid errors.
+	ManageFirewallRules bool `gcfg:"manage-firewall-rules"`
 }
 
 // ConfigFile is the struct used to parse the /etc/gce.conf configuration file.
@@ -286,6 +294,7 @@ type CloudConfig struct {
 	AlphaFeatureGate             *AlphaFeatureGate
 	StackType                    string
 	ExternalInstanceGroupsPrefix string
+	ManageFirewallRules          bool
 }
 
 func init() {
@@ -377,6 +386,7 @@ func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 		cloudConfig.NodeInstancePrefix = configFile.Global.NodeInstancePrefix
 		cloudConfig.AlphaFeatureGate = NewAlphaFeatureGate(configFile.Global.AlphaFeatures)
 		cloudConfig.ExternalInstanceGroupsPrefix = configFile.Global.ExternalInstanceGroupsPrefix
+		cloudConfig.ManageFirewallRules = configFile.Global.ManageFirewallRules
 	}
 
 	// retrieve projectID and zone
@@ -581,6 +591,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		projectsBasePath:             getProjectsBasePath(service.BasePath),
 		stackType:                    StackType(config.StackType),
 		externalInstanceGroupsPrefix: config.ExternalInstanceGroupsPrefix,
+		manageFirewallRules:          config.ManageFirewallRules,
 	}
 
 	gce.manager = &gceServiceManager{gce}
@@ -790,6 +801,11 @@ func (g *Cloud) SubnetworkURL() string {
 func (g *Cloud) IsLegacyNetwork() bool {
 	g.subnetworkURLAndIsLegacyNetworkInitializer.Do(g.initializeSubnetworkURLAndIsLegacyNetwork)
 	return g.unsafeIsLegacyNetwork
+}
+
+// ManageFirewallRules returns true if the provider is managing firewall rule creation, deletion, and updates.
+func (g *Cloud) ManageFirewallRules() bool {
+	return g.manageFirewallRules
 }
 
 // SetInformers sets up the zone handlers we need watching for node changes.

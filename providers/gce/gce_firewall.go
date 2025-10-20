@@ -42,6 +42,11 @@ func (g *Cloud) GetFirewall(name string) (*compute.Firewall, error) {
 
 // CreateFirewall creates the passed firewall
 func (g *Cloud) CreateFirewall(f *compute.Firewall) error {
+	// Skip the creation of firewall rules when they are unmanaged.
+	if !g.manageFirewallRules {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -51,6 +56,11 @@ func (g *Cloud) CreateFirewall(f *compute.Firewall) error {
 
 // DeleteFirewall deletes the given firewall rule.
 func (g *Cloud) DeleteFirewall(name string) error {
+	// Skip the deletion of firewall rules when they are unmanaged.
+	if !g.manageFirewallRules {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -60,6 +70,11 @@ func (g *Cloud) DeleteFirewall(name string) error {
 
 // UpdateFirewall applies the given firewall as an update to an existing service.
 func (g *Cloud) UpdateFirewall(f *compute.Firewall) error {
+	// Skip the update of firewall rules when they are unmanaged.
+	if !g.manageFirewallRules {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -69,6 +84,11 @@ func (g *Cloud) UpdateFirewall(f *compute.Firewall) error {
 
 // PatchFirewall applies the given firewall as an update to an existing service.
 func (g *Cloud) PatchFirewall(f *compute.Firewall) error {
+	// Skip the firewall rules patch when they are unmanaged.
+	if !g.manageFirewallRules {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
