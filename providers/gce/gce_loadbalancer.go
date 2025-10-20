@@ -159,6 +159,7 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 				WithType(v1.LoadBalancerPortsError).
 				WithStatus(metav1.ConditionTrue).
 				WithReason(v1.LoadBalancerPortsErrorReason).
+				WithLastTransitionTime(metav1.Now()).
 				WithMessage("LoadBalancer with multiple protocols are not supported"))
 		svcApply := corev1apply.Service(svc.Name, svc.Namespace).WithStatus(svcApplyStatus)
 		if _, errApply := g.client.CoreV1().Services(svc.Namespace).ApplyStatus(ctx, svcApply, metav1.ApplyOptions{FieldManager: "gce-cloud-controller", Force: true}); errApply != nil {
@@ -239,6 +240,7 @@ func (g *Cloud) UpdateLoadBalancer(ctx context.Context, clusterName string, svc 
 				WithType(v1.LoadBalancerPortsError).
 				WithStatus(metav1.ConditionTrue).
 				WithReason(v1.LoadBalancerPortsErrorReason).
+				WithLastTransitionTime(metav1.Now()).
 				WithMessage("LoadBalancer with multiple protocols are not supported"))
 		svcApply := corev1apply.Service(svc.Name, svc.Namespace).WithStatus(svcApplyStatus)
 		if _, errApply := g.client.CoreV1().Services(svc.Namespace).ApplyStatus(ctx, svcApply, metav1.ApplyOptions{FieldManager: "gce-cloud-controller", Force: true}); errApply != nil {
