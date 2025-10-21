@@ -30,30 +30,32 @@ import (
 
 // TestClusterValues holds the config values for the fake/test gce cloud object.
 type TestClusterValues struct {
-	ProjectID         string
-	Region            string
-	ZoneName          string
-	SecondaryZoneName string
-	ClusterID         string
-	ClusterName       string
-	OnXPN             bool
-	Regional          bool
-	NetworkURL        string
-	SubnetworkURL     string
-	StackType         StackType
+	ProjectID               string
+	Region                  string
+	ZoneName                string
+	SecondaryZoneName       string
+	ClusterID               string
+	ClusterName             string
+	OnXPN                   bool
+	Regional                bool
+	NetworkURL              string
+	SubnetworkURL           string
+	StackType               StackType
+	FirewallRulesManagement FirewallRulesManagement
 }
 
 // DefaultTestClusterValues Creates a reasonable set of default cluster values
 // for generating a new test fake GCE cloud instance.
 func DefaultTestClusterValues() TestClusterValues {
 	return TestClusterValues{
-		ProjectID:         "test-project",
-		Region:            "us-central1",
-		ZoneName:          "us-central1-b",
-		SecondaryZoneName: "us-central1-c",
-		ClusterID:         "test-cluster-id",
-		ClusterName:       "Test-Cluster-Name",
-		StackType:         clusterStackIPV4,
+		ProjectID:               "test-project",
+		Region:                  "us-central1",
+		ZoneName:                "us-central1-b",
+		SecondaryZoneName:       "us-central1-c",
+		ClusterID:               "test-cluster-id",
+		ClusterName:             "Test-Cluster-Name",
+		StackType:               clusterStackIPV4,
+		FirewallRulesManagement: firewallRulesManagementEnabled,
 	}
 }
 
@@ -75,20 +77,21 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 		panic(err)
 	}
 	gce := &Cloud{
-		region:              vals.Region,
-		service:             service,
-		managedZones:        []string{vals.ZoneName, vals.SecondaryZoneName},
-		localZone:           vals.ZoneName,
-		projectID:           vals.ProjectID,
-		networkProjectID:    vals.ProjectID,
-		ClusterID:           fakeClusterID(vals.ClusterID),
-		onXPN:               vals.OnXPN,
-		metricsCollector:    newLoadBalancerMetrics(),
-		projectsBasePath:    getProjectsBasePath(service.BasePath),
-		regional:            vals.Regional,
-		networkURL:          vals.NetworkURL,
-		unsafeSubnetworkURL: vals.SubnetworkURL,
-		stackType:           vals.StackType,
+		region:                  vals.Region,
+		service:                 service,
+		managedZones:            []string{vals.ZoneName, vals.SecondaryZoneName},
+		localZone:               vals.ZoneName,
+		projectID:               vals.ProjectID,
+		networkProjectID:        vals.ProjectID,
+		ClusterID:               fakeClusterID(vals.ClusterID),
+		onXPN:                   vals.OnXPN,
+		metricsCollector:        newLoadBalancerMetrics(),
+		projectsBasePath:        getProjectsBasePath(service.BasePath),
+		regional:                vals.Regional,
+		networkURL:              vals.NetworkURL,
+		unsafeSubnetworkURL:     vals.SubnetworkURL,
+		stackType:               vals.StackType,
+		firewallRulesManagement: vals.FirewallRulesManagement,
 	}
 	c := cloud.NewMockGCE(&gceProjectRouter{gce})
 	gce.c = c
