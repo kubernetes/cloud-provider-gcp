@@ -42,19 +42,21 @@ import (
 	servicehelper "k8s.io/cloud-provider/service/helpers"
 )
 
-func createInternalLoadBalancer(gce *Cloud, svc *v1.Service, existingFwdRule *compute.ForwardingRule, nodeNames []string, clusterName, clusterID, zoneName string) (*v1.LoadBalancerStatus, error) {
+func createInternalLoadBalancer(gce *Cloud, svc *v1.Service, existingFwdRule *compute.ForwardingRule, nodeNames []string, clusterName, clusterID, zoneName string) (*v1.LoadBalancerStatus, []string, error) {
 	nodes, err := createAndInsertNodes(gce, nodeNames, zoneName)
 	if err != nil {
 		return nil, err
 	}
 
-	return gce.ensureInternalLoadBalancer(
+	lb, urls, err := gce.ensureInternalLoadBalancer(
 		clusterName,
 		clusterID,
 		svc,
 		existingFwdRule,
 		nodes,
 	)
+
+	return lb, urls, err
 }
 
 func TestEnsureInternalBackendServiceUpdates(t *testing.T) {
@@ -79,7 +81,6 @@ func TestEnsureInternalBackendServiceUpdates(t *testing.T) {
 	err = gce.ensureInternalBackendService(bsName, "description", svc.Spec.SessionAffinity, cloud.SchemeInternal, "TCP", igLinks, "")
 	require.NoError(t, err)
 
-	// Update the Internal Backend Service with a new ServiceAffinity
 	err = gce.ensureInternalBackendService(bsName, "description", v1.ServiceAffinityNone, cloud.SchemeInternal, "TCP", igLinks, "")
 	require.NoError(t, err)
 
@@ -381,10 +382,29 @@ func TestEnsureInternalLoadBalancer(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, urls, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
 	assertInternalLbResources(t, gce, svc, vals, nodeNames)
+
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+	sharedHealthCheck := !servicehelper.RequestsOnlyLocalTraffic(svc)
+	hcName := makeHealthCheckName(lbName, vals.ClusterID, sharedHealthCheck)
+	_, _, protocol := getPortsAndProtocol(svc.Spec.Ports)
+	sharedBackend := shareBackendService(svc)
+	bsName := makeBackendServiceName(lbName, vals.ClusterID, sharedBackend, cloud.SchemeInternal, protocol, svc.Spec.SessionAffinity)
+	fwName := MakeFirewallName(lbName)
+	fwHCName := makeHealthCheckFirewallName(lbName, vals.ClusterID, sharedHealthCheck)
+	expectedURLs := []string{
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "healthChecks", meta.GlobalKey(hcName)),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "backendServices", meta.RegionalKey(bsName, vals.Region)),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "forwardingRules", meta.RegionalKey(lbName, vals.Region)),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "firewalls", meta.GlobalKey(fwName)),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "firewalls", meta.GlobalKey(fwHCName)),
+	}
+	sort.Strings(resourceURLs)
+	sort.Strings(expectedURLs)
+	assert.Equal(t, expectedURLs, resourceURLs)
 }
 
 func TestEnsureInternalLoadBalancerDeprecatedAnnotation(t *testing.T) {
@@ -476,7 +496,7 @@ func TestEnsureInternalLoadBalancerWithExistingResources(t *testing.T) {
 	err = gce.ensureInternalBackendService(bsName, bsDescription, svc.Spec.SessionAffinity, cloud.SchemeInternal, "TCP", igLinks, existingHC.SelfLink)
 	require.NoError(t, err)
 
-	_, err = createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 }
 
@@ -539,7 +559,7 @@ func TestEnsureInternalLoadBalancerClearPreviousResources(t *testing.T) {
 	gce.CreateRegionBackendService(existingBS, gce.region)
 	existingFwdRule.BackendService = cloud.SelfLink(meta.VersionGA, vals.ProjectID, "backendServices", meta.RegionalKey(existingBS.Name, gce.region))
 
-	_, err = createInternalLoadBalancer(gce, svc, existingFwdRule, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createInternalLoadBalancer(gce, svc, existingFwdRule, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 
 	// Expect new resources with the correct attributes to be created
@@ -581,7 +601,7 @@ func TestEnsureInternalLoadBalancerHealthCheckConfigurable(t *testing.T) {
 	existingHC.CheckIntervalSec = gceHcCheckIntervalSeconds * 10
 	gce.CreateHealthCheck(existingHC)
 
-	_, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 
 	healthcheck, err := gce.GetHealthCheck(hcName)
@@ -601,7 +621,7 @@ func TestUpdateInternalLoadBalancerBackendServices(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	_, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 
 	// BackendService exists prior to updateInternalLoadBalancer call, but has
@@ -660,7 +680,7 @@ func TestUpdateInternalLoadBalancerNodes(t *testing.T) {
 	nodes, err := createAndInsertNodes(gce, node1Name, vals.ZoneName)
 	require.NoError(t, err)
 
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, _, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	assert.NoError(t, err)
 
 	// Replace the node in initial zone; add new node in a new zone.
@@ -729,7 +749,7 @@ func TestUpdateInternalLoadBalancerNodesWithEmptyZone(t *testing.T) {
 	nodes, err := createAndInsertNodes(gce, node1Name, vals.ZoneName)
 	require.NoError(t, err)
 
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, _, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	assert.NoError(t, err)
 
 	// Ensure Node has been added to instance group
@@ -756,7 +776,7 @@ func TestUpdateInternalLoadBalancerNodesWithEmptyZone(t *testing.T) {
 		Description:         fmt.Sprintf(`{"kubernetes.io/service-name":"%s"}`, types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}.String()),
 	}
 
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
+	_, _, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
 	assert.NoError(t, err)
 
 	// Expect load balancer to not have deleted node test-node-1
@@ -776,7 +796,7 @@ func TestEnsureInternalLoadBalancerDeleted(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	_, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 
 	err = gce.ensureInternalLoadBalancerDeleted(vals.ClusterName, vals.ClusterID, svc)
@@ -795,7 +815,7 @@ func TestSkipInstanceGroupDeletion(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	_, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 
 	gce.AlphaFeatureGate = NewAlphaFeatureGate([]string{AlphaFeatureSkipIGsManagement})
@@ -818,7 +838,7 @@ func TestEnsureInternalLoadBalancerDeletedTwiceDoesNotError(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 
 	err = gce.ensureInternalLoadBalancerDeleted(vals.ClusterName, vals.ClusterID, svc)
@@ -843,7 +863,7 @@ func TestEnsureInternalLoadBalancerWithSpecialHealthCheck(t *testing.T) {
 	svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createInternalLoadBalancer(gce, svc, nil, []string{nodeName}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, []string{nodeName}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
 
@@ -954,7 +974,7 @@ func TestEnsureInternalFirewallDeletesLegacyFirewall(t *testing.T) {
 	}
 
 	// Now ensure the firewall again with the correct name to simulate a sync after updating to new code.
-	err = gce.ensureInternalFirewall(
+	_, err = gce.ensureInternalFirewall(
 		svc,
 		fwName,
 		"firewall with new name",
@@ -977,7 +997,7 @@ func TestEnsureInternalFirewallDeletesLegacyFirewall(t *testing.T) {
 	require.NotNil(t, existingLegacyFirewall)
 
 	// Now ensure the firewall again to simulate a second sync where the old rule will be deleted.
-	err = gce.ensureInternalFirewall(
+	_, err = gce.ensureInternalFirewall(
 		svc,
 		fwName,
 		"firewall with new name",
@@ -1088,7 +1108,7 @@ func TestEnsureLoadBalancerDeletedSucceedsOnXPN(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	_, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 
 	c.MockFirewalls.DeleteHook = mock.DeleteFirewallsUnauthorizedErrHook
@@ -1112,7 +1132,7 @@ func TestEnsureInternalInstanceGroupsDeleted(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	_, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 
 	c.MockZones.ListHook = mock.ListZonesInternalErrHook
@@ -1232,7 +1252,7 @@ func TestEnsureInternalLoadBalancerErrors(t *testing.T) {
 			}
 			_, err = gce.client.CoreV1().Services(params.service.Namespace).Create(context.TODO(), params.service, metav1.CreateOptions{})
 			require.NoError(t, err)
-			status, err := gce.ensureInternalLoadBalancer(
+			status, _, err := gce.ensureInternalLoadBalancer(
 				params.clusterName,
 				params.clusterID,
 				params.service,
@@ -1396,7 +1416,7 @@ func TestEnsureInternalLoadBalancerSubsetting(t *testing.T) {
 				gce.CreateRegionForwardingRule(existingFwdRule, gce.region)
 			}
 			gotErrorMsg := ""
-			status, err := createInternalLoadBalancer(gce, svc, existingFwdRule, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+			status, _, err := createInternalLoadBalancer(gce, svc, existingFwdRule, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 			if err != nil {
 				gotErrorMsg = err.Error()
 			}
@@ -1435,7 +1455,7 @@ func TestEnsureInternalLoadBalancerDeletedSubsetting(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
@@ -1481,7 +1501,7 @@ func TestEnsureInternalLoadBalancerUpdateSubsetting(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	assert.NoError(t, err)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
@@ -1533,7 +1553,7 @@ func TestEnsureInternalLoadBalancerGlobalAccess(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 
 	if err != nil {
@@ -1592,7 +1612,7 @@ func TestEnsureInternalLoadBalancerDisableGlobalAccess(t *testing.T) {
 	require.NoError(t, err)
 	svc.Annotations[ServiceAnnotationILBAllowGlobalAccess] = "true"
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
 	}
@@ -1641,7 +1661,7 @@ func TestGlobalAccessChangeScheme(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
@@ -1850,7 +1870,7 @@ func TestEnsureInternalLoadBalancerCustomSubnet(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 
 	if err != nil {
@@ -1971,7 +1991,7 @@ func TestEnsureInternalFirewallPortRanges(t *testing.T) {
 	destinationIP := "10.1.2.3"
 	sourceRange := []string{"10.0.0.0/20"}
 	// Manually create a firewall rule with the legacy name - lbName
-	err = gce.ensureInternalFirewall(
+	_, err = gce.ensureInternalFirewall(
 		svc,
 		fwName,
 		"firewall with legacy name",
@@ -2008,7 +2028,7 @@ func TestEnsureInternalFirewallDestinations(t *testing.T) {
 	destinationIP := "10.1.2.3"
 	sourceRange := []string{"10.0.0.0/20"}
 
-	err = gce.ensureInternalFirewall(
+	_, err = gce.ensureInternalFirewall(
 		svc,
 		fwName,
 		"firewall with legacy name",
@@ -2028,7 +2048,7 @@ func TestEnsureInternalFirewallDestinations(t *testing.T) {
 
 	newDestinationIP := "20.1.2.3"
 
-	err = gce.ensureInternalFirewall(
+	_, err = gce.ensureInternalFirewall(
 		svc,
 		fwName,
 		"firewall with legacy name",
@@ -2065,7 +2085,7 @@ func TestEnsureInternalLoadBalancerFinalizer(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	require.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
 	assertInternalLbResources(t, gce, svc, vals, nodeNames)
@@ -2101,7 +2121,7 @@ func TestEnsureLoadBalancerSkipped(t *testing.T) {
 	svc.Finalizers = append(svc.Finalizers, ILBFinalizerV2)
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.EqualError(t, err, cloudprovider.ImplementedElsewhere.Error())
 	// No loadbalancer resources will be created due to the ILB Feature Gate
 	assert.Empty(t, status)
@@ -2122,7 +2142,7 @@ func TestEnsureLoadBalancerPartialDelete(t *testing.T) {
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	require.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
 	assertInternalLbResources(t, gce, svc, vals, nodeNames)
@@ -2180,7 +2200,7 @@ func TestEnsureInternalLoadBalancerModifyProtocol(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
 	}
@@ -2229,7 +2249,7 @@ func TestEnsureInternalLoadBalancerAllPorts(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
-	status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
 	}
@@ -2421,7 +2441,7 @@ func TestEnsureInternalLoadBalancerClass(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Create ILB
-		status, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+		status, _, err := createInternalLoadBalancer(gce, svc, nil, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 		if tc.shouldProcess {
 			assert.NoError(t, err)
 			assert.NotEmpty(t, status.Ingress)

@@ -477,19 +477,21 @@ func TestDeleteAddressWithWrongTier(t *testing.T) {
 	}
 }
 
-func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string, clusterName, clusterID, zoneName string) (*v1.LoadBalancerStatus, error) {
+func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string, clusterName, clusterID, zoneName string) (*v1.LoadBalancerStatus, []string, error) {
 	nodes, err := createAndInsertNodes(gce, nodeNames, zoneName)
 	if err != nil {
-		return nil, err
+		return nil, []string{}, err
 	}
 
-	return gce.ensureExternalLoadBalancer(
+	lb, resourcesURLs, err := gce.ensureExternalLoadBalancer(
 		clusterName,
 		clusterID,
 		svc,
 		nil,
 		nodes,
 	)
+
+	return lb, resourcesURLs, err
 }
 
 func TestShouldNotRecreateLBWhenNetworkTiersMismatch(t *testing.T) {
@@ -554,7 +556,7 @@ func TestShouldNotRecreateLBWhenNetworkTiersMismatch(t *testing.T) {
 		},
 	} {
 		tc.mutateSvc(svc)
-		status, err := gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+		status, _, err := gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 		if tc.expectError {
 			if err == nil {
 				t.Errorf("for test case %q, expect errror != nil, but got %v", tc.desc, err)
@@ -570,6 +572,7 @@ func TestShouldNotRecreateLBWhenNetworkTiersMismatch(t *testing.T) {
 		if fwdRule.NetworkTier != tc.expectNetTier {
 			t.Fatalf("for test case %q, expect fwdRule.NetworkTier == %q, got %v ", tc.desc, tc.expectNetTier, fwdRule.NetworkTier)
 		}
+
 		assertExternalLbResources(t, gce, svc, vals, nodeNames)
 	}
 }
@@ -586,9 +589,26 @@ func TestEnsureExternalLoadBalancer(t *testing.T) {
 	svc := fakeLoadbalancerService("")
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, resourcesURLs, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, status.Ingress)
+
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+	fwName := MakeFirewallName(lbName)
+	hcName := MakeNodesHealthCheckName(vals.ClusterID)
+	hcFwName := MakeHealthCheckFirewallName(vals.ClusterID, hcName, true)
+
+	expectedURLs := []string{
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "firewalls", meta.GlobalKey(fwName)),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "firewalls", meta.GlobalKey(hcFwName)),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "httpHealthChecks", meta.GlobalKey(hcName)),
+		gce.targetPoolURL(lbName),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "forwardingRules", meta.RegionalKey(lbName, vals.Region)),
+	}
+	assert.ElementsMatch(t, expectedURLs, resourcesURLs)
+
+	pool, err := gce.GetTargetPool(lbName, gce.region)
+	require.NoError(t, err)
 
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -611,7 +631,7 @@ func TestUpdateExternalLoadBalancer(t *testing.T) {
 	svc := fakeLoadbalancerService("")
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	_, err = createExternalLoadBalancer(gce, svc, []string{nodeName}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createExternalLoadBalancer(gce, svc, []string{nodeName}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -693,7 +713,7 @@ func TestEnsureExternalLoadBalancerDeleted(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 
 	require.NoError(t, err)
-	_, err = createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
@@ -757,7 +777,7 @@ func TestLoadBalancerWrongTierResourceDeletion(t *testing.T) {
 	err = gce.ReserveRegionAddress(addressObj, gce.region)
 	require.NoError(t, err)
 
-	_, err = createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	require.NoError(t, err)
 
 	// Expect forwarding rule tier to not be Standard
@@ -787,7 +807,7 @@ func TestEnsureExternalLoadBalancerFailsIfInvalidNetworkTier(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, _, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	require.Error(t, err)
 	assert.EqualError(t, err, errStrUnsupportedTier)
 }
@@ -804,7 +824,7 @@ func TestEnsureExternalLoadBalancerFailsWithNoNodes(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, []*v1.Node{})
+	_, _, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, []*v1.Node{})
 	require.Error(t, err)
 	assert.EqualError(t, err, errStrLbNoHosts)
 }
@@ -871,7 +891,7 @@ func TestEnsureExternalLoadBalancerRBSAnnotation(t *testing.T) {
 			svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+			_, _, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 			if tc.wantError != nil {
 				assert.EqualError(t, err, (*tc.wantError).Error())
 			} else {
@@ -968,7 +988,7 @@ func TestEnsureExternalLoadBalancerRBSFinalizer(t *testing.T) {
 			svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+			_, _, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 			if tc.wantError != nil {
 				assert.EqualError(t, err, (*tc.wantError).Error())
 			} else {
@@ -1048,7 +1068,7 @@ func TestDeleteExternalLoadBalancerWithFinalizer(t *testing.T) {
 			svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+			_, _, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 			if err != nil {
 				assert.NoError(t, err, "Should not return an error "+desc)
 			}
@@ -1112,7 +1132,7 @@ func TestEnsureExternalLoadBalancerExistingFwdRule(t *testing.T) {
 			svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, tc.existingForwardingRule, nodes)
+			_, _, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, tc.existingForwardingRule, nodes)
 			if tc.wantError != nil {
 				assert.EqualError(t, err, (*tc.wantError).Error())
 			} else {
@@ -1133,7 +1153,7 @@ func TestForwardingRuleNeedsUpdate(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	status, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	require.NotNil(t, status)
 	require.NoError(t, err)
 
@@ -1197,7 +1217,7 @@ func TestForwardingRuleNeedsUpdate(t *testing.T) {
 		},
 	} {
 		t.Run(desc, func(t *testing.T) {
-			exists, needsUpdate, ipAddress, err := gce.forwardingRuleNeedsUpdate(lbName, vals.Region, tc.lbIP, tc.ports)
+			exists, needsUpdate, _, ipAddress, err := gce.forwardingRuleNeedsUpdate(lbName, vals.Region, tc.lbIP, tc.ports)
 			assert.Equal(t, tc.exists, exists, "'exists' didn't return as expected "+desc)
 			assert.Equal(t, tc.needsUpdate, needsUpdate, "'needsUpdate' didn't return as expected "+desc)
 			assert.Equal(t, tc.expectIPAddr, ipAddress, "'ipAddress' didn't return as expected "+desc)
@@ -1526,7 +1546,7 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 			err = createForwardingRule(gce, frName, serviceName, gce.region, ipAddr, target, ports, cloud.NetworkTierStandard, tc.discretePortForwarding)
 			assert.NoError(t, err)
 
-			exists, needsUpdate, _, err := gce.forwardingRuleNeedsUpdate(frName, vals.Region, newlbIP, newPorts)
+			exists, needsUpdate, _, _, err := gce.forwardingRuleNeedsUpdate(frName, vals.Region, newlbIP, newPorts)
 			assert.Equal(t, true, exists, "'exists' didn't return as expected "+tc.desc)
 			assert.Equal(t, tc.needsUpdate, needsUpdate, "'needsUpdate' didn't return as expected "+tc.desc)
 			if tc.expectError {
@@ -1564,7 +1584,7 @@ func TestTargetPoolAddsAndRemoveInstancesInBatches(t *testing.T) {
 	require.NoError(t, err)
 
 	nodeName := "default-node"
-	_, err = createExternalLoadBalancer(gce, svc, []string{nodeName}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createExternalLoadBalancer(gce, svc, []string{nodeName}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
 
 	// Insert large number of nodes to test batching.
@@ -1662,7 +1682,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 		{Name: "port7", Protocol: v1.ProtocolTCP, Port: int32(88), TargetPort: intstr.FromInt(87)},
 	}
 
-	status, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	status, _, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	require.NotNil(t, status)
 	require.NoError(t, err)
 	svcName := "/" + svc.ObjectMeta.Name
@@ -1875,7 +1895,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 			c := gce.c.(*cloud.MockGCE)
 			c.MockFirewalls.GetHook = tc.getHook
 
-			exists, needsUpdate, err := gce.firewallNeedsUpdate(
+			exists, needsUpdate, _, err := gce.firewallNeedsUpdate(
 				tc.lbName,
 				svcName,
 				tc.ipAddr,
@@ -1925,7 +1945,7 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	status, err := gce.ensureExternalLoadBalancer(
+	status, _, err := gce.ensureExternalLoadBalancer(
 		vals.ClusterName,
 		vals.ClusterID,
 		svc,
@@ -1955,7 +1975,15 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
 	require.Equal(t, tag, pool.CreationTimestamp)
-	err = gce.ensureTargetPoolAndHealthCheck(true, true, svc, lbName, clusterID, ipAddr, hosts, hcToCreate, hcToDelete)
+	resourceURLs, err := gce.ensureTargetPoolAndHealthCheck(true, true, svc, lbName, clusterID, ipAddr, hosts, hcToCreate, hcToDelete)
+	hcName := MakeNodesHealthCheckName(vals.ClusterID)
+	hcFwName := MakeHealthCheckFirewallName(vals.ClusterID, hcName, true)
+	expectedURLs := []string{
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "firewalls", meta.GlobalKey(hcFwName)),
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "httpHealthChecks", meta.GlobalKey(hcName)),
+		gce.targetPoolURL(lbName),
+	}
+	assert.ElementsMatch(t, expectedURLs, resourceURLs)
 	assert.NoError(t, err)
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
@@ -1973,15 +2001,20 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	manyHostNames := nodeNames(manyNodes)
 	manyHosts, err := gce.getInstancesByNames(manyHostNames)
 	require.NoError(t, err)
-	err = gce.ensureTargetPoolAndHealthCheck(true, true, svc, lbName, clusterID, ipAddr, manyHosts, hcToCreate, hcToDelete)
+	resourceURLs, err = gce.ensureTargetPoolAndHealthCheck(true, true, svc, lbName, clusterID, ipAddr, manyHosts, hcToCreate, hcToDelete)
 	assert.NoError(t, err)
 
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
 	assert.Equal(t, maxTargetPoolCreateInstances+1, len(pool.Instances))
 
-	err = gce.ensureTargetPoolAndHealthCheck(true, false, svc, lbName, clusterID, ipAddr, hosts, hcToCreate, hcToDelete)
+	resourceURLs, err = gce.ensureTargetPoolAndHealthCheck(true, false, svc, lbName, clusterID, ipAddr, hosts, hcToCreate, hcToDelete)
 	assert.NoError(t, err)
+	expectedUpdateURLs := []string{
+		cloud.SelfLink(meta.VersionGA, vals.ProjectID, "httpHealthChecks", meta.GlobalKey(hcName)),
+		gce.targetPoolURL(lbName),
+	}
+	assert.ElementsMatch(t, expectedUpdateURLs, resourceURLs)
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(pool.Instances))
@@ -2054,7 +2087,7 @@ func TestEnsureExternalLoadBalancerDeletedSucceedsOnXPN(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, _, err = createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	require.NoError(t, err)
 
 	c := gce.c.(*cloud.MockGCE)
@@ -2178,7 +2211,7 @@ func TestEnsureExternalLoadBalancerErrors(t *testing.T) {
 			if tc.injectMock != nil {
 				tc.injectMock(gce.c.(*cloud.MockGCE))
 			}
-			status, err := gce.ensureExternalLoadBalancer(
+			status, _, err := gce.ensureExternalLoadBalancer(
 				params.clusterName,
 				params.clusterID,
 				params.service,
@@ -2560,7 +2593,7 @@ func TestEnsureExternalLoadBalancerClass(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Create NetLB
-		status, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+		status, _, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 		if tc.shouldProcess {
 			assert.NoError(t, err)
 			require.NotNil(t, status)

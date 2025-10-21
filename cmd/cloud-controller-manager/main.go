@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/cloud-provider-gcp/providers/gce"
-	_ "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/cloud-provider/app"
 	"k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/names"
@@ -67,6 +66,10 @@ var enableDiscretePortForwarding bool
 // LoadBalancerClass
 var enableRBSDefaultForL4NetLB bool
 
+// enableServiceLBStatusCR is bound to a command-line flag. When true, it enables
+// the Service Load Balancer Status CRD support in GCE cloud provider.
+var enableServiceLBStatusCR bool
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
@@ -85,6 +88,7 @@ func main() {
 	cloudProviderFS.BoolVar(&enableMultiProject, "enable-multi-project", false, "Enables project selection from Node providerID for GCE API calls. CAUTION: Only enable if Node providerID is configured by a trusted source.")
 	cloudProviderFS.BoolVar(&enableDiscretePortForwarding, "enable-discrete-port-forwarding", false, "Enables forwarding of individual ports instead of port ranges for GCE external load balancers.")
 	cloudProviderFS.BoolVar(&enableRBSDefaultForL4NetLB, "enable-rbs-default-l4-netlb", false, "Enables RBS defaulting for GCE L4 NetLB")
+	cloudProviderFS.BoolVar(&enableServiceLBStatusCR, "enable-service-lb-status-cr", false, "Enables Service LB Status CR for GCE services")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
@@ -170,6 +174,21 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 			klog.Fatalf("enable-rbs-default-l4-netlb requires GCE cloud provider, but got %T", cloud)
 		}
 		gceCloud.SetEnableRBSDefaultForL4NetLB(true)
+	}
+
+	if enableServiceLBStatusCR {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			// Fail-fast: If enableServiceLBStatusCR is set, the cloud
+			// provider MUST be GCE.
+			klog.Fatalf("enable-service-lb-status-cr requires GCE cloud provider, but got %T", cloud)
+		}
+
+		err := gceCloud.InitializeServiceLoadBalancerStatusCRD(config.Kubeconfig)
+		if err != nil {
+			klog.Fatalf("could not initialize service lb status crd")
+		}
+		klog.Info("Service Load Balancer Status CRD support enabled")
 	}
 
 	return cloud

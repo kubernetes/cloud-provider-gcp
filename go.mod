@@ -32,7 +32,7 @@ require (
 )
 
 require (
-	github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f
+	github.com/GoogleCloudPlatform/gke-networking-api v0.2.1-0.20250318085121-e88f4ed9f50a
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.34.0
@@ -179,3 +179,5 @@ replace (
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.34.0
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.0
 )
+
+replace github.com/GoogleCloudPlatform/gke-networking-api => github.com/08volt/gke-networking-api v0.2.1-0.20251009151344-cc8d454f80f8
