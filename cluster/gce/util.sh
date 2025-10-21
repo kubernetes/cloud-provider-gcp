@@ -1190,6 +1190,7 @@ KUBE_DOCKER_REGISTRY: $(yaml-quote "${KUBE_DOCKER_REGISTRY:-}")
 KUBE_ADDON_REGISTRY: $(yaml-quote "${KUBE_ADDON_REGISTRY:-}")
 MULTIZONE: $(yaml-quote "${MULTIZONE:-}")
 MULTIMASTER: $(yaml-quote "${MULTIMASTER:-}")
+FIREWALLRULESMANAGEMENT: $(yaml-quote "${FIREWALLRULESMANAGEMENT:-}")
 NON_MASQUERADE_CIDR: $(yaml-quote "${NON_MASQUERADE_CIDR:-}")
 ENABLE_DEFAULT_STORAGE_CLASS: $(yaml-quote "${ENABLE_DEFAULT_STORAGE_CLASS:-}")
 # (TODO/cloud-provider-gcp): Need to figure out how to inject this
