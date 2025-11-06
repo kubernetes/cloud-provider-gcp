@@ -38,10 +38,6 @@ find_files() {
         -wholename './output' \
         -o -wholename './.git' \
         -o -wholename './_artifacts' \
-        -o -wholename './bazel-bin' \
-        -o -wholename './bazel-cloud-provider-gcp' \
-        -o -wholename './bazel-out' \
-        -o -wholename './bazel-testlogs' \
         -o -wholename './_gopath' \
         -o -wholename './release' \
         -o -wholename '*/vendor/*' \
@@ -60,4 +56,3 @@ if [[ -n "${diff}" ]]; then
   echo "Run ./tools/update-gofmt.sh" >&2
   exit 1
 fi
-
