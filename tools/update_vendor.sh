@@ -23,8 +23,23 @@ cd "$(pwd -P)"
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
+# rebuild go.work
+cat go.mod | grep '^go' > go.work
+# On purpose ignoring ./test here because its not used via bazel and ginkgo would break gazelle.
+go work use .
+go work use ./providers
+
+# Copy over replace directives from go.mod to go.work
+echo -e "\nreplace (" >> go.work
+cat go.mod | grep '=>' | sort | uniq | grep -v "k8s.io/cloud-provider-gcp/providers" >> go.work
+echo -e ")" >> go.work
+
+# sync go.md of providers
+go work sync
+
 # update vendor/
-go mod vendor
+go work vendor
+
 # remove repo-originated BUILD files
 find vendor -type f \( \
     -name BUILD \
@@ -33,11 +48,13 @@ find vendor -type f \( \
   \) -delete
 
 # clean up unused dependencies
+(cd providers && go mod tidy)
+(cd test/e2e && go mod tidy)
 go mod tidy
+
 # create a symlink in vendor directory pointing cloud-provider-gcp/providers to the //providers.
 # This lets other packages and tools use the local staging components as if they were vendored.
-rm -fr "${KUBE_ROOT}/vendor/k8s.io/cloud-provider-gcp/providers"
-ln -s "../../../providers" "${KUBE_ROOT}/vendor/k8s.io/cloud-provider-gcp/providers"
 
 # restore BUILD files in vendor/
+# Note: Workaround for vendor/github.com/onsi/ginkgo/v2/ginkgo to use `BUILD.bazel` because it contains a directory named `build`.
 bazel run //:gazelle
