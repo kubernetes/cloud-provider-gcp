@@ -1,6 +1,6 @@
 ARG GOARCH="amd64"
 
-FROM golang:1.24.5 AS builder
+FROM golang:1.25.4 AS builder
 # golang envs
 ARG GOARCH="amd64"
 ARG GOOS=linux
