@@ -13,7 +13,7 @@ http_archive(
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
-    name = "python_3_11",
+    name = "python_3_9",
     # Available versions are listed in @rules_python//python:versions.bzl.
     ignore_root_user_error = True,
     python_version = "3.9",
