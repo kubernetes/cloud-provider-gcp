@@ -110,13 +110,13 @@ func (i Ident) ReplaceSuffix(orig, new string) Ident {
 	return New(strings.TrimSuffix(i.Original, orig) + new)
 }
 
-//UnmarshalText unmarshalls byte array into the Ident
+// UnmarshalText unmarshalls byte array into the Ident
 func (i *Ident) UnmarshalText(data []byte) error {
 	(*i) = New(string(data))
 	return nil
 }
 
-//MarshalText marshals Ident into byte array
+// MarshalText marshals Ident into byte array
 func (i Ident) MarshalText() ([]byte, error) {
 	return []byte(i.Original), nil
 }

@@ -35,7 +35,6 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
-	"golang.org/x/oauth2/google/downscope"
 	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
@@ -332,6 +331,7 @@ func newGCECloud(config io.Reader) (gceCloud *Cloud, err error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return CreateGCECloud(cloudConfig)
 }
 
@@ -342,6 +342,29 @@ func readConfig(reader io.Reader) (*ConfigFile, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// CreateGCECloudFromReader reads a gce.conf-style config from the provided
+// reader, generates a CloudConfig and returns a fully initialized *Cloud.
+// This is a thin exported wrapper around the package-local helpers so other
+// packages can create scoped clouds without duplicating parsing logic.
+func CreateGCECloudFromReader(reader io.Reader) (*Cloud, error) {
+	if reader == nil {
+		// Interpret nil as no config provided.
+		return CreateGCECloud(nil)
+	}
+
+	cfg, err := readConfig(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	cloudCfg, err := generateCloudConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateGCECloud(cloudCfg)
 }
 
 func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err error) {
@@ -393,40 +416,6 @@ func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 			cloudConfig.NetworkProjectID = configFile.Global.NetworkProjectID
 		}
 	}
-
-	// Downscope the token
-	ctx := context.Background()
-	rules := []downscope.AccessBoundaryRule{
-		{
-			AvailableResource: "//cloudresourcemanager.googleapis.com/projects/" + cloudConfig.ProjectID,
-			AvailablePermissions: []string{
-				"inRole:roles/compute.instanceGroupManagerServiceAgent",
-				"inRole:roles/compute.computeViewer",
-			},
-		},
-	}
-
-	rootSource := cloudConfig.TokenSource
-	// If no token source is configured, fall back to Application Default Credentials.
-	if rootSource == nil {
-		var err error
-		rootSource, err = google.DefaultTokenSource(ctx, gceAuthAPIEndpoint)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get default token source for downscoping: %v", err)
-		}
-	}
-
-	// Create the downscoped token source.
-	downscopedSource, err := downscope.NewTokenSource(context.Background(), downscope.DownscopingConfig{
-		RootSource: rootSource,
-		Rules:      rules,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create downscoped token source: %v", err)
-	}
-	// Replace the original token source with the downscoped one.
-	klog.Infof("Using downscoped token source for GCE cloud provider --- Test")
-	cloudConfig.TokenSource = downscopedSource
 
 	// retrieve region
 	cloudConfig.Region, err = GetGCERegion(cloudConfig.Zone)
@@ -491,7 +480,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 
 	// Create a user-agent header append string to supply to the Google API
 	// clients, to identify Kubernetes as the origin of the GCP API calls.
-	userAgent := fmt.Sprintf("Kubernetes/%s (%s %s)", version, runtime.GOOS, runtime.GOARCH)
+	userAgent := fmt.Sprintf("Kubernetes/%s (%s %s)", version, runtime.GOOS, runtime.GOARCH) // e.g. "Kubernetes/v1.18.0 (linux amd64)"
 
 	// Use ProjectID for NetworkProjectID, if it wasn't explicitly set.
 	if config.NetworkProjectID == "" {

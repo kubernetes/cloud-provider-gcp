@@ -6,6 +6,7 @@ import (
 )
 
 // Underscore a string
+//
 //	bob dylan --> bob_dylan
 //	Nice to see you! --> nice_to_see_you
 //	widgetID --> widget_id
@@ -14,6 +15,7 @@ func Underscore(s string) string {
 }
 
 // Underscore a string
+//
 //	bob dylan --> bob_dylan
 //	Nice to see you! --> nice_to_see_you
 //	widgetID --> widget_id

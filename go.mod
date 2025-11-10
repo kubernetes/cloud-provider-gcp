@@ -11,7 +11,6 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/oauth2 v0.32.0
 	google.golang.org/api v0.253.0
 	gopkg.in/gcfg.v1 v1.2.3 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
@@ -35,6 +34,7 @@ require (
 	github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
+	golang.org/x/oauth2 v0.32.1-0.20251023143239-f28b0b5467dd
 	k8s.io/cloud-provider v0.34.0
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
 	k8s.io/kubernetes v1.34.0
@@ -47,6 +47,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
+	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
@@ -157,6 +158,7 @@ replace (
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.34.0
 	k8s.io/client-go => k8s.io/client-go v0.34.0
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.34.0
+	k8s.io/cloud-provider-gcp => ./
 
 	k8s.io/cloud-provider-gcp/providers => ./providers
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.34.0

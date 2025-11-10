@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC.
+// Copyright 2025 Google LLC.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -57,11 +57,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/googleapis/gax-go/v2/internallog"
 	googleapi "google.golang.org/api/googleapi"
 	internal "google.golang.org/api/internal"
 	gensupport "google.golang.org/api/internal/gensupport"
@@ -85,6 +87,7 @@ var _ = strings.Replace
 var _ = context.Canceled
 var _ = internaloption.WithDefaultEndpoint
 var _ = internal.Version
+var _ = internallog.New
 
 const apiId = "container:v1"
 const apiName = "container"
@@ -115,10 +118,8 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	if err != nil {
 		return nil, err
 	}
-	s, err := New(client)
-	if err != nil {
-		return nil, err
-	}
+	s := &Service{client: client, BasePath: basePath, logger: internaloption.GetLogger(opts)}
+	s.Projects = NewProjectsService(s)
 	if endpoint != "" {
 		s.BasePath = endpoint
 	}
@@ -134,13 +135,12 @@ func New(client *http.Client) (*Service, error) {
 	if client == nil {
 		return nil, errors.New("client is nil")
 	}
-	s := &Service{client: client, BasePath: basePath}
-	s.Projects = NewProjectsService(s)
-	return s, nil
+	return NewService(context.TODO(), option.WithHTTPClient(client))
 }
 
 type Service struct {
 	client    *http.Client
+	logger    *slog.Logger
 	BasePath  string // API endpoint base URL
 	UserAgent string // optional additional User-Agent fragment
 
@@ -302,7 +302,8 @@ type AcceleratorConfig struct {
 	// instance.
 	AcceleratorCount int64 `json:"acceleratorCount,omitempty,string"`
 	// AcceleratorType: The accelerator type resource name. List of supported
-	// accelerators here (https://cloud.google.com/compute/docs/gpus)
+	// accelerators here
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/gpus)
 	AcceleratorType string `json:"acceleratorType,omitempty"`
 	// GpuDriverInstallationConfig: The configuration for auto installation of GPU
 	// driver.
@@ -328,6 +329,35 @@ type AcceleratorConfig struct {
 
 func (s AcceleratorConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod AcceleratorConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AdditionalIPRangesConfig: AdditionalIPRangesConfig is the configuration for
+// individual additional subnetwork attached to the cluster
+type AdditionalIPRangesConfig struct {
+	// PodIpv4RangeNames: List of secondary ranges names within this subnetwork
+	// that can be used for pod IPs. Example1: gke-pod-range1 Example2:
+	// gke-pod-range1,gke-pod-range2
+	PodIpv4RangeNames []string `json:"podIpv4RangeNames,omitempty"`
+	// Subnetwork: Name of the subnetwork. This can be the full path of the
+	// subnetwork or just the name. Example1: my-subnet Example2:
+	// projects/gke-project/regions/us-central1/subnetworks/my-subnet
+	Subnetwork string `json:"subnetwork,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "PodIpv4RangeNames") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "PodIpv4RangeNames") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AdditionalIPRangesConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod AdditionalIPRangesConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -423,8 +453,8 @@ type AddonsConfig struct {
 	// to use a managed Knative service.
 	CloudRunConfig *CloudRunConfig `json:"cloudRunConfig,omitempty"`
 	// ConfigConnectorConfig: Configuration for the ConfigConnector add-on, a
-	// Kubernetes extension to manage hosted GCP services through the Kubernetes
-	// API
+	// Kubernetes extension to manage hosted Google Cloud services through the
+	// Kubernetes API.
 	ConfigConnectorConfig *ConfigConnectorConfig `json:"configConnectorConfig,omitempty"`
 	// DnsCacheConfig: Configuration for NodeLocalDNS, a dns cache running on
 	// cluster nodes
@@ -432,12 +462,15 @@ type AddonsConfig struct {
 	// GcePersistentDiskCsiDriverConfig: Configuration for the Compute Engine
 	// Persistent Disk CSI driver.
 	GcePersistentDiskCsiDriverConfig *GcePersistentDiskCsiDriverConfig `json:"gcePersistentDiskCsiDriverConfig,omitempty"`
-	// GcpFilestoreCsiDriverConfig: Configuration for the GCP Filestore CSI driver.
+	// GcpFilestoreCsiDriverConfig: Configuration for the Filestore CSI driver.
 	GcpFilestoreCsiDriverConfig *GcpFilestoreCsiDriverConfig `json:"gcpFilestoreCsiDriverConfig,omitempty"`
 	// GcsFuseCsiDriverConfig: Configuration for the Cloud Storage Fuse CSI driver.
 	GcsFuseCsiDriverConfig *GcsFuseCsiDriverConfig `json:"gcsFuseCsiDriverConfig,omitempty"`
 	// GkeBackupAgentConfig: Configuration for the Backup for GKE agent addon.
 	GkeBackupAgentConfig *GkeBackupAgentConfig `json:"gkeBackupAgentConfig,omitempty"`
+	// HighScaleCheckpointingConfig: Configuration for the High Scale Checkpointing
+	// add-on.
+	HighScaleCheckpointingConfig *HighScaleCheckpointingConfig `json:"highScaleCheckpointingConfig,omitempty"`
 	// HorizontalPodAutoscaling: Configuration for the horizontal pod autoscaling
 	// feature, which increases or decreases the number of replica pods a
 	// replication controller has based on the resource usage of the existing pods.
@@ -450,12 +483,17 @@ type AddonsConfig struct {
 	// is deprecated, and will be disabled in 1.15. It is recommended to use the
 	// Cloud Console to manage and monitor your Kubernetes clusters, workloads and
 	// applications. For more information, see:
-	// https://cloud.google.com/kubernetes-engine/docs/concepts/dashboards
+	// https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/concepts/dashboards
 	KubernetesDashboard *KubernetesDashboard `json:"kubernetesDashboard,omitempty"`
+	// LustreCsiDriverConfig: Configuration for the Lustre CSI driver.
+	LustreCsiDriverConfig *LustreCsiDriverConfig `json:"lustreCsiDriverConfig,omitempty"`
 	// NetworkPolicyConfig: Configuration for NetworkPolicy. This only tracks
 	// whether the addon is enabled or not on the Master, it does not track whether
 	// network policy is enabled for the nodes.
 	NetworkPolicyConfig *NetworkPolicyConfig `json:"networkPolicyConfig,omitempty"`
+	// ParallelstoreCsiDriverConfig: Configuration for the Cloud Storage
+	// Parallelstore CSI driver.
+	ParallelstoreCsiDriverConfig *ParallelstoreCsiDriverConfig `json:"parallelstoreCsiDriverConfig,omitempty"`
 	// RayOperatorConfig: Optional. Configuration for Ray Operator addon.
 	RayOperatorConfig *RayOperatorConfig `json:"rayOperatorConfig,omitempty"`
 	// StatefulHaConfig: Optional. Configuration for the StatefulHA add-on.
@@ -517,6 +555,16 @@ type AdvancedMachineFeatures struct {
 	// EnableNestedVirtualization: Whether or not to enable nested virtualization
 	// (defaults to false).
 	EnableNestedVirtualization bool `json:"enableNestedVirtualization,omitempty"`
+	// PerformanceMonitoringUnit: Type of Performance Monitoring Unit (PMU)
+	// requested on node pool instances. If unset, PMU will not be available to the
+	// node.
+	//
+	// Possible values:
+	//   "PERFORMANCE_MONITORING_UNIT_UNSPECIFIED" - PMU not enabled.
+	//   "ARCHITECTURAL" - Architecturally defined non-LLC events.
+	//   "STANDARD" - Most documented core/L2 events.
+	//   "ENHANCED" - Most documented core/L2 and LLC events.
+	PerformanceMonitoringUnit string `json:"performanceMonitoringUnit,omitempty"`
 	// ThreadsPerCore: The number of threads per physical core. To disable
 	// simultaneous multithreading (SMT) set this to 1. If unset, the maximum
 	// number of threads supported per core by the underlying processor is assumed.
@@ -536,6 +584,35 @@ type AdvancedMachineFeatures struct {
 
 func (s AdvancedMachineFeatures) MarshalJSON() ([]byte, error) {
 	type NoMethod AdvancedMachineFeatures
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AnonymousAuthenticationConfig: AnonymousAuthenticationConfig defines the
+// settings needed to limit endpoints that allow anonymous authentication.
+type AnonymousAuthenticationConfig struct {
+	// Mode: Defines the mode of limiting anonymous access in the cluster.
+	//
+	// Possible values:
+	//   "MODE_UNSPECIFIED" - Default value not specified.
+	//   "ENABLED" - Anonymous authentication is allowed for all endpoints.
+	//   "LIMITED" - Anonymous authentication is allowed for only health check
+	// endpoints.
+	Mode string `json:"mode,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Mode") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Mode") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AnonymousAuthenticationConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod AnonymousAuthenticationConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -563,6 +640,56 @@ type AuthenticatorGroupsConfig struct {
 
 func (s AuthenticatorGroupsConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod AuthenticatorGroupsConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AutoIpamConfig: AutoIpamConfig contains all information related to Auto IPAM
+type AutoIpamConfig struct {
+	// Enabled: The flag that enables Auto IPAM on this cluster
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AutoIpamConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod AutoIpamConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AutoMonitoringConfig: AutoMonitoringConfig defines the configuration for GKE
+// Workload Auto-Monitoring.
+type AutoMonitoringConfig struct {
+	// Scope: Scope for GKE Workload Auto-Monitoring.
+	//
+	// Possible values:
+	//   "SCOPE_UNSPECIFIED" - Not set.
+	//   "ALL" - Auto-Monitoring is enabled for all supported applications.
+	//   "NONE" - Disable Auto-Monitoring.
+	Scope string `json:"scope,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Scope") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Scope") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AutoMonitoringConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod AutoMonitoringConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -599,7 +726,11 @@ func (s AutoUpgradeOptions) MarshalJSON() ([]byte, error) {
 type Autopilot struct {
 	// Enabled: Enable Autopilot
 	Enabled bool `json:"enabled,omitempty"`
-	// WorkloadPolicyConfig: Workload policy configuration for Autopilot.
+	// PrivilegedAdmissionConfig: PrivilegedAdmissionConfig is the configuration
+	// related to privileged admission control.
+	PrivilegedAdmissionConfig *PrivilegedAdmissionConfig `json:"privilegedAdmissionConfig,omitempty"`
+	// WorkloadPolicyConfig: WorkloadPolicyConfig is the configuration related to
+	// GCW workload policy
 	WorkloadPolicyConfig *WorkloadPolicyConfig `json:"workloadPolicyConfig,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
@@ -626,7 +757,7 @@ type AutopilotCompatibilityIssue struct {
 	ConstraintType string `json:"constraintType,omitempty"`
 	// Description: The description of the issue.
 	Description string `json:"description,omitempty"`
-	// DocumentationUrl: A URL to a public documnetation, which addresses resolving
+	// DocumentationUrl: A URL to a public documentation, which addresses resolving
 	// this issue.
 	DocumentationUrl string `json:"documentationUrl,omitempty"`
 	// IncompatibilityType: The incompatibility type of this issue.
@@ -663,6 +794,29 @@ func (s AutopilotCompatibilityIssue) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// AutopilotConfig: AutopilotConfig contains configuration of autopilot feature
+// for this nodepool.
+type AutopilotConfig struct {
+	// Enabled: Denotes that nodes belonging to this node pool are Autopilot nodes.
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AutopilotConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod AutopilotConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // AutoprovisioningNodePoolDefaults: AutoprovisioningNodePoolDefaults contains
 // defaults for a node pool created by NAP.
 type AutoprovisioningNodePoolDefaults struct {
@@ -671,7 +825,7 @@ type AutoprovisioningNodePoolDefaults struct {
 	// projects/[KEY_PROJECT_ID]/locations/[LOCATION]/keyRings/[RING_NAME]/cryptoKey
 	// s/[KEY_NAME]. For more information about protecting resources with Cloud KMS
 	// Keys please see:
-	// https://cloud.google.com/compute/docs/disks/customer-managed-encryption
+	// https://{$universe.dns_names.final_documentation_domain}/compute/docs/disks/customer-managed-encryption
 	BootDiskKmsKey string `json:"bootDiskKmsKey,omitempty"`
 	// DiskSizeGb: Size of the disk attached to each node, specified in GB. The
 	// smallest allowed disk size is 10GB. If unspecified, the default disk size is
@@ -682,11 +836,11 @@ type AutoprovisioningNodePoolDefaults struct {
 	// 'pd-standard'
 	DiskType string `json:"diskType,omitempty"`
 	// ImageType: The image type to use for NAP created node. Please see
-	// https://cloud.google.com/kubernetes-engine/docs/concepts/node-images for
-	// available image types.
+	// https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/concepts/node-images
+	// for available image types.
 	ImageType string `json:"imageType,omitempty"`
-	// InsecureKubeletReadonlyPortEnabled: Enable or disable Kubelet read only
-	// port.
+	// InsecureKubeletReadonlyPortEnabled: DEPRECATED. Use
+	// NodePoolAutoConfig.NodeKubeletConfig instead.
 	InsecureKubeletReadonlyPortEnabled bool `json:"insecureKubeletReadonlyPortEnabled,omitempty"`
 	// Management: Specifies the node management options for NAP created
 	// node-pools.
@@ -696,7 +850,7 @@ type AutoprovisioningNodePoolDefaults struct {
 	// platform. Applicable values are the friendly names of CPU platforms, such as
 	// minCpuPlatform: Intel Haswell or minCpuPlatform: Intel Sandy Bridge. For
 	// more information, read how to specify min CPU platform
-	// (https://cloud.google.com/compute/docs/instances/specify-min-cpu-platform).
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/instances/specify-min-cpu-platform).
 	// This field is deprecated, min_cpu_platform should be specified using
 	// `cloud.google.com/requested-min-cpu-platform` label selector on the pod. To
 	// unset the min cpu platform field pass "automatic" as field value.
@@ -725,6 +879,31 @@ type AutoprovisioningNodePoolDefaults struct {
 
 func (s AutoprovisioningNodePoolDefaults) MarshalJSON() ([]byte, error) {
 	type NoMethod AutoprovisioningNodePoolDefaults
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AutoscaledRolloutPolicy: Autoscaled rollout policy utilizes the cluster
+// autoscaler during blue-green upgrade to scale both the blue and green pools.
+type AutoscaledRolloutPolicy struct {
+	// WaitForDrainDuration: Optional. Time to wait after cordoning the blue pool
+	// before draining the nodes. Defaults to 3 days. The value can be set between
+	// 0 and 7 days, inclusive.
+	WaitForDrainDuration string `json:"waitForDrainDuration,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "WaitForDrainDuration") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "WaitForDrainDuration") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AutoscaledRolloutPolicy) MarshalJSON() ([]byte, error) {
+	type NoMethod AutoscaledRolloutPolicy
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -861,26 +1040,60 @@ func (s BlueGreenInfo) MarshalJSON() ([]byte, error) {
 
 // BlueGreenSettings: Settings for blue-green upgrade.
 type BlueGreenSettings struct {
+	// AutoscaledRolloutPolicy: Autoscaled policy for cluster autoscaler enabled
+	// blue-green upgrade.
+	AutoscaledRolloutPolicy *AutoscaledRolloutPolicy `json:"autoscaledRolloutPolicy,omitempty"`
 	// NodePoolSoakDuration: Time needed after draining entire blue pool. After
 	// this period, blue pool will be cleaned up.
 	NodePoolSoakDuration string `json:"nodePoolSoakDuration,omitempty"`
 	// StandardRolloutPolicy: Standard policy for the blue-green upgrade.
 	StandardRolloutPolicy *StandardRolloutPolicy `json:"standardRolloutPolicy,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "NodePoolSoakDuration") to
+	// ForceSendFields is a list of field names (e.g. "AutoscaledRolloutPolicy") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "NodePoolSoakDuration") to include
-	// in API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. See
+	// NullFields is a list of field names (e.g. "AutoscaledRolloutPolicy") to
+	// include in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
 func (s BlueGreenSettings) MarshalJSON() ([]byte, error) {
 	type NoMethod BlueGreenSettings
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BootDisk: BootDisk specifies the boot disk configuration for nodepools.
+type BootDisk struct {
+	// DiskType: Disk type of the boot disk. (i.e. Hyperdisk-Balanced, PD-Balanced,
+	// etc.)
+	DiskType string `json:"diskType,omitempty"`
+	// ProvisionedIops: For Hyperdisk-Balanced only, the provisioned IOPS config
+	// value.
+	ProvisionedIops int64 `json:"provisionedIops,omitempty,string"`
+	// ProvisionedThroughput: For Hyperdisk-Balanced only, the provisioned
+	// throughput config value.
+	ProvisionedThroughput int64 `json:"provisionedThroughput,omitempty,string"`
+	// SizeGb: Disk size in GB. Replaces NodeConfig.disk_size_gb
+	SizeGb int64 `json:"sizeGb,omitempty,string"`
+	// ForceSendFields is a list of field names (e.g. "DiskType") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "DiskType") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BootDisk) MarshalJSON() ([]byte, error) {
+	type NoMethod BootDisk
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -894,13 +1107,13 @@ type CancelOperationRequest struct {
 	OperationId string `json:"operationId,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the
-	// operation resides. This field has been deprecated and replaced by the name
-	// field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the operation resides. This field has been deprecated and replaced
+	// by the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Name") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
@@ -925,7 +1138,7 @@ func (s CancelOperationRequest) MarshalJSON() ([]byte, error) {
 // certificate.
 type CertificateAuthorityDomainConfig struct {
 	// Fqdns: List of fully qualified domain names (FQDN). Specifying port is
-	// supported. Wilcards are NOT supported. Examples: - my.customdomain.com -
+	// supported. Wildcards are NOT supported. Examples: - my.customdomain.com -
 	// 10.0.1.2:5000
 	Fqdns []string `json:"fqdns,omitempty"`
 	// GcpSecretManagerCertificateConfig: Google Secret Manager (GCP) certificate
@@ -1062,6 +1275,13 @@ type Cluster struct {
 	// AddonsConfig: Configurations for the various addons available to run in the
 	// cluster.
 	AddonsConfig *AddonsConfig `json:"addonsConfig,omitempty"`
+	// AlphaClusterFeatureGates: The list of user specified Kubernetes feature
+	// gates. Each string represents the activation status of a feature gate (e.g.
+	// "featureX=true" or "featureX=false")
+	AlphaClusterFeatureGates []string `json:"alphaClusterFeatureGates,omitempty"`
+	// AnonymousAuthenticationConfig: Configuration for limiting anonymous access
+	// to all endpoints except the health checks.
+	AnonymousAuthenticationConfig *AnonymousAuthenticationConfig `json:"anonymousAuthenticationConfig,omitempty"`
 	// AuthenticatorGroupsConfig: Configuration controlling RBAC group membership
 	// information.
 	AuthenticatorGroupsConfig *AuthenticatorGroupsConfig `json:"authenticatorGroupsConfig,omitempty"`
@@ -1084,6 +1304,9 @@ type Cluster struct {
 	// ConfidentialNodes: Configuration of Confidential Nodes. All the nodes in the
 	// cluster will be Confidential VM once enabled.
 	ConfidentialNodes *ConfidentialNodes `json:"confidentialNodes,omitempty"`
+	// ControlPlaneEndpointsConfig: Configuration for all cluster's control plane
+	// endpoints.
+	ControlPlaneEndpointsConfig *ControlPlaneEndpointsConfig `json:"controlPlaneEndpointsConfig,omitempty"`
 	// CostManagementConfig: Configuration for the fine-grained cost management
 	// feature.
 	CostManagementConfig *CostManagementConfig `json:"costManagementConfig,omitempty"`
@@ -1097,7 +1320,7 @@ type Cluster struct {
 	// Deprecated. Call Kubernetes API directly to retrieve node information.
 	CurrentNodeCount int64 `json:"currentNodeCount,omitempty"`
 	// CurrentNodeVersion: Output only. Deprecated, use NodePools.version
-	// (https://cloud.google.com/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters.nodePools)
+	// (https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters.nodePools)
 	// instead. The current version of the node software components. If they are
 	// currently at multiple versions because they're in the process of being
 	// upgraded, this reflects the minimum version of all nodes.
@@ -1119,14 +1342,17 @@ type Cluster struct {
 	// disabled. Alpha enabled clusters are automatically deleted thirty days after
 	// creation.
 	EnableKubernetesAlpha bool `json:"enableKubernetesAlpha,omitempty"`
-	// EnableTpu: Enable the ability to use Cloud TPUs in this cluster.
+	// EnableTpu: Enable the ability to use Cloud TPUs in this cluster. This field
+	// is deprecated due to the deprecation of 2VM TPU. The end of life date for
+	// 2VM TPU is 2025-04-25.
 	EnableTpu bool `json:"enableTpu,omitempty"`
 	// Endpoint: Output only. The IP address of this cluster's master endpoint. The
 	// endpoint can be accessed from the internet at
 	// `https://username:password@endpoint/`. See the `masterAuth` property of this
 	// resource for username and password information.
 	Endpoint string `json:"endpoint,omitempty"`
-	// EnterpriseConfig: GKE Enterprise Configuration.
+	// EnterpriseConfig: GKE Enterprise Configuration. Deprecated: GKE Enterprise
+	// features are now available without an Enterprise tier.
 	EnterpriseConfig *EnterpriseConfig `json:"enterpriseConfig,omitempty"`
 	// Etag: This checksum is computed by the server based on the value of cluster
 	// fields, and may be sent on update requests to ensure the client has an
@@ -1137,6 +1363,8 @@ type Cluster struct {
 	ExpireTime string `json:"expireTime,omitempty"`
 	// Fleet: Fleet information for the cluster.
 	Fleet *Fleet `json:"fleet,omitempty"`
+	// GkeAutoUpgradeConfig: Configuration for GKE auto upgrades.
+	GkeAutoUpgradeConfig *GkeAutoUpgradeConfig `json:"gkeAutoUpgradeConfig,omitempty"`
 	// Id: Output only. Unique id for the cluster.
 	Id string `json:"id,omitempty"`
 	// IdentityServiceConfig: Configuration for Identity Service component.
@@ -1154,13 +1382,13 @@ type Cluster struct {
 	InitialClusterVersion string `json:"initialClusterVersion,omitempty"`
 	// InitialNodeCount: The number of nodes to create in this cluster. You must
 	// ensure that your Compute Engine resource quota
-	// (https://cloud.google.com/compute/quotas) is sufficient for this number of
-	// instances. You must also have available firewall and routes quota. For
-	// requests, this field should only be used in lieu of a "node_pool" object,
-	// since this configuration (along with the "node_config") will be used to
-	// create a "NodePool" object with an auto-generated name. Do not use this and
-	// a node_pool at the same time. This field is deprecated, use
-	// node_pool.initial_node_count instead.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/quotas) is
+	// sufficient for this number of instances. You must also have available
+	// firewall and routes quota. For requests, this field should only be used in
+	// lieu of a "node_pool" object, since this configuration (along with the
+	// "node_config") will be used to create a "NodePool" object with an
+	// auto-generated name. Do not use this and a node_pool at the same time. This
+	// field is deprecated, use node_pool.initial_node_count instead.
 	InitialNodeCount int64 `json:"initialNodeCount,omitempty"`
 	// InstanceGroupUrls: Output only. Deprecated. Use
 	// node_pools.instance_group_urls.
@@ -1172,19 +1400,19 @@ type Cluster struct {
 	// LegacyAbac: Configuration for the legacy ABAC authorization mode.
 	LegacyAbac *LegacyAbac `json:"legacyAbac,omitempty"`
 	// Location: Output only. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/regions-zones/regions-zones#available)
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/regions-zones/regions-zones#available)
 	// or region
-	// (https://cloud.google.com/compute/docs/regions-zones/regions-zones#available)
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/regions-zones/regions-zones#available)
 	// in which the cluster resides.
 	Location string `json:"location,omitempty"`
 	// Locations: The list of Google Compute Engine zones
-	// (https://cloud.google.com/compute/docs/zones#available) in which the
-	// cluster's nodes should be located. This field provides a default value if
-	// NodePool.Locations
-	// (https://cloud.google.com/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters.nodePools#NodePool.FIELDS.locations)
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster's nodes should be located. This field provides a
+	// default value if NodePool.Locations
+	// (https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters.nodePools#NodePool.FIELDS.locations)
 	// are not specified during node pool creation. Warning: changing cluster
 	// locations will update the NodePool.Locations
-	// (https://cloud.google.com/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters.nodePools#NodePool.FIELDS.locations)
+	// (https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters.nodePools#NodePool.FIELDS.locations)
 	// of all node pools and will result in nodes being added and/or removed.
 	Locations []string `json:"locations,omitempty"`
 	// LoggingConfig: Logging configuration for the cluster.
@@ -1205,7 +1433,9 @@ type Cluster struct {
 	// password will be generated, and a client certificate will be issued.
 	MasterAuth *MasterAuth `json:"masterAuth,omitempty"`
 	// MasterAuthorizedNetworksConfig: The configuration options for master
-	// authorized networks feature.
+	// authorized networks feature. Deprecated: Use
+	// ControlPlaneEndpointsConfig.IPEndpointsConfig.authorized_networks_config
+	// instead.
 	MasterAuthorizedNetworksConfig *MasterAuthorizedNetworksConfig `json:"masterAuthorizedNetworksConfig,omitempty"`
 	// MeshCertificates: Configuration for issuance of mTLS keys and certificates
 	// to Kubernetes pods.
@@ -1214,7 +1444,7 @@ type Cluster struct {
 	MonitoringConfig *MonitoringConfig `json:"monitoringConfig,omitempty"`
 	// MonitoringService: The monitoring service the cluster should use to write
 	// metrics. Currently available options: *
-	// "monitoring.googleapis.com/kubernetes" - The Cloud Monitoring service with a
+	// `monitoring.googleapis.com/kubernetes` - The Cloud Monitoring service with a
 	// Kubernetes-native resource model * `monitoring.googleapis.com` - The legacy
 	// Cloud Monitoring service (no longer available as of GKE 1.15). * `none` - No
 	// metrics will be exported from the cluster. If left as an empty
@@ -1227,9 +1457,9 @@ type Cluster struct {
 	// Must start with a letter. * Must end with a number or a letter.
 	Name string `json:"name,omitempty"`
 	// Network: The name of the Google Compute Engine network
-	// (https://cloud.google.com/compute/docs/networks-and-firewalls#networks) to
-	// which the cluster is connected. If left unspecified, the `default` network
-	// will be used.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/networks-and-firewalls#networks)
+	// to which the cluster is connected. If left unspecified, the `default`
+	// network will be used.
 	Network string `json:"network,omitempty"`
 	// NetworkConfig: Configuration for cluster networking.
 	NetworkConfig *NetworkConfig `json:"networkConfig,omitempty"`
@@ -1265,6 +1495,8 @@ type Cluster struct {
 	// This field is used by Google internal products that are built on top of the
 	// GKE cluster and take the ownership of the cluster.
 	ParentProductConfig *ParentProductConfig `json:"parentProductConfig,omitempty"`
+	// PodAutoscaling: The config for pod autoscaling.
+	PodAutoscaling *PodAutoscaling `json:"podAutoscaling,omitempty"`
 	// PrivateClusterConfig: Configuration for private cluster.
 	PrivateClusterConfig *PrivateClusterConfig `json:"privateClusterConfig,omitempty"`
 	// RbacBindingConfig: RBACBindingConfig allows user to restrict
@@ -1324,23 +1556,27 @@ type Cluster struct {
 	// information about the current status of this cluster, if available.
 	StatusMessage string `json:"statusMessage,omitempty"`
 	// Subnetwork: The name of the Google Compute Engine subnetwork
-	// (https://cloud.google.com/compute/docs/subnetworks) to which the cluster is
-	// connected.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/subnetworks)
+	// to which the cluster is connected.
 	Subnetwork string `json:"subnetwork,omitempty"`
 	// TpuIpv4CidrBlock: Output only. The IP address range of the Cloud TPUs in
 	// this cluster, in CIDR
 	// (http://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing) notation (e.g.
-	// `1.2.3.4/29`).
+	// `1.2.3.4/29`). This field is deprecated due to the deprecation of 2VM TPU.
+	// The end of life date for 2VM TPU is 2025-04-25.
 	TpuIpv4CidrBlock string `json:"tpuIpv4CidrBlock,omitempty"`
+	// UserManagedKeysConfig: The Custom keys configuration for the cluster.
+	UserManagedKeysConfig *UserManagedKeysConfig `json:"userManagedKeysConfig,omitempty"`
 	// VerticalPodAutoscaling: Cluster-level Vertical Pod Autoscaling
 	// configuration.
 	VerticalPodAutoscaling *VerticalPodAutoscaling `json:"verticalPodAutoscaling,omitempty"`
 	// WorkloadIdentityConfig: Configuration for the use of Kubernetes Service
-	// Accounts in GCP IAM policies.
+	// Accounts in IAM policies.
 	WorkloadIdentityConfig *WorkloadIdentityConfig `json:"workloadIdentityConfig,omitempty"`
 	// Zone: Output only. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field is deprecated, use location instead.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field is deprecated, use location
+	// instead.
 	Zone string `json:"zone,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
@@ -1368,8 +1604,8 @@ func (s Cluster) MarshalJSON() ([]byte, error) {
 // of the cluster and create/delete node pools based on the current needs.
 type ClusterAutoscaling struct {
 	// AutoprovisioningLocations: The list of Google Compute Engine zones
-	// (https://cloud.google.com/compute/docs/zones#available) in which the
-	// NodePool's nodes can be created by NAP.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the NodePool's nodes can be created by NAP.
 	AutoprovisioningLocations []string `json:"autoprovisioningLocations,omitempty"`
 	// AutoprovisioningNodePoolDefaults: AutoprovisioningNodePoolDefaults contains
 	// defaults for a node pool created by NAP.
@@ -1381,6 +1617,9 @@ type ClusterAutoscaling struct {
 	//   "OPTIMIZE_UTILIZATION" - Prioritize optimizing utilization of resources.
 	//   "BALANCED" - Use default (balanced) autoscaling configuration.
 	AutoscalingProfile string `json:"autoscalingProfile,omitempty"`
+	// DefaultComputeClassConfig: Default compute class is a configuration for
+	// default compute class.
+	DefaultComputeClassConfig *DefaultComputeClassConfig `json:"defaultComputeClassConfig,omitempty"`
 	// EnableNodeAutoprovisioning: Enables automatic node pool creation and
 	// deletion.
 	EnableNodeAutoprovisioning bool `json:"enableNodeAutoprovisioning,omitempty"`
@@ -1439,14 +1678,23 @@ type ClusterUpdate struct {
 	// AdditionalPodRangesConfig: The additional pod ranges to be added to the
 	// cluster. These pod ranges can be used by node pools to allocate pod IPs.
 	AdditionalPodRangesConfig *AdditionalPodRangesConfig `json:"additionalPodRangesConfig,omitempty"`
+	// DesiredAdditionalIpRangesConfig: The desired config for additional
+	// subnetworks attached to the cluster.
+	DesiredAdditionalIpRangesConfig *DesiredAdditionalIPRangesConfig `json:"desiredAdditionalIpRangesConfig,omitempty"`
 	// DesiredAddonsConfig: Configurations for the various addons available to run
 	// in the cluster.
 	DesiredAddonsConfig *AddonsConfig `json:"desiredAddonsConfig,omitempty"`
+	// DesiredAnonymousAuthenticationConfig: Configuration for limiting anonymous
+	// access to all endpoints except the health checks.
+	DesiredAnonymousAuthenticationConfig *AnonymousAuthenticationConfig `json:"desiredAnonymousAuthenticationConfig,omitempty"`
 	// DesiredAuthenticatorGroupsConfig: The desired authenticator groups config
 	// for the cluster.
 	DesiredAuthenticatorGroupsConfig *AuthenticatorGroupsConfig `json:"desiredAuthenticatorGroupsConfig,omitempty"`
-	// DesiredAutopilotWorkloadPolicyConfig: The desired workload policy
-	// configuration for the autopilot cluster.
+	// DesiredAutoIpamConfig: AutoIpamConfig contains all information related to
+	// Auto IPAM
+	DesiredAutoIpamConfig *AutoIpamConfig `json:"desiredAutoIpamConfig,omitempty"`
+	// DesiredAutopilotWorkloadPolicyConfig: WorkloadPolicyConfig is the
+	// configuration related to GCW workload policy
 	DesiredAutopilotWorkloadPolicyConfig *WorkloadPolicyConfig `json:"desiredAutopilotWorkloadPolicyConfig,omitempty"`
 	// DesiredBinaryAuthorization: The desired configuration options for the Binary
 	// Authorization feature.
@@ -1458,6 +1706,8 @@ type ClusterUpdate struct {
 	DesiredCompliancePostureConfig *CompliancePostureConfig `json:"desiredCompliancePostureConfig,omitempty"`
 	// DesiredContainerdConfig: The desired containerd config for the cluster.
 	DesiredContainerdConfig *ContainerdConfig `json:"desiredContainerdConfig,omitempty"`
+	// DesiredControlPlaneEndpointsConfig: Control plane endpoints configuration.
+	DesiredControlPlaneEndpointsConfig *ControlPlaneEndpointsConfig `json:"desiredControlPlaneEndpointsConfig,omitempty"`
 	// DesiredCostManagementConfig: The desired configuration for the fine-grained
 	// cost management feature.
 	DesiredCostManagementConfig *CostManagementConfig `json:"desiredCostManagementConfig,omitempty"`
@@ -1470,12 +1720,19 @@ type ClusterUpdate struct {
 	//   "LEGACY_DATAPATH" - Use the IPTables implementation based on kube-proxy.
 	//   "ADVANCED_DATAPATH" - Use the eBPF based GKE Dataplane V2 with additional
 	// features. See the [GKE Dataplane V2
-	// documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/datapla
-	// ne-v2) for more.
+	// documentation](https://{$universe.dns_names.final_documentation_domain}/kuber
+	// netes-engine/docs/how-to/dataplane-v2) for more.
 	DesiredDatapathProvider string `json:"desiredDatapathProvider,omitempty"`
+	// DesiredDefaultEnablePrivateNodes: Override the default setting of whether
+	// future created nodes have private IP addresses only, namely
+	// NetworkConfig.default_enable_private_nodes
+	DesiredDefaultEnablePrivateNodes bool `json:"desiredDefaultEnablePrivateNodes,omitempty"`
 	// DesiredDefaultSnatStatus: The desired status of whether to disable default
 	// sNAT for this cluster.
 	DesiredDefaultSnatStatus *DefaultSnatStatus `json:"desiredDefaultSnatStatus,omitempty"`
+	// DesiredDisableL4LbFirewallReconciliation: Enable/Disable L4 LB VPC firewall
+	// reconciliation for the cluster.
+	DesiredDisableL4LbFirewallReconciliation bool `json:"desiredDisableL4LbFirewallReconciliation,omitempty"`
 	// DesiredDnsConfig: DNSConfig contains clusterDNS config for this cluster.
 	DesiredDnsConfig *DNSConfig `json:"desiredDnsConfig,omitempty"`
 	// DesiredEnableCiliumClusterwideNetworkPolicy: Enable/Disable Cilium
@@ -1488,8 +1745,15 @@ type ClusterUpdate struct {
 	// cluster
 	DesiredEnableMultiNetworking bool `json:"desiredEnableMultiNetworking,omitempty"`
 	// DesiredEnablePrivateEndpoint: Enable/Disable private endpoint for the
-	// cluster's master.
+	// cluster's master. Deprecated: Use
+	// desired_control_plane_endpoints_config.ip_endpoints_config.enable_public_endp
+	// oint instead. Note that the value of enable_public_endpoint is reversed: if
+	// enable_private_endpoint is false, then enable_public_endpoint will be true.
 	DesiredEnablePrivateEndpoint bool `json:"desiredEnablePrivateEndpoint,omitempty"`
+	// DesiredEnterpriseConfig: The desired enterprise configuration for the
+	// cluster. Deprecated: GKE Enterprise features are now available without an
+	// Enterprise tier.
+	DesiredEnterpriseConfig *DesiredEnterpriseConfig `json:"desiredEnterpriseConfig,omitempty"`
 	// DesiredFleet: The desired fleet configuration for the cluster.
 	DesiredFleet *Fleet `json:"desiredFleet,omitempty"`
 	// DesiredGatewayApiConfig: The desired config of Gateway API on this cluster.
@@ -1521,11 +1785,11 @@ type ClusterUpdate struct {
 	// Subsetting configuration.
 	DesiredL4ilbSubsettingConfig *ILBSubsettingConfig `json:"desiredL4ilbSubsettingConfig,omitempty"`
 	// DesiredLocations: The desired list of Google Compute Engine zones
-	// (https://cloud.google.com/compute/docs/zones#available) in which the
-	// cluster's nodes should be located. This list must always include the
-	// cluster's primary zone. Warning: changing cluster locations will update the
-	// locations of all node pools and will result in nodes being added and/or
-	// removed.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster's nodes should be located. This list must always
+	// include the cluster's primary zone. Warning: changing cluster locations will
+	// update the locations of all node pools and will result in nodes being added
+	// and/or removed.
 	DesiredLocations []string `json:"desiredLocations,omitempty"`
 	// DesiredLoggingConfig: The desired logging configuration.
 	DesiredLoggingConfig *LoggingConfig `json:"desiredLoggingConfig,omitempty"`
@@ -1538,7 +1802,9 @@ type ClusterUpdate struct {
 	// be used for GKE 1.14+ or `logging.googleapis.com` for earlier versions.
 	DesiredLoggingService string `json:"desiredLoggingService,omitempty"`
 	// DesiredMasterAuthorizedNetworksConfig: The desired configuration options for
-	// master authorized networks feature.
+	// master authorized networks feature. Deprecated: Use
+	// desired_control_plane_endpoints_config.ip_endpoints_config.authorized_network
+	// s_config instead.
 	DesiredMasterAuthorizedNetworksConfig *MasterAuthorizedNetworksConfig `json:"desiredMasterAuthorizedNetworksConfig,omitempty"`
 	// DesiredMasterVersion: The Kubernetes version to change the master to. Users
 	// may specify either explicit versions offered by Kubernetes Engine or version
@@ -1555,7 +1821,7 @@ type ClusterUpdate struct {
 	DesiredMonitoringConfig *MonitoringConfig `json:"desiredMonitoringConfig,omitempty"`
 	// DesiredMonitoringService: The monitoring service the cluster should use to
 	// write metrics. Currently available options: *
-	// "monitoring.googleapis.com/kubernetes" - The Cloud Monitoring service with a
+	// `monitoring.googleapis.com/kubernetes` - The Cloud Monitoring service with a
 	// Kubernetes-native resource model * `monitoring.googleapis.com` - The legacy
 	// Cloud Monitoring service (no longer available as of GKE 1.15). * `none` - No
 	// metrics will be exported from the cluster. If left as an empty
@@ -1564,12 +1830,20 @@ type ClusterUpdate struct {
 	DesiredMonitoringService string `json:"desiredMonitoringService,omitempty"`
 	// DesiredNetworkPerformanceConfig: The desired network performance config.
 	DesiredNetworkPerformanceConfig *ClusterNetworkPerformanceConfig `json:"desiredNetworkPerformanceConfig,omitempty"`
+	// DesiredNetworkTierConfig: The desired network tier configuration for the
+	// cluster.
+	DesiredNetworkTierConfig *NetworkTierConfig `json:"desiredNetworkTierConfig,omitempty"`
 	// DesiredNodeKubeletConfig: The desired node kubelet config for the cluster.
 	DesiredNodeKubeletConfig *NodeKubeletConfig `json:"desiredNodeKubeletConfig,omitempty"`
 	// DesiredNodePoolAutoConfigKubeletConfig: The desired node kubelet config for
 	// all auto-provisioned node pools in autopilot clusters and node
 	// auto-provisioning enabled clusters.
 	DesiredNodePoolAutoConfigKubeletConfig *NodeKubeletConfig `json:"desiredNodePoolAutoConfigKubeletConfig,omitempty"`
+	// DesiredNodePoolAutoConfigLinuxNodeConfig: The desired Linux node config for
+	// all auto-provisioned node pools in autopilot clusters and node
+	// auto-provisioning enabled clusters. Currently only `cgroup_mode` can be set
+	// here.
+	DesiredNodePoolAutoConfigLinuxNodeConfig *LinuxNodeConfig `json:"desiredNodePoolAutoConfigLinuxNodeConfig,omitempty"`
 	// DesiredNodePoolAutoConfigNetworkTags: The desired network tags that apply to
 	// all auto-provisioned node pools in autopilot clusters and node
 	// auto-provisioning enabled clusters.
@@ -1604,10 +1878,14 @@ type ClusterUpdate struct {
 	// DesiredParentProductConfig: The desired parent product config for the
 	// cluster.
 	DesiredParentProductConfig *ParentProductConfig `json:"desiredParentProductConfig,omitempty"`
+	// DesiredPodAutoscaling: The desired config for pod autoscaling.
+	DesiredPodAutoscaling *PodAutoscaling `json:"desiredPodAutoscaling,omitempty"`
 	// DesiredPrivateClusterConfig: The desired private cluster configuration.
 	// master_global_access_config is the only field that can be changed via this
 	// field. See also ClusterUpdate.desired_enable_private_endpoint for modifying
-	// other fields within PrivateClusterConfig.
+	// other fields within PrivateClusterConfig. Deprecated: Use
+	// desired_control_plane_endpoints_config.ip_endpoints_config.global_access
+	// instead.
 	DesiredPrivateClusterConfig *PrivateClusterConfig `json:"desiredPrivateClusterConfig,omitempty"`
 	// DesiredPrivateIpv6GoogleAccess: The desired state of IPv6 connectivity to
 	// Google Services.
@@ -1648,6 +1926,9 @@ type ClusterUpdate struct {
 	//   "IPV4" - Cluster is IPV4 only
 	//   "IPV4_IPV6" - Cluster can use both IPv4 and IPv6
 	DesiredStackType string `json:"desiredStackType,omitempty"`
+	// DesiredUserManagedKeysConfig: The desired user managed keys config for the
+	// cluster.
+	DesiredUserManagedKeysConfig *UserManagedKeysConfig `json:"desiredUserManagedKeysConfig,omitempty"`
 	// DesiredVerticalPodAutoscaling: Cluster-level Vertical Pod Autoscaling
 	// configuration.
 	DesiredVerticalPodAutoscaling *VerticalPodAutoscaling `json:"desiredVerticalPodAutoscaling,omitempty"`
@@ -1660,10 +1941,16 @@ type ClusterUpdate struct {
 	// match the current etag of the cluster, update will be blocked and an ABORTED
 	// error will be returned.
 	Etag string `json:"etag,omitempty"`
+	// GkeAutoUpgradeConfig: Configuration for GKE auto upgrade.
+	GkeAutoUpgradeConfig *GkeAutoUpgradeConfig `json:"gkeAutoUpgradeConfig,omitempty"`
 	// RemovedAdditionalPodRangesConfig: The additional pod ranges that are to be
 	// removed from the cluster. The pod ranges specified here must have been
 	// specified earlier in the 'additional_pod_ranges_config' argument.
 	RemovedAdditionalPodRangesConfig *AdditionalPodRangesConfig `json:"removedAdditionalPodRangesConfig,omitempty"`
+	// UserManagedKeysConfig: The Custom keys configuration for the cluster. This
+	// field is deprecated. Use ClusterUpdate.desired_user_managed_keys_config
+	// instead.
+	UserManagedKeysConfig *UserManagedKeysConfig `json:"userManagedKeysConfig,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "AdditionalPodRangesConfig")
 	// to unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -1682,6 +1969,73 @@ func (s ClusterUpdate) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// ClusterUpgradeInfo: ClusterUpgradeInfo contains the upgrade information of a
+// cluster.
+type ClusterUpgradeInfo struct {
+	// AutoUpgradeStatus: The auto upgrade status.
+	//
+	// Possible values:
+	//   "UNKNOWN" - UNKNOWN indicates an unknown status.
+	//   "ACTIVE" - ACTIVE indicates an active status.
+	//   "MINOR_UPGRADE_PAUSED" - MINOR_UPGRADE_PAUSED indicates the minor version
+	// upgrade is paused.
+	//   "UPGRADE_PAUSED" - UPGRADE_PAUSED indicates the upgrade is paused.
+	AutoUpgradeStatus []string `json:"autoUpgradeStatus,omitempty"`
+	// EndOfExtendedSupportTimestamp: The cluster's current minor version's end of
+	// extended support timestamp.
+	EndOfExtendedSupportTimestamp string `json:"endOfExtendedSupportTimestamp,omitempty"`
+	// EndOfStandardSupportTimestamp: The cluster's current minor version's end of
+	// standard support timestamp.
+	EndOfStandardSupportTimestamp string `json:"endOfStandardSupportTimestamp,omitempty"`
+	// MinorTargetVersion: minor_target_version indicates the target version for
+	// minor upgrade.
+	MinorTargetVersion string `json:"minorTargetVersion,omitempty"`
+	// PatchTargetVersion: patch_target_version indicates the target version for
+	// patch upgrade.
+	PatchTargetVersion string `json:"patchTargetVersion,omitempty"`
+	// PausedReason: The auto upgrade paused reason.
+	//
+	// Possible values:
+	//   "AUTO_UPGRADE_PAUSED_REASON_UNSPECIFIED" -
+	// AUTO_UPGRADE_PAUSED_REASON_UNSPECIFIED indicates an unspecified reason.
+	//   "MAINTENANCE_WINDOW" - MAINTENANCE_WINDOW indicates the cluster is outside
+	// customer maintenance window.
+	//   "MAINTENANCE_EXCLUSION_NO_UPGRADES" - MAINTENANCE_EXCLUSION_NO_UPGRADES
+	// indicates the cluster is in a maintenance exclusion with scope NO_UPGRADES.
+	//   "MAINTENANCE_EXCLUSION_NO_MINOR_UPGRADES" -
+	// MAINTENANCE_EXCLUSION_NO_MINOR_UPGRADES indicates the cluster is in a
+	// maintenance exclusion with scope NO_MINOR_UPGRADES.
+	//   "CLUSTER_DISRUPTION_BUDGET" - CLUSTER_DISRUPTION_BUDGET indicates the
+	// cluster is outside the cluster disruption budget.
+	//   "CLUSTER_DISRUPTION_BUDGET_MINOR_UPGRADE" -
+	// CLUSTER_DISRUPTION_BUDGET_MINOR_UPGRADE indicates the cluster is outside the
+	// cluster disruption budget for minor version upgrade.
+	//   "SYSTEM_CONFIG" - SYSTEM_CONFIG indicates the cluster upgrade is paused by
+	// system config.
+	PausedReason []string `json:"pausedReason,omitempty"`
+	// UpgradeDetails: The list of past auto upgrades.
+	UpgradeDetails []*UpgradeDetails `json:"upgradeDetails,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "AutoUpgradeStatus") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AutoUpgradeStatus") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ClusterUpgradeInfo) MarshalJSON() ([]byte, error) {
+	type NoMethod ClusterUpgradeInfo
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // CompleteIPRotationRequest: CompleteIPRotationRequest moves the cluster
 // master back into single-IP mode.
 type CompleteIPRotationRequest struct {
@@ -1693,12 +2047,13 @@ type CompleteIPRotationRequest struct {
 	Name string `json:"name,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -1778,17 +2133,27 @@ func (s ComplianceStandard) MarshalJSON() ([]byte, error) {
 // ConfidentialNodes: ConfidentialNodes is configuration for the confidential
 // nodes feature, which makes nodes run on confidential VMs.
 type ConfidentialNodes struct {
+	// ConfidentialInstanceType: Defines the type of technology used by the
+	// confidential node.
+	//
+	// Possible values:
+	//   "CONFIDENTIAL_INSTANCE_TYPE_UNSPECIFIED" - No type specified. Do not use
+	// this value.
+	//   "SEV" - AMD Secure Encrypted Virtualization.
+	//   "SEV_SNP" - AMD Secure Encrypted Virtualization - Secure Nested Paging.
+	//   "TDX" - Intel Trust Domain eXtension.
+	ConfidentialInstanceType string `json:"confidentialInstanceType,omitempty"`
 	// Enabled: Whether Confidential Nodes feature is enabled.
 	Enabled bool `json:"enabled,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
-	// include in API requests. By default, fields with empty or default values are
-	// omitted from API requests. See
+	// ForceSendFields is a list of field names (e.g. "ConfidentialInstanceType")
+	// to unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "Enabled") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
+	// NullFields is a list of field names (e.g. "ConfidentialInstanceType") to
+	// include in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
@@ -1851,6 +2216,9 @@ type ContainerdConfig struct {
 	// PrivateRegistryAccessConfig: PrivateRegistryAccessConfig is used to
 	// configure access configuration for private container registries.
 	PrivateRegistryAccessConfig *PrivateRegistryAccessConfig `json:"privateRegistryAccessConfig,omitempty"`
+	// WritableCgroups: Optional. WritableCgroups defines writable cgroups
+	// configuration for the node pool.
+	WritableCgroups *WritableCgroups `json:"writableCgroups,omitempty"`
 	// ForceSendFields is a list of field names (e.g.
 	// "PrivateRegistryAccessConfig") to unconditionally include in API requests.
 	// By default, fields with empty or default values are omitted from API
@@ -1866,6 +2234,31 @@ type ContainerdConfig struct {
 
 func (s ContainerdConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod ContainerdConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ControlPlaneEndpointsConfig: Configuration for all of the cluster's control
+// plane endpoints.
+type ControlPlaneEndpointsConfig struct {
+	// DnsEndpointConfig: DNS endpoint configuration.
+	DnsEndpointConfig *DNSEndpointConfig `json:"dnsEndpointConfig,omitempty"`
+	// IpEndpointsConfig: IP endpoints configuration.
+	IpEndpointsConfig *IPEndpointsConfig `json:"ipEndpointsConfig,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "DnsEndpointConfig") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "DnsEndpointConfig") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ControlPlaneEndpointsConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod ControlPlaneEndpointsConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -1895,19 +2288,20 @@ func (s CostManagementConfig) MarshalJSON() ([]byte, error) {
 // CreateClusterRequest: CreateClusterRequest creates a cluster.
 type CreateClusterRequest struct {
 	// Cluster: Required. A cluster resource
-	// (https://cloud.google.com/container-engine/reference/rest/v1/projects.locations.clusters)
+	// (https://{$universe.dns_names.final_documentation_domain}/container-engine/reference/rest/v1/projects.locations.clusters)
 	Cluster *Cluster `json:"cluster,omitempty"`
 	// Parent: The parent (project and location) where the cluster will be created.
 	// Specified in the format `projects/*/locations/*`.
 	Parent string `json:"parent,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the parent field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the parent field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the parent field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Cluster") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
@@ -1941,12 +2335,13 @@ type CreateNodePoolRequest struct {
 	Parent string `json:"parent,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the parent field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the parent field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the parent field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -2008,6 +2403,41 @@ type DNSConfig struct {
 
 func (s DNSConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod DNSConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// DNSEndpointConfig: Describes the configuration of a DNS endpoint.
+type DNSEndpointConfig struct {
+	// AllowExternalTraffic: Controls whether user traffic is allowed over this
+	// endpoint. Note that Google-managed services may still use the endpoint even
+	// if this is false.
+	AllowExternalTraffic bool `json:"allowExternalTraffic,omitempty"`
+	// EnableK8sCertsViaDns: Controls whether the k8s certs auth is allowed via
+	// DNS.
+	EnableK8sCertsViaDns bool `json:"enableK8sCertsViaDns,omitempty"`
+	// EnableK8sTokensViaDns: Controls whether the k8s token auth is allowed via
+	// DNS.
+	EnableK8sTokensViaDns bool `json:"enableK8sTokensViaDns,omitempty"`
+	// Endpoint: Output only. The cluster's DNS endpoint configuration. A DNS
+	// format address. This is accessible from the public internet. Ex:
+	// uid.us-central1.gke.goog. Always present, but the behavior may change
+	// according to the value of DNSEndpointConfig.allow_external_traffic.
+	Endpoint string `json:"endpoint,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "AllowExternalTraffic") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AllowExternalTraffic") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s DNSEndpointConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod DNSEndpointConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -2096,6 +2526,29 @@ func (s DatabaseEncryption) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// DefaultComputeClassConfig: DefaultComputeClassConfig defines default compute
+// class configuration.
+type DefaultComputeClassConfig struct {
+	// Enabled: Enables default compute class.
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s DefaultComputeClassConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod DefaultComputeClassConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // DefaultSnatStatus: DefaultSnatStatus contains the desired state of whether
 // default sNAT should be disabled on the cluster.
 type DefaultSnatStatus struct {
@@ -2116,6 +2569,61 @@ type DefaultSnatStatus struct {
 
 func (s DefaultSnatStatus) MarshalJSON() ([]byte, error) {
 	type NoMethod DefaultSnatStatus
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// DesiredAdditionalIPRangesConfig: DesiredAdditionalIPRangesConfig is a
+// wrapper used for cluster update operation and contains multiple
+// AdditionalIPRangesConfigs.
+type DesiredAdditionalIPRangesConfig struct {
+	// AdditionalIpRangesConfigs: List of additional IP ranges configs where each
+	// AdditionalIPRangesConfig corresponds to one subnetwork's IP ranges
+	AdditionalIpRangesConfigs []*AdditionalIPRangesConfig `json:"additionalIpRangesConfigs,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "AdditionalIpRangesConfigs")
+	// to unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AdditionalIpRangesConfigs") to
+	// include in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s DesiredAdditionalIPRangesConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod DesiredAdditionalIPRangesConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// DesiredEnterpriseConfig: DesiredEnterpriseConfig is a wrapper used for
+// updating enterprise_config. Deprecated: GKE Enterprise features are now
+// available without an Enterprise tier.
+type DesiredEnterpriseConfig struct {
+	// DesiredTier: desired_tier specifies the desired tier of the cluster.
+	//
+	// Possible values:
+	//   "CLUSTER_TIER_UNSPECIFIED" - CLUSTER_TIER_UNSPECIFIED is when cluster_tier
+	// is not set.
+	//   "STANDARD" - STANDARD indicates a standard GKE cluster.
+	//   "ENTERPRISE" - ENTERPRISE indicates a GKE Enterprise cluster.
+	DesiredTier string `json:"desiredTier,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "DesiredTier") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "DesiredTier") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s DesiredEnterpriseConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod DesiredEnterpriseConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -2151,6 +2659,8 @@ type Empty struct {
 }
 
 // EnterpriseConfig: EnterpriseConfig is the cluster enterprise configuration.
+// Deprecated: GKE Enterprise features are now available without an Enterprise
+// tier.
 type EnterpriseConfig struct {
 	// ClusterTier: Output only. cluster_tier indicates the effective tier of the
 	// cluster.
@@ -2161,6 +2671,14 @@ type EnterpriseConfig struct {
 	//   "STANDARD" - STANDARD indicates a standard GKE cluster.
 	//   "ENTERPRISE" - ENTERPRISE indicates a GKE Enterprise cluster.
 	ClusterTier string `json:"clusterTier,omitempty"`
+	// DesiredTier: desired_tier specifies the desired tier of the cluster.
+	//
+	// Possible values:
+	//   "CLUSTER_TIER_UNSPECIFIED" - CLUSTER_TIER_UNSPECIFIED is when cluster_tier
+	// is not set.
+	//   "STANDARD" - STANDARD indicates a standard GKE cluster.
+	//   "ENTERPRISE" - ENTERPRISE indicates a GKE Enterprise cluster.
+	DesiredTier string `json:"desiredTier,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterTier") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -2182,36 +2700,201 @@ func (s EnterpriseConfig) MarshalJSON() ([]byte, error) {
 // EphemeralStorageLocalSsdConfig: EphemeralStorageLocalSsdConfig contains
 // configuration for the node ephemeral storage using Local SSDs.
 type EphemeralStorageLocalSsdConfig struct {
+	// DataCacheCount: Number of local SSDs to use for GKE Data Cache.
+	DataCacheCount int64 `json:"dataCacheCount,omitempty"`
 	// LocalSsdCount: Number of local SSDs to use to back ephemeral storage. Uses
 	// NVMe interfaces. A zero (or unset) value has different meanings depending on
 	// machine type being used: 1. For pre-Gen3 machines, which support flexible
 	// numbers of local ssds, zero (or unset) means to disable using local SSDs as
 	// ephemeral storage. The limit for this value is dependent upon the maximum
 	// number of disk available on a machine per zone. See:
-	// https://cloud.google.com/compute/docs/disks/local-ssd for more information.
-	// 2. For Gen3 machines which dictate a specific number of local ssds, zero (or
-	// unset) means to use the default number of local ssds that goes with that
-	// machine type. For example, for a c3-standard-8-lssd machine, 2 local ssds
-	// would be provisioned. For c3-standard-8 (which doesn't support local ssds),
-	// 0 will be provisioned. See
-	// https://cloud.google.com/compute/docs/disks/local-ssd#choose_number_local_ssds
+	// https://{$universe.dns_names.final_documentation_domain}/compute/docs/disks/local-ssd
+	// for more information. 2. For Gen3 machines which dictate a specific number
+	// of local ssds, zero (or unset) means to use the default number of local ssds
+	// that goes with that machine type. For example, for a c3-standard-8-lssd
+	// machine, 2 local ssds would be provisioned. For c3-standard-8 (which doesn't
+	// support local ssds), 0 will be provisioned. See
+	// https://{$universe.dns_names.final_documentation_domain}/compute/docs/disks/local-ssd#choose_number_local_ssds
 	// for more info.
 	LocalSsdCount int64 `json:"localSsdCount,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "LocalSsdCount") to
+	// ForceSendFields is a list of field names (e.g. "DataCacheCount") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "LocalSsdCount") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
+	// NullFields is a list of field names (e.g. "DataCacheCount") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
 func (s EphemeralStorageLocalSsdConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod EphemeralStorageLocalSsdConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// EvictionGracePeriod: Eviction grace periods are grace periods for each
+// eviction signal.
+type EvictionGracePeriod struct {
+	// ImagefsAvailable: Optional. Grace period for eviction due to imagefs
+	// available signal. Sample format: "10s". Must be >= 0. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	ImagefsAvailable string `json:"imagefsAvailable,omitempty"`
+	// ImagefsInodesFree: Optional. Grace period for eviction due to imagefs inodes
+	// free signal. Sample format: "10s". Must be >= 0. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	ImagefsInodesFree string `json:"imagefsInodesFree,omitempty"`
+	// MemoryAvailable: Optional. Grace period for eviction due to memory available
+	// signal. Sample format: "10s". Must be >= 0. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	MemoryAvailable string `json:"memoryAvailable,omitempty"`
+	// NodefsAvailable: Optional. Grace period for eviction due to nodefs available
+	// signal. Sample format: "10s". Must be >= 0. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	NodefsAvailable string `json:"nodefsAvailable,omitempty"`
+	// NodefsInodesFree: Optional. Grace period for eviction due to nodefs inodes
+	// free signal. Sample format: "10s". Must be >= 0. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	NodefsInodesFree string `json:"nodefsInodesFree,omitempty"`
+	// PidAvailable: Optional. Grace period for eviction due to pid available
+	// signal. Sample format: "10s". Must be >= 0. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	PidAvailable string `json:"pidAvailable,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "ImagefsAvailable") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "ImagefsAvailable") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s EvictionGracePeriod) MarshalJSON() ([]byte, error) {
+	type NoMethod EvictionGracePeriod
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// EvictionMinimumReclaim: Eviction minimum reclaims are the resource amounts
+// of minimum reclaims for each eviction signal.
+type EvictionMinimumReclaim struct {
+	// ImagefsAvailable: Optional. Minimum reclaim for eviction due to imagefs
+	// available signal. Only take percentage value for now. Sample format: "10%".
+	// Must be <=10%. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	ImagefsAvailable string `json:"imagefsAvailable,omitempty"`
+	// ImagefsInodesFree: Optional. Minimum reclaim for eviction due to imagefs
+	// inodes free signal. Only take percentage value for now. Sample format:
+	// "10%". Must be <=10%. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	ImagefsInodesFree string `json:"imagefsInodesFree,omitempty"`
+	// MemoryAvailable: Optional. Minimum reclaim for eviction due to memory
+	// available signal. Only take percentage value for now. Sample format: "10%".
+	// Must be <=10%. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	MemoryAvailable string `json:"memoryAvailable,omitempty"`
+	// NodefsAvailable: Optional. Minimum reclaim for eviction due to nodefs
+	// available signal. Only take percentage value for now. Sample format: "10%".
+	// Must be <=10%. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	NodefsAvailable string `json:"nodefsAvailable,omitempty"`
+	// NodefsInodesFree: Optional. Minimum reclaim for eviction due to nodefs
+	// inodes free signal. Only take percentage value for now. Sample format:
+	// "10%". Must be <=10%. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	NodefsInodesFree string `json:"nodefsInodesFree,omitempty"`
+	// PidAvailable: Optional. Minimum reclaim for eviction due to pid available
+	// signal. Only take percentage value for now. Sample format: "10%". Must be
+	// <=10%. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	PidAvailable string `json:"pidAvailable,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "ImagefsAvailable") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "ImagefsAvailable") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s EvictionMinimumReclaim) MarshalJSON() ([]byte, error) {
+	type NoMethod EvictionMinimumReclaim
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// EvictionSignals: Eviction signals are the current state of a particular
+// resource at a specific point in time. The kubelet uses eviction signals to
+// make eviction decisions by comparing the signals to eviction thresholds,
+// which are the minimum amount of the resource that should be available on the
+// node.
+type EvictionSignals struct {
+	// ImagefsAvailable: Optional. Amount of storage available on filesystem that
+	// container runtime uses for storing images layers. If the container
+	// filesystem and image filesystem are not separate, then imagefs can store
+	// both image layers and writeable layers. Defines the amount of
+	// "imagefs.available" signal in kubelet. Default is unset, if not specified in
+	// the kubelet config. It takses percentage value for now. Sample format:
+	// "30%". Must be >= 15% and <= 50%. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	ImagefsAvailable string `json:"imagefsAvailable,omitempty"`
+	// ImagefsInodesFree: Optional. Amount of inodes available on filesystem that
+	// container runtime uses for storing images layers. Defines the amount of
+	// "imagefs.inodesFree" signal in kubelet. Default is unset, if not specified
+	// in the kubelet config. Linux only. It takses percentage value for now.
+	// Sample format: "30%". Must be >= 5% and <= 50%. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	ImagefsInodesFree string `json:"imagefsInodesFree,omitempty"`
+	// MemoryAvailable: Optional. Memory available (i.e. capacity - workingSet), in
+	// bytes. Defines the amount of "memory.available" signal in kubelet. Default
+	// is unset, if not specified in the kubelet config. Format: positive number +
+	// unit, e.g. 100Ki, 10Mi, 5Gi. Valid units are Ki, Mi, Gi. Must be >= 100Mi
+	// and <= 50% of the node's memory. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	MemoryAvailable string `json:"memoryAvailable,omitempty"`
+	// NodefsAvailable: Optional. Amount of storage available on filesystem that
+	// kubelet uses for volumes, daemon logs, etc. Defines the amount of
+	// "nodefs.available" signal in kubelet. Default is unset, if not specified in
+	// the kubelet config. It takses percentage value for now. Sample format:
+	// "30%". Must be >= 10% and <= 50%. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	NodefsAvailable string `json:"nodefsAvailable,omitempty"`
+	// NodefsInodesFree: Optional. Amount of inodes available on filesystem that
+	// kubelet uses for volumes, daemon logs, etc. Defines the amount of
+	// "nodefs.inodesFree" signal in kubelet. Default is unset, if not specified in
+	// the kubelet config. Linux only. It takses percentage value for now. Sample
+	// format: "30%". Must be >= 5% and <= 50%. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	NodefsInodesFree string `json:"nodefsInodesFree,omitempty"`
+	// PidAvailable: Optional. Amount of PID available for pod allocation. Defines
+	// the amount of "pid.available" signal in kubelet. Default is unset, if not
+	// specified in the kubelet config. It takses percentage value for now. Sample
+	// format: "30%". Must be >= 10% and <= 50%. See
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#eviction-signals
+	PidAvailable string `json:"pidAvailable,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "ImagefsAvailable") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "ImagefsAvailable") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s EvictionSignals) MarshalJSON() ([]byte, error) {
+	type NoMethod EvictionSignals
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -2249,6 +2932,7 @@ type Filter struct {
 	//   "UPGRADE_AVAILABLE_EVENT" - Corresponds with UpgradeAvailableEvent.
 	//   "UPGRADE_EVENT" - Corresponds with UpgradeEvent.
 	//   "SECURITY_BULLETIN_EVENT" - Corresponds with SecurityBulletinEvent.
+	//   "UPGRADE_INFO_EVENT" - Corresponds with UpgradeInfoEvent.
 	EventType []string `json:"eventType,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "EventType") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -2274,6 +2958,13 @@ type Fleet struct {
 	// membership of the cluster, in the format
 	// `//gkehub.googleapis.com/projects/*/locations/*/memberships/*`.
 	Membership string `json:"membership,omitempty"`
+	// MembershipType: The type of the cluster's fleet membership.
+	//
+	// Possible values:
+	//   "MEMBERSHIP_TYPE_UNSPECIFIED" - The MembershipType is not set.
+	//   "LIGHTWEIGHT" - The membership supports only lightweight compatible
+	// features.
+	MembershipType string `json:"membershipType,omitempty"`
 	// PreRegistered: Output only. Whether the cluster has been registered through
 	// the fleet API.
 	PreRegistered bool `json:"preRegistered,omitempty"`
@@ -2301,7 +2992,7 @@ func (s Fleet) MarshalJSON() ([]byte, error) {
 
 // GCPSecretManagerCertificateConfig: GCPSecretManagerCertificateConfig
 // configures a secret from Google Secret Manager
-// (https://cloud.google.com/secret-manager).
+// (https://{$universe.dns_names.final_documentation_domain}/secret-manager).
 type GCPSecretManagerCertificateConfig struct {
 	// SecretUri: Secret URI, in the form
 	// "projects/$PROJECT_ID/secrets/$SECRET_NAME/versions/$VERSION". Version can
@@ -2466,9 +3157,9 @@ func (s GcfsConfig) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// GcpFilestoreCsiDriverConfig: Configuration for the GCP Filestore CSI driver.
+// GcpFilestoreCsiDriverConfig: Configuration for the Filestore CSI driver.
 type GcpFilestoreCsiDriverConfig struct {
-	// Enabled: Whether the GCP Filestore CSI driver is enabled for this cluster.
+	// Enabled: Whether the Filestore CSI driver is enabled for this cluster.
 	Enabled bool `json:"enabled,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
@@ -2512,7 +3203,7 @@ func (s GcsFuseCsiDriverConfig) MarshalJSON() ([]byte, error) {
 }
 
 // GetJSONWebKeysResponse: GetJSONWebKeysResponse is a valid JSON Web Key Set
-// as specififed in rfc 7517
+// as specified in rfc 7517
 type GetJSONWebKeysResponse struct {
 	// CacheHeader: For HTTP requests, this field is automatically extracted into
 	// the Cache-Control HTTP header.
@@ -2583,6 +3274,37 @@ func (s GetOpenIDConfigResponse) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// GkeAutoUpgradeConfig: GkeAutoUpgradeConfig is the configuration for GKE auto
+// upgrades.
+type GkeAutoUpgradeConfig struct {
+	// PatchMode: PatchMode specifies how auto upgrade patch builds should be
+	// selected.
+	//
+	// Possible values:
+	//   "PATCH_MODE_UNSPECIFIED" - PATCH_MODE_UNSPECIFIED defaults to using the
+	// upgrade target from the channel's patch upgrade targets as the upgrade
+	// target for the version.
+	//   "ACCELERATED" - ACCELERATED denotes that the latest patch build in the
+	// channel should be used as the upgrade target for the version.
+	PatchMode string `json:"patchMode,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "PatchMode") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "PatchMode") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s GkeAutoUpgradeConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod GkeAutoUpgradeConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // GkeBackupAgentConfig: Configuration for the Backup for GKE Agent.
 type GkeBackupAgentConfig struct {
 	// Enabled: Whether the Backup for GKE agent is enabled for this cluster.
@@ -2602,6 +3324,29 @@ type GkeBackupAgentConfig struct {
 
 func (s GkeBackupAgentConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod GkeBackupAgentConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// HighScaleCheckpointingConfig: Configuration for the High Scale
+// Checkpointing.
+type HighScaleCheckpointingConfig struct {
+	// Enabled: Whether the High Scale Checkpointing is enabled for this cluster.
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s HighScaleCheckpointingConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod HighScaleCheckpointingConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -2734,11 +3479,20 @@ func (s ILBSubsettingConfig) MarshalJSON() ([]byte, error) {
 // IPAllocationPolicy: Configuration for controlling how IPs are allocated in
 // the cluster.
 type IPAllocationPolicy struct {
+	// AdditionalIpRangesConfigs: Output only. The additional IP ranges that are
+	// added to the cluster. These IP ranges can be used by new node pools to
+	// allocate node and pod IPs automatically. Each AdditionalIPRangesConfig
+	// corresponds to a single subnetwork. Once a range is removed it will not show
+	// up in IPAllocationPolicy.
+	AdditionalIpRangesConfigs []*AdditionalIPRangesConfig `json:"additionalIpRangesConfigs,omitempty"`
 	// AdditionalPodRangesConfig: Output only. The additional pod ranges that are
 	// added to the cluster. These pod ranges can be used by new node pools to
 	// allocate pod IPs automatically. Once the range is removed it will not show
 	// up in IPAllocationPolicy.
 	AdditionalPodRangesConfig *AdditionalPodRangesConfig `json:"additionalPodRangesConfig,omitempty"`
+	// AutoIpamConfig: Optional. AutoIpamConfig contains all information related to
+	// Auto IPAM
+	AutoIpamConfig *AutoIpamConfig `json:"autoIpamConfig,omitempty"`
 	// ClusterIpv4Cidr: This field is deprecated, use cluster_ipv4_cidr_block.
 	ClusterIpv4Cidr string `json:"clusterIpv4Cidr,omitempty"`
 	// ClusterIpv4CidrBlock: The IP address range for the cluster pod IPs. If this
@@ -2772,6 +3526,10 @@ type IPAllocationPolicy struct {
 	//   "INTERNAL" - Access type internal (all v6 addresses are internal IPs)
 	//   "EXTERNAL" - Access type external (all v6 addresses are external IPs)
 	Ipv6AccessType string `json:"ipv6AccessType,omitempty"`
+	// NetworkTierConfig: Cluster-level network tier configuration is used to
+	// determine the default network tier for external IP addresses on cluster
+	// resources, such as node pools and load balancers.
+	NetworkTierConfig *NetworkTierConfig `json:"networkTierConfig,omitempty"`
 	// NodeIpv4Cidr: This field is deprecated, use node_ipv4_cidr_block.
 	NodeIpv4Cidr string `json:"nodeIpv4Cidr,omitempty"`
 	// NodeIpv4CidrBlock: The IP address range of the instance IPs in this cluster.
@@ -2832,7 +3590,9 @@ type IPAllocationPolicy struct {
 	// range chosen with a specific netmask. Set to a CIDR
 	// (http://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing) notation (e.g.
 	// `10.96.0.0/14`) from the RFC-1918 private networks (e.g. `10.0.0.0/8`,
-	// `172.16.0.0/12`, `192.168.0.0/16`) to pick a specific range to use.
+	// `172.16.0.0/12`, `192.168.0.0/16`) to pick a specific range to use. This
+	// field is deprecated due to the deprecation of 2VM TPU. The end of life date
+	// for 2VM TPU is 2025-04-25.
 	TpuIpv4CidrBlock string `json:"tpuIpv4CidrBlock,omitempty"`
 	// UseIpAliases: Whether alias IPs will be used for pod IPs in the cluster.
 	// This is used in conjunction with use_routes. It cannot be true if use_routes
@@ -2844,13 +3604,13 @@ type IPAllocationPolicy struct {
 	// is true. If both use_ip_aliases and use_routes are false, then the server
 	// picks the default IP allocation mode
 	UseRoutes bool `json:"useRoutes,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "AdditionalPodRangesConfig")
+	// ForceSendFields is a list of field names (e.g. "AdditionalIpRangesConfigs")
 	// to unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "AdditionalPodRangesConfig") to
+	// NullFields is a list of field names (e.g. "AdditionalIpRangesConfigs") to
 	// include in API requests with the JSON null value. By default, fields with
 	// empty values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
@@ -2874,6 +3634,54 @@ func (s *IPAllocationPolicy) UnmarshalJSON(data []byte) error {
 	}
 	s.DefaultPodIpv4RangeUtilization = float64(s1.DefaultPodIpv4RangeUtilization)
 	return nil
+}
+
+// IPEndpointsConfig: IP endpoints configuration.
+type IPEndpointsConfig struct {
+	// AuthorizedNetworksConfig: Configuration of authorized networks. If enabled,
+	// restricts access to the control plane based on source IP. It is invalid to
+	// specify both Cluster.masterAuthorizedNetworksConfig and this field at the
+	// same time.
+	AuthorizedNetworksConfig *MasterAuthorizedNetworksConfig `json:"authorizedNetworksConfig,omitempty"`
+	// EnablePublicEndpoint: Controls whether the control plane allows access
+	// through a public IP. It is invalid to specify both
+	// PrivateClusterConfig.enablePrivateEndpoint and this field at the same time.
+	EnablePublicEndpoint bool `json:"enablePublicEndpoint,omitempty"`
+	// Enabled: Controls whether to allow direct IP access.
+	Enabled bool `json:"enabled,omitempty"`
+	// GlobalAccess: Controls whether the control plane's private endpoint is
+	// accessible from sources in other regions. It is invalid to specify both
+	// PrivateClusterMasterGlobalAccessConfig.enabled and this field at the same
+	// time.
+	GlobalAccess bool `json:"globalAccess,omitempty"`
+	// PrivateEndpoint: Output only. The internal IP address of this cluster's
+	// control plane. Only populated if enabled.
+	PrivateEndpoint string `json:"privateEndpoint,omitempty"`
+	// PrivateEndpointSubnetwork: Subnet to provision the master's private endpoint
+	// during cluster creation. Specified in projects/*/regions/*/subnetworks/*
+	// format. It is invalid to specify both
+	// PrivateClusterConfig.privateEndpointSubnetwork and this field at the same
+	// time.
+	PrivateEndpointSubnetwork string `json:"privateEndpointSubnetwork,omitempty"`
+	// PublicEndpoint: Output only. The external IP address of this cluster's
+	// control plane. Only populated if enabled.
+	PublicEndpoint string `json:"publicEndpoint,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "AuthorizedNetworksConfig")
+	// to unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AuthorizedNetworksConfig") to
+	// include in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s IPEndpointsConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod IPEndpointsConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // IdentityServiceConfig: IdentityServiceConfig is configuration for Identity
@@ -3049,10 +3857,65 @@ type LinuxNodeConfig struct {
 	// Sysctls: The Linux kernel parameters to be applied to the nodes and all pods
 	// running on the nodes. The following parameters are supported.
 	// net.core.busy_poll net.core.busy_read net.core.netdev_max_backlog
-	// net.core.rmem_max net.core.wmem_default net.core.wmem_max
-	// net.core.optmem_max net.core.somaxconn net.ipv4.tcp_rmem net.ipv4.tcp_wmem
-	// net.ipv4.tcp_tw_reuse
+	// net.core.rmem_max net.core.rmem_default net.core.wmem_default
+	// net.core.wmem_max net.core.optmem_max net.core.somaxconn net.ipv4.tcp_rmem
+	// net.ipv4.tcp_wmem net.ipv4.tcp_tw_reuse net.ipv4.tcp_max_orphans
+	// net.netfilter.nf_conntrack_max net.netfilter.nf_conntrack_buckets
+	// net.netfilter.nf_conntrack_tcp_timeout_close_wait
+	// net.netfilter.nf_conntrack_tcp_timeout_time_wait
+	// net.netfilter.nf_conntrack_tcp_timeout_established
+	// net.netfilter.nf_conntrack_acct kernel.shmmni kernel.shmmax kernel.shmall
+	// fs.aio-max-nr fs.file-max fs.inotify.max_user_instances
+	// fs.inotify.max_user_watches fs.nr_open vm.dirty_background_ratio
+	// vm.dirty_expire_centisecs vm.dirty_ratio vm.dirty_writeback_centisecs
+	// vm.max_map_count vm.overcommit_memory vm.overcommit_ratio
+	// vm.vfs_cache_pressure vm.swappiness vm.watermark_scale_factor
+	// vm.min_free_kbytes
 	Sysctls map[string]string `json:"sysctls,omitempty"`
+	// TransparentHugepageDefrag: Optional. Defines the transparent hugepage defrag
+	// configuration on the node. VM hugepage allocation can be managed by either
+	// limiting defragmentation for delayed allocation or skipping it entirely for
+	// immediate allocation only. See
+	// https://docs.kernel.org/admin-guide/mm/transhuge.html for more details.
+	//
+	// Possible values:
+	//   "TRANSPARENT_HUGEPAGE_DEFRAG_UNSPECIFIED" - Default value. GKE will not
+	// modify the kernel configuration.
+	//   "TRANSPARENT_HUGEPAGE_DEFRAG_ALWAYS" - It means that an application
+	// requesting THP will stall on allocation failure and directly reclaim pages
+	// and compact memory in an effort to allocate a THP immediately.
+	//   "TRANSPARENT_HUGEPAGE_DEFRAG_DEFER" - It means that an application will
+	// wake kswapd in the background to reclaim pages and wake kcompactd to compact
+	// memory so that THP is available in the near future. It's the responsibility
+	// of khugepaged to then install the THP pages later.
+	//   "TRANSPARENT_HUGEPAGE_DEFRAG_DEFER_WITH_MADVISE" - It means that an
+	// application will enter direct reclaim and compaction like always, but only
+	// for regions that have used madvise(MADV_HUGEPAGE); all other regions will
+	// wake kswapd in the background to reclaim pages and wake kcompactd to compact
+	// memory so that THP is available in the near future.
+	//   "TRANSPARENT_HUGEPAGE_DEFRAG_MADVISE" - It means that an application will
+	// enter direct reclaim like always but only for regions that are have used
+	// madvise(MADV_HUGEPAGE). This is the default kernel configuration.
+	//   "TRANSPARENT_HUGEPAGE_DEFRAG_NEVER" - It means that an application will
+	// never enter direct reclaim or compaction.
+	TransparentHugepageDefrag string `json:"transparentHugepageDefrag,omitempty"`
+	// TransparentHugepageEnabled: Optional. Transparent hugepage support for
+	// anonymous memory can be entirely disabled (mostly for debugging purposes) or
+	// only enabled inside MADV_HUGEPAGE regions (to avoid the risk of consuming
+	// more memory resources) or enabled system wide. See
+	// https://docs.kernel.org/admin-guide/mm/transhuge.html for more details.
+	//
+	// Possible values:
+	//   "TRANSPARENT_HUGEPAGE_ENABLED_UNSPECIFIED" - Default value. GKE will not
+	// modify the kernel configuration.
+	//   "TRANSPARENT_HUGEPAGE_ENABLED_ALWAYS" - Transparent hugepage support for
+	// anonymous memory is enabled system wide.
+	//   "TRANSPARENT_HUGEPAGE_ENABLED_MADVISE" - Transparent hugepage support for
+	// anonymous memory is enabled inside MADV_HUGEPAGE regions. This is the
+	// default kernel configuration.
+	//   "TRANSPARENT_HUGEPAGE_ENABLED_NEVER" - Transparent hugepage support for
+	// anonymous memory is disabled.
+	TransparentHugepageEnabled string `json:"transparentHugepageEnabled,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "CgroupMode") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -3192,16 +4055,17 @@ func (s ListUsableSubnetworksResponse) MarshalJSON() ([]byte, error) {
 type LocalNvmeSsdBlockConfig struct {
 	// LocalSsdCount: Number of local NVMe SSDs to use. The limit for this value is
 	// dependent upon the maximum number of disk available on a machine per zone.
-	// See: https://cloud.google.com/compute/docs/disks/local-ssd for more
-	// information. A zero (or unset) value has different meanings depending on
-	// machine type being used: 1. For pre-Gen3 machines, which support flexible
-	// numbers of local ssds, zero (or unset) means to disable using local SSDs as
-	// ephemeral storage. 2. For Gen3 machines which dictate a specific number of
-	// local ssds, zero (or unset) means to use the default number of local ssds
-	// that goes with that machine type. For example, for a c3-standard-8-lssd
-	// machine, 2 local ssds would be provisioned. For c3-standard-8 (which doesn't
-	// support local ssds), 0 will be provisioned. See
-	// https://cloud.google.com/compute/docs/disks/local-ssd#choose_number_local_ssds
+	// See:
+	// https://{$universe.dns_names.final_documentation_domain}/compute/docs/disks/local-ssd
+	// for more information. A zero (or unset) value has different meanings
+	// depending on machine type being used: 1. For pre-Gen3 machines, which
+	// support flexible numbers of local ssds, zero (or unset) means to disable
+	// using local SSDs as ephemeral storage. 2. For Gen3 machines which dictate a
+	// specific number of local ssds, zero (or unset) means to use the default
+	// number of local ssds that goes with that machine type. For example, for a
+	// c3-standard-8-lssd machine, 2 local ssds would be provisioned. For
+	// c3-standard-8 (which doesn't support local ssds), 0 will be provisioned. See
+	// https://{$universe.dns_names.final_documentation_domain}/compute/docs/disks/local-ssd#choose_number_local_ssds
 	// for more info.
 	LocalSsdCount int64 `json:"localSsdCount,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "LocalSsdCount") to
@@ -3235,6 +4099,9 @@ type LoggingComponentConfig struct {
 	//   "APISERVER" - kube-apiserver
 	//   "SCHEDULER" - kube-scheduler
 	//   "CONTROLLER_MANAGER" - kube-controller-manager
+	//   "KCP_SSHD" - kcp-sshd
+	//   "KCP_CONNECTION" - kcp connection logs
+	//   "KCP_HPA" - horizontal pod autoscaler decision logs
 	EnableComponents []string `json:"enableComponents,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "EnableComponents") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -3301,6 +4168,35 @@ type LoggingVariantConfig struct {
 
 func (s LoggingVariantConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod LoggingVariantConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// LustreCsiDriverConfig: Configuration for the Lustre CSI driver.
+type LustreCsiDriverConfig struct {
+	// EnableLegacyLustrePort: If set to true, the Lustre CSI driver will install
+	// Lustre kernel modules using port 6988. This serves as a workaround for a
+	// port conflict with the gke-metadata-server. This field is required ONLY
+	// under the following conditions: 1. The GKE node version is older than
+	// 1.33.2-gke.4655000. 2. You're connecting to a Lustre instance that has the
+	// 'gke-support-enabled' flag.
+	EnableLegacyLustrePort bool `json:"enableLegacyLustrePort,omitempty"`
+	// Enabled: Whether the Lustre CSI driver is enabled for this cluster.
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "EnableLegacyLustrePort") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EnableLegacyLustrePort") to
+	// include in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s LustreCsiDriverConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod LustreCsiDriverConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -3401,17 +4297,19 @@ func (s MaintenanceWindow) MarshalJSON() ([]byte, error) {
 // ManagedPrometheusConfig: ManagedPrometheusConfig defines the configuration
 // for Google Cloud Managed Service for Prometheus.
 type ManagedPrometheusConfig struct {
+	// AutoMonitoringConfig: GKE Workload Auto-Monitoring Configuration.
+	AutoMonitoringConfig *AutoMonitoringConfig `json:"autoMonitoringConfig,omitempty"`
 	// Enabled: Enable Managed Collection.
 	Enabled bool `json:"enabled,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
-	// include in API requests. By default, fields with empty or default values are
-	// omitted from API requests. See
+	// ForceSendFields is a list of field names (e.g. "AutoMonitoringConfig") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "Enabled") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
+	// NullFields is a list of field names (e.g. "AutoMonitoringConfig") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
@@ -3445,7 +4343,7 @@ type MasterAuth struct {
 	// username must be non-empty. Warning: basic authentication is deprecated, and
 	// will be removed in GKE control plane versions 1.19 and newer. For a list of
 	// recommended authentication methods, see:
-	// https://cloud.google.com/kubernetes-engine/docs/how-to/api-server-authentication
+	// https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/how-to/api-server-authentication
 	Password string `json:"password,omitempty"`
 	// Username: The username to use for HTTP basic authentication to the master
 	// endpoint. For clusters v1.6.0 and later, basic authentication can be
@@ -3453,7 +4351,7 @@ type MasterAuth struct {
 	// string). Warning: basic authentication is deprecated, and will be removed in
 	// GKE control plane versions 1.19 and newer. For a list of recommended
 	// authentication methods, see:
-	// https://cloud.google.com/kubernetes-engine/docs/how-to/api-server-authentication
+	// https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/how-to/api-server-authentication
 	Username string `json:"username,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClientCertificate") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -3484,9 +4382,12 @@ type MasterAuthorizedNetworksConfig struct {
 	CidrBlocks []*CidrBlock `json:"cidrBlocks,omitempty"`
 	// Enabled: Whether or not master authorized networks is enabled.
 	Enabled bool `json:"enabled,omitempty"`
-	// GcpPublicCidrsAccessEnabled: Whether master is accessbile via Google Compute
+	// GcpPublicCidrsAccessEnabled: Whether master is accessible via Google Compute
 	// Engine Public IP addresses.
 	GcpPublicCidrsAccessEnabled bool `json:"gcpPublicCidrsAccessEnabled,omitempty"`
+	// PrivateEndpointEnforcementEnabled: Whether master authorized networks is
+	// enforced on private endpoint or not.
+	PrivateEndpointEnforcementEnabled bool `json:"privateEndpointEnforcementEnabled,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "CidrBlocks") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -3524,6 +4425,33 @@ type MaxPodsConstraint struct {
 
 func (s MaxPodsConstraint) MarshalJSON() ([]byte, error) {
 	type NoMethod MaxPodsConstraint
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// MemoryManager: The option enables the Kubernetes NUMA-aware Memory Manager
+// feature. Detailed description about the feature can be found here
+// (https://kubernetes.io/docs/tasks/administer-cluster/memory-manager/).
+type MemoryManager struct {
+	// Policy: Controls the memory management policy on the Node. See
+	// https://kubernetes.io/docs/tasks/administer-cluster/memory-manager/#policies
+	// The following values are allowed. * "none" * "static" The default value is
+	// 'none' if unspecified.
+	Policy string `json:"policy,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Policy") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Policy") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s MemoryManager) MarshalJSON() ([]byte, error) {
+	type NoMethod MemoryManager
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -3617,6 +4545,7 @@ type MonitoringComponentConfig struct {
 	//   "CADVISOR" - CADVISOR
 	//   "KUBELET" - KUBELET
 	//   "DCGM" - NVIDIA Data Center GPU Manager (DCGM)
+	//   "JOBSET" - JobSet
 	EnableComponents []string `json:"enableComponents,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "EnableComponents") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -3677,14 +4606,23 @@ type NetworkConfig struct {
 	//   "LEGACY_DATAPATH" - Use the IPTables implementation based on kube-proxy.
 	//   "ADVANCED_DATAPATH" - Use the eBPF based GKE Dataplane V2 with additional
 	// features. See the [GKE Dataplane V2
-	// documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/datapla
-	// ne-v2) for more.
+	// documentation](https://{$universe.dns_names.final_documentation_domain}/kuber
+	// netes-engine/docs/how-to/dataplane-v2) for more.
 	DatapathProvider string `json:"datapathProvider,omitempty"`
+	// DefaultEnablePrivateNodes: Controls whether by default nodes have private IP
+	// addresses only. It is invalid to specify both
+	// PrivateClusterConfig.enablePrivateNodes and this field at the same time. To
+	// update the default setting, use
+	// ClusterUpdate.desired_default_enable_private_nodes
+	DefaultEnablePrivateNodes bool `json:"defaultEnablePrivateNodes,omitempty"`
 	// DefaultSnatStatus: Whether the cluster disables default in-node sNAT rules.
 	// In-node sNAT rules will be disabled when default_snat_status is disabled.
 	// When disabled is set to false, default IP masquerade rules will be applied
 	// to the nodes to prevent sNAT on cluster internal traffic.
 	DefaultSnatStatus *DefaultSnatStatus `json:"defaultSnatStatus,omitempty"`
+	// DisableL4LbFirewallReconciliation: Disable L4 load balancer VPC firewalls to
+	// enable firewall policies.
+	DisableL4LbFirewallReconciliation bool `json:"disableL4LbFirewallReconciliation,omitempty"`
 	// DnsConfig: DNSConfig contains clusterDNS config for this cluster.
 	DnsConfig *DNSConfig `json:"dnsConfig,omitempty"`
 	// EnableCiliumClusterwideNetworkPolicy: Whether CiliumClusterwideNetworkPolicy
@@ -3713,9 +4651,9 @@ type NetworkConfig struct {
 	//   "IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT" - Data in-transit is
 	// encrypted using inter-node transparent encryption.
 	InTransitEncryptionConfig string `json:"inTransitEncryptionConfig,omitempty"`
-	// Network: Output only. The relative name of the Google Compute Engine
-	// network(https://cloud.google.com/compute/docs/networks-and-firewalls#networks
-	// ) to which the cluster is connected. Example:
+	// Network: Output only. The relative name of the Google Compute Engine network
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/networks-and-firewalls#networks)
+	// to which the cluster is connected. Example:
 	// projects/my-project/global/networks/my-network
 	Network string `json:"network,omitempty"`
 	// NetworkPerformanceConfig: Network bandwidth tier configuration.
@@ -3737,8 +4675,9 @@ type NetworkConfig struct {
 	// with externalIPs field are blocked or not.
 	ServiceExternalIpsConfig *ServiceExternalIPsConfig `json:"serviceExternalIpsConfig,omitempty"`
 	// Subnetwork: Output only. The relative name of the Google Compute Engine
-	// subnetwork (https://cloud.google.com/compute/docs/vpc) to which the cluster
-	// is connected. Example:
+	// subnetwork
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/vpc)
+	// to which the cluster is connected. Example:
 	// projects/my-project/regions/us-central1/subnetworks/my-subnet
 	Subnetwork string `json:"subnetwork,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "DatapathProvider") to
@@ -3862,9 +4801,44 @@ func (s NetworkTags) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// NetworkTierConfig: NetworkTierConfig contains network tier information.
+type NetworkTierConfig struct {
+	// NetworkTier: Network tier configuration.
+	//
+	// Possible values:
+	//   "NETWORK_TIER_UNSPECIFIED" - By default, use project-level configuration.
+	// When unspecified, the behavior defaults to NETWORK_TIER_DEFAULT. For cluster
+	// updates, this implies no action (no-op).
+	//   "NETWORK_TIER_DEFAULT" - Default network tier. Use project-level
+	// configuration. User can specify this value, meaning they want to keep the
+	// same behaviour as before cluster level network tier configuration is
+	// introduced. This field ensures backward compatibility for the network tier
+	// of cluster resources, such as node pools and load balancers, for their
+	// external IP addresses.
+	//   "NETWORK_TIER_PREMIUM" - Premium network tier.
+	//   "NETWORK_TIER_STANDARD" - Standard network tier.
+	NetworkTier string `json:"networkTier,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "NetworkTier") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "NetworkTier") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s NetworkTierConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod NetworkTierConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // NodeAffinity: Specifies the NodeAffinity key, values, and affinity operator
 // according to shared sole tenant node group affinities
-// (https://cloud.google.com/compute/docs/nodes/sole-tenant-nodes#node_affinity_and_anti-affinity).
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/nodes/sole-tenant-nodes#node_affinity_and_anti-affinity).
 type NodeAffinity struct {
 	// Key: Key for NodeAffinity.
 	Key string `json:"key,omitempty"`
@@ -3900,17 +4874,20 @@ func (s NodeAffinity) MarshalJSON() ([]byte, error) {
 // AutoprovisioningNodePoolDefaults instead.
 type NodeConfig struct {
 	// Accelerators: A list of hardware accelerators to be attached to each node.
-	// See https://cloud.google.com/compute/docs/gpus for more information about
-	// support for GPUs.
+	// See
+	// https://{$universe.dns_names.final_documentation_domain}/compute/docs/gpus
+	// for more information about support for GPUs.
 	Accelerators []*AcceleratorConfig `json:"accelerators,omitempty"`
 	// AdvancedMachineFeatures: Advanced features for the Compute Engine VM.
 	AdvancedMachineFeatures *AdvancedMachineFeatures `json:"advancedMachineFeatures,omitempty"`
+	// BootDisk: The boot disk configuration for the node pool.
+	BootDisk *BootDisk `json:"bootDisk,omitempty"`
 	// BootDiskKmsKey:  The Customer Managed Encryption Key used to encrypt the
 	// boot disk attached to each node in the node pool. This should be of the form
 	// projects/[KEY_PROJECT_ID]/locations/[LOCATION]/keyRings/[RING_NAME]/cryptoKey
 	// s/[KEY_NAME]. For more information about protecting resources with Cloud KMS
 	// Keys please see:
-	// https://cloud.google.com/compute/docs/disks/customer-managed-encryption
+	// https://{$universe.dns_names.final_documentation_domain}/compute/docs/disks/customer-managed-encryption
 	BootDiskKmsKey string `json:"bootDiskKmsKey,omitempty"`
 	// ConfidentialNodes: Confidential nodes config. All the nodes in the node pool
 	// will be Confidential VM once enabled.
@@ -3925,6 +4902,20 @@ type NodeConfig struct {
 	// 'pd-ssd' or 'pd-balanced') If unspecified, the default disk type is
 	// 'pd-standard'
 	DiskType string `json:"diskType,omitempty"`
+	// EffectiveCgroupMode: Output only. effective_cgroup_mode is the cgroup mode
+	// actually used by the node pool. It is determined by the cgroup mode
+	// specified in the LinuxNodeConfig or the default cgroup mode based on the
+	// cluster creation version.
+	//
+	// Possible values:
+	//   "EFFECTIVE_CGROUP_MODE_UNSPECIFIED" - EFFECTIVE_CGROUP_MODE_UNSPECIFIED
+	// means the cgroup configuration for the node pool is unspecified, i.e. the
+	// node pool is a Windows node pool.
+	//   "EFFECTIVE_CGROUP_MODE_V1" - CGROUP_MODE_V1 means the node pool is
+	// configured to use cgroupv1 for the cgroup configuration.
+	//   "EFFECTIVE_CGROUP_MODE_V2" - CGROUP_MODE_V2 means the node pool is
+	// configured to use cgroupv2 for the cgroup configuration.
+	EffectiveCgroupMode string `json:"effectiveCgroupMode,omitempty"`
 	// EnableConfidentialStorage: Optional. Reserved for future use.
 	EnableConfidentialStorage bool `json:"enableConfidentialStorage,omitempty"`
 	// EphemeralStorageLocalSsdConfig: Parameters for the node ephemeral storage
@@ -3933,14 +4924,16 @@ type NodeConfig struct {
 	EphemeralStorageLocalSsdConfig *EphemeralStorageLocalSsdConfig `json:"ephemeralStorageLocalSsdConfig,omitempty"`
 	// FastSocket: Enable or disable NCCL fast socket for the node pool.
 	FastSocket *FastSocket `json:"fastSocket,omitempty"`
+	// FlexStart: Flex Start flag for enabling Flex Start VM.
+	FlexStart bool `json:"flexStart,omitempty"`
 	// GcfsConfig: Google Container File System (image streaming) configs.
 	GcfsConfig *GcfsConfig `json:"gcfsConfig,omitempty"`
 	// Gvnic: Enable or disable gvnic in the node pool.
 	Gvnic *VirtualNIC `json:"gvnic,omitempty"`
 	// ImageType: The image type to use for this node. Note that for a given image
 	// type, the latest version of it will be used. Please see
-	// https://cloud.google.com/kubernetes-engine/docs/concepts/node-images for
-	// available image types.
+	// https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/concepts/node-images
+	// for available image types.
 	ImageType string `json:"imageType,omitempty"`
 	// KubeletConfig: Node kubelet configs.
 	KubeletConfig *NodeKubeletConfig `json:"kubeletConfig,omitempty"`
@@ -3959,14 +4952,32 @@ type NodeConfig struct {
 	// LocalSsdCount: The number of local SSD disks to be attached to the node. The
 	// limit for this value is dependent upon the maximum number of disks available
 	// on a machine per zone. See:
-	// https://cloud.google.com/compute/docs/disks/local-ssd for more information.
+	// https://{$universe.dns_names.final_documentation_domain}/compute/docs/disks/local-ssd
+	// for more information.
 	LocalSsdCount int64 `json:"localSsdCount,omitempty"`
+	// LocalSsdEncryptionMode: Specifies which method should be used for encrypting
+	// the Local SSDs attached to the node.
+	//
+	// Possible values:
+	//   "LOCAL_SSD_ENCRYPTION_MODE_UNSPECIFIED" - The given node will be encrypted
+	// using keys managed by Google infrastructure and the keys will be deleted
+	// when the node is deleted.
+	//   "STANDARD_ENCRYPTION" - The given node will be encrypted using keys
+	// managed by Google infrastructure and the keys will be deleted when the node
+	// is deleted.
+	//   "EPHEMERAL_KEY_ENCRYPTION" - The given node will opt-in for using
+	// ephemeral key for encryption of Local SSDs. The Local SSDs will not be able
+	// to recover data in case of node crash.
+	LocalSsdEncryptionMode string `json:"localSsdEncryptionMode,omitempty"`
 	// LoggingConfig: Logging configuration.
 	LoggingConfig *NodePoolLoggingConfig `json:"loggingConfig,omitempty"`
 	// MachineType: The name of a Google Compute Engine machine type
-	// (https://cloud.google.com/compute/docs/machine-types) If unspecified, the
-	// default machine type is `e2-medium`.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/machine-types)
+	// If unspecified, the default machine type is `e2-medium`.
 	MachineType string `json:"machineType,omitempty"`
+	// MaxRunDuration: The maximum duration for the nodes to exist. If unspecified,
+	// the nodes can exist indefinitely.
+	MaxRunDuration string `json:"maxRunDuration,omitempty"`
 	// Metadata: The metadata key/value pairs assigned to instances in the cluster.
 	// Keys must conform to the regexp `[a-zA-Z0-9-_]+` and be less than 128 bytes
 	// in length. These are reflected as part of a URL in the metadata server.
@@ -3988,12 +4999,12 @@ type NodeConfig struct {
 	// values are the friendly names of CPU platforms, such as `minCpuPlatform:
 	// "Intel Haswell" or `minCpuPlatform: "Intel Sandy Bridge". For more
 	// information, read how to specify min CPU platform
-	// (https://cloud.google.com/compute/docs/instances/specify-min-cpu-platform)
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/instances/specify-min-cpu-platform)
 	MinCpuPlatform string `json:"minCpuPlatform,omitempty"`
 	// NodeGroup: Setting this field will assign instances of this pool to run on
 	// the specified node group. This is useful for running workloads on sole
 	// tenant nodes
-	// (https://cloud.google.com/compute/docs/nodes/sole-tenant-nodes).
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/nodes/sole-tenant-nodes).
 	NodeGroup string `json:"nodeGroup,omitempty"`
 	// OauthScopes: The set of Google API scopes to be made available on all of the
 	// node VMs under the "default" service account. The following scopes are
@@ -4002,17 +5013,17 @@ type NodeConfig struct {
 	// persistent storage on your nodes. *
 	// `https://www.googleapis.com/auth/devstorage.read_only` is required for
 	// communicating with **gcr.io** (the Google Container Registry
-	// (https://cloud.google.com/container-registry/)). If unspecified, no scopes
-	// are added, unless Cloud Logging or Cloud Monitoring are enabled, in which
-	// case their required scopes will be added.
+	// (https://{$universe.dns_names.final_documentation_domain}/container-registry/)).
+	// If unspecified, no scopes are added, unless Cloud Logging or Cloud
+	// Monitoring are enabled, in which case their required scopes will be added.
 	OauthScopes []string `json:"oauthScopes,omitempty"`
 	// Preemptible: Whether the nodes are created as preemptible VM instances. See:
-	// https://cloud.google.com/compute/docs/instances/preemptible for more
-	// information about preemptible VM instances.
+	// https://{$universe.dns_names.final_documentation_domain}/compute/docs/instances/preemptible
+	// for more information about preemptible VM instances.
 	Preemptible bool `json:"preemptible,omitempty"`
 	// ReservationAffinity: The optional reservation affinity. Setting this field
 	// will apply the specified Zonal Compute Reservation
-	// (https://cloud.google.com/compute/docs/instances/reserving-zonal-resources)
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/instances/reserving-zonal-resources)
 	// to this node pool.
 	ReservationAffinity *ReservationAffinity `json:"reservationAffinity,omitempty"`
 	// ResourceLabels: The resource labels for the node pool to use to annotate any
@@ -4105,6 +5116,31 @@ func (s NodeConfigDefaults) MarshalJSON() ([]byte, error) {
 
 // NodeKubeletConfig: Node kubelet configs.
 type NodeKubeletConfig struct {
+	// AllowedUnsafeSysctls: Optional. Defines a comma-separated allowlist of
+	// unsafe sysctls or sysctl patterns (ending in `*`). The unsafe namespaced
+	// sysctl groups are `kernel.shm*`, `kernel.msg*`, `kernel.sem`, `fs.mqueue.*`,
+	// and `net.*`. Leaving this allowlist empty means they cannot be set on Pods.
+	// To allow certain sysctls or sysctl patterns to be set on Pods, list them
+	// separated by commas. For example: `kernel.msg*,net.ipv4.route.min_pmtu`. See
+	// https://kubernetes.io/docs/tasks/administer-cluster/sysctl-cluster/ for more
+	// details.
+	AllowedUnsafeSysctls []string `json:"allowedUnsafeSysctls,omitempty"`
+	// ContainerLogMaxFiles: Optional. Defines the maximum number of container log
+	// files that can be present for a container. See
+	// https://kubernetes.io/docs/concepts/cluster-administration/logging/#log-rotation
+	// The value must be an integer between 2 and 10, inclusive. The default value
+	// is 5 if unspecified.
+	ContainerLogMaxFiles int64 `json:"containerLogMaxFiles,omitempty"`
+	// ContainerLogMaxSize: Optional. Defines the maximum size of the container log
+	// file before it is rotated. See
+	// https://kubernetes.io/docs/concepts/cluster-administration/logging/#log-rotation
+	// Valid format is positive number + unit, e.g. 100Ki, 10Mi. Valid units are
+	// Ki, Mi, Gi. The value must be between 10Mi and 500Mi, inclusive. Note that
+	// the total container log size (container_log_max_size *
+	// container_log_max_files) cannot exceed 1% of the total storage of the node,
+	// to avoid disk pressure caused by log files. The default value is 10Mi if
+	// unspecified.
+	ContainerLogMaxSize string `json:"containerLogMaxSize,omitempty"`
 	// CpuCfsQuota: Enable CPU CFS quota enforcement for containers that specify
 	// CPU limits. This option is enabled by default which makes kubelet use CFS
 	// quota (https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt) to
@@ -4116,7 +5152,8 @@ type NodeKubeletConfig struct {
 	// CpuCfsQuotaPeriod: Set the CPU CFS quota period value 'cpu.cfs_period_us'.
 	// The string must be a sequence of decimal numbers, each with optional
 	// fraction and a unit suffix, such as "300ms". Valid time units are "ns", "us"
-	// (or "µs"), "ms", "s", "m", "h". The value must be a positive duration.
+	// (or "µs"), "ms", "s", "m", "h". The value must be a positive duration
+	// between 1ms and 1 second, inclusive.
 	CpuCfsQuotaPeriod string `json:"cpuCfsQuotaPeriod,omitempty"`
 	// CpuManagerPolicy: Control the CPU management policy on the node. See
 	// https://kubernetes.io/docs/tasks/administer-cluster/cpu-management-policies/
@@ -4125,23 +5162,91 @@ type NodeKubeletConfig struct {
 	// resource characteristics to be granted increased CPU affinity and
 	// exclusivity on the node. The default value is 'none' if unspecified.
 	CpuManagerPolicy string `json:"cpuManagerPolicy,omitempty"`
+	// EvictionMaxPodGracePeriodSeconds: Optional.
+	// eviction_max_pod_grace_period_seconds is the maximum allowed grace period
+	// (in seconds) to use when terminating pods in response to a soft eviction
+	// threshold being met. This value effectively caps the Pod's
+	// terminationGracePeriodSeconds value during soft evictions. Default: 0.
+	// Range: [0, 300].
+	EvictionMaxPodGracePeriodSeconds int64 `json:"evictionMaxPodGracePeriodSeconds,omitempty"`
+	// EvictionMinimumReclaim: Optional. eviction_minimum_reclaim is a map of
+	// signal names to quantities that defines minimum reclaims, which describe the
+	// minimum amount of a given resource the kubelet will reclaim when performing
+	// a pod eviction while that resource is under pressure.
+	EvictionMinimumReclaim *EvictionMinimumReclaim `json:"evictionMinimumReclaim,omitempty"`
+	// EvictionSoft: Optional. eviction_soft is a map of signal names to quantities
+	// that defines soft eviction thresholds. Each signal is compared to its
+	// corresponding threshold to determine if a pod eviction should occur.
+	EvictionSoft *EvictionSignals `json:"evictionSoft,omitempty"`
+	// EvictionSoftGracePeriod: Optional. eviction_soft_grace_period is a map of
+	// signal names to quantities that defines grace periods for each soft eviction
+	// signal. The grace period is the amount of time that a pod must be under
+	// pressure before an eviction occurs.
+	EvictionSoftGracePeriod *EvictionGracePeriod `json:"evictionSoftGracePeriod,omitempty"`
+	// ImageGcHighThresholdPercent: Optional. Defines the percent of disk usage
+	// after which image garbage collection is always run. The percent is
+	// calculated as this field value out of 100. The value must be between 10 and
+	// 85, inclusive and greater than image_gc_low_threshold_percent. The default
+	// value is 85 if unspecified.
+	ImageGcHighThresholdPercent int64 `json:"imageGcHighThresholdPercent,omitempty"`
+	// ImageGcLowThresholdPercent: Optional. Defines the percent of disk usage
+	// before which image garbage collection is never run. Lowest disk usage to
+	// garbage collect to. The percent is calculated as this field value out of
+	// 100. The value must be between 10 and 85, inclusive and smaller than
+	// image_gc_high_threshold_percent. The default value is 80 if unspecified.
+	ImageGcLowThresholdPercent int64 `json:"imageGcLowThresholdPercent,omitempty"`
+	// ImageMaximumGcAge: Optional. Defines the maximum age an image can be unused
+	// before it is garbage collected. The string must be a sequence of decimal
+	// numbers, each with optional fraction and a unit suffix, such as "300s",
+	// "1.5h", and "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s",
+	// "m", "h". The value must be a positive duration greater than
+	// image_minimum_gc_age or "0s". The default value is "0s" if unspecified,
+	// which disables this field, meaning images won't be garbage collected based
+	// on being unused for too long.
+	ImageMaximumGcAge string `json:"imageMaximumGcAge,omitempty"`
+	// ImageMinimumGcAge: Optional. Defines the minimum age for an unused image
+	// before it is garbage collected. The string must be a sequence of decimal
+	// numbers, each with optional fraction and a unit suffix, such as "300s",
+	// "1.5h", and "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s",
+	// "m", "h". The value must be a positive duration less than or equal to 2
+	// minutes. The default value is "2m0s" if unspecified.
+	ImageMinimumGcAge string `json:"imageMinimumGcAge,omitempty"`
 	// InsecureKubeletReadonlyPortEnabled: Enable or disable Kubelet read only
 	// port.
 	InsecureKubeletReadonlyPortEnabled bool `json:"insecureKubeletReadonlyPortEnabled,omitempty"`
+	// MaxParallelImagePulls: Optional. Defines the maximum number of image pulls
+	// in parallel. The range is 2 to 5, inclusive. The default value is 2 or 3
+	// depending on the disk type. See
+	// https://kubernetes.io/docs/concepts/containers/images/#maximum-parallel-image-pulls
+	// for more details.
+	MaxParallelImagePulls int64 `json:"maxParallelImagePulls,omitempty"`
+	// MemoryManager: Optional. Controls NUMA-aware Memory Manager configuration on
+	// the node. For more information, see:
+	// https://kubernetes.io/docs/tasks/administer-cluster/memory-manager/
+	MemoryManager *MemoryManager `json:"memoryManager,omitempty"`
 	// PodPidsLimit: Set the Pod PID limits. See
 	// https://kubernetes.io/docs/concepts/policy/pid-limiting/#pod-pid-limits
 	// Controls the maximum number of processes allowed to run in a pod. The value
 	// must be greater than or equal to 1024 and less than 4194304.
 	PodPidsLimit int64 `json:"podPidsLimit,omitempty,string"`
-	// ForceSendFields is a list of field names (e.g. "CpuCfsQuota") to
+	// SingleProcessOomKill: Optional. Defines whether to enable single process OOM
+	// killer. If true, will prevent the memory.oom.group flag from being set for
+	// container cgroups in cgroups v2. This causes processes in the container to
+	// be OOM killed individually instead of as a group.
+	SingleProcessOomKill bool `json:"singleProcessOomKill,omitempty"`
+	// TopologyManager: Optional. Controls Topology Manager configuration on the
+	// node. For more information, see:
+	// https://kubernetes.io/docs/tasks/administer-cluster/topology-manager/
+	TopologyManager *TopologyManager `json:"topologyManager,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "AllowedUnsafeSysctls") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "CpuCfsQuota") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
+	// NullFields is a list of field names (e.g. "AllowedUnsafeSysctls") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
@@ -4226,10 +5331,14 @@ type NodeNetworkConfig struct {
 	CreatePodRange bool `json:"createPodRange,omitempty"`
 	// EnablePrivateNodes: Whether nodes have internal IP addresses only. If
 	// enable_private_nodes is not specified, then the value is derived from
-	// cluster.privateClusterConfig.enablePrivateNodes
+	// Cluster.NetworkConfig.default_enable_private_nodes
 	EnablePrivateNodes bool `json:"enablePrivateNodes,omitempty"`
 	// NetworkPerformanceConfig: Network bandwidth tier configuration.
 	NetworkPerformanceConfig *NetworkPerformanceConfig `json:"networkPerformanceConfig,omitempty"`
+	// NetworkTierConfig: Output only. The network tier configuration for the node
+	// pool inherits from the cluster-level configuration and remains immutable
+	// throughout the node pool's lifecycle, including during upgrades.
+	NetworkTierConfig *NetworkTierConfig `json:"networkTierConfig,omitempty"`
 	// PodCidrOverprovisionConfig: [PRIVATE FIELD] Pod CIDR size overprovisioning
 	// config for the nodepool. Pod CIDR size per node depends on
 	// max_pods_per_node. By default, the value of max_pods_per_node is rounded off
@@ -4258,6 +5367,12 @@ type NodeNetworkConfig struct {
 	// `ip_allocation_policy.use_ip_aliases` is true. This field cannot be changed
 	// after the node pool has been created.
 	PodRange string `json:"podRange,omitempty"`
+	// Subnetwork: Output only. The subnetwork path for the node pool. Format:
+	// projects/{project}/regions/{region}/subnetworks/{subnetwork} If the cluster
+	// is associated with multiple subnetworks, the subnetwork for the node pool is
+	// picked based on the IP utilization during node pool creation and is
+	// immutable.
+	Subnetwork string `json:"subnetwork,omitempty"`
 	// ForceSendFields is a list of field names (e.g.
 	// "AdditionalNodeNetworkConfigs") to unconditionally include in API requests.
 	// By default, fields with empty or default values are omitted from API
@@ -4297,6 +5412,9 @@ func (s *NodeNetworkConfig) UnmarshalJSON(data []byte) error {
 // them during pod scheduling. They may also be resized up or down, to
 // accommodate the workload.
 type NodePool struct {
+	// AutopilotConfig: Specifies the autopilot configuration for this node pool.
+	// This field is exclusively reserved for Cluster Autoscaler.
+	AutopilotConfig *AutopilotConfig `json:"autopilotConfig,omitempty"`
 	// Autoscaling: Autoscaler configuration for this NodePool. Autoscaler is
 	// enabled only if a valid configuration is present.
 	Autoscaling *NodePoolAutoscaling `json:"autoscaling,omitempty"`
@@ -4311,21 +5429,22 @@ type NodePool struct {
 	// up-to-date value before proceeding.
 	Etag string `json:"etag,omitempty"`
 	// InitialNodeCount: The initial node count for the pool. You must ensure that
-	// your Compute Engine resource quota (https://cloud.google.com/compute/quotas)
-	// is sufficient for this number of instances. You must also have available
+	// your Compute Engine resource quota
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/quotas) is
+	// sufficient for this number of instances. You must also have available
 	// firewall and routes quota.
 	InitialNodeCount int64 `json:"initialNodeCount,omitempty"`
 	// InstanceGroupUrls: Output only. The resource URLs of the managed instance
 	// groups
-	// (https://cloud.google.com/compute/docs/instance-groups/creating-groups-of-managed-instances)
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/instance-groups/creating-groups-of-managed-instances)
 	// associated with this node pool. During the node pool blue-green upgrade
 	// operation, the URLs contain both blue and green resources.
 	InstanceGroupUrls []string `json:"instanceGroupUrls,omitempty"`
 	// Locations: The list of Google Compute Engine zones
-	// (https://cloud.google.com/compute/docs/zones#available) in which the
-	// NodePool's nodes should be located. If this value is unspecified during node
-	// pool creation, the Cluster.Locations
-	// (https://cloud.google.com/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters#Cluster.FIELDS.locations)
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the NodePool's nodes should be located. If this value is
+	// unspecified during node pool creation, the Cluster.Locations
+	// (https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters#Cluster.FIELDS.locations)
 	// value will be used, instead. Warning: changing node pool locations will
 	// result in nodes being added and/or removed.
 	Locations []string `json:"locations,omitempty"`
@@ -4379,20 +5498,20 @@ type NodePool struct {
 	UpgradeSettings *UpgradeSettings `json:"upgradeSettings,omitempty"`
 	// Version: The version of Kubernetes running on this NodePool's nodes. If
 	// unspecified, it defaults as described here
-	// (https://cloud.google.com/kubernetes-engine/versioning#specifying_node_version).
+	// (https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/versioning#specifying_node_version).
 	Version string `json:"version,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-	// ForceSendFields is a list of field names (e.g. "Autoscaling") to
+	// ForceSendFields is a list of field names (e.g. "AutopilotConfig") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "Autoscaling") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
+	// NullFields is a list of field names (e.g. "AutopilotConfig") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
@@ -4406,6 +5525,8 @@ func (s NodePool) MarshalJSON() ([]byte, error) {
 // node pools in autopilot clusters and node auto-provisioning enabled
 // clusters.
 type NodePoolAutoConfig struct {
+	// LinuxNodeConfig: Output only. Configuration options for Linux nodes.
+	LinuxNodeConfig *LinuxNodeConfig `json:"linuxNodeConfig,omitempty"`
 	// NetworkTags: The list of instance tags applied to all nodes. Tags are used
 	// to identify valid sources or targets for network firewalls and are specified
 	// by the client during cluster creation. Each tag within the list must comply
@@ -4419,15 +5540,15 @@ type NodePoolAutoConfig struct {
 	// the nodes for managing Compute Engine firewalls using Network Firewall
 	// Policies.
 	ResourceManagerTags *ResourceManagerTags `json:"resourceManagerTags,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "NetworkTags") to
+	// ForceSendFields is a list of field names (e.g. "LinuxNodeConfig") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "NetworkTags") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
+	// NullFields is a list of field names (e.g. "LinuxNodeConfig") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
@@ -4453,20 +5574,22 @@ type NodePoolAutoscaling struct {
 	// sizes of different zones.
 	//   "ANY" - ANY policy picks zones that have the highest capacity available.
 	LocationPolicy string `json:"locationPolicy,omitempty"`
-	// MaxNodeCount: Maximum number of nodes for one location in the NodePool. Must
-	// be >= min_node_count. There has to be enough quota to scale up the cluster.
+	// MaxNodeCount: Maximum number of nodes for one location in the node pool.
+	// Must be >= min_node_count. There has to be enough quota to scale up the
+	// cluster.
 	MaxNodeCount int64 `json:"maxNodeCount,omitempty"`
-	// MinNodeCount: Minimum number of nodes for one location in the NodePool. Must
-	// be >= 1 and <= max_node_count.
+	// MinNodeCount: Minimum number of nodes for one location in the node pool.
+	// Must be greater than or equal to 0 and less than or equal to max_node_count.
 	MinNodeCount int64 `json:"minNodeCount,omitempty"`
 	// TotalMaxNodeCount: Maximum number of nodes in the node pool. Must be greater
-	// than total_min_node_count. There has to be enough quota to scale up the
-	// cluster. The total_*_node_count fields are mutually exclusive with the
-	// *_node_count fields.
+	// than or equal to total_min_node_count. There has to be enough quota to scale
+	// up the cluster. The total_*_node_count fields are mutually exclusive with
+	// the *_node_count fields.
 	TotalMaxNodeCount int64 `json:"totalMaxNodeCount,omitempty"`
 	// TotalMinNodeCount: Minimum number of nodes in the node pool. Must be greater
-	// than 1 less than total_max_node_count. The total_*_node_count fields are
-	// mutually exclusive with the *_node_count fields.
+	// than or equal to 0 and less than or equal to total_max_node_count. The
+	// total_*_node_count fields are mutually exclusive with the *_node_count
+	// fields.
 	TotalMinNodeCount int64 `json:"totalMinNodeCount,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Autoprovisioned") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -4528,6 +5651,68 @@ type NodePoolLoggingConfig struct {
 
 func (s NodePoolLoggingConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod NodePoolLoggingConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// NodePoolUpgradeInfo: NodePoolUpgradeInfo contains the upgrade information of
+// a nodepool.
+type NodePoolUpgradeInfo struct {
+	// AutoUpgradeStatus: The auto upgrade status.
+	//
+	// Possible values:
+	//   "UNKNOWN" - UNKNOWN indicates an unknown status.
+	//   "ACTIVE" - ACTIVE indicates an active status.
+	//   "MINOR_UPGRADE_PAUSED" - MINOR_UPGRADE_PAUSED indicates the minor version
+	// upgrade is paused.
+	//   "UPGRADE_PAUSED" - UPGRADE_PAUSED indicates the upgrade is paused.
+	AutoUpgradeStatus []string `json:"autoUpgradeStatus,omitempty"`
+	// EndOfExtendedSupportTimestamp: The nodepool's current minor version's end of
+	// extended support timestamp.
+	EndOfExtendedSupportTimestamp string `json:"endOfExtendedSupportTimestamp,omitempty"`
+	// EndOfStandardSupportTimestamp: The nodepool's current minor version's end of
+	// standard support timestamp.
+	EndOfStandardSupportTimestamp string `json:"endOfStandardSupportTimestamp,omitempty"`
+	// MinorTargetVersion: minor_target_version indicates the target version for
+	// minor upgrade.
+	MinorTargetVersion string `json:"minorTargetVersion,omitempty"`
+	// PatchTargetVersion: patch_target_version indicates the target version for
+	// patch upgrade.
+	PatchTargetVersion string `json:"patchTargetVersion,omitempty"`
+	// PausedReason: The auto upgrade paused reason.
+	//
+	// Possible values:
+	//   "AUTO_UPGRADE_PAUSED_REASON_UNSPECIFIED" -
+	// AUTO_UPGRADE_PAUSED_REASON_UNSPECIFIED indicates an unspecified reason.
+	//   "MAINTENANCE_WINDOW" - MAINTENANCE_WINDOW indicates the cluster is outside
+	// customer maintenance window.
+	//   "MAINTENANCE_EXCLUSION_NO_UPGRADES" - MAINTENANCE_EXCLUSION_NO_UPGRADES
+	// indicates the cluster is in a maintenance exclusion with scope NO_UPGRADES.
+	//   "MAINTENANCE_EXCLUSION_NO_MINOR_UPGRADES" -
+	// MAINTENANCE_EXCLUSION_NO_MINOR_UPGRADES indicates the cluster is in a
+	// maintenance exclusion with scope NO_MINOR_UPGRADES.
+	//   "SYSTEM_CONFIG" - SYSTEM_CONFIG indicates the cluster upgrade is paused by
+	// system config.
+	PausedReason []string `json:"pausedReason,omitempty"`
+	// UpgradeDetails: The list of past auto upgrades.
+	UpgradeDetails []*UpgradeDetails `json:"upgradeDetails,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "AutoUpgradeStatus") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AutoUpgradeStatus") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s NodePoolUpgradeInfo) MarshalJSON() ([]byte, error) {
+	type NoMethod NodePoolUpgradeInfo
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -4627,9 +5812,9 @@ type Operation struct {
 	// Error: The error result of the operation in case of failure.
 	Error *Status `json:"error,omitempty"`
 	// Location: Output only. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/regions-zones/regions-zones#available)
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/regions-zones/regions-zones#available)
 	// or region
-	// (https://cloud.google.com/compute/docs/regions-zones/regions-zones#available)
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/regions-zones/regions-zones#available)
 	// in which the cluster resides.
 	Location string `json:"location,omitempty"`
 	// Name: Output only. The server-assigned ID for the operation.
@@ -4652,25 +5837,26 @@ type Operation struct {
 	//   "UPGRADE_MASTER" - The cluster version is being updated. Note that this
 	// includes "upgrades" to the same version, which are simply a recreation. This
 	// also includes
-	// [auto-upgrades](https://cloud.google.com/kubernetes-engine/docs/concepts/clus
-	// ter-upgrades#upgrading_automatically). For more details, see [documentation
-	// on cluster
-	// upgrades](https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-up
-	// grades#cluster_upgrades).
+	// [auto-upgrades](https://{$universe.dns_names.final_documentation_domain}/kube
+	// rnetes-engine/docs/concepts/cluster-upgrades#upgrading_automatically). For
+	// more details, see [documentation on cluster
+	// upgrades](https://{$universe.dns_names.final_documentation_domain}/kubernetes
+	// -engine/docs/concepts/cluster-upgrades#cluster_upgrades).
 	//   "UPGRADE_NODES" - A node pool is being updated. Despite calling this an
 	// "upgrade", this includes most forms of updates to node pools. This also
 	// includes
-	// [auto-upgrades](https://cloud.google.com/kubernetes-engine/docs/how-to/node-a
-	// uto-upgrades). This operation sets the progress field and may be canceled.
-	// The upgrade strategy depends on [node pool
-	// configuration](https://cloud.google.com/kubernetes-engine/docs/concepts/node-
-	// pool-upgrade-strategies). The nodes are generally still usable during this
-	// operation.
+	// [auto-upgrades](https://{$universe.dns_names.final_documentation_domain}/kube
+	// rnetes-engine/docs/how-to/node-auto-upgrades). This operation sets the
+	// progress field and may be canceled. The upgrade strategy depends on [node
+	// pool
+	// configuration](https://{$universe.dns_names.final_documentation_domain}/kuber
+	// netes-engine/docs/concepts/node-pool-upgrade-strategies). The nodes are
+	// generally still usable during this operation.
 	//   "REPAIR_CLUSTER" - A problem has been detected with the control plane and
 	// is being repaired. This operation type is initiated by GKE. For more
 	// details, see [documentation on
-	// repairs](https://cloud.google.com/kubernetes-engine/docs/concepts/maintenance
-	// -windows-and-exclusions#repairs).
+	// repairs](https://{$universe.dns_names.final_documentation_domain}/kubernetes-
+	// engine/docs/concepts/maintenance-windows-and-exclusions#repairs).
 	//   "UPDATE_CLUSTER" - The cluster is being updated. This is a broad category
 	// of operations and includes operations that only change metadata as well as
 	// those that must recreate the entire cluster. If the control plane must be
@@ -4679,14 +5865,16 @@ type Operation struct {
 	// separate operations and the update may not be completely functional until
 	// the node pools recreations finish. Node recreations will generally follow
 	// [maintenance
-	// policies](https://cloud.google.com/kubernetes-engine/docs/concepts/maintenanc
-	// e-windows-and-exclusions). Some GKE-initiated operations use this type. This
-	// includes certain types of auto-upgrades and incident mitigations.
+	// policies](https://{$universe.dns_names.final_documentation_domain}/kubernetes
+	// -engine/docs/concepts/maintenance-windows-and-exclusions). Some
+	// GKE-initiated operations use this type. This includes certain types of
+	// auto-upgrades and incident mitigations.
 	//   "CREATE_NODE_POOL" - A node pool is being created. The node pool should be
 	// assumed to be unusable until this operation finishes. In the event of an
 	// error, the node pool may be partially created. If enabled, [node
-	// autoprovisioning](https://cloud.google.com/kubernetes-engine/docs/how-to/node
-	// -auto-provisioning) may have automatically initiated such operations.
+	// autoprovisioning](https://{$universe.dns_names.final_documentation_domain}/ku
+	// bernetes-engine/docs/how-to/node-auto-provisioning) may have automatically
+	// initiated such operations.
 	//   "DELETE_NODE_POOL" - The node pool is being deleted. The node pool should
 	// be assumed to be unusable as soon as this operation starts.
 	//   "SET_NODE_POOL_MANAGEMENT" - The node pool's manamagent field is being
@@ -4694,10 +5882,11 @@ type Operation struct {
 	// most other operations.
 	//   "AUTO_REPAIR_NODES" - A problem has been detected with nodes and [they are
 	// being
-	// repaired](https://cloud.google.com/kubernetes-engine/docs/how-to/node-auto-re
-	// pair). This operation type is initiated by GKE, typically automatically.
-	// This operation may be concurrent with other operations and there may be
-	// multiple repairs occurring on the same node pool.
+	// repaired](https://{$universe.dns_names.final_documentation_domain}/kubernetes
+	// -engine/docs/how-to/node-auto-repair). This operation type is initiated by
+	// GKE, typically automatically. This operation may be concurrent with other
+	// operations and there may be multiple repairs occurring on the same node
+	// pool.
 	//   "AUTO_UPGRADE_NODES" - Unused. Automatic node upgrade uses UPGRADE_NODES.
 	//   "SET_LABELS" - Unused. Updating labels uses UPDATE_CLUSTER.
 	//   "SET_MASTER_AUTH" - Unused. Updating master auth uses UPDATE_CLUSTER.
@@ -4712,8 +5901,8 @@ type Operation struct {
 	// is initiated by GKE. These operations are often performed preemptively to
 	// ensure that the control plane has sufficient resources and is not typically
 	// an indication of issues. For more details, see [documentation on
-	// resizes](https://cloud.google.com/kubernetes-engine/docs/concepts/maintenance
-	// -windows-and-exclusions#repairs).
+	// resizes](https://{$universe.dns_names.final_documentation_domain}/kubernetes-
+	// engine/docs/concepts/maintenance-windows-and-exclusions#repairs).
 	//   "FLEET_FEATURE_UPGRADE" - Fleet features of GKE Enterprise are being
 	// upgraded. The cluster should be assumed to be blocked for other upgrades
 	// until the operation finishes.
@@ -4751,8 +5940,9 @@ type Operation struct {
 	// s/my-cluster/nodePools/my-np/node/my-node`
 	TargetLink string `json:"targetLink,omitempty"`
 	// Zone: Output only. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the
-	// operation is taking place. This field is deprecated, use location instead.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the operation is taking place. This field is deprecated, use
+	// location instead.
 	Zone string `json:"zone,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
@@ -4842,6 +6032,30 @@ func (s OperationProgress) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// ParallelstoreCsiDriverConfig: Configuration for the Cloud Storage
+// Parallelstore CSI driver.
+type ParallelstoreCsiDriverConfig struct {
+	// Enabled: Whether the Cloud Storage Parallelstore CSI driver is enabled for
+	// this cluster.
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ParallelstoreCsiDriverConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod ParallelstoreCsiDriverConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // ParentProductConfig: ParentProductConfig is the configuration of the parent
 // product of the cluster. This field is used by Google internal products that
 // are built on top of a GKE cluster and take the ownership of the cluster.
@@ -4876,7 +6090,7 @@ type PlacementPolicy struct {
 	// the node pool. If not found, InvalidArgument error is returned.
 	PolicyName string `json:"policyName,omitempty"`
 	// TpuTopology: Optional. TPU placement topology for pod slice node pool.
-	// https://cloud.google.com/tpu/docs/types-topologies#tpu_topologies
+	// https://{$universe.dns_names.final_documentation_domain}/tpu/docs/types-topologies#tpu_topologies
 	TpuTopology string `json:"tpuTopology,omitempty"`
 	// Type: The type of placement.
 	//
@@ -4901,6 +6115,37 @@ type PlacementPolicy struct {
 
 func (s PlacementPolicy) MarshalJSON() ([]byte, error) {
 	type NoMethod PlacementPolicy
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// PodAutoscaling: PodAutoscaling is used for configuration of parameters for
+// workload autoscaling.
+type PodAutoscaling struct {
+	// HpaProfile: Selected Horizontal Pod Autoscaling profile.
+	//
+	// Possible values:
+	//   "HPA_PROFILE_UNSPECIFIED" - HPA_PROFILE_UNSPECIFIED is used when no custom
+	// HPA profile is set.
+	//   "NONE" - Customers explicitly opt-out of HPA profiles.
+	//   "PERFORMANCE" - PERFORMANCE is used when customers opt-in to the
+	// performance HPA profile. In this profile we support a higher number of HPAs
+	// per cluster and faster metrics collection for workload autoscaling.
+	HpaProfile string `json:"hpaProfile,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "HpaProfile") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "HpaProfile") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s PodAutoscaling) MarshalJSON() ([]byte, error) {
+	type NoMethod PodAutoscaling
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -4931,13 +6176,19 @@ func (s PodCIDROverprovisionConfig) MarshalJSON() ([]byte, error) {
 // PrivateClusterConfig: Configuration options for private clusters.
 type PrivateClusterConfig struct {
 	// EnablePrivateEndpoint: Whether the master's internal IP address is used as
-	// the cluster endpoint.
+	// the cluster endpoint. Deprecated: Use
+	// ControlPlaneEndpointsConfig.IPEndpointsConfig.enable_public_endpoint
+	// instead. Note that the value of enable_public_endpoint is reversed: if
+	// enable_private_endpoint is false, then enable_public_endpoint will be true.
 	EnablePrivateEndpoint bool `json:"enablePrivateEndpoint,omitempty"`
 	// EnablePrivateNodes: Whether nodes have internal IP addresses only. If
 	// enabled, all nodes are given only RFC 1918 private addresses and communicate
-	// with the master via private networking.
+	// with the master via private networking. Deprecated: Use
+	// NetworkConfig.default_enable_private_nodes instead.
 	EnablePrivateNodes bool `json:"enablePrivateNodes,omitempty"`
 	// MasterGlobalAccessConfig: Controls master global access settings.
+	// Deprecated: Use
+	// ControlPlaneEndpointsConfig.IPEndpointsConfig.enable_global_access instead.
 	MasterGlobalAccessConfig *PrivateClusterMasterGlobalAccessConfig `json:"masterGlobalAccessConfig,omitempty"`
 	// MasterIpv4CidrBlock: The IP range in CIDR notation to use for the hosted
 	// master network. This range will be used for assigning internal IP addresses
@@ -4948,14 +6199,18 @@ type PrivateClusterConfig struct {
 	// cluster.
 	PeeringName string `json:"peeringName,omitempty"`
 	// PrivateEndpoint: Output only. The internal IP address of this cluster's
-	// master endpoint.
+	// master endpoint. Deprecated: Use
+	// ControlPlaneEndpointsConfig.IPEndpointsConfig.private_endpoint instead.
 	PrivateEndpoint string `json:"privateEndpoint,omitempty"`
 	// PrivateEndpointSubnetwork: Subnet to provision the master's private endpoint
 	// during cluster creation. Specified in projects/*/regions/*/subnetworks/*
-	// format.
+	// format. Deprecated: Use
+	// ControlPlaneEndpointsConfig.IPEndpointsConfig.private_endpoint_subnetwork
+	// instead.
 	PrivateEndpointSubnetwork string `json:"privateEndpointSubnetwork,omitempty"`
 	// PublicEndpoint: Output only. The external IP address of this cluster's
-	// master endpoint.
+	// master endpoint. Deprecated:Use
+	// ControlPlaneEndpointsConfig.IPEndpointsConfig.public_endpoint instead.
 	PublicEndpoint string `json:"publicEndpoint,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "EnablePrivateEndpoint") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -5022,6 +6277,35 @@ type PrivateRegistryAccessConfig struct {
 
 func (s PrivateRegistryAccessConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod PrivateRegistryAccessConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// PrivilegedAdmissionConfig: PrivilegedAdmissionConfig stores the list of
+// authorized allowlist paths for the cluster.
+type PrivilegedAdmissionConfig struct {
+	// AllowlistPaths: The customer allowlist Cloud Storage paths for the cluster.
+	// These paths are used with the `--autopilot-privileged-admission` flag to
+	// authorize privileged workloads in Autopilot clusters. Paths can be
+	// GKE-owned, in the format `gke:////`, or customer-owned, in the format
+	// `gs:///`. Wildcards (`*`) are supported to authorize all allowlists under
+	// specific paths or directories. Example: `gs://my-bucket/*` will authorize
+	// all allowlists under the `my-bucket` bucket.
+	AllowlistPaths []string `json:"allowlistPaths,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "AllowlistPaths") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AllowlistPaths") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s PrivilegedAdmissionConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod PrivilegedAdmissionConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -5325,6 +6609,9 @@ type ReleaseChannelConfig struct {
 	// DefaultVersion: The default version for newly created clusters on the
 	// channel.
 	DefaultVersion string `json:"defaultVersion,omitempty"`
+	// UpgradeTargetVersion: The auto upgrade target version for clusters on the
+	// channel.
+	UpgradeTargetVersion string `json:"upgradeTargetVersion,omitempty"`
 	// ValidVersions: List of valid versions for the channel.
 	ValidVersions []string `json:"validVersions,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Channel") to unconditionally
@@ -5346,7 +6633,7 @@ func (s ReleaseChannelConfig) MarshalJSON() ([]byte, error) {
 }
 
 // ReservationAffinity: ReservationAffinity
-// (https://cloud.google.com/compute/docs/instances/reserving-zonal-resources)
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/instances/reserving-zonal-resources)
 // is the configuration of desired reservation which instances could take
 // capacity from.
 type ReservationAffinity struct {
@@ -5384,8 +6671,8 @@ func (s ReservationAffinity) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// ResourceLabels: Collection of GCP labels
-// (https://cloud.google.com/resource-manager/docs/creating-managing-labels).
+// ResourceLabels: Collection of Resource Manager labels
+// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-labels).
 type ResourceLabels struct {
 	// Labels: Map of node label keys and node label values.
 	Labels map[string]string `json:"labels,omitempty"`
@@ -5437,8 +6724,8 @@ func (s ResourceLimit) MarshalJSON() ([]byte, error) {
 // ResourceManagerTags: A map of resource manager tag keys and values to be
 // attached to the nodes for managing Compute Engine firewalls using Network
 // Firewall Policies. Tags must be according to specifications in
-// https://cloud.google.com/vpc/docs/tags-firewalls-overview#specifications. A
-// maximum of 5 tag key-value pairs can be specified. Existing tags will be
+// https://{$universe.dns_names.final_documentation_domain}/vpc/docs/tags-firewalls-overview#specifications.
+// A maximum of 5 tag key-value pairs can be specified. Existing tags will be
 // replaced with new values.
 type ResourceManagerTags struct {
 	// Tags: TagKeyValue must be in one of the following formats ([KEY]=[VALUE]) 1.
@@ -5511,15 +6798,16 @@ type RollbackNodePoolUpgradeRequest struct {
 	NodePoolId string `json:"nodePoolId,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// RespectPdb: Option for rollback to ignore the PodDisruptionBudget. Default
 	// value is false.
 	RespectPdb bool `json:"respectPdb,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -5536,6 +6824,31 @@ type RollbackNodePoolUpgradeRequest struct {
 
 func (s RollbackNodePoolUpgradeRequest) MarshalJSON() ([]byte, error) {
 	type NoMethod RollbackNodePoolUpgradeRequest
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// RotationConfig: RotationConfig is config for secret manager auto rotation.
+type RotationConfig struct {
+	// Enabled: Whether the rotation is enabled.
+	Enabled bool `json:"enabled,omitempty"`
+	// RotationInterval: The interval between two consecutive rotations. Default
+	// rotation interval is 2 minutes.
+	RotationInterval string `json:"rotationInterval,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s RotationConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod RotationConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -5607,6 +6920,8 @@ type SecondaryBootDiskUpdateStrategy struct {
 type SecretManagerConfig struct {
 	// Enabled: Enable/Disable Secret Manager Config.
 	Enabled bool `json:"enabled,omitempty"`
+	// RotationConfig: Rotation config for secret manager.
+	RotationConfig *RotationConfig `json:"rotationConfig,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
 	// omitted from API requests. See
@@ -5645,6 +6960,8 @@ type SecurityBulletinEvent struct {
 	// ManualStepsRequired: If this field is specified, it means there are manual
 	// steps that the user must take to make their clusters safe.
 	ManualStepsRequired bool `json:"manualStepsRequired,omitempty"`
+	// MitigatedVersions: The GKE versions where this vulnerability is mitigated.
+	MitigatedVersions []string `json:"mitigatedVersions,omitempty"`
 	// PatchedVersions: The GKE versions where this vulnerability is patched.
 	PatchedVersions []string `json:"patchedVersions,omitempty"`
 	// ResourceTypeAffected: The resource type (node/control plane) that has the
@@ -5790,12 +7107,13 @@ type SetAddonsConfigRequest struct {
 	Name string `json:"name,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "AddonsConfig") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -5834,14 +7152,15 @@ type SetLabelsRequest struct {
 	Name string `json:"name,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// ResourceLabels: Required. The labels to set for that cluster.
 	ResourceLabels map[string]string `json:"resourceLabels,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -5875,12 +7194,13 @@ type SetLegacyAbacRequest struct {
 	Name string `json:"name,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -5906,23 +7226,24 @@ type SetLocationsRequest struct {
 	// been deprecated and replaced by the name field.
 	ClusterId string `json:"clusterId,omitempty"`
 	// Locations: Required. The desired list of Google Compute Engine zones
-	// (https://cloud.google.com/compute/docs/zones#available) in which the
-	// cluster's nodes should be located. Changing the locations a cluster is in
-	// will result in nodes being either created or removed from the cluster,
-	// depending on whether locations are being added or removed. This list must
-	// always include the cluster's primary zone.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster's nodes should be located. Changing the locations a
+	// cluster is in will result in nodes being either created or removed from the
+	// cluster, depending on whether locations are being added or removed. This
+	// list must always include the cluster's primary zone.
 	Locations []string `json:"locations,omitempty"`
 	// Name: The name (project, location, cluster) of the cluster to set locations.
 	// Specified in the format `projects/*/locations/*/clusters/*`.
 	Name string `json:"name,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -5962,12 +7283,13 @@ type SetLoggingServiceRequest struct {
 	Name string `json:"name,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -6001,11 +7323,11 @@ type SetMaintenancePolicyRequest struct {
 	Name string `json:"name,omitempty"`
 	// ProjectId: Required. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Required. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -6047,14 +7369,15 @@ type SetMasterAuthRequest struct {
 	Name string `json:"name,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Update: Required. A description of the update.
 	Update *MasterAuth `json:"update,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Action") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
@@ -6082,7 +7405,7 @@ type SetMonitoringServiceRequest struct {
 	ClusterId string `json:"clusterId,omitempty"`
 	// MonitoringService: Required. The monitoring service the cluster should use
 	// to write metrics. Currently available options: *
-	// "monitoring.googleapis.com/kubernetes" - The Cloud Monitoring service with a
+	// `monitoring.googleapis.com/kubernetes` - The Cloud Monitoring service with a
 	// Kubernetes-native resource model * `monitoring.googleapis.com` - The legacy
 	// Cloud Monitoring service (no longer available as of GKE 1.15). * `none` - No
 	// metrics will be exported from the cluster. If left as an empty
@@ -6094,12 +7417,13 @@ type SetMonitoringServiceRequest struct {
 	Name string `json:"name,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -6134,12 +7458,13 @@ type SetNetworkPolicyRequest struct {
 	NetworkPolicy *NetworkPolicy `json:"networkPolicy,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -6176,12 +7501,13 @@ type SetNodePoolAutoscalingRequest struct {
 	NodePoolId string `json:"nodePoolId,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Autoscaling") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -6218,12 +7544,13 @@ type SetNodePoolManagementRequest struct {
 	NodePoolId string `json:"nodePoolId,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -6259,12 +7586,13 @@ type SetNodePoolSizeRequest struct {
 	NodePoolId string `json:"nodePoolId,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -6341,18 +7669,22 @@ func (s ShieldedNodes) MarshalJSON() ([]byte, error) {
 // SoleTenantConfig: SoleTenantConfig contains the NodeAffinities to specify
 // what shared sole tenant node groups should back the node pool.
 type SoleTenantConfig struct {
+	// MinNodeCpus: Optional. The minimum number of virtual CPUs this instance will
+	// consume when running on a sole-tenant node. This field can only be set if
+	// the node pool is created in a shared sole-tenant node group.
+	MinNodeCpus int64 `json:"minNodeCpus,omitempty"`
 	// NodeAffinities: NodeAffinities used to match to a shared sole tenant node
 	// group.
 	NodeAffinities []*NodeAffinity `json:"nodeAffinities,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "NodeAffinities") to
+	// ForceSendFields is a list of field names (e.g. "MinNodeCpus") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "NodeAffinities") to include in
-	// API requests with the JSON null value. By default, fields with empty values
-	// are omitted from API requests. See
+	// NullFields is a list of field names (e.g. "MinNodeCpus") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
@@ -6416,14 +7748,15 @@ type StartIPRotationRequest struct {
 	Name string `json:"name,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// RotateCredentials: Whether to rotate credentials during IP rotation.
 	RotateCredentials bool `json:"rotateCredentials,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -6599,6 +7932,10 @@ type StatusCondition struct {
 	//   "CLOUD_KMS_KEY_ERROR" - Unable to perform an encrypt operation against the
 	// CloudKMS key used for etcd level encryption.
 	//   "CA_EXPIRING" - Cluster CA is expiring soon.
+	//   "NODE_SERVICE_ACCOUNT_MISSING_PERMISSIONS" - Node service account is
+	// missing permissions.
+	//   "CLOUD_KMS_KEY_DESTROYED" - Cloud KMS key version used for etcd level
+	// encryption has been destroyed. This is a permanent error.
 	Code string `json:"code,omitempty"`
 	// Message: Human-friendly representation of the condition
 	Message string `json:"message,omitempty"`
@@ -6648,6 +7985,48 @@ func (s TimeWindow) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// TopologyManager: TopologyManager defines the configuration options for
+// Topology Manager feature. See
+// https://kubernetes.io/docs/tasks/administer-cluster/topology-manager/
+type TopologyManager struct {
+	// Policy: Configures the strategy for resource alignment. Allowed values are:
+	// * none: the default policy, and does not perform any topology alignment. *
+	// restricted: the topology manager stores the preferred NUMA node affinity for
+	// the container, and will reject the pod if the affinity if not preferred. *
+	// best-effort: the topology manager stores the preferred NUMA node affinity
+	// for the container. If the affinity is not preferred, the topology manager
+	// will admit the pod to the node anyway. * single-numa-node: the topology
+	// manager determines if the single NUMA node affinity is possible. If it is,
+	// Topology Manager will store this and the Hint Providers can then use this
+	// information when making the resource allocation decision. If, however, this
+	// is not possible then the Topology Manager will reject the pod from the node.
+	// This will result in a pod in a Terminated state with a pod admission
+	// failure. The default policy value is 'none' if unspecified. Details about
+	// each strategy can be found here
+	// (https://kubernetes.io/docs/tasks/administer-cluster/topology-manager/#topology-manager-policies).
+	Policy string `json:"policy,omitempty"`
+	// Scope: The Topology Manager aligns resources in following scopes: *
+	// container * pod The default scope is 'container' if unspecified. See
+	// https://kubernetes.io/docs/tasks/administer-cluster/topology-manager/#topology-manager-scopes
+	Scope string `json:"scope,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Policy") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Policy") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s TopologyManager) MarshalJSON() ([]byte, error) {
+	type NoMethod TopologyManager
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // UpdateClusterRequest: UpdateClusterRequest updates the settings of a
 // cluster.
 type UpdateClusterRequest struct {
@@ -6659,14 +8038,15 @@ type UpdateClusterRequest struct {
 	Name string `json:"name,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Update: Required. A description of the update.
 	Update *ClusterUpdate `json:"update,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -6727,12 +8107,13 @@ type UpdateMasterRequest struct {
 	Name string `json:"name,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ClusterId") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -6756,9 +8137,14 @@ func (s UpdateMasterRequest) MarshalJSON() ([]byte, error) {
 // and/or version.
 type UpdateNodePoolRequest struct {
 	// Accelerators: A list of hardware accelerators to be attached to each node.
-	// See https://cloud.google.com/compute/docs/gpus for more information about
-	// support for GPUs.
+	// See
+	// https://{$universe.dns_names.final_documentation_domain}/compute/docs/gpus
+	// for more information about support for GPUs.
 	Accelerators []*AcceleratorConfig `json:"accelerators,omitempty"`
+	// BootDisk: The desired boot disk config for nodes in the node pool. Initiates
+	// an upgrade operation that migrates the nodes in the node pool to the
+	// specified boot disk config.
+	BootDisk *BootDisk `json:"bootDisk,omitempty"`
 	// ClusterId: Deprecated. The name of the cluster to upgrade. This field has
 	// been deprecated and replaced by the name field.
 	ClusterId string `json:"clusterId,omitempty"`
@@ -6783,13 +8169,15 @@ type UpdateNodePoolRequest struct {
 	Etag string `json:"etag,omitempty"`
 	// FastSocket: Enable or disable NCCL fast socket for the node pool.
 	FastSocket *FastSocket `json:"fastSocket,omitempty"`
+	// FlexStart: Flex Start flag for enabling Flex Start VM.
+	FlexStart bool `json:"flexStart,omitempty"`
 	// GcfsConfig: GCFS config.
 	GcfsConfig *GcfsConfig `json:"gcfsConfig,omitempty"`
 	// Gvnic: Enable or disable gvnic on the node pool.
 	Gvnic *VirtualNIC `json:"gvnic,omitempty"`
 	// ImageType: Required. The desired image type for the node pool. Please see
-	// https://cloud.google.com/kubernetes-engine/docs/concepts/node-images for
-	// available image types.
+	// https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/concepts/node-images
+	// for available image types.
 	ImageType string `json:"imageType,omitempty"`
 	// KubeletConfig: Node kubelet configs.
 	KubeletConfig *NodeKubeletConfig `json:"kubeletConfig,omitempty"`
@@ -6800,18 +8188,21 @@ type UpdateNodePoolRequest struct {
 	// LinuxNodeConfig: Parameters that can be configured on Linux nodes.
 	LinuxNodeConfig *LinuxNodeConfig `json:"linuxNodeConfig,omitempty"`
 	// Locations: The desired list of Google Compute Engine zones
-	// (https://cloud.google.com/compute/docs/zones#available) in which the node
-	// pool's nodes should be located. Changing the locations for a node pool will
-	// result in nodes being either created or removed from the node pool,
-	// depending on whether locations are being added or removed.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the node pool's nodes should be located. Changing the locations for
+	// a node pool will result in nodes being either created or removed from the
+	// node pool, depending on whether locations are being added or removed.
 	Locations []string `json:"locations,omitempty"`
 	// LoggingConfig: Logging configuration.
 	LoggingConfig *NodePoolLoggingConfig `json:"loggingConfig,omitempty"`
 	// MachineType: Optional. The desired Google Compute Engine machine type
-	// (https://cloud.google.com/compute/docs/machine-types) for nodes in the node
-	// pool. Initiates an upgrade operation that migrates the nodes in the node
-	// pool to the specified machine type.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/machine-types)
+	// for nodes in the node pool. Initiates an upgrade operation that migrates the
+	// nodes in the node pool to the specified machine type.
 	MachineType string `json:"machineType,omitempty"`
+	// MaxRunDuration: The maximum duration for the nodes to exist. If unspecified,
+	// the nodes can exist indefinitely.
+	MaxRunDuration string `json:"maxRunDuration,omitempty"`
 	// Name: The name (project, location, cluster, node pool) of the node pool to
 	// update. Specified in the format
 	// `projects/*/locations/*/clusters/*/nodePools/*`.
@@ -6831,7 +8222,7 @@ type UpdateNodePoolRequest struct {
 	NodeVersion string `json:"nodeVersion,omitempty"`
 	// ProjectId: Deprecated. The Google Developers Console project ID or project
 	// number
-	// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+	// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 	// This field has been deprecated and replaced by the name field.
 	ProjectId string `json:"projectId,omitempty"`
 	// QueuedProvisioning: Specifies the configuration of queued provisioning.
@@ -6863,8 +8254,9 @@ type UpdateNodePoolRequest struct {
 	// pool.
 	WorkloadMetadataConfig *WorkloadMetadataConfig `json:"workloadMetadataConfig,omitempty"`
 	// Zone: Deprecated. The name of the Google Compute Engine zone
-	// (https://cloud.google.com/compute/docs/zones#available) in which the cluster
-	// resides. This field has been deprecated and replaced by the name field.
+	// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+	// in which the cluster resides. This field has been deprecated and replaced by
+	// the name field.
 	Zone string `json:"zone,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Accelerators") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -6921,6 +8313,51 @@ func (s UpgradeAvailableEvent) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// UpgradeDetails: UpgradeDetails contains detailed information of each
+// individual upgrade operation.
+type UpgradeDetails struct {
+	// EndTime: The end timestamp of the upgrade.
+	EndTime string `json:"endTime,omitempty"`
+	// InitialVersion: The version before the upgrade.
+	InitialVersion string `json:"initialVersion,omitempty"`
+	// StartTime: The start timestamp of the upgrade.
+	StartTime string `json:"startTime,omitempty"`
+	// StartType: The start type of the upgrade.
+	//
+	// Possible values:
+	//   "START_TYPE_UNSPECIFIED" - Upgrade start type is unspecified.
+	//   "AUTOMATIC" - Upgrade started automatically.
+	//   "MANUAL" - Upgrade started manually.
+	StartType string `json:"startType,omitempty"`
+	// State: Output only. The state of the upgrade.
+	//
+	// Possible values:
+	//   "UNKNOWN" - Upgrade state is unknown.
+	//   "FAILED" - Upgrade has failed with an error.
+	//   "SUCCEEDED" - Upgrade has succeeded.
+	//   "CANCELED" - Upgrade has been canceled.
+	//   "RUNNING" - Upgrade is running.
+	State string `json:"state,omitempty"`
+	// TargetVersion: The version after the upgrade.
+	TargetVersion string `json:"targetVersion,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "EndTime") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EndTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s UpgradeDetails) MarshalJSON() ([]byte, error) {
+	type NoMethod UpgradeDetails
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // UpgradeEvent: UpgradeEvent is a notification sent to customers by the
 // cluster server when a resource is upgrading.
 type UpgradeEvent struct {
@@ -6958,6 +8395,78 @@ type UpgradeEvent struct {
 
 func (s UpgradeEvent) MarshalJSON() ([]byte, error) {
 	type NoMethod UpgradeEvent
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// UpgradeInfoEvent: UpgradeInfoEvent is a notification sent to customers about
+// the upgrade information of a resource.
+type UpgradeInfoEvent struct {
+	// CurrentVersion: The current version before the upgrade.
+	CurrentVersion string `json:"currentVersion,omitempty"`
+	// Description: A brief description of the event.
+	Description string `json:"description,omitempty"`
+	// EndTime: The time when the operation ended.
+	EndTime string `json:"endTime,omitempty"`
+	// EventType: The type of the event.
+	//
+	// Possible values:
+	//   "EVENT_TYPE_UNSPECIFIED" - EVENT_TYPE_UNSPECIFIED indicates the event type
+	// is unspecified.
+	//   "END_OF_SUPPORT" - END_OF_SUPPORT indicates GKE version reaches end of
+	// support, check standard_support_end_time and extended_support_end_time for
+	// more details.
+	//   "COS_MILESTONE_VERSION_UPDATE" - COS_MILESTONE_VERSION_UPDATE indicates
+	// that the COS node image will update COS milestone version for new patch
+	// versions starting with the one in the description.
+	//   "UPGRADE_LIFECYCLE" - UPGRADE_LIFECYCLE indicates the event is about the
+	// upgrade lifecycle.
+	EventType string `json:"eventType,omitempty"`
+	// ExtendedSupportEndTime: The end of extended support timestamp.
+	ExtendedSupportEndTime string `json:"extendedSupportEndTime,omitempty"`
+	// Operation: The operation associated with this upgrade.
+	Operation string `json:"operation,omitempty"`
+	// Resource: Optional relative path to the resource. For example in node pool
+	// upgrades, the relative path of the node pool.
+	Resource string `json:"resource,omitempty"`
+	// ResourceType: The resource type associated with the upgrade.
+	//
+	// Possible values:
+	//   "UPGRADE_RESOURCE_TYPE_UNSPECIFIED" - Default value. This shouldn't be
+	// used.
+	//   "MASTER" - Master / control plane
+	//   "NODE_POOL" - Node pool
+	ResourceType string `json:"resourceType,omitempty"`
+	// StandardSupportEndTime: The end of standard support timestamp.
+	StandardSupportEndTime string `json:"standardSupportEndTime,omitempty"`
+	// StartTime: The time when the operation was started.
+	StartTime string `json:"startTime,omitempty"`
+	// State: Output only. The state of the upgrade.
+	//
+	// Possible values:
+	//   "STATE_UNSPECIFIED" - STATE_UNSPECIFIED indicates the state is
+	// unspecified.
+	//   "STARTED" - STARTED indicates the upgrade has started.
+	//   "SUCCEEDED" - SUCCEEDED indicates the upgrade has completed successfully.
+	//   "FAILED" - FAILED indicates the upgrade has failed.
+	//   "CANCELED" - CANCELED indicates the upgrade has canceled.
+	State string `json:"state,omitempty"`
+	// TargetVersion: The target version for the upgrade.
+	TargetVersion string `json:"targetVersion,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "CurrentVersion") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CurrentVersion") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s UpgradeInfoEvent) MarshalJSON() ([]byte, error) {
+	type NoMethod UpgradeInfoEvent
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -7109,6 +8618,56 @@ func (s UsableSubnetworkSecondaryRange) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// UserManagedKeysConfig: UserManagedKeysConfig holds the resource address to
+// Keys which are used for signing certs and token that are used for
+// communication within cluster.
+type UserManagedKeysConfig struct {
+	// AggregationCa: The Certificate Authority Service caPool to use for the
+	// aggregation CA in this cluster.
+	AggregationCa string `json:"aggregationCa,omitempty"`
+	// ClusterCa: The Certificate Authority Service caPool to use for the cluster
+	// CA in this cluster.
+	ClusterCa string `json:"clusterCa,omitempty"`
+	// ControlPlaneDiskEncryptionKey: The Cloud KMS cryptoKey to use for
+	// Confidential Hyperdisk on the control plane nodes.
+	ControlPlaneDiskEncryptionKey string `json:"controlPlaneDiskEncryptionKey,omitempty"`
+	// EtcdApiCa: Resource path of the Certificate Authority Service caPool to use
+	// for the etcd API CA in this cluster.
+	EtcdApiCa string `json:"etcdApiCa,omitempty"`
+	// EtcdPeerCa: Resource path of the Certificate Authority Service caPool to use
+	// for the etcd peer CA in this cluster.
+	EtcdPeerCa string `json:"etcdPeerCa,omitempty"`
+	// GkeopsEtcdBackupEncryptionKey: Resource path of the Cloud KMS cryptoKey to
+	// use for encryption of internal etcd backups.
+	GkeopsEtcdBackupEncryptionKey string `json:"gkeopsEtcdBackupEncryptionKey,omitempty"`
+	// ServiceAccountSigningKeys: The Cloud KMS cryptoKeyVersions to use for
+	// signing service account JWTs issued by this cluster. Format:
+	// `projects/{project}/locations/{location}/keyRings/{keyring}/cryptoKeys/{crypt
+	// oKey}/cryptoKeyVersions/{cryptoKeyVersion}`
+	ServiceAccountSigningKeys []string `json:"serviceAccountSigningKeys,omitempty"`
+	// ServiceAccountVerificationKeys: The Cloud KMS cryptoKeyVersions to use for
+	// verifying service account JWTs issued by this cluster. Format:
+	// `projects/{project}/locations/{location}/keyRings/{keyring}/cryptoKeys/{crypt
+	// oKey}/cryptoKeyVersions/{cryptoKeyVersion}`
+	ServiceAccountVerificationKeys []string `json:"serviceAccountVerificationKeys,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "AggregationCa") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AggregationCa") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s UserManagedKeysConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod UserManagedKeysConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // VerticalPodAutoscaling: VerticalPodAutoscaling contains global, per-cluster
 // information required by Vertical Pod Autoscaler to automatically adjust the
 // resources of pods controlled by it.
@@ -7157,17 +8716,17 @@ func (s VirtualNIC) MarshalJSON() ([]byte, error) {
 
 // WindowsNodeConfig: Parameters that can be configured on Windows nodes.
 // Windows Node Config that define the parameters that will be used to
-// configure the Windows node pool settings
+// configure the Windows node pool settings.
 type WindowsNodeConfig struct {
 	// OsVersion: OSVersion specifies the Windows node config to be used on the
-	// node
+	// node.
 	//
 	// Possible values:
-	//   "OS_VERSION_UNSPECIFIED" - When OSVersion is not specified
+	//   "OS_VERSION_UNSPECIFIED" - When OSVersion is not specified.
 	//   "OS_VERSION_LTSC2019" - LTSC2019 specifies to use LTSC2019 as the Windows
-	// Servercore Base Image
+	// Servercore Base Image.
 	//   "OS_VERSION_LTSC2022" - LTSC2022 specifies to use LTSC2022 as the Windows
-	// Servercore Base Image
+	// Servercore Base Image.
 	OsVersion string `json:"osVersion,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "OsVersion") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -7188,7 +8747,7 @@ func (s WindowsNodeConfig) MarshalJSON() ([]byte, error) {
 }
 
 // WorkloadIdentityConfig: Configuration for the use of Kubernetes Service
-// Accounts in GCP IAM policies.
+// Accounts in IAM policies.
 type WorkloadIdentityConfig struct {
 	// WorkloadPool: The workload pool to attach all Kubernetes service accounts
 	// to.
@@ -7244,11 +8803,14 @@ func (s WorkloadMetadataConfig) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// WorkloadPolicyConfig: WorkloadPolicyConfig is the configuration of workload
-// policy for autopilot clusters.
+// WorkloadPolicyConfig: WorkloadPolicyConfig is the configuration related to
+// GCW workload policy
 type WorkloadPolicyConfig struct {
 	// AllowNetAdmin: If true, workloads can use NET_ADMIN capability.
 	AllowNetAdmin bool `json:"allowNetAdmin,omitempty"`
+	// AutopilotCompatibilityAuditingEnabled: If true, enables the GCW Auditor that
+	// audits workloads on standard clusters.
+	AutopilotCompatibilityAuditingEnabled bool `json:"autopilotCompatibilityAuditingEnabled,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "AllowNetAdmin") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -7264,6 +8826,28 @@ type WorkloadPolicyConfig struct {
 
 func (s WorkloadPolicyConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod WorkloadPolicyConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// WritableCgroups: Defines writable cgroups configuration.
+type WritableCgroups struct {
+	// Enabled: Optional. Whether writable cgroups is enabled.
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s WritableCgroups) MarshalJSON() ([]byte, error) {
+	type NoMethod WritableCgroups
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -7349,12 +8933,11 @@ func (c *ProjectsAggregatedUsableSubnetworksListCall) doRequest(alt string) (*ht
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/aggregated/usableSubnetworks")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7362,6 +8945,7 @@ func (c *ProjectsAggregatedUsableSubnetworksListCall) doRequest(alt string) (*ht
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.aggregated.usableSubnetworks.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7397,9 +8981,11 @@ func (c *ProjectsAggregatedUsableSubnetworksListCall) Do(opts ...googleapi.CallO
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.aggregated.usableSubnetworks.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7446,7 +9032,7 @@ func (r *ProjectsLocationsService) GetServerConfig(name string) *ProjectsLocatio
 
 // ProjectId sets the optional parameter "projectId": Deprecated. The Google
 // Developers Console project ID or project number
-// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 // This field has been deprecated and replaced by the name field.
 func (c *ProjectsLocationsGetServerConfigCall) ProjectId(projectId string) *ProjectsLocationsGetServerConfigCall {
 	c.urlParams_.Set("projectId", projectId)
@@ -7454,7 +9040,8 @@ func (c *ProjectsLocationsGetServerConfigCall) ProjectId(projectId string) *Proj
 }
 
 // Zone sets the optional parameter "zone": Deprecated. The name of the Google
-// Compute Engine zone (https://cloud.google.com/compute/docs/zones#available)
+// Compute Engine zone
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
 // to return operations for. This field has been deprecated and replaced by the
 // name field.
 func (c *ProjectsLocationsGetServerConfigCall) Zone(zone string) *ProjectsLocationsGetServerConfigCall {
@@ -7498,12 +9085,11 @@ func (c *ProjectsLocationsGetServerConfigCall) doRequest(alt string) (*http.Resp
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}/serverConfig")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7511,6 +9097,7 @@ func (c *ProjectsLocationsGetServerConfigCall) doRequest(alt string) (*http.Resp
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.getServerConfig", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7545,9 +9132,11 @@ func (c *ProjectsLocationsGetServerConfigCall) Do(opts ...googleapi.CallOption) 
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.getServerConfig", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7607,12 +9196,11 @@ func (c *ProjectsLocationsClustersCheckAutopilotCompatibilityCall) doRequest(alt
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}:checkAutopilotCompatibility")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7620,6 +9208,7 @@ func (c *ProjectsLocationsClustersCheckAutopilotCompatibilityCall) doRequest(alt
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.checkAutopilotCompatibility", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7655,9 +9244,11 @@ func (c *ProjectsLocationsClustersCheckAutopilotCompatibilityCall) Do(opts ...go
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.checkAutopilotCompatibility", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7707,8 +9298,7 @@ func (c *ProjectsLocationsClustersCompleteIpRotationCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersCompleteIpRotationCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.completeiprotationrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.completeiprotationrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -7724,6 +9314,7 @@ func (c *ProjectsLocationsClustersCompleteIpRotationCall) doRequest(alt string) 
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.completeIpRotation", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7758,9 +9349,11 @@ func (c *ProjectsLocationsClustersCompleteIpRotationCall) Do(opts ...googleapi.C
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.completeIpRotation", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7776,8 +9369,8 @@ type ProjectsLocationsClustersCreateCall struct {
 // Create: Creates a cluster, consisting of the specified number and type of
 // Google Compute Engine instances. By default, the cluster is created in the
 // project's default network
-// (https://cloud.google.com/compute/docs/networks-and-firewalls#networks). One
-// firewall is added for the cluster. After cluster creation, the Kubelet
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/networks-and-firewalls#networks).
+// One firewall is added for the cluster. After cluster creation, the Kubelet
 // creates routes for each node to allow the containers on that node to
 // communicate with all other instances in the cluster. Finally, an entry is
 // added to the project's global metadata indicating which CIDR range the
@@ -7817,8 +9410,7 @@ func (c *ProjectsLocationsClustersCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.createclusterrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.createclusterrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -7834,6 +9426,7 @@ func (c *ProjectsLocationsClustersCreateCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7868,9 +9461,11 @@ func (c *ProjectsLocationsClustersCreateCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7906,7 +9501,7 @@ func (c *ProjectsLocationsClustersDeleteCall) ClusterId(clusterId string) *Proje
 
 // ProjectId sets the optional parameter "projectId": Deprecated. The Google
 // Developers Console project ID or project number
-// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 // This field has been deprecated and replaced by the name field.
 func (c *ProjectsLocationsClustersDeleteCall) ProjectId(projectId string) *ProjectsLocationsClustersDeleteCall {
 	c.urlParams_.Set("projectId", projectId)
@@ -7914,7 +9509,8 @@ func (c *ProjectsLocationsClustersDeleteCall) ProjectId(projectId string) *Proje
 }
 
 // Zone sets the optional parameter "zone": Deprecated. The name of the Google
-// Compute Engine zone (https://cloud.google.com/compute/docs/zones#available)
+// Compute Engine zone
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
 // in which the cluster resides. This field has been deprecated and replaced by
 // the name field.
 func (c *ProjectsLocationsClustersDeleteCall) Zone(zone string) *ProjectsLocationsClustersDeleteCall {
@@ -7947,12 +9543,11 @@ func (c *ProjectsLocationsClustersDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7960,6 +9555,7 @@ func (c *ProjectsLocationsClustersDeleteCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7994,9 +9590,130 @@ func (c *ProjectsLocationsClustersDeleteCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsClustersFetchClusterUpgradeInfoCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// FetchClusterUpgradeInfo: Fetch upgrade information of a specific cluster.
+//
+//   - name: The name (project, location, cluster) of the cluster to get.
+//     Specified in the format `projects/*/locations/*/clusters/*` or
+//     `projects/*/zones/*/clusters/*`.
+func (r *ProjectsLocationsClustersService) FetchClusterUpgradeInfo(name string) *ProjectsLocationsClustersFetchClusterUpgradeInfoCall {
+	c := &ProjectsLocationsClustersFetchClusterUpgradeInfoCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Version sets the optional parameter "version": API request version that
+// initiates this operation.
+func (c *ProjectsLocationsClustersFetchClusterUpgradeInfoCall) Version(version string) *ProjectsLocationsClustersFetchClusterUpgradeInfoCall {
+	c.urlParams_.Set("version", version)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsClustersFetchClusterUpgradeInfoCall) Fields(s ...googleapi.Field) *ProjectsLocationsClustersFetchClusterUpgradeInfoCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsClustersFetchClusterUpgradeInfoCall) IfNoneMatch(entityTag string) *ProjectsLocationsClustersFetchClusterUpgradeInfoCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsClustersFetchClusterUpgradeInfoCall) Context(ctx context.Context) *ProjectsLocationsClustersFetchClusterUpgradeInfoCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsClustersFetchClusterUpgradeInfoCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsClustersFetchClusterUpgradeInfoCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}:fetchClusterUpgradeInfo")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.fetchClusterUpgradeInfo", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "container.projects.locations.clusters.fetchClusterUpgradeInfo" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ClusterUpgradeInfo.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *ProjectsLocationsClustersFetchClusterUpgradeInfoCall) Do(opts ...googleapi.CallOption) (*ClusterUpgradeInfo, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ClusterUpgradeInfo{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.fetchClusterUpgradeInfo", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8029,7 +9746,7 @@ func (c *ProjectsLocationsClustersGetCall) ClusterId(clusterId string) *Projects
 
 // ProjectId sets the optional parameter "projectId": Deprecated. The Google
 // Developers Console project ID or project number
-// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 // This field has been deprecated and replaced by the name field.
 func (c *ProjectsLocationsClustersGetCall) ProjectId(projectId string) *ProjectsLocationsClustersGetCall {
 	c.urlParams_.Set("projectId", projectId)
@@ -8037,7 +9754,8 @@ func (c *ProjectsLocationsClustersGetCall) ProjectId(projectId string) *Projects
 }
 
 // Zone sets the optional parameter "zone": Deprecated. The name of the Google
-// Compute Engine zone (https://cloud.google.com/compute/docs/zones#available)
+// Compute Engine zone
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
 // in which the cluster resides. This field has been deprecated and replaced by
 // the name field.
 func (c *ProjectsLocationsClustersGetCall) Zone(zone string) *ProjectsLocationsClustersGetCall {
@@ -8081,12 +9799,11 @@ func (c *ProjectsLocationsClustersGetCall) doRequest(alt string) (*http.Response
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -8094,6 +9811,7 @@ func (c *ProjectsLocationsClustersGetCall) doRequest(alt string) (*http.Response
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8128,9 +9846,11 @@ func (c *ProjectsLocationsClustersGetCall) Do(opts ...googleapi.CallOption) (*Cl
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8190,12 +9910,11 @@ func (c *ProjectsLocationsClustersGetJwksCall) doRequest(alt string) (*http.Resp
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/jwks")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -8203,6 +9922,7 @@ func (c *ProjectsLocationsClustersGetJwksCall) doRequest(alt string) (*http.Resp
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.getJwks", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8238,9 +9958,11 @@ func (c *ProjectsLocationsClustersGetJwksCall) Do(opts ...googleapi.CallOption) 
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.getJwks", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8267,7 +9989,7 @@ func (r *ProjectsLocationsClustersService) List(parent string) *ProjectsLocation
 
 // ProjectId sets the optional parameter "projectId": Deprecated. The Google
 // Developers Console project ID or project number
-// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 // This field has been deprecated and replaced by the parent field.
 func (c *ProjectsLocationsClustersListCall) ProjectId(projectId string) *ProjectsLocationsClustersListCall {
 	c.urlParams_.Set("projectId", projectId)
@@ -8275,7 +9997,8 @@ func (c *ProjectsLocationsClustersListCall) ProjectId(projectId string) *Project
 }
 
 // Zone sets the optional parameter "zone": Deprecated. The name of the Google
-// Compute Engine zone (https://cloud.google.com/compute/docs/zones#available)
+// Compute Engine zone
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
 // in which the cluster resides, or "-" for all zones. This field has been
 // deprecated and replaced by the parent field.
 func (c *ProjectsLocationsClustersListCall) Zone(zone string) *ProjectsLocationsClustersListCall {
@@ -8319,12 +10042,11 @@ func (c *ProjectsLocationsClustersListCall) doRequest(alt string) (*http.Respons
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/clusters")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -8332,6 +10054,7 @@ func (c *ProjectsLocationsClustersListCall) doRequest(alt string) (*http.Respons
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8367,9 +10090,11 @@ func (c *ProjectsLocationsClustersListCall) Do(opts ...googleapi.CallOption) (*L
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8418,8 +10143,7 @@ func (c *ProjectsLocationsClustersSetAddonsCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersSetAddonsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setaddonsconfigrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setaddonsconfigrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -8435,6 +10159,7 @@ func (c *ProjectsLocationsClustersSetAddonsCall) doRequest(alt string) (*http.Re
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setAddons", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8469,9 +10194,11 @@ func (c *ProjectsLocationsClustersSetAddonsCall) Do(opts ...googleapi.CallOption
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setAddons", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8521,8 +10248,7 @@ func (c *ProjectsLocationsClustersSetLegacyAbacCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersSetLegacyAbacCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setlegacyabacrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setlegacyabacrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -8538,6 +10264,7 @@ func (c *ProjectsLocationsClustersSetLegacyAbacCall) doRequest(alt string) (*htt
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setLegacyAbac", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8572,9 +10299,11 @@ func (c *ProjectsLocationsClustersSetLegacyAbacCall) Do(opts ...googleapi.CallOp
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setLegacyAbac", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8589,7 +10318,7 @@ type ProjectsLocationsClustersSetLocationsCall struct {
 
 // SetLocations: Sets the locations for a specific cluster. Deprecated. Use
 // projects.locations.clusters.update
-// (https://cloud.google.com/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters/update)
+// (https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters/update)
 // instead.
 //
 //   - name: The name (project, location, cluster) of the cluster to set
@@ -8626,8 +10355,7 @@ func (c *ProjectsLocationsClustersSetLocationsCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersSetLocationsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setlocationsrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setlocationsrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -8643,6 +10371,7 @@ func (c *ProjectsLocationsClustersSetLocationsCall) doRequest(alt string) (*http
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setLocations", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8677,9 +10406,11 @@ func (c *ProjectsLocationsClustersSetLocationsCall) Do(opts ...googleapi.CallOpt
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setLocations", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8728,8 +10459,7 @@ func (c *ProjectsLocationsClustersSetLoggingCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersSetLoggingCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setloggingservicerequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setloggingservicerequest)
 	if err != nil {
 		return nil, err
 	}
@@ -8745,6 +10475,7 @@ func (c *ProjectsLocationsClustersSetLoggingCall) doRequest(alt string) (*http.R
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setLogging", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8779,9 +10510,11 @@ func (c *ProjectsLocationsClustersSetLoggingCall) Do(opts ...googleapi.CallOptio
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setLogging", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8831,8 +10564,7 @@ func (c *ProjectsLocationsClustersSetMaintenancePolicyCall) Header() http.Header
 
 func (c *ProjectsLocationsClustersSetMaintenancePolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setmaintenancepolicyrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setmaintenancepolicyrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -8848,6 +10580,7 @@ func (c *ProjectsLocationsClustersSetMaintenancePolicyCall) doRequest(alt string
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setMaintenancePolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8882,9 +10615,11 @@ func (c *ProjectsLocationsClustersSetMaintenancePolicyCall) Do(opts ...googleapi
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setMaintenancePolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8935,8 +10670,7 @@ func (c *ProjectsLocationsClustersSetMasterAuthCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersSetMasterAuthCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setmasterauthrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setmasterauthrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -8952,6 +10686,7 @@ func (c *ProjectsLocationsClustersSetMasterAuthCall) doRequest(alt string) (*htt
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setMasterAuth", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8986,9 +10721,11 @@ func (c *ProjectsLocationsClustersSetMasterAuthCall) Do(opts ...googleapi.CallOp
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setMasterAuth", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9037,8 +10774,7 @@ func (c *ProjectsLocationsClustersSetMonitoringCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersSetMonitoringCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setmonitoringservicerequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setmonitoringservicerequest)
 	if err != nil {
 		return nil, err
 	}
@@ -9054,6 +10790,7 @@ func (c *ProjectsLocationsClustersSetMonitoringCall) doRequest(alt string) (*htt
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setMonitoring", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9088,9 +10825,11 @@ func (c *ProjectsLocationsClustersSetMonitoringCall) Do(opts ...googleapi.CallOp
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setMonitoring", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9140,8 +10879,7 @@ func (c *ProjectsLocationsClustersSetNetworkPolicyCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersSetNetworkPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setnetworkpolicyrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setnetworkpolicyrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -9157,6 +10895,7 @@ func (c *ProjectsLocationsClustersSetNetworkPolicyCall) doRequest(alt string) (*
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setNetworkPolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9191,9 +10930,11 @@ func (c *ProjectsLocationsClustersSetNetworkPolicyCall) Do(opts ...googleapi.Cal
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setNetworkPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9242,8 +10983,7 @@ func (c *ProjectsLocationsClustersSetResourceLabelsCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersSetResourceLabelsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setlabelsrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setlabelsrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -9259,6 +10999,7 @@ func (c *ProjectsLocationsClustersSetResourceLabelsCall) doRequest(alt string) (
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setResourceLabels", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9293,9 +11034,11 @@ func (c *ProjectsLocationsClustersSetResourceLabelsCall) Do(opts ...googleapi.Ca
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.setResourceLabels", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9344,8 +11087,7 @@ func (c *ProjectsLocationsClustersStartIpRotationCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersStartIpRotationCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.startiprotationrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.startiprotationrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -9361,6 +11103,7 @@ func (c *ProjectsLocationsClustersStartIpRotationCall) doRequest(alt string) (*h
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.startIpRotation", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9395,9 +11138,11 @@ func (c *ProjectsLocationsClustersStartIpRotationCall) Do(opts ...googleapi.Call
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.startIpRotation", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9446,8 +11191,7 @@ func (c *ProjectsLocationsClustersUpdateCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersUpdateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.updateclusterrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.updateclusterrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -9463,6 +11207,7 @@ func (c *ProjectsLocationsClustersUpdateCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.update", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9497,9 +11242,11 @@ func (c *ProjectsLocationsClustersUpdateCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9548,8 +11295,7 @@ func (c *ProjectsLocationsClustersUpdateMasterCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersUpdateMasterCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.updatemasterrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.updatemasterrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -9565,6 +11311,7 @@ func (c *ProjectsLocationsClustersUpdateMasterCall) doRequest(alt string) (*http
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.updateMaster", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9599,9 +11346,11 @@ func (c *ProjectsLocationsClustersUpdateMasterCall) Do(opts ...googleapi.CallOpt
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.updateMaster", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9652,8 +11401,7 @@ func (c *ProjectsLocationsClustersNodePoolsCompleteUpgradeCall) Header() http.He
 
 func (c *ProjectsLocationsClustersNodePoolsCompleteUpgradeCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.completenodepoolupgraderequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.completenodepoolupgraderequest)
 	if err != nil {
 		return nil, err
 	}
@@ -9669,6 +11417,7 @@ func (c *ProjectsLocationsClustersNodePoolsCompleteUpgradeCall) doRequest(alt st
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.completeUpgrade", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9703,9 +11452,11 @@ func (c *ProjectsLocationsClustersNodePoolsCompleteUpgradeCall) Do(opts ...googl
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.completeUpgrade", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9755,8 +11506,7 @@ func (c *ProjectsLocationsClustersNodePoolsCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersNodePoolsCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.createnodepoolrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.createnodepoolrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -9772,6 +11522,7 @@ func (c *ProjectsLocationsClustersNodePoolsCreateCall) doRequest(alt string) (*h
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9806,9 +11557,11 @@ func (c *ProjectsLocationsClustersNodePoolsCreateCall) Do(opts ...googleapi.Call
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9848,7 +11601,7 @@ func (c *ProjectsLocationsClustersNodePoolsDeleteCall) NodePoolId(nodePoolId str
 
 // ProjectId sets the optional parameter "projectId": Deprecated. The Google
 // Developers Console project ID or project number
-// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 // This field has been deprecated and replaced by the name field.
 func (c *ProjectsLocationsClustersNodePoolsDeleteCall) ProjectId(projectId string) *ProjectsLocationsClustersNodePoolsDeleteCall {
 	c.urlParams_.Set("projectId", projectId)
@@ -9856,7 +11609,8 @@ func (c *ProjectsLocationsClustersNodePoolsDeleteCall) ProjectId(projectId strin
 }
 
 // Zone sets the optional parameter "zone": Deprecated. The name of the Google
-// Compute Engine zone (https://cloud.google.com/compute/docs/zones#available)
+// Compute Engine zone
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
 // in which the cluster resides. This field has been deprecated and replaced by
 // the name field.
 func (c *ProjectsLocationsClustersNodePoolsDeleteCall) Zone(zone string) *ProjectsLocationsClustersNodePoolsDeleteCall {
@@ -9889,12 +11643,11 @@ func (c *ProjectsLocationsClustersNodePoolsDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersNodePoolsDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -9902,6 +11655,7 @@ func (c *ProjectsLocationsClustersNodePoolsDeleteCall) doRequest(alt string) (*h
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9936,9 +11690,131 @@ func (c *ProjectsLocationsClustersNodePoolsDeleteCall) Do(opts ...googleapi.Call
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// FetchNodePoolUpgradeInfo: Fetch upgrade information of a specific nodepool.
+//
+//   - name: The name (project, location, cluster, nodepool) of the nodepool to
+//     get. Specified in the format
+//     `projects/*/locations/*/clusters/*/nodePools/*` or
+//     `projects/*/zones/*/clusters/*/nodePools/*`.
+func (r *ProjectsLocationsClustersNodePoolsService) FetchNodePoolUpgradeInfo(name string) *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall {
+	c := &ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Version sets the optional parameter "version": API request version that
+// initiates this operation.
+func (c *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall) Version(version string) *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall {
+	c.urlParams_.Set("version", version)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall) Fields(s ...googleapi.Field) *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall) IfNoneMatch(entityTag string) *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall) Context(ctx context.Context) *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}:fetchNodePoolUpgradeInfo")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.fetchNodePoolUpgradeInfo", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "container.projects.locations.clusters.nodePools.fetchNodePoolUpgradeInfo" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *NodePoolUpgradeInfo.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *ProjectsLocationsClustersNodePoolsFetchNodePoolUpgradeInfoCall) Do(opts ...googleapi.CallOption) (*NodePoolUpgradeInfo, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &NodePoolUpgradeInfo{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.fetchNodePoolUpgradeInfo", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9979,7 +11855,7 @@ func (c *ProjectsLocationsClustersNodePoolsGetCall) NodePoolId(nodePoolId string
 
 // ProjectId sets the optional parameter "projectId": Deprecated. The Google
 // Developers Console project ID or project number
-// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 // This field has been deprecated and replaced by the name field.
 func (c *ProjectsLocationsClustersNodePoolsGetCall) ProjectId(projectId string) *ProjectsLocationsClustersNodePoolsGetCall {
 	c.urlParams_.Set("projectId", projectId)
@@ -9987,7 +11863,8 @@ func (c *ProjectsLocationsClustersNodePoolsGetCall) ProjectId(projectId string) 
 }
 
 // Zone sets the optional parameter "zone": Deprecated. The name of the Google
-// Compute Engine zone (https://cloud.google.com/compute/docs/zones#available)
+// Compute Engine zone
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
 // in which the cluster resides. This field has been deprecated and replaced by
 // the name field.
 func (c *ProjectsLocationsClustersNodePoolsGetCall) Zone(zone string) *ProjectsLocationsClustersNodePoolsGetCall {
@@ -10031,12 +11908,11 @@ func (c *ProjectsLocationsClustersNodePoolsGetCall) doRequest(alt string) (*http
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -10044,6 +11920,7 @@ func (c *ProjectsLocationsClustersNodePoolsGetCall) doRequest(alt string) (*http
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10078,9 +11955,11 @@ func (c *ProjectsLocationsClustersNodePoolsGetCall) Do(opts ...googleapi.CallOpt
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10114,7 +11993,7 @@ func (c *ProjectsLocationsClustersNodePoolsListCall) ClusterId(clusterId string)
 
 // ProjectId sets the optional parameter "projectId": Deprecated. The Google
 // Developers Console project ID or project number
-// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 // This field has been deprecated and replaced by the parent field.
 func (c *ProjectsLocationsClustersNodePoolsListCall) ProjectId(projectId string) *ProjectsLocationsClustersNodePoolsListCall {
 	c.urlParams_.Set("projectId", projectId)
@@ -10122,7 +12001,8 @@ func (c *ProjectsLocationsClustersNodePoolsListCall) ProjectId(projectId string)
 }
 
 // Zone sets the optional parameter "zone": Deprecated. The name of the Google
-// Compute Engine zone (https://cloud.google.com/compute/docs/zones#available)
+// Compute Engine zone
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
 // in which the cluster resides. This field has been deprecated and replaced by
 // the parent field.
 func (c *ProjectsLocationsClustersNodePoolsListCall) Zone(zone string) *ProjectsLocationsClustersNodePoolsListCall {
@@ -10166,12 +12046,11 @@ func (c *ProjectsLocationsClustersNodePoolsListCall) doRequest(alt string) (*htt
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/nodePools")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -10179,6 +12058,7 @@ func (c *ProjectsLocationsClustersNodePoolsListCall) doRequest(alt string) (*htt
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10214,9 +12094,11 @@ func (c *ProjectsLocationsClustersNodePoolsListCall) Do(opts ...googleapi.CallOp
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10267,8 +12149,7 @@ func (c *ProjectsLocationsClustersNodePoolsRollbackCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersNodePoolsRollbackCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.rollbacknodepoolupgraderequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.rollbacknodepoolupgraderequest)
 	if err != nil {
 		return nil, err
 	}
@@ -10284,6 +12165,7 @@ func (c *ProjectsLocationsClustersNodePoolsRollbackCall) doRequest(alt string) (
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.rollback", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10318,9 +12200,11 @@ func (c *ProjectsLocationsClustersNodePoolsRollbackCall) Do(opts ...googleapi.Ca
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.rollback", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10370,8 +12254,7 @@ func (c *ProjectsLocationsClustersNodePoolsSetAutoscalingCall) Header() http.Hea
 
 func (c *ProjectsLocationsClustersNodePoolsSetAutoscalingCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setnodepoolautoscalingrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setnodepoolautoscalingrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -10387,6 +12270,7 @@ func (c *ProjectsLocationsClustersNodePoolsSetAutoscalingCall) doRequest(alt str
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.setAutoscaling", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10421,9 +12305,11 @@ func (c *ProjectsLocationsClustersNodePoolsSetAutoscalingCall) Do(opts ...google
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.setAutoscaling", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10473,8 +12359,7 @@ func (c *ProjectsLocationsClustersNodePoolsSetManagementCall) Header() http.Head
 
 func (c *ProjectsLocationsClustersNodePoolsSetManagementCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setnodepoolmanagementrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setnodepoolmanagementrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -10490,6 +12375,7 @@ func (c *ProjectsLocationsClustersNodePoolsSetManagementCall) doRequest(alt stri
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.setManagement", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10524,9 +12410,11 @@ func (c *ProjectsLocationsClustersNodePoolsSetManagementCall) Do(opts ...googlea
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.setManagement", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10578,8 +12466,7 @@ func (c *ProjectsLocationsClustersNodePoolsSetSizeCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersNodePoolsSetSizeCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setnodepoolsizerequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setnodepoolsizerequest)
 	if err != nil {
 		return nil, err
 	}
@@ -10595,6 +12482,7 @@ func (c *ProjectsLocationsClustersNodePoolsSetSizeCall) doRequest(alt string) (*
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.setSize", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10629,9 +12517,11 @@ func (c *ProjectsLocationsClustersNodePoolsSetSizeCall) Do(opts ...googleapi.Cal
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.setSize", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10681,8 +12571,7 @@ func (c *ProjectsLocationsClustersNodePoolsUpdateCall) Header() http.Header {
 
 func (c *ProjectsLocationsClustersNodePoolsUpdateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.updatenodepoolrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.updatenodepoolrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -10698,6 +12587,7 @@ func (c *ProjectsLocationsClustersNodePoolsUpdateCall) doRequest(alt string) (*h
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.update", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10732,9 +12622,11 @@ func (c *ProjectsLocationsClustersNodePoolsUpdateCall) Do(opts ...googleapi.Call
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.nodePools.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10795,12 +12687,11 @@ func (c *ProjectsLocationsClustersWellKnownGetOpenidConfigurationCall) doRequest
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/.well-known/openid-configuration")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -10808,6 +12699,7 @@ func (c *ProjectsLocationsClustersWellKnownGetOpenidConfigurationCall) doRequest
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.well-known.getOpenid-configuration", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10843,9 +12735,11 @@ func (c *ProjectsLocationsClustersWellKnownGetOpenidConfigurationCall) Do(opts .
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.clusters.well-known.getOpenid-configuration", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10894,8 +12788,7 @@ func (c *ProjectsLocationsOperationsCancelCall) Header() http.Header {
 
 func (c *ProjectsLocationsOperationsCancelCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.canceloperationrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.canceloperationrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -10911,6 +12804,7 @@ func (c *ProjectsLocationsOperationsCancelCall) doRequest(alt string) (*http.Res
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.operations.cancel", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10945,9 +12839,11 @@ func (c *ProjectsLocationsOperationsCancelCall) Do(opts ...googleapi.CallOption)
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.operations.cancel", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10980,7 +12876,7 @@ func (c *ProjectsLocationsOperationsGetCall) OperationId(operationId string) *Pr
 
 // ProjectId sets the optional parameter "projectId": Deprecated. The Google
 // Developers Console project ID or project number
-// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 // This field has been deprecated and replaced by the name field.
 func (c *ProjectsLocationsOperationsGetCall) ProjectId(projectId string) *ProjectsLocationsOperationsGetCall {
 	c.urlParams_.Set("projectId", projectId)
@@ -10988,7 +12884,8 @@ func (c *ProjectsLocationsOperationsGetCall) ProjectId(projectId string) *Projec
 }
 
 // Zone sets the optional parameter "zone": Deprecated. The name of the Google
-// Compute Engine zone (https://cloud.google.com/compute/docs/zones#available)
+// Compute Engine zone
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
 // in which the cluster resides. This field has been deprecated and replaced by
 // the name field.
 func (c *ProjectsLocationsOperationsGetCall) Zone(zone string) *ProjectsLocationsOperationsGetCall {
@@ -11032,12 +12929,11 @@ func (c *ProjectsLocationsOperationsGetCall) doRequest(alt string) (*http.Respon
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11045,6 +12941,7 @@ func (c *ProjectsLocationsOperationsGetCall) doRequest(alt string) (*http.Respon
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.operations.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11079,9 +12976,11 @@ func (c *ProjectsLocationsOperationsGetCall) Do(opts ...googleapi.CallOption) (*
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.operations.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11107,7 +13006,7 @@ func (r *ProjectsLocationsOperationsService) List(parent string) *ProjectsLocati
 
 // ProjectId sets the optional parameter "projectId": Deprecated. The Google
 // Developers Console project ID or project number
-// (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+// (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 // This field has been deprecated and replaced by the parent field.
 func (c *ProjectsLocationsOperationsListCall) ProjectId(projectId string) *ProjectsLocationsOperationsListCall {
 	c.urlParams_.Set("projectId", projectId)
@@ -11115,7 +13014,8 @@ func (c *ProjectsLocationsOperationsListCall) ProjectId(projectId string) *Proje
 }
 
 // Zone sets the optional parameter "zone": Deprecated. The name of the Google
-// Compute Engine zone (https://cloud.google.com/compute/docs/zones#available)
+// Compute Engine zone
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
 // to return operations for, or `-` for all zones. This field has been
 // deprecated and replaced by the parent field.
 func (c *ProjectsLocationsOperationsListCall) Zone(zone string) *ProjectsLocationsOperationsListCall {
@@ -11159,12 +13059,11 @@ func (c *ProjectsLocationsOperationsListCall) doRequest(alt string) (*http.Respo
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/operations")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11172,6 +13071,7 @@ func (c *ProjectsLocationsOperationsListCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.locations.operations.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11207,9 +13107,11 @@ func (c *ProjectsLocationsOperationsListCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.locations.operations.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11228,12 +13130,12 @@ type ProjectsZonesGetServerconfigCall struct {
 //
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) to return
-//     operations for. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     to return operations for. This field has been deprecated and replaced by
+//     the name field.
 func (r *ProjectsZonesService) GetServerconfig(projectId string, zone string) *ProjectsZonesGetServerconfigCall {
 	c := &ProjectsZonesGetServerconfigCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -11284,12 +13186,11 @@ func (c *ProjectsZonesGetServerconfigCall) doRequest(alt string) (*http.Response
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/projects/{projectId}/zones/{zone}/serverconfig")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11298,6 +13199,7 @@ func (c *ProjectsZonesGetServerconfigCall) doRequest(alt string) (*http.Response
 		"projectId": c.projectId,
 		"zone":      c.zone,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.getServerconfig", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11332,9 +13234,11 @@ func (c *ProjectsZonesGetServerconfigCall) Do(opts ...googleapi.CallOption) (*Se
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.getServerconfig", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11355,12 +13259,12 @@ type ProjectsZonesClustersAddonsCall struct {
 //     been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) Addons(projectId string, zone string, clusterId string, setaddonsconfigrequest *SetAddonsConfigRequest) *ProjectsZonesClustersAddonsCall {
 	c := &ProjectsZonesClustersAddonsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -11395,8 +13299,7 @@ func (c *ProjectsZonesClustersAddonsCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersAddonsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setaddonsconfigrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setaddonsconfigrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -11414,6 +13317,7 @@ func (c *ProjectsZonesClustersAddonsCall) doRequest(alt string) (*http.Response,
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.addons", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11448,9 +13352,11 @@ func (c *ProjectsZonesClustersAddonsCall) Do(opts ...googleapi.CallOption) (*Ope
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.addons", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11471,12 +13377,12 @@ type ProjectsZonesClustersCompleteIpRotationCall struct {
 //     deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) CompleteIpRotation(projectId string, zone string, clusterId string, completeiprotationrequest *CompleteIPRotationRequest) *ProjectsZonesClustersCompleteIpRotationCall {
 	c := &ProjectsZonesClustersCompleteIpRotationCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -11511,8 +13417,7 @@ func (c *ProjectsZonesClustersCompleteIpRotationCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersCompleteIpRotationCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.completeiprotationrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.completeiprotationrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -11530,6 +13435,7 @@ func (c *ProjectsZonesClustersCompleteIpRotationCall) doRequest(alt string) (*ht
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.completeIpRotation", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11564,9 +13470,11 @@ func (c *ProjectsZonesClustersCompleteIpRotationCall) Do(opts ...googleapi.CallO
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.completeIpRotation", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11583,8 +13491,8 @@ type ProjectsZonesClustersCreateCall struct {
 // Create: Creates a cluster, consisting of the specified number and type of
 // Google Compute Engine instances. By default, the cluster is created in the
 // project's default network
-// (https://cloud.google.com/compute/docs/networks-and-firewalls#networks). One
-// firewall is added for the cluster. After cluster creation, the Kubelet
+// (https://{$universe.dns_names.final_documentation_domain}/compute/docs/networks-and-firewalls#networks).
+// One firewall is added for the cluster. After cluster creation, the Kubelet
 // creates routes for each node to allow the containers on that node to
 // communicate with all other instances in the cluster. Finally, an entry is
 // added to the project's global metadata indicating which CIDR range the
@@ -11592,12 +13500,12 @@ type ProjectsZonesClustersCreateCall struct {
 //
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the parent field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the parent
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the parent field.
 func (r *ProjectsZonesClustersService) Create(projectId string, zone string, createclusterrequest *CreateClusterRequest) *ProjectsZonesClustersCreateCall {
 	c := &ProjectsZonesClustersCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -11631,8 +13539,7 @@ func (c *ProjectsZonesClustersCreateCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.createclusterrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.createclusterrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -11649,6 +13556,7 @@ func (c *ProjectsZonesClustersCreateCall) doRequest(alt string) (*http.Response,
 		"projectId": c.projectId,
 		"zone":      c.zone,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11683,9 +13591,11 @@ func (c *ProjectsZonesClustersCreateCall) Do(opts ...googleapi.CallOption) (*Ope
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11709,12 +13619,12 @@ type ProjectsZonesClustersDeleteCall struct {
 //     been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) Delete(projectId string, zone string, clusterId string) *ProjectsZonesClustersDeleteCall {
 	c := &ProjectsZonesClustersDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -11756,12 +13666,11 @@ func (c *ProjectsZonesClustersDeleteCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11771,6 +13680,7 @@ func (c *ProjectsZonesClustersDeleteCall) doRequest(alt string) (*http.Response,
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11805,9 +13715,130 @@ func (c *ProjectsZonesClustersDeleteCall) Do(opts ...googleapi.CallOption) (*Ope
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsZonesClustersFetchClusterUpgradeInfoCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// FetchClusterUpgradeInfo: Fetch upgrade information of a specific cluster.
+//
+//   - name: The name (project, location, cluster) of the cluster to get.
+//     Specified in the format `projects/*/locations/*/clusters/*` or
+//     `projects/*/zones/*/clusters/*`.
+func (r *ProjectsZonesClustersService) FetchClusterUpgradeInfo(name string) *ProjectsZonesClustersFetchClusterUpgradeInfoCall {
+	c := &ProjectsZonesClustersFetchClusterUpgradeInfoCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Version sets the optional parameter "version": API request version that
+// initiates this operation.
+func (c *ProjectsZonesClustersFetchClusterUpgradeInfoCall) Version(version string) *ProjectsZonesClustersFetchClusterUpgradeInfoCall {
+	c.urlParams_.Set("version", version)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsZonesClustersFetchClusterUpgradeInfoCall) Fields(s ...googleapi.Field) *ProjectsZonesClustersFetchClusterUpgradeInfoCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsZonesClustersFetchClusterUpgradeInfoCall) IfNoneMatch(entityTag string) *ProjectsZonesClustersFetchClusterUpgradeInfoCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsZonesClustersFetchClusterUpgradeInfoCall) Context(ctx context.Context) *ProjectsZonesClustersFetchClusterUpgradeInfoCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsZonesClustersFetchClusterUpgradeInfoCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsZonesClustersFetchClusterUpgradeInfoCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}:fetchClusterUpgradeInfo")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.fetchClusterUpgradeInfo", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "container.projects.zones.clusters.fetchClusterUpgradeInfo" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ClusterUpgradeInfo.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *ProjectsZonesClustersFetchClusterUpgradeInfoCall) Do(opts ...googleapi.CallOption) (*ClusterUpgradeInfo, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ClusterUpgradeInfo{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.fetchClusterUpgradeInfo", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11828,12 +13859,12 @@ type ProjectsZonesClustersGetCall struct {
 //     been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) Get(projectId string, zone string, clusterId string) *ProjectsZonesClustersGetCall {
 	c := &ProjectsZonesClustersGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -11886,12 +13917,11 @@ func (c *ProjectsZonesClustersGetCall) doRequest(alt string) (*http.Response, er
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11901,6 +13931,7 @@ func (c *ProjectsZonesClustersGetCall) doRequest(alt string) (*http.Response, er
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11935,9 +13966,11 @@ func (c *ProjectsZonesClustersGetCall) Do(opts ...googleapi.CallOption) (*Cluste
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11959,12 +13992,12 @@ type ProjectsZonesClustersLegacyAbacCall struct {
 //     been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) LegacyAbac(projectId string, zone string, clusterId string, setlegacyabacrequest *SetLegacyAbacRequest) *ProjectsZonesClustersLegacyAbacCall {
 	c := &ProjectsZonesClustersLegacyAbacCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -11999,8 +14032,7 @@ func (c *ProjectsZonesClustersLegacyAbacCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersLegacyAbacCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setlegacyabacrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setlegacyabacrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -12018,6 +14050,7 @@ func (c *ProjectsZonesClustersLegacyAbacCall) doRequest(alt string) (*http.Respo
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.legacyAbac", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12052,9 +14085,11 @@ func (c *ProjectsZonesClustersLegacyAbacCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.legacyAbac", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -12073,12 +14108,12 @@ type ProjectsZonesClustersListCall struct {
 //
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the parent field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides, or "-" for all zones. This field has been deprecated and
-//     replaced by the parent field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides, or "-" for all zones. This field has been
+//     deprecated and replaced by the parent field.
 func (r *ProjectsZonesClustersService) List(projectId string, zone string) *ProjectsZonesClustersListCall {
 	c := &ProjectsZonesClustersListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -12130,12 +14165,11 @@ func (c *ProjectsZonesClustersListCall) doRequest(alt string) (*http.Response, e
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/projects/{projectId}/zones/{zone}/clusters")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -12144,6 +14178,7 @@ func (c *ProjectsZonesClustersListCall) doRequest(alt string) (*http.Response, e
 		"projectId": c.projectId,
 		"zone":      c.zone,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12179,9 +14214,11 @@ func (c *ProjectsZonesClustersListCall) Do(opts ...googleapi.CallOption) (*ListC
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -12198,19 +14235,19 @@ type ProjectsZonesClustersLocationsCall struct {
 
 // Locations: Sets the locations for a specific cluster. Deprecated. Use
 // projects.locations.clusters.update
-// (https://cloud.google.com/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters/update)
+// (https://{$universe.dns_names.final_documentation_domain}/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters/update)
 // instead.
 //
 //   - clusterId: Deprecated. The name of the cluster to upgrade. This field has
 //     been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) Locations(projectId string, zone string, clusterId string, setlocationsrequest *SetLocationsRequest) *ProjectsZonesClustersLocationsCall {
 	c := &ProjectsZonesClustersLocationsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -12245,8 +14282,7 @@ func (c *ProjectsZonesClustersLocationsCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersLocationsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setlocationsrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setlocationsrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -12264,6 +14300,7 @@ func (c *ProjectsZonesClustersLocationsCall) doRequest(alt string) (*http.Respon
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.locations", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12298,9 +14335,11 @@ func (c *ProjectsZonesClustersLocationsCall) Do(opts ...googleapi.CallOption) (*
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.locations", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -12321,12 +14360,12 @@ type ProjectsZonesClustersLoggingCall struct {
 //     been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) Logging(projectId string, zone string, clusterId string, setloggingservicerequest *SetLoggingServiceRequest) *ProjectsZonesClustersLoggingCall {
 	c := &ProjectsZonesClustersLoggingCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -12361,8 +14400,7 @@ func (c *ProjectsZonesClustersLoggingCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersLoggingCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setloggingservicerequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setloggingservicerequest)
 	if err != nil {
 		return nil, err
 	}
@@ -12380,6 +14418,7 @@ func (c *ProjectsZonesClustersLoggingCall) doRequest(alt string) (*http.Response
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.logging", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12414,9 +14453,11 @@ func (c *ProjectsZonesClustersLoggingCall) Do(opts ...googleapi.CallOption) (*Op
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.logging", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -12437,12 +14478,12 @@ type ProjectsZonesClustersMasterCall struct {
 //     been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) Master(projectId string, zone string, clusterId string, updatemasterrequest *UpdateMasterRequest) *ProjectsZonesClustersMasterCall {
 	c := &ProjectsZonesClustersMasterCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -12477,8 +14518,7 @@ func (c *ProjectsZonesClustersMasterCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersMasterCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.updatemasterrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.updatemasterrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -12496,6 +14536,7 @@ func (c *ProjectsZonesClustersMasterCall) doRequest(alt string) (*http.Response,
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.master", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12530,9 +14571,11 @@ func (c *ProjectsZonesClustersMasterCall) Do(opts ...googleapi.CallOption) (*Ope
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.master", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -12553,12 +14596,12 @@ type ProjectsZonesClustersMonitoringCall struct {
 //     been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) Monitoring(projectId string, zone string, clusterId string, setmonitoringservicerequest *SetMonitoringServiceRequest) *ProjectsZonesClustersMonitoringCall {
 	c := &ProjectsZonesClustersMonitoringCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -12593,8 +14636,7 @@ func (c *ProjectsZonesClustersMonitoringCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersMonitoringCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setmonitoringservicerequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setmonitoringservicerequest)
 	if err != nil {
 		return nil, err
 	}
@@ -12612,6 +14654,7 @@ func (c *ProjectsZonesClustersMonitoringCall) doRequest(alt string) (*http.Respo
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.monitoring", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12646,9 +14689,11 @@ func (c *ProjectsZonesClustersMonitoringCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.monitoring", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -12669,12 +14714,12 @@ type ProjectsZonesClustersResourceLabelsCall struct {
 //     deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) ResourceLabels(projectId string, zone string, clusterId string, setlabelsrequest *SetLabelsRequest) *ProjectsZonesClustersResourceLabelsCall {
 	c := &ProjectsZonesClustersResourceLabelsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -12709,8 +14754,7 @@ func (c *ProjectsZonesClustersResourceLabelsCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersResourceLabelsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setlabelsrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setlabelsrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -12728,6 +14772,7 @@ func (c *ProjectsZonesClustersResourceLabelsCall) doRequest(alt string) (*http.R
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.resourceLabels", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12762,9 +14807,11 @@ func (c *ProjectsZonesClustersResourceLabelsCall) Do(opts ...googleapi.CallOptio
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.resourceLabels", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -12783,10 +14830,10 @@ type ProjectsZonesClustersSetMaintenancePolicyCall struct {
 //
 //   - clusterId: The name of the cluster to update.
 //   - projectId: The Google Developers Console project ID or project number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //   - zone: The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides.
 func (r *ProjectsZonesClustersService) SetMaintenancePolicy(projectId string, zone string, clusterId string, setmaintenancepolicyrequest *SetMaintenancePolicyRequest) *ProjectsZonesClustersSetMaintenancePolicyCall {
 	c := &ProjectsZonesClustersSetMaintenancePolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -12821,8 +14868,7 @@ func (c *ProjectsZonesClustersSetMaintenancePolicyCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersSetMaintenancePolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setmaintenancepolicyrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setmaintenancepolicyrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -12840,6 +14886,7 @@ func (c *ProjectsZonesClustersSetMaintenancePolicyCall) doRequest(alt string) (*
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.setMaintenancePolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12874,9 +14921,11 @@ func (c *ProjectsZonesClustersSetMaintenancePolicyCall) Do(opts ...googleapi.Cal
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.setMaintenancePolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -12899,12 +14948,12 @@ type ProjectsZonesClustersSetMasterAuthCall struct {
 //     been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) SetMasterAuth(projectId string, zone string, clusterId string, setmasterauthrequest *SetMasterAuthRequest) *ProjectsZonesClustersSetMasterAuthCall {
 	c := &ProjectsZonesClustersSetMasterAuthCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -12939,8 +14988,7 @@ func (c *ProjectsZonesClustersSetMasterAuthCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersSetMasterAuthCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setmasterauthrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setmasterauthrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -12958,6 +15006,7 @@ func (c *ProjectsZonesClustersSetMasterAuthCall) doRequest(alt string) (*http.Re
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.setMasterAuth", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12992,9 +15041,11 @@ func (c *ProjectsZonesClustersSetMasterAuthCall) Do(opts ...googleapi.CallOption
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.setMasterAuth", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -13015,12 +15066,12 @@ type ProjectsZonesClustersSetNetworkPolicyCall struct {
 //     deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) SetNetworkPolicy(projectId string, zone string, clusterId string, setnetworkpolicyrequest *SetNetworkPolicyRequest) *ProjectsZonesClustersSetNetworkPolicyCall {
 	c := &ProjectsZonesClustersSetNetworkPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -13055,8 +15106,7 @@ func (c *ProjectsZonesClustersSetNetworkPolicyCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersSetNetworkPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setnetworkpolicyrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setnetworkpolicyrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -13074,6 +15124,7 @@ func (c *ProjectsZonesClustersSetNetworkPolicyCall) doRequest(alt string) (*http
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.setNetworkPolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -13108,9 +15159,11 @@ func (c *ProjectsZonesClustersSetNetworkPolicyCall) Do(opts ...googleapi.CallOpt
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.setNetworkPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -13131,12 +15184,12 @@ type ProjectsZonesClustersStartIpRotationCall struct {
 //     deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) StartIpRotation(projectId string, zone string, clusterId string, startiprotationrequest *StartIPRotationRequest) *ProjectsZonesClustersStartIpRotationCall {
 	c := &ProjectsZonesClustersStartIpRotationCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -13171,8 +15224,7 @@ func (c *ProjectsZonesClustersStartIpRotationCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersStartIpRotationCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.startiprotationrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.startiprotationrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -13190,6 +15242,7 @@ func (c *ProjectsZonesClustersStartIpRotationCall) doRequest(alt string) (*http.
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.startIpRotation", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -13224,9 +15277,11 @@ func (c *ProjectsZonesClustersStartIpRotationCall) Do(opts ...googleapi.CallOpti
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.startIpRotation", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -13247,12 +15302,12 @@ type ProjectsZonesClustersUpdateCall struct {
 //     been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersService) Update(projectId string, zone string, clusterId string, updateclusterrequest *UpdateClusterRequest) *ProjectsZonesClustersUpdateCall {
 	c := &ProjectsZonesClustersUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -13287,8 +15342,7 @@ func (c *ProjectsZonesClustersUpdateCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersUpdateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.updateclusterrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.updateclusterrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -13306,6 +15360,7 @@ func (c *ProjectsZonesClustersUpdateCall) doRequest(alt string) (*http.Response,
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.update", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -13340,9 +15395,11 @@ func (c *ProjectsZonesClustersUpdateCall) Do(opts ...googleapi.CallOption) (*Ope
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -13366,12 +15423,12 @@ type ProjectsZonesClustersNodePoolsAutoscalingCall struct {
 //     has been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersNodePoolsService) Autoscaling(projectId string, zone string, clusterId string, nodePoolId string, setnodepoolautoscalingrequest *SetNodePoolAutoscalingRequest) *ProjectsZonesClustersNodePoolsAutoscalingCall {
 	c := &ProjectsZonesClustersNodePoolsAutoscalingCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -13407,8 +15464,7 @@ func (c *ProjectsZonesClustersNodePoolsAutoscalingCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersNodePoolsAutoscalingCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setnodepoolautoscalingrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setnodepoolautoscalingrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -13427,6 +15483,7 @@ func (c *ProjectsZonesClustersNodePoolsAutoscalingCall) doRequest(alt string) (*
 		"clusterId":  c.clusterId,
 		"nodePoolId": c.nodePoolId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.autoscaling", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -13461,9 +15518,11 @@ func (c *ProjectsZonesClustersNodePoolsAutoscalingCall) Do(opts ...googleapi.Cal
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.autoscaling", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -13484,12 +15543,12 @@ type ProjectsZonesClustersNodePoolsCreateCall struct {
 //     deprecated and replaced by the parent field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the parent field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the parent
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the parent field.
 func (r *ProjectsZonesClustersNodePoolsService) Create(projectId string, zone string, clusterId string, createnodepoolrequest *CreateNodePoolRequest) *ProjectsZonesClustersNodePoolsCreateCall {
 	c := &ProjectsZonesClustersNodePoolsCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -13524,8 +15583,7 @@ func (c *ProjectsZonesClustersNodePoolsCreateCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersNodePoolsCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.createnodepoolrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.createnodepoolrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -13543,6 +15601,7 @@ func (c *ProjectsZonesClustersNodePoolsCreateCall) doRequest(alt string) (*http.
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -13577,9 +15636,11 @@ func (c *ProjectsZonesClustersNodePoolsCreateCall) Do(opts ...googleapi.CallOpti
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -13602,12 +15663,12 @@ type ProjectsZonesClustersNodePoolsDeleteCall struct {
 //     has been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersNodePoolsService) Delete(projectId string, zone string, clusterId string, nodePoolId string) *ProjectsZonesClustersNodePoolsDeleteCall {
 	c := &ProjectsZonesClustersNodePoolsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -13650,12 +15711,11 @@ func (c *ProjectsZonesClustersNodePoolsDeleteCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersNodePoolsDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools/{nodePoolId}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -13666,6 +15726,7 @@ func (c *ProjectsZonesClustersNodePoolsDeleteCall) doRequest(alt string) (*http.
 		"clusterId":  c.clusterId,
 		"nodePoolId": c.nodePoolId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -13700,9 +15761,131 @@ func (c *ProjectsZonesClustersNodePoolsDeleteCall) Do(opts ...googleapi.CallOpti
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// FetchNodePoolUpgradeInfo: Fetch upgrade information of a specific nodepool.
+//
+//   - name: The name (project, location, cluster, nodepool) of the nodepool to
+//     get. Specified in the format
+//     `projects/*/locations/*/clusters/*/nodePools/*` or
+//     `projects/*/zones/*/clusters/*/nodePools/*`.
+func (r *ProjectsZonesClustersNodePoolsService) FetchNodePoolUpgradeInfo(name string) *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall {
+	c := &ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Version sets the optional parameter "version": API request version that
+// initiates this operation.
+func (c *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall) Version(version string) *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall {
+	c.urlParams_.Set("version", version)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall) Fields(s ...googleapi.Field) *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall) IfNoneMatch(entityTag string) *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall) Context(ctx context.Context) *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}:fetchNodePoolUpgradeInfo")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.fetchNodePoolUpgradeInfo", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "container.projects.zones.clusters.nodePools.fetchNodePoolUpgradeInfo" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *NodePoolUpgradeInfo.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *ProjectsZonesClustersNodePoolsFetchNodePoolUpgradeInfoCall) Do(opts ...googleapi.CallOption) (*NodePoolUpgradeInfo, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &NodePoolUpgradeInfo{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.fetchNodePoolUpgradeInfo", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -13726,12 +15909,12 @@ type ProjectsZonesClustersNodePoolsGetCall struct {
 //     deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersNodePoolsService) Get(projectId string, zone string, clusterId string, nodePoolId string) *ProjectsZonesClustersNodePoolsGetCall {
 	c := &ProjectsZonesClustersNodePoolsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -13785,12 +15968,11 @@ func (c *ProjectsZonesClustersNodePoolsGetCall) doRequest(alt string) (*http.Res
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools/{nodePoolId}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -13801,6 +15983,7 @@ func (c *ProjectsZonesClustersNodePoolsGetCall) doRequest(alt string) (*http.Res
 		"clusterId":  c.clusterId,
 		"nodePoolId": c.nodePoolId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -13835,9 +16018,11 @@ func (c *ProjectsZonesClustersNodePoolsGetCall) Do(opts ...googleapi.CallOption)
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -13858,12 +16043,12 @@ type ProjectsZonesClustersNodePoolsListCall struct {
 //     deprecated and replaced by the parent field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the parent field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the parent
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the parent field.
 func (r *ProjectsZonesClustersNodePoolsService) List(projectId string, zone string, clusterId string) *ProjectsZonesClustersNodePoolsListCall {
 	c := &ProjectsZonesClustersNodePoolsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -13916,12 +16101,11 @@ func (c *ProjectsZonesClustersNodePoolsListCall) doRequest(alt string) (*http.Re
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/projects/{projectId}/zones/{zone}/clusters/{clusterId}/nodePools")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -13931,6 +16115,7 @@ func (c *ProjectsZonesClustersNodePoolsListCall) doRequest(alt string) (*http.Re
 		"zone":      c.zone,
 		"clusterId": c.clusterId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -13966,9 +16151,11 @@ func (c *ProjectsZonesClustersNodePoolsListCall) Do(opts ...googleapi.CallOption
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -13993,12 +16180,12 @@ type ProjectsZonesClustersNodePoolsRollbackCall struct {
 //     has been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersNodePoolsService) Rollback(projectId string, zone string, clusterId string, nodePoolId string, rollbacknodepoolupgraderequest *RollbackNodePoolUpgradeRequest) *ProjectsZonesClustersNodePoolsRollbackCall {
 	c := &ProjectsZonesClustersNodePoolsRollbackCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -14034,8 +16221,7 @@ func (c *ProjectsZonesClustersNodePoolsRollbackCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersNodePoolsRollbackCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.rollbacknodepoolupgraderequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.rollbacknodepoolupgraderequest)
 	if err != nil {
 		return nil, err
 	}
@@ -14054,6 +16240,7 @@ func (c *ProjectsZonesClustersNodePoolsRollbackCall) doRequest(alt string) (*htt
 		"clusterId":  c.clusterId,
 		"nodePoolId": c.nodePoolId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.rollback", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -14088,9 +16275,11 @@ func (c *ProjectsZonesClustersNodePoolsRollbackCall) Do(opts ...googleapi.CallOp
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.rollback", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -14114,12 +16303,12 @@ type ProjectsZonesClustersNodePoolsSetManagementCall struct {
 //     has been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersNodePoolsService) SetManagement(projectId string, zone string, clusterId string, nodePoolId string, setnodepoolmanagementrequest *SetNodePoolManagementRequest) *ProjectsZonesClustersNodePoolsSetManagementCall {
 	c := &ProjectsZonesClustersNodePoolsSetManagementCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -14155,8 +16344,7 @@ func (c *ProjectsZonesClustersNodePoolsSetManagementCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersNodePoolsSetManagementCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setnodepoolmanagementrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setnodepoolmanagementrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -14175,6 +16363,7 @@ func (c *ProjectsZonesClustersNodePoolsSetManagementCall) doRequest(alt string) 
 		"clusterId":  c.clusterId,
 		"nodePoolId": c.nodePoolId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.setManagement", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -14209,9 +16398,11 @@ func (c *ProjectsZonesClustersNodePoolsSetManagementCall) Do(opts ...googleapi.C
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.setManagement", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -14237,12 +16428,12 @@ type ProjectsZonesClustersNodePoolsSetSizeCall struct {
 //     has been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersNodePoolsService) SetSize(projectId string, zone string, clusterId string, nodePoolId string, setnodepoolsizerequest *SetNodePoolSizeRequest) *ProjectsZonesClustersNodePoolsSetSizeCall {
 	c := &ProjectsZonesClustersNodePoolsSetSizeCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -14278,8 +16469,7 @@ func (c *ProjectsZonesClustersNodePoolsSetSizeCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersNodePoolsSetSizeCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setnodepoolsizerequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setnodepoolsizerequest)
 	if err != nil {
 		return nil, err
 	}
@@ -14298,6 +16488,7 @@ func (c *ProjectsZonesClustersNodePoolsSetSizeCall) doRequest(alt string) (*http
 		"clusterId":  c.clusterId,
 		"nodePoolId": c.nodePoolId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.setSize", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -14332,9 +16523,11 @@ func (c *ProjectsZonesClustersNodePoolsSetSizeCall) Do(opts ...googleapi.CallOpt
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.setSize", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -14358,12 +16551,12 @@ type ProjectsZonesClustersNodePoolsUpdateCall struct {
 //     has been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesClustersNodePoolsService) Update(projectId string, zone string, clusterId string, nodePoolId string, updatenodepoolrequest *UpdateNodePoolRequest) *ProjectsZonesClustersNodePoolsUpdateCall {
 	c := &ProjectsZonesClustersNodePoolsUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -14399,8 +16592,7 @@ func (c *ProjectsZonesClustersNodePoolsUpdateCall) Header() http.Header {
 
 func (c *ProjectsZonesClustersNodePoolsUpdateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.updatenodepoolrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.updatenodepoolrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -14419,6 +16611,7 @@ func (c *ProjectsZonesClustersNodePoolsUpdateCall) doRequest(alt string) (*http.
 		"clusterId":  c.clusterId,
 		"nodePoolId": c.nodePoolId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.update", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -14453,9 +16646,11 @@ func (c *ProjectsZonesClustersNodePoolsUpdateCall) Do(opts ...googleapi.CallOpti
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.clusters.nodePools.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -14476,12 +16671,12 @@ type ProjectsZonesOperationsCancelCall struct {
 //     field has been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     operation resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the operation resides. This field has been deprecated and
+//     replaced by the name field.
 func (r *ProjectsZonesOperationsService) Cancel(projectId string, zone string, operationId string, canceloperationrequest *CancelOperationRequest) *ProjectsZonesOperationsCancelCall {
 	c := &ProjectsZonesOperationsCancelCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -14516,8 +16711,7 @@ func (c *ProjectsZonesOperationsCancelCall) Header() http.Header {
 
 func (c *ProjectsZonesOperationsCancelCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.canceloperationrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.canceloperationrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -14535,6 +16729,7 @@ func (c *ProjectsZonesOperationsCancelCall) doRequest(alt string) (*http.Respons
 		"zone":        c.zone,
 		"operationId": c.operationId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.operations.cancel", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -14569,9 +16764,11 @@ func (c *ProjectsZonesOperationsCancelCall) Do(opts ...googleapi.CallOption) (*E
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.operations.cancel", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -14592,12 +16789,12 @@ type ProjectsZonesOperationsGetCall struct {
 //     field has been deprecated and replaced by the name field.
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the name field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) in which the
-//     cluster resides. This field has been deprecated and replaced by the name
-//     field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     in which the cluster resides. This field has been deprecated and replaced
+//     by the name field.
 func (r *ProjectsZonesOperationsService) Get(projectId string, zone string, operationId string) *ProjectsZonesOperationsGetCall {
 	c := &ProjectsZonesOperationsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -14650,12 +16847,11 @@ func (c *ProjectsZonesOperationsGetCall) doRequest(alt string) (*http.Response, 
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/projects/{projectId}/zones/{zone}/operations/{operationId}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -14665,6 +16861,7 @@ func (c *ProjectsZonesOperationsGetCall) doRequest(alt string) (*http.Response, 
 		"zone":        c.zone,
 		"operationId": c.operationId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.operations.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -14699,9 +16896,11 @@ func (c *ProjectsZonesOperationsGetCall) Do(opts ...googleapi.CallOption) (*Oper
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.operations.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -14719,12 +16918,12 @@ type ProjectsZonesOperationsListCall struct {
 //
 //   - projectId: Deprecated. The Google Developers Console project ID or project
 //     number
-//     (https://cloud.google.com/resource-manager/docs/creating-managing-projects).
+//     (https://{$universe.dns_names.final_documentation_domain}/resource-manager/docs/creating-managing-projects).
 //     This field has been deprecated and replaced by the parent field.
 //   - zone: Deprecated. The name of the Google Compute Engine zone
-//     (https://cloud.google.com/compute/docs/zones#available) to return
-//     operations for, or `-` for all zones. This field has been deprecated and
-//     replaced by the parent field.
+//     (https://{$universe.dns_names.final_documentation_domain}/compute/docs/zones#available)
+//     to return operations for, or `-` for all zones. This field has been
+//     deprecated and replaced by the parent field.
 func (r *ProjectsZonesOperationsService) List(projectId string, zone string) *ProjectsZonesOperationsListCall {
 	c := &ProjectsZonesOperationsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -14776,12 +16975,11 @@ func (c *ProjectsZonesOperationsListCall) doRequest(alt string) (*http.Response,
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/projects/{projectId}/zones/{zone}/operations")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -14790,6 +16988,7 @@ func (c *ProjectsZonesOperationsListCall) doRequest(alt string) (*http.Response,
 		"projectId": c.projectId,
 		"zone":      c.zone,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "container.projects.zones.operations.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -14825,8 +17024,10 @@ func (c *ProjectsZonesOperationsListCall) Do(opts ...googleapi.CallOption) (*Lis
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "container.projects.zones.operations.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }

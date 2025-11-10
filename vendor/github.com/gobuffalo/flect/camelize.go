@@ -6,6 +6,7 @@ import (
 )
 
 // Camelize returns a camelize version of a string
+//
 //	bob dylan = bobDylan
 //	widget_id = widgetID
 //	WidgetID = widgetID
@@ -14,6 +15,7 @@ func Camelize(s string) string {
 }
 
 // Camelize returns a camelize version of a string
+//
 //	bob dylan = bobDylan
 //	widget_id = widgetID
 //	WidgetID = widgetID

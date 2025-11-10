@@ -6,6 +6,7 @@ import (
 )
 
 // Dasherize returns an alphanumeric, lowercased, dashed string
+//
 //	Donald E. Knuth = donald-e-knuth
 //	Test with + sign = test-with-sign
 //	admin/WidgetID = admin-widget-id
@@ -14,6 +15,7 @@ func Dasherize(s string) string {
 }
 
 // Dasherize returns an alphanumeric, lowercased, dashed string
+//
 //	Donald E. Knuth = donald-e-knuth
 //	Test with + sign = test-with-sign
 //	admin/WidgetID = admin-widget-id

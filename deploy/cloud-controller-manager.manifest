@@ -37,6 +37,7 @@
       "--also-stdout=false",
       "--redirect-stderr=true",
       "/cloud-controller-manager",
+      "--enable-multi-project=true",
       {{params}}
     ],
     {{container_env}}

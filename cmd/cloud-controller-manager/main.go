@@ -45,6 +45,9 @@ const (
 	gkeServiceLBControllerName     = "gke-service-lb-controller"
 	gkeServiceControllerClientName = "gke-service-controller"
 	gkeServiceAlias                = "gke-service"
+	multiNodeControllerName        = "gke-multi-node-controller"
+	multiNodeControllerClientName  = "gke-multi-node-controller"
+	multiNodeControllerAlias       = "gke-multi-node"
 )
 
 // enableMultiProject is bound to a command-line flag. When true, it enables the
@@ -111,6 +114,19 @@ func main() {
 	aliasMap := names.CCMControllerAliases()
 	aliasMap["nodeipam"] = kcmnames.NodeIpamController
 	aliasMap[gkeServiceAlias] = gkeServiceLBControllerName
+
+	pflag.Parse()
+	if enableMultiProject {
+		controllerInitializers[multiNodeControllerName] = app.ControllerInitFuncConstructor{
+			InitContext: app.ControllerInitContext{
+				ClientName: multiNodeControllerClientName,
+			},
+			Constructor: startGkeMultiNodeControllerWrapper,
+		}
+		app.ControllersDisabledByDefault.Insert(names.CloudNodeController)
+		aliasMap[multiNodeControllerAlias] = multiNodeControllerName
+	}
+
 	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, aliasMap, fss, wait.NeverStop)
 
 	logs.InitLogs()
@@ -142,6 +158,7 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 	}
 
 	if enableMultiProject {
+		klog.Infof("HELLO PP - Testing")
 		gceCloud, ok := (cloud).(*gce.Cloud)
 		if !ok {
 			// Fail-fast: If enableMultiProject is set, the cloud provider MUST

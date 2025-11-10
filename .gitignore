@@ -3,3 +3,4 @@ cluster/bin
 MERGED_LICENSES
 go.work
 go.work.sum
+vendor/

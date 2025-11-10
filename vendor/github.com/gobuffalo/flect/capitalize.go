@@ -3,6 +3,7 @@ package flect
 import "unicode"
 
 // Capitalize will cap the first letter of string
+//
 //	user = User
 //	bob dylan = Bob dylan
 //	widget_id = Widget_id
@@ -11,6 +12,7 @@ func Capitalize(s string) string {
 }
 
 // Capitalize will cap the first letter of string
+//
 //	user = User
 //	bob dylan = Bob dylan
 //	widget_id = Widget_id

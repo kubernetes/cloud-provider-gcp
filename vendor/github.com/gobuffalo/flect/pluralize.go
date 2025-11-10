@@ -8,6 +8,7 @@ import (
 var pluralMoot = &sync.RWMutex{}
 
 // Pluralize returns a plural version of the string
+//
 //	user = users
 //	person = people
 //	datum = data
@@ -16,6 +17,7 @@ func Pluralize(s string) string {
 }
 
 // PluralizeWithSize will pluralize a string taking a number number into account.
+//
 //	PluralizeWithSize("user", 1) = user
 //	PluralizeWithSize("user", 2) = users
 func PluralizeWithSize(s string, i int) string {
@@ -26,6 +28,7 @@ func PluralizeWithSize(s string, i int) string {
 }
 
 // Pluralize returns a plural version of the string
+//
 //	user = users
 //	person = people
 //	datum = data
