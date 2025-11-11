@@ -30,12 +30,12 @@ func init() {
 }
 
 type TenantCloud interface {
-	createTenantScopedGCECloud(config *config.CompletedConfig, pc *v1.ProviderConfig) (cloudprovider.Interface, error)
+	CreateTenantScopedGCECloud(config *config.CompletedConfig, pc *v1.ProviderConfig) (cloudprovider.Interface, error)
 }
 
-// createTenantScopedGCECloud creates a new cloud object customized with
+// CreateTenantScopedGCECloud creates a new cloud object customized with
 // authentication from a ProviderConfig CR.
-func createTenantScopedGCECloud(config *config.CompletedConfig, pc *v1.ProviderConfig) (cloudprovider.Interface, error) {
+func CreateTenantScopedGCECloud(config *config.CompletedConfig, pc *v1.ProviderConfig) (cloudprovider.Interface, error) {
 	cloudConfig := config.ComponentConfig.KubeCloudShared.CloudProvider
 	configReader, err := createConfigReader(cloudConfig.CloudConfigFile)
 	if err != nil {
@@ -79,11 +79,12 @@ func createConfigReader(configFilePath string) (io.Reader, error) {
 		}
 		return bytes.NewReader(data), nil
 	} else {
-		klog.Fatalf("Cloud provider configuration file path is empty")
+		klog.Warning("Cloud provider configuration file path is empty")
 		return nil, fmt.Errorf("cloud provider configuration file path is empty")
 	}
 }
 
+// TODO: modify this constant byte to string and back by changing signature of this function
 func generateConfigForProviderConfig(defaultConfigContent string, providerConfig *v1.ProviderConfig) (string, error) {
 	if providerConfig == nil {
 		return defaultConfigContent, nil
@@ -156,11 +157,10 @@ func generateConfigForProviderConfig(defaultConfigContent string, providerConfig
 }
 
 func tokenURLForProviderConfig(existingTokenURL string, providerConfig *v1.ProviderConfig) (string, error) {
-	// TODO: Uncomment and use multi-project owner label logic when needed.
-	// if _, ok := providerConfig.Labels[flags.F.MultiProjectOwnerLabelKey]; !ok {
-	// 	// If no owner label is set, assume token URL belongs to the default project.
-	// 	return existingTokenURL, nil
-	// }
+	if _, ok := providerConfig.Labels[TenantLabel]; !ok {
+		// If no owner label is set, assume token URL belongs to the default project.
+		return existingTokenURL, nil
+	}
 
 	// Extract location from the old token URL
 	location := extractLocationFromTokenURL(existingTokenURL)

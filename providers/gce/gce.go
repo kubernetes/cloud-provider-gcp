@@ -350,8 +350,12 @@ func readConfig(reader io.Reader) (*ConfigFile, error) {
 // packages can create scoped clouds without duplicating parsing logic.
 func CreateGCECloudFromReader(reader io.Reader) (*Cloud, error) {
 	if reader == nil {
-		// Interpret nil as no config provided.
-		return CreateGCECloud(nil)
+		// No reader -> generate default CloudConfig (nil ConfigFile).
+		cloudCfg, err := generateCloudConfig(nil)
+		if err != nil {
+			return nil, err
+		}
+		return CreateGCECloud(cloudCfg)
 	}
 
 	cfg, err := readConfig(reader)

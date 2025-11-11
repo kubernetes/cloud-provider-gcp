@@ -25,7 +25,7 @@ func (m *ManagerController) startScopedNodeController(ctx context.Context, cr *v
 	klog.Infof("Attempting to start scoped node controller for '%s'", crKey)
 
 	// 1. Create the new, scoped GCECloud object
-	scopedCloud, err := createTenantScopedGCECloud(m.mainCloud, cr)
+	scopedCloud, err := CreateTenantScopedGCECloud(m.mainCloud, cr)
 	if err != nil {
 		klog.Errorf("Failed to create scoped cloud for '%s': %v. Aborting.", crKey, err)
 		// We need to stop tracking this controller so it can be retried
