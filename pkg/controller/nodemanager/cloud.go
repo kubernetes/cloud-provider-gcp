@@ -229,30 +229,17 @@ func extractLocationFromTokenURL(tokenURL string) string {
 	return ""
 }
 
-// getNodeLabelSelector extracts the node label selector string from the CR.
-// This is a placeholder for wherever you define this in your CR.
-// **YOU MUST UPDATE THIS**
 func getNodeLabelSelector(cr *v1.ProviderConfig) (string, error) {
-	// Example: Assuming you added a label selector to your CR's spec.
-	// If it's stored in an annotation, get it from there.
-	//
-	// if cr.Spec.NodeSelector == "" {
-	//    return "", fmt.Errorf("ProviderConfig.spec.nodeSelector is empty")
-	// }
-	// return cr.Spec.NodeSelector, nil
+	// In the POC requirements, we are looking for:
+	// tenancy.gke.io/provider-config=<provider-config-id>
 
-	// For this example, I'll assume you have an annotation:
-	// "nodemanager.cloud.google.com/node-selector": "key=value"
-	selector, ok := cr.Annotations["nodemanager.cloud.google.com/node-selector"]
-	if !ok || selector == "" {
-		return "", fmt.Errorf("ProviderConfig %s/%s is missing annotation 'nodemanager.cloud.google.com/node-selector'", cr.Namespace, cr.Name)
+	// assuming "Provider Config ID" is just the name of the CR
+	labelValue := cr.Name
+
+	// Validate
+	if labelValue == "" {
+		return "", fmt.Errorf("ProviderConfig name cannot be empty")
 	}
 
-	// The Node Controller's informer factory expects a label.Selector,
-	// not a field selector.
-	if strings.Contains(selector, "!=") || strings.Contains(selector, " in ") {
-		klog.Warningf("Selector '%s' may be too complex; simple 'key=value' is safest.", selector)
-	}
-
-	return selector, nil
+	return labelValue, nil
 }

@@ -26,33 +26,45 @@ import (
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	cloudprovider "k8s.io/cloud-provider"
 	crdclient "k8s.io/cloud-provider-gcp/pkg/providerconfig/client/clientset/versioned"
 	crdinformers "k8s.io/cloud-provider-gcp/pkg/providerconfig/client/informers/externalversions"
 	crdlisters "k8s.io/cloud-provider-gcp/pkg/providerconfig/client/listers/providerconfig/v1"
-	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/cloud-provider/app/config"
 	controllermanagerapp "k8s.io/controller-manager/app"
 	"k8s.io/klog/v2"
 )
 
-// ManagerController watches ProviderConfig CRDs and starts/stops
+// NodeManagerController watches ProviderConfig CRDs and starts/stops
 // scoped Node Controllers.
-type ManagerController struct {
-	// mainKubeClient is the standard, cluster-wide client
-	mainKubeClient kubernetes.Interface
-	// mainCloud is the CCM's primary, cluster-wide cloud object
-	mainCloud *gce.Cloud
+type NodeManagerController struct {
+	// config is the completed CCM config
+	config *config.CompletedConfig
+
+	controlCtx controllermanagerapp.ControllerContext
+
+	// cloud is the CCM's primary, cluster-wide cloud object
+	cloud cloudprovider.Interface
+
+	// kubeClient is the primary kubernetes client
+	kubeClient clientset.Interface
+
 	// mainInformerFactory is the CCM's primary, unfiltered informer factory
 	mainInformerFactory informers.SharedInformerFactory
 
 	// crdClient is a dedicated client for the ProviderConfig CRD
 	crdClient crdclient.Interface
+
+	// crdInformerFactory is the dedicated informer factory for ProviderConfig CRDs
+	// Stored so it can be stopped during shutdown to prevent goroutine leaks.
+	crdInformerFactory crdinformers.SharedInformerFactory
+
 	// crdLister is a lister for the ProviderConfig CRD
 	crdLister crdlisters.ProviderConfigLister
+
 	// crdInformerSynced is a function to check if the CRD cache is synced
 	crdInformerSynced cache.InformerSynced
 
@@ -66,34 +78,35 @@ type ManagerController struct {
 	runningControllersLock sync.RWMutex
 }
 
-func StartNodeManagerController(ctx controllermanagerapp.ControllerContext, completedConfig *config.CompletedConfig, cloud cloudprovider.Interface) (cloudprovider.Interface, bool, error) {
-	klog.Infof("Starting ProviderConfig Node Manager Controller")
+func NewNodeManagerController(kubeClient clientset.Interface, informerFactory informers.SharedInformerFactory,
+	completedConfig *config.CompletedConfig, ctx controllermanagerapp.ControllerContext, cloud cloudprovider.Interface) (*NodeManagerController, error) {
+	klog.Infof("Creating ProviderConfig Node Manager Controller")
 
-	// 1. Get the main GCECloud object.
-	// We need the concrete type to be able to copy it.
-	gceCloud, ok := (cloud).(*gce.Cloud)
-	if !ok {
-		klog.Errorf("StartNodeManagerController only works with gce.Cloud, got %T", cloud)
-		return nil, false, fmt.Errorf("StartNodeManagerController only works with gce.Cloud, got %T", cloud)
-	}
-
-	// 2. Create a new client for the ProviderConfig CRD.
-	// We need this to create a dedicated informer.
-	crdClient, err := crdclient.NewForConfig(completedConfig.ClientBuilder.ClientOrDie(initContext.ClientName).CoreV1().RESTClient().Get().RequestURI)
+	clientConfig, err := ctx.ClientBuilder.Config("providerconfig-node-manager")
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to create CRD client: %w", err)
+		return nil, fmt.Errorf("failed to get rest config: %w", err)
+	}
+	// Create a new client for the ProviderConfig CRD.
+	// We need this to create a dedicated informer.
+	crdClient, err := crdclient.NewForConfig(clientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create CRD client: %w", err)
 	}
 
 	// 3. Create a dedicated informer factory for our CRD
+	klog.Infof("Creating ProviderConfig CRD informer factory")
 	crdInformerFactory := crdinformers.NewSharedInformerFactory(crdClient, 10*time.Minute)
-	crdInformer := crdInformerFactory.Providerconfig().V1().ProviderConfigs()
+	crdInformer := crdInformerFactory.Cloud().V1().ProviderConfigs()
 
 	// 4. Instantiate the manager controller
-	manager := &ManagerController{
-		mainKubeClient:      ctx.KubeClient,
-		mainCloud:           gceCloud,
-		mainInformerFactory: ctx.InformerFactory,
+	manager := &NodeManagerController{
+		config:              completedConfig,
+		controlCtx:          ctx,
+		kubeClient:          kubeClient,
+		cloud:               cloud,
+		mainInformerFactory: informerFactory,
 		crdClient:           crdClient,
+		crdInformerFactory:  crdInformerFactory,
 		crdLister:           crdInformer.Lister(),
 		crdInformerSynced:   crdInformer.Informer().HasSynced,
 		queue:               workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "NodeManager"),
@@ -108,54 +121,75 @@ func StartNodeManagerController(ctx controllermanagerapp.ControllerContext, comp
 	})
 
 	// 6. Start the dedicated CRD informer
+	klog.Infof("Starting ProviderConfig CRD informer factory")
 	go crdInformerFactory.Start(ctx.Stop)
 
 	// 7. Run the manager controller
+	klog.Infof("Node Manager controller starting, will run until context is canceled")
 	go manager.Run(ctx.Stop)
 
-	// This controller doesn't implement a cloud provider interface
-	return nil, true, nil
+	return manager, nil
 }
 
 // enqueueCR adds a ProviderConfig CR to the workqueue
-func (m *ManagerController) enqueueCR(obj interface{}) {
+func (m *NodeManagerController) enqueueCR(obj interface{}) {
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
+		klog.Errorf("Failed to get key from ProviderConfig object: %v", err)
 		runtime.HandleError(err)
 		return
 	}
+	klog.V(3).Infof("Enqueueing ProviderConfig: %s", key)
 	m.queue.Add(key)
 }
 
 // Run starts the controller's main loop
-func (m *ManagerController) Run(stopCh <-chan struct{}) {
+func (m *NodeManagerController) Run(stopCh <-chan struct{}) {
 	defer runtime.HandleCrash()
 	defer m.queue.ShutDown()
 
 	klog.Info("Starting Node Manager controller worker")
 
 	// Wait for the CRD cache to sync
+	klog.Info("Waiting for ProviderConfig CRD cache to sync...")
 	if !cache.WaitForCacheSync(stopCh, m.crdInformerSynced) {
-		runtime.HandleError(fmt.Errorf("timed out waiting for CRD caches to sync"))
+		err := fmt.Errorf("timed out waiting for CRD caches to sync")
+		klog.Error(err)
+		runtime.HandleError(err)
 		return
 	}
+	klog.Info("ProviderConfig CRD cache synced successfully")
 
 	// Start the worker loop
+	klog.Info("Starting Node Manager worker loop")
 	go wait.Until(m.runWorker, time.Second, stopCh)
 
+	// Block until stop signal is received
 	<-stopCh
-	klog.Info("Shutting down Node Manager controller")
+	klog.Info("Stop signal received. Shutting down Node Manager controller")
+
+	// Ensure any running scoped controllers are canceled to avoid leaks
+	klog.Infof("Canceling %d running scoped node controllers", len(m.runningControllers))
+	m.runningControllersLock.Lock()
+	for key, cancel := range m.runningControllers {
+		klog.Infof("Canceling scoped controller for ProviderConfig '%s' due to manager shutdown", key)
+		cancel()
+		delete(m.runningControllers, key)
+	}
+	m.runningControllersLock.Unlock()
+	klog.Info("Node Manager controller shutdown complete")
 }
 
 // runWorker processes items from the queue
-func (m *ManagerController) runWorker() {
+func (m *NodeManagerController) runWorker() {
 	for m.processNextWorkItem() {
 	}
 }
 
-func (m *ManagerController) processNextWorkItem() bool {
+func (m *NodeManagerController) processNextWorkItem() bool {
 	obj, shutdown := m.queue.Get()
 	if shutdown {
+		klog.V(2).Info("Work queue is shut down, stopping worker")
 		return false
 	}
 
@@ -164,29 +198,36 @@ func (m *ManagerController) processNextWorkItem() bool {
 	key, ok := obj.(string)
 	if !ok {
 		m.queue.Forget(obj)
-		runtime.HandleError(fmt.Errorf("expected string in queue but got %#v", obj))
+		err := fmt.Errorf("expected string in queue but got %#v", obj)
+		klog.Error(err)
+		runtime.HandleError(err)
 		return true
 	}
 
+	klog.V(3).Infof("Processing ProviderConfig: %s", key)
 	if err := m.syncHandler(key); err != nil {
 		m.queue.AddRateLimited(key)
-		runtime.HandleError(fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error()))
+		err = fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		klog.Error(err)
+		runtime.HandleError(err)
 	} else {
 		m.queue.Forget(obj)
+		klog.V(3).Infof("Successfully synced ProviderConfig: %s", key)
 	}
 
 	return true
 }
 
 // syncHandler is the main reconciliation logic
-func (m *ManagerController) syncHandler(key string) error {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+func (m *NodeManagerController) syncHandler(key string) error {
+	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return fmt.Errorf("invalid resource key: %s", key)
 	}
 
+	klog.V(3).Infof("Syncing ProviderConfig, fetching from lister: %s", key)
 	// Get the ProviderConfig CR from the lister
-	cr, err := m.crdLister.ProviderConfigs(namespace).Get(name)
+	cr, err := m.crdLister.Get(name)
 
 	m.runningControllersLock.Lock()
 	defer m.runningControllersLock.Unlock()
@@ -194,10 +235,13 @@ func (m *ManagerController) syncHandler(key string) error {
 	if err != nil {
 		// Case 1: The CR was DELETED
 		if errors.IsNotFound(err) {
-			klog.Infof("ProviderConfig '%s' deleted, stopping its node controller.", key)
+			klog.Infof("ProviderConfig '%s' not found (likely deleted). Stopping its node controller if running.", key)
 			if cancel, exists := m.runningControllers[key]; exists {
+				klog.Infof("Canceling scoped node controller for deleted ProviderConfig '%s'", key)
 				cancel() // Send stop signal
 				delete(m.runningControllers, key)
+			} else {
+				klog.V(3).Infof("No running controller found for deleted ProviderConfig '%s'", key)
 			}
 			return nil
 		}
@@ -210,18 +254,19 @@ func (m *ManagerController) syncHandler(key string) error {
 		// For now, we assume if it's running, it's fine.
 		// A real implementation would compare cr.Spec and restart
 		// the goroutine if the projectID or token fields changed.
-		klog.V(2).Infof("ProviderConfig '%s' updated, but controller is already running. Ignoring.", key)
+		klog.V(2).Infof("ProviderConfig '%s' already has a running controller. Skipping (update handling not yet implemented).", key)
 		return nil
 	}
 
 	// Case 3: The CR was ADDED
-	klog.Infof("New ProviderConfig '%s' found. Starting new node controller.", key)
+	klog.Infof("New ProviderConfig '%s' detected. Starting new scoped node controller. ProjectID: %s", key, cr.Spec.ProjectID)
 
 	// Create a new context so we can stop this goroutine later
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Store the cancel function
 	m.runningControllers[key] = cancel
+	klog.V(3).Infof("Registered cancel function for ProviderConfig '%s' (total running: %d)", key, len(m.runningControllers))
 
 	// Start the new node controller in a dedicated goroutine
 	// We pass a copy of the CR to avoid data races

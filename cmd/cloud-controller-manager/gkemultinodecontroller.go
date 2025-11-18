@@ -3,9 +3,8 @@ package main
 import (
 	"context"
 
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	cloudprovider "k8s.io/cloud-provider"
-	gkeservicecontroller "k8s.io/cloud-provider-gcp/pkg/controller/service"
+	"k8s.io/cloud-provider-gcp/pkg/controller/nodemanager"
 	"k8s.io/cloud-provider/app"
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	controllermanagerapp "k8s.io/controller-manager/app"
@@ -21,22 +20,17 @@ func startGkeMultiNodeControllerWrapper(initContext app.ControllerInitContext, c
 }
 
 func startGkeMultiNodeController(ctx context.Context, initContext app.ControllerInitContext, controlexContext controllermanagerapp.ControllerContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) (controller.Interface, bool, error) {
-	// Start the service controller -- TODO: change to per provider config
-	serviceController, err := gkeservicecontroller.New(
-		cloud,
+	nodeMgrCtrl, err := nodemanager.NewNodeManagerController(
 		completedConfig.ClientBuilder.ClientOrDie(initContext.ClientName),
-		completedConfig.SharedInformers.Core().V1().Services(),
-		completedConfig.SharedInformers.Core().V1().Nodes(),
-		completedConfig.ComponentConfig.KubeCloudShared.ClusterName,
-		utilfeature.DefaultFeatureGate,
-	)
+		controlexContext.InformerFactory,
+		completedConfig, controlexContext, cloud)
 	if err != nil {
 		// This error shouldn't fail. It lives like this as a legacy.
 		klog.Errorf("Failed to start service controller: %v", err)
 		return nil, false, nil
 	}
 
-	go serviceController.Run(ctx, int(completedConfig.ComponentConfig.ServiceController.ConcurrentServiceSyncs), controlexContext.ControllerManagerMetrics)
+	go nodeMgrCtrl.Run(ctx.Done())
 
 	return nil, true, nil
 }
