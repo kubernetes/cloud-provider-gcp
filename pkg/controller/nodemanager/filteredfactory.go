@@ -1,6 +1,8 @@
 package nodemanager
 
 import (
+	"sync"
+
 	"k8s.io/client-go/informers"
 	coordinationinformers "k8s.io/client-go/informers/coordination"
 	coordinationv1 "k8s.io/client-go/informers/coordination/v1"
@@ -20,9 +22,12 @@ type FilteredSharedInformerFactory struct {
 	informers.SharedInformerFactory // Embedding handles Start(), WaitForCacheSync(), etc.
 	filterKey                       string
 	filterValue                     string
+
+	mu        sync.Mutex
+	informers []*FilteredInformer
 }
 
-func NewFilteredSharedInformerFactory(parent informers.SharedInformerFactory, key, value string) informers.SharedInformerFactory {
+func NewFilteredSharedInformerFactory(parent informers.SharedInformerFactory, key, value string) *FilteredSharedInformerFactory {
 	return &FilteredSharedInformerFactory{
 		SharedInformerFactory: parent,
 		filterKey:             key,
@@ -30,21 +35,34 @@ func NewFilteredSharedInformerFactory(parent informers.SharedInformerFactory, ke
 	}
 }
 
+func (f *FilteredSharedInformerFactory) RegisterInformer(inf *FilteredInformer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.informers = append(f.informers, inf)
+}
+
+func (f *FilteredSharedInformerFactory) Cleanup() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, inf := range f.informers {
+		inf.Cleanup()
+	}
+	f.informers = nil
+}
+
 // OVERRIDE 1: Core (Nodes, Pods)
 func (f *FilteredSharedInformerFactory) Core() coreinformers.Interface {
 	return &filteredCoreWrapper{
-		Interface:   f.SharedInformerFactory.Core(),
-		filterKey:   f.filterKey,
-		filterValue: f.filterValue,
+		Interface: f.SharedInformerFactory.Core(),
+		factory:   f,
 	}
 }
 
 // OVERRIDE 2: Coordination (Leases) - Required for Node Lifecycle Controller
 func (f *FilteredSharedInformerFactory) Coordination() coordinationinformers.Interface {
 	return &filteredCoordinationWrapper{
-		Interface:   f.SharedInformerFactory.Coordination(),
-		filterKey:   f.filterKey,
-		filterValue: f.filterValue,
+		Interface: f.SharedInformerFactory.Coordination(),
+		factory:   f,
 	}
 }
 
@@ -57,28 +75,26 @@ func (f *FilteredSharedInformerFactory) Coordination() coordinationinformers.Int
 
 type filteredCoreWrapper struct {
 	coreinformers.Interface
-	filterKey, filterValue string
+	factory *FilteredSharedInformerFactory
 }
 
 func (w *filteredCoreWrapper) V1() corev1.Interface {
 	return &filteredCoreV1Wrapper{
-		Interface:   w.Interface.V1(),
-		filterKey:   w.filterKey,
-		filterValue: w.filterValue,
+		Interface: w.Interface.V1(),
+		factory:   w.factory,
 	}
 }
 
 type filteredCoreV1Wrapper struct {
 	corev1.Interface
-	filterKey, filterValue string
+	factory *FilteredSharedInformerFactory
 }
 
 // Intercept Nodes()
 func (w *filteredCoreV1Wrapper) Nodes() corev1.NodeInformer {
 	return &filteredNodeInformer{
 		NodeInformer: w.Interface.Nodes(),
-		filterKey:    w.filterKey,
-		filterValue:  w.filterValue,
+		factory:      w.factory,
 	}
 }
 
@@ -86,8 +102,7 @@ func (w *filteredCoreV1Wrapper) Nodes() corev1.NodeInformer {
 func (w *filteredCoreV1Wrapper) Pods() corev1.PodInformer {
 	return &filteredPodInformer{
 		PodInformer: w.Interface.Pods(),
-		filterKey:   w.filterKey,
-		filterValue: w.filterValue,
+		factory:     w.factory,
 	}
 }
 
@@ -97,28 +112,26 @@ func (w *filteredCoreV1Wrapper) Pods() corev1.PodInformer {
 
 type filteredCoordinationWrapper struct {
 	coordinationinformers.Interface
-	filterKey, filterValue string
+	factory *FilteredSharedInformerFactory
 }
 
 func (w *filteredCoordinationWrapper) V1() coordinationv1.Interface {
 	return &filteredCoordinationV1Wrapper{
-		Interface:   w.Interface.V1(),
-		filterKey:   w.filterKey,
-		filterValue: w.filterValue,
+		Interface: w.Interface.V1(),
+		factory:   w.factory,
 	}
 }
 
 type filteredCoordinationV1Wrapper struct {
 	coordinationv1.Interface
-	filterKey, filterValue string
+	factory *FilteredSharedInformerFactory
 }
 
 // Intercept Leases()
 func (w *filteredCoordinationV1Wrapper) Leases() coordinationv1.LeaseInformer {
 	return &filteredLeaseInformer{
 		LeaseInformer: w.Interface.Leases(),
-		filterKey:     w.filterKey,
-		filterValue:   w.filterValue,
+		factory:       w.factory,
 	}
 }
 
@@ -129,35 +142,41 @@ func (w *filteredCoordinationV1Wrapper) Leases() coordinationv1.LeaseInformer {
 // --- NODE INFORMER ---
 type filteredNodeInformer struct {
 	corev1.NodeInformer
-	filterKey, filterValue string
+	factory *FilteredSharedInformerFactory
 }
 
 // This is where the magic happens. We wrap the result in FilteredInformer.
 func (i *filteredNodeInformer) Informer() cache.SharedIndexInformer {
-	return NewFilteredInformer(i.NodeInformer.Informer(), i.filterKey, i.filterValue)
+	inf := NewFilteredInformer(i.NodeInformer.Informer(), i.factory.filterKey, i.factory.filterValue)
+	i.factory.RegisterInformer(inf)
+	return inf
 }
 
 // --- POD INFORMER ---
 type filteredPodInformer struct {
 	corev1.PodInformer
-	filterKey, filterValue string
+	factory *FilteredSharedInformerFactory
 }
 
 func (i *filteredPodInformer) Informer() cache.SharedIndexInformer {
 	// NOTE: Pods might need a different filter key/value strategy!
 	// (e.g. checking spec.nodeName against a list of allowed nodes)
 	// For now, this assumes Pods have the same label as the tenant.
-	return NewFilteredInformer(i.PodInformer.Informer(), i.filterKey, i.filterValue)
+	inf := NewFilteredInformer(i.PodInformer.Informer(), i.factory.filterKey, i.factory.filterValue)
+	i.factory.RegisterInformer(inf)
+	return inf
 }
 
 // --- LEASE INFORMER ---
 type filteredLeaseInformer struct {
 	coordinationv1.LeaseInformer
-	filterKey, filterValue string
+	factory *FilteredSharedInformerFactory
 }
 
 func (i *filteredLeaseInformer) Informer() cache.SharedIndexInformer {
 	// Leases in kube-node-lease often map 1:1 to nodes.
 	// Filtering logic here should ensure we only see leases for our nodes.
-	return NewFilteredInformer(i.LeaseInformer.Informer(), i.filterKey, i.filterValue)
+	inf := NewFilteredInformer(i.LeaseInformer.Informer(), i.factory.filterKey, i.factory.filterValue)
+	i.factory.RegisterInformer(inf)
+	return inf
 }

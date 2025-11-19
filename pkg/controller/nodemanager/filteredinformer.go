@@ -15,9 +15,10 @@ type FilteredInformer struct {
 	cache.SharedIndexInformer
 	providerConfigLabel string
 	providerConfigName  string
+	registrations       []cache.ResourceEventHandlerRegistration
 }
 
-func NewFilteredInformer(parent cache.SharedIndexInformer, key, value string) cache.SharedIndexInformer {
+func NewFilteredInformer(parent cache.SharedIndexInformer, key, value string) *FilteredInformer {
 	return &FilteredInformer{
 		SharedIndexInformer: parent,
 		providerConfigLabel: key,
@@ -26,17 +27,32 @@ func NewFilteredInformer(parent cache.SharedIndexInformer, key, value string) ca
 }
 
 func (f *FilteredInformer) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
-	return f.SharedIndexInformer.AddEventHandler(cache.FilteringResourceEventHandler{
+	reg, err := f.SharedIndexInformer.AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: f.filterFunc,
 		Handler:    handler,
 	})
+	if err == nil {
+		f.registrations = append(f.registrations, reg)
+	}
+	return reg, err
 }
 
 func (f *FilteredInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) (cache.ResourceEventHandlerRegistration, error) {
-	return f.SharedIndexInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+	reg, err := f.SharedIndexInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: f.filterFunc,
 		Handler:    handler,
 	}, resyncPeriod)
+	if err == nil {
+		f.registrations = append(f.registrations, reg)
+	}
+	return reg, err
+}
+
+func (f *FilteredInformer) Cleanup() {
+	for _, reg := range f.registrations {
+		_ = f.SharedIndexInformer.RemoveEventHandler(reg)
+	}
+	f.registrations = nil
 }
 
 func (f *FilteredInformer) filterFunc(obj interface{}) bool {

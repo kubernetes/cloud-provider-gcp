@@ -4,3 +4,4 @@ MERGED_LICENSES
 go.work
 go.work.sum
 vendor/
+cloud-controller-manager

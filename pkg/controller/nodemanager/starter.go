@@ -75,6 +75,9 @@ func (m *NodeManagerController) startScopedNodeController(ctx context.Context, p
 			if r := recover(); r != nil {
 				klog.Errorf("[%s] OSS Node Controller panicked: %v", pcKey, r)
 			}
+			// Cleanup event handlers from the global informer
+			klog.Infof("[%s] Cleaning up filtered informer event handlers", pcKey)
+			filteredFactory.Cleanup()
 		}()
 
 		klog.Infof("[%s] OSS Node Controller is running", pcKey)
@@ -97,9 +100,9 @@ func (m *NodeManagerController) stopAndForget(key string) {
 	m.runningControllersLock.Lock()
 	defer m.runningControllersLock.Unlock()
 
-	if cancel, exists := m.runningControllers[key]; exists {
+	if state, exists := m.runningControllers[key]; exists {
 		klog.Infof("[%s] Stopping and cleaning up controller reference", key)
-		cancel()
+		state.cancel()
 		delete(m.runningControllers, key)
 	} else {
 		klog.V(3).Infof("[%s] No running controller found to stop", key)

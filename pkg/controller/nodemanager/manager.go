@@ -19,6 +19,7 @@ package nodemanager
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	cloudprovider "k8s.io/cloud-provider"
+	v1 "k8s.io/cloud-provider-gcp/pkg/apis/providerconfig/v1"
 	crdclient "k8s.io/cloud-provider-gcp/pkg/providerconfig/client/clientset/versioned"
 	crdinformers "k8s.io/cloud-provider-gcp/pkg/providerconfig/client/informers/externalversions"
 	crdlisters "k8s.io/cloud-provider-gcp/pkg/providerconfig/client/listers/providerconfig/v1"
@@ -73,9 +75,14 @@ type NodeManagerController struct {
 
 	// runningControllers tracks the running node controller goroutines
 	// Key: "namespace/name" of the ProviderConfig CR
-	// Value: context.CancelFunc to stop the goroutine
-	runningControllers     map[string]context.CancelFunc
+	// Value: controllerState containing cancel func and last seen spec
+	runningControllers     map[string]controllerState
 	runningControllersLock sync.RWMutex
+}
+
+type controllerState struct {
+	cancel context.CancelFunc
+	spec   v1.ProviderConfigSpec
 }
 
 func NewNodeManagerController(kubeClient clientset.Interface, informerFactory informers.SharedInformerFactory,
@@ -110,7 +117,7 @@ func NewNodeManagerController(kubeClient clientset.Interface, informerFactory in
 		crdLister:           crdInformer.Lister(),
 		crdInformerSynced:   crdInformer.Informer().HasSynced,
 		queue:               workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "NodeManager"),
-		runningControllers:  make(map[string]context.CancelFunc),
+		runningControllers:  make(map[string]controllerState),
 	}
 
 	// 5. Set up the event handler for the CRD
@@ -171,9 +178,9 @@ func (m *NodeManagerController) Run(stopCh <-chan struct{}) {
 	// Ensure any running scoped controllers are canceled to avoid leaks
 	klog.Infof("Canceling %d running scoped node controllers", len(m.runningControllers))
 	m.runningControllersLock.Lock()
-	for key, cancel := range m.runningControllers {
+	for key, state := range m.runningControllers {
 		klog.Infof("Canceling scoped controller for ProviderConfig '%s' due to manager shutdown", key)
-		cancel()
+		state.cancel()
 		delete(m.runningControllers, key)
 	}
 	m.runningControllersLock.Unlock()
@@ -236,9 +243,9 @@ func (m *NodeManagerController) syncHandler(key string) error {
 		// Case 1: The CR was DELETED
 		if errors.IsNotFound(err) {
 			klog.Infof("ProviderConfig '%s' not found (likely deleted). Stopping its node controller if running.", key)
-			if cancel, exists := m.runningControllers[key]; exists {
+			if state, exists := m.runningControllers[key]; exists {
 				klog.Infof("Canceling scoped node controller for deleted ProviderConfig '%s'", key)
-				cancel() // Send stop signal
+				state.cancel() // Send stop signal
 				delete(m.runningControllers, key)
 			} else {
 				klog.V(3).Infof("No running controller found for deleted ProviderConfig '%s'", key)
@@ -249,23 +256,30 @@ func (m *NodeManagerController) syncHandler(key string) error {
 	}
 
 	// Case 2: The CR was ADDED or UPDATED
-	if _, exists := m.runningControllers[key]; exists {
-		// TODO: Handle updates.
-		// For now, we assume if it's running, it's fine.
-		// A real implementation would compare cr.Spec and restart
-		// the goroutine if the projectID or token fields changed.
-		klog.V(2).Infof("ProviderConfig '%s' already has a running controller. Skipping (update handling not yet implemented).", key)
-		return nil
+	if state, exists := m.runningControllers[key]; exists {
+		// Check if Spec has changed
+		if !reflect.DeepEqual(state.spec, cr.Spec) {
+			klog.Infof("ProviderConfig '%s' spec changed. Restarting controller.", key)
+			state.cancel()
+			delete(m.runningControllers, key)
+			// Fall through to start a new one
+		} else {
+			klog.V(4).Infof("ProviderConfig '%s' unchanged. Skipping.", key)
+			return nil
+		}
 	}
 
-	// Case 3: The CR was ADDED
-	klog.Infof("New ProviderConfig '%s' detected. Starting new scoped node controller. ProjectID: %s", key, cr.Spec.ProjectID)
+	// Case 3: The CR was ADDED (or updated and old one stopped)
+	klog.Infof("New/Updated ProviderConfig '%s' detected. Starting new scoped node controller. ProjectID: %s", key, cr.Spec.ProjectID)
 
 	// Create a new context so we can stop this goroutine later
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Store the cancel function
-	m.runningControllers[key] = cancel
+	// Store the cancel function and spec
+	m.runningControllers[key] = controllerState{
+		cancel: cancel,
+		spec:   cr.Spec,
+	}
 	klog.V(3).Infof("Registered cancel function for ProviderConfig '%s' (total running: %d)", key, len(m.runningControllers))
 
 	// Start the new node controller in a dedicated goroutine
