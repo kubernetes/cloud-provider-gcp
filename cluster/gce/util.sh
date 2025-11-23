@@ -68,6 +68,12 @@ if [[ "${MASTER_OS_DISTRIBUTION}" == "gci" ]]; then
       kube_master_image=$(gcloud compute images list --project="${MASTER_IMAGE_PROJECT}" --no-standard-images --filter="family:${MASTER_IMAGE_FAMILY}" --format 'value(name)')
     fi
 
+    # If master image is still empty, then we have an error.
+    if [[ -z "${kube_master_image}" ]]; then
+      echo "ERROR: Could not resolve image for family ${MASTER_IMAGE_FAMILY} in project ${MASTER_IMAGE_PROJECT}" >&2
+      exit 1
+    fi
+
     echo "Using image: ${kube_master_image} from project: ${MASTER_IMAGE_PROJECT} as master image" >&2
     export MASTER_IMAGE="${kube_master_image}"
 fi
