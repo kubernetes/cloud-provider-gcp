@@ -20,13 +20,17 @@ func startGkeMultiNodeControllerWrapper(initContext app.ControllerInitContext, c
 }
 
 func startGkeMultiNodeController(ctx context.Context, initContext app.ControllerInitContext, controlexContext controllermanagerapp.ControllerContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) (controller.Interface, bool, error) {
+	if !enableMultiProject {
+		klog.Warning("MultiNodeController is disabled (enable-multi-project is false)")
+		return nil, false, nil
+	}
 	nodeMgrCtrl, err := nodemanager.NewNodeManagerController(
 		completedConfig.ClientBuilder.ClientOrDie(initContext.ClientName),
 		controlexContext.InformerFactory,
 		completedConfig, controlexContext, cloud)
 	if err != nil {
 		// This error shouldn't fail. It lives like this as a legacy.
-		klog.Errorf("Failed to start service controller: %v", err)
+		klog.Errorf("Failed to start node manager controller: %v", err)
 		return nil, false, nil
 	}
 

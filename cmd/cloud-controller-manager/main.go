@@ -115,17 +115,14 @@ func main() {
 	aliasMap["nodeipam"] = kcmnames.NodeIpamController
 	aliasMap[gkeServiceAlias] = gkeServiceLBControllerName
 
-	pflag.Parse()
-	if enableMultiProject {
-		controllerInitializers[multiNodeControllerName] = app.ControllerInitFuncConstructor{
-			InitContext: app.ControllerInitContext{
-				ClientName: multiNodeControllerClientName,
-			},
-			Constructor: startGkeMultiNodeControllerWrapper,
-		}
-		app.ControllersDisabledByDefault.Insert(names.CloudNodeController)
-		aliasMap[multiNodeControllerAlias] = multiNodeControllerName
+	controllerInitializers[multiNodeControllerName] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: multiNodeControllerClientName,
+		},
+		Constructor: startGkeMultiNodeControllerWrapper,
 	}
+	// app.ControllersDisabledByDefault.Insert(names.CloudNodeController)
+	aliasMap[multiNodeControllerAlias] = multiNodeControllerName
 
 	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, aliasMap, fss, wait.NeverStop)
 
@@ -166,7 +163,7 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 			// we never expect this to be executed.
 			klog.Fatalf("multi-project mode requires GCE cloud provider, but got %T", cloud)
 		}
-		gceCloud.SetProjectFromNodeProviderID(true)
+		gceCloud.SetProjectFromNodeProviderID(false)
 	}
 
 	if enableDiscretePortForwarding {
