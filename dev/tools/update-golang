@@ -13,8 +13,8 @@ def find_go_modules():
     """Finds all go.mod files in the repository."""
     go_mod_files = []
     for file in glob.glob("**/go.mod", recursive=True):
-        # Ignore matches under vendor and bazel-*
-        if file.startswith("vendor/") or file.startswith("bazel-"):
+        # Ignore matches under vendor, bazel-*, and _tmp/ (Bazel cache)
+        if file.startswith("vendor/") or file.startswith("bazel-") or file.startswith("_tmp/"):
             continue
         go_mod_files.append(file)
     if os.path.exists("go.mod"):
@@ -73,9 +73,14 @@ def _replace_file_contents(file_path, fn):
         f.writelines(updated_lines)
     print(f"Successfully updated {file_path}")
 
-def update_go_toolchain(file_path, new_version):
-    """Updates the go toolchain directive in a go.mod file."""
+def update_go_mod(file_path, new_version):
+    """Updates the go version and toolchain directives in a go.mod file."""
+    # The go directive should be the major.minor version
+    major_minor_version = ".".join(new_version.split(".")[:2])
     def fn(line):
+        # Replace lines like `go 1.24.0`
+        if line.lstrip().startswith("go "):
+            return f"go {major_minor_version}\n"
         # Replace lines like `toolchain go1.22.3`
         if line.lstrip().startswith("toolchain go"):
             return f"toolchain go{new_version}\n"
@@ -118,7 +123,7 @@ def main():
 
     # Update go.mod files
     for mod_path in find_go_modules():
-        update_go_toolchain(mod_path, latest_version)
+        update_go_mod(mod_path, latest_version)
         print(f"Running go mod tidy for {mod_path}")
         subprocess.run(["go", "mod", "tidy"], cwd=os.path.dirname(mod_path) or ".", check=True)
 
