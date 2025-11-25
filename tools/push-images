@@ -44,9 +44,16 @@ else
   echo "IMAGE_TAG=${IMAGE_TAG}"
 fi
 
+if [ -n "${CI:-}" ]; then
+  docker run --privileged --rm tonistiigi/binfmt --install all
+  docker buildx create \
+    --name multiarch-multiplatform-builder \
+    --driver docker-container \
+    --bootstrap --use
+fi
+
 if [[ "${COMPONENT:-ccm}" == "ccm" ]]; then
-  docker build -t ${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG} .
-  docker push ${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}
+  docker buildx build --platform linux/arm64,linux/amd64 -t ${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG} . --push
 else
   echo "Skipping CCM build, because component is ${COMPONENT}"
 fi
