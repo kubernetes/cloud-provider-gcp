@@ -964,6 +964,11 @@ func translateAffinityType(affinityType v1.ServiceAffinity) string {
 }
 
 func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports []v1.ServicePort, sourceRanges utilnet.IPNetSet) (exists bool, needsUpdate bool, err error) {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		klog.V(2).Infof("firewallNeedsUpdate(%v): firewall rules are unmanaged", name)
+		return false, false, nil
+	}
+
 	fw, err := g.GetFirewall(MakeFirewallName(name))
 	if err != nil {
 		if isHTTPErrorCode(err, http.StatusNotFound) {
@@ -1009,6 +1014,11 @@ func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports [
 }
 
 func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAddress, region, clusterID string, hosts []*gceInstance, hcName string, hcPort int32, isNodesHealthCheck bool) error {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		klog.V(2).Infof("ensureHTTPHealthCheckFirewall(%v): firewall rules are unmanaged", hcName)
+		return nil
+	}
+
 	// Prepare the firewall params for creating / checking.
 	desc := fmt.Sprintf(`{"kubernetes.io/cluster-id":"%s"}`, clusterID)
 	if !isNodesHealthCheck {
@@ -1087,6 +1097,17 @@ func (g *Cloud) createFirewall(svc *v1.Service, name, desc, destinationIP string
 	if err != nil {
 		return err
 	}
+
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		klog.V(2).Infof("createFirewall(%v): firewall rules are unmanaged", name)
+		project := g.NetworkProjectID()
+		if project == "" {
+			project = g.ProjectID()
+		}
+		g.raiseFirewallChangeNeededEvent(svc, FirewallToGCloudCreateCmd(firewall, project))
+		return nil
+	}
+
 	if err = g.CreateFirewall(firewall); err != nil {
 		if isHTTPErrorCode(err, http.StatusConflict) {
 			return nil

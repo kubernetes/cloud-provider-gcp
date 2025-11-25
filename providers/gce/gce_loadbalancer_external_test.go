@@ -1902,6 +1902,104 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 	}
 }
 
+func TestDisabledFirewallOperations(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	vals.FirewallRulesManagement = firewallRulesManagementDisabled
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	fw, err := gce.GetFirewall(MakeFirewallName("test"))
+	assert.NoError(t, err)
+	assert.Nil(t, fw)
+
+	ipnet, err := utilnet.ParseIPNets("0.0.0.0/0")
+	require.NoError(t, err)
+
+	ports := []v1.ServicePort{
+		{Name: "port1", Protocol: v1.ProtocolTCP, Port: int32(80), TargetPort: intstr.FromInt(80)},
+		{Name: "port2", Protocol: v1.ProtocolTCP, Port: int32(81), TargetPort: intstr.FromInt(81)},
+		{Name: "port3", Protocol: v1.ProtocolTCP, Port: int32(82), TargetPort: intstr.FromInt(82)},
+		{Name: "port4", Protocol: v1.ProtocolTCP, Port: int32(84), TargetPort: intstr.FromInt(84)},
+		{Name: "port5", Protocol: v1.ProtocolTCP, Port: int32(85), TargetPort: intstr.FromInt(85)},
+		{Name: "port6", Protocol: v1.ProtocolTCP, Port: int32(86), TargetPort: intstr.FromInt(86)},
+		{Name: "port7", Protocol: v1.ProtocolTCP, Port: int32(88), TargetPort: intstr.FromInt(87)},
+	}
+
+	firewall, err := gce.firewallObject(MakeFirewallName("test"), "Test Description", "0.0.0.0/0", ipnet, ports, nil)
+
+	err = gce.CreateFirewall(firewall)
+	assert.NoError(t, err)
+
+	err = gce.UpdateFirewall(firewall)
+	assert.NoError(t, err)
+
+	err = gce.PatchFirewall(firewall)
+	assert.NoError(t, err)
+
+	err = gce.DeleteFirewall(MakeFirewallName("test"))
+	assert.NoError(t, err)
+}
+
+func TestDisabledFirewallNeedsUpdate(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	vals.FirewallRulesManagement = firewallRulesManagementDisabled
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	svc := fakeLoadbalancerService("")
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	svc.Spec.Ports = []v1.ServicePort{
+		{Name: "port1", Protocol: v1.ProtocolTCP, Port: int32(80), TargetPort: intstr.FromInt(80)},
+		{Name: "port2", Protocol: v1.ProtocolTCP, Port: int32(81), TargetPort: intstr.FromInt(81)},
+		{Name: "port3", Protocol: v1.ProtocolTCP, Port: int32(82), TargetPort: intstr.FromInt(82)},
+		{Name: "port4", Protocol: v1.ProtocolTCP, Port: int32(84), TargetPort: intstr.FromInt(84)},
+		{Name: "port5", Protocol: v1.ProtocolTCP, Port: int32(85), TargetPort: intstr.FromInt(85)},
+		{Name: "port6", Protocol: v1.ProtocolTCP, Port: int32(86), TargetPort: intstr.FromInt(86)},
+		{Name: "port7", Protocol: v1.ProtocolTCP, Port: int32(88), TargetPort: intstr.FromInt(87)},
+	}
+
+	status, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	require.NotNil(t, status)
+	require.NoError(t, err)
+	svcName := "/" + svc.ObjectMeta.Name
+
+	ipAddr := status.Ingress[0].IP
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+
+	ipnet, err := utilnet.ParseIPNets("0.0.0.0/0")
+	require.NoError(t, err)
+
+	fw, err := gce.GetFirewall(MakeFirewallName(lbName))
+	require.NoError(t, err)
+
+	for desc := range map[string]struct {
+		hasErr bool
+	}{
+		"need to update port-ranges ": {},
+	} {
+		t.Run(desc, func(t *testing.T) {
+			fw, err = gce.GetFirewall(MakeFirewallName(lbName))
+			assert.NoError(t, err)
+			assert.Nil(t, fw)
+
+			exists, needsUpdate, err := gce.firewallNeedsUpdate(
+				lbName,
+				svcName,
+				ipAddr,
+				svc.Spec.Ports,
+				ipnet)
+
+			assert.Equal(t, false, exists, "firewall should not exist")
+			assert.Equal(t, false, needsUpdate, "firewall should not exist, no update needed")
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func TestDeleteWrongNetworkTieredResourcesSucceedsWhenNotFound(t *testing.T) {
 	t.Parallel()
 
