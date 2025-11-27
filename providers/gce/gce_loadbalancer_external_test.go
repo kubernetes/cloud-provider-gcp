@@ -477,7 +477,7 @@ func TestDeleteAddressWithWrongTier(t *testing.T) {
 	}
 }
 
-func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string, clusterName, clusterID, zoneName string) (*v1.LoadBalancerStatus, error) {
+func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string, clusterName, clusterID, zoneName string) (*v1.ServiceStatus, error) {
 	nodes, err := createAndInsertNodes(gce, nodeNames, zoneName)
 	if err != nil {
 		return nil, err
@@ -561,7 +561,7 @@ func TestShouldNotRecreateLBWhenNetworkTiersMismatch(t *testing.T) {
 			}
 		} else {
 			assert.NoError(t, err)
-			assert.NotEmpty(t, status.Ingress)
+			assert.NotEmpty(t, status.LoadBalancer.Ingress)
 		}
 
 		lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
@@ -588,7 +588,7 @@ func TestEnsureExternalLoadBalancer(t *testing.T) {
 	require.NoError(t, err)
 	status, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
-	assert.NotEmpty(t, status.Ingress)
+	assert.NotEmpty(t, status.LoadBalancer.Ingress)
 
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -1138,7 +1138,7 @@ func TestForwardingRuleNeedsUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
-	ipAddr := status.Ingress[0].IP
+	ipAddr := status.LoadBalancer.Ingress[0].IP
 
 	lbIP := svc.Spec.LoadBalancerIP
 	wrongPorts := []v1.ServicePort{svc.Spec.Ports[0]}
@@ -1667,7 +1667,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 	require.NoError(t, err)
 	svcName := "/" + svc.ObjectMeta.Name
 
-	ipAddr := status.Ingress[0].IP
+	ipAddr := status.LoadBalancer.Ingress[0].IP
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 
 	ipnet, err := utilnet.ParseIPNets("0.0.0.0/0")
@@ -1870,7 +1870,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 			fw.SourceRanges[0] = tc.sourceRange
 			fw, err = gce.GetFirewall(MakeFirewallName(lbName))
 			require.Equal(t, fw.SourceRanges[0], tc.sourceRange)
-			require.Equal(t, fw.DestinationRanges[0], status.Ingress[0].IP)
+			require.Equal(t, fw.DestinationRanges[0], status.LoadBalancer.Ingress[0].IP)
 
 			c := gce.c.(*cloud.MockGCE)
 			c.MockFirewalls.GetHook = tc.getHook
@@ -1940,7 +1940,7 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	require.NoError(t, err)
 	clusterID := vals.ClusterID
 
-	ipAddr := status.Ingress[0].IP
+	ipAddr := status.LoadBalancer.Ingress[0].IP
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 	region := vals.Region
 
@@ -1955,11 +1955,13 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
 	require.Equal(t, tag, pool.CreationTimestamp)
-	err = gce.ensureTargetPoolAndHealthCheck(true, true, svc, lbName, clusterID, ipAddr, hosts, hcToCreate, hcToDelete)
+	conditions := []metav1.Condition{}
+	err = gce.ensureTargetPoolAndHealthCheck(true, true, svc, lbName, clusterID, ipAddr, hosts, hcToCreate, hcToDelete, &conditions)
 	assert.NoError(t, err)
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
 	assert.NotEqual(t, pool.CreationTimestamp, tag)
+	assert.NotEmpty(t, conditions)
 
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
@@ -1973,14 +1975,13 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	manyHostNames := nodeNames(manyNodes)
 	manyHosts, err := gce.getInstancesByNames(manyHostNames)
 	require.NoError(t, err)
-	err = gce.ensureTargetPoolAndHealthCheck(true, true, svc, lbName, clusterID, ipAddr, manyHosts, hcToCreate, hcToDelete)
+	err = gce.ensureTargetPoolAndHealthCheck(true, true, svc, lbName, clusterID, ipAddr, manyHosts, hcToCreate, hcToDelete, &conditions)
 	assert.NoError(t, err)
 
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
 	assert.Equal(t, maxTargetPoolCreateInstances+1, len(pool.Instances))
-
-	err = gce.ensureTargetPoolAndHealthCheck(true, false, svc, lbName, clusterID, ipAddr, hosts, hcToCreate, hcToDelete)
+	err = gce.ensureTargetPoolAndHealthCheck(true, false, svc, lbName, clusterID, ipAddr, hosts, hcToCreate, hcToDelete, &conditions)
 	assert.NoError(t, err)
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
@@ -2603,4 +2604,49 @@ func TestEnsureExternalLoadBalancerClass(t *testing.T) {
 			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
 		}
 	}
+}
+
+func TestEnsureExternalLoadBalancerConditions(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodeNames := []string{"test-node-1"}
+	nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+	require.NoError(t, err)
+
+	svc := fakeLoadbalancerService("")
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	// 1. Ensure LB and get status
+	status, err := gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	require.NoError(t, err)
+	require.NotNil(t, status)
+
+	// 2. Verify total number of conditions
+	assert.Len(t, status.Conditions, 5, "Expected 5 conditions to be set on generic external LB creation")
+
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+	hcName := MakeNodesHealthCheckName(vals.ClusterID)
+	fwName := MakeFirewallName(lbName)
+	hcFwName := MakeHealthCheckFirewallName(vals.ClusterID, hcName, true)
+
+	// 3. Verify individual conditions using new constants
+	// Forwarding Rule
+	assertCondition(t, status.Conditions, L4LBForwardingRuleConditionType, metav1.ConditionTrue, L4LBConditionReason, lbName)
+
+	// Firewall Rule
+	assertCondition(t, status.Conditions, L4LBFirewallRuleConditionType, metav1.ConditionTrue, L4LBConditionReason, fwName)
+
+	// Target Pool
+	assertCondition(t, status.Conditions, L4LBTargetPoolConditionType, metav1.ConditionTrue, L4LBConditionReason, lbName)
+
+	// Health Check
+	assertCondition(t, status.Conditions, L4LBHealthCheckConditionType, metav1.ConditionTrue, L4LBConditionReason, hcName)
+
+	// Firewall Rule for Health Check
+	assertCondition(t, status.Conditions, L4LBFirewallRuleHealthCheckConditionType, metav1.ConditionTrue, L4LBConditionReason, hcFwName)
 }
