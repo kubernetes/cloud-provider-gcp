@@ -1,6 +1,7 @@
 # See the OWNERS docs at https://go.k8s.io/owners
 
 approvers:
+- sig-cloud-provider-leads
 - aojea
 - bowei
 - cheftako
@@ -14,5 +15,6 @@ emeritus_approvers:
 - dnardo
 - nicksardo
 reviewers:
+- sig-cloud-provider-leads
 - justinsb
 - seans3
