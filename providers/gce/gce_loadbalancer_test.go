@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -619,5 +620,113 @@ func TestUpdateLoadBalancerWithLoadBalancerClass(t *testing.T) {
 		} else {
 			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
 		}
+	}
+}
+
+func TestConditionsEqual(t *testing.T) {
+	t.Parallel()
+
+	now := metav1.Now()
+	later := metav1.NewTime(now.Time.Add(1 * time.Hour))
+
+	condReady := metav1.Condition{
+		Type:               "Ready",
+		Status:             metav1.ConditionTrue,
+		Reason:             "ReadyReason",
+		Message:            "ReadyMessage",
+		LastTransitionTime: now,
+		ObservedGeneration: 1,
+	}
+
+	condReadyDiffStatus := condReady
+	condReadyDiffStatus.Status = metav1.ConditionFalse
+
+	condReadyDiffTime := condReady
+	condReadyDiffTime.LastTransitionTime = later
+
+	condError := metav1.Condition{
+		Type:               "Error",
+		Status:             metav1.ConditionTrue,
+		Reason:             "ErrorReason",
+		Message:            "ErrorMessage",
+		LastTransitionTime: now,
+		ObservedGeneration: 1,
+	}
+
+	tests := []struct {
+		name    string
+		current []metav1.Condition
+		desired []metav1.Condition
+		want    bool
+	}{
+		{
+			name:    "both nil",
+			current: nil,
+			desired: nil,
+			want:    true,
+		},
+		{
+			name:    "both empty",
+			current: []metav1.Condition{},
+			desired: []metav1.Condition{},
+			want:    true,
+		},
+		{
+			name:    "nil and empty",
+			current: nil,
+			desired: []metav1.Condition{},
+			want:    true,
+		},
+		{
+			name:    "len mismatch",
+			current: []metav1.Condition{condReady},
+			desired: []metav1.Condition{condReady, condError},
+			want:    false,
+		},
+		{
+			name:    "exact match single",
+			current: []metav1.Condition{condReady},
+			desired: []metav1.Condition{condReady},
+			want:    true,
+		},
+		{
+			name:    "exact match multiple",
+			current: []metav1.Condition{condReady, condError},
+			desired: []metav1.Condition{condReady, condError},
+			want:    true,
+		},
+		{
+			name:    "order mismatch but content equal",
+			current: []metav1.Condition{condReady, condError},
+			desired: []metav1.Condition{condError, condReady},
+			want:    true,
+		},
+		{
+			name:    "same type different status",
+			current: []metav1.Condition{condReady},
+			desired: []metav1.Condition{condReadyDiffStatus},
+			want:    false,
+		},
+		{
+			name:    "same type different time",
+			current: []metav1.Condition{condReady},
+			desired: []metav1.Condition{condReadyDiffTime},
+			want:    false,
+		},
+		{
+			name:    "different types same length",
+			current: []metav1.Condition{condReady},
+			desired: []metav1.Condition{condError},
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := ConditionsEqual(tt.current, tt.desired)
+			assert.Equal(t, tt.want, got)
+		})
 	}
 }

@@ -337,3 +337,22 @@ func checkEvent(t *testing.T, recorder *record.FakeRecorder, expected string, sh
 		return true
 	}
 }
+
+// assertCondition verifies that a condition of a specific type exists and matches expected values.
+func assertCondition(t *testing.T, conditions []metav1.Condition, expectedType string, expectedStatus metav1.ConditionStatus, expectedReason string, messageSubstring string) {
+	t.Helper()
+	var found *metav1.Condition
+	for i := range conditions {
+		if conditions[i].Type == expectedType {
+			found = &conditions[i]
+			break
+		}
+	}
+
+	require.NotNil(t, found, "Condition with type '%s' not found in %v", expectedType, conditions)
+	assert.Equal(t, expectedStatus, found.Status, "Condition '%s' status mismatch", expectedType)
+	assert.Equal(t, expectedReason, found.Reason, "Condition '%s' reason mismatch", expectedType)
+	if messageSubstring != "" {
+		assert.Contains(t, found.Message, messageSubstring, "Condition '%s' message mismatch", expectedType)
+	}
+}
