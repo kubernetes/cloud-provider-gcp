@@ -15,6 +15,60 @@ go_binary(
     x_defs = version_x_defs(),
 )
 
+go_binary(
+    name = "gke-gcloud-auth-plugin_linux_amd64",
+    embed = [":gke-gcloud-auth-plugin_lib"],
+    goarch = "amd64",
+    goos = "linux",
+    x_defs = version_x_defs(),
+)
+
+go_binary(
+    name = "gke-gcloud-auth-plugin_linux_arm64",
+    embed = [":gke-gcloud-auth-plugin_lib"],
+    goarch = "arm64",
+    goos = "linux",
+    x_defs = version_x_defs(),
+)
+
+go_binary(
+    name = "gke-gcloud-auth-plugin_windows_amd64",
+    embed = [":gke-gcloud-auth-plugin_lib"],
+    goarch = "amd64",
+    goos = "windows",
+    x_defs = version_x_defs(),
+)
+
+go_binary(
+    name = "gke-gcloud-auth-plugin_darwin_arm64",
+    embed = [":gke-gcloud-auth-plugin_lib"],
+    goarch = "arm64",
+    goos = "darwin",
+    x_defs = version_x_defs(),
+)
+
+genrule(
+    name = "release",
+    srcs = [
+        ":gke-gcloud-auth-plugin_linux_amd64",
+        ":gke-gcloud-auth-plugin_linux_arm64",
+        ":gke-gcloud-auth-plugin_windows_amd64",
+        ":gke-gcloud-auth-plugin_darwin_arm64",
+    ],
+    outs = [
+        "output/linux/amd64/gke-gcloud-auth-plugin",
+        "output/linux/arm64/gke-gcloud-auth-plugin",
+        "output/windows/amd64/gke-gcloud-auth-plugin.exe",
+        "output/darwin/arm64/gke-gcloud-auth-plugin",
+    ],
+    cmd = """
+        cp $(location :gke-gcloud-auth-plugin_linux_amd64) $(location output/linux/amd64/gke-gcloud-auth-plugin)
+        cp $(location :gke-gcloud-auth-plugin_linux_arm64) $(location output/linux/arm64/gke-gcloud-auth-plugin)
+        cp $(location :gke-gcloud-auth-plugin_windows_amd64) $(location output/windows/amd64/gke-gcloud-auth-plugin.exe)
+        cp $(location :gke-gcloud-auth-plugin_darwin_arm64) $(location output/darwin/arm64/gke-gcloud-auth-plugin)
+    """,
+)
+
 go_library(
     name = "gke-gcloud-auth-plugin_lib",
     srcs = [
