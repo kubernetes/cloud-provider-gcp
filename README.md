@@ -1,52 +1,88 @@
-# cloud-provider-gcp
+# Building, Testing, and Releasing
 
-## Publishing cloud-controller-manager image
+The `Makefile` in the root of the repository contains targets for building, testing, and releasing `cloud-provider-gcp`.
 
-This command will build and publish cloud-controller-manager
-`registry.k8s.io/k8s-image-staging/cloud-controller-manager:latest`:
+## Building Binaries
 
-```
-bazel run //cmd/cloud-controller-manager:publish
-```
+To build the binaries for your host OS and architecture:
 
-Environment variables `IMAGE_REGISTRY`, `IMAGE_REPO` and `IMAGE_TAG` can be
-used to override destination GCR repository and tag.
-
-This command will build and publish
-`example.com/my-repo/cloud-controller-manager:v1`:
-
-
-```
-IMAGE_REGISTRY=example.com IMAGE_REPO=my-repo IMAGE_TAG=v1 bazel run //cmd/cloud-controller-manager:publish
+```sh
+make build
 ```
 
-Alternatively, you can run [push-images tool](https://github.com/kubernetes/cloud-provider-gcp/blob/master/tools/push-images). The tool is built from [ko](https://github.com/ko-build/ko) that does not depend on bazel, for example this command pushes image to Google Artifact Registry under project `my-project` and existing repository `my-repo`:
+The binaries will be located in the `bin/$(GOOS)_$(GOARCH)` directory.
 
-```
-IMAGE_REPO=us-central1-docker.pkg.dev/my-project/my-repo IMAGE_TAG=v0 ./tools/push-images
-```
+To build for a specific platform, set the `GOOS` and `GOARCH` environment variables:
 
-# Cross-compiling
-
-Selecting the target platform is done with the `--platforms` option with `bazel`.
-This command builds release tarballs for Windows:
-
-```
-bazel build --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64 //release:release-tars
+```sh
+GOOS=linux GOARCH=amd64 make build
 ```
 
-This command explicitly targets Linux as the target platform:
+## Running Tests
 
-```
-bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 //release:release-tars
+To run the unit tests:
+
+```sh
+make test-unit
 ```
 
+To run the integration tests:
+
+```sh
+make test-integration
+```
+
+Note: The integration tests require a running Kubernetes cluster and a configured GCP environment. See `tools/run-e2e-test.sh` for more details.
+
+## Building and Publishing Container Images
+
+To build all container images:
+
+```sh
+make images
+```
+
+To build a specific image:
+
+```sh
+make image-cloud-controller-manager
+make image-auth-provider-gcp
+make image-gke-gcloud-auth-plugin
+```
+
+To publish all images to a container registry, set the `REGISTRY` and `IMAGE_TAG` environment variables:
+
+```sh
+REGISTRY=gcr.io/my-project IMAGE_TAG=v1.0.0 make publish-images
+```
+
+To publish a specific image:
+
+```sh
+REGISTRY=gcr.io/my-project IMAGE_TAG=v1.0.0 make publish-image-cloud-controller-manager
+```
+
+## Creating Release Artifacts
+
+To create the release tarballs:
+
+```sh
+make release
+```
+
+The release artifacts will be located in the `release` directory.
+
+To publish the release artifacts to a GCS bucket, set the `GCS_BUCKET` environment variable:
+
+```sh
+GCS_BUCKET=gs://my-bucket make publish-release
+```
 
 # Dependency management
 
 Dependencies are managed using [Go modules](https://github.com/golang/go/wiki/Modules) (`go mod` subcommands).
 
-Note that builds are done with Bazel and not the Go tool. Don't follow public
+Note that builds are orchestrated via the Makefile using standard Go commands. Don't follow public
 Go module docs, instead use instructions in this readme.
 
 ## Working within GOPATH
@@ -77,19 +113,3 @@ go get -u && ./tools/update_vendor.sh
 Note that this most likely won't work due to cross-dependency issues or repos
 not implementing modules correctly.
 
-# Bazel
-
-Bazel is required to build and release cloud-provider-gcp.
-
-To install:
-
-```sh
-go get github.com/bazelbuild/bazelisk
-alias bazel=bazelisk
-```
-
-To re-generate `BUILD` files:
-
-```sh
-tools/update_bazel.sh
-```
