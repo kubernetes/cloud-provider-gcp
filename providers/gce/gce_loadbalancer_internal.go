@@ -406,6 +406,10 @@ func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string,
 	}
 
 	deleteFunc := func(fwName string) error {
+		if g.firewallRulesManagement == firewallRulesManagementDisabled {
+			klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): firewall rules are unmanaged", fwName)
+			return nil
+		}
 		if err := ignoreNotFound(g.DeleteFirewall(fwName)); err != nil {
 			if isForbidden(err) && g.OnXPN() {
 				klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): could not delete traffic firewall on XPN cluster. Raising event.", loadBalancerName)
@@ -481,6 +485,11 @@ func (g *Cloud) teardownInternalHealthCheckAndFirewall(svc *v1.Service, hcName s
 	}
 	klog.V(2).Infof("teardownInternalHealthCheckAndFirewall(%v): health check deleted", hcName)
 
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		klog.V(2).Infof("teardownInternalHealthCheckAndFirewall(%v): unmanaged firewall rules", hcName)
+		return nil
+	}
+
 	hcFirewallName := makeHealthCheckFirewallNameFromHC(hcName)
 	if err := ignoreNotFound(g.DeleteFirewall(hcFirewallName)); err != nil {
 		if isForbidden(err) && g.OnXPN() {
@@ -497,6 +506,11 @@ func (g *Cloud) teardownInternalHealthCheckAndFirewall(svc *v1.Service, hcName s
 
 func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinationIP string, sourceRanges []string, portRanges []string, protocol v1.Protocol, nodes []*v1.Node, legacyFwName string) error {
 	klog.V(2).Infof("ensureInternalFirewall(%v): checking existing firewall", fwName)
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		klog.V(2).Infof("ensureInternalFirewall(%v): firewall rules are unmanaged", fwName)
+		return nil
+	}
+
 	targetTags, err := g.GetNodeTags(nodeNames(nodes))
 	if err != nil {
 		return err
