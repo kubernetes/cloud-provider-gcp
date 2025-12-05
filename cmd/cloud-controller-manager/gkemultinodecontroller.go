@@ -4,6 +4,8 @@ import (
 	"context"
 
 	cloudprovider "k8s.io/cloud-provider"
+	nodeipamcontrolleroptions "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/options"
+	nodeipamconfig "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/config"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodemanager"
 	"k8s.io/cloud-provider/app"
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
@@ -12,14 +14,15 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// startGkeServiceControllerWrapper is used to take cloud config as input and start the GKE service controller
-func startGkeMultiNodeControllerWrapper(initContext app.ControllerInitContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) app.InitFunc {
+// startGkeMultiNodeControllerWrapper is used to take cloud config as input and start the GKE service controller
+func startGkeMultiNodeControllerWrapper(initContext app.ControllerInitContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface, nodeIPAMControllerOptions nodeipamcontrolleroptions.NodeIPAMControllerOptions) app.InitFunc {
+	nodeIPAMControllerOptions.ApplyTo(nodeIPAMControllerOptions.NodeIPAMControllerConfiguration)
 	return func(ctx context.Context, controllerContext controllermanagerapp.ControllerContext) (controller.Interface, bool, error) {
-		return startGkeMultiNodeController(ctx, initContext, controllerContext, completedConfig, cloud)
+		return startGkeMultiNodeController(ctx, initContext, controllerContext, completedConfig, cloud, *nodeIPAMControllerOptions.NodeIPAMControllerConfiguration)
 	}
 }
 
-func startGkeMultiNodeController(ctx context.Context, initContext app.ControllerInitContext, controlexContext controllermanagerapp.ControllerContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) (controller.Interface, bool, error) {
+func startGkeMultiNodeController(ctx context.Context, initContext app.ControllerInitContext, controlexContext controllermanagerapp.ControllerContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface, nodeIPAMConfig nodeipamconfig.NodeIPAMControllerConfiguration) (controller.Interface, bool, error) {
 	if !enableMultiProject {
 		klog.Warning("MultiNodeController is disabled (enable-multi-project is false)")
 		return nil, false, nil
@@ -27,7 +30,7 @@ func startGkeMultiNodeController(ctx context.Context, initContext app.Controller
 	nodeMgrCtrl, err := nodemanager.NewNodeManagerController(
 		completedConfig.ClientBuilder.ClientOrDie(initContext.ClientName),
 		controlexContext.InformerFactory,
-		completedConfig, controlexContext, cloud)
+		completedConfig, controlexContext, cloud, nodeIPAMConfig)
 	if err != nil {
 		// This error shouldn't fail. It lives like this as a legacy.
 		klog.Errorf("Failed to start node manager controller: %v", err)

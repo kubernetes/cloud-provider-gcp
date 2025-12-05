@@ -38,6 +38,12 @@ import (
 	"k8s.io/cloud-provider/app/config"
 	controllermanagerapp "k8s.io/controller-manager/app"
 	"k8s.io/klog/v2"
+
+	networkclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned"
+	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
+	networkinformer "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1"
+	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
+	nodeipamconfig "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/config"
 )
 
 // NodeManagerController watches ProviderConfig CRDs and starts/stops
@@ -78,6 +84,11 @@ type NodeManagerController struct {
 	// Value: controllerState containing cancel func and last seen spec
 	runningControllers     map[string]controllerState
 	runningControllersLock sync.RWMutex
+
+	nodeIPAMConfig     nodeipamconfig.NodeIPAMControllerConfiguration
+	networkInformer    networkinformer.NetworkInformer
+	gnpInformer        networkinformer.GKENetworkParamSetInformer
+	nodeTopologyClient nodetopologyclientset.Interface
 }
 
 type controllerState struct {
@@ -86,7 +97,7 @@ type controllerState struct {
 }
 
 func NewNodeManagerController(kubeClient clientset.Interface, informerFactory informers.SharedInformerFactory,
-	completedConfig *config.CompletedConfig, ctx controllermanagerapp.ControllerContext, cloud cloudprovider.Interface) (*NodeManagerController, error) {
+	completedConfig *config.CompletedConfig, ctx controllermanagerapp.ControllerContext, cloud cloudprovider.Interface, nodeIPAMConfig nodeipamconfig.NodeIPAMControllerConfiguration) (*NodeManagerController, error) {
 	klog.Infof("Creating ProviderConfig Node Manager Controller")
 
 	clientConfig, err := ctx.ClientBuilder.Config("providerconfig-node-manager")
@@ -105,6 +116,22 @@ func NewNodeManagerController(kubeClient clientset.Interface, informerFactory in
 	crdInformerFactory := crdinformers.NewSharedInformerFactory(crdClient, 10*time.Minute)
 	crdInformer := crdInformerFactory.Cloud().V1().ProviderConfigs()
 
+	// Initialize network clients and informers for IPAM
+	// We initialize them here so they are created once and reused for all scoped controllers.
+	kubeConfig := completedConfig.Complete().Kubeconfig
+	kubeConfig.ContentType = "application/json" // required to serialize Networks to json
+	networkClient, err := networkclientset.NewForConfig(kubeConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create network client: %w", err)
+	}
+	nodeTopologyClient, err := nodetopologyclientset.NewForConfig(kubeConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create node topology client: %w", err)
+	}
+	nwInfFactory := networkinformers.NewSharedInformerFactory(networkClient, 30*time.Second)
+	nwInformer := nwInfFactory.Networking().V1().Networks()
+	gnpInformer := nwInfFactory.Networking().V1().GKENetworkParamSets()
+
 	// 4. Instantiate the manager controller
 	manager := &NodeManagerController{
 		config:              completedConfig,
@@ -118,6 +145,10 @@ func NewNodeManagerController(kubeClient clientset.Interface, informerFactory in
 		crdInformerSynced:   crdInformer.Informer().HasSynced,
 		queue:               workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "NodeManager"),
 		runningControllers:  make(map[string]controllerState),
+		nodeIPAMConfig:      nodeIPAMConfig,
+		networkInformer:     nwInformer,
+		gnpInformer:         gnpInformer,
+		nodeTopologyClient:  nodeTopologyClient,
 	}
 
 	// 5. Set up the event handler for the CRD
@@ -130,6 +161,10 @@ func NewNodeManagerController(kubeClient clientset.Interface, informerFactory in
 	// 6. Start the dedicated CRD informer
 	klog.Infof("Starting ProviderConfig CRD informer factory")
 	go crdInformerFactory.Start(ctx.Stop)
+
+	// Start network informers
+	klog.Infof("Starting Network informer factory")
+	go nwInfFactory.Start(ctx.Stop)
 
 	// 7. Run the manager controller
 	klog.Infof("Node Manager controller starting, will run until context is canceled")
@@ -284,7 +319,7 @@ func (m *NodeManagerController) syncHandler(key string) error {
 
 	// Start the new node controller in a dedicated goroutine
 	// We pass a copy of the CR to avoid data races
-	go m.startScopedNodeController(ctx, cr.DeepCopy(), key)
+	go m.startScopedNodeControllers(ctx, cancel, cr.DeepCopy(), key)
 
 	return nil
 }
