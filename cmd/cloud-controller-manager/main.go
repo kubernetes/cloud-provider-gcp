@@ -28,9 +28,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/cloud-provider-gcp/providers/gce"
-	_ "k8s.io/cloud-provider-gcp/providers/gce"
+
 	"k8s.io/cloud-provider/app"
-	"k8s.io/cloud-provider/app/config"
+	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/names"
 	"k8s.io/cloud-provider/options"
 	cliflag "k8s.io/component-base/cli/flag"
@@ -45,6 +45,9 @@ const (
 	gkeServiceLBControllerName     = "gke-service-lb-controller"
 	gkeServiceControllerClientName = "gke-service-controller"
 	gkeServiceAlias                = "gke-service"
+	multiNodeControllerName        = "gke-multi-node-controller"
+	multiNodeControllerClientName  = "gke-multi-node-controller"
+	multiNodeControllerAlias       = "gke-multi-node"
 )
 
 // enableMultiProject is bound to a command-line flag. When true, it enables the
@@ -111,6 +114,18 @@ func main() {
 	aliasMap := names.CCMControllerAliases()
 	aliasMap["nodeipam"] = kcmnames.NodeIpamController
 	aliasMap[gkeServiceAlias] = gkeServiceLBControllerName
+
+	controllerInitializers[multiNodeControllerName] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: multiNodeControllerClientName,
+		},
+		Constructor: func(initContext app.ControllerInitContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) app.InitFunc {
+			return startGkeMultiNodeControllerWrapper(initContext, completedConfig, cloud, nodeIpamController.nodeIPAMControllerOptions)
+		},
+	}
+	// app.ControllersDisabledByDefault.Insert(names.CloudNodeController)
+	aliasMap[multiNodeControllerAlias] = multiNodeControllerName
+
 	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, aliasMap, fss, wait.NeverStop)
 
 	logs.InitLogs()
@@ -121,7 +136,7 @@ func main() {
 	}
 }
 
-func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
+func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovider.Interface {
 	cloudConfig := config.ComponentConfig.KubeCloudShared.CloudProvider
 
 	// initialize cloud provider with the cloud provider name and config file provided
@@ -142,6 +157,7 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 	}
 
 	if enableMultiProject {
+		klog.Infof("HELLO PP - Testing")
 		gceCloud, ok := (cloud).(*gce.Cloud)
 		if !ok {
 			// Fail-fast: If enableMultiProject is set, the cloud provider MUST
@@ -149,7 +165,7 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 			// we never expect this to be executed.
 			klog.Fatalf("multi-project mode requires GCE cloud provider, but got %T", cloud)
 		}
-		gceCloud.SetProjectFromNodeProviderID(true)
+		gceCloud.SetProjectFromNodeProviderID(false)
 	}
 
 	if enableDiscretePortForwarding {
