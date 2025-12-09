@@ -26,6 +26,9 @@ Alternatively, you can run [push-images tool](https://github.com/kubernetes/clou
 IMAGE_REPO=us-central1-docker.pkg.dev/my-project/my-repo IMAGE_TAG=v0 ./tools/push-images
 ```
 
+IMAGE_REPO=us-central1-docker.pkg.dev/panpr-gke-dev/cloud-controller-manager IMAGE_TAG=test-p4sa ./tools/push-images
+
+
 # Cross-compiling
 
 Selecting the target platform is done with the `--platforms` option with `bazel`.

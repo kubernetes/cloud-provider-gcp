@@ -33,6 +33,7 @@ require (
 
 require (
 	github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f
+	github.com/go-ini/ini v1.67.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.34.2
@@ -145,7 +146,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.34.2 // indirect
 	k8s.io/kms v0.34.2 // indirect
-	k8s.io/kube-openapi v0.0.0-20250710124328-f3f2b991d03b // indirect
+	k8s.io/kube-openapi v0.0.0-20250710124328-f3f2b991d03b
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
@@ -159,6 +160,7 @@ replace (
 	k8s.io/client-go => k8s.io/client-go v0.34.2
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.34.2
 
+	k8s.io/cloud-provider-gcp => ./
 	k8s.io/cloud-provider-gcp/providers => ./providers
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.34.2
 	k8s.io/code-generator => k8s.io/code-generator v0.34.2

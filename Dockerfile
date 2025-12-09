@@ -14,7 +14,7 @@ COPY cmd/ cmd/
 COPY pkg/ pkg/
 COPY providers/ providers/
 
-RUN CGO_ENABLED=0 go build -o /go/bin/cloud-controller-manager ./cmd/cloud-controller-manager
+RUN CGO_ENABLED=0 GOFLAGS=-mod=mod go build -o /go/bin/cloud-controller-manager ./cmd/cloud-controller-manager
 
 FROM registry.k8s.io/build-image/go-runner:v2.4.0-go1.24.10-bookworm.0
 COPY --from=builder --chown=root:root /go/bin/cloud-controller-manager /cloud-controller-manager
