@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/stretchr/testify/assert"
@@ -69,6 +69,64 @@ func TestServiceNetworkTierAnnotationKey(t *testing.T) {
 			actualTier, err := GetServiceNetworkTier(svc)
 			assert.Equal(t, testCase.expectedTier, actualTier)
 			assert.Equal(t, testCase.expectErr, err != nil)
+		})
+	}
+}
+
+func TestMergeAnnotations(t *testing.T) {
+	for _, tc := range []struct {
+		desc           string
+		existing       map[string]string
+		updates        map[string]string
+		keysToRemove   []string
+		expectedResult map[string]string
+	}{
+		{
+			desc:           "nil existing map should be initialized",
+			existing:       nil,
+			updates:        map[string]string{"key1": "val1"},
+			keysToRemove:   []string{},
+			expectedResult: map[string]string{"key1": "val1"},
+		},
+		{
+			desc:           "new annotations should be added",
+			existing:       map[string]string{"key1": "val1"},
+			updates:        map[string]string{"key2": "val2"},
+			keysToRemove:   []string{},
+			expectedResult: map[string]string{"key1": "val1", "key2": "val2"},
+		},
+		{
+			desc:           "existing annotations should be overwritten",
+			existing:       map[string]string{"key1": "val1"},
+			updates:        map[string]string{"key1": "val2"},
+			keysToRemove:   []string{},
+			expectedResult: map[string]string{"key1": "val2"},
+		},
+		{
+			desc:           "keysToRemove should be deleted",
+			existing:       map[string]string{"key1": "val1", "key2": "val2"},
+			updates:        map[string]string{"key3": "val3"},
+			keysToRemove:   []string{"key1"},
+			expectedResult: map[string]string{"key2": "val2", "key3": "val3"},
+		},
+		{
+			desc:           "keysToRemove should be deleted before merging",
+			existing:       map[string]string{"key1": "val1"},
+			updates:        map[string]string{"key1": "val2"},
+			keysToRemove:   []string{"key1"},
+			expectedResult: map[string]string{"key1": "val2"},
+		},
+		{
+			desc:           "empty input should result in empty map",
+			existing:       map[string]string{},
+			updates:        map[string]string{},
+			keysToRemove:   []string{},
+			expectedResult: map[string]string{},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			result := mergeAnnotations(tc.existing, tc.updates, tc.keysToRemove)
+			assert.Equal(t, tc.expectedResult, result)
 		})
 	}
 }

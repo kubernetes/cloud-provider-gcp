@@ -89,7 +89,25 @@ const (
 
 	// RBSEnabled is an annotation to indicate the Service is opt-in for RBS
 	RBSEnabled = "enabled"
+
+	// ServiceStatusPrefix is the prefix used in annotations used to record
+	// debug information in the Service annotations. This is applicable to L4 LB services.
+	ServiceStatusPrefix = "service.kubernetes.io"
+
+	BackendServiceResource = "backend-service"
+	TargetPoolResource     = "target-pool"
+	// BackendServiceKey is the annotation key used by l4 controller to record
+	// GCP Backend service name.
+	BackendServiceKey = ServiceStatusPrefix + "/" + BackendServiceResource
+	// TargetPoolKey is the annotation key used by l4 controller to record
+	// GCP Target pool name.
+	TargetPoolKey = ServiceStatusPrefix + "/" + TargetPoolResource
 )
+
+var L4ResourceAnnotationKeys = []string{
+	BackendServiceKey,
+	TargetPoolKey,
+}
 
 // GetLoadBalancerAnnotationType returns the type of GCP load balancer which should be assembled.
 func GetLoadBalancerAnnotationType(service *v1.Service) LoadBalancerType {
@@ -175,4 +193,23 @@ func GetLoadBalancerAnnotationSubnet(service *v1.Service) string {
 		return val
 	}
 	return ""
+}
+
+// mergeAnnotations merges the new set of annotations with the preexisting annotations.
+// Existing annotation values will be replaced with the values in the new map.
+// This function is used by LB controllers.
+func mergeAnnotations(existing, updates map[string]string, keysToRemove []string) map[string]string {
+	if existing == nil {
+		existing = make(map[string]string)
+	} else {
+		// Delete existing annotations.
+		for _, key := range keysToRemove {
+			delete(existing, key)
+		}
+	}
+	// merge existing annotations with the newly added annotations
+	for key, val := range updates {
+		existing[key] = val
+	}
+	return existing
 }
