@@ -89,7 +89,27 @@ const (
 
 	// RBSEnabled is an annotation to indicate the Service is opt-in for RBS
 	RBSEnabled = "enabled"
+
+	// serviceStatusPrefix is the prefix used in annotations used to record
+	// debug information in the Service annotations. This is applicable to L4 LB services.
+	serviceStatusPrefix = "networking.gke.io"
+
+	backendServiceResource = "backend-service"
+	targetPoolResource     = "target-pool"
+
+	// backendServiceKey is the annotation key used by l4 controller to record
+	// GCP Backend service name.
+	backendServiceKey = serviceStatusPrefix + "/" + backendServiceResource
+
+	// targetPoolKey is the annotation key used by l4 controller to record
+	// GCP Target pool name.
+	targetPoolKey = serviceStatusPrefix + "/" + targetPoolResource
 )
+
+var l4ResourceAnnotationKeys = []string{
+	backendServiceKey,
+	targetPoolKey,
+}
 
 // GetLoadBalancerAnnotationType returns the type of GCP load balancer which should be assembled.
 func GetLoadBalancerAnnotationType(service *v1.Service) LoadBalancerType {
@@ -175,4 +195,17 @@ func GetLoadBalancerAnnotationSubnet(service *v1.Service) string {
 		return val
 	}
 	return ""
+}
+
+// mergeMap merges the update map into the dst map.
+// Keys in dst are overwritten by values from update.
+// If a value in the update map is an empty string, the key is removed from dst.
+func mergeMap(dst, update map[string]string) {
+	for k, v := range update {
+		if v == "" {
+			delete(dst, k)
+		} else {
+			dst[k] = v
+		}
+	}
 }
