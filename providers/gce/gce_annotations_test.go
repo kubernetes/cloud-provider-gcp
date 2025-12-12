@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/stretchr/testify/assert"
@@ -69,6 +69,60 @@ func TestServiceNetworkTierAnnotationKey(t *testing.T) {
 			actualTier, err := GetServiceNetworkTier(svc)
 			assert.Equal(t, testCase.expectedTier, actualTier)
 			assert.Equal(t, testCase.expectErr, err != nil)
+		})
+	}
+}
+
+func TestMergeMap(t *testing.T) {
+	for _, tc := range []struct {
+		desc           string
+		existing       map[string]string
+		updates        map[string]string
+		expectedResult map[string]string
+	}{
+		{
+			desc:     "new annotations should be added",
+			existing: map[string]string{"key1": "val1"},
+			updates:  map[string]string{"key2": "val2"},
+			expectedResult: map[string]string{
+				"key1": "val1",
+				"key2": "val2",
+			},
+		},
+		{
+			desc:     "existing annotations should be overwritten",
+			existing: map[string]string{"key1": "val1"},
+			updates:  map[string]string{"key1": "val2"},
+			expectedResult: map[string]string{
+				"key1": "val2",
+			},
+		},
+		{
+			desc:     "empty value in updates should delete the key",
+			existing: map[string]string{"key1": "val1", "key2": "val2"},
+			updates:  map[string]string{"key1": ""},
+			expectedResult: map[string]string{
+				"key2": "val2",
+			},
+		},
+		{
+			desc:     "mixed updates and deletions",
+			existing: map[string]string{"key1": "val1", "key2": "val2"},
+			updates:  map[string]string{"key1": "new-val", "key2": ""},
+			expectedResult: map[string]string{
+				"key1": "new-val",
+			},
+		},
+		{
+			desc:           "empty updates should result in no change",
+			existing:       map[string]string{"key1": "val1"},
+			updates:        map[string]string{},
+			expectedResult: map[string]string{"key1": "val1"},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			mergeMap(tc.existing, tc.updates)
+			assert.Equal(t, tc.expectedResult, tc.existing)
 		})
 	}
 }

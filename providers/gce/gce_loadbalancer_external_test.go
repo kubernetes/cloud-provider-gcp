@@ -477,7 +477,7 @@ func TestDeleteAddressWithWrongTier(t *testing.T) {
 	}
 }
 
-func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string, clusterName, clusterID, zoneName string) (*v1.LoadBalancerStatus, error) {
+func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string, clusterName, clusterID, zoneName string) (*lbSyncResult, error) {
 	nodes, err := createAndInsertNodes(gce, nodeNames, zoneName)
 	if err != nil {
 		return nil, err
@@ -490,6 +490,12 @@ func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string,
 		nil,
 		nodes,
 	)
+}
+
+// Helper function to assert lbSyncResult annotations
+func assertSyncResultAnnotations(t *testing.T, gce *Cloud, svc *v1.Service, clusterID string, syncResult *lbSyncResult) {
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+	assert.Equal(t, lbName, syncResult.Annotations[targetPoolKey], "TargetPoolKey annotation mismatch")
 }
 
 func TestShouldNotRecreateLBWhenNetworkTiersMismatch(t *testing.T) {
@@ -554,14 +560,15 @@ func TestShouldNotRecreateLBWhenNetworkTiersMismatch(t *testing.T) {
 		},
 	} {
 		tc.mutateSvc(svc)
-		status, err := gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+		syncResult, err := gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 		if tc.expectError {
 			if err == nil {
 				t.Errorf("for test case %q, expect errror != nil, but got %v", tc.desc, err)
 			}
 		} else {
 			assert.NoError(t, err)
-			assert.NotEmpty(t, status.Ingress)
+			assert.NotEmpty(t, syncResult.Status.Ingress)
+			assertSyncResultAnnotations(t, gce, svc, vals.ClusterID, syncResult)
 		}
 
 		lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
@@ -586,9 +593,10 @@ func TestEnsureExternalLoadBalancer(t *testing.T) {
 	svc := fakeLoadbalancerService("")
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	syncResult, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
-	assert.NotEmpty(t, status.Ingress)
+	assert.NotEmpty(t, syncResult.Status.Ingress)
+	assertSyncResultAnnotations(t, gce, svc, vals.ClusterID, syncResult)
 
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -1133,12 +1141,12 @@ func TestForwardingRuleNeedsUpdate(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	status, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
-	require.NotNil(t, status)
+	syncResult, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	require.NotNil(t, syncResult.Status)
 	require.NoError(t, err)
 
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
-	ipAddr := status.Ingress[0].IP
+	ipAddr := syncResult.Status.Ingress[0].IP
 
 	lbIP := svc.Spec.LoadBalancerIP
 	wrongPorts := []v1.ServicePort{svc.Spec.Ports[0]}
@@ -1662,12 +1670,12 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 		{Name: "port7", Protocol: v1.ProtocolTCP, Port: int32(88), TargetPort: intstr.FromInt(87)},
 	}
 
-	status, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
-	require.NotNil(t, status)
+	syncResult, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	require.NotNil(t, syncResult.Status)
 	require.NoError(t, err)
 	svcName := "/" + svc.ObjectMeta.Name
 
-	ipAddr := status.Ingress[0].IP
+	ipAddr := syncResult.Status.Ingress[0].IP
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 
 	ipnet, err := utilnet.ParseIPNets("0.0.0.0/0")
@@ -1676,7 +1684,8 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 	wrongIpnet, err := utilnet.ParseIPNets("1.0.0.0/10")
 	require.NoError(t, err)
 
-	fw, err := gce.GetFirewall(MakeFirewallName(lbName))
+	fwName := MakeFirewallName(lbName)
+	fw, err := gce.GetFirewall(fwName)
 	require.NoError(t, err)
 
 	for desc, tc := range map[string]struct {
@@ -1870,7 +1879,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 			fw.SourceRanges[0] = tc.sourceRange
 			fw, err = gce.GetFirewall(MakeFirewallName(lbName))
 			require.Equal(t, fw.SourceRanges[0], tc.sourceRange)
-			require.Equal(t, fw.DestinationRanges[0], status.Ingress[0].IP)
+			require.Equal(t, fw.DestinationRanges[0], syncResult.Status.Ingress[0].IP)
 
 			c := gce.c.(*cloud.MockGCE)
 			c.MockFirewalls.GetHook = tc.getHook
@@ -1880,7 +1889,8 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 				svcName,
 				tc.ipAddr,
 				tc.ports,
-				tc.ipnet)
+				tc.ipnet,
+			)
 			assert.Equal(t, tc.exists, exists, "'exists' didn't return as expected "+desc)
 			assert.Equal(t, tc.needsUpdate, needsUpdate, "'needsUpdate' didn't return as expected "+desc)
 			if tc.hasErr {
@@ -1925,14 +1935,15 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	status, err := gce.ensureExternalLoadBalancer(
+	syncResult, err := gce.ensureExternalLoadBalancer(
 		vals.ClusterName,
 		vals.ClusterID,
 		svc,
 		nil,
 		nodes,
 	)
-	require.NotNil(t, status)
+
+	require.NotNil(t, syncResult.Status)
 	require.NoError(t, err)
 
 	hostNames := nodeNames(nodes)
@@ -1940,7 +1951,7 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	require.NoError(t, err)
 	clusterID := vals.ClusterID
 
-	ipAddr := status.Ingress[0].IP
+	ipAddr := syncResult.Status.Ingress[0].IP
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 	region := vals.Region
 
@@ -1975,13 +1986,13 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	require.NoError(t, err)
 	err = gce.ensureTargetPoolAndHealthCheck(true, true, svc, lbName, clusterID, ipAddr, manyHosts, hcToCreate, hcToDelete)
 	assert.NoError(t, err)
-
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
 	assert.Equal(t, maxTargetPoolCreateInstances+1, len(pool.Instances))
 
 	err = gce.ensureTargetPoolAndHealthCheck(true, false, svc, lbName, clusterID, ipAddr, hosts, hcToCreate, hcToDelete)
 	assert.NoError(t, err)
+
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(pool.Instances))
@@ -2178,7 +2189,7 @@ func TestEnsureExternalLoadBalancerErrors(t *testing.T) {
 			if tc.injectMock != nil {
 				tc.injectMock(gce.c.(*cloud.MockGCE))
 			}
-			status, err := gce.ensureExternalLoadBalancer(
+			syncResult, err := gce.ensureExternalLoadBalancer(
 				params.clusterName,
 				params.clusterID,
 				params.service,
@@ -2186,7 +2197,7 @@ func TestEnsureExternalLoadBalancerErrors(t *testing.T) {
 				params.nodes,
 			)
 			assert.Error(t, err, "Should return an error when "+desc)
-			assert.Nil(t, status, "Should not return a status when "+desc)
+			assert.Nil(t, syncResult.Status, "Should not return a status when "+desc)
 		})
 	}
 }
@@ -2560,10 +2571,13 @@ func TestEnsureExternalLoadBalancerClass(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Create NetLB
-		status, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+		syncResult, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 		if tc.shouldProcess {
 			assert.NoError(t, err)
-			require.NotNil(t, status)
+			require.NotNil(t, syncResult.Status)
+
+			assertSyncResultAnnotations(t, gce, svc, vals.ClusterID, syncResult)
+
 			svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
 			assert.NoError(t, err)
 			if hasFinalizer(svc, NetLBFinalizerV2) || hasFinalizer(svc, NetLBFinalizerV3) {
@@ -2571,7 +2585,7 @@ func TestEnsureExternalLoadBalancerClass(t *testing.T) {
 			}
 		} else {
 			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
-			assert.Empty(t, status)
+			assert.Empty(t, syncResult.Status)
 		}
 
 		nodeNames = []string{"test-node-1", "test-node-2"}

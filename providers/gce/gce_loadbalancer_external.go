@@ -55,7 +55,9 @@ const (
 // Due to an interesting series of design decisions, this handles both creating
 // new load balancers and updating existing load balancers, recognizing when
 // each is needed.
-func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
+func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*lbSyncResult, error) {
+	syncResult := newLBSyncResult()
+
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
@@ -282,6 +284,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	if err := g.ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation, apiService, loadBalancerName, clusterID, ipAddressToUse, hosts, hcToCreate, hcToDelete); err != nil {
 		return nil, err
 	}
+	syncResult.Annotations[targetPoolKey] = loadBalancerName
 
 	if tpNeedsRecreation || fwdRuleNeedsUpdate {
 		klog.Infof("ensureExternalLoadBalancer(%s): Creating forwarding rule, IP %s (tier: %s).", lbRefStr, ipAddressToUse, netTier)
@@ -299,7 +302,8 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	status := &v1.LoadBalancerStatus{}
 	status.Ingress = []v1.LoadBalancerIngress{{IP: ipAddressToUse}}
 
-	return status, nil
+	syncResult.Status = status
+	return syncResult, nil
 }
 
 // updateExternalLoadBalancer is the external implementation of LoadBalancer.UpdateLoadBalancer.
