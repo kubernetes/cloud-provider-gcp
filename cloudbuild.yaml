@@ -12,83 +12,10 @@ steps:
       - CI=1
       - BUILDX_NO_DEFAULT_ATTESTATIONS=1
     entrypoint: tools/push-images
-  # build gke-gcloud-auth-plugin binary
-  - name: "gcr.io/cloud-builders/bazel"
+  - name: gcr.io/k8s-staging-test-infra/gcb-docker-gcloud:latest
+    entrypoint: make
     args:
-      - --output_user_root=/workspace/bazel-root
-      - --output_base=/workspace/bazel-base-linux-amd64
-      - build
-      - //cmd/gke-gcloud-auth-plugin
-  - name: "gcr.io/cloud-builders/gsutil"
-    args:
-      - cp
-      - /workspace/bazel-base-linux-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin
-      - gs://k8s-staging-cloud-provider-gcp/gke-gcloud-auth-plugin/linux-amd64/${_GIT_TAG}
-  # build auth-provider-gcp binary
-  - name: "gcr.io/cloud-builders/bazel"
-    args:
-      - --output_user_root=/workspace/bazel-root
-      - --output_base=/workspace/bazel-base-linux-amd64
-      - build
-      - //cmd/auth-provider-gcp
-  - name: "gcr.io/cloud-builders/gsutil"
-    args:
-      - cp
-      - /workspace/bazel-base-linux-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp
-      - gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp/linux-amd64/${_GIT_TAG}
-  # build gke-gcloud-auth-plugin binary
-  - name: "gcr.io/cloud-builders/bazel"
-    args:
-      - --output_user_root=/workspace/bazel-root
-      - --output_base=/workspace/bazel-base-linux-arm64
-      - build
-      - --platforms=@io_bazel_rules_go//go/toolchain:linux_arm64
-      - //cmd/gke-gcloud-auth-plugin
-  - name: "gcr.io/cloud-builders/gsutil"
-    args:
-      - cp
-      - /workspace/bazel-base-linux-arm64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin
-      - gs://k8s-staging-cloud-provider-gcp/gke-gcloud-auth-plugin/linux-arm64/${_GIT_TAG}
-  # build auth-provider-gcp binary
-  - name: "gcr.io/cloud-builders/bazel"
-    args:
-      - --output_user_root=/workspace/bazel-root
-      - --output_base=/workspace/bazel-base-linux-arm64
-      - build
-      - --platforms=@io_bazel_rules_go//go/toolchain:linux_arm64
-      - //cmd/auth-provider-gcp
-  - name: "gcr.io/cloud-builders/gsutil"
-    args:
-      - cp
-      - /workspace/bazel-base-linux-arm64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp
-      - gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp/linux-arm64/${_GIT_TAG}
-  # build gke-gcloud-auth-plugin binary
-  - name: "gcr.io/cloud-builders/bazel"
-    args:
-      - --output_user_root=/workspace/bazel-root
-      - --output_base=/workspace/bazel-base-windows-amd64
-      - build
-      - --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64
-      - //cmd/gke-gcloud-auth-plugin
-  - name: "gcr.io/cloud-builders/gsutil"
-    args:
-      - cp
-      - /workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/gke-gcloud-auth-plugin/gke-gcloud-auth-plugin_/gke-gcloud-auth-plugin.exe
-      - gs://k8s-staging-cloud-provider-gcp/gke-gcloud-auth-plugin/windows-amd64/${_GIT_TAG}
-  # build auth-provider-gcp binary
-  - name: "gcr.io/cloud-builders/bazel"
-    args:
-      - --output_user_root=/workspace/bazel-root
-      - --output_base=/workspace/bazel-base-windows-amd64
-      - build
-      - --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64
-      - //cmd/auth-provider-gcp
-  - name: "gcr.io/cloud-builders/gsutil"
-    args:
-      - cp
-      - /workspace/bazel-base-windows-amd64/execroot/io_k8s_cloud_provider_gcp/bazel-out/k8-fastbuild/bin/cmd/auth-provider-gcp/auth-provider-gcp_/auth-provider-gcp.exe
-      - gs://k8s-staging-cloud-provider-gcp/auth-provider-gcp/windows-amd64/${_GIT_TAG}
-# TODO: figure out how to do this better, most probably getting rid of bazel
+      - copy-binaries-to-gcs
 substitutions:
   _PULL_BASE_REF: "master"
   _GIT_TAG: "12345"
