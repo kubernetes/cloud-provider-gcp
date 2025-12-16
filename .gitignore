@@ -2,3 +2,5 @@ bazel-*
 cluster/bin
 MERGED_LICENSES
 release/*
+.vscode/
+.idea/
