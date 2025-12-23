@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
 	metav1apply "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -197,7 +198,7 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 		}
 	}
 
-	var status *v1.LoadBalancerStatus
+	var status *v1.ServiceStatus
 	switch desiredScheme {
 	case cloud.SchemeInternal:
 		status, err = g.ensureInternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
@@ -206,10 +207,17 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 	}
 	if err != nil {
 		klog.Errorf("Failed to EnsureLoadBalancer(%s, %s, %s, %s, %s), err: %v", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, err)
-		return status, err
+		return &status.LoadBalancer, err
 	}
+
+	if g.enableL4LBServiceConditions && status != nil && !ConditionsEqual(svc.Status.Conditions, status.Conditions) {
+		if err := g.patchServiceStatusConditions(ctx, svc, status.Conditions); err != nil {
+			return &status.LoadBalancer, err
+		}
+	}
+
 	klog.V(4).Infof("EnsureLoadBalancer(%s, %s, %s, %s, %s): done ensuring loadbalancer.", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region)
-	return status, err
+	return &status.LoadBalancer, err
 }
 
 // UpdateLoadBalancer is an implementation of LoadBalancer.UpdateLoadBalancer.
@@ -325,4 +333,66 @@ func hasLoadBalancerPortsError(service *v1.Service) bool {
 		}
 	}
 	return false
+}
+
+// patchServiceStatusConditions uses Server-Side Apply to update the conditions.
+func (g *Cloud) patchServiceStatusConditions(ctx context.Context, svc *v1.Service, newConditions []metav1.Condition) error {
+	if len(newConditions) == 0 {
+		return nil
+	}
+
+	// Convert []metav1.Condition to standard ApplyConfigurations
+	var applyConditions []*metav1apply.ConditionApplyConfiguration
+	for _, c := range newConditions {
+		applyConditions = append(applyConditions, metav1apply.Condition().
+			WithType(c.Type).
+			WithStatus(c.Status).
+			WithReason(c.Reason).
+			WithMessage(c.Message).
+			WithLastTransitionTime(c.LastTransitionTime).
+			WithObservedGeneration(svc.Generation),
+		)
+	}
+
+	// Construct the Service ApplyConfiguration.
+	svcApply := corev1apply.Service(svc.Name, svc.Namespace).
+		WithStatus(corev1apply.ServiceStatus().
+			WithConditions(applyConditions...))
+
+	opts := metav1.ApplyOptions{
+		FieldManager: "gce-cloud-controller",
+		Force:        true,
+	}
+
+	klog.V(4).Infof("Patching status conditions for service %s/%s via SSA", svc.Namespace, svc.Name)
+	_, err := g.client.CoreV1().Services(svc.Namespace).ApplyStatus(ctx, svcApply, opts)
+	if err != nil {
+		klog.Errorf("Failed to patch status conditions for service %s/%s: %v", svc.Namespace, svc.Name, err)
+	}
+	return err
+}
+
+// ConditionsEqual checks if two slices of conditions are semantically equal.
+// It ignores order and helps avoid unnecessary patches.
+func ConditionsEqual(current, desired []metav1.Condition) bool {
+	if len(current) != len(desired) {
+		return false
+	}
+
+	currentMap := make(map[string]metav1.Condition, len(current))
+	for _, c := range current {
+		currentMap[c.Type] = c
+	}
+
+	for _, d := range desired {
+		c, exists := currentMap[d.Type]
+		if !exists {
+			return false
+		}
+		if !equality.Semantic.DeepEqual(c, d) {
+			return false
+		}
+	}
+
+	return true
 }

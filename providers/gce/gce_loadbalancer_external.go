@@ -29,6 +29,8 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	v1 "k8s.io/api/core/v1"
+	metaapi "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -55,14 +57,13 @@ const (
 // Due to an interesting series of design decisions, this handles both creating
 // new load balancers and updating existing load balancers, recognizing when
 // each is needed.
-func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
+func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*v1.ServiceStatus, error) {
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
 	// LoadBalancerClass can't be updated so we know this controller should process the NetLB.
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
 	if !shouldProcessNetLB(apiService, existingFwdRule, g.enableRBSDefaultForL4NetLB) {
 		return nil, cloudprovider.ImplementedElsewhere
 	}
-
 	if hasLoadBalancerClass(apiService, LegacyRegionalExternalLoadBalancerClass) {
 		if apiService.Annotations[ServiceAnnotationLoadBalancerType] == string(LBTypeInternal) {
 			g.eventRecorder.Event(apiService, v1.EventTypeWarning, "ConflictingConfiguration", fmt.Sprintf("loadBalancerClass conflicts with %s: %s annotation. External LoadBalancer Service provisioned.", ServiceAnnotationLoadBalancerType, string(LBTypeInternal)))
@@ -72,6 +73,8 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	if len(nodes) == 0 {
 		return nil, fmt.Errorf(errStrLbNoHosts)
 	}
+
+	expectedConditions := append([]metav1.Condition(nil), apiService.Status.Conditions...)
 
 	hostNames := nodeNames(nodes)
 	hosts, err := g.getInstancesByNames(hostNames)
@@ -205,31 +208,32 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	}
 
 	if firewallNeedsUpdate {
+		firewallName := MakeFirewallName(loadBalancerName)
 		desc := makeFirewallDescription(serviceName.String(), ipAddressToUse)
 		// Unlike forwarding rules and target pools, firewalls can be updated
 		// without needing to be deleted and recreated.
 		if firewallExists {
 			klog.Infof("ensureExternalLoadBalancer(%s): Updating firewall.", lbRefStr)
-			if err := g.updateFirewall(apiService, MakeFirewallName(loadBalancerName), desc, ipAddressToUse, sourceRanges, ports, hosts); err != nil {
+			if err := g.updateFirewall(apiService, firewallName, desc, ipAddressToUse, sourceRanges, ports, hosts); err != nil {
 				return nil, err
 			}
 			klog.Infof("ensureExternalLoadBalancer(%s): Updated firewall.", lbRefStr)
 		} else {
 			klog.Infof("ensureExternalLoadBalancer(%s): Creating firewall.", lbRefStr)
-			if err := g.createFirewall(apiService, MakeFirewallName(loadBalancerName), desc, ipAddressToUse, sourceRanges, ports, hosts); err != nil {
+			if err := g.createFirewall(apiService, firewallName, desc, ipAddressToUse, sourceRanges, ports, hosts); err != nil {
 				return nil, err
 			}
 			klog.Infof("ensureExternalLoadBalancer(%s): Created firewall.", lbRefStr)
 		}
+		metaapi.SetStatusCondition(&expectedConditions, NewFirewallCondition(firewallName))
 	}
 
 	tpExists, tpNeedsRecreation, err := g.targetPoolNeedsRecreation(loadBalancerName, g.region, apiService.Spec.SessionAffinity)
 	if err != nil {
 		return nil, err
 	}
-	if !tpExists {
-		klog.Infof("ensureExternalLoadBalancer(%s): Target pool for service doesn't exist.", lbRefStr)
-	}
+
+	g.client.CoreV1().Services(apiService.Namespace)
 
 	// Check which health check needs to create and which health check needs to delete.
 	// Health check management is coupled with target pool operation to prevent leaking.
@@ -279,7 +283,8 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		klog.Infof("ensureExternalLoadBalancer(%s): Deleted forwarding rule.", lbRefStr)
 	}
 
-	if err := g.ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation, apiService, loadBalancerName, clusterID, ipAddressToUse, hosts, hcToCreate, hcToDelete); err != nil {
+	err = g.ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation, apiService, loadBalancerName, clusterID, ipAddressToUse, hosts, hcToCreate, hcToDelete, &expectedConditions)
+	if err != nil {
 		return nil, err
 	}
 
@@ -288,6 +293,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		if err := createForwardingRule(g, loadBalancerName, serviceName.String(), g.region, ipAddressToUse, g.targetPoolURL(loadBalancerName), ports, netTier, g.enableDiscretePortForwarding); err != nil {
 			return nil, fmt.Errorf("failed to create forwarding rule for load balancer (%s): %v", lbRefStr, err)
 		}
+		metaapi.SetStatusCondition(&expectedConditions, NewForwardingRuleCondition(loadBalancerName))
 		// End critical section.  It is safe to release the static IP (which
 		// just demotes it to ephemeral) now that it is attached.  In the case
 		// of a user-requested IP, the "is user-owned" flag will be set,
@@ -296,8 +302,13 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		klog.Infof("ensureExternalLoadBalancer(%s): Created forwarding rule, IP %s.", lbRefStr, ipAddressToUse)
 	}
 
-	status := &v1.LoadBalancerStatus{}
-	status.Ingress = []v1.LoadBalancerIngress{{IP: ipAddressToUse}}
+	lbstatus := v1.LoadBalancerStatus{}
+	lbstatus.Ingress = []v1.LoadBalancerIngress{{IP: ipAddressToUse}}
+
+	status := &v1.ServiceStatus{
+		LoadBalancer: lbstatus,
+		Conditions:   expectedConditions,
+	}
 
 	return status, nil
 }
@@ -516,7 +527,7 @@ func verifyUserRequestedIP(s CloudAddressService, region, requestedIP, fwdRuleIP
 	return false, fmt.Errorf("requested ip %q is neither static nor assigned to the LB", requestedIP)
 }
 
-func (g *Cloud) ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation bool, svc *v1.Service, loadBalancerName, clusterID, ipAddressToUse string, hosts []*gceInstance, hcToCreate, hcToDelete *compute.HttpHealthCheck) error {
+func (g *Cloud) ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation bool, svc *v1.Service, loadBalancerName, clusterID, ipAddressToUse string, hosts []*gceInstance, hcToCreate, hcToDelete *compute.HttpHealthCheck, conditions *[]metav1.Condition) error {
 	serviceName := types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}
 	lbRefStr := fmt.Sprintf("%v(%v)", loadBalancerName, serviceName)
 
@@ -538,7 +549,8 @@ func (g *Cloud) ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation bool,
 		if len(hosts) > maxTargetPoolCreateInstances {
 			createInstances = createInstances[:maxTargetPoolCreateInstances]
 		}
-		if err := g.createTargetPoolAndHealthCheck(svc, loadBalancerName, serviceName.String(), ipAddressToUse, g.region, clusterID, createInstances, hcToCreate); err != nil {
+		err := g.createTargetPoolAndHealthCheck(svc, loadBalancerName, serviceName.String(), ipAddressToUse, g.region, clusterID, createInstances, hcToCreate, conditions)
+		if err != nil {
 			return fmt.Errorf("failed to create target pool for load balancer (%s): %v", lbRefStr, err)
 		}
 		if hcToCreate != nil {
@@ -559,10 +571,13 @@ func (g *Cloud) ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation bool,
 			return fmt.Errorf("failed to update target pool for load balancer (%s): %v", lbRefStr, err)
 		}
 		klog.Infof("ensureTargetPoolAndHealthCheck(%s): Updated target pool (with %d hosts).", lbRefStr, len(hosts))
+
 		if hcToCreate != nil {
-			if hc, err := g.ensureHTTPHealthCheck(hcToCreate.Name, hcToCreate.RequestPath, int32(hcToCreate.Port)); err != nil || hc == nil {
+			hc, err := g.ensureHTTPHealthCheck(hcToCreate.Name, hcToCreate.RequestPath, int32(hcToCreate.Port))
+			if err != nil || hc == nil {
 				return fmt.Errorf("failed to ensure health check for %v port %d path %v: %v", loadBalancerName, hcToCreate.Port, hcToCreate.RequestPath, err)
 			}
+			metaapi.SetStatusCondition(conditions, NewHealthCheckCondition(hc.Name))
 		}
 	} else {
 		// Panic worthy.
@@ -571,7 +586,7 @@ func (g *Cloud) ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation bool,
 	return nil
 }
 
-func (g *Cloud) createTargetPoolAndHealthCheck(svc *v1.Service, name, serviceName, ipAddress, region, clusterID string, hosts []*gceInstance, hc *compute.HttpHealthCheck) error {
+func (g *Cloud) createTargetPoolAndHealthCheck(svc *v1.Service, name, serviceName, ipAddress, region, clusterID string, hosts []*gceInstance, hc *compute.HttpHealthCheck, conditions *[]metav1.Condition) error {
 	// health check management is coupled with targetPools to prevent leaks. A
 	// target pool is the only thing that requires a health check, so we delete
 	// associated checks on teardown, and ensure checks on setup.
@@ -585,14 +600,16 @@ func (g *Cloud) createTargetPoolAndHealthCheck(svc *v1.Service, name, serviceNam
 			defer g.sharedResourceLock.Unlock()
 		}
 
-		if err := g.ensureHTTPHealthCheckFirewall(svc, serviceName, ipAddress, region, clusterID, hosts, hc.Name, int32(hc.Port), isNodesHealthCheck); err != nil {
+		err := g.ensureHTTPHealthCheckFirewall(svc, serviceName, ipAddress, region, clusterID, hosts, hc.Name, int32(hc.Port), isNodesHealthCheck, conditions)
+		if err != nil {
 			return err
 		}
-		var err error
+
 		hcRequestPath, hcPort := hc.RequestPath, hc.Port
 		if hc, err = g.ensureHTTPHealthCheck(hc.Name, hc.RequestPath, int32(hc.Port)); err != nil || hc == nil {
 			return fmt.Errorf("failed to ensure health check for %v port %d path %v: %v", name, hcPort, hcRequestPath, err)
 		}
+		metaapi.SetStatusCondition(conditions, NewHealthCheckCondition(hc.Name))
 		hcLinks = append(hcLinks, hc.SelfLink)
 	}
 
@@ -612,6 +629,7 @@ func (g *Cloud) createTargetPoolAndHealthCheck(svc *v1.Service, name, serviceNam
 	if err := g.CreateTargetPool(pool, region); err != nil && !isHTTPErrorCode(err, http.StatusConflict) {
 		return err
 	}
+	metaapi.SetStatusCondition(conditions, NewTargetPoolCondition(name))
 	return nil
 }
 
@@ -1008,7 +1026,7 @@ func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports [
 	return true, false, nil
 }
 
-func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAddress, region, clusterID string, hosts []*gceInstance, hcName string, hcPort int32, isNodesHealthCheck bool) error {
+func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAddress, region, clusterID string, hosts []*gceInstance, hcName string, hcPort int32, isNodesHealthCheck bool, conditions *[]metav1.Condition) error {
 	// Prepare the firewall params for creating / checking.
 	desc := fmt.Sprintf(`{"kubernetes.io/cluster-id":"%s"}`, clusterID)
 	if !isNodesHealthCheck {
@@ -1027,6 +1045,7 @@ func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAd
 		if err := g.createFirewall(svc, fwName, desc, ipAddress, sourceRanges, ports, hosts); err != nil {
 			return err
 		}
+		metaapi.SetStatusCondition(conditions, NewFirewallHealthCheckCondition(fwName))
 		klog.Infof("Created firewall %v for health checks.", fwName)
 		return nil
 	}
