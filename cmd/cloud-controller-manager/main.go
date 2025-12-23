@@ -67,6 +67,11 @@ var enableDiscretePortForwarding bool
 // LoadBalancerClass
 var enableRBSDefaultForL4NetLB bool
 
+// enableL4LBAnnotations is bound to a command-line flag. It enables
+// the controller to write annotations related to the provisioned resources
+// for L4 Load Balancers services
+var enableL4LBAnnotations bool
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
@@ -85,6 +90,7 @@ func main() {
 	cloudProviderFS.BoolVar(&enableMultiProject, "enable-multi-project", false, "Enables project selection from Node providerID for GCE API calls. CAUTION: Only enable if Node providerID is configured by a trusted source.")
 	cloudProviderFS.BoolVar(&enableDiscretePortForwarding, "enable-discrete-port-forwarding", false, "Enables forwarding of individual ports instead of port ranges for GCE external load balancers.")
 	cloudProviderFS.BoolVar(&enableRBSDefaultForL4NetLB, "enable-rbs-default-l4-netlb", false, "Enables RBS defaulting for GCE L4 NetLB")
+	cloudProviderFS.BoolVar(&enableL4LBAnnotations, "enable-l4-lb-annotations", false, "Enables Annotations for GCE L4 LB Services")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
@@ -165,11 +171,21 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 	if enableRBSDefaultForL4NetLB {
 		gceCloud, ok := (cloud).(*gce.Cloud)
 		if !ok {
-			// Fail-fast: If enableRBSDefaultForGCEL4NetLB is set, the cloud
+			// Fail-fast: If enableRBSDefaultForL4NetLB is set, the cloud
 			// provider MUST be GCE.
 			klog.Fatalf("enable-rbs-default-l4-netlb requires GCE cloud provider, but got %T", cloud)
 		}
 		gceCloud.SetEnableRBSDefaultForL4NetLB(true)
+	}
+
+	if enableL4LBAnnotations {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			// Fail-fast: If enableL4LBAnnotations is set, the cloud
+			// provider MUST be GCE.
+			klog.Fatalf("enable-l4-lb-annotations requires GCE cloud provider, but got %T", cloud)
+		}
+		gceCloud.SetEnableL4LBAnnotations(true)
 	}
 
 	return cloud

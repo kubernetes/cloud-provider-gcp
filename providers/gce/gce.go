@@ -209,6 +209,9 @@ type Cloud struct {
 
 	// enableRBSDefaultForL4NetLB disable Service controller from picking up services by default
 	enableRBSDefaultForL4NetLB bool
+
+	// enableL4LBAnnotations enable annotations related to provisioned resources in GCE
+	enableL4LBAnnotations bool
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -868,6 +871,10 @@ func (g *Cloud) SetEnableDiscretePortForwarding(enabled bool) {
 
 func (g *Cloud) SetEnableRBSDefaultForL4NetLB(enabled bool) {
 	g.enableRBSDefaultForL4NetLB = enabled
+}
+
+func (g *Cloud) SetEnableL4LBAnnotations(enabled bool) {
+	g.enableL4LBAnnotations = enabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.
