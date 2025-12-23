@@ -16,6 +16,14 @@ updates:
   - 'area/dependency'
   - 'release-note-none'
   - 'ok-to-test'
+- package-ecosystem: docker
+  directory: /deploy/packages/default
+  schedule:
+    interval: weekly
+  labels:
+  - 'area/dependency'
+  - 'release-note-none'
+  - 'ok-to-test'
 - package-ecosystem: gomod
   directory: /providers
   schedule:
