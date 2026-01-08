@@ -17,8 +17,13 @@
 # This script deploys a Kubernetes cluster using kops with configurable version targets.
 # Modes:
 #   lkg-k8s-local-gcp: LKG K8s version + Local CCM build
-#   latest-k8s-lkg-gcp: Latest Stable K8s + Stock/LKG CCM (Kops default)
+#   latest-k8s-lkg-gcp: Latest Stable K8s + Stock/LKG CCM (Kops default) (Note: This requires kops to support the latest K8s version; kops releases may lag behind upstream)
 #   stock: Stock Kops behavior (Kops default K8s + Kops default CCM)
+#
+# Cluster Lifecycle:
+#   By default (DELETE_CLUSTER=true), the cluster is deleted if this script fails or is interrupted.
+#   On success, the cluster is PRESERVED (not deleted) to allow for testing/debugging.
+#   Set DELETE_CLUSTER=false to preserve the cluster even on failure.
 
 set -o errexit
 set -o nounset
@@ -34,7 +39,7 @@ usage() {
   echo "Environment variables:"
   echo "  GCP_PROJECT       (Required) GCP Project ID"
   echo "  CLUSTER_NAME      (Required) Cluster name (e.g. my-cluster.k8s.local)"
-  echo "  DELETE_CLUSTER    (Optional) Set to 'false' to keep the cluster running (default: true)"
+  echo "  DELETE_CLUSTER    (Optional) Default 'true': delete on failure, keep on success. Set 'false' to always keep."
   echo "  KOPS_STATE_STORE  (Optional) GCS bucket for kops state"
   echo "  GCP_LOCATION      (Optional) Region (default: us-central1)"
   echo "  ZONES             (Optional) Zones (default: us-central1-a)"
@@ -116,10 +121,12 @@ K8S_VERSION_ARG=""
 
 case "${MODE}" in
   lkg-k8s-local-gcp)
+    # Fetch LKG version from file
     LKG_FILE="${REPO_ROOT}/KUBERNETES_LKG"
     if [[ ! -f "${LKG_FILE}" ]]; then
-      echo "Error: ${LKG_FILE} not found!"
-      exit 1
+        echo "ERROR: LKG file not found at ${LKG_FILE}"
+        echo "Please run tools/update-lkg.sh to generate it."
+        exit 1
     fi
     K8S_VERSION=$(cat "${LKG_FILE}")
     echo "Using LKG K8s Version: ${K8S_VERSION}"
@@ -171,6 +178,10 @@ if [[ "${BUILD_LOCAL_CCM}" == "true" ]]; then
     mkdir -p "${WORKDIR}"
     cp "${REPO_ROOT}/deploy/packages/default/manifest.yaml" "${WORKDIR}/cloud-provider-gcp.yaml"
     sed -i -e "s@k8scloudprovidergcp/cloud-controller-manager:latest@${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}@g" "${WORKDIR}/cloud-provider-gcp.yaml"
+
+    # Inject CCM args
+    # We replace "args: [] ..." with the actual list of arguments required for CCM to run.
+    sed -i -e "s|args: \[\] .*|args:\n          - --cloud-provider=gcp\n          - --leader-elect=true\n          - --use-service-account-credentials\n          - --allocate-node-cidrs=true\n          - --configure-cloud-routes=true\n          - --cluster-name=${CLUSTER_NAME}|" "${WORKDIR}/cloud-provider-gcp.yaml"
     
     ADD_MANIFEST_ARG="--add=${WORKDIR}/cloud-provider-gcp.yaml"
     
@@ -205,33 +216,11 @@ kops create cluster \
 kops update cluster "${CLUSTER_NAME}" --yes
 
 echo "Cluster creation initiated. Waiting for readiness..."
-# We can optionally wait here, but kops update returns before cluster is fully healthy usually.
-# kops validate cluster could be used.
+# Validate the cluster and wait for up to 15 minutes for it to become ready
+kops validate cluster --name "${CLUSTER_NAME}" --wait 15m
 
 if [[ "${DELETE_CLUSTER}" == "true" ]]; then
-    # Prevent trap from running immediately if we want to hold it? 
-    # Actually trap runs on EXIT. If we want to keep it effectively for the test duration we usually wait or run tests.
-    # For now, this script just creates it.
-    # If DELETE_CLUSTER is true, we should probably wait a bit or provide a way to pause?
-    # kops_local_ccm.sh has:
-    #   if [[ "${DELETE_CLUSTER:-}" == "true" ]]; then
-    #     # Don't delete again in trap
-    #     DELETE_CLUSTER=false
-    #   fi
-    # Wait, kops_local_ccm.sh's trap logic is:
-    # function cleanup { if DELETE_CLUSTER==true ... }
-    # And at the end it sets DELETE_CLUSTER=false.
-    # This implies kops_local_ccm.sh is INTENDED to keep the cluster running if successful?
-    # User said "The script needs to support...", implying it's a deployment script.
-    # I will stick to the same pattern: delete on error, but if successful, maybe keep it?
-    # Or maybe it just creates it and exits?
-    # "kops_local_ccm.sh" ends with:
-    # if [[ "${DELETE_CLUSTER:-}" == "true" ]]; then
-    #   DELETE_CLUSTER=false
-    # fi
-    # This means if it reaches the end successfully, it disables the trap deletion.
-    # So the default behavior is "Delete on Failure, Keep on Success" (if DELETE_CLUSTER starts as true).
-    
-    # Let's match that behavior.
+    # Success! Disable the cleanup trap so the cluster persists.
+    # The trap only deletes the cluster if DELETE_CLUSTER is still true (meaning script failed or was interrupted).
     DELETE_CLUSTER="false"
 fi
