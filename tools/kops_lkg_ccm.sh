@@ -107,10 +107,15 @@ fi
 export KUBE_SSH_PUBLIC_KEY_PATH="${SSH_PRIVATE_KEY_PATH}.pub"
 
 # Cleanup trap
+# Cleanup trap
 function cleanup {
   if [[ "${DELETE_CLUSTER}" == "true" ]]; then
       echo "Deleting cluster..."
       kops delete cluster --name "${CLUSTER_NAME}" --yes || echo "kops delete cluster failed"
+  fi
+  # Clean up temp manifest dir if it exists
+  if [[ -n "${WORKDIR:-}" && -d "${WORKDIR}" ]]; then
+      rm -rf "${WORKDIR}"
   fi
 }
 trap cleanup EXIT
@@ -192,11 +197,15 @@ fi
 # Setup admin access
 ADMIN_ACCESS="${ADMIN_ACCESS:-0.0.0.0/0}"
 
+# API LoadBalancer Type
+API_LB_TYPE="${API_LB_TYPE:-public}"
+
 # Create Cluster
 echo "Creating cluster with:"
 echo "  Mode: ${MODE}"
 echo "  Version Arg: ${K8S_VERSION_ARG}"
 echo "  Manifest: ${ADD_MANIFEST_ARG}"
+echo "  API LoadBalancer Type: ${API_LB_TYPE}"
 
 kops create cluster \
   --name "${CLUSTER_NAME}" \
@@ -211,7 +220,16 @@ kops create cluster \
   --gce-service-account="default" \
   --ssh-public-key="${KUBE_SSH_PUBLIC_KEY_PATH}" \
   --admin-access="${ADMIN_ACCESS}" \
-  ${ADD_MANIFEST_ARG}
+  --api-loadbalancer-type="${API_LB_TYPE}" \
+  ${ADD_MANIFEST_ARG} || echo "Cluster creation failed (or cluster already exists). Checking status..."
+
+# Check if cluster exists to handle idempotency (or if previous command failed but cluster exists)
+if kops get cluster --name "${CLUSTER_NAME}" >/dev/null 2>&1; then
+    echo "Cluster ${CLUSTER_NAME} exists. Proceeding to update/validate."
+else
+    echo "Cluster ${CLUSTER_NAME} does not exist and creation failed."
+    exit 1
+fi
 
 kops update cluster "${CLUSTER_NAME}" --yes
 
