@@ -333,6 +333,7 @@ func newGCECloud(config io.Reader) (gceCloud *Cloud, err error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return CreateGCECloud(cloudConfig)
 }
 
@@ -343,6 +344,33 @@ func readConfig(reader io.Reader) (*ConfigFile, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// CreateGCECloudFromReader reads a gce.conf-style config from the provided
+// reader, generates a CloudConfig and returns a fully initialized *Cloud.
+// This is a thin exported wrapper around the package-local helpers so other
+// packages can create scoped clouds without duplicating parsing logic.
+func CreateGCECloudFromReader(reader io.Reader) (*Cloud, error) {
+	if reader == nil {
+		// No reader -> generate default CloudConfig (nil ConfigFile).
+		cloudCfg, err := generateCloudConfig(nil)
+		if err != nil {
+			return nil, err
+		}
+		return CreateGCECloud(cloudCfg)
+	}
+
+	cfg, err := readConfig(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	cloudCfg, err := generateCloudConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateGCECloud(cloudCfg)
 }
 
 func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err error) {
@@ -458,7 +486,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 
 	// Create a user-agent header append string to supply to the Google API
 	// clients, to identify Kubernetes as the origin of the GCP API calls.
-	userAgent := fmt.Sprintf("Kubernetes/%s (%s %s)", version, runtime.GOOS, runtime.GOARCH)
+	userAgent := fmt.Sprintf("Kubernetes/%s (%s %s)", version, runtime.GOOS, runtime.GOARCH) // e.g. "Kubernetes/v1.18.0 (linux amd64)"
 
 	// Use ProjectID for NetworkProjectID, if it wasn't explicitly set.
 	if config.NetworkProjectID == "" {
