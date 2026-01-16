@@ -1361,7 +1361,6 @@ k8s.io/client-go/rest/fake
 k8s.io/client-go/rest/watch
 k8s.io/client-go/restmapper
 k8s.io/client-go/testing
-k8s.io/client-go/third_party/forked/golang/template
 k8s.io/client-go/tools/auth
 k8s.io/client-go/tools/cache
 k8s.io/client-go/tools/cache/synctrack
@@ -1385,7 +1384,6 @@ k8s.io/client-go/util/connrotation
 k8s.io/client-go/util/consistencydetector
 k8s.io/client-go/util/flowcontrol
 k8s.io/client-go/util/homedir
-k8s.io/client-go/util/jsonpath
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
@@ -1555,9 +1553,6 @@ k8s.io/kubelet/pkg/apis/credentialprovider/v1
 ## explicit; go 1.24.0
 k8s.io/kubernetes/cmd/kube-controller-manager/names
 k8s.io/kubernetes/pkg/api/legacyscheme
-k8s.io/kubernetes/pkg/apis/certificates
-k8s.io/kubernetes/pkg/apis/certificates/v1
-k8s.io/kubernetes/pkg/apis/core
 # k8s.io/metrics v0.34.2 => k8s.io/metrics v0.34.2
 ## explicit; go 1.24.0
 k8s.io/metrics/pkg/apis/metrics
