@@ -1,7 +1,7 @@
 # Release Instructions
 
 ## Version Schema
-Cloud controller manager(CCM) has unique image builds for every Kubernetes minor 
+Cloud controller manager (CCM) has unique image builds for every Kubernetes minor 
 version.
 
 **Format**: K8S_MINOR.K8S_PATCH.CCM_PATCH (e.g. 31.4.0)
@@ -19,7 +19,7 @@ CCM releases are made on release branches. The repository maintains a dedicated 
 ## Update the Library Version with k/k Release
 Update library versions in each release branch, including master, corresponding to the Kubernetes minor versions under maintenance (a total of three Kubernetes minor versions).
 
-1. Set common variable. Many of the following commands expect release-specific variables to be set. Set them before continuing, and set them again when resuming.
+1. Set common variables. Many of the following commands expect release-specific variables to be set. Set them before continuing, and set them again when resuming.
 ```bash
 MINOR_OLD=31 PATCH_OLD=0 MINOR=32 PATCH=0 # Set appropriately for the release for kubernetes versions
 VERSION_FILES=(
@@ -53,11 +53,12 @@ done
 export KUBE_VERSION=v1.$MINOR.$PATCH
 tools/sha256_generator.sh
 ```
-### Update `/cluster` Directory
-Update `/cluster` directory if needed. Script under `/cluster` is used to provision a k8s cluster on GCE using [kube-up.sh](https://github.com/kubernetes/cloud-provider-gcp/blob/master/cluster/kube-up.sh)
 
-1. Rebase /cluster directory with the /cluster directory from kubernetes/kubernetes at desired Kubernetes release version. (kubernetes/kubernetes/cluster/images should not be pulled in cloud-provide-gcp.)
-1. Selectively re-applies direct contributions made to the /cluster directory of cloud-provider-gcp that are clobbered by the rebase of the /cluster directory. (see reference in the end of this documentation)
+### Update `/cluster` Directory
+Update the `/cluster` directory if needed. A script under `/cluster` is used to provision a k8s cluster on GCE,  [kube-up.sh](https://github.com/kubernetes/cloud-provider-gcp/blob/master/cluster/kube-up.sh)
+
+1. Rebase the /cluster directory with the /cluster directory from kubernetes/kubernetes at desired Kubernetes release version. (kubernetes/kubernetes/cluster/images should not be pulled in cloud-provide-gcp.)
+1. Selectively re-apply direct contributions made to the /cluster directory of cloud-provider-gcp that are clobbered by the rebase of the /cluster directory (see reference in the end of this documentation).
 1. Remove any changes regarding OWNERS files.
 
 **_Note_**: Use `tools/bump_cluster.sh` to automate part of this process.
@@ -70,12 +71,12 @@ Update `/cluster` directory if needed. Script under `/cluster` is used to provis
 
 **_Note_**: if kubetest2 not working as expected, try with:
 
-    ```
-    go get sigs.k8s.io/kubetest2@latest
-    go get sigs.k8s.io/kubetest2/kubetest2-gce@latest;
-    go get sigs.k8s.io/kubetest2/kubetest2-tester-exec@latest;
-    go get sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
-    ```
+```bash
+go get sigs.k8s.io/kubetest2@latest
+go get sigs.k8s.io/kubetest2/kubetest2-gce@latest;
+go get sigs.k8s.io/kubetest2/kubetest2-tester-exec@latest;
+go get sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
+```
 
 ## Create Release Branch
 This is only necessary for CCM releases corresponding to a Kubernetes minor version release. Create a branch from the latest commit on master with the dependency updates mentioned above.
@@ -95,7 +96,7 @@ The major version X corresponds to the Kubernetes minor version. The minor
 version Y corresponds to the Kubernetes patch version and the patch version Z
 corresponds to the CCM patch version.
 
- **_NOTE:_**  Only members in the OWNERS file have the permission to push a tag.
+**_NOTE:_**  Only members in the OWNERS file have the permission to push a tag.
 
 ## Publish OSS Images
 [Postsubmit](https://github.com/kubernetes/test-infra/blob/a96c5d60b64b09b5b5f7817745477d0af3122aa1/config/jobs/image-pushing/k8s-staging-cloud-provider-gcp.yaml#L62-L91) job automatically pushes OSS images  via [cloud build](https://github.com/kubernetes/cloud-provider-gcp/blob/master/cloudbuild.yaml).
@@ -104,18 +105,18 @@ shows up in the bucket.
 
 
 ### Promote Image
-Once the image is pushed to the above staging bucket, create a PR in the [kubernetes/k8s.io](https://github.com/kubernetes/k8s.io) repository to promote the image to the official Kubernetes registry(https://registry.k8s.io). It is recommended to use the [kpromo](https://github.com/kubernetes-sigs/promo-tools/blob/main/docs/promotion-pull-requests.md#promoting-images) tool to create the PR automatically. See example PR [here](https://github.com/kubernetes/k8s.io/pull/7848).
+Once the image is pushed to the above staging bucket, create a PR in the [kubernetes/k8s.io](https://github.com/kubernetes/k8s.io) repository to promote the image to the official Kubernetes [registry](https://registry.k8s.io). It is recommended to use the [kpromo](https://github.com/kubernetes-sigs/promo-tools/blob/main/docs/promotion-pull-requests.md#promoting-images) tool to create the PR automatically. See example PR [here](https://github.com/kubernetes/k8s.io/pull/7848).
 
 To verify the image is uploaded to the Kubernetes registry, run:
-```
+```bash
 docker pull registry.k8s.io/cloud-provider-gcp/cloud-controller-manager:v$K8S_MINOR.$K8S_PATCH.$CCM_PATCH
 ```
+
 ### Update GCE Job Version
 Update the GCE job [version](https://github.com/kubernetes/kubernetes/blob/1b4c3483cea4aae55d2eb815a0ff855b587c9a67/cluster/gce/manifests/cloud-controller-manager.manifest#L26) in the `kubernetes/kubernetes` repository with the latest CCM image version. This update is used to run the Kubernetes E2E tests.
 
 ## GKE release
 Follow instructions at go/gke-ccm-releasing.
-
 
 ## Reference of cloud-provider-gcp specific changes in /cluster directory
 
