@@ -94,7 +94,7 @@ func UpdateResource(r rest.Updater, scope *RequestScope, admit admission.Interfa
 			scope.err(err, w, req)
 			return
 		}
-		options.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("UpdateOptions"))
+		options.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("UpdateOptions"))
 
 		s, err := negotiation.NegotiateInputSerializer(req, false, scope.Serializer)
 		if err != nil {
@@ -291,6 +291,6 @@ func updateToCreateOptions(uo *metav1.UpdateOptions) *metav1.CreateOptions {
 		FieldManager:    uo.FieldManager,
 		FieldValidation: uo.FieldValidation,
 	}
-	co.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("CreateOptions"))
+	co.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("CreateOptions"))
 	return co
 }

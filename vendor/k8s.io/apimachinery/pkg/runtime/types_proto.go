@@ -61,7 +61,7 @@ func (m *Unknown) MarshalToWriter(w io.Writer, rawSize int, writeRaw func(io.Wri
 			return size, err
 		}
 
-		typeMetaBytes, err := m.Marshal()
+		typeMetaBytes, err := m.TypeMeta.Marshal()
 		if err != nil {
 			return size, err
 		}
@@ -196,7 +196,7 @@ func (m *Unknown) NestedMarshalTo(data []byte, b ProtobufMarshaller, size uint64
 		i--
 		data[i] = rawTag
 	}
-	n2, err := m.MarshalToSizedBuffer(data[:i])
+	n2, err := m.TypeMeta.MarshalToSizedBuffer(data[:i])
 	if err != nil {
 		return 0, err
 	}

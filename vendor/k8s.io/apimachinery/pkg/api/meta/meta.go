@@ -155,7 +155,7 @@ func TypeAccessor(obj interface{}) (Type, error) {
 	}
 
 	typeMeta := v.FieldByName("TypeMeta")
-	if !IsValid() {
+	if !typeMeta.IsValid() {
 		return nil, fmt.Errorf("struct %v lacks embedded TypeMeta type", t)
 	}
 	a := &genericAccessor{}

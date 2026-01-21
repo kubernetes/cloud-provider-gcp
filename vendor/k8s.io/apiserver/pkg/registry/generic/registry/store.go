@@ -829,7 +829,7 @@ func newCreateOptionsFromUpdateOptions(in *metav1.UpdateOptions) *metav1.CreateO
 		FieldManager:    in.FieldManager,
 		FieldValidation: in.FieldValidation,
 	}
-	co.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("CreateOptions"))
+	co.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("CreateOptions"))
 	return co
 }
 
@@ -839,7 +839,7 @@ func newDeleteOptionsFromUpdateOptions(in *metav1.UpdateOptions) *metav1.DeleteO
 	do := &metav1.DeleteOptions{
 		DryRun: in.DryRun,
 	}
-	do.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("DeleteOptions"))
+	do.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("DeleteOptions"))
 	return do
 }
 

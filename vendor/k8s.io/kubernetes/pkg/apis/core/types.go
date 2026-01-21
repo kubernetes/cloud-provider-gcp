@@ -6181,7 +6181,7 @@ type Event struct {
 	// +optional
 	Source EventSource
 
-	// The time at which the event was first recorded. (Time of server receipt is in )
+	// The time at which the event was first recorded. (Time of server receipt is in TypeMeta.)
 	// +optional
 	FirstTimestamp metav1.Time
 

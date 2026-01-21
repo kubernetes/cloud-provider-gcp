@@ -9,19 +9,19 @@ package gutil
 
 import (
 	"io"
-	"os"
+	"io/ioutil"
 )
 
 func NopCloser(r io.Reader) io.ReadCloser {
-	return io.NopCloser(r)
+	return ioutil.NopCloser(r)
 }
 
 func ReadAll(r io.Reader) ([]byte, error) {
-	return io.ReadAll(r)
+	return ioutil.ReadAll(r)
 }
 
 func ReadDir(dirname string) ([]string, error) {
-	files, err := io.ReadDir(dirname)
+	files, err := ioutil.ReadDir(dirname)
 	if err != nil {
 		return nil, err
 	}
@@ -35,13 +35,13 @@ func ReadDir(dirname string) ([]string, error) {
 }
 
 func ReadFile(filename string) ([]byte, error) {
-	return io.ReadFile(filename)
+	return ioutil.ReadFile(filename)
 }
 
 func MkdirTemp(dir, pattern string) (string, error) {
-	return os.MkdirTemp(dir, pattern)
+	return ioutil.TempDir(dir, pattern)
 }
 
 func WriteFile(filename string, data []byte) error {
-	return os.WriteFile(filename, data, 0644)
+	return ioutil.WriteFile(filename, data, 0644)
 }

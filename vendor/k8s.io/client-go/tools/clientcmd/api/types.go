@@ -29,12 +29,12 @@ import (
 // IMPORTANT if you add fields to this struct, please update IsConfigEmpty()
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type Config struct {
-	// Legacy field from pkg/api/types.go
+	// Legacy field from pkg/api/types.go TypeMeta.
 	// TODO(jlowdermilk): remove this after eliminating downstream dependencies.
 	// +k8s:conversion-gen=false
 	// +optional
 	Kind string `json:"kind,omitempty"`
-	// Legacy field from pkg/api/types.go
+	// Legacy field from pkg/api/types.go TypeMeta.
 	// TODO(jlowdermilk): remove this after eliminating downstream dependencies.
 	// +k8s:conversion-gen=false
 	// +optional

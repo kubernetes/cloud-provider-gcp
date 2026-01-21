@@ -7461,7 +7461,7 @@ type Event struct {
 	// +optional
 	Source EventSource `json:"source,omitempty" protobuf:"bytes,5,opt,name=source"`
 
-	// The time at which the event was first recorded. (Time of server receipt is in )
+	// The time at which the event was first recorded. (Time of server receipt is in TypeMeta.)
 	// +optional
 	FirstTimestamp metav1.Time `json:"firstTimestamp,omitempty" protobuf:"bytes,6,opt,name=firstTimestamp"`
 

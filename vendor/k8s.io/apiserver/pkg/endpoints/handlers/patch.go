@@ -126,7 +126,7 @@ func PatchResource(r rest.Patcher, scope *RequestScope, admit admission.Interfac
 			scope.err(err, w, req)
 			return
 		}
-		options.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("PatchOptions"))
+		options.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("PatchOptions"))
 
 		admit = admission.WithAudit(admit)
 
@@ -816,7 +816,7 @@ func patchToUpdateOptions(po *metav1.PatchOptions) *metav1.UpdateOptions {
 		FieldManager:    po.FieldManager,
 		FieldValidation: po.FieldValidation,
 	}
-	uo.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("UpdateOptions"))
+	uo.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("UpdateOptions"))
 	return uo
 }
 
@@ -830,6 +830,6 @@ func patchToCreateOptions(po *metav1.PatchOptions) *metav1.CreateOptions {
 		FieldManager:    po.FieldManager,
 		FieldValidation: po.FieldValidation,
 	}
-	co.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("CreateOptions"))
+	co.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("CreateOptions"))
 	return co
 }
