@@ -40,7 +40,6 @@ var (
 	"extra_args": "%s"
 }
 `
-	invalidCacheFile   = "invalid_cache_file"
 	fakeCurrentContext = "gke_user-gke-dev_us-east1-b_cluster-1"
 	cachedAccessToken  = "ya29.cached_token"
 

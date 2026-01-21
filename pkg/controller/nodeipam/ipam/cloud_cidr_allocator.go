@@ -327,11 +327,11 @@ func (ca *cloudCIDRAllocator) AllocateOrOccupyCIDR(node *v1.Node) error {
 }
 
 func (ca *cloudCIDRAllocator) runWorker(ctx context.Context) {
-	for ca.processNextItem(ctx) {
+	for ca.processNextItem() {
 	}
 }
 
-func (ca *cloudCIDRAllocator) processNextItem(ctx context.Context) bool {
+func (ca *cloudCIDRAllocator) processNextItem() bool {
 	key, quit := ca.queue.Get()
 	if quit {
 		return false
