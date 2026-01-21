@@ -131,7 +131,7 @@ func DeleteResource(r rest.GracefulDeleter, allowsOptions bool, scope *RequestSc
 			scope.err(err, w, req)
 			return
 		}
-		options.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("DeleteOptions"))
+		options.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("DeleteOptions"))
 
 		userInfo, _ := request.UserFrom(ctx)
 		staticAdmissionAttrs := admission.NewAttributesRecord(nil, nil, scope.Kind, namespace, name, scope.Resource, scope.Subresource, admission.Delete, options, dryrun.IsDryRun(options.DryRun), userInfo)
@@ -316,7 +316,7 @@ func DeleteCollection(r rest.CollectionDeleter, checkBody bool, scope *RequestSc
 			}
 		}
 
-		options.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("DeleteOptions"))
+		options.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("DeleteOptions"))
 
 		admit = admission.WithAudit(admit)
 		userInfo, _ := request.UserFrom(ctx)

@@ -417,8 +417,8 @@ func (t *tracker) Add(obj runtime.Object) error {
 		return err
 	}
 
-	if partial, ok := obj.(*metav1.PartialObjectMetadata); ok && len(partial.TypeMeta.APIVersion) > 0 {
-		gvks = []schema.GroupVersionKind{partial.TypeMeta.GroupVersionKind()}
+	if partial, ok := obj.(*metav1.PartialObjectMetadata); ok && len(partial.APIVersion) > 0 {
+		gvks = []schema.GroupVersionKind{partial.GroupVersionKind()}
 	}
 
 	if len(gvks) == 0 {

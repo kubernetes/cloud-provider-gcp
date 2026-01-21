@@ -111,7 +111,7 @@ func createHandler(r rest.NamedCreater, scope *RequestScope, admit admission.Int
 			scope.err(err, w, req)
 			return
 		}
-		options.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("CreateOptions"))
+		options.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("CreateOptions"))
 
 		defaultGVK := scope.Kind
 		original := r.New()

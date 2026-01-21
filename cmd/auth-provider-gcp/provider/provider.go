@@ -120,8 +120,8 @@ func GetResponse(image string, provider credentialconfig.DockerConfigProvider) (
 		return nil, err
 	}
 	response.CacheDuration = &metav1.Duration{Duration: cacheDuration}
-	response.TypeMeta.Kind = apiKind
-	response.TypeMeta.APIVersion = apiVersion
+	response.Kind = apiKind
+	response.APIVersion = apiVersion
 	cacheKey, err := getCacheKeyType()
 	if err != nil {
 		return nil, err

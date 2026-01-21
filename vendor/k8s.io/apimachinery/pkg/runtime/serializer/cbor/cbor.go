@@ -45,7 +45,7 @@ type defaultMetaFactory struct{}
 func (mf *defaultMetaFactory) Interpret(data []byte) (*schema.GroupVersionKind, error) {
 	var tm metav1.TypeMeta
 	// The input is expected to include additional map keys besides apiVersion and kind, so use
-	// lax mode for decoding into TypeMeta.
+	// lax mode for decoding into
 	if err := modes.DecodeLax.Unmarshal(data, &tm); err != nil {
 		return nil, fmt.Errorf("unable to determine group/version/kind: %w", err)
 	}
