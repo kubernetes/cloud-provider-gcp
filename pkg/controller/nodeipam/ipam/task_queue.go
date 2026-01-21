@@ -96,7 +96,7 @@ func NewTaskQueue(name, resource string, numWorkers int, keyFn func(obj interfac
 	rl := workqueue.DefaultTypedControllerRateLimiter[string]()
 	var queue workqueue.TypedRateLimitingInterface[string]
 	if name == "" {
-		queue = workqueue.NewTypedRateLimitingQueue[string](rl)
+		queue = workqueue.NewTypedRateLimitingQueue(rl)
 	} else {
 		queue = workqueue.NewTypedRateLimitingQueueWithConfig(rl, workqueue.TypedRateLimitingQueueConfig[string]{
 			Name: name,
