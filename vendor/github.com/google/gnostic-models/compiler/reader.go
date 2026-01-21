@@ -16,7 +16,6 @@ package compiler
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -168,7 +167,7 @@ func fetchFile(fileurl string) ([]byte, error) {
 	if response.StatusCode != 200 {
 		return nil, fmt.Errorf("Error downloading %s: %s", fileurl, response.Status)
 	}
-	bytes, err = ioutil.ReadAll(response.Body)
+	bytes, err = io.ReadAll(response.Body)
 	if fileCacheEnable && err == nil {
 		fileCache[fileurl] = bytes
 	}
@@ -194,7 +193,7 @@ func readBytesForFile(filename string) ([]byte, error) {
 		return bytes, nil
 	}
 	// no, it's a local filename
-	bytes, err := ioutil.ReadFile(filename)
+	bytes, err := io.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}

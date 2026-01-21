@@ -4,7 +4,6 @@ package atomic
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -22,7 +21,7 @@ func WriteFile(filename string, r io.Reader) (err error) {
 		dir = "."
 	}
 
-	f, err := ioutil.TempFile(dir, file)
+	f, err := os.CreateTemp(dir, file)
 	if err != nil {
 		return fmt.Errorf("cannot create temp file: %v", err)
 	}

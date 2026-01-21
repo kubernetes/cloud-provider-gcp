@@ -15,7 +15,6 @@ import (
 	"go/token"
 	"go/types"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -1083,7 +1082,7 @@ func (e *ProcessEnv) buildContext() (*build.Context, error) {
 	// HACK: setting any of the Context I/O hooks prevents Import from invoking
 	// 'go list', regardless of GO111MODULE. This is undocumented, but it's
 	// unlikely to change before GOPATH support is removed.
-	ctx.ReadDir = ioutil.ReadDir
+	ctx.ReadDir = io.ReadDir
 
 	return &ctx, nil
 }

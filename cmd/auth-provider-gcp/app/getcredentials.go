@@ -19,7 +19,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 
@@ -112,7 +112,7 @@ func getCredentials(authFlow string) error {
 	if err != nil {
 		return err
 	}
-	unparsedRequest, err := ioutil.ReadAll(os.Stdin)
+	unparsedRequest, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return err
 	}
