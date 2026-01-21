@@ -409,13 +409,13 @@ func (c Config) webhookVersions() ([]string, error) {
 	if len(c.WebhookVersions) == 0 {
 		return []string{defaultWebhookVersion}, nil
 	}
-	supportedWebhookVersions := sets.NewString(supportedWebhookVersions()...)
+	supportedWebhookVersions := sets.New(supportedWebhookVersions()...)
 	for _, version := range c.WebhookVersions {
 		if !supportedWebhookVersions.Has(version) {
 			return nil, fmt.Errorf("unsupported webhook version: %s", version)
 		}
 	}
-	return sets.NewString(c.WebhookVersions...).UnsortedList(), nil
+	return sets.New(c.WebhookVersions...).UnsortedList(), nil
 }
 
 // +controllertools:marker:generateHelp

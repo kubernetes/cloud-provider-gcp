@@ -121,7 +121,7 @@ func (o *GenericControllerManagerConfigurationOptions) Validate(allControllers [
 		errs = append(errs, fmt.Errorf(`resourceLock value must be "leases"`))
 	}
 
-	allControllersSet := sets.NewString(allControllers...)
+	allControllersSet := sets.New(allControllers...)
 	for _, initialName := range o.Controllers {
 		if initialName == "*" {
 			continue

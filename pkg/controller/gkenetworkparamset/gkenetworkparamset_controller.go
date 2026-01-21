@@ -72,7 +72,7 @@ type Controller struct {
 	networkInformer          networkinformer.NetworkInformer
 	networkClientset         networkclientset.Interface
 	gceCloud                 *gce.Cloud
-	queue                    workqueue.RateLimitingInterface
+	queue                    workqueue.TypedRateLimitingInterface[any]
 	networkInformerFactory   networkinformers.SharedInformerFactory
 
 	nodeLister                corelisters.NodeLister
@@ -99,7 +99,7 @@ func NewGKENetworkParamSetController(
 		gkeNetworkParamsInformer: gkeNetworkParamsInformer,
 		networkInformer:          networkInformer,
 		gceCloud:                 gceCloud,
-		queue:                    workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
+		queue:                    workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[any](), workqueue.TypedRateLimitingQueueConfig[any]{Name: workqueueName}),
 		networkInformerFactory:   networkInformerFactory,
 		nodeLister:               nodeInformer.Lister(),
 		nodeInformerSynced:       nodeInformer.Informer().HasSynced,

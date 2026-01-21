@@ -56,10 +56,10 @@ func (o *WebhookOptions) AddFlags(fs *pflag.FlagSet, allWebhooks, disabledByDefa
 func (o *WebhookOptions) Validate(allWebhooks, disabledByDefaultWebhooks []string) []error {
 	allErrors := []error{}
 
-	allWebhooksSet := sets.NewString(allWebhooks...)
-	toValidate := sets.NewString(o.Webhooks...)
+	allWebhooksSet := sets.New(allWebhooks...)
+	toValidate := sets.New(o.Webhooks...)
 	toValidate.Insert(disabledByDefaultWebhooks...)
-	for _, webhook := range toValidate.List() {
+	for _, webhook := range toValidate.UnsortedList() {
 		if webhook == "*" {
 			continue
 		}

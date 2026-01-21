@@ -507,11 +507,11 @@ func contains(node *v1.Node, nodes []*v1.Node) bool {
 // GetZones returns list of zones for all Nodes stored in FakeNodeHandler
 func GetZones(nodeHandler *FakeNodeHandler) []string {
 	nodes, _ := nodeHandler.List(context.TODO(), metav1.ListOptions{})
-	zones := sets.NewString()
+	zones := sets.Set[string]{}
 	for _, node := range nodes.Items {
 		zones.Insert(utilnode.GetZoneKey(&node))
 	}
-	return zones.List()
+	return zones.UnsortedList()
 }
 
 // CreateZoneID returns a single zoneID for a given region and zone.

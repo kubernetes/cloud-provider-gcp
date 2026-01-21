@@ -2454,8 +2454,8 @@ func TestFirewallObject(t *testing.T) {
 			ret, err := gce.firewallObject(fwName, fwDesc, tc.destinationIP, tc.sourceRanges, tc.svcPorts, nil)
 			require.NoError(t, err)
 			expectedFirewall := tc.expectedFirewall(baseFw)
-			retSrcRanges := sets.NewString(ret.SourceRanges...)
-			expectSrcRanges := sets.NewString(expectedFirewall.SourceRanges...)
+			retSrcRanges := sets.New(ret.SourceRanges...)
+			expectSrcRanges := sets.New(expectedFirewall.SourceRanges...)
 			if !expectSrcRanges.Equal(retSrcRanges) {
 				t.Errorf("expect firewall source ranges to be %v, but got %v", expectSrcRanges, retSrcRanges)
 			}

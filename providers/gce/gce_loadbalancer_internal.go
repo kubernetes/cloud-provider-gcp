@@ -638,12 +638,12 @@ func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []*v1.Node,
 		return "", err
 	}
 
-	kubeNodes := sets.NewString()
+	kubeNodes := sets.Set[string]{}
 	for _, n := range nodes {
 		kubeNodes.Insert(n.Name)
 	}
 
-	emptyZoneNodesNames := sets.NewString()
+	emptyZoneNodesNames := sets.Set[string]{}
 	for _, n := range emptyZoneNodes {
 		emptyZoneNodesNames.Insert(n.Name)
 	}
@@ -656,10 +656,10 @@ func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []*v1.Node,
 	// 250 backend VMs for ILB, this isn't making things worse.
 	if len(kubeNodes) > maxInstancesPerInstanceGroup {
 		klog.Warningf("Limiting number of VMs for InstanceGroup %s to %d", name, maxInstancesPerInstanceGroup)
-		kubeNodes = sets.NewString(kubeNodes.List()[:maxInstancesPerInstanceGroup]...)
+		kubeNodes = sets.New(kubeNodes.UnsortedList()[:maxInstancesPerInstanceGroup]...)
 	}
 
-	gceNodes := sets.NewString()
+	gceNodes := sets.Set[string]{}
 	if ig == nil {
 		klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): creating instance group", name, zone)
 		newIG := &compute.InstanceGroup{Name: name}
@@ -683,8 +683,8 @@ func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []*v1.Node,
 		}
 	}
 
-	removeNodes := gceNodes.Difference(kubeNodes).Difference(emptyZoneNodesNames).List()
-	addNodes := kubeNodes.Difference(gceNodes).List()
+	removeNodes := gceNodes.Difference(kubeNodes).Difference(emptyZoneNodesNames).UnsortedList()
+	addNodes := kubeNodes.Difference(gceNodes).UnsortedList()
 
 	if len(removeNodes) != 0 {
 		klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): removing nodes: %v", name, zone, removeNodes)
@@ -723,7 +723,7 @@ func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]s
 	zonedNodes := splitNodesByZone(nodes)
 	klog.V(2).Infof("ensureInternalInstanceGroups(%v): %d nodes over %d zones in region %v", name, len(nodes), len(zonedNodes), g.region)
 
-	emptyZoneNodesNames := sets.NewString()
+	emptyZoneNodesNames := sets.Set[string]{}
 	for _, n := range zonedNodes[""] {
 		emptyZoneNodesNames.Insert(n.Name)
 	}
@@ -936,11 +936,11 @@ func backendsListEqual(a, b []*compute.Backend) bool {
 		return true
 	}
 
-	aSet := sets.NewString()
+	aSet := sets.Set[string]{}
 	for _, v := range a {
 		aSet.Insert(v.Group)
 	}
-	bSet := sets.NewString()
+	bSet := sets.Set[string]{}
 	for _, v := range b {
 		bSet.Insert(v.Group)
 	}

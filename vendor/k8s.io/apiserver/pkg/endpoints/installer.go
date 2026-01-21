@@ -1157,7 +1157,7 @@ func AddObjectParams(ws *restful.WebService, route *restful.RouteBuilder, obj in
 		return err
 	}
 	st := sv.Type()
-	excludedNameSet := sets.NewString(excludedNames...)
+	excludedNameSet := sets.New(excludedNames...)
 	switch st.Kind() {
 	case reflect.Struct:
 		for i := 0; i < st.NumField(); i++ {

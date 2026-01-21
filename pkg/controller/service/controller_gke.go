@@ -18,7 +18,7 @@ package service
 
 import "k8s.io/apimachinery/pkg/util/sets"
 
-var gkeCCMClasses = sets.NewString(
+var gkeCCMClasses = sets.New(
 	"networking.gke.io/l4-regional-external-legacy",
 	"networking.gke.io/l4-regional-internal-legacy",
 )

@@ -75,7 +75,7 @@ func (agg aggregate) Error() string {
 	if len(agg) == 1 {
 		return agg[0].Error()
 	}
-	seenerrs := sets.NewString()
+	seenerrs := sets.Set[string]{}
 	result := ""
 	agg.visit(func(err error) bool {
 		msg := err.Error()

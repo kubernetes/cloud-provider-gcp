@@ -620,7 +620,7 @@ func (g *Cloud) updateTargetPool(loadBalancerName string, hosts []*gceInstance) 
 	if err != nil {
 		return err
 	}
-	existing := sets.NewString()
+	existing := sets.Set[string]{}
 	for _, instance := range pool.Instances {
 		existing.Insert(hostURLToComparablePath(instance))
 	}

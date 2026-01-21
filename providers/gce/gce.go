@@ -157,19 +157,19 @@ type Cloud struct {
 	secondaryRangeName       string
 	networkProjectID         string
 	onXPN                    bool
-	nodeTags                 []string    // List of tags to use on firewall rules for load balancers
-	lastComputedNodeTags     []string    // List of node tags calculated in GetHostTags()
-	lastKnownNodeNames       sets.String // List of hostnames used to calculate lastComputedHostTags in GetHostTags(names)
-	computeNodeTagLock       sync.Mutex  // Lock for computing and setting node tags
-	nodeInstancePrefix       string      // If non-"", an advisory prefix for all nodes in the cluster
+	nodeTags                 []string         // List of tags to use on firewall rules for load balancers
+	lastComputedNodeTags     []string         // List of node tags calculated in GetHostTags()
+	lastKnownNodeNames       sets.Set[string] // List of hostnames used to calculate lastComputedHostTags in GetHostTags(names)
+	computeNodeTagLock       sync.Mutex       // Lock for computing and setting node tags
+	nodeInstancePrefix       string           // If non-"", an advisory prefix for all nodes in the cluster
 	useMetadataServer        bool
 	operationPollRateLimiter flowcontrol.RateLimiter
 	manager                  diskServiceManager
 	// Lock for access to nodeZones
 	nodeZonesLock sync.Mutex
-	// nodeZones is a mapping from Zone to a sets.String of Node's names in the Zone
+	// nodeZones is a mapping from Zone to a sets.Set[string] of Node's names in the Zone
 	// it is updated by the nodeInformer
-	nodeZones          map[string]sets.String
+	nodeZones          map[string]sets.Set[string]
 	nodeInformerSynced cache.InformerSynced
 	// sharedResourceLock is used to serialize GCE operations that may mutate shared state to
 	// prevent inconsistencies. For example, load balancers manipulation methods will take the
@@ -569,7 +569,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		useMetadataServer:        config.UseMetadataServer,
 		operationPollRateLimiter: operationPollRateLimiter,
 		AlphaFeatureGate:         config.AlphaFeatureGate,
-		nodeZones:                map[string]sets.String{},
+		nodeZones:                map[string]sets.Set[string]{},
 		metricsCollector:         newLoadBalancerMetrics(),
 		projectsBasePath:         getProjectsBasePath(service.BasePath),
 		stackType:                StackType(config.StackType),
@@ -839,7 +839,7 @@ func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
 		newZone := getZone(newNode)
 		if newZone != emptyZone {
 			if g.nodeZones[newZone] == nil {
-				g.nodeZones[newZone] = sets.NewString()
+				g.nodeZones[newZone] = sets.Set[string]{}
 			}
 			g.nodeZones[newZone].Insert(newNode.ObjectMeta.Name)
 			if !slices.Contains(g.managedZones, newZone) {

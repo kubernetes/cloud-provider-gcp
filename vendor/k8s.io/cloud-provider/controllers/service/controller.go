@@ -673,8 +673,8 @@ func portEqualForLB(x, y *v1.ServicePort) bool {
 	return true
 }
 
-func nodeNames(nodes []*v1.Node) sets.String {
-	ret := sets.NewString()
+func nodeNames(nodes []*v1.Node) sets.Set[string] {
+	ret := sets.Set[string]{}
 	for _, node := range nodes {
 		ret.Insert(node.Name)
 	}
@@ -684,10 +684,10 @@ func nodeNames(nodes []*v1.Node) sets.String {
 func loggableNodeNames(nodes []*v1.Node) []string {
 	if len(nodes) > maxNodeNamesToLog {
 		skipped := len(nodes) - maxNodeNamesToLog
-		names := nodeNames(nodes[:maxNodeNamesToLog]).List()
+		names := nodeNames(nodes[:maxNodeNamesToLog]).UnsortedList()
 		return append(names, fmt.Sprintf("<%d more>", skipped))
 	}
-	return nodeNames(nodes).List()
+	return nodeNames(nodes).UnsortedList()
 }
 
 func shouldSyncUpdatedNode(oldNode, newNode *v1.Node) bool {
@@ -712,7 +712,7 @@ func shouldSyncUpdatedNode(oldNode, newNode *v1.Node) bool {
 
 // syncNodes handles updating the hosts pointed to by all load
 // balancers whenever the set of nodes in the cluster changes.
-func (c *Controller) syncNodes(ctx context.Context, workers int) sets.String {
+func (c *Controller) syncNodes(ctx context.Context, workers int) sets.Set[string] {
 	startTime := time.Now()
 	defer func() {
 		latency := time.Since(startTime).Seconds()
@@ -798,11 +798,11 @@ func nodesSufficientlyEqual(oldNodes, newNodes []*v1.Node) bool {
 // updateLoadBalancerHosts updates all existing load balancers so that
 // they will match the latest list of nodes with input number of workers.
 // Returns the list of services that couldn't be updated.
-func (c *Controller) updateLoadBalancerHosts(ctx context.Context, services []*v1.Service, workers int) (servicesToRetry sets.String) {
+func (c *Controller) updateLoadBalancerHosts(ctx context.Context, services []*v1.Service, workers int) (servicesToRetry sets.Set[string]) {
 	klog.V(4).Infof("Running updateLoadBalancerHosts(len(services)==%d, workers==%d)", len(services), workers)
 
 	// lock for servicesToRetry
-	servicesToRetry = sets.NewString()
+	servicesToRetry = sets.Set[string]{}
 	lock := sync.Mutex{}
 
 	doWork := func(piece int) {

@@ -996,8 +996,8 @@ func deletionFinalizersForGarbageCollection(ctx context.Context, e *Store, acces
 		newFinalizers = append(newFinalizers, metav1.FinalizerDeleteDependents)
 	}
 
-	oldFinalizerSet := sets.NewString(accessor.GetFinalizers()...)
-	newFinalizersSet := sets.NewString(newFinalizers...)
+	oldFinalizerSet := sets.New(accessor.GetFinalizers()...)
+	newFinalizersSet := sets.New(newFinalizers...)
 	if oldFinalizerSet.Equal(newFinalizersSet) {
 		return false, accessor.GetFinalizers()
 	}

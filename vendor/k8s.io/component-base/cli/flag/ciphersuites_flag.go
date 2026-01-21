@@ -56,20 +56,20 @@ func InsecureTLSCiphers() map[string]uint16 {
 // InsecureTLSCipherNames returns a list of cipher suite names implemented by crypto/tls
 // which have security issues.
 func InsecureTLSCipherNames() []string {
-	cipherKeys := sets.NewString()
+	cipherKeys := sets.Set[string]{}
 	for key := range insecureCiphers {
 		cipherKeys.Insert(key)
 	}
-	return cipherKeys.List()
+	return cipherKeys.UnsortedList()
 }
 
 // PreferredTLSCipherNames returns a list of cipher suite names implemented by crypto/tls.
 func PreferredTLSCipherNames() []string {
-	cipherKeys := sets.NewString()
+	cipherKeys := sets.Set[string]{}
 	for key := range ciphers {
 		cipherKeys.Insert(key)
 	}
-	return cipherKeys.List()
+	return cipherKeys.UnsortedList()
 }
 
 func allCiphers() map[string]uint16 {
@@ -86,12 +86,12 @@ func allCiphers() map[string]uint16 {
 // TLSCipherPossibleValues returns all acceptable cipher suite names.
 // This is a combination of both InsecureTLSCipherNames() and PreferredTLSCipherNames().
 func TLSCipherPossibleValues() []string {
-	cipherKeys := sets.NewString()
+	cipherKeys := sets.Set[string]{}
 	acceptedCiphers := allCiphers()
 	for key := range acceptedCiphers {
 		cipherKeys.Insert(key)
 	}
-	return cipherKeys.List()
+	return cipherKeys.UnsortedList()
 }
 
 // TLSCipherSuites returns a list of cipher suite IDs from the cipher suite names passed.
@@ -120,11 +120,11 @@ var versions = map[string]uint16{
 
 // TLSPossibleVersions returns all acceptable values for TLS Version.
 func TLSPossibleVersions() []string {
-	versionsKeys := sets.NewString()
+	versionsKeys := sets.Set[string]{}
 	for key := range versions {
 		versionsKeys.Insert(key)
 	}
-	return versionsKeys.List()
+	return versionsKeys.UnsortedList()
 }
 
 // TLSVersion returns the TLS Version ID for the version name passed.

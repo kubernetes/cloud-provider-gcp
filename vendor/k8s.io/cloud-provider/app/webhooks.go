@@ -51,7 +51,7 @@ func init() {
 }
 
 // WebhooksDisabledByDefault is the webhooks disabled default when starting cloud-controller managers.
-var WebhooksDisabledByDefault = sets.NewString()
+var WebhooksDisabledByDefault = sets.Set[string]{}
 
 type WebhookConfig struct {
 	Path             string
@@ -87,8 +87,8 @@ func NewWebhookHandlers(webhookConfigs map[string]WebhookConfig, completedConfig
 }
 
 func WebhookNames(webhooks map[string]WebhookConfig) []string {
-	ret := sets.StringKeySet(webhooks)
-	return ret.List()
+	ret := sets.KeySet(webhooks)
+	return ret.UnsortedList()
 }
 
 func newHandler(webhooks map[string]WebhookHandler) *mux.PathRecorderMux {
