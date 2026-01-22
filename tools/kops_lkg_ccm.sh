@@ -84,29 +84,15 @@ NODE_SIZE="${NODE_SIZE:-e2-medium}"
 MASTER_SIZE="${MASTER_SIZE:-e2-medium}"
 DELETE_CLUSTER="${DELETE_CLUSTER:-true}"
 
-# Setup KOPS_STATE_STORE
-if [[ -z "${KOPS_STATE_STORE:-}" ]]; then
-  KOPS_STATE_STORE="gs://kops-state-${GCP_PROJECT}"
-fi
-export KOPS_STATE_STORE
+# Common Utilities
+source "${REPO_ROOT}/tools/kops-common.sh"
 
-# Ensure bucket exists
-if ! gsutil ls -p "${GCP_PROJECT}" "${KOPS_STATE_STORE}" >/dev/null 2>&1; then
-  gsutil mb -p "${GCP_PROJECT}" -l "${GCP_LOCATION}" "${KOPS_STATE_STORE}"
-  gsutil ubla set off "${KOPS_STATE_STORE}"
-fi
+# Setup KOPS_STATE_STORE
+setup_kops_state_store
 
 # SSH Key Setup
-if [[ -z "${SSH_PRIVATE_KEY_PATH:-}" ]]; then
-  SSH_PRIVATE_KEY_PATH="${REPO_ROOT}/google_compute_engine"
-  if [[ ! -f "${SSH_PRIVATE_KEY_PATH}" ]]; then
-      gcloud compute config-ssh --project="${GCP_PROJECT}" --ssh-key-file="${SSH_PRIVATE_KEY_PATH}" --quiet
-  fi
-  export KUBE_SSH_USER="${USER}"
-fi
-export KUBE_SSH_PUBLIC_KEY_PATH="${SSH_PRIVATE_KEY_PATH}.pub"
+setup_ssh_key
 
-# Cleanup trap
 # Cleanup trap
 function cleanup {
   if [[ "${DELETE_CLUSTER}" == "true" ]]; then
@@ -162,36 +148,9 @@ esac
 # Build Local CCM if needed
 ADD_MANIFEST_ARG=""
 if [[ "${BUILD_LOCAL_CCM}" == "true" ]]; then
-    echo "Building Local CCM..."
-    
-    # Setup image tags
-    if [[ -z "${IMAGE_REPO:-}" ]]; then
-      IMAGE_REPO="gcr.io/${GCP_PROJECT}"
-    fi
-    if [[ -z "${IMAGE_TAG:-}" ]]; then
-      IMAGE_TAG=$(git rev-parse --short HEAD)-$(date +%Y%m%dT%H%M%S)
-    fi
-    
-    # Configure docker auth
-    gcloud auth configure-docker --quiet
-    
-    # Build and Push
-    IMAGE_REPO=${IMAGE_REPO} IMAGE_TAG=${IMAGE_TAG} "${REPO_ROOT}/tools/push-images"
-    
-    # Prepare Manifest
+    # Create temp dir for manifest used by build_and_push_ccm
     WORKDIR="${REPO_ROOT}/_tmp/${CLUSTER_NAME}"
-    mkdir -p "${WORKDIR}"
-    cp "${REPO_ROOT}/deploy/packages/default/manifest.yaml" "${WORKDIR}/cloud-provider-gcp.yaml"
-    sed -i -e "s@k8scloudprovidergcp/cloud-controller-manager:latest@${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}@g" "${WORKDIR}/cloud-provider-gcp.yaml"
-
-    # Inject CCM args
-    # We replace "args: [] ..." with the actual list of arguments required for CCM to run.
-    sed -i -e "s|args: \[\] .*|args:\n          - --cloud-provider=gcp\n          - --leader-elect=true\n          - --use-service-account-credentials\n          - --allocate-node-cidrs=true\n          - --configure-cloud-routes=true\n          - --cluster-name=${CLUSTER_NAME}|" "${WORKDIR}/cloud-provider-gcp.yaml"
-    
-    ADD_MANIFEST_ARG="--add=${WORKDIR}/cloud-provider-gcp.yaml"
-    
-    # Enable addons
-    export KOPS_FEATURE_FLAGS="ClusterAddons,${KOPS_FEATURE_FLAGS:-}"
+    build_and_push_ccm
 fi
 
 # Setup admin access
