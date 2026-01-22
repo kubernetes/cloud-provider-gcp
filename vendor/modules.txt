@@ -1413,7 +1413,7 @@ k8s.io/cloud-provider/volume
 k8s.io/cloud-provider/volume/errors
 k8s.io/cloud-provider/volume/helpers
 # k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000 => ./providers
-## explicit; go 1.24.0
+## explicit; go 1.25.6
 # k8s.io/code-generator v0.34.2 => k8s.io/code-generator v0.34.2
 ## explicit; go 1.24.0
 k8s.io/code-generator/cmd/client-gen
