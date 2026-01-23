@@ -96,19 +96,13 @@ gke-gcloud-auth-plugin-windows-amd64 gke-gcloud-auth-plugin-windows-arm64: gke-g
 gke-gcloud-auth-plugin-darwin-arm64:
 	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
- 
+  
 .PHONY: copy-binaries-to-gcs
 copy-binaries-to-gcs: build-all ## Build and copy binaries to GCS.
 	gcloud storage cp --recursive release/$(GIT_VERSION) gs://$(BUCKET_NAME)/$(GIT_VERSION)
 
-
-.PHONY: all clean build-all copy-binaries-to-gcs
-
-clean:
-	@echo "Cleaning up..."
-	@find release/ -type d -mindepth 1 -print0 | xargs -0 rm -rf
-
-release-tars: build-all
+.PHONY: release-tars
+release-tars: build-all ## Build all release artifacts.
 	# Clean up any existing tarballs (but NOT the binaries we just built)
 	rm -f release/$(GIT_VERSION)/*.tar.gz
 	rm -rf release/$(GIT_VERSION)/manifests
@@ -262,3 +256,51 @@ test-sh: ## Run shell script syntax checks.
 	bash -n cluster/common.sh
 	bash -n cluster/clientbin.sh
 	bash -n cluster/kube-util.sh
+
+## --------------------------------------
+##@ Tools
+## --------------------------------------
+
+.PHONY: verify
+verify: ## Run all verification scripts.
+	./tools/verify-all.sh
+
+.PHONY: update-vendor
+update-vendor: ## Update vendor directory.
+	./tools/update_vendor.sh
+
+.PHONY: update-gofmt
+update-gofmt: ## Update gofmt.
+	./tools/update-gofmt.sh
+
+.PHONY: update-bazel
+update-bazel: ## Update bazel.
+	./tools/update_bazel.sh
+
+.PHONY: update-golang
+update-golang: ## Update golang version.
+	./dev/tools/update-golang
+
+.PHONY: pin-k8s-deps
+pin-k8s-deps: ## Pin Kubernetes dependencies.
+	./tools/pin_k8s_deps.sh
+
+.PHONY: bump-cluster
+bump-cluster: ## Bump cluster version.
+	./tools/bump_cluster.sh
+
+.PHONY: push-images
+push-images: ## Push images to IMAGE_REPO.
+	./tools/push-images
+
+.PHONY: merge-licenses
+merge-licenses: ## Merge licenses from vendor directory.
+	./tools/merge_licenses.sh
+
+.PHONY: run-e2e-test
+run-e2e-test: ## Run e2e tests.
+	./tools/run-e2e-test.sh
+
+.PHONY: verify-up-to-date
+verify-up-to-date: ## Verify that the repository is up to date.
+	./tools/verify-up-to-date.sh
