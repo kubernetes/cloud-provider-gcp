@@ -18,7 +18,6 @@ go_library(
     importpath = "k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp",
     deps = [
         "//cmd/auth-provider-gcp/app",
-        "//providers/gce/gcpcredential",
         "//vendor/github.com/spf13/cobra",
         "//vendor/github.com/spf13/pflag",
         "//vendor/k8s.io/klog/v2:klog",
