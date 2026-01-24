@@ -13,9 +13,9 @@
 # limitations under the License.
 
 
-GIT_VERSION ?= $(shell git describe --tags --always --dirty | sed 's|.*/||')
-GIT_COMMIT ?= $(shell git rev-parse HEAD)
-BUILD_DATE ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+GIT_VERSION := $(shell git describe --tags --always --dirty | sed 's|.*/||')
+GIT_COMMIT := $(shell git rev-parse HEAD)
+BUILD_DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUCKET_NAME ?= k8s-staging-cloud-provider-gcp
 
 LDFLAGS := -ldflags="\
@@ -94,9 +94,126 @@ gke-gcloud-auth-plugin-darwin-arm64:
 copy-binaries-to-gcs: build-all ## Build and copy binaries to GCS.
 	gcloud storage cp --recursive release/$(GIT_VERSION) gs://$(BUCKET_NAME)/$(GIT_VERSION)
 
-.PHONY: release-tars
-release-tars: ## Build release tarballs using bazel.
-	bazel build release:release-tars
+
+.PHONY: all clean build-all copy-binaries-to-gcs
+
+clean:
+	@echo "Cleaning up..."
+	@find release/ -type d -mindepth 1 -print0 | xargs -0 rm -rf
+
+release-tars: build-all
+	# Clean up any existing tarballs (but NOT the binaries we just built)
+	rm -f release/$(GIT_VERSION)/*.tar.gz
+	rm -rf release/$(GIT_VERSION)/manifests
+	mkdir -p release/$(GIT_VERSION)
+	
+	@echo "Determining Kubernetes version..."
+	@if [ -n "$(KUBE_VERSION_OVERRIDE)" ]; then \
+		echo "Using override version: $(KUBE_VERSION_OVERRIDE)"; \
+		echo $(KUBE_VERSION_OVERRIDE) > release/$(GIT_VERSION)/kube-version.txt; \
+	else \
+		echo "Downloading stable version..."; \
+		curl -sL https://dl.k8s.io/release/stable.txt > release/$(GIT_VERSION)/kube-version.txt; \
+	fi
+	
+	# Download upstream tarballs
+	mkdir -p release/upstream
+	@KUBE_VERSION=$$(cat release/$(GIT_VERSION)/kube-version.txt); \
+	echo "Building release for Kubernetes version: $$KUBE_VERSION"; \
+	echo "Downloading upstream server tarball..."; \
+	curl -L "https://dl.k8s.io/release/$$KUBE_VERSION/kubernetes-server-linux-amd64.tar.gz" -o release/upstream/server.tar.gz; \
+	echo "Downloading upstream node tarball..."; \
+	curl -L "https://dl.k8s.io/release/$$KUBE_VERSION/kubernetes-node-linux-amd64.tar.gz" -o release/upstream/node.tar.gz
+
+	# Dockerize cloud-controller-manager
+	mkdir -p release/$(GIT_VERSION)/docker-build
+	cp release/$(GIT_VERSION)/cloud-controller-manager/linux/amd64/cloud-controller-manager release/$(GIT_VERSION)/docker-build/
+	echo "FROM gcr.io/distroless/static:nonroot" > release/$(GIT_VERSION)/docker-build/Dockerfile
+	echo "COPY cloud-controller-manager /cloud-controller-manager" >> release/$(GIT_VERSION)/docker-build/Dockerfile
+	echo "ENTRYPOINT [\"/cloud-controller-manager\"]" >> release/$(GIT_VERSION)/docker-build/Dockerfile
+	
+	docker build -t registry.k8s.io/cloud-controller-manager:$(GIT_VERSION) release/$(GIT_VERSION)/docker-build/
+	docker save registry.k8s.io/cloud-controller-manager:$(GIT_VERSION) > release/$(GIT_VERSION)/cloud-controller-manager.tar
+	echo "$(GIT_VERSION)" > release/$(GIT_VERSION)/cloud-controller-manager.docker_tag
+	rm -rf release/$(GIT_VERSION)/docker-build
+
+	# Unpack and Inject Server
+	mkdir -p release/temp/server
+	tar xzf release/upstream/server.tar.gz -C release/temp/server
+	
+	# Inject CCM logic
+	cp release/$(GIT_VERSION)/cloud-controller-manager.tar release/temp/server/kubernetes/server/bin/
+	cp release/$(GIT_VERSION)/cloud-controller-manager.docker_tag release/temp/server/kubernetes/server/bin/
+	# Overwrite CCM binary if present (though usually not in upstream? actually upstream has it too, we want ours)
+	cp release/$(GIT_VERSION)/cloud-controller-manager/linux/amd64/cloud-controller-manager release/temp/server/kubernetes/server/bin/
+	
+	# Inject Auth Provider
+	cp release/$(GIT_VERSION)/auth-provider-gcp/linux/amd64/auth-provider-gcp release/temp/server/kubernetes/server/bin/
+
+	@echo "Checking contents of release/temp/server/kubernetes/server/bin/ before repack:"
+	ls -l release/temp/server/kubernetes/server/bin/
+
+	# Repack Server
+	tar -czf release/$(GIT_VERSION)/kubernetes-server-linux-amd64.tar.gz -C release/temp/server kubernetes
+
+	# Unpack and Inject Node
+	mkdir -p release/temp/node
+	tar xzf release/upstream/node.tar.gz -C release/temp/node
+	
+	# Inject Auth Provider to Node (needed for kubelet credential provider)
+	cp release/$(GIT_VERSION)/auth-provider-gcp/linux/amd64/auth-provider-gcp release/temp/node/kubernetes/node/bin/
+
+	# Repack Node
+	tar -czf release/$(GIT_VERSION)/kubernetes-node-linux-amd64.tar.gz -C release/temp/node kubernetes
+
+	# Pack kubernetes-node-windows-amd64.tar.gz (Minimal, per existing logic)
+	mkdir -p release/$(GIT_VERSION)/node-windows
+	cp -f release/$(GIT_VERSION)/auth-provider-gcp/windows/amd64/auth-provider-gcp.exe release/$(GIT_VERSION)/node-windows/auth-provider-gcp.exe
+	tar -czf release/$(GIT_VERSION)/kubernetes-node-windows-amd64.tar.gz \
+		--transform 's|release/$(GIT_VERSION)/node-windows/auth-provider-gcp.exe|kubernetes/node/bin/auth-provider-gcp.exe|' \
+		release/$(GIT_VERSION)/node-windows/auth-provider-gcp.exe
+	rm -rf release/$(GIT_VERSION)/node-windows
+
+	# Pack kubernetes-manifests.tar.gz
+	# 1. Download and unpack the UPSTREAM manifests
+	mkdir -p release/$(GIT_VERSION)/manifests
+	curl -L "https://dl.k8s.io/release/$$(cat release/$(GIT_VERSION)/kube-version.txt)/kubernetes-manifests.tar.gz" -o release/upstream/manifests.tar.gz
+	tar xzf release/upstream/manifests.tar.gz -C release/$(GIT_VERSION)/manifests
+
+
+	# 2. OVERLAY your local changes from the cloud-provider-gcp repo
+	# Standard addons should go in the 'addons' directory
+	mkdir -p release/$(GIT_VERSION)/manifests/kubernetes/addons
+	cp -r cluster/addons/* release/$(GIT_VERSION)/manifests/kubernetes/addons/
+
+	# GCE specific configs go in 'gci-trusty'
+	# Ensure gci-trusty dir exists
+	mkdir -p release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty
+	cp cluster/gce/manifests/*.manifest release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/
+	# Ignore errors for json/yaml if they don't exist
+	cp cluster/gce/manifests/*.json release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/ || true
+	cp cluster/gce/manifests/*.yaml release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/ || true
+	cp cluster/gce/gci/configure-helper.sh release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/gci-configure-helper.sh
+	cp cluster/gce/gci/configure-helper.sh release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/configure-helper.sh
+	cp cluster/gce/gci/configure-kubeapiserver.sh release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/configure-kubeapiserver.sh
+	if [ -f cluster/gce/gci/gke-internal-configure-helper.sh ]; then \
+		cp cluster/gce/gci/gke-internal-configure-helper.sh release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/; \
+	fi
+	# 3. Repack the combined manifests
+	tar -czf release/$(GIT_VERSION)/kubernetes-manifests.tar.gz \
+		-C release/$(GIT_VERSION)/manifests .
+	rm -rf release/$(GIT_VERSION)/manifests
+
+	# Cleanup temp
+	rm -rf release/temp release/upstream
+	
+	echo "4. Generating Checksums..."
+	shasum -a 1 release/$(GIT_VERSION)/kubernetes-manifests.tar.gz | awk '{print $$1}' > release/$(GIT_VERSION)/kubernetes-manifests.tar.gz.sha1
+	shasum -a 1 release/$(GIT_VERSION)/kubernetes-server-linux-amd64.tar.gz | awk '{print $$1}' > release/$(GIT_VERSION)/kubernetes-server-linux-amd64.tar.gz.sha1
+	shasum -a 1 release/$(GIT_VERSION)/kubernetes-node-linux-amd64.tar.gz | awk '{print $$1}' > release/$(GIT_VERSION)/kubernetes-node-linux-amd64.tar.gz.sha1
+	shasum -a 1 release/$(GIT_VERSION)/kubernetes-node-windows-amd64.tar.gz | awk '{print $$1}' > release/$(GIT_VERSION)/kubernetes-node-windows-amd64.tar.gz.sha1
+	
+	echo "Release artifacts generated in release/$(GIT_VERSION)"
 
 ## --------------------------------------
 ##@ Test

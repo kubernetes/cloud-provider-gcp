@@ -305,12 +305,20 @@ function set_binary_version() {
 #   $1 name of tarball to search for
 function find-tar() {
   local -r tarball=$1
-  locations=(
+  # Shell expansion for release/*/ requires avoiding quotes or using find
+  local -a locations=(
     "${KUBE_ROOT}/bazel-bin/release/${tarball}"
     #"${KUBE_ROOT}/node/${tarball}"
     #"${KUBE_ROOT}/server/${tarball}"
     #"${KUBE_ROOT}/_output/release-tars/${tarball}"
   )
+  # Add release/*/ locations manually by globbing
+  for d in "${KUBE_ROOT}"/release/*/; do
+    if [[ -d "$d" ]]; then
+        locations+=("${d}${tarball}")
+    fi
+  done
+
   location=$( (ls -t "${locations[@]}" 2>/dev/null || true) | head -1 )
 
   if [[ ! -f "${location}" ]]; then
@@ -504,7 +512,18 @@ function verify-kube-binaries() {
   # TODO: @cheftako Remove the hack to get a local kubectl from existing tars.
   # Need to get something which matches the local machine type.
   mkdir -p ${KUBE_ROOT}/cluster/bin
-  tar -xf ${KUBE_ROOT}/bazel-bin/external/io_k8s_release/kubernetes-server-linux-amd64.tar ./kubernetes/server/bin/kubectl --to-stdout > ${KUBE_ROOT}/cluster/bin/kubectl
+  
+  # Try to find server tarball using find-tar (which now checks release/)
+  local server_tar
+  server_tar=$(find-tar kubernetes-server-linux-amd64.tar.gz)
+  
+  if [[ -f "${server_tar}" ]]; then
+    tar -xf "${server_tar}" -C "${KUBE_ROOT}/cluster/bin/" --strip-components=3 kubernetes/server/bin/kubectl
+  else
+    # Fallback or error if not found
+    echo "!!! Cannot find kube-server tarball for kubectl extraction"
+  fi
+  
   chmod +x ${KUBE_ROOT}/cluster/bin/kubectl
   if ! "${KUBE_ROOT}/cluster/kubectl.sh" version --client >&/dev/null; then
     echo "!!! kubectl(${KUBE_ROOT}/cluster/kubectl.sh) appears to be broken or missing"
