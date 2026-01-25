@@ -197,13 +197,6 @@ release-tars: build-all
 	cp cluster/gce/manifests/*.yaml release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/ || true
 	# Substitute variables in manifests
 	find release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty -name "*.manifest" -exec sed -i "s|{{pillar\['cloud-controller-manager_docker_tag'\]}}|$(GIT_VERSION)|g" {} +
-	
-	# CoreDNS Generation and Substitution
-	cp release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml.sed release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml
-	sed -i 's|$$DNS_SERVER_IP|10.0.0.10|g' release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml
-	sed -i 's|$$DNS_DOMAIN|cluster.local|g' release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml
-	sed -i 's|$$DNS_MEMORY_LIMIT|170Mi|g' release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml
-	sed -i 's|$$SERVICE_CLUSTER_IP_RANGE|10.0.0.0/16|g' release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml
 
 	# Substitute variables in addons
 	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ fluentd_gcp_yaml_version }}|v3.2.0|g" {} +
