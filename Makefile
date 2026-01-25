@@ -128,9 +128,9 @@ release-tars: build-all
 	# Dockerize cloud-controller-manager
 	mkdir -p release/$(GIT_VERSION)/docker-build
 	cp release/$(GIT_VERSION)/cloud-controller-manager/linux/amd64/cloud-controller-manager release/$(GIT_VERSION)/docker-build/
-	echo "FROM gcr.io/distroless/static:nonroot" > release/$(GIT_VERSION)/docker-build/Dockerfile
+	echo "FROM registry.k8s.io/build-image/go-runner:v2.4.0-go1.24.10-bookworm.0" > release/$(GIT_VERSION)/docker-build/Dockerfile
 	echo "COPY cloud-controller-manager /cloud-controller-manager" >> release/$(GIT_VERSION)/docker-build/Dockerfile
-	echo "ENTRYPOINT [\"/cloud-controller-manager\"]" >> release/$(GIT_VERSION)/docker-build/Dockerfile
+	echo "CMD [\"/cloud-controller-manager\"]" >> release/$(GIT_VERSION)/docker-build/Dockerfile
 	
 	docker build -t registry.k8s.io/cloud-controller-manager:$(GIT_VERSION) release/$(GIT_VERSION)/docker-build/
 	docker save registry.k8s.io/cloud-controller-manager:$(GIT_VERSION) > release/$(GIT_VERSION)/cloud-controller-manager.tar
@@ -144,7 +144,7 @@ release-tars: build-all
 	# Inject CCM logic
 	cp release/$(GIT_VERSION)/cloud-controller-manager.tar release/temp/server/kubernetes/server/bin/
 	cp release/$(GIT_VERSION)/cloud-controller-manager.docker_tag release/temp/server/kubernetes/server/bin/
-	# Overwrite CCM binary if present (though usually not in upstream? actually upstream has it too, we want ours)
+	# Overwrite CCM binary if present
 	cp release/$(GIT_VERSION)/cloud-controller-manager/linux/amd64/cloud-controller-manager release/temp/server/kubernetes/server/bin/
 	
 	# Inject Auth Provider
@@ -185,6 +185,8 @@ release-tars: build-all
 	# Standard addons should go in the 'addons' directory
 	mkdir -p release/$(GIT_VERSION)/manifests/kubernetes/addons
 	cp -r cluster/addons/* release/$(GIT_VERSION)/manifests/kubernetes/addons/
+	# Additional GCE-specific addons
+	cp -r cluster/gce/addons/* release/$(GIT_VERSION)/manifests/kubernetes/addons/ || true
 
 	# GCE specific configs go in 'gci-trusty'
 	# Ensure gci-trusty dir exists
