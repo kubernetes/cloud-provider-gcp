@@ -448,6 +448,11 @@ function install-kube-manifests {
   if [[ -e "${dst_dir}/kubernetes/gci-trusty/gke-internal-configure-helper.sh" ]]; then
     cp "${dst_dir}/kubernetes/gci-trusty/gke-internal-configure-helper.sh" "${KUBE_BIN}/"
   fi
+  if [[ -e "${dst_dir}/kubernetes/gci-trusty/cri-auth-config.yaml" ]]; then
+    cp "${dst_dir}/kubernetes/gci-trusty/cri-auth-config.yaml" "${KUBE_HOME}/cri-auth-config.yaml"
+    mkdir -p /etc/srv/kubernetes/
+    cp "${dst_dir}/kubernetes/gci-trusty/cri-auth-config.yaml" /etc/srv/kubernetes/cri-auth-config.yaml
+  fi
 
   rm -f "${KUBE_HOME}/${manifests_tar}"
   rm -f "${KUBE_HOME}/${manifests_tar}.sha512"
