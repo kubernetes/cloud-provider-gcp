@@ -193,6 +193,29 @@ release-tars: build-all
 	# Ignore errors for json/yaml if they don't exist
 	cp cluster/gce/manifests/*.json release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/ || true
 	cp cluster/gce/manifests/*.yaml release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/ || true
+	# Substitute variables in manifests
+	find release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty -name "*.manifest" -exec sed -i "s|{{pillar\['cloud-controller-manager_docker_tag'\]}}|$(GIT_VERSION)|g" {} +
+	
+	# CoreDNS Generation and Substitution
+	cp release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml.sed release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml
+	sed -i 's|$$DNS_SERVER_IP|10.0.0.10|g' release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml
+	sed -i 's|$$DNS_DOMAIN|cluster.local|g' release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml
+	sed -i 's|$$DNS_MEMORY_LIMIT|170Mi|g' release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml
+	sed -i 's|$$SERVICE_CLUSTER_IP_RANGE|10.0.0.0/16|g' release/$(GIT_VERSION)/manifests/kubernetes/addons/dns/coredns/coredns.yaml
+
+	# Substitute variables in addons
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ fluentd_gcp_yaml_version }}|v3.2.0|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ fluentd_gcp_version }}|1.6.17|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ prometheus_to_sd_prefix }}|custom.googleapis.com|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ prometheus_to_sd_endpoint }}|https://monitoring.googleapis.com/|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ fluentd_gcp_configmap_name }}|fluentd-gcp-config|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{.Target}}|Deployment/kube-dns|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{image_registry}}|registry.k8s.io|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{cloud_controller_manager_docker_tag}}|$(GIT_VERSION)|g" {} +
+
+	# Include cri-auth-config if present
+	cp cluster/gce/manifests/cri-auth-config.yaml release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/ || true
+	
 	cp cluster/gce/gci/configure-helper.sh release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/gci-configure-helper.sh
 	cp cluster/gce/gci/configure-helper.sh release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/configure-helper.sh
 	cp cluster/gce/gci/configure-kubeapiserver.sh release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/configure-kubeapiserver.sh
