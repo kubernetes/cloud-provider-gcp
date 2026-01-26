@@ -18,6 +18,13 @@ GIT_COMMIT := $(shell git rev-parse HEAD)
 BUILD_DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUCKET_NAME ?= k8s-staging-cloud-provider-gcp
 
+# Addon Versions
+FLUENTD_GCP_YAML_VERSION ?= v3.2.0
+FLUENTD_GCP_VERSION ?= 1.6.17
+PROMETHEUS_TO_SD_PREFIX ?= custom.googleapis.com
+PROMETHEUS_TO_SD_ENDPOINT ?= https://monitoring.googleapis.com/
+FLUENTD_GCP_CONFIGMAP_NAME ?= fluentd-gcp-config
+
 LDFLAGS := -ldflags="\
 -X 'k8s.io/component-base/version.gitVersion=$(GIT_VERSION)' \
 -X 'k8s.io/component-base/version.gitCommit=$(GIT_COMMIT)' \
@@ -199,14 +206,20 @@ release-tars: build-all
 	find release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty -name "*.manifest" -exec sed -i "s|{{pillar\['cloud-controller-manager_docker_tag'\]}}|$(GIT_VERSION)|g" {} +
 
 	# Substitute variables in addons
-	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ fluentd_gcp_yaml_version }}|v3.2.0|g" {} +
-	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ fluentd_gcp_version }}|1.6.17|g" {} +
-	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ prometheus_to_sd_prefix }}|custom.googleapis.com|g" {} +
-	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ prometheus_to_sd_endpoint }}|https://monitoring.googleapis.com/|g" {} +
-	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ fluentd_gcp_configmap_name }}|fluentd-gcp-config|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ fluentd_gcp_yaml_version }}|$(FLUENTD_GCP_YAML_VERSION)|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ fluentd_gcp_version }}|$(FLUENTD_GCP_VERSION)|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ prometheus_to_sd_prefix }}|$(PROMETHEUS_TO_SD_PREFIX)|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ prometheus_to_sd_endpoint }}|$(PROMETHEUS_TO_SD_ENDPOINT)|g" {} +
+	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ fluentd_gcp_configmap_name }}|$(FLUENTD_GCP_CONFIGMAP_NAME)|g" {} +
 	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{.Target}}|Deployment/kube-dns|g" {} +
 	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{image_registry}}|registry.k8s.io|g" {} +
 	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{cloud_controller_manager_docker_tag}}|$(GIT_VERSION)|g" {} +
+	
+	# Verify critical substitutions
+	if grep -qr --include="*.yaml" "{{cloud_controller_manager_docker_tag}}" release/$(GIT_VERSION)/manifests/kubernetes/addons; then \
+		echo "Error: Placeholder {{cloud_controller_manager_docker_tag}} still present in addons."; \
+		exit 1; \
+	fi
 
 	# Include cri-auth-config if present
 	cp cluster/gce/manifests/cri-auth-config.yaml release/$(GIT_VERSION)/manifests/kubernetes/gci-trusty/ || true
@@ -230,6 +243,10 @@ release-tars: build-all
 	shasum -a 1 release/$(GIT_VERSION)/kubernetes-server-linux-amd64.tar.gz | awk '{print $$1}' > release/$(GIT_VERSION)/kubernetes-server-linux-amd64.tar.gz.sha1
 	shasum -a 1 release/$(GIT_VERSION)/kubernetes-node-linux-amd64.tar.gz | awk '{print $$1}' > release/$(GIT_VERSION)/kubernetes-node-linux-amd64.tar.gz.sha1
 	shasum -a 1 release/$(GIT_VERSION)/kubernetes-node-windows-amd64.tar.gz | awk '{print $$1}' > release/$(GIT_VERSION)/kubernetes-node-windows-amd64.tar.gz.sha1
+	shasum -a 256 release/$(GIT_VERSION)/kubernetes-manifests.tar.gz | awk '{print $$1}' > release/$(GIT_VERSION)/kubernetes-manifests.tar.gz.sha256
+	shasum -a 256 release/$(GIT_VERSION)/kubernetes-server-linux-amd64.tar.gz | awk '{print $$1}' > release/$(GIT_VERSION)/kubernetes-server-linux-amd64.tar.gz.sha256
+	shasum -a 256 release/$(GIT_VERSION)/kubernetes-node-linux-amd64.tar.gz | awk '{print $$1}' > release/$(GIT_VERSION)/kubernetes-node-linux-amd64.tar.gz.sha256
+	shasum -a 256 release/$(GIT_VERSION)/kubernetes-node-windows-amd64.tar.gz | awk '{print $$1}' > release/$(GIT_VERSION)/kubernetes-node-windows-amd64.tar.gz.sha256
 	
 	echo "Release artifacts generated in release/$(GIT_VERSION)"
 
