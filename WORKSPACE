@@ -20,11 +20,24 @@ python_register_toolchains(
 )
 
 http_archive(
-    name = "io_bazel_rules_go",
-    sha256 = "b2038e2de2cace18f032249cb4bb0048abf583a36369fa98f687af1b3f880b26",
+    name = "rules_pkg",
     urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.48.1/rules_go-v0.48.1.zip",
-        "https://github.com/bazelbuild/rules_go/releases/download/v0.48.1/rules_go-v0.48.1.zip",
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/1.2.0/rules_pkg-1.2.0.tar.gz",
+        "https://github.com/bazelbuild/rules_pkg/releases/download/1.2.0/rules_pkg-1.2.0.tar.gz",
+    ],
+    sha256 = "b5c9184a23bb0bcff241981fd9d9e2a97638a1374c9953bb1808836ce711f990",
+)
+
+load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
+
+rules_pkg_dependencies()
+
+http_archive(
+    name = "io_bazel_rules_go",
+    sha256 = "68af54cb97fbdee5e5e8fe8d210d15a518f9d62abfd71620c3eaff3b26a5ff86",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazel-contrib/rules_go/releases/download/v0.59.0/rules_go-v0.59.0.zip",
+        "https://github.com/bazel-contrib/rules_go/releases/download/v0.59.0/rules_go-v0.59.0.zip",
     ],
 )
 
@@ -92,11 +105,11 @@ container_pull(
 container_pull(
     name = "go-runner",
     # this digest is actually go-runner-amd64
-    digest = "sha256:4decba1ba68d6db721b8ce9bcd1e8567829f0b5bec9a6ceea0b0c094d027c1ac",
+    digest = "sha256:07659dce32caf7e7af15c92d7e5dbbd98965f22208345da96b494ab59a6cf211",
     registry = "registry.k8s.io",
     repository = "build-image/go-runner",
     # 'tag' is also supported, but digest is encouraged for reproducibility.
-    tag = "v2.4.0-go1.23.3-bookworm.0",
+    tag = "v2.4.0-go1.25.6-bookworm.0",
 )
 
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
