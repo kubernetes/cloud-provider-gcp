@@ -1,7 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
 load("@io_k8s_repo_infra//defs:build.bzl", "release_filegroup")
-load("@io_k8s_repo_infra//defs:pkg.bzl", "pkg_tar")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
 # We depend on the behavior that pkg_tar will use the first file that it sees
 # in case of duplicates. I'm open for building something with more explicit
