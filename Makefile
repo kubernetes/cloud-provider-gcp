@@ -211,8 +211,6 @@ release-tars: build-all
 	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ prometheus_to_sd_prefix }}|$(PROMETHEUS_TO_SD_PREFIX)|g" {} +
 	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ prometheus_to_sd_endpoint }}|$(PROMETHEUS_TO_SD_ENDPOINT)|g" {} +
 	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{ fluentd_gcp_configmap_name }}|$(FLUENTD_GCP_CONFIGMAP_NAME)|g" {} +
-	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{.Target}}|Deployment/kube-dns|g" {} +
-	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{image_registry}}|registry.k8s.io|g" {} +
 	find release/$(GIT_VERSION)/manifests/kubernetes/addons -name "*.yaml" -exec sed -i "s|{{cloud_controller_manager_docker_tag}}|$(GIT_VERSION)|g" {} +
 	
 	# Verify critical substitutions
