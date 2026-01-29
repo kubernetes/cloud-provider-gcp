@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"time"
 
+	debug "runtime/debug"
+
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -51,6 +53,9 @@ type nodeStatusForPatch struct {
 
 // SetNodeCondition updates specific node condition with patch operation.
 func SetNodeCondition(c clientset.Interface, node types.NodeName, condition v1.NodeCondition) error {
+	if node == "" {
+		klog.Infof("STACK FOR EMPTY NAME IN SetNodeCondition: %s", string(debug.Stack()))
+	}
 	generatePatch := func(condition v1.NodeCondition) ([]byte, error) {
 		patch := nodeForConditionPatch{
 			Status: nodeStatusForPatch{
@@ -85,6 +90,9 @@ type nodeSpecForMergePatch struct {
 
 // PatchNodeCIDRs patches the specified node.CIDR=cidrs[0] and node.CIDRs to the given value.
 func PatchNodeCIDRs(c clientset.Interface, node types.NodeName, cidrs []string) error {
+	if node == "" {
+		klog.Infof("STACK FOR EMPTY NAME IN PatchNodeCIDRs: %s", string(debug.Stack()))
+	}
 	// set the pod cidrs list and set the old pod cidr field
 	patch := nodeForCIDRMergePatch{
 		Spec: nodeSpecForMergePatch{
@@ -106,6 +114,9 @@ func PatchNodeCIDRs(c clientset.Interface, node types.NodeName, cidrs []string) 
 
 // PatchNodeMultiNetwork patches the Node's annotations and capacity for MN.
 func PatchNodeMultiNetwork(c clientset.Interface, node *v1.Node) error {
+	if node.Name == "" {
+		klog.Infof("STACK FOR EMPTY NAME IN PatchNodeMultiNetwork: %s", string(debug.Stack()))
+	}
 	annotation := make(map[string]string)
 	if val, ok := node.Annotations[networkv1.NorthInterfacesAnnotationKey]; ok {
 		annotation[networkv1.NorthInterfacesAnnotationKey] = val

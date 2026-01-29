@@ -28,9 +28,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/cloud-provider-gcp/providers/gce"
-	_ "k8s.io/cloud-provider-gcp/providers/gce"
+
 	"k8s.io/cloud-provider/app"
-	"k8s.io/cloud-provider/app/config"
+	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/names"
 	"k8s.io/cloud-provider/options"
 	cliflag "k8s.io/component-base/cli/flag"
@@ -45,6 +45,9 @@ const (
 	gkeServiceLBControllerName     = "gke-service-lb-controller"
 	gkeServiceControllerClientName = "gke-service-controller"
 	gkeServiceAlias                = "gke-service"
+	multiNodeControllerName        = "gke-multi-node-controller"
+	multiNodeControllerClientName  = "gke-multi-node-controller"
+	multiNodeControllerAlias       = "gke-multi-node"
 )
 
 // enableMultiProject is bound to a command-line flag. When true, it enables the
@@ -111,12 +114,25 @@ func main() {
 		Constructor: startGkeServiceControllerWrapper,
 	}
 
+	controllerInitializers[multiNodeControllerName] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: multiNodeControllerClientName,
+		},
+		Constructor: func(initContext app.ControllerInitContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) app.InitFunc {
+			return startGkeMultiNodeControllerWrapper(initContext, completedConfig, cloud, nodeIpamController.nodeIPAMControllerOptions)
+		},
+	}
+
 	// add controllers disabled by default
 	app.ControllersDisabledByDefault.Insert("gkenetworkparamset")
 	app.ControllersDisabledByDefault.Insert(gkeServiceLBControllerName)
+	app.ControllersDisabledByDefault.Insert(multiNodeControllerName)
+
 	aliasMap := names.CCMControllerAliases()
 	aliasMap["nodeipam"] = kcmnames.NodeIpamController
 	aliasMap[gkeServiceAlias] = gkeServiceLBControllerName
+	aliasMap[multiNodeControllerAlias] = multiNodeControllerName
+
 	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, aliasMap, fss, wait.NeverStop)
 
 	logs.InitLogs()
@@ -127,7 +143,7 @@ func main() {
 	}
 }
 
-func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
+func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovider.Interface {
 	cloudConfig := config.ComponentConfig.KubeCloudShared.CloudProvider
 
 	// initialize cloud provider with the cloud provider name and config file provided
@@ -147,35 +163,30 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 		}
 	}
 
-	if enableMultiProject {
+	if enableMultiProject || enableDiscretePortForwarding || enableRBSDefaultForL4NetLB {
 		gceCloud, ok := (cloud).(*gce.Cloud)
 		if !ok {
-			// Fail-fast: If enableMultiProject is set, the cloud provider MUST
-			// be GCE. A non-GCE provider indicates a misconfiguration. Ideally,
-			// we never expect this to be executed.
-			klog.Fatalf("multi-project mode requires GCE cloud provider, but got %T", cloud)
+			klog.Fatalf("One or more GCE-specific flags (enable-multi-project, enable-discrete-port-forwarding, enable-rbs-default-l4-netlb) were set, but cloud provider is %T, not GCE.", cloud)
 		}
-		gceCloud.SetProjectFromNodeProviderID(true)
-	}
 
-	if enableDiscretePortForwarding {
-		gceCloud, ok := (cloud).(*gce.Cloud)
-		if !ok {
-			// Fail-fast: If enableDiscretePortForwarding is set, the cloud
-			// provider MUST be GCE.
-			klog.Fatalf("enable-discrete-port-forwarding requires GCE cloud provider, but got %T", cloud)
+		if enableMultiProject {
+			klog.Infof("HELLO PP - Testing")
+			gceCloud.SetProjectFromNodeProviderID(false)
 		}
-		gceCloud.SetEnableDiscretePortForwarding(true)
-	}
 
-	if enableRBSDefaultForL4NetLB {
-		gceCloud, ok := (cloud).(*gce.Cloud)
-		if !ok {
-			// Fail-fast: If enableRBSDefaultForL4NetLB is set, the cloud
-			// provider MUST be GCE.
-			klog.Fatalf("enable-rbs-default-l4-netlb requires GCE cloud provider, but got %T", cloud)
+		if enableDiscretePortForwarding {
+			gceCloud.SetEnableDiscretePortForwarding(true)
 		}
-		gceCloud.SetEnableRBSDefaultForL4NetLB(true)
+
+		if enableRBSDefaultForL4NetLB {
+			gceCloud, ok := (cloud).(*gce.Cloud)
+			if !ok {
+				// Fail-fast: If enableRBSDefaultForGCEL4NetLB is set, the cloud
+				// provider MUST be GCE.
+				klog.Fatalf("enable-rbs-default-l4-netlb requires GCE cloud provider, but got %T", cloud)
+			}
+			gceCloud.SetEnableRBSDefaultForL4NetLB(true)
+		}
 	}
 
 	if enableL4LBAnnotations {
