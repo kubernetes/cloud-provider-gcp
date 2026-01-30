@@ -43,7 +43,7 @@ spec:
         app.kubernetes.io/name: node-problem-detector
         app.kubernetes.io/version: v1.34.0
     spec:
-      nodeSelectors:
+      nodeSelector:
         kubernetes.io/os: linux
       containers:
       - name: node-problem-detector
