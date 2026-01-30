@@ -1,0 +1,3 @@
+FROM gcr.io/bazel-public/bazel:5.4.0
+COPY ./ /data
+RUN chown -R ubuntu:root /data
