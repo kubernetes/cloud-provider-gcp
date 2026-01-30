@@ -32,6 +32,10 @@ func newFirewallMetricContext(request string) *metricContext {
 
 // GetFirewall returns the Firewall by name.
 func (g *Cloud) GetFirewall(name string) (*compute.Firewall, error) {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		return nil, nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -42,6 +46,10 @@ func (g *Cloud) GetFirewall(name string) (*compute.Firewall, error) {
 
 // CreateFirewall creates the passed firewall
 func (g *Cloud) CreateFirewall(f *compute.Firewall) error {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -51,6 +59,10 @@ func (g *Cloud) CreateFirewall(f *compute.Firewall) error {
 
 // DeleteFirewall deletes the given firewall rule.
 func (g *Cloud) DeleteFirewall(name string) error {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -60,6 +72,10 @@ func (g *Cloud) DeleteFirewall(name string) error {
 
 // UpdateFirewall applies the given firewall as an update to an existing service.
 func (g *Cloud) UpdateFirewall(f *compute.Firewall) error {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -69,6 +85,10 @@ func (g *Cloud) UpdateFirewall(f *compute.Firewall) error {
 
 // PatchFirewall applies the given firewall as an update to an existing service.
 func (g *Cloud) PatchFirewall(f *compute.Firewall) error {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
