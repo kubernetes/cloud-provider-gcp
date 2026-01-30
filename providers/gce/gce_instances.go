@@ -498,7 +498,7 @@ func (g *Cloud) AddSSHKeyToAllInstances(ctx context.Context, user string, keyDat
 }
 
 // GetAllCurrentZones returns all the zones in which k8s nodes are currently running
-func (g *Cloud) GetAllCurrentZones() (sets.String, error) {
+func (g *Cloud) GetAllCurrentZones() (sets.Set[string], error) {
 	if g.nodeInformerSynced == nil {
 		klog.Warning("Cloud object does not have informers set, should only happen in E2E binary.")
 		return g.GetAllZonesFromCloudProvider()
@@ -508,7 +508,7 @@ func (g *Cloud) GetAllCurrentZones() (sets.String, error) {
 	if !g.nodeInformerSynced() {
 		return nil, fmt.Errorf("node informer is not synced when trying to GetAllCurrentZones")
 	}
-	zones := sets.NewString()
+	zones := sets.Set[string]{}
 	for zone, nodes := range g.nodeZones {
 		if len(nodes) > 0 {
 			zones.Insert(zone)
@@ -524,15 +524,15 @@ func (g *Cloud) GetAllCurrentZones() (sets.String, error) {
 // a non-k8s compute in us-central1-a. This func will return a,b, and c.
 //
 // TODO: this should be removed from the cloud provider.
-func (g *Cloud) GetAllZonesFromCloudProvider() (sets.String, error) {
+func (g *Cloud) GetAllZonesFromCloudProvider() (sets.Set[string], error) {
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
-	zones := sets.NewString()
+	zones := sets.Set[string]{}
 	for _, zone := range g.managedZones {
 		instances, err := g.c.Instances().List(ctx, zone, filter.None)
 		if err != nil {
-			return sets.NewString(), err
+			return sets.Set[string]{}, err
 		}
 		if len(instances) > 0 {
 			zones.Insert(zone)
@@ -872,7 +872,7 @@ func (g *Cloud) computeHostTags(hosts []*gceInstance) ([]string, error) {
 		z[host.Name] = true
 	}
 
-	tags := sets.NewString()
+	tags := sets.Set[string]{}
 
 	filt := filter.None
 	if nodeInstancePrefix != "" {
@@ -903,7 +903,7 @@ func (g *Cloud) computeHostTags(hosts []*gceInstance) ([]string, error) {
 	if len(tags) == 0 {
 		return nil, fmt.Errorf("no instances found")
 	}
-	return tags.List(), nil
+	return tags.UnsortedList(), nil
 }
 
 // GetNodeTags will first try returning the list of tags specified in GCE cloud Configuration.
@@ -919,7 +919,7 @@ func (g *Cloud) GetNodeTags(nodeNames []string) ([]string, error) {
 	defer g.computeNodeTagLock.Unlock()
 
 	// Early return if hosts have not changed
-	hosts := sets.NewString(nodeNames...)
+	hosts := sets.New(nodeNames...)
 	if hosts.Equal(g.lastKnownNodeNames) {
 		return g.lastComputedNodeTags, nil
 	}

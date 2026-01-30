@@ -331,7 +331,7 @@ func (c *Controller) processServiceCreateOrUpdate(ctx context.Context, service *
 		// This happens only when a service is deleted and re-created
 		// in a short period, which is only possible when it doesn't
 		// contain finalizer.
-		if err := c.processLoadBalancerDelete(ctx, cachedService.state, key); err != nil {
+		if err := c.processLoadBalancerDelete(ctx, cachedService.state); err != nil {
 			return err
 		}
 	}
@@ -524,12 +524,6 @@ func (s *serviceCache) getOrCreate(serviceName string) *cachedService {
 	return service
 }
 
-func (s *serviceCache) set(serviceName string, service *cachedService) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.serviceMap[serviceName] = service
-}
-
 func (s *serviceCache) delete(serviceName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -674,8 +668,8 @@ func portEqualForLB(x, y *v1.ServicePort) bool {
 	return true
 }
 
-func nodeNames(nodes []*v1.Node) sets.String {
-	ret := sets.NewString()
+func nodeNames(nodes []*v1.Node) sets.Set[string] {
+	ret := sets.Set[string]{}
 	for _, node := range nodes {
 		ret.Insert(node.Name)
 	}
@@ -685,10 +679,10 @@ func nodeNames(nodes []*v1.Node) sets.String {
 func loggableNodeNames(nodes []*v1.Node) []string {
 	if len(nodes) > maxNodeNamesToLog {
 		skipped := len(nodes) - maxNodeNamesToLog
-		names := nodeNames(nodes[:maxNodeNamesToLog]).List()
+		names := nodeNames(nodes[:maxNodeNamesToLog]).UnsortedList()
 		return append(names, fmt.Sprintf("<%d more>", skipped))
 	}
-	return nodeNames(nodes).List()
+	return nodeNames(nodes).UnsortedList()
 }
 
 func shouldSyncUpdatedNode(oldNode, newNode *v1.Node) bool {
@@ -713,7 +707,7 @@ func shouldSyncUpdatedNode(oldNode, newNode *v1.Node) bool {
 
 // syncNodes handles updating the hosts pointed to by all load
 // balancers whenever the set of nodes in the cluster changes.
-func (c *Controller) syncNodes(ctx context.Context, workers int) sets.String {
+func (c *Controller) syncNodes(ctx context.Context, workers int) sets.Set[string] {
 	startTime := time.Now()
 	defer func() {
 		latency := time.Since(startTime).Seconds()
@@ -799,11 +793,11 @@ func nodesSufficientlyEqual(oldNodes, newNodes []*v1.Node) bool {
 // updateLoadBalancerHosts updates all existing load balancers so that
 // they will match the latest list of nodes with input number of workers.
 // Returns the list of services that couldn't be updated.
-func (c *Controller) updateLoadBalancerHosts(ctx context.Context, services []*v1.Service, workers int) (servicesToRetry sets.String) {
+func (c *Controller) updateLoadBalancerHosts(ctx context.Context, services []*v1.Service, workers int) (servicesToRetry sets.Set[string]) {
 	klog.V(4).Infof("Running updateLoadBalancerHosts(len(services)==%d, workers==%d)", len(services), workers)
 
 	// lock for servicesToRetry
-	servicesToRetry = sets.NewString()
+	servicesToRetry = sets.Set[string]{}
 	lock := sync.Mutex{}
 
 	doWork := func(piece int) {
@@ -921,14 +915,14 @@ func (c *Controller) processServiceDeletion(ctx context.Context, key string) err
 		return nil
 	}
 	klog.V(2).Infof("Service %v has been deleted. Attempting to cleanup load balancer resources", key)
-	if err := c.processLoadBalancerDelete(ctx, cachedService.state, key); err != nil {
+	if err := c.processLoadBalancerDelete(ctx, cachedService.state); err != nil {
 		return err
 	}
 	c.cache.delete(key)
 	return nil
 }
 
-func (c *Controller) processLoadBalancerDelete(ctx context.Context, service *v1.Service, key string) error {
+func (c *Controller) processLoadBalancerDelete(ctx context.Context, service *v1.Service) error {
 	// delete load balancer info only if the service type is LoadBalancer
 	if !WantsLoadBalancer(service) {
 		return nil
@@ -1003,12 +997,6 @@ func (c *Controller) patchStatus(service *v1.Service, previousStatus, newStatus 
 type NodeConditionPredicate func(node *v1.Node) bool
 
 var (
-	allNodePredicates []NodeConditionPredicate = []NodeConditionPredicate{
-		nodeIncludedPredicate,
-		nodeUnTaintedPredicate,
-		nodeReadyPredicate,
-	}
-
 	stableNodeSetPredicates []NodeConditionPredicate = []NodeConditionPredicate{
 		nodeNotDeletedPredicate,
 		nodeIncludedPredicate,
@@ -1042,16 +1030,6 @@ func nodeUnTaintedPredicate(node *v1.Node) bool {
 		}
 	}
 	return true
-}
-
-// We consider the node for load balancing only when its NodeReady condition status is ConditionTrue
-func nodeReadyPredicate(node *v1.Node) bool {
-	for _, cond := range node.Status.Conditions {
-		if cond.Type == v1.NodeReady {
-			return cond.Status == v1.ConditionTrue
-		}
-	}
-	return false
 }
 
 func nodeNotDeletedPredicate(node *v1.Node) bool {

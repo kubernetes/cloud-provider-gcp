@@ -129,7 +129,7 @@ func (c *mutationCache) ByIndex(name string, indexKey string) ([]interface{}, er
 		return nil, err
 	}
 	var items []interface{}
-	keySet := sets.NewString()
+	keySet := sets.Set[string]{}
 	for _, key := range keys {
 		keySet.Insert(key)
 		obj, exists, err := c.indexer.GetByKey(key)

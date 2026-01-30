@@ -21,7 +21,7 @@ import (
 	"net"
 	"sync"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -63,7 +63,7 @@ type rangeAllocator struct {
 	recorder              record.EventRecorder
 	// Keep a set of nodes that are currently being processed to avoid races in CIDR allocation
 	lock              sync.Mutex
-	nodesInProcessing sets.String
+	nodesInProcessing sets.Set[string]
 }
 
 // NewCIDRRangeAllocator returns a CIDRAllocator to allocate CIDRs for node (one from each of clusterCIDRs)
@@ -101,7 +101,7 @@ func NewCIDRRangeAllocator(client clientset.Interface, nodeInformer informers.No
 		nodesSynced:           nodeInformer.Informer().HasSynced,
 		nodeCIDRUpdateChannel: make(chan nodeReservedCIDRs, cidrUpdateQueueSize),
 		recorder:              recorder,
-		nodesInProcessing:     sets.NewString(),
+		nodesInProcessing:     sets.Set[string]{},
 	}
 
 	if allocatorParams.ServiceCIDR != nil {

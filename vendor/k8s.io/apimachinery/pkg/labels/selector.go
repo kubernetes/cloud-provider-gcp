@@ -303,8 +303,8 @@ func (r *Requirement) Operator() selection.Operator {
 }
 
 // Values returns requirement values
-func (r *Requirement) Values() sets.String {
-	ret := sets.String{}
+func (r *Requirement) Values() sets.Set[string] {
+	ret := sets.Set[string]{}
 	for i := range r.strValues {
 		ret.Insert(r.strValues[i])
 	}
@@ -730,7 +730,7 @@ func (p *Parser) parseRequirement() (*Requirement, error) {
 	if err != nil {
 		return nil, err
 	}
-	var values sets.String
+	var values sets.Set[string]
 	switch operator {
 	case selection.In, selection.NotIn:
 		values, err = p.parseValues()
@@ -740,7 +740,7 @@ func (p *Parser) parseRequirement() (*Requirement, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewRequirement(key, operator, values.List(), field.WithPath(p.path))
+	return NewRequirement(key, operator, values.UnsortedList(), field.WithPath(p.path))
 
 }
 
@@ -796,7 +796,7 @@ func (p *Parser) parseOperator() (op selection.Operator, err error) {
 }
 
 // parseValues parses the values for set based matching (x,y,z)
-func (p *Parser) parseValues() (sets.String, error) {
+func (p *Parser) parseValues() (sets.Set[string], error) {
 	tok, lit := p.consume(Values)
 	if tok != OpenParToken {
 		return nil, fmt.Errorf("found '%s' expected: '('", lit)
@@ -814,7 +814,7 @@ func (p *Parser) parseValues() (sets.String, error) {
 		return s, nil
 	case ClosedParToken: // handles "()"
 		p.consume(Values)
-		return sets.NewString(""), nil
+		return sets.New(""), nil
 	default:
 		return nil, fmt.Errorf("found '%s', expected: ',', ')' or identifier", lit)
 	}
@@ -822,8 +822,8 @@ func (p *Parser) parseValues() (sets.String, error) {
 
 // parseIdentifiersList parses a (possibly empty) list of
 // of comma separated (possibly empty) identifiers
-func (p *Parser) parseIdentifiersList() (sets.String, error) {
-	s := sets.NewString()
+func (p *Parser) parseIdentifiersList() (sets.Set[string], error) {
+	s := sets.Set[string]{}
 	for {
 		tok, lit := p.consume(Values)
 		switch tok {
@@ -858,8 +858,8 @@ func (p *Parser) parseIdentifiersList() (sets.String, error) {
 }
 
 // parseExactValue parses the only value for exact match style
-func (p *Parser) parseExactValue() (sets.String, error) {
-	s := sets.NewString()
+func (p *Parser) parseExactValue() (sets.Set[string], error) {
+	s := sets.Set[string]{}
 	tok, _ := p.lookahead(Values)
 	if tok == EndOfStringToken || tok == CommaToken {
 		s.Insert("")

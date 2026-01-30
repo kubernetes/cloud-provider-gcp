@@ -139,8 +139,8 @@ func (cb *CommandBuilder) BuildCommand() *cobra.Command {
 			verflag.PrintAndExitIfRequested()
 			cliflag.PrintFlags(cmd.Flags())
 
-			config, err := cb.options.Config(ControllerNames(cb.controllerInitFuncConstructors), ControllersDisabledByDefault.List(),
-				cb.controllerAliases, WebhookNames(cb.webhookConfigs), WebhooksDisabledByDefault.List())
+			config, err := cb.options.Config(ControllerNames(cb.controllerInitFuncConstructors), ControllersDisabledByDefault.UnsortedList(),
+				cb.controllerAliases, WebhookNames(cb.webhookConfigs), WebhooksDisabledByDefault.UnsortedList())
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				return err
@@ -167,8 +167,8 @@ func (cb *CommandBuilder) BuildCommand() *cobra.Command {
 	}
 
 	fs := cmd.Flags()
-	namedFlagSets := cb.options.Flags(ControllerNames(cb.controllerInitFuncConstructors), ControllersDisabledByDefault.List(), cb.controllerAliases,
-		WebhookNames(cb.webhookConfigs), WebhooksDisabledByDefault.List())
+	namedFlagSets := cb.options.Flags(ControllerNames(cb.controllerInitFuncConstructors), ControllersDisabledByDefault.UnsortedList(), cb.controllerAliases,
+		WebhookNames(cb.webhookConfigs), WebhooksDisabledByDefault.UnsortedList())
 	verflag.AddFlags(namedFlagSets.FlagSet("global"))
 	globalflag.AddGlobalFlags(namedFlagSets.FlagSet("global"), cmd.Name())
 

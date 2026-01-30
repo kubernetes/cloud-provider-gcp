@@ -95,7 +95,7 @@ the cloud specific control loops shipped with Kubernetes.`,
 				return err
 			}
 
-			c, err := s.Config(ControllerNames(controllerInitFuncConstructors), ControllersDisabledByDefault.List(), controllerAliases, AllWebhooks, DisabledByDefaultWebhooks)
+			c, err := s.Config(ControllerNames(controllerInitFuncConstructors), ControllersDisabledByDefault.UnsortedList(), controllerAliases, AllWebhooks, DisabledByDefaultWebhooks)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				return err
@@ -122,7 +122,7 @@ the cloud specific control loops shipped with Kubernetes.`,
 	}
 
 	fs := cmd.Flags()
-	namedFlagSets := s.Flags(ControllerNames(controllerInitFuncConstructors), ControllersDisabledByDefault.List(), controllerAliases, AllWebhooks, DisabledByDefaultWebhooks)
+	namedFlagSets := s.Flags(ControllerNames(controllerInitFuncConstructors), ControllersDisabledByDefault.UnsortedList(), controllerAliases, AllWebhooks, DisabledByDefaultWebhooks)
 
 	globalFlagSet := namedFlagSets.FlagSet("global")
 	verflag.AddFlags(globalFlagSet)
@@ -363,13 +363,13 @@ type InitFuncConstructor func(initcontext ControllerInitContext, completedConfig
 
 // ControllerNames indicate the default controller we are known.
 func ControllerNames(controllerInitFuncConstructors map[string]ControllerInitFuncConstructor) []string {
-	ret := sets.StringKeySet(controllerInitFuncConstructors)
-	return ret.List()
+	ret := sets.KeySet(controllerInitFuncConstructors)
+	return ret.UnsortedList()
 }
 
 var (
 	// ControllersDisabledByDefault is the controller disabled default when starting cloud-controller managers.
-	ControllersDisabledByDefault = sets.NewString()
+	ControllersDisabledByDefault = sets.Set[string]{}
 
 	// AllWebhooks represents the list of all webhook options configured in
 	// this package.  This is empty because no webhooks are currently

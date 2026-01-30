@@ -271,8 +271,8 @@ func equalStringSets(x, y []string) bool {
 	if len(x) != len(y) {
 		return false
 	}
-	xString := sets.NewString(x...)
-	yString := sets.NewString(y...)
+	xString := sets.New(x...)
+	yString := sets.New(y...)
 	return xString.Equal(yString)
 }
 
