@@ -27,8 +27,6 @@ import (
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
-	"k8s.io/cloud-provider-gcp/providers/gce"
-	_ "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/cloud-provider/app"
 	"k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/names"
@@ -39,6 +37,9 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/version"  // for version metric registration
 	"k8s.io/klog/v2"
 	kcmnames "k8s.io/kubernetes/cmd/kube-controller-manager/names"
+
+	"k8s.io/cloud-provider-gcp/providers/gce"
+	_ "k8s.io/cloud-provider-gcp/providers/gce"
 )
 
 const (
@@ -47,30 +48,36 @@ const (
 	gkeServiceAlias                = "gke-service"
 )
 
-// enableMultiProject is bound to a command-line flag. When true, it enables the
-// projectFromNodeProviderID option of the GCE cloud provider, instructing it to
-// use the project specified in the Node's providerID for GCE API calls.
-//
-// This flag should only be enabled when the Node's providerID can be fully
-// trusted.
-//
-// Flag binding occurs in main()
-var enableMultiProject bool
+var (
+	// enableMultiProject is bound to a command-line flag. When true, it enables the
+	// projectFromNodeProviderID option of the GCE cloud provider, instructing it to
+	// use the project specified in the Node's providerID for GCE API calls.
+	//
+	// This flag should only be enabled when the Node's providerID can be fully
+	// trusted.
+	//
+	// Flag binding occurs in main()
+	enableMultiProject bool
 
-// enableDiscretePortForwarding is bound to a command-line flag. It enables
-// the same option of the GCE cloud provider to forward individual ports
-// instead of port ranges in Forwarding Rules for external load balancers.
-var enableDiscretePortForwarding bool
+	// enableRBSDefaultForGCEL4NetLB is bound to a command-line flag. It enables
+	// the option to default L4 NetLB to RBS, only controlling NetLB services with
+	// LoadBalancerClass
+	enableRBSDefaultForL4NetLB bool
 
-// enableRBSDefaultForGCEL4NetLB is bound to a command-line flag. It enables
-// the option to default L4 NetLB to RBS, only controlling NetLB services with
-// LoadBalancerClass
-var enableRBSDefaultForL4NetLB bool
+	// enableL4LBAnnotations is bound to a command-line flag. It enables
+	// the controller to write annotations related to the provisioned resources
+	// for L4 Load Balancers services
+	enableL4LBAnnotations bool
 
-// enableL4LBAnnotations is bound to a command-line flag. It enables
-// the controller to write annotations related to the provisioned resources
-// for L4 Load Balancers services
-var enableL4LBAnnotations bool
+	// enableL4DenyFirewall creates and manages an additional deny firewall rule
+	// at priority 1000 and moves the node and healthcheck firewall rule to priority 999.
+	enableL4DenyFirewall bool
+
+	// enableL4DenyFirewallRollbackCleanup enable cleanup codepath of the deny firewalls for rollback.
+	// The reason for it not being enabled by default is the additional GCE API calls that are made
+	// for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.
+	enableL4DenyFirewallRollbackCleanup bool
+)
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
@@ -88,9 +95,10 @@ func main() {
 
 	cloudProviderFS := fss.FlagSet("GCE Cloud Provider")
 	cloudProviderFS.BoolVar(&enableMultiProject, "enable-multi-project", false, "Enables project selection from Node providerID for GCE API calls. CAUTION: Only enable if Node providerID is configured by a trusted source.")
-	cloudProviderFS.BoolVar(&enableDiscretePortForwarding, "enable-discrete-port-forwarding", false, "Enables forwarding of individual ports instead of port ranges for GCE external load balancers.")
 	cloudProviderFS.BoolVar(&enableRBSDefaultForL4NetLB, "enable-rbs-default-l4-netlb", false, "Enables RBS defaulting for GCE L4 NetLB")
 	cloudProviderFS.BoolVar(&enableL4LBAnnotations, "enable-l4-lb-annotations", false, "Enables Annotations for GCE L4 LB Services")
+	cloudProviderFS.BoolVar(&enableL4DenyFirewall, "enable-l4-deny-firewall", false, "Enable creation and updates of Deny VPC Firewall Rules for L4 external load balancers. Requires --enable-pinhole and --enable-l4-deny-firewall-rollback-cleanup to be true.")
+	cloudProviderFS.BoolVar(&enableL4DenyFirewallRollbackCleanup, "enable-l4-deny-firewall-rollback-cleanup", false, "Enable cleanup codepath of the deny firewalls for rollback. The reason for it not being enabled by default is the additional GCE API calls that are made for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
@@ -158,16 +166,6 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 		gceCloud.SetProjectFromNodeProviderID(true)
 	}
 
-	if enableDiscretePortForwarding {
-		gceCloud, ok := (cloud).(*gce.Cloud)
-		if !ok {
-			// Fail-fast: If enableDiscretePortForwarding is set, the cloud
-			// provider MUST be GCE.
-			klog.Fatalf("enable-discrete-port-forwarding requires GCE cloud provider, but got %T", cloud)
-		}
-		gceCloud.SetEnableDiscretePortForwarding(true)
-	}
-
 	if enableRBSDefaultForL4NetLB {
 		gceCloud, ok := (cloud).(*gce.Cloud)
 		if !ok {
@@ -186,6 +184,17 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 			klog.Fatalf("enable-l4-lb-annotations requires GCE cloud provider, but got %T", cloud)
 		}
 		gceCloud.SetEnableL4LBAnnotations(true)
+	}
+
+	if enableL4DenyFirewall || enableL4DenyFirewallRollbackCleanup {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			klog.Fatalf("enable-l4-deny-firewall and enable-l4-deny-firewall-rollback-cleanup require GCE cloud provider, but got %T", cloud)
+		}
+		if enableL4DenyFirewall && !enableL4DenyFirewallRollbackCleanup {
+			klog.Fatal("enable-l4-deny-firewall requires enable-l4-deny-firewall-rollback-cleanup to be true")
+		}
+		gceCloud.SetEnableL4DenyFirewallRule(enableL4DenyFirewall, enableL4DenyFirewallRollbackCleanup)
 	}
 
 	return cloud
