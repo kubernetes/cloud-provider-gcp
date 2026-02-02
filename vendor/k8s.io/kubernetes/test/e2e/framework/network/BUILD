@@ -1,0 +1,31 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "network",
+    srcs = ["utils.go"],
+    importmap = "k8s.io/cloud-provider-gcp/vendor/k8s.io/kubernetes/test/e2e/framework/network",
+    importpath = "k8s.io/kubernetes/test/e2e/framework/network",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/onsi/ginkgo/v2:ginkgo",
+        "//vendor/k8s.io/api/core/v1:core",
+        "//vendor/k8s.io/apimachinery/pkg/api/errors",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/apimachinery/pkg/util/intstr",
+        "//vendor/k8s.io/apimachinery/pkg/util/net",
+        "//vendor/k8s.io/apimachinery/pkg/util/sets",
+        "//vendor/k8s.io/apimachinery/pkg/util/uuid",
+        "//vendor/k8s.io/apimachinery/pkg/util/wait",
+        "//vendor/k8s.io/client-go/kubernetes",
+        "//vendor/k8s.io/client-go/kubernetes/typed/core/v1:core",
+        "//vendor/k8s.io/kubernetes/test/e2e/framework",
+        "//vendor/k8s.io/kubernetes/test/e2e/framework/endpointslice",
+        "//vendor/k8s.io/kubernetes/test/e2e/framework/kubectl",
+        "//vendor/k8s.io/kubernetes/test/e2e/framework/node",
+        "//vendor/k8s.io/kubernetes/test/e2e/framework/pod",
+        "//vendor/k8s.io/kubernetes/test/e2e/framework/pod/output",
+        "//vendor/k8s.io/kubernetes/test/e2e/framework/skipper",
+        "//vendor/k8s.io/kubernetes/test/utils/image",
+        "//vendor/k8s.io/utils/net",
+    ],
+)

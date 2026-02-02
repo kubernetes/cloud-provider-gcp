@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.5
 
 require (
-	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.25.0
+	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.27.0
 	github.com/google/go-cmp v0.7.0
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/oauth2 v0.27.0
