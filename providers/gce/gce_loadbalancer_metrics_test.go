@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"k8s.io/component-base/metrics/testutil"
 )
 
 func TestComputeL4ILBMetrics(t *testing.T) {
@@ -166,5 +167,65 @@ func newL4ILBServiceState(globalAccess, customSubnet, inSuccess bool) L4ILBServi
 		EnabledGlobalAccess: globalAccess,
 		EnabledCustomSubnet: customSubnet,
 		InSuccess:           inSuccess,
+	}
+}
+
+func TestL4NetLBMetrics(t *testing.T) {
+	metrics := newLoadBalancerMetrics()
+	// Cast to *LoadBalancerMetrics to access methods
+	lbMetrics, ok := metrics.(*LoadBalancerMetrics)
+	if !ok {
+		t.Fatalf("Failed to cast loadbalancerMetricsCollector to *LoadBalancerMetrics")
+	}
+
+	lbMetrics.SetL4NetLBService("svc-success-ipv4", L4NetLBServiceState{
+		Status:       StatusSuccess,
+		DenyFirewall: DenyFirewallStatusIPv4,
+	})
+	lbMetrics.SetL4NetLBService("svc-success-ipv4-2", L4NetLBServiceState{
+		Status:       StatusSuccess,
+		DenyFirewall: DenyFirewallStatusIPv4,
+	})
+	lbMetrics.SetL4NetLBService("svc-success-disabled", L4NetLBServiceState{
+		Status:       StatusSuccess,
+		DenyFirewall: DenyFirewallStatusDisabled,
+	})
+	lbMetrics.SetL4NetLBService("svc-error-none", L4NetLBServiceState{
+		Status:       StatusError,
+		DenyFirewall: DenyFirewallStatusNone,
+	})
+	lbMetrics.SetL4NetLBService("svc-user-error-none", L4NetLBServiceState{
+		Status:       StatusUserError,
+		DenyFirewall: DenyFirewallStatusNone,
+	})
+	lbMetrics.SetL4NetLBService("svc-persistent-error-none", L4NetLBServiceState{
+		Status:       StatusPersistentError,
+		DenyFirewall: DenyFirewallStatusNone,
+	})
+
+	// Add keys to be checked for deletion
+	lbMetrics.SetL4NetLBService("svc-to-delete", L4NetLBServiceState{
+		Status:       StatusSuccess,
+		DenyFirewall: DenyFirewallStatusNone,
+	})
+	lbMetrics.DeleteL4NetLBService("svc-to-delete")
+
+	lbMetrics.exportNetLBMetrics()
+
+	verifyL4NetLBMetric(t, 2, StatusSuccess, DenyFirewallStatusIPv4)
+	verifyL4NetLBMetric(t, 1, StatusSuccess, DenyFirewallStatusDisabled)
+	verifyL4NetLBMetric(t, 1, StatusError, DenyFirewallStatusNone)
+	verifyL4NetLBMetric(t, 1, StatusUserError, DenyFirewallStatusNone)
+	verifyL4NetLBMetric(t, 1, StatusPersistentError, DenyFirewallStatusNone)
+}
+
+func verifyL4NetLBMetric(t *testing.T, expectedCount int, status L4ServiceStatus, denyFirewall DenyFirewallStatus) {
+	t.Helper()
+	val, err := testutil.GetGaugeMetricValue(l4NetLBCount.WithLabelValues(string(status), string(denyFirewall)))
+	if err != nil {
+		t.Errorf("Failed to get metric value: %v", err)
+	}
+	if int(val) != expectedCount {
+		t.Errorf("Expected count %d but got %d for status %s, denyFirewall %s", expectedCount, int(val), status, denyFirewall)
 	}
 }

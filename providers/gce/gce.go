@@ -85,13 +85,15 @@ const (
 	gceComputeAPIEndpointBeta = "https://www.googleapis.com/compute/beta/"
 )
 
-var _ cloudprovider.Interface = (*Cloud)(nil)
-var _ cloudprovider.Instances = (*Cloud)(nil)
-var _ cloudprovider.LoadBalancer = (*Cloud)(nil)
-var _ cloudprovider.Routes = (*Cloud)(nil)
-var _ cloudprovider.Zones = (*Cloud)(nil)
-var _ cloudprovider.PVLabeler = (*Cloud)(nil)
-var _ cloudprovider.Clusters = (*Cloud)(nil)
+var (
+	_ cloudprovider.Interface    = (*Cloud)(nil)
+	_ cloudprovider.Instances    = (*Cloud)(nil)
+	_ cloudprovider.LoadBalancer = (*Cloud)(nil)
+	_ cloudprovider.Routes       = (*Cloud)(nil)
+	_ cloudprovider.Zones        = (*Cloud)(nil)
+	_ cloudprovider.PVLabeler    = (*Cloud)(nil)
+	_ cloudprovider.Clusters     = (*Cloud)(nil)
+)
 
 type StackType string
 
@@ -203,15 +205,18 @@ type Cloud struct {
 	// Enable this ony when the Node's .spec.providerID can be fully trusted.
 	projectFromNodeProviderID bool
 
-	// enableDiscretePortForwarding enables forwarding of individual ports
-	// instead of port ranges in Forwarding Rules for external load balancers.
-	enableDiscretePortForwarding bool
-
 	// enableRBSDefaultForL4NetLB disable Service controller from picking up services by default
 	enableRBSDefaultForL4NetLB bool
 
 	// enableL4LBAnnotations enable annotations related to provisioned resources in GCE
 	enableL4LBAnnotations bool
+
+	// enableL4DenyFirewallRule creates an additional deny firewall rule at priority 1000
+	// and moves the allow rule to priority 999 to improve security posture.
+	enableL4DenyFirewallRule bool
+
+	// enableL4DenyFirewallRollbackCleanup
+	enableL4DenyFirewallRollbackCleanup bool
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -864,17 +869,17 @@ func (g *Cloud) SetProjectFromNodeProviderID(enabled bool) {
 	g.projectFromNodeProviderID = enabled
 }
 
-// SetEnableDiscretePortForwarding configures enableDiscretePortForwarding option.
-func (g *Cloud) SetEnableDiscretePortForwarding(enabled bool) {
-	g.enableDiscretePortForwarding = enabled
-}
-
 func (g *Cloud) SetEnableRBSDefaultForL4NetLB(enabled bool) {
 	g.enableRBSDefaultForL4NetLB = enabled
 }
 
 func (g *Cloud) SetEnableL4LBAnnotations(enabled bool) {
 	g.enableL4LBAnnotations = enabled
+}
+
+func (g *Cloud) SetEnableL4DenyFirewallRule(firewallEnabled, rollbackEnabled bool) {
+	g.enableL4DenyFirewallRule = firewallEnabled
+	g.enableL4DenyFirewallRollbackCleanup = rollbackEnabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.
@@ -970,7 +975,7 @@ func getZonesForRegion(svc *compute.Service, projectID, region string) ([]string
 	// listCall = listCall.Filter("region eq " + region)
 
 	var zones []string
-	var accumulator = func(response *compute.ZoneList) error {
+	accumulator := func(response *compute.ZoneList) error {
 		for _, zone := range response.Items {
 			regionName := lastComponent(zone.Region)
 			if regionName == region {

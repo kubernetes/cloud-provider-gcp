@@ -21,6 +21,7 @@ package gce
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -41,10 +42,11 @@ import (
 )
 
 const (
-	errStrLbNoHosts   = "cannot EnsureLoadBalancer() with no hosts"
-	maxNodeNamesToLog = 50
-	// maxForwardedPorts is the maximum number of ports that can be specified in an Forwarding Rule
-	maxForwardedPorts = 5
+	errStrLbNoHosts         = "cannot EnsureLoadBalancer() with no hosts"
+	maxNodeNamesToLog       = 50
+	firewallPriorityDefault = 1000
+	firewallPriorityDeny    = firewallPriorityDefault
+	firewallPriorityAllow   = firewallPriorityDefault - 1
 )
 
 // ensureExternalLoadBalancer is the external implementation of LoadBalancer.EnsureLoadBalancer.
@@ -64,6 +66,18 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	if !shouldProcessNetLB(apiService, existingFwdRule, g.enableRBSDefaultForL4NetLB) {
 		return nil, cloudprovider.ImplementedElsewhere
 	}
+
+	nm := types.NamespacedName{Namespace: apiService.Namespace, Name: apiService.Name}
+	metricsState := L4NetLBServiceState{
+		Status:       StatusError,
+		DenyFirewall: DenyFirewallStatusNone,
+	}
+	if !g.enableL4DenyFirewallRule && g.enableL4DenyFirewallRollbackCleanup {
+		metricsState.DenyFirewall = DenyFirewallStatusDisabled
+	}
+	defer func() {
+		g.metricsCollector.SetL4NetLBService(nm.String(), metricsState)
+	}()
 
 	if hasLoadBalancerClass(apiService, LegacyRegionalExternalLoadBalancerClass) {
 		if apiService.Annotations[ServiceAnnotationLoadBalancerType] == string(LBTypeInternal) {
@@ -195,34 +209,15 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	// Deal with the firewall next. The reason we do this here rather than last
 	// is because the forwarding rule is used as the indicator that the load
 	// balancer is fully created - it's what getLoadBalancer checks for.
-	// Check if user specified the allow source range
-	sourceRanges, err := servicehelpers.GetLoadBalancerSourceRanges(apiService)
-	if err != nil {
-		return nil, err
-	}
-
-	firewallExists, firewallNeedsUpdate, err := g.firewallNeedsUpdate(loadBalancerName, serviceName.String(), ipAddressToUse, ports, sourceRanges)
-	if err != nil {
-		return nil, err
-	}
-
-	if firewallNeedsUpdate {
-		desc := makeFirewallDescription(serviceName.String(), ipAddressToUse)
-		// Unlike forwarding rules and target pools, firewalls can be updated
-		// without needing to be deleted and recreated.
-		if firewallExists {
-			klog.Infof("ensureExternalLoadBalancer(%s): Updating firewall.", lbRefStr)
-			if err := g.updateFirewall(apiService, MakeFirewallName(loadBalancerName), desc, ipAddressToUse, sourceRanges, ports, hosts); err != nil {
-				return nil, err
-			}
-			klog.Infof("ensureExternalLoadBalancer(%s): Updated firewall.", lbRefStr)
-		} else {
-			klog.Infof("ensureExternalLoadBalancer(%s): Creating firewall.", lbRefStr)
-			if err := g.createFirewall(apiService, MakeFirewallName(loadBalancerName), desc, ipAddressToUse, sourceRanges, ports, hosts); err != nil {
-				return nil, err
-			}
-			klog.Infof("ensureExternalLoadBalancer(%s): Created firewall.", lbRefStr)
+	if !g.enableL4DenyFirewallRule && g.enableL4DenyFirewallRollbackCleanup {
+		// clean up the resource, if the flag got disabled
+		fwDenyName := MakeFirewallDenyName(loadBalancerName)
+		if err := g.ensureFirewallDeleted(fwDenyName); err != nil {
+			return nil, fmt.Errorf("failed to clean up deny firewall for load balancer (%s): %v", lbRefStr, err)
 		}
+	}
+	if err := g.ensureAllowNodeFirewall(apiService, loadBalancerName, ipAddressToUse, lbRefStr, hosts); err != nil {
+		return nil, fmt.Errorf("failed to ensure node firewall for load balancer (%s): %v", lbRefStr, err)
 	}
 
 	tpExists, tpNeedsRecreation, err := g.targetPoolNeedsRecreation(loadBalancerName, g.region, apiService.Spec.SessionAffinity)
@@ -288,7 +283,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 
 	if tpNeedsRecreation || fwdRuleNeedsUpdate {
 		klog.Infof("ensureExternalLoadBalancer(%s): Creating forwarding rule, IP %s (tier: %s).", lbRefStr, ipAddressToUse, netTier)
-		if err := createForwardingRule(g, loadBalancerName, serviceName.String(), g.region, ipAddressToUse, g.targetPoolURL(loadBalancerName), ports, netTier, g.enableDiscretePortForwarding); err != nil {
+		if err := createForwardingRule(g, loadBalancerName, serviceName.String(), g.region, ipAddressToUse, g.targetPoolURL(loadBalancerName), ports, netTier); err != nil {
 			return nil, fmt.Errorf("failed to create forwarding rule for load balancer (%s): %v", lbRefStr, err)
 		}
 		// End critical section.  It is safe to release the static IP (which
@@ -299,8 +294,20 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		klog.Infof("ensureExternalLoadBalancer(%s): Created forwarding rule, IP %s.", lbRefStr, ipAddressToUse)
 	}
 
+	// We can create deny firewall rule only after making sure that the allow firewalls for nodes and healthchecks are created/updated to 999 priority
+	if g.enableL4DenyFirewallRule {
+		if err := g.ensureDenyNodeFirewall(apiService, loadBalancerName, ipAddressToUse, lbRefStr, hosts); err != nil {
+			return nil, fmt.Errorf("failed to ensure deny firewall rule for load balancer(%s): %v", lbRefStr, err)
+		}
+	}
+
 	status := &v1.LoadBalancerStatus{}
 	status.Ingress = []v1.LoadBalancerIngress{{IP: ipAddressToUse}}
+
+	metricsState.Status = StatusSuccess
+	if g.enableL4DenyFirewallRule {
+		metricsState.DenyFirewall = DenyFirewallStatusIPv4
+	}
 
 	syncResult.status = status
 	return syncResult, nil
@@ -374,6 +381,21 @@ func (g *Cloud) ensureExternalLoadBalancerDeleted(clusterName, clusterID string,
 			}
 			return err
 		},
+		func() error {
+			if !g.enableL4DenyFirewallRollbackCleanup {
+				klog.Infof("ensureExternalLoadBalancerDeleted(%s): Skipping deleting deny firewall rule, as it hasn't been enabled.", lbRefStr)
+				return nil
+			}
+			klog.Infof("ensureExternalLoadBalancerDeleted(%s): Deleting deny firewall rule.", lbRefStr)
+			fwName := MakeFirewallDenyName(loadBalancerName)
+			err := ignoreNotFound(g.DeleteFirewall(fwName))
+			if isForbidden(err) && g.OnXPN() {
+				klog.V(4).Infof("ensureExternalLoadBalancerDeleted(%s): Do not have permission to delete deny firewall rule %v (on XPN). Raising event.", lbRefStr, fwName)
+				g.raiseFirewallChangeNeededEvent(service, FirewallToGCloudDeleteCmd(fwName, g.NetworkProjectID()))
+				return nil
+			}
+			return err
+		},
 		// Even though we don't hold on to static IPs for load balancers, it's
 		// possible that EnsureLoadBalancer left one around in a failed
 		// creation/update attempt, so make sure we clean it up here just in case.
@@ -404,6 +426,7 @@ func (g *Cloud) ensureExternalLoadBalancerDeleted(clusterName, clusterID string,
 		klog.Errorf("Failed to remove finalizer '%s' from service %s - %v", NetLBFinalizerV1, service.Name, err)
 		return err
 	}
+	g.metricsCollector.DeleteL4NetLBService(serviceName.String())
 	return nil
 }
 
@@ -567,7 +590,18 @@ func (g *Cloud) ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation bool,
 			if hc, err := g.ensureHTTPHealthCheck(hcToCreate.Name, hcToCreate.RequestPath, int32(hcToCreate.Port)); err != nil || hc == nil {
 				return fmt.Errorf("failed to ensure health check for %v port %d path %v: %v", loadBalancerName, hcToCreate.Port, hcToCreate.RequestPath, err)
 			}
+			// Check whether it is nodes health check, which has different name from the load-balancer.
+			isNodesHealthCheck := hcToCreate.Name != serviceName.Name
+			if isNodesHealthCheck {
+				// Lock to prevent necessary nodes health check / firewall gets deleted.
+				g.sharedResourceLock.Lock()
+				defer g.sharedResourceLock.Unlock()
+			}
+			if err := g.ensureHTTPHealthCheckFirewall(svc, serviceName.String(), ipAddressToUse, g.region, clusterID, hosts, hcToCreate.Name, int32(hcToCreate.Port), isNodesHealthCheck); err != nil {
+				return fmt.Errorf("failed to ensure health check firewall %v for %v: %w", hcToCreate.Name, loadBalancerName, err)
+			}
 		}
+
 	} else {
 		// Panic worthy.
 		klog.Errorf("ensureTargetPoolAndHealthCheck(%s): target pool not exists and doesn't need to be created.", lbRefStr)
@@ -809,14 +843,9 @@ func (g *Cloud) forwardingRuleNeedsUpdate(name, region string, loadBalancerIP st
 		// We never want to end up recreating resources because g api flaked.
 		return true, false, "", err
 	}
-	newPorts := []string{}
-	if frPorts := getPorts(ports); len(frPorts) <= maxForwardedPorts && g.enableDiscretePortForwarding {
-		newPorts = frPorts
-		newPortRange = ""
-	}
-	frEqualPorts := equalPorts(fwd.Ports, newPorts, fwd.PortRange, newPortRange, g.enableDiscretePortForwarding)
-	if !frEqualPorts {
-		klog.Infof("Forwarding rule port range / ports are not equal, old (port range: %v, ports: %v), new (port range: %v, ports: %v)", fwd.PortRange, fwd.Ports, newPortRange, newPorts)
+
+	if newPortRange != fwd.PortRange {
+		klog.Infof("LoadBalancer port range for forwarding rule %v was expected to be %v, but was actually %v", fwd.Name, fwd.PortRange, newPortRange)
 		return true, true, fwd.IPAddress, nil
 	}
 
@@ -894,25 +923,16 @@ func getProtocol(svcPorts []v1.ServicePort) (v1.Protocol, error) {
 	return protocol, nil
 }
 
-func getPorts(svcPorts []v1.ServicePort) []string {
-	ports := []string{}
-	for _, p := range svcPorts {
-		ports = append(ports, strconv.Itoa(int(p.Port)))
-	}
-
-	return ports
-}
-
 func minMaxPort[T v1.ServicePort | string](svcPorts []T) (int32, int32) {
 	minPort := int32(65536)
 	maxPort := int32(0)
 	for _, svcPort := range svcPorts {
 		port := func(value any) int32 {
-			switch value.(type) {
+			switch value := value.(type) {
 			case v1.ServicePort:
-				return value.(v1.ServicePort).Port
+				return value.Port
 			case string:
-				i, _ := strconv.ParseInt(value.(string), 10, 32)
+				i, _ := strconv.ParseInt(value, 10, 32)
 				return int32(i)
 			default:
 				return 0
@@ -937,23 +957,6 @@ func loadBalancerPortRange[T v1.ServicePort | string](svcPorts []T) (string, err
 	return fmt.Sprintf("%d-%d", minPort, maxPort), nil
 }
 
-// equalPorts compares two port ranges or slices of ports. Before comparison,
-// slices of ports are converted into a port range from smallest to largest
-// port. This is done so we don't unnecessarily recreate forwarding rules
-// when upgrading from port ranges to distinct ports, because recreating
-// forwarding rules is traffic impacting.
-func equalPorts(existingPorts, newPorts []string, existingPortRange, newPortRange string, enableDiscretePortForwarding bool) bool {
-	if len(existingPorts) != 0 || !enableDiscretePortForwarding {
-		return equalStringSets(existingPorts, newPorts) && existingPortRange == newPortRange
-	}
-	// Existing forwarding rule contains a port range. To keep it that way,
-	// compare new list of ports as if it was a port range, too.
-	if len(newPorts) != 0 {
-		newPortRange, _ = loadBalancerPortRange(newPorts)
-	}
-	return existingPortRange == newPortRange
-}
-
 // translate from what K8s supports to what the cloud provider supports for session affinity.
 func translateAffinityType(affinityType v1.ServiceAffinity) string {
 	switch affinityType {
@@ -967,7 +970,7 @@ func translateAffinityType(affinityType v1.ServiceAffinity) string {
 	}
 }
 
-func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports []v1.ServicePort, sourceRanges utilnet.IPNetSet) (exists bool, needsUpdate bool, err error) {
+func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports []v1.ServicePort, sourceRanges utilnet.IPNetSet, priority int64) (exists bool, needsUpdate bool, err error) {
 	fw, err := g.GetFirewall(MakeFirewallName(name))
 	if err != nil {
 		if isHTTPErrorCode(err, http.StatusNotFound) {
@@ -1009,6 +1012,10 @@ func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports [
 		return true, true, nil
 	}
 
+	if fw.Priority != priority {
+		return true, true, nil
+	}
+
 	return true, false, nil
 }
 
@@ -1020,6 +1027,10 @@ func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAd
 	}
 	sourceRanges := l4LbSrcRngsFlag.ipn
 	ports := []v1.ServicePort{{Protocol: "tcp", Port: hcPort}}
+	allowPriority := firewallPriorityDefault
+	if g.enableL4DenyFirewallRule {
+		allowPriority = firewallPriorityAllow
+	}
 
 	fwName := MakeHealthCheckFirewallName(clusterID, hcName, isNodesHealthCheck)
 	fw, err := g.GetFirewall(fwName)
@@ -1028,7 +1039,7 @@ func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAd
 			return fmt.Errorf("error getting firewall for health checks: %v", err)
 		}
 		klog.Infof("Creating firewall %v for health checks.", fwName)
-		if err := g.createFirewall(svc, fwName, desc, ipAddress, sourceRanges, ports, hosts); err != nil {
+		if err := g.createFirewall(svc, fwName, desc, ipAddress, sourceRanges, ports, hosts, allowPriority); err != nil {
 			return err
 		}
 		klog.Infof("Created firewall %v for health checks.", fwName)
@@ -1039,9 +1050,10 @@ func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAd
 		len(fw.Allowed) != 1 ||
 		fw.Allowed[0].IPProtocol != string(ports[0].Protocol) ||
 		!equalStringSets(fw.Allowed[0].Ports, []string{strconv.Itoa(int(ports[0].Port))}) ||
-		!equalStringSets(fw.SourceRanges, sourceRanges.StringSlice()) {
+		!equalStringSets(fw.SourceRanges, sourceRanges.StringSlice()) ||
+		fw.Priority != int64(allowPriority) {
 		klog.Warningf("Firewall %v exists but parameters have drifted - updating...", fwName)
-		if err := g.updateFirewall(svc, fwName, desc, ipAddress, sourceRanges, ports, hosts); err != nil {
+		if err := g.updateFirewall(svc, fwName, desc, ipAddress, sourceRanges, ports, hosts, allowPriority); err != nil {
 			klog.Warningf("Failed to reconcile firewall %v parameters.", fwName)
 			return err
 		}
@@ -1050,8 +1062,7 @@ func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAd
 	return nil
 }
 
-func createForwardingRule(s CloudForwardingRuleService, name, serviceName, region, ipAddress, target string, ports []v1.ServicePort, netTier cloud.NetworkTier, enableDiscretePortForwarding bool) error {
-	frPorts := getPorts(ports)
+func createForwardingRule(s CloudForwardingRuleService, name, serviceName, region, ipAddress, target string, ports []v1.ServicePort, netTier cloud.NetworkTier) error {
 	protocol, err := getProtocol(ports)
 	if err != nil {
 		return err
@@ -1072,11 +1083,6 @@ func createForwardingRule(s CloudForwardingRuleService, name, serviceName, regio
 		NetworkTier: netTier.ToGCEValue(),
 	}
 
-	if len(frPorts) <= maxForwardedPorts && enableDiscretePortForwarding {
-		rule.Ports = frPorts
-		rule.PortRange = ""
-	}
-
 	err = s.CreateRegionForwardingRule(rule, region)
 
 	if err != nil && !isHTTPErrorCode(err, http.StatusConflict) {
@@ -1086,8 +1092,8 @@ func createForwardingRule(s CloudForwardingRuleService, name, serviceName, regio
 	return nil
 }
 
-func (g *Cloud) createFirewall(svc *v1.Service, name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance) error {
-	firewall, err := g.firewallObject(name, desc, destinationIP, sourceRanges, ports, hosts)
+func (g *Cloud) createFirewall(svc *v1.Service, name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance, priority int) error {
+	firewall, err := g.firewallObject(name, desc, destinationIP, sourceRanges, ports, hosts, priority)
 	if err != nil {
 		return err
 	}
@@ -1104,8 +1110,8 @@ func (g *Cloud) createFirewall(svc *v1.Service, name, desc, destinationIP string
 	return nil
 }
 
-func (g *Cloud) updateFirewall(svc *v1.Service, name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance) error {
-	firewall, err := g.firewallObject(name, desc, destinationIP, sourceRanges, ports, hosts)
+func (g *Cloud) updateFirewall(svc *v1.Service, name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance, priority int) error {
+	firewall, err := g.firewallObject(name, desc, destinationIP, sourceRanges, ports, hosts, priority)
 	if err != nil {
 		return err
 	}
@@ -1123,7 +1129,7 @@ func (g *Cloud) updateFirewall(svc *v1.Service, name, desc, destinationIP string
 	return nil
 }
 
-func (g *Cloud) firewallObject(name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance) (*compute.Firewall, error) {
+func (g *Cloud) firewallObject(name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance, priority int) (*compute.Firewall, error) {
 	// destinationIP can be empty string "" and this means that it is not set.
 	// GCE considers empty destinationRanges as "all" for ingress firewall-rules.
 	// Concatenate service ports into port ranges. This help to workaround the gce firewall limitation where only
@@ -1157,11 +1163,249 @@ func (g *Cloud) firewallObject(name, desc, destinationIP string, sourceRanges ut
 				Ports:      portRanges,
 			},
 		},
+		Priority: int64(priority),
 	}
 	if destinationIP != "" {
 		firewall.DestinationRanges = []string{destinationIP}
 	}
 	return firewall, nil
+}
+
+func (g *Cloud) ensureAllowNodeFirewall(apiService *v1.Service, loadBalancerName, ipAddressToUse, lbRefStr string, hosts []*gceInstance) error {
+	fwAllowName := MakeFirewallName(loadBalancerName)
+
+	// Check if user specified the allow source range
+	sourceRanges, err := servicehelpers.GetLoadBalancerSourceRanges(apiService)
+	if err != nil {
+		return err
+	}
+	ports := apiService.Spec.Ports
+
+	serviceName := types.NamespacedName{Namespace: apiService.Namespace, Name: apiService.Name}.String()
+	desc := makeFirewallDescription(serviceName, ipAddressToUse)
+
+	allowPriority := firewallPriorityDefault
+	if g.enableL4DenyFirewallRule {
+		allowPriority = firewallPriorityAllow
+	}
+
+	firewallExists, firewallNeedsUpdate, err := g.firewallNeedsUpdate(loadBalancerName, serviceName, ipAddressToUse, ports, sourceRanges, int64(allowPriority))
+	if err != nil {
+		return err
+	}
+
+	if firewallNeedsUpdate {
+		// Unlike forwarding rules and target pools, firewalls can be updated
+		// without needing to be deleted and recreated.
+		if firewallExists {
+			klog.Infof("ensureExternalLoadBalancer(%s): Updating firewall.", lbRefStr)
+			if err := g.updateFirewall(apiService, fwAllowName, desc, ipAddressToUse, sourceRanges, ports, hosts, allowPriority); err != nil {
+				return err
+			}
+			klog.Infof("ensureExternalLoadBalancer(%s): Updated firewall.", lbRefStr)
+		} else {
+			klog.Infof("ensureExternalLoadBalancer(%s): Creating firewall.", lbRefStr)
+			if err := g.createFirewall(apiService, fwAllowName, desc, ipAddressToUse, sourceRanges, ports, hosts, allowPriority); err != nil {
+				return err
+			}
+			klog.Infof("ensureExternalLoadBalancer(%s): Created firewall.", lbRefStr)
+		}
+	}
+	return nil
+}
+
+func (g *Cloud) ensureDenyNodeFirewall(apiService *v1.Service, loadBalancerName, ipAddressToUse, lbRefStr string, hosts []*gceInstance) error {
+	// If the node tags to be used for this cluster have been predefined in the
+	// provider config, just use them. Otherwise, invoke computeHostTags method to get the tags.
+	hostTags := g.nodeTags
+	if len(hostTags) == 0 {
+		var err error
+		if hostTags, err = g.computeHostTags(hosts); err != nil {
+			return fmt.Errorf("no node tags supplied and also failed to parse the given lists of hosts for tags. Abort ensuring firewall rule")
+		}
+	}
+	name := MakeFirewallDenyName(loadBalancerName)
+	serviceName := types.NamespacedName{Namespace: apiService.Namespace, Name: apiService.Name}.String()
+	desc := makeFirewallDescription(serviceName, ipAddressToUse)
+
+	want := &compute.Firewall{
+		Name:              name,
+		Description:       desc,
+		Network:           g.networkURL,
+		SourceRanges:      []string{"0.0.0.0/0"},
+		DestinationRanges: []string{ipAddressToUse},
+		TargetTags:        hostTags,
+		Denied:            []*compute.FirewallDenied{{IPProtocol: "all"}},
+		Priority:          firewallPriorityDeny,
+	}
+
+	got, err := g.GetFirewall(name)
+	if ignoreNotFound(err) != nil {
+		return err
+	}
+
+	if create := isNotFound(err); create {
+		klog.Infof("ensureDenyNodeFirewall(%s): Creating firewall %q.", lbRefStr, name)
+		if err := g.CreateFirewall(want); err != nil {
+			if isForbidden(err) && g.OnXPN() {
+				klog.V(4).Infof("ensureDenyNodeFirewall(%q): Do not have permission to create firewall rule (on XPN) %q. Skipping creation.", name, err)
+				return nil
+			}
+			return err
+		}
+		klog.Infof("ensureDenyNodeFirewall(%s): Created firewall %q.", lbRefStr, name)
+		return nil
+	}
+
+	// otherwise exists
+	equal, err := firewallsEqual(got, want)
+	if err != nil {
+		return err
+	}
+	if equal {
+		// no need to update
+		klog.Infof("ensureDenyNodeFirewall(%s): Firewall %q already exists and is up to date.", lbRefStr, name)
+		return nil
+	}
+
+	// needs update
+	klog.Infof("ensureDenyNodeFirewall(%s): Updating firewall %q.", lbRefStr, name)
+	if err := g.PatchFirewall(want); err != nil {
+		if isForbidden(err) && g.OnXPN() {
+			klog.V(4).Infof("ensureDenyNodeFirewall(%q): Do not have permission to update firewall rule (on XPN) %q. Skipping update.", name, err)
+			return nil
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (g *Cloud) ensureFirewallDeleted(fwName string) error {
+	// We do an additional call to check if the resource is there
+	// If it isn't there we don't call delete which will leave the
+	// 404 in the project Audit Logs.
+	_, err := g.GetFirewall(fwName)
+	if isNotFound(err) || (isForbidden(err) && g.OnXPN()) {
+		klog.V(4).Infof("ensureFirewallDeleted(%q): Firewall does not exist or do not have permission to delete (on XPN) %q. Skipping deletion.", fwName, err)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	// If there is a firewall we delete it.
+	err = ignoreNotFound(g.DeleteFirewall(fwName))
+	if isForbidden(err) && g.OnXPN() {
+		klog.V(4).Infof("ensureFirewallDeleted(%q): Do not have permission to delete firewall rule (on XPN) %q. Skipping deletion.", fwName, err)
+		return nil
+	}
+	return err
+}
+
+func firewallsEqual(a, b *compute.Firewall) (bool, error) {
+	if equal, err := ipRangesEqual(a.SourceRanges, b.SourceRanges); !equal || err != nil {
+		return equal, err
+	}
+	if equal, err := firewallEffectsEqual(a.Allowed, b.Allowed); !equal || err != nil {
+		return equal, err
+	}
+	if equal, err := firewallEffectsEqual(a.Denied, b.Denied); !equal || err != nil {
+		return equal, err
+	}
+
+	return a.Priority == b.Priority && reflect.DeepEqual(a.DestinationRanges, b.DestinationRanges) &&
+		a.Description == b.Description, nil
+}
+
+func firewallEffectsEqual[T compute.FirewallAllowed | compute.FirewallDenied](a, b []*T) (bool, error) {
+	mapA, err := portsPerProtocol(a)
+	if err != nil {
+		return false, err
+	}
+
+	mapB, err := portsPerProtocol(b)
+	if err != nil {
+		return false, err
+	}
+
+	return reflect.DeepEqual(mapA, mapB), nil
+}
+
+type protocol string
+
+func portsPerProtocol[T compute.FirewallAllowed | compute.FirewallDenied](a []*T) (map[protocol]sets.Set[int], error) {
+	mapped := make(map[protocol]sets.Set[int])
+	for _, item := range a {
+		var protoStr string
+		var ports []string
+
+		switch v := any(item).(type) {
+		case *compute.FirewallAllowed:
+			protoStr = v.IPProtocol
+			ports = v.Ports
+		case *compute.FirewallDenied:
+			protoStr = v.IPProtocol
+			ports = v.Ports
+		}
+		proto := protocol(strings.ToUpper(protoStr))
+
+		if _, ok := mapped[proto]; !ok {
+			mapped[proto] = sets.New[int]()
+		}
+		for _, port := range ports {
+			start, end, err := parsePort(port)
+			if err != nil {
+				return nil, err
+			}
+			for i := start; i <= end; i++ {
+				mapped[proto].Insert(i)
+			}
+		}
+	}
+	return mapped, nil
+}
+
+// parsePort parses firewall definition of ports to a int inclusive range [start, end]
+//
+// For example:
+//   - "80" will return 80, 80, nil
+//   - "443-8080" will return 443, 8080, nil
+//
+// It returns an error when int parsing has failed.
+func parsePort(portStr string) (int, int, error) {
+	parts := strings.Split(portStr, "-")
+
+	if len(parts) == 2 {
+		start, errStart := strconv.Atoi(parts[0])
+		end, errEnd := strconv.Atoi(parts[1])
+		if errStart != nil || errEnd != nil {
+			return 0, -1, errors.Join(errStart, errEnd)
+		}
+		return start, end, nil
+	}
+
+	if len(parts) == 1 {
+		port, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return 0, -1, err
+		}
+		return port, port, nil
+	}
+
+	return 0, -1, fmt.Errorf("unexpected port format %q, expects single integer or a range delimited by `-`", portStr)
+}
+
+func ipRangesEqual(a, b []string) (bool, error) {
+	as, err := utilnet.ParseIPNets(a...)
+	if err != nil {
+		return false, err
+	}
+	bs, err := utilnet.ParseIPNets(b...)
+	if err != nil {
+		return false, err
+	}
+	return as.Equal(bs), nil
 }
 
 func ensureStaticIP(s CloudAddressService, name, serviceName, region, existingIP string, netTier cloud.NetworkTier) (ipAddress string, existing bool, err error) {
