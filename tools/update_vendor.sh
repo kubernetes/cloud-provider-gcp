@@ -25,9 +25,9 @@ KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
 # rebuild go.work
 cat go.mod | grep '^go' > go.work
-# On purpose ignoring ./test here because its not used via bazel and ginkgo would break gazelle.
 go work use .
 go work use ./providers
+go work use ./test/e2e
 
 # Copy over replace directives from go.mod to go.work
 echo -e "\nreplace (" >> go.work
