@@ -1205,7 +1205,7 @@ rules:
     namespaces: ["kube-system"]
     resources:
       - group: "" # core
-        resources: ["endpoints"]
+        resources: ["endpoints", "configmaps"]
   - level: None
     users: ["system:apiserver"]
     verbs: ["get"]
