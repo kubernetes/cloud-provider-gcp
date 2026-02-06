@@ -45,7 +45,7 @@ for go_mod_file in "${LIBRARY_FILES[@]}"; do
   go mod tidy
   popd
 done
-./tools/update_vendor.sh
+make update-vendor
 ```
 3. In [WORKSPACE](https://github.com/kubernetes/cloud-provider-gcp/blob/master/WORKSPACE), update `fetch_kube_release` sha to the desired release version.
     * Note: The current Kubernetes release is using sha512 hash while cloud-provider-gcp is using sha256. Re-sha with command `sha256sum` if needed. Use this command to generate values automatically.
