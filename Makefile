@@ -135,7 +135,7 @@ release-tars: build-all
 	# Dockerize cloud-controller-manager
 	mkdir -p release/$(GIT_VERSION)/docker-build
 	cp release/$(GIT_VERSION)/cloud-controller-manager/linux/amd64/cloud-controller-manager release/$(GIT_VERSION)/docker-build/
-	echo "FROM registry.k8s.io/build-image/go-runner:v2.4.0-go1.24.10-bookworm.0" > release/$(GIT_VERSION)/docker-build/Dockerfile
+	echo "FROM registry.k8s.io/build-image/go-runner:v2.4.0-go1.25.6-bookworm.0" > release/$(GIT_VERSION)/docker-build/Dockerfile
 	echo "COPY cloud-controller-manager /cloud-controller-manager" >> release/$(GIT_VERSION)/docker-build/Dockerfile
 	echo "CMD [\"/cloud-controller-manager\"]" >> release/$(GIT_VERSION)/docker-build/Dockerfile
 	
