@@ -22,8 +22,8 @@ IMAGE_REGISTRY=example.com IMAGE_REPO=my-repo IMAGE_TAG=v1 bazel run //cmd/cloud
 
 Alternatively, you can run [push-images tool](https://github.com/kubernetes/cloud-provider-gcp/blob/master/tools/push-images). The tool is built from [ko](https://github.com/ko-build/ko) that does not depend on bazel, for example this command pushes image to Google Artifact Registry under project `my-project` and existing repository `my-repo`:
 
-```
-IMAGE_REPO=us-central1-docker.pkg.dev/my-project/my-repo IMAGE_TAG=v0 ./tools/push-images
+```sh
+IMAGE_REPO=us-central1-docker.pkg.dev/my-project/my-repo IMAGE_TAG=v0 make push-images
 ```
 
 # Cross-compiling
@@ -58,20 +58,20 @@ If you work within `GOPATH`, `go mod` will error out unless you do one of:
 
 ## Add a new dependency
 
-```
-go get github.com/new/dependency && ./tools/update_vendor.sh
+```sh
+go get github.com/new/dependency && make update-vendor
 ```
 
 ## Update an existing dependency
 
-```
-go get -u github.com/existing/dependency && ./tools/update_vendor.sh
+```sh
+go get -u github.com/existing/dependency && make update-vendor
 ```
 
 ## Update all dependencies
 
-```
-go get -u && ./tools/update_vendor.sh
+```sh
+go get -u && make update-vendor
 ```
 
 Note that this most likely won't work due to cross-dependency issues or repos
