@@ -6,10 +6,12 @@ go_library(
         "doc.go",
         "legacyprovider.go",
         "node_ipam_controller.go",
+        "starter.go",
     ],
     importpath = "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam",
     visibility = ["//visibility:public"],
     deps = [
+        "//pkg/controller/nodeipam/config",
         "//pkg/controller/nodeipam/ipam",
         "//pkg/controller/nodeipam/ipam/sync",
         "//vendor/github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1:network",
@@ -23,7 +25,9 @@ go_library(
         "//vendor/k8s.io/client-go/tools/record",
         "//vendor/k8s.io/cloud-provider",
         "//vendor/k8s.io/component-base/metrics/prometheus/controllers",
+        "//vendor/k8s.io/controller-manager/controller",
         "//vendor/k8s.io/klog/v2:klog",
+        "//vendor/k8s.io/utils/net",
     ],
 )
 

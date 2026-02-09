@@ -483,7 +483,7 @@ func TestGenerateCloudConfigs(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			resultCloud, err := generateCloudConfig(&ConfigFile{Global: tc.config()})
+			resultCloud, err := GenerateCloudConfig(&ConfigFile{Global: tc.config()})
 			if err != nil {
 				t.Fatalf("Unexpect error: %v", err)
 			}
