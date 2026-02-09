@@ -28,17 +28,23 @@ IMAGE_REPO=us-central1-docker.pkg.dev/my-project/my-repo IMAGE_TAG=v0 make push-
 
 # Cross-compiling
 
-Selecting the target platform is done with the `--platforms` option with `bazel`.
-This command builds release tarballs for Windows:
+Platform-specific release tarballs can be built using the following commands.
+
+This command builds the release tarball for Windows (`kubernetes-node-windows-amd64.tar.gz`):
 
 ```sh
-bazel build --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64 //release:release-tars
+make release-tars-windows-amd64
 ```
 
-This command explicitly targets Linux as the target platform:
+This command builds the release tarballs for Linux (`kubernetes-server-linux-amd64.tar.gz` and `kubernetes-node-linux-amd64.tar.gz`):
 
 ```sh
-bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 //release:release-tars
+make release-tars-linux-amd64
+```
+
+To build all release artifacts for all platforms, run:
+```sh
+make release-tars
 ```
 
 
@@ -46,8 +52,6 @@ bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 //release:r
 
 Dependencies are managed using [Go modules](https://github.com/golang/go/wiki/Modules) (`go mod` subcommands).
 
-Note that builds are done with Bazel and not the Go tool. Don't follow public
-Go module docs, instead use instructions in this readme.
 
 ## Working within GOPATH
 
