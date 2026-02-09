@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/cloud-provider/app"
-	"k8s.io/cloud-provider/app/config"
+	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/names"
 	"k8s.io/cloud-provider/options"
 	cliflag "k8s.io/component-base/cli/flag"
@@ -43,9 +43,12 @@ import (
 )
 
 const (
-	gkeServiceLBControllerName     = "gke-service-lb-controller"
-	gkeServiceControllerClientName = "gke-service-controller"
-	gkeServiceAlias                = "gke-service"
+	gkeServiceLBControllerName      = "gke-service-lb-controller"
+	gkeServiceControllerClientName  = "gke-service-controller"
+	gkeServiceAlias                 = "gke-service"
+	gkeTenantControllerManagerName  = "gke-tenant-controller-manager"
+	gkeTenantControllerClientName   = "gke-tenant-controller-manager"
+	gkeTenantControllerManagerAlias = "gke-tenant-controller-manager"
 )
 
 var (
@@ -77,6 +80,9 @@ var (
 	// The reason for it not being enabled by default is the additional GCE API calls that are made
 	// for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.
 	enableL4DenyFirewallRollbackCleanup bool
+
+	// enableGKETenantController enables the gke-tenant-controller-manager.
+	enableGKETenantController bool
 )
 
 func main() {
@@ -99,6 +105,7 @@ func main() {
 	cloudProviderFS.BoolVar(&enableL4LBAnnotations, "enable-l4-lb-annotations", false, "Enables Annotations for GCE L4 LB Services")
 	cloudProviderFS.BoolVar(&enableL4DenyFirewall, "enable-l4-deny-firewall", false, "Enable creation and updates of Deny VPC Firewall Rules for L4 external load balancers. Requires --enable-pinhole and --enable-l4-deny-firewall-rollback-cleanup to be true.")
 	cloudProviderFS.BoolVar(&enableL4DenyFirewallRollbackCleanup, "enable-l4-deny-firewall-rollback-cleanup", false, "Enable cleanup codepath of the deny firewalls for rollback. The reason for it not being enabled by default is the additional GCE API calls that are made for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.")
+	cloudProviderFS.BoolVar(&enableGKETenantController, "enable-gke-tenant-controller", false, "Enables the GKE Tenant Controller Manager for Multi-Tenancy.")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
@@ -119,12 +126,25 @@ func main() {
 		Constructor: startGkeServiceControllerWrapper,
 	}
 
+	controllerInitializers[gkeTenantControllerManagerName] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: gkeTenantControllerClientName,
+		},
+		Constructor: func(initContext app.ControllerInitContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) app.InitFunc {
+			return startGKETenantControllerManagerWrapper(initContext, completedConfig, cloud, nodeIpamController.nodeIPAMControllerOptions)
+		},
+	}
+
 	// add controllers disabled by default
 	app.ControllersDisabledByDefault.Insert("gkenetworkparamset")
 	app.ControllersDisabledByDefault.Insert(gkeServiceLBControllerName)
+	app.ControllersDisabledByDefault.Insert(gkeTenantControllerManagerName)
+
 	aliasMap := names.CCMControllerAliases()
 	aliasMap["nodeipam"] = kcmnames.NodeIpamController
 	aliasMap[gkeServiceAlias] = gkeServiceLBControllerName
+	aliasMap[gkeTenantControllerManagerAlias] = gkeTenantControllerManagerName
+
 	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, aliasMap, fss, wait.NeverStop)
 
 	logs.InitLogs()
@@ -135,7 +155,7 @@ func main() {
 	}
 }
 
-func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
+func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovider.Interface {
 	cloudConfig := config.ComponentConfig.KubeCloudShared.CloudProvider
 
 	// initialize cloud provider with the cloud provider name and config file provided
@@ -155,12 +175,12 @@ func cloudInitializer(config *config.CompletedConfig) cloudprovider.Interface {
 		}
 	}
 
-	if enableMultiProject {
+	if !enableGKETenantController && enableMultiProject {
 		gceCloud, ok := (cloud).(*gce.Cloud)
 		if !ok {
-			// Fail-fast: If enableMultiProject is set, the cloud provider MUST
-			// be GCE. A non-GCE provider indicates a misconfiguration. Ideally,
-			// we never expect this to be executed.
+			// Fail-fast: If enableMultiProject is set, the cloud provider MUST be GCE.
+			// A non-GCE provider indicates a misconfiguration.
+			// Ideally, we never expect this to be executed.
 			klog.Fatalf("multi-project mode requires GCE cloud provider, but got %T", cloud)
 		}
 		gceCloud.SetProjectFromNodeProviderID(true)
