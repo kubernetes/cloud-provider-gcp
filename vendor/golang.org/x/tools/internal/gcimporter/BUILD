@@ -8,7 +8,6 @@ go_library(
         "gcimporter.go",
         "iexport.go",
         "iimport.go",
-        "iimport_go122.go",
         "predeclared.go",
         "support.go",
         "ureader_yes.go",
