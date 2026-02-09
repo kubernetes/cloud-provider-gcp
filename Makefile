@@ -42,7 +42,7 @@ CLOUD_CONTROLLER_MANAGER := \
 
 GKE_GCLOUD_AUTH_PLUGIN := \
   $(foreach platform, \
-  linux-amd64 linux-arm64 windows-amd64 windows-arm64 darwin-arm64, \
+  linux-amd64 linux-arm64 linux-386 windows-amd64 windows-arm64 windows-386 darwin-amd64 darwin-arm64, \
   $(addsuffix $(platform), gke-gcloud-auth-plugin-))
 
 ##@ General
@@ -82,20 +82,20 @@ auth-provider-gcp-windows-amd64:
 	mkdir -p release/$(GIT_VERSION)/auth-provider-gcp/windows/amd64
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o release/$(GIT_VERSION)/auth-provider-gcp/windows/amd64/auth-provider-gcp.exe k8s.io/cloud-provider-gcp/cmd/auth-provider-gcp
 
-.PHONY: gke-gcloud-auth-plugin-linux-amd64 gke-gcloud-auth-plugin-linux-arm64
-gke-gcloud-auth-plugin-linux-amd64 gke-gcloud-auth-plugin-linux-arm64: gke-gcloud-auth-plugin-linux-%:
+.PHONY: gke-gcloud-auth-plugin-linux-amd64 gke-gcloud-auth-plugin-linux-arm64 gke-gcloud-auth-plugin-linux-386
+gke-gcloud-auth-plugin-linux-amd64 gke-gcloud-auth-plugin-linux-arm64 gke-gcloud-auth-plugin-linux-386: gke-gcloud-auth-plugin-linux-%:
 	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/linux/$*
 	CGO_ENABLED=0 GOOS=linux GOARCH=$* go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/linux/$*/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
 
-.PHONY: gke-gcloud-auth-plugin-windows-amd64 gke-gcloud-auth-plugin-windows-arm64
-gke-gcloud-auth-plugin-windows-amd64 gke-gcloud-auth-plugin-windows-arm64: gke-gcloud-auth-plugin-windows-%:
+.PHONY: gke-gcloud-auth-plugin-windows-amd64 gke-gcloud-auth-plugin-windows-arm64 gke-gcloud-auth-plugin-windows-386
+gke-gcloud-auth-plugin-windows-amd64 gke-gcloud-auth-plugin-windows-arm64 gke-gcloud-auth-plugin-windows-386: gke-gcloud-auth-plugin-windows-%:
 	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/windows/$*
 	CGO_ENABLED=0 GOOS=windows GOARCH=$* go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/windows/$*/gke-gcloud-auth-plugin.exe k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
 
-.PHONY: gke-gcloud-auth-plugin-darwin-arm64
-gke-gcloud-auth-plugin-darwin-arm64:
-	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
+.PHONY: gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64
+gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64: gke-gcloud-auth-plugin-darwin-%:
+	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/$*
+	CGO_ENABLED=0 GOOS=darwin GOARCH=$* go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/$*/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
   
 .PHONY: copy-binaries-to-gcs
 copy-binaries-to-gcs: build-all ## Build and copy binaries to GCS.
