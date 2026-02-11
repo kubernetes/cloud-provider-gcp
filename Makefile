@@ -304,3 +304,59 @@ run-e2e-test: ## Run e2e tests.
 .PHONY: verify-up-to-date
 verify-up-to-date: ## Verify that the repository is up to date.
 	./tools/verify-up-to-date.sh
+
+.PHONY: print-k8s-version
+print-k8s-version: ## Print the pinned Kubernetes version.
+	@if [ -f ginko-test-package-version.env ]; then cat ginko-test-package-version.env | tr -d '[:space:]'; else curl -sL https://dl.k8s.io/release/stable.txt; fi
+
+## --------------------------------------
+##@ kOps E2E
+## --------------------------------------
+
+KOPS_CLUSTER_NAME ?= kops-e2e.k8s.local
+GCP_LOCATION ?= us-central1
+GCP_ZONES ?= $(GCP_LOCATION)-b
+IMAGE_REPO ?= gcr.io/$(GCP_PROJECT)
+IMAGE_TAG ?= $(shell git rev-parse --short HEAD)
+
+.PHONY: kops-simple
+kops-simple: ## Run kOps simple E2E test scenario.
+	./e2e/scenarios/kops-simple
+
+.PHONY: install-kops-deps
+install-kops-deps: ## Install kubetest2-kops and other dependencies.
+	@echo "Installing kubetest2-kops..."
+	cd ../kops/tests/e2e && GOBIN=$(shell pwd)/../bin go install ./kubetest2-tester-kops ./kubetest2-kops
+	@echo "Downloading latest green kOps binary..."
+	@KOPS_BASE_URL=$$(curl -s https://storage.googleapis.com/k8s-staging-kops/kops/releases/markers/master/latest-ci-updown-green.txt); \
+	mkdir -p ../bin; \
+	wget -qO ../bin/kops.tmp $${KOPS_BASE_URL}/linux/amd64/kops; \
+	chmod +x ../bin/kops.tmp; \
+	mv ../bin/kops.tmp ../bin/kops
+
+.PHONY: kops-tool
+kops-tool: tools/kops/kops ## Build the kOps lifecycle tool.
+
+tools/kops/kops: tools/kops/main.go tools/kops/pkg/kops/*.go
+	@echo "Building kOps lifecycle tool..."
+	cd tools/kops && go build -o kops main.go
+
+.PHONY: kops-setup
+kops-setup: install-kops-deps kops-tool push-images ## Setup environment for kOps E2E.
+
+.PHONY: kops-up
+kops-up: kops-setup ## Provision kOps cluster.
+	./tools/kops/kops up \
+		--cluster-name=$(KOPS_CLUSTER_NAME) \
+		--gcp-project=$(GCP_PROJECT) \
+		--gcp-location=$(GCP_LOCATION) \
+		--gcp-zones=$(GCP_ZONES) \
+		--image-repo=$(IMAGE_REPO) \
+		--image-tag=$(IMAGE_TAG)
+
+.PHONY: kops-down
+kops-down: kops-tool ## Tear down kOps cluster.
+	./tools/kops/kops down \
+		--cluster-name=$(KOPS_CLUSTER_NAME) \
+		--gcp-project=$(GCP_PROJECT)
+
