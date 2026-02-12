@@ -67,6 +67,11 @@ type Controller struct {
 	cidrAllocator ipam.CIDRAllocator
 }
 
+// Name returns the name of the controller.
+func (c *Controller) Name() string {
+	return "nodeipam"
+}
+
 // NewNodeIpamController returns a new node IP Address Management controller to
 // sync instances from cloudprovider.
 // This method returns an error if it is unable to initialize the CIDR bitmap with
@@ -150,7 +155,7 @@ func NewNodeIpamController(
 }
 
 // Run starts an asynchronous loop that monitors the status of cluster nodes.
-func (nc *Controller) Run(stopCh <-chan struct{}, controllerManagerMetrics *controllersmetrics.ControllerManagerMetrics) {
+func (c *Controller) Run(stopCh <-chan struct{}, controllerManagerMetrics *controllersmetrics.ControllerManagerMetrics) {
 	defer utilruntime.HandleCrash()
 
 	klog.Infof("Starting ipam controller")
@@ -158,12 +163,12 @@ func (nc *Controller) Run(stopCh <-chan struct{}, controllerManagerMetrics *cont
 	controllerManagerMetrics.ControllerStarted("nodeipam")
 	defer controllerManagerMetrics.ControllerStopped("nodeipam")
 
-	if !cache.WaitForNamedCacheSync("node", stopCh, nc.nodeInformerSynced) {
+	if !cache.WaitForNamedCacheSync("node", stopCh, c.nodeInformerSynced) {
 		return
 	}
 
-	if nc.allocatorType != ipam.IPAMFromClusterAllocatorType && nc.allocatorType != ipam.IPAMFromCloudAllocatorType {
-		go nc.cidrAllocator.Run(stopCh)
+	if c.allocatorType != ipam.IPAMFromClusterAllocatorType && c.allocatorType != ipam.IPAMFromCloudAllocatorType {
+		go c.cidrAllocator.Run(stopCh)
 	}
 
 	<-stopCh
