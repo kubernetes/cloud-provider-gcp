@@ -31,7 +31,7 @@ go work use ./test/e2e
 
 # Copy over replace directives from go.mod to go.work
 echo -e "\nreplace (" >> go.work
-cat go.mod | grep '=>' | sort | uniq | grep -v "k8s.io/cloud-provider-gcp/providers" >> go.work
+cat go.mod | grep '=>' | sort | uniq | grep -v "k8s.io/cloud-provider-gcp" | sed 's/^replace //g' >> go.work
 echo -e ")" >> go.work
 
 # sync go.md of providers
