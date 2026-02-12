@@ -1,6 +1,6 @@
 module k8s.io/cloud-provider-gcp
 
-go 1.24.0
+go 1.24.13
 
 toolchain go1.26.0
 
