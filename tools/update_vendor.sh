@@ -47,6 +47,11 @@ find vendor -type f \( \
     -o -name '*.bzl' \
   \) -delete
 
+# Note: Workaround for vendor/github.com/onsi/ginkgo/v2/ginkgo to use `BUILD.bazel` because it contains a directory named `build`.
+mkdir -p vendor/github.com/onsi/ginkgo/v2/ginkgo
+touch vendor/github.com/onsi/ginkgo/v2/ginkgo/BUILD.bazel
+echo "# gazelle:build_file_name BUILD.bazel,BUILD" > vendor/github.com/onsi/ginkgo/v2/ginkgo/BUILD.bazel
+
 # clean up unused dependencies
 (cd providers && go mod tidy)
 (cd test/e2e && go mod tidy)
@@ -56,5 +61,4 @@ go mod tidy
 # This lets other packages and tools use the local staging components as if they were vendored.
 
 # restore BUILD files in vendor/
-# Note: Workaround for vendor/github.com/onsi/ginkgo/v2/ginkgo to use `BUILD.bazel` because it contains a directory named `build`.
-bazel run //:gazelle
+bazel run //:gazelle -- -build_file_name=BUILD,BUILD.bazel

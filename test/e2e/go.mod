@@ -1,6 +1,6 @@
 module k8s.io/cloud-provider-gcp/test/e2e
 
-go 1.25.6
+go 1.24.13
 
 require (
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.27.0
