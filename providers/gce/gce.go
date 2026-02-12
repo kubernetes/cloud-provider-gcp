@@ -351,7 +351,6 @@ func readConfig(reader io.Reader) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-
 func GenerateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err error) {
 	cloudConfig = &CloudConfig{}
 	// By default, fetch token from GCE metadata server
