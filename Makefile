@@ -96,7 +96,35 @@ gke-gcloud-auth-plugin-windows-amd64 gke-gcloud-auth-plugin-windows-arm64: gke-g
 gke-gcloud-auth-plugin-darwin-arm64:
 	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
-  
+
+## --------------------------------------
+##@ Docker
+## --------------------------------------
+
+.PHONY: publish
+publish: ## Build and push cloud-controller-manager image to IMAGE_REPO.
+	@./tools/push-images
+
+.PHONY: bundle
+bundle: cloud-controller-manager-linux-amd64 ## Create a docker image tar bundle for cloud-controller-manager.
+	@echo "Creating docker image tar for cloud-controller-manager..."
+	mkdir -p release/$(GIT_VERSION)/docker-build
+	cp release/$(GIT_VERSION)/cloud-controller-manager/linux/amd64/cloud-controller-manager release/$(GIT_VERSION)/docker-build/
+	echo "FROM registry.k8s.io/build-image/go-runner:v2.4.0-go1.24.10-bookworm.0" > release/$(GIT_VERSION)/docker-build/Dockerfile
+	echo "COPY cloud-controller-manager /cloud-controller-manager" >> release/$(GIT_VERSION)/docker-build/Dockerfile
+	echo "CMD [\"/cloud-controller-manager\"]" >> release/$(GIT_VERSION)/docker-build/Dockerfile
+	docker build -t registry.k8s.io/cloud-controller-manager:$(GIT_VERSION) release/$(GIT_VERSION)/docker-build/
+	docker save registry.k8s.io/cloud-controller-manager:$(GIT_VERSION) > release/$(GIT_VERSION)/cloud-controller-manager.tar
+	echo "$(GIT_VERSION)" > release/$(GIT_VERSION)/cloud-controller-manager.docker_tag
+	rm -rf release/$(GIT_VERSION)/docker-build
+	@echo "Bundle created at release/$(GIT_VERSION)/cloud-controller-manager.tar"
+
+.PHONY: clean-builder
+clean-builder: ## Remove the docker buildx builder.
+	@echo "Removing docker buildx builder..."
+	docker buildx rm multiarch-multiplatform-builder || true
+	@echo "Docker buildx builder removed."
+
 .PHONY: copy-binaries-to-gcs
 copy-binaries-to-gcs: build-all ## Build and copy binaries to GCS.
 	gcloud storage cp --recursive release/$(GIT_VERSION) gs://$(BUCKET_NAME)/$(GIT_VERSION)
