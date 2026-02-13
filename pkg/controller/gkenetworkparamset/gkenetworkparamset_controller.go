@@ -72,7 +72,7 @@ type Controller struct {
 	networkInformer          networkinformer.NetworkInformer
 	networkClientset         networkclientset.Interface
 	gceCloud                 *gce.Cloud
-	queue                    workqueue.RateLimitingInterface
+	queue                    workqueue.TypedRateLimitingInterface[string]
 	networkInformerFactory   networkinformers.SharedInformerFactory
 
 	nodeLister                corelisters.NodeLister
@@ -99,7 +99,7 @@ func NewGKENetworkParamSetController(
 		gkeNetworkParamsInformer: gkeNetworkParamsInformer,
 		networkInformer:          networkInformer,
 		gceCloud:                 gceCloud,
-		queue:                    workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
+		queue:                    workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: workqueueName}),
 		networkInformerFactory:   networkInformerFactory,
 		nodeLister:               nodeInformer.Lister(),
 		nodeInformerSynced:       nodeInformer.Informer().HasSynced,
@@ -230,13 +230,13 @@ func (c *Controller) processNextItem(ctx context.Context) bool {
 
 	defer c.queue.Done(key)
 
-	err := c.reconcile(ctx, key.(string))
+	err := c.reconcile(ctx, key)
 	c.handleErr(err, key)
 	return true
 }
 
 // handleErr checks if an error happened and makes sure we will retry later.
-func (c *Controller) handleErr(err error, key interface{}) {
+func (c *Controller) handleErr(err error, key string) {
 	if err == nil {
 		// Forget about the #AddRateLimited history of the key on every successful synchronization.
 		// This ensures that future processing of updates for this key is not delayed because of

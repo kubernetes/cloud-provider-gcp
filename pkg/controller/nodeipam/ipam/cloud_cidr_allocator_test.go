@@ -80,7 +80,7 @@ var (
 func hasNodeInProcessing(ca *cloudCIDRAllocator, name string) bool {
 	if ca.queue.Len() > 0 {
 		val, _ := ca.queue.Get()
-		if val.(string) == name {
+		if val == name {
 			return true
 		}
 	}
@@ -94,7 +94,7 @@ func TestBoundedRetries(t *testing.T) {
 		client:      clientSet,
 		nodeLister:  sharedInfomer.Core().V1().Nodes().Lister(),
 		nodesSynced: sharedInfomer.Core().V1().Nodes().Informer().HasSynced,
-		queue:       workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "cloudCIDRAllocator"}),
+		queue:       workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "cloudCIDRAllocator"}),
 	}
 	go wait.UntilWithContext(context.TODO(), ca.runWorker, time.Second)
 	nodeName := "testNode"
