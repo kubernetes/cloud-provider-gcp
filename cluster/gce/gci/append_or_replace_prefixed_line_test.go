@@ -154,7 +154,7 @@ jelloworld
 	}
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			f, err := os.CreateTemp("", "append_or_replace_test")
+			f, err := os.CreateTemp(t.TempDir(), "append_or_replace_test")
 			if err != nil {
 				t.Fatalf("Failed to create temp file: %v", err)
 			}
