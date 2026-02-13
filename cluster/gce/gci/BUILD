@@ -1,5 +1,5 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_test")
-load("@io_k8s_repo_infra//defs:pkg.bzl", "pkg_tar")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@io_k8s_repo_infra//defs:build.bzl", "release_filegroup")
 
 # Having the COS code from the GCE cluster deploy hosted with the release is
