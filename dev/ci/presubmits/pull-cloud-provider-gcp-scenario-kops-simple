@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+
+import subprocess
+
+subprocess.run(["e2e/add-kubernetes-to-workspace.sh"], check=True)
+
+subprocess.run(["e2e/scenarios/kops-simple"], check=True)
