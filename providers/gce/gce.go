@@ -334,10 +334,11 @@ func newGCECloud(config io.Reader) (gceCloud *Cloud, err error) {
 		klog.Infof("Using GCE provider config %+v", configFile)
 	}
 
-	cloudConfig, err = generateCloudConfig(configFile)
+	cloudConfig, err = GenerateCloudConfig(configFile)
 	if err != nil {
 		return nil, err
 	}
+
 	return CreateGCECloud(cloudConfig)
 }
 
@@ -350,7 +351,8 @@ func readConfig(reader io.Reader) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err error) {
+
+func GenerateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err error) {
 	cloudConfig = &CloudConfig{}
 	// By default, fetch token from GCE metadata server
 	cloudConfig.TokenSource = google.ComputeTokenSource("")
@@ -463,7 +465,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 
 	// Create a user-agent header append string to supply to the Google API
 	// clients, to identify Kubernetes as the origin of the GCP API calls.
-	userAgent := fmt.Sprintf("Kubernetes/%s (%s %s)", version, runtime.GOOS, runtime.GOARCH)
+	userAgent := fmt.Sprintf("Kubernetes/%s (%s %s)", version, runtime.GOOS, runtime.GOARCH) // e.g. "Kubernetes/v1.18.0 (linux amd64)"
 
 	// Use ProjectID for NetworkProjectID, if it wasn't explicitly set.
 	if config.NetworkProjectID == "" {
