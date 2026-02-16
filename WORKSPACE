@@ -1,6 +1,6 @@
 workspace(name = "io_k8s_cloud_provider_gcp")
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 http_archive(
@@ -14,7 +14,6 @@ load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
     name = "python_3_9",
-    # Available versions are listed in @rules_python//python:versions.bzl.
     ignore_root_user_error = True,
     python_version = "3.9",
 )
@@ -36,7 +35,6 @@ http_archive(
         "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.35.0/bazel-gazelle-v0.35.0.tar.gz",
     ],
 )
-
 
 http_archive(
     name = "bazel_skylib",
@@ -62,17 +60,30 @@ load("@io_bazel_rules_go//go:deps.bzl", "go_download_sdk", "go_register_toolchai
 
 go_rules_dependencies()
 
-go_download_sdk(name = "go_sdk",version = "1.24.5")
+go_download_sdk(
+    name = "go_sdk",
+    version = "1.24.5",
+)
 
 go_register_toolchains()
+
+http_file(
+    name = "go_puller_linux",
+    executable = True,
+    sha256 = "6559869a844b26002f5b5f63d04d80a37390c5c643b2f560e90c88b209d66065",
+    urls = ["https://github.com/bazelbuild/rules_docker/releases/download/v0.25.0/puller-linux-amd64"],
+)
+
+http_file(
+    name = "go_puller_darwin",
+    executable = True,
+    sha256 = "b72605282d56d773aa55d7b5b4e3348b9432657e2d7f8d42d31215b22b512c01",
+    urls = ["https://github.com/bazelbuild/rules_docker/releases/download/v0.25.0/puller-darwin-amd64"],
+)
 
 load(
     "@io_bazel_rules_docker//repositories:repositories.bzl",
     container_repositories = "repositories",
-)
-load(
-    "@io_bazel_rules_docker//container:container.bzl",
-    "container_pull",
 )
 
 container_repositories()
@@ -80,6 +91,11 @@ container_repositories()
 load("@io_bazel_rules_docker//repositories:deps.bzl", container_deps = "deps")
 
 container_deps()
+
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    "container_pull",
+)
 
 container_pull(
     name = "distroless",
