@@ -227,17 +227,25 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 	}
 	if err != nil {
 		klog.Errorf("Failed to EnsureLoadBalancer(%s, %s, %s, %s, %s), err: %v", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, err)
-		return syncResult.status, err
+		return nil, err
+	}
+
+	var status *v1.LoadBalancerStatus
+	var annotations map[string]string
+
+	if syncResult != nil {
+		status = syncResult.status
+		annotations = syncResult.annotations
 	}
 
 	if g.enableL4LBAnnotations {
-		if err = g.updateL4ResourcesAnnotations(ctx, svc, syncResult.annotations); err != nil {
-			return syncResult.status, fmt.Errorf("failed to set resource annotations, err: %w", err)
+		if err = g.updateL4ResourcesAnnotations(ctx, svc, annotations); err != nil {
+			return status, fmt.Errorf("failed to set resource annotations, err: %w", err)
 		}
 	}
 
 	klog.V(4).Infof("EnsureLoadBalancer(%s, %s, %s, %s, %s): done ensuring loadbalancer.", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region)
-	return syncResult.status, err
+	return status, err
 }
 
 func (g *Cloud) updateL4ResourcesAnnotations(ctx context.Context, svc *v1.Service, newL4LBAnnotations map[string]string) error {
