@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"path"
 	"testing"
 	"time"
@@ -703,14 +702,14 @@ func TestCloudsdkBasedGcloudAccessToken(t *testing.T) {
 	}
 
 	tokenForEnvVar := "gcloud_token_in_env_var"
-	os.Setenv(cloudsdkAuthAccessEnvVar, tokenForEnvVar)
+	t.Setenv(cloudsdkAuthAccessEnvVar, tokenForEnvVar)
 
 	ec, err := p.execCredential()
 	if err != nil {
 		t.Fatalf("err should be nil")
 	}
 
-	os.Setenv(cloudsdkAuthAccessEnvVar, "")
+	t.Setenv(cloudsdkAuthAccessEnvVar, "")
 
 	if diff := cmp.Diff(ec.Status.Token, tokenForEnvVar); diff != "" {
 		t.Errorf("unexpected token (-want +got): %s", diff)
