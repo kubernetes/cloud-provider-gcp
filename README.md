@@ -2,29 +2,30 @@
 
 ## Publishing cloud-controller-manager image
 
-This command will build and publish cloud-controller-manager
-`registry.k8s.io/k8s-image-staging/cloud-controller-manager:latest`:
+Create an [Artifact Registry repository](https://docs.cloud.google.com/artifact-registry/docs/docker/store-docker-container-images) for the CCM image.
+
+Then use `make publish` to build and push the `cloud-controller-manager` Docker image. For example, the following command will build and push the image to `us-central1-docker.pkg.dev/my-project/my-repo/cloud-controller-manager:v0`.
+Change the location, project, and repo names to match yours.
 
 ```sh
-bazel run //cmd/cloud-controller-manager:publish
+LOCATION=us-central1 PROJECT=my-project REPO=my-repo
+gcloud auth configure-docker ${LOCATION}-docker.pkg.dev
+IMAGE_REPO=${LOCATION}-docker.pkg.dev/${PROJECT}/${REPO} IMAGE_TAG=v0 make publish
 ```
 
-Environment variables `IMAGE_REGISTRY`, `IMAGE_REPO` and `IMAGE_TAG` can be
-used to override destination GCR repository and tag.
+If `IMAGE_REPO` is not set, the script will exit with an error. If `IMAGE_TAG` is not set, it defaults to a unique value combining the current git commit SHA and the build date.
 
-This command will build and publish
-`example.com/my-repo/cloud-controller-manager:v1`:
+### Docker Commands
 
+**Note:** To push images to Google Artifact Registry, you must first authenticate Docker by running the following command:
+`gcloud auth configure-docker ${LOCATION}-docker.pkg.dev`
 
-```sh
-IMAGE_REGISTRY=example.com IMAGE_REPO=my-repo IMAGE_TAG=v1 bazel run //cmd/cloud-controller-manager:publish
-```
+*   **`make publish`**: Builds the `cloud-controller-manager` Docker image (including multi-architecture support) and pushes it to the container registry specified by the `IMAGE_REPO` environment variable.
 
-Alternatively, you can run [push-images tool](https://github.com/kubernetes/cloud-provider-gcp/blob/master/tools/push-images). The tool is built from [ko](https://github.com/ko-build/ko) that does not depend on bazel, for example this command pushes image to Google Artifact Registry under project `my-project` and existing repository `my-repo`:
+*   **`make bundle`**: Builds the `cloud-controller-manager` Docker image and saves it as a `.tar` file locally, along with creating a `.docker_tag` file. This is useful for offline distribution or loading.
 
-```sh
-IMAGE_REPO=us-central1-docker.pkg.dev/my-project/my-repo IMAGE_TAG=v0 make push-images
-```
+*   **`make clean-builder`**: Removes the `docker buildx` builder used for multi-platform Docker builds. This command is useful to reset the builder environment if the builder encounters an error or becomes corrupted. It can also be used to free up resources when the builder is no longer needed.
+
 
 # Cross-compiling
 

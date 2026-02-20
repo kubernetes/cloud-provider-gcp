@@ -92,6 +92,35 @@ gke-gcloud-auth-plugin-windows-amd64 gke-gcloud-auth-plugin-windows-arm64 gke-gc
 	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/windows/$*
 	CGO_ENABLED=0 GOOS=windows GOARCH=$* go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/windows/$*/gke-gcloud-auth-plugin.exe k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
 
+.PHONY: gke-gcloud-auth-plugin-darwin-arm64
+gke-gcloud-auth-plugin-darwin-arm64:
+	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
+
+## --------------------------------------
+##@ Docker
+## --------------------------------------
+
+.PHONY: publish
+publish: ## Build and push cloud-controller-manager image to IMAGE_REPO.
+	@./tools/push-images
+
+.PHONY: bundle
+bundle: ## Create a docker image tar bundle for cloud-controller-manager using Dockerfile.
+	@echo "Building cloud-controller-manager image using Dockerfile..."
+	docker build -t registry.k8s.io/cloud-controller-manager:$(GIT_VERSION) .
+	@echo "Creating docker image tar for cloud-controller-manager..."
+	mkdir -p release/$(GIT_VERSION)
+	docker save registry.k8s.io/cloud-controller-manager:$(GIT_VERSION) > release/$(GIT_VERSION)/cloud-controller-manager.tar
+	echo "$(GIT_VERSION)" > release/$(GIT_VERSION)/cloud-controller-manager.docker_tag
+	@echo "Bundle created at release/$(GIT_VERSION)/cloud-controller-manager.tar"
+
+.PHONY: clean-builder
+clean-builder: ## Remove the docker buildx builder.
+	@echo "Removing docker buildx builder..."
+	docker buildx rm multiarch-multiplatform-builder || true
+	@echo "Docker buildx builder removed."
+
 .PHONY: gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64
 gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64: gke-gcloud-auth-plugin-darwin-%:
 	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/$*
