@@ -3,11 +3,15 @@ package main
 import (
 	"testing"
 
+	"k8s.io/client-go/informers"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 	cloudprovider "k8s.io/cloud-provider"
 	nodeipamconfig "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/config"
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/config"
 	genericcontrollermanager "k8s.io/controller-manager/app"
+	"k8s.io/controller-manager/pkg/clientbuilder"
 )
 
 type fakeCloudProvider struct{}
@@ -60,6 +64,7 @@ func TestStartNodeIpamController(t *testing.T) {
 		{
 			desc: "Allocate node CIDRs disabled",
 			ccmConfig: &cloudcontrollerconfig.Config{
+				Kubeconfig: &rest.Config{},
 				ComponentConfig: config.CloudControllerManagerConfiguration{
 					KubeCloudShared: config.KubeCloudSharedConfiguration{
 						AllocateNodeCIDRs: false,
@@ -71,6 +76,7 @@ func TestStartNodeIpamController(t *testing.T) {
 		{
 			desc: "Unparseable cluster CIDRs",
 			ccmConfig: &cloudcontrollerconfig.Config{
+				Kubeconfig: &rest.Config{},
 				ComponentConfig: config.CloudControllerManagerConfiguration{
 					KubeCloudShared: config.KubeCloudSharedConfiguration{
 						AllocateNodeCIDRs: true,
@@ -83,6 +89,7 @@ func TestStartNodeIpamController(t *testing.T) {
 		{
 			desc: "Multiple same stack type cluster CIDRs - ipv4",
 			ccmConfig: &cloudcontrollerconfig.Config{
+				Kubeconfig: &rest.Config{},
 				ComponentConfig: config.CloudControllerManagerConfiguration{
 					KubeCloudShared: config.KubeCloudSharedConfiguration{
 						AllocateNodeCIDRs: true,
@@ -95,6 +102,7 @@ func TestStartNodeIpamController(t *testing.T) {
 		{
 			desc: "Multiple same stack type cluster CIDRs - ipv6",
 			ccmConfig: &cloudcontrollerconfig.Config{
+				Kubeconfig: &rest.Config{},
 				ComponentConfig: config.CloudControllerManagerConfiguration{
 					KubeCloudShared: config.KubeCloudSharedConfiguration{
 						AllocateNodeCIDRs: true,
@@ -107,6 +115,7 @@ func TestStartNodeIpamController(t *testing.T) {
 		{
 			desc: "More than 2 cluster CIDRs",
 			ccmConfig: &cloudcontrollerconfig.Config{
+				Kubeconfig: &rest.Config{},
 				ComponentConfig: config.CloudControllerManagerConfiguration{
 					KubeCloudShared: config.KubeCloudSharedConfiguration{
 						AllocateNodeCIDRs: true,
@@ -119,6 +128,7 @@ func TestStartNodeIpamController(t *testing.T) {
 		{
 			desc: "Primary and secondary service CIDR same stack type - ipv4",
 			ccmConfig: &cloudcontrollerconfig.Config{
+				Kubeconfig: &rest.Config{},
 				ComponentConfig: config.CloudControllerManagerConfiguration{
 					KubeCloudShared: config.KubeCloudSharedConfiguration{
 						AllocateNodeCIDRs: true,
@@ -135,6 +145,7 @@ func TestStartNodeIpamController(t *testing.T) {
 		{
 			desc: "Primary and secondary service CIDR same stack type - ipv6",
 			ccmConfig: &cloudcontrollerconfig.Config{
+				Kubeconfig: &rest.Config{},
 				ComponentConfig: config.CloudControllerManagerConfiguration{
 					KubeCloudShared: config.KubeCloudSharedConfiguration{
 						AllocateNodeCIDRs: true,
@@ -151,6 +162,7 @@ func TestStartNodeIpamController(t *testing.T) {
 		{
 			desc: "NodeCIDRMaskSize used with a dual stack cluster",
 			ccmConfig: &cloudcontrollerconfig.Config{
+				Kubeconfig: &rest.Config{},
 				ComponentConfig: config.CloudControllerManagerConfiguration{
 					KubeCloudShared: config.KubeCloudSharedConfiguration{
 						AllocateNodeCIDRs: true,
@@ -166,6 +178,7 @@ func TestStartNodeIpamController(t *testing.T) {
 		{
 			desc: "NodeCIDRMaskSize and NodeCIDRMaskSizeIPv4 used together",
 			ccmConfig: &cloudcontrollerconfig.Config{
+				Kubeconfig: &rest.Config{},
 				ComponentConfig: config.CloudControllerManagerConfiguration{
 					KubeCloudShared: config.KubeCloudSharedConfiguration{
 						AllocateNodeCIDRs: true,
@@ -182,6 +195,7 @@ func TestStartNodeIpamController(t *testing.T) {
 		{
 			desc: "NodeCIDRMaskSize and NodeCIDRMaskSizeIPv6 used together",
 			ccmConfig: &cloudcontrollerconfig.Config{
+				Kubeconfig: &rest.Config{},
 				ComponentConfig: config.CloudControllerManagerConfiguration{
 					KubeCloudShared: config.KubeCloudSharedConfiguration{
 						AllocateNodeCIDRs: true,
@@ -200,6 +214,14 @@ func TestStartNodeIpamController(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
 			ctx := genericcontrollermanager.ControllerContext{}
+
+			// Fix up the config for test
+			tc.ccmConfig.ClientBuilder = clientbuilder.SimpleControllerClientBuilder{
+				ClientConfig: tc.ccmConfig.Kubeconfig,
+			}
+			client := k8sfake.NewSimpleClientset()
+			tc.ccmConfig.SharedInformers = informers.NewSharedInformerFactory(client, 0)
+
 			_, _, err := startNodeIpamController(tc.ccmConfig.Complete(), tc.nodeIPAMConfig, ctx, &fakeCloudProvider{})
 
 			if err == nil && tc.wantErr {

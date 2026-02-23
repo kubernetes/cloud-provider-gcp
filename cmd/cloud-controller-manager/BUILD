@@ -51,7 +51,6 @@ go_library(
         "//vendor/k8s.io/controller-manager/controller",
         "//vendor/k8s.io/klog/v2:klog",
         "//vendor/k8s.io/kubernetes/cmd/kube-controller-manager/names",
-        "//vendor/k8s.io/utils/net",
     ],
 )
 
@@ -70,9 +69,13 @@ go_test(
         "//pkg/controller/nodeipam/config",
         "//pkg/controller/service",
         "//vendor/k8s.io/api/core/v1:core",
+        "//vendor/k8s.io/client-go/informers",
+        "//vendor/k8s.io/client-go/kubernetes/fake",
+        "//vendor/k8s.io/client-go/rest",
         "//vendor/k8s.io/cloud-provider",
         "//vendor/k8s.io/cloud-provider/app/config",
         "//vendor/k8s.io/cloud-provider/config",
         "//vendor/k8s.io/controller-manager/app",
+        "//vendor/k8s.io/controller-manager/pkg/clientbuilder",
     ],
 )

@@ -8,7 +8,6 @@ go_library(
         "lookup.go",
         "modindex.go",
         "symbols.go",
-        "types.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/internal/modindex",
     importpath = "golang.org/x/tools/internal/modindex",

@@ -10,6 +10,7 @@ import (
 	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
 	cloudprovider "k8s.io/cloud-provider"
 	gkenetworkparamsetcontroller "k8s.io/cloud-provider-gcp/pkg/controller/gkenetworkparamset"
+	nodeipam "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/cloud-provider/app"
@@ -73,7 +74,7 @@ func startGkeNetworkParamsController(ccmConfig *cloudcontrollerconfig.CompletedC
 // with stack type and returns a list of typed cidrs and error
 func validClusterCIDR(clusterCIDRFromFlag string) ([]*net.IPNet, error) {
 	// failure: bad cidrs in config
-	clusterCIDRs, dualStack, err := processCIDRs(clusterCIDRFromFlag)
+	clusterCIDRs, dualStack, err := nodeipam.ProcessCIDRs(clusterCIDRFromFlag)
 	if err != nil {
 		return nil, err
 	}

@@ -11,6 +11,7 @@ go_library(
         "desc_list_gen.go",
         "editions.go",
         "placeholder.go",
+        "presence.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/google.golang.org/protobuf/internal/filedesc",
     importpath = "google.golang.org/protobuf/internal/filedesc",
