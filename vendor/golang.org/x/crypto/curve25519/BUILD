@@ -1,9 +1,0 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
-
-go_library(
-    name = "curve25519",
-    srcs = ["curve25519.go"],
-    importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/crypto/curve25519",
-    importpath = "golang.org/x/crypto/curve25519",
-    visibility = ["//visibility:public"],
-)
