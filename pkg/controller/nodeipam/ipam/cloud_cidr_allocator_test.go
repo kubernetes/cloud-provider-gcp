@@ -38,7 +38,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	runtimeSchema "k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -192,17 +191,15 @@ func TestNodeTopologyCR_AddOrUpdateNode(t *testing.T) {
 	testClusterValues := gce.DefaultTestClusterValues()
 	testClusterValues.SubnetworkURL = exampleSubnetURL
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+	// Add mock instances to prevent 404s
+	fakeGCE.Compute().Instances().Insert(context.TODO(), meta.ZonalKey("testNode", testClusterValues.ZoneName), &compute.Instance{Name: "testNode"})
+	fakeGCE.Compute().Instances().Insert(context.TODO(), meta.ZonalKey("testNodeTopologyLifecycle", testClusterValues.ZoneName), &compute.Instance{Name: "testNodeTopologyLifecycle"})
 
 	clientSet := clSetFake.NewSimpleClientset()
 	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, noResyncPeriodFunc()).Networking()
 	nwInformer := nwInfFactory.V1().Networks()
 	gnpInformer := nwInfFactory.V1().GKENetworkParamSets()
 
-	defaultnode := &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "testNodeTopologyLifecycle",
-		},
-	}
 	mscnode := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "testNode",
@@ -210,7 +207,19 @@ func TestNodeTopologyCR_AddOrUpdateNode(t *testing.T) {
 				testNodePoolSubnetLabelPrefix: "subnet1",
 			},
 		},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://test-project/us-central1-b/testNode",
+		},
 	}
+	defaultnode := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "testNodeTopologyLifecycle",
+		},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://test-project/us-central1-b/testNodeTopologyLifecycle",
+		},
+	}
+
 	fakeClient := fake.NewSimpleClientset(defaultnode)
 	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, time.Second)
 	fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
@@ -227,24 +236,25 @@ func TestNodeTopologyCR_AddOrUpdateNode(t *testing.T) {
 	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, true, false, fakeNodeInformer, allocatorParams)
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
-	fakeInformerFactory.Start(wait.NeverStop)
-	go cloudAllocator.Run(wait.NeverStop)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	fakeInformerFactory.Start(stopCh)
+	go cloudAllocator.Run(stopCh)
 
-	// TODO: Fix node_topology_syncer addOrUpdate should add default subnet regardless of nodes ordering on the informer
-	time.Sleep(time.Millisecond * 500)
-	fakeClient.Tracker().Add(mscnode)
-	expectedSubnets := []string{"subnet-def", "subnet1"}
-	i := 0
-	for i < 5 {
-		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
-			break
-		} else {
-			time.Sleep(time.Millisecond * 500)
-			i++
-		}
+	// Wait for allocator to sync
+	if err := wait.PollImmediate(time.Millisecond*100, wait.ForeverTestTimeout, func() (bool, error) {
+		return cloudAllocator.nodesSynced(), nil
+	}); err != nil {
+		t.Fatalf("failed to wait for informer sync: %v", err)
 	}
-	if i >= 5 {
-		t.Fatalf("AddOrUpdate node topology CRD not working as expected")
+
+	fakeClient.CoreV1().Nodes().Create(context.TODO(), mscnode, metav1.CreateOptions{})
+	expectedSubnets := []string{"subnet-def", "subnet1"}
+	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
+		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
+		return ok, nil
+	}); err != nil {
+		t.Fatalf("AddOrUpdate node topology CRD not working as expected: %v", err)
 	}
 
 	mscnode2 := &v1.Node{
@@ -254,47 +264,34 @@ func TestNodeTopologyCR_AddOrUpdateNode(t *testing.T) {
 				testNodePoolSubnetLabelPrefix: "subnet2",
 			},
 		},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://test-project/us-central1-b/testNode2",
+		},
 	}
-	fakeClient.Tracker().Add(mscnode2)
+	fakeGCE.Compute().Instances().Insert(context.TODO(), meta.ZonalKey("testNode2", testClusterValues.ZoneName), &compute.Instance{Name: "testNode2"})
+	fakeClient.CoreV1().Nodes().Create(context.TODO(), mscnode2, metav1.CreateOptions{})
 	expectedSubnets = []string{"subnet-def", "subnet1", "subnet2"}
-	i = 0
-	for i < 5 {
-		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
-			break
-		} else {
-			time.Sleep(time.Millisecond * 500)
-			i++
-		}
-	}
-	if i >= 5 {
-		t.Fatalf("AddOrUpdate node topology CRD not working as expected")
+	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
+		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
+		return ok, nil
+	}); err != nil {
+		t.Fatalf("AddOrUpdate node topology CRD not working as expected: %v", err)
 	}
 	// Node subnet label should be immutable, update it just to test update node path
 	mscnode2.ObjectMeta.Labels[testNodePoolSubnetLabelPrefix] = "subnet3"
-	// TODO: automatically get gvr instead of hardcode
-	gvr := runtimeSchema.GroupVersionResource{
-		Version:  "v1",
-		Resource: "nodes",
-	}
-	fakeClient.Tracker().Update(gvr, mscnode2, mscnode2.GetNamespace(), metav1.UpdateOptions{})
+	fakeClient.CoreV1().Nodes().Update(context.TODO(), mscnode2, metav1.UpdateOptions{})
 	expectedSubnets = []string{"subnet-def", "subnet1", "subnet2", "subnet3"}
-	i = 0
-	for i < 5 {
-		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
-			break
-		} else {
-			time.Sleep(time.Millisecond * 500)
-			i++
-		}
-	}
-	if i >= 5 {
-		t.Fatalf("UpdateNode with different subnet lable should not dedup when enqueueing")
+	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
+		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
+		return ok, nil
+	}); err != nil {
+		t.Fatalf("UpdateNode with different subnet lable should not dedup when enqueueing: %v", err)
 	}
 	// Reset nodetopology just for test update node de-dup when the label didn't change
 	nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), ensuredNodeTopologyCR, metav1.UpdateOptions{})
 	// Update the node w/o changing node pool subnet label should de-dup, not enqueue
 	mscnode2.ObjectMeta.Labels[testNodePoolSubnetLabelPrefix] = "subnet3"
-	fakeClient.Tracker().Update(gvr, mscnode2, mscnode2.GetNamespace(), metav1.UpdateOptions{})
+	fakeClient.CoreV1().Nodes().Update(context.TODO(), mscnode2, metav1.UpdateOptions{})
 	time.Sleep(time.Millisecond * 500)
 	expectedSubnets = []string{}
 	if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); !ok {
@@ -306,6 +303,9 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 	testClusterValues := gce.DefaultTestClusterValues()
 	testClusterValues.SubnetworkURL = exampleSubnetURL
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+	// Add mock instances to prevent 404s
+	fakeGCE.Compute().Instances().Insert(context.TODO(), meta.ZonalKey("nodeTopologyDefautNode", testClusterValues.ZoneName), &compute.Instance{Name: "nodeTopologyDefautNode"})
+	fakeGCE.Compute().Instances().Insert(context.TODO(), meta.ZonalKey("testNode", testClusterValues.ZoneName), &compute.Instance{Name: "testNode"})
 
 	clientSet := clSetFake.NewSimpleClientset()
 	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, noResyncPeriodFunc()).Networking()
@@ -315,6 +315,9 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 	defaultnode := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "nodeTopologyDefautNode",
+		},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://test-project/us-central1-b/nodeTopologyDefautNode",
 		},
 	}
 	fakeClient := fake.NewSimpleClientset(defaultnode)
@@ -333,8 +336,17 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, true, false, fakeNodeInformer, allocatorParams)
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
-	fakeInformerFactory.Start(wait.NeverStop)
-	go cloudAllocator.Run(wait.NeverStop)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	fakeInformerFactory.Start(stopCh)
+	go cloudAllocator.Run(stopCh)
+
+	// Wait for allocator to sync
+	if err := wait.PollImmediate(time.Millisecond*100, wait.ForeverTestTimeout, func() (bool, error) {
+		return cloudAllocator.nodesSynced(), nil
+	}); err != nil {
+		t.Fatalf("failed to wait for informer sync: %v", err)
+	}
 
 	mscnode := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -343,41 +355,28 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 				testNodePoolSubnetLabelPrefix: "subnet1",
 			},
 		},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://test-project/us-central1-b/testNode",
+		},
 	}
-	fakeClient.Tracker().Add(mscnode)
+	fakeClient.CoreV1().Nodes().Create(context.TODO(), mscnode, metav1.CreateOptions{})
 
 	expectedSubnets := []string{"subnet-def", "subnet1"}
-	i := 0
-	for i < 5 {
-		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
-			break
-		} else {
-			time.Sleep(time.Millisecond * 500)
-			i++
-		}
+	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
+		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
+		return ok, nil
+	}); err != nil {
+		t.Fatalf("Add node topology CR not working as expected: %v", err)
 	}
-	if i >= 5 {
-		t.Fatalf("Add node topology CR not working as expected")
-	}
-	// TODO: automatically get gvr instead of using hardcoded value
-	gvr := runtimeSchema.GroupVersionResource{
-		Version:  "v1",
-		Resource: "nodes",
-	}
-	fakeClient.Tracker().Delete(gvr, mscnode.GetNamespace(), mscnode.GetName(), metav1.DeleteOptions{})
+
+	fakeClient.CoreV1().Nodes().Delete(context.TODO(), mscnode.GetName(), metav1.DeleteOptions{})
 
 	expectedSubnets = []string{"subnet-def"}
-	i = 0
-	for i < 5 {
-		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
-			break
-		} else {
-			time.Sleep(time.Millisecond * 500)
-			i++
-		}
-	}
-	if i >= 5 {
-		t.Fatalf("Delete node topology CR not working as expected")
+	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
+		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
+		return ok, nil
+	}); err != nil {
+		t.Fatalf("Delete node topology CR not working as expected: %v", err)
 	}
 }
 
