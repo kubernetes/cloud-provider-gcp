@@ -10,8 +10,8 @@ def find_go_modules():
     """Finds all go.mod files in the repository."""
     go_mod_files = []
     for file in glob.glob("**/go.mod", recursive=True):
-        # Ignore matches under vendor and bazel-*
-        if file.startswith("vendor/") or file.startswith("bazel-"):
+        # Ignore matches under vendor, bazel-* and _tmp
+        if file.startswith("vendor/") or file.startswith("bazel-") or file.startswith("_tmp/"):
             continue
         go_mod_files.append(file)
     if os.path.exists("go.mod"):
