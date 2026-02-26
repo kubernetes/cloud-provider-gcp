@@ -44,7 +44,7 @@ else
   echo "IMAGE_TAG=${IMAGE_TAG}"
 fi
 
-if [ -n "${CI:-}" ]; then
+if ! docker buildx inspect multiarch-multiplatform-builder > /dev/null 2>&1; then
   docker run --privileged --rm tonistiigi/binfmt --install all
   docker buildx create \
     --name multiarch-multiplatform-builder \
