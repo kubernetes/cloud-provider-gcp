@@ -7,4 +7,4 @@ release/*
 _artifacts/
 _rundir/
 _tmp/
-
+/bin/
