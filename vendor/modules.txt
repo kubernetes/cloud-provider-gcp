@@ -27,6 +27,13 @@ cloud.google.com/go/compute/metadata
 ## explicit; go 1.16
 github.com/Azure/go-ansiterm
 github.com/Azure/go-ansiterm/winterm
+# github.com/GoogleCloudPlatform/gke-enterprise-mt v1.0.1
+## explicit; go 1.24.13
+github.com/GoogleCloudPlatform/gke-enterprise-mt/apis/providerconfig/v1
+github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework
+github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/mtcontext
+github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/taskqueue
+github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfigcr
 # github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f
 ## explicit; go 1.22.0
 github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1
@@ -1714,6 +1721,9 @@ sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/common/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
+# sigs.k8s.io/controller-runtime v0.14.7
+## explicit; go 1.19
+sigs.k8s.io/controller-runtime/pkg/scheme
 # sigs.k8s.io/controller-tools v0.17.2
 ## explicit; go 1.23.0
 sigs.k8s.io/controller-tools/cmd/controller-gen

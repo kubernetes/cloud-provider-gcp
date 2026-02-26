@@ -10,6 +10,8 @@ cloud.google.com/go/compute/metadata v0.6.0/go.mod h1:FjyFAW1MW0C203CEOMDTu3Dk1F
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 h1:L/gRVlceqvL25UVaW/CKtUDjefjrs0SPonmDGUVOYP0=
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
+github.com/GoogleCloudPlatform/gke-enterprise-mt v1.0.1 h1:hHQQmJlwwusU7JAaPjWy0DuVIb0ro6T3K8cKikBoKGQ=
+github.com/GoogleCloudPlatform/gke-enterprise-mt v1.0.1/go.mod h1:dZE6MoO8uU9Uyf144t/bfZ6A9NsOHhNUySMUcN10dBk=
 github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f h1:OPE+MYCwdQNms+QAXgHjR03TKCHXoqlurXiuhYDuEdI=
 github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f/go.mod h1:YnoYXo/cwpqFmIXKblHOV5jFEpsSL3PZeo0zaR3oGTI=
 github.com/GoogleCloudPlatform/k8s-cloud-provider v1.27.0 h1:5slI4ZAsvkgpVEfrKZGlvcpeYTv2roIbDzK6zvJYhwY=
@@ -437,6 +439,8 @@ k8s.io/utils v0.0.0-20251002143259-bc988d571ff4 h1:SjGebBtkBqHFOli+05xYbK8YF1Dzk
 k8s.io/utils v0.0.0-20251002143259-bc988d571ff4/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.2 h1:jpcvIRr3GLoUoEKRkHKSmGjxb6lWwrBlJsXc+eUYQHM=
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.2/go.mod h1:Ve9uj1L+deCXFrPOk1LpFXqTg7LCFzFso6PA48q/XZw=
+sigs.k8s.io/controller-runtime v0.14.7 h1:Vrnm2vk9ZFlRkXATHz0W0wXcqNl7kPat8q2JyxVy0Q8=
+sigs.k8s.io/controller-runtime v0.14.7/go.mod h1:ErTs3SJCOujNUnTz4AS+uh8hp6DHMo1gj6fFndJT1X8=
 sigs.k8s.io/controller-tools v0.17.2 h1:jNFOKps8WnaRKZU2R+4vRCHnXyJanVmXBWqkuUPFyFg=
 sigs.k8s.io/controller-tools v0.17.2/go.mod h1:4q5tZG2JniS5M5bkiXY2/potOiXyhoZVw/U48vLkXk0=
 sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 h1:IpInykpT6ceI+QxKBbEflcR5EXP7sU1kvOlxwZh5txg=
