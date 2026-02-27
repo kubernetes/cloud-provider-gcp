@@ -52,6 +52,9 @@ if [[ -z "${WORKDIR:-}" ]]; then
 fi
 mkdir -p "${WORKDIR}"
 
+# Common Utilities
+source "${REPO_ROOT}/tools/kops-common.sh"
+
 # Ensure we have a project; get one from boskos if one not provided in GCP_PROJECT
 source "${REPO_ROOT}"/test/boskos.sh
 if [[ -z "${GCP_PROJECT:-}" ]]; then
@@ -62,14 +65,8 @@ if [[ -z "${GCP_PROJECT:-}" ]]; then
 fi
 echo "GCP_PROJECT=${GCP_PROJECT}"
 
-# Ensure we have an SSH key; needed to dump the node information to artifacts/
-if [[ -z "${SSH_PRIVATE_KEY:-}" ]]; then
-  echo "SSH_PRIVATE_KEY not set, creating one"
-
-  SSH_PRIVATE_KEY="${WORKDIR}/google_compute_engine"
-  gcloud compute --project="${GCP_PROJECT}" config-ssh --ssh-key-file="${SSH_PRIVATE_KEY}"
-  export KUBE_SSH_USER="${USER}"
-fi
+# SSH Key Setup
+setup_ssh_key
 echo "SSH_PRIVATE_KEY=${SSH_PRIVATE_KEY}"
 
 # Build kubetest-2 kOps support
@@ -99,33 +96,9 @@ echo "CLOUD_PROVIDER=${CLOUD_PROVIDER}"
 #Set cloud provider location
 GCP_LOCATION="${GCP_LOCATION:-us-central1}"
 
-# KOPS_STATE_STORE holds metadata about the clusters we create
-if [[ -z "${KOPS_STATE_STORE:-}" ]]; then
-  KOPS_STATE_STORE="gs://kops-state-${GCP_PROJECT}"
-  # Ensure the bucket exists
-  gsutil ls -p "${GCP_PROJECT}" "${KOPS_STATE_STORE}" || gsutil mb -p "${GCP_PROJECT}" -l "${GCP_LOCATION}" "${KOPS_STATE_STORE}"
-
-  # Setting ubla off so that kOps can automatically set ACLs for the default serviceACcount
-  gsutil ubla set off "${KOPS_STATE_STORE}"
-
-  # Grant storage.admin on the bucket to our ServiceAccount
-  SA=$(gcloud config list --format 'value(core.account)')
-  gsutil iam ch serviceAccount:${SA}:admin "${KOPS_STATE_STORE}"
-fi
+# Setup KOPS_STATE_STORE
+setup_kops_state_store
 echo "KOPS_STATE_STORE=${KOPS_STATE_STORE}"
-export KOPS_STATE_STORE
-
-# IMAGE_REPO is used to upload images
-if [[ -z "${IMAGE_REPO:-}" ]]; then
-  IMAGE_REPO="gcr.io/${GCP_PROJECT}"
-fi
-echo "IMAGE_REPO=${IMAGE_REPO}"
-
-cd ${REPO_ROOT}
-if [[ -z "${IMAGE_TAG:-}" ]]; then
-  IMAGE_TAG=$(git rev-parse --short HEAD)-$(date +%Y%m%dT%H%M%S)
-fi
-echo "IMAGE_TAG=${IMAGE_TAG}"
 
 # Build and push cloud-controller-manager
 cd ${REPO_ROOT}
@@ -138,11 +111,8 @@ unset KUBE_ROOT
 echo "git status:"
 git status
 
-echo "Configuring docker auth with gcloud"
-gcloud auth configure-docker
-
-echo "Building and pushing images"
-IMAGE_REPO=${IMAGE_REPO} IMAGE_TAG=${IMAGE_TAG} tools/push-images
+# Build CCM and Generate Manifest
+build_and_push_ccm
 
 if [[ -z "${ADMIN_ACCESS:-}" ]]; then
   ADMIN_ACCESS="0.0.0.0/0" # Or use your IPv4 with /32
@@ -159,13 +129,9 @@ fi
 # Workaround for test-infra#24747
 create_args="${create_args} --gce-service-account=default"
 
-# Add our manifest
-cp "${REPO_ROOT}/deploy/packages/default/manifest.yaml" "${WORKDIR}/cloud-provider-gcp.yaml"
-sed -i -e "s@k8scloudprovidergcp/cloud-controller-manager:latest@${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}@g" "${WORKDIR}/cloud-provider-gcp.yaml"
-create_args="${create_args} --add=${WORKDIR}/cloud-provider-gcp.yaml"
+# Add our (common generated) manifest
+create_args="${create_args} ${ADD_MANIFEST_ARG}"
 
-# Enable cluster addons, this enables us to replace the built-in manifest
-KOPS_FEATURE_FLAGS="ClusterAddons,${KOPS_FEATURE_FLAGS:-}"
 echo "KOPS_FEATURE_FLAGS=${KOPS_FEATURE_FLAGS}"
 
 # Note that these arguments for kubetest2 and kOps, not (for example) the arguments passed to the cloud-provider-gcp
