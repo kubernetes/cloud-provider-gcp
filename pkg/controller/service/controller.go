@@ -538,12 +538,12 @@ func (s *serviceCache) delete(serviceName string) {
 
 // needsCleanup checks if load balancer needs to be cleaned up as indicated by finalizer.
 func needsCleanup(service *v1.Service) bool {
-	if !servicehelper.HasLBFinalizer(service) {
-		return false
-	}
-
 	if service.ObjectMeta.DeletionTimestamp != nil {
 		return true
+	}
+
+	if !servicehelper.HasLBFinalizer(service) {
+		return false
 	}
 
 	// Service doesn't want loadBalancer but owns loadBalancer finalizer also need to be cleaned up.
@@ -738,7 +738,7 @@ func (c *Controller) syncNodes(ctx context.Context, workers int) sets.String {
 func (c *Controller) nodeSyncService(svc *v1.Service) bool {
 	const retSuccess = false
 	const retNeedRetry = true
-	if svc == nil || !WantsLoadBalancer(svc) {
+	if svc == nil || svc.DeletionTimestamp != nil || !WantsLoadBalancer(svc) {
 		return retSuccess
 	}
 	newNodes, err := listWithPredicates(c.nodeLister)
