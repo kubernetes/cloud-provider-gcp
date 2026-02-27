@@ -161,7 +161,7 @@ create_args="${create_args} --gce-service-account=default"
 
 # Add our manifest
 cp "${REPO_ROOT}/deploy/packages/default/manifest.yaml" "${WORKDIR}/cloud-provider-gcp.yaml"
-sed -i -e "s@k8scloudprovidergcp/cloud-controller-manager:latest@${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}@g" "${WORKDIR}/cloud-provider-gcp.yaml"
+sed -i -e "s@registry.k8s.io/cloud-provider-gcp/cloud-controller-manager:v[0-9]\+\(\.[0-9]\+\)*@${IMAGE_REPO}/cloud-controller-manager:${IMAGE_TAG}@g" "${WORKDIR}/cloud-provider-gcp.yaml"
 create_args="${create_args} --add=${WORKDIR}/cloud-provider-gcp.yaml"
 
 # Enable cluster addons, this enables us to replace the built-in manifest
