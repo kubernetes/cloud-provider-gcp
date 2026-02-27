@@ -98,7 +98,7 @@ type cloudCIDRAllocator struct {
 	nodesSynced cache.InformerSynced
 
 	recorder          record.EventRecorder
-	queue             workqueue.RateLimitingInterface
+	queue             workqueue.TypedRateLimitingInterface[string]
 	nodeTopologyQueue *TaskQueue
 
 	stackType clusterStackType
@@ -148,7 +148,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		nodeLister:            nodeInformer.Lister(),
 		nodesSynced:           nodeInformer.Informer().HasSynced,
 		recorder:              recorder,
-		queue:                 workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
+		queue:                 workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: workqueueName}),
 		stackType:             stackType,
 		enableMultiNetworking: enableMultiNetworking,
 	}
@@ -341,13 +341,13 @@ func (ca *cloudCIDRAllocator) processNextItem(ctx context.Context) bool {
 
 	klog.V(3).Infof("Processing %s", key)
 	//TODO: properly enable and pass ctx to updateCIDRAllocation
-	err := ca.updateCIDRAllocation(key.(string))
+	err := ca.updateCIDRAllocation(key)
 	ca.handleErr(err, key)
 	return true
 }
 
 // handleErr checks if an error happened and makes sure we will retry later.
-func (ca *cloudCIDRAllocator) handleErr(err error, key interface{}) {
+func (ca *cloudCIDRAllocator) handleErr(err error, key string) {
 	if err == nil {
 		// Forget about the #AddRateLimited history of the key on every successful synchronization.
 		// This ensures that future processing of updates for this key is not delayed because of
