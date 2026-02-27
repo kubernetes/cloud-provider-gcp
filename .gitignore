@@ -2,9 +2,9 @@ bazel-*
 cluster/bin
 MERGED_LICENSES
 release/*
-.vscode/
+.go-cache/
 .idea/
+.vscode/
 _artifacts/
 _rundir/
 _tmp/
-
