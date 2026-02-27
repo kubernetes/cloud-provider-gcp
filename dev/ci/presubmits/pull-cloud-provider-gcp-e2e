@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+
+import subprocess
+
+subprocess.run(["tools/run-e2e-test.sh"], check=True)
