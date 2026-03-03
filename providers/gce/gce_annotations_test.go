@@ -20,6 +20,7 @@ limitations under the License.
 package gce
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -28,6 +29,162 @@ import (
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestComputeNewAnnotationsIfNeeded(t *testing.T) {
+	testCases := []struct {
+		desc           string
+		svc            *v1.Service
+		newAnnotations map[string]string
+		expectUpdate   bool
+		expectedAnns   map[string]string
+	}{
+		{
+			desc: "nil annotations in svc, new annotations added",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test-svc",
+					Namespace:   "test-ns",
+					Annotations: nil,
+				},
+			},
+			newAnnotations: map[string]string{"key1": "val1"},
+			expectUpdate:   true,
+			expectedAnns:   map[string]string{"key1": "val1"},
+		},
+		{
+			desc: "empty annotations in svc, new annotations added",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test-svc",
+					Namespace:   "test-ns",
+					Annotations: map[string]string{},
+				},
+			},
+			newAnnotations: map[string]string{"key1": "val1"},
+			expectUpdate:   true,
+			expectedAnns:   map[string]string{"key1": "val1"},
+		},
+		{
+			desc: "existing annotations, new annotations merged",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-svc",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"existing1": "old1",
+						"key1":      "oldVal1",
+					},
+				},
+			},
+			newAnnotations: map[string]string{"key1": "val1", "key2": "val2"},
+			expectUpdate:   true,
+			expectedAnns: map[string]string{
+				"existing1": "old1",
+				"key1":      "val1",
+				"key2":      "val2",
+			},
+		},
+		{
+			desc: "existing annotations, key removed",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-svc",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"key1": "val1",
+						"key2": "val2",
+					},
+				},
+			},
+			newAnnotations: map[string]string{"key1": ""},
+			expectUpdate:   true,
+			expectedAnns:   map[string]string{"key2": "val2"},
+		},
+		{
+			desc: "no changes to annotations",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-svc",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"key1": "val1",
+					},
+				},
+			},
+			newAnnotations: map[string]string{"key1": "val1"},
+			expectUpdate:   false,
+			expectedAnns:   nil,
+		},
+		{
+			desc: "nil newAnnotations",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-svc",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"key1": "val1",
+					},
+				},
+			},
+			newAnnotations: nil,
+			expectUpdate:   false,
+			expectedAnns:   nil,
+		},
+		{
+			desc: "empty newAnnotations",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-svc",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"key1": "val1",
+					},
+				},
+			},
+			newAnnotations: map[string]string{},
+			expectUpdate:   false,
+			expectedAnns:   nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			// Capture original annotations to check for unintended modifications
+			originalAnnotations := make(map[string]string)
+			if tc.svc.Annotations != nil {
+				for k, v := range tc.svc.Annotations {
+					originalAnnotations[k] = v
+				}
+			}
+
+			newMeta, needsUpdate := computeNewAnnotationsIfNeeded(tc.svc, tc.newAnnotations)
+
+			assert.Equal(t, tc.expectUpdate, needsUpdate)
+
+			if tc.expectUpdate {
+				assert.NotNil(t, newMeta)
+				assert.True(t, reflect.DeepEqual(tc.expectedAnns, newMeta.Annotations), "Expected annotations: %v, got: %v", tc.expectedAnns, newMeta.Annotations)
+				// Ensure the map was actually changed from the original
+				assert.False(t, reflect.DeepEqual(originalAnnotations, newMeta.Annotations), "Annotations should have changed, but match original")
+			} else {
+				assert.Nil(t, newMeta)
+				// Ensure original service annotations are not modified
+				if len(originalAnnotations) == 0 && tc.svc.Annotations == nil {
+					// Special case: nil to nil is fine
+				} else {
+					assert.True(t, reflect.DeepEqual(originalAnnotations, tc.svc.Annotations), "Original svc.Annotations should not be modified on no update")
+				}
+			}
+
+			// Always check that the original service object's annotations map instance is not a different instance if no update was needed.
+			if !needsUpdate {
+				if len(originalAnnotations) > 0 || (len(originalAnnotations) == 0 && tc.svc.Annotations != nil) {
+					assert.True(t, reflect.DeepEqual(originalAnnotations, tc.svc.Annotations), "Original svc.Annotations instance should not change when no update is needed")
+				}
+			}
+		})
+	}
+}
 
 func TestServiceNetworkTierAnnotationKey(t *testing.T) {
 	createTestService := func() *v1.Service {

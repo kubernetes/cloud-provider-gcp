@@ -405,6 +405,9 @@ func hasLoadBalancerPortsError(service *v1.Service) bool {
 // This function is used by L4 LB controllers.
 func computeNewAnnotationsIfNeeded(svc *v1.Service, newAnnotations map[string]string) (*metav1.ObjectMeta, bool) {
 	newObjectMeta := svc.ObjectMeta.DeepCopy()
+	if newObjectMeta.Annotations == nil {
+		newObjectMeta.Annotations = make(map[string]string)
+	}
 	mergeMap(newObjectMeta.Annotations, newAnnotations)
 	if reflect.DeepEqual(svc.Annotations, newObjectMeta.Annotations) {
 		return nil, false
