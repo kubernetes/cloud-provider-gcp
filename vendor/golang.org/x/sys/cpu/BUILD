@@ -19,11 +19,13 @@ go_library(
         "cpu_linux.go",
         "cpu_linux_arm.go",
         "cpu_linux_arm64.go",
+        "cpu_linux_loong64.go",
         "cpu_linux_mips64x.go",
         "cpu_linux_noinit.go",
         "cpu_linux_ppc64x.go",
         "cpu_linux_riscv64.go",
         "cpu_linux_s390x.go",
+        "cpu_loong64.s",
         "cpu_mips64x.go",
         "cpu_mipsx.go",
         "cpu_netbsd_arm64.go",
@@ -37,6 +39,7 @@ go_library(
         "cpu_s390x.go",
         "cpu_s390x.s",
         "cpu_wasm.go",
+        "cpu_windows_arm64.go",
         "cpu_x86.go",
         "cpu_zos.go",
         "cpu_zos_s390x.go",
@@ -53,4 +56,10 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/sys/cpu",
     importpath = "golang.org/x/sys/cpu",
     visibility = ["//visibility:public"],
+    deps = select({
+        "@io_bazel_rules_go//go/platform:windows_arm64": [
+            "//vendor/golang.org/x/sys/windows",
+        ],
+        "//conditions:default": [],
+    }),
 )

@@ -16,7 +16,7 @@ go_library(
         "//vendor/go.opentelemetry.io/auto/sdk/internal/telemetry",
         "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/go.opentelemetry.io/otel/codes",
-        "//vendor/go.opentelemetry.io/otel/semconv/v1.26.0:v1_26_0",
+        "//vendor/go.opentelemetry.io/otel/semconv/v1.37.0:v1_37_0",
         "//vendor/go.opentelemetry.io/otel/trace",
         "//vendor/go.opentelemetry.io/otel/trace/noop",
     ],

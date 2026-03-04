@@ -20,6 +20,7 @@ go_library(
         "//vendor/go.opentelemetry.io/auto/sdk",
         "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/go.opentelemetry.io/otel/codes",
+        "//vendor/go.opentelemetry.io/otel/internal/errorhandler",
         "//vendor/go.opentelemetry.io/otel/metric",
         "//vendor/go.opentelemetry.io/otel/metric/embedded",
         "//vendor/go.opentelemetry.io/otel/propagation",
