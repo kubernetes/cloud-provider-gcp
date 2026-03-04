@@ -5,8 +5,6 @@ go_library(
     srcs = [
         "catalog.go",
         "dict.go",
-        "go19.go",
-        "gopre19.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/text/message/catalog",
     importpath = "golang.org/x/text/message/catalog",
