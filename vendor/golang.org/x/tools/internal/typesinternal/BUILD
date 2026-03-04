@@ -14,6 +14,7 @@ go_library(
         "toonew.go",
         "types.go",
         "varkind.go",
+        "varkind_go124.go",
         "zerovalue.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/tools/internal/typesinternal",

@@ -13,6 +13,7 @@ go_library(
     importpath = "golang.org/x/tools/internal/modindex",
     visibility = ["//vendor/golang.org/x/tools:__subpackages__"],
     deps = [
+        "//vendor/golang.org/x/mod/module",
         "//vendor/golang.org/x/mod/semver",
         "//vendor/golang.org/x/sync/errgroup",
         "//vendor/golang.org/x/tools/internal/gopathwalk",
