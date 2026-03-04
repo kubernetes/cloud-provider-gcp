@@ -86,10 +86,10 @@ This is only necessary for CCM releases corresponding to a Kubernetes minor vers
 ## Tagging for New Cloud-controller-manager Versions
 
 To trigger a new image for cloud-controller-manager, you need to add a git tag on the corresponding release branch.
-This needs to have the format `ccm/vX.Y.Z`. For example.
+This needs to have the format `vX.Y.Z`. For example.
 
 ```
-git tag -a ccm/v27.1.0 -m "CCM build for Kubernetes v1.27.1"
+git tag -a v35.0.5 -m "CCM build for Kubernetes v35.0.5"
 ```
 
 The major version X corresponds to the Kubernetes minor version. The minor
