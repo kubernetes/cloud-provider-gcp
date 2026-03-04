@@ -197,15 +197,26 @@ func GetLoadBalancerAnnotationSubnet(service *v1.Service) string {
 	return ""
 }
 
-// mergeMap merges the update map into the dst map.
-// Keys in dst are overwritten by values from update.
-// If a value in the update map is an empty string, the key is removed from dst.
-func mergeMap(dst, update map[string]string) {
-	for k, v := range update {
-		if v == "" {
-			delete(dst, k)
-		} else {
-			dst[k] = v
+// mergeMap returns a new map containing the merged content of existing and update.
+// Keys in existing are overwritten by values from update.
+// If a value in the update map is an empty string, the key is removed from the returned map.
+// The existing map is not modified.
+func mergeMap(existing, update map[string]string) map[string]string {
+	if existing == nil && len(update) == 0 {
+		return nil
+	}
+	res := make(map[string]string)
+	for k, v := range existing {
+		if _, exists := update[k]; exists && update[k] != "" {
+			res[k] = update[k]
+		} else if !exists {
+			res[k] = v
 		}
 	}
+	for k, v := range update {
+		if _, exists := existing[k]; !exists && v != "" {
+			res[k] = v
+		}
+	}
+	return res
 }
