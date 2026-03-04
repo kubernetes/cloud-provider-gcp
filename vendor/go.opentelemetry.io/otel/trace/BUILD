@@ -7,6 +7,7 @@ go_library(
         "config.go",
         "context.go",
         "doc.go",
+        "hex.go",
         "nonrecording.go",
         "noop.go",
         "provider.go",
@@ -21,7 +22,7 @@ go_library(
     deps = [
         "//vendor/go.opentelemetry.io/otel/attribute",
         "//vendor/go.opentelemetry.io/otel/codes",
-        "//vendor/go.opentelemetry.io/otel/semconv/v1.26.0:v1_26_0",
+        "//vendor/go.opentelemetry.io/otel/semconv/v1.39.0:v1_39_0",
         "//vendor/go.opentelemetry.io/otel/trace/embedded",
         "//vendor/go.opentelemetry.io/otel/trace/internal/telemetry",
     ],

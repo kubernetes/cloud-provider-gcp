@@ -39,6 +39,7 @@ go_library(
         "cpu_s390x.go",
         "cpu_s390x.s",
         "cpu_wasm.go",
+        "cpu_windows_arm64.go",
         "cpu_x86.go",
         "cpu_zos.go",
         "cpu_zos_s390x.go",
@@ -55,4 +56,10 @@ go_library(
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/sys/cpu",
     importpath = "golang.org/x/sys/cpu",
     visibility = ["//visibility:public"],
+    deps = select({
+        "@io_bazel_rules_go//go/platform:windows_arm64": [
+            "//vendor/golang.org/x/sys/windows",
+        ],
+        "//conditions:default": [],
+    }),
 )

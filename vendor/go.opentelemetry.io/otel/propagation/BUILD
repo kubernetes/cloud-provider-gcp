@@ -13,6 +13,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/go.opentelemetry.io/otel/baggage",
+        "//vendor/go.opentelemetry.io/otel/internal/errorhandler",
         "//vendor/go.opentelemetry.io/otel/trace",
     ],
 )

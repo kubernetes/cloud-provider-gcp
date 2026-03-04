@@ -8,6 +8,8 @@ go_library(
         "chacha20poly1305_amd64.s",
         "chacha20poly1305_generic.go",
         "chacha20poly1305_noasm.go",
+        "fips140only_compat.go",
+        "fips140only_go1.26.go",
         "xchacha20poly1305.go",
     ],
     importmap = "k8s.io/cloud-provider-gcp/vendor/golang.org/x/crypto/chacha20poly1305",
