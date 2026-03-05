@@ -149,6 +149,20 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 			Name:       defaultSubnet,
 			SubnetPath: subnetPrefix + defaultSubnet,
 		})
+
+		// If the node we are processing has a subnet that isn't the default, add it immediately.
+		// This is necessary because the informer's LIST/WATCH mechanism does not guarantee
+		// strict chronological ordering of external events. A node heavily delayed in
+		// registration, or a restart of this controller, could result in a node with a
+		// custom subnet being processed before the default subnet.
+		if hasSubnetLabel && nodeSubnet != defaultSubnet {
+			klog.V(2).Infof("Adding the node's subnet %s to the cr along with default subnetwork", nodeSubnet)
+			updatedCR.Status.Subnets = append(updatedCR.Status.Subnets, nodetopologyv1.SubnetConfig{
+				Name:       nodeSubnet,
+				SubnetPath: subnetPrefix + nodeSubnet,
+			})
+		}
+
 		// We always expect zones field in the status.
 		if updatedCR.Status.Zones == nil {
 			updatedCR.Status.Zones = []string{}

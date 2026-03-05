@@ -241,14 +241,8 @@ func TestNodeTopologyCR_AddOrUpdateNode(t *testing.T) {
 	fakeInformerFactory.Start(stopCh)
 	go cloudAllocator.Run(stopCh)
 
-	// Wait for allocator to sync
-	if err := wait.PollImmediate(time.Millisecond*100, wait.ForeverTestTimeout, func() (bool, error) {
-		return cloudAllocator.nodesSynced(), nil
-	}); err != nil {
-		t.Fatalf("failed to wait for informer sync: %v", err)
-	}
-
-	fakeClient.CoreV1().Nodes().Create(context.TODO(), mscnode, metav1.CreateOptions{})
+	time.Sleep(time.Millisecond * 500)
+	fakeClient.Tracker().Add(mscnode)
 	expectedSubnets := []string{"subnet-def", "subnet1"}
 	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
 		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
@@ -269,7 +263,7 @@ func TestNodeTopologyCR_AddOrUpdateNode(t *testing.T) {
 		},
 	}
 	fakeGCE.Compute().Instances().Insert(context.TODO(), meta.ZonalKey("testNode2", testClusterValues.ZoneName), &compute.Instance{Name: "testNode2"})
-	fakeClient.CoreV1().Nodes().Create(context.TODO(), mscnode2, metav1.CreateOptions{})
+	fakeClient.Tracker().Add(mscnode2)
 	expectedSubnets = []string{"subnet-def", "subnet1", "subnet2"}
 	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
 		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
@@ -340,14 +334,6 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 	defer close(stopCh)
 	fakeInformerFactory.Start(stopCh)
 	go cloudAllocator.Run(stopCh)
-
-	// Wait for allocator to sync
-	if err := wait.PollImmediate(time.Millisecond*100, wait.ForeverTestTimeout, func() (bool, error) {
-		return cloudAllocator.nodesSynced(), nil
-	}); err != nil {
-		t.Fatalf("failed to wait for informer sync: %v", err)
-	}
-
 	mscnode := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "testNode",
@@ -359,7 +345,7 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 			ProviderID: "gce://test-project/us-central1-b/testNode",
 		},
 	}
-	fakeClient.CoreV1().Nodes().Create(context.TODO(), mscnode, metav1.CreateOptions{})
+	fakeClient.Tracker().Add(mscnode)
 
 	expectedSubnets := []string{"subnet-def", "subnet1"}
 	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
@@ -369,7 +355,8 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 		t.Fatalf("Add node topology CR not working as expected: %v", err)
 	}
 
-	fakeClient.CoreV1().Nodes().Delete(context.TODO(), mscnode.GetName(), metav1.DeleteOptions{})
+	gvr := v1.SchemeGroupVersion.WithResource("nodes")
+	fakeClient.Tracker().Delete(gvr, mscnode.GetNamespace(), mscnode.GetName(), metav1.DeleteOptions{})
 
 	expectedSubnets = []string{"subnet-def"}
 	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
