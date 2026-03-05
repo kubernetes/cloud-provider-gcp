@@ -40,4 +40,7 @@ type NodeIPAMControllerConfiguration struct {
 	// when the cluster-level "enable-multi-networking" flag is true to enable
 	// the multi-networking related logics such as multi-networking IPAM.
 	EnableMultiNetworking bool
+	// SkipNodeTopology is used to control whether we should skip adding nodes from
+	// this project to node topology when spinning up the controllers.
+	SkipNodeTopology bool
 }

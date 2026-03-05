@@ -85,6 +85,7 @@ func NewNodeIpamController(
 	gnpInformer networkinformer.GKENetworkParamSetInformer,
 	nodeTopologyClient nodetopologyclientset.Interface,
 	enableMultiSubnetCluster bool,
+	skipNodeTopology bool,
 	enableMultiNetworking bool,
 	clusterCIDRs []*net.IPNet,
 	serviceCIDR *net.IPNet,
@@ -142,7 +143,7 @@ func NewNodeIpamController(
 			NodeCIDRMaskSizes:    nodeCIDRMaskSizes,
 		}
 
-		ic.cidrAllocator, err = ipam.New(kubeClient, cloud, nodeInformer, nwInformer, gnpInformer, nodeTopologyClient, enableMultiSubnetCluster, enableMultiNetworking, ic.allocatorType, allocatorParams)
+		ic.cidrAllocator, err = ipam.New(kubeClient, cloud, nodeInformer, nwInformer, gnpInformer, nodeTopologyClient, enableMultiSubnetCluster, skipNodeTopology, enableMultiNetworking, ic.allocatorType, allocatorParams)
 		if err != nil {
 			return nil, err
 		}

@@ -72,12 +72,6 @@ const (
 	stackIPv6     clusterStackType = "IPv6"
 )
 
-// enableNodeTopology is bound to a command-line flag. When true, it enables
-// generating nodeTopology custom resource based on node's subnetwork configuration,
-// which is represented by a node label. Enabling this feature also assumes that a
-// nodeTopology CR named 'default' is already installed.
-var enableNodeTopology bool
-
 // cloudCIDRAllocator allocates node CIDRs according to IP address aliases
 // assigned by the cloud provider. In this case, the allocation and
 // deallocation is delegated to the external provider, and the controller
@@ -104,12 +98,17 @@ type cloudCIDRAllocator struct {
 	stackType clusterStackType
 
 	enableMultiNetworking bool
+
+	// When enableNodeTopology flag is true, it enables generating nodeTopology custom resource based 
+	// on node's subnetwork configuration, which is represented by a node label. Enabling this feature 
+	// also assumes that a nodeTopology CR named 'default' is already installed.
+	enableNodeTopology bool
 }
 
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
 
 // NewCloudCIDRAllocator creates a new cloud CIDR allocator.
-func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, enableMultiSubnetCluster bool, enableMultiNetworking bool, nodeInformer informers.NodeInformer, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
+func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, enableMultiSubnetCluster bool, skipNodeTopology bool, enableMultiNetworking bool, nodeInformer informers.NodeInformer, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
 	if client == nil {
 		klog.Fatalf("kubeClient is nil when starting NodeController")
 	}
@@ -151,6 +150,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		queue:                 workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
 		stackType:             stackType,
 		enableMultiNetworking: enableMultiNetworking,
+		enableNodeTopology:    enableMultiSubnetCluster && !skipNodeTopology,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -177,8 +177,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		DeleteFunc: nodeutil.CreateDeleteNodeHandler(ca.ReleaseCIDR),
 	})
 
-	enableNodeTopology = enableMultiSubnetCluster
-	if enableNodeTopology {
+	if ca.enableNodeTopology {
 		nodeTopologySyncer := &NodeTopologySyncer{
 			nodeTopologyClient: nodeTopologyClient,
 			cloud:              gceCloud,
@@ -297,7 +296,7 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 		go wait.UntilWithContext(ctx, ca.runWorker, time.Second)
 	}
 
-	if enableNodeTopology {
+	if ca.enableNodeTopology {
 		if ca.nodeTopologyQueue != nil {
 			defer ca.nodeTopologyQueue.Shutdown()
 			ca.nodeTopologyQueue.Run()

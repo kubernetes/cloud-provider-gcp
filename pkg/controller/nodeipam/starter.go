@@ -114,6 +114,7 @@ func StartNodeIpamController(
 		gnpInformer,
 		nodeTopologyClient,
 		nodeIPAMConfig.EnableMultiSubnetCluster,
+		nodeIPAMConfig.SkipNodeTopology,
 		nodeIPAMConfig.EnableMultiNetworking,
 		clusterCIDRs,
 		serviceCIDR,
