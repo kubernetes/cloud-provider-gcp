@@ -29,6 +29,7 @@ go_library(
         "mountstats.go",
         "net_conntrackstat.go",
         "net_dev.go",
+        "net_dev_snmp6.go",
         "net_ip_socket.go",
         "net_protocols.go",
         "net_route.go",

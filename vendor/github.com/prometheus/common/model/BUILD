@@ -25,6 +25,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/prometheus/client_model/go",
+        "//vendor/go.yaml.in/yaml/v2:yaml",
         "//vendor/google.golang.org/protobuf/proto",
     ],
 )

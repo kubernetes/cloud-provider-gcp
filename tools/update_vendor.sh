@@ -28,6 +28,7 @@ cat go.mod | grep '^go' > go.work
 go work use .
 go work use ./providers
 go work use ./test/e2e
+go work use ./metis
 
 # Copy over replace directives from go.mod to go.work
 echo -e "\nreplace (" >> go.work
