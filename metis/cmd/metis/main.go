@@ -10,10 +10,6 @@ import (
 	"k8s.io/metis/daemon"
 )
 
-const (
-	defaultLogFile = "/var/log/gke-ipam-cni.log"
-)
-
 func main() {
 	var cfg daemon.Config
 
@@ -24,7 +20,6 @@ func main() {
 	pflag.DurationVar(&cfg.MonitorInterval, "monitor-interval", 5*time.Second, "Monitor interval (e.g., 5s, 1m)")
 	pflag.DurationVar(&cfg.ReleaseCooldown, "release-cooldown", 1*time.Minute, "Release cooldown duration (e.g., 5m)")
 	pflag.BoolVar(&daemonMode, "daemon", false, "Run the binary in daemon mode")
-	pflag.StringVar(&logFile, "daemon-log-file", defaultLogFile, "Log file for daemon")
 
 	cliflag.InitFlags()
 
