@@ -14,7 +14,6 @@ func main() {
 	var cfg daemon.Config
 
 	var daemonMode bool
-	var logFile string
 
 	// Define command-line flags to configure the daemon
 	pflag.DurationVar(&cfg.MonitorInterval, "monitor-interval", 5*time.Second, "Monitor interval (e.g., 5s, 1m)")
