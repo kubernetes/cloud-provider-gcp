@@ -4,7 +4,10 @@ go_library(
     name = "utils",
     srcs = ["helpers.go"],
     importpath = "k8s.io/cloud-provider-gcp/pkg/controller/gketenantcontrollers/utils",
-    visibility = ["//pkg/controller/gketenantcontrollers:__subpackages__"],
+    visibility = [
+        "//cmd/cloud-controller-manager:__pkg__",
+        "//pkg/controller/gketenantcontrollers:__subpackages__",
+    ],
     deps = ["//vendor/github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1:providerconfig"],
 )
 
