@@ -4,4 +4,4 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-bazel run //:gazelle
+bazel run //:gazelle -- -build_file_name=BUILD,BUILD.bazel
