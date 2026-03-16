@@ -2,7 +2,7 @@ module k8s.io/cloud-provider-gcp/test/e2e
 
 go 1.25.0
 
-toolchain go1.26.0
+toolchain go1.25.8
 
 require (
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.27.0
