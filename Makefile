@@ -14,6 +14,7 @@
 
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 LOCAL_BIN := $(PROJECT_DIR)/bin
+GCP_PROJECT := $(shell gcloud config get-value project)
 
 GIT_VERSION := $(shell git describe --tags --always --dirty | sed 's|.*/||')
 GIT_COMMIT := $(shell git rev-parse HEAD)
