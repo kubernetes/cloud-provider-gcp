@@ -65,18 +65,8 @@ Update the `/cluster` directory if needed. A script under `/cluster` is used to 
 
 ### Testing
 1. Run `make verify`.
-1. Build `cloud-provider-gcp` with command `make clean && make release-tars`.
-1. Bring the cluster up with `kubetest2 gce -v 2 --repo-root $REPO\_ROOT --build --up`
-1. Run conformance tests locally with `kubetest2 gce -v 2 --repo-root $REPO\_ROOT --build --up --down --test=ginkgo -- --test-package-version=[your version] --focus-regex='\[Conformance\]'`
-
-**_Note_**: if kubetest2 not working as expected, try with:
-
-```bash
-go get sigs.k8s.io/kubetest2@latest
-go get sigs.k8s.io/kubetest2/kubetest2-gce@latest;
-go get sigs.k8s.io/kubetest2/kubetest2-tester-exec@latest;
-go get sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest;
-```
+1. Bring the cluster up with `make kops-up`
+1. Run conformance tests locally with `make kops-e2e-test`
 
 ## Create Release Branch
 This is only necessary for CCM releases corresponding to a Kubernetes minor version release. Create a branch from the latest commit on master with the dependency updates mentioned above.
