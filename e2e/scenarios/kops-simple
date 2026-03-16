@@ -32,6 +32,7 @@ if [[ -z "${GCP_PROJECT:-}" ]]; then
 else
     export GCP_PROJECT
 fi
+export IMAGE_REPO="gcr.io/${GCP_PROJECT}"
 
 # 2. Cluster Lifecycle Management
 export KOPS_CLUSTER_NAME="${CLUSTER_NAME:-kops-simple.k8s.local}"
