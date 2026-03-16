@@ -6,9 +6,11 @@ import subprocess
 import re
 import argparse
 
-# The file paths to update.
+# Root marker used to verify script execution location.
 # Assumes the script is run from the root of the repository.
-WORKSPACE_PATH = "WORKSPACE"
+ROOT_MARKER_PATH = "go.work"
+GO_RUNNER_TAGS_URL = "https://registry.k8s.io/v2/build-image/go-runner/tags/list"
+GO_RUNNER_GO_SEGMENT_RE = re.compile(r"-go\d+(?:\.\d+){1,2}-")
 
 def find_go_files():
     """Finds all go.mod and go.work files in the repository."""
@@ -46,6 +48,37 @@ def get_latest_go_version():
             return version
     raise RuntimeError("Could not find a stable Go release.")
 
+def get_go_runner_tags():
+    """Fetches go-runner tags from the registry API."""
+    print(f"Fetching go-runner tags from {GO_RUNNER_TAGS_URL}...")
+    with urllib.request.urlopen(GO_RUNNER_TAGS_URL) as response:
+        if response.status != 200:
+            raise RuntimeError(
+                f"Failed to fetch go-runner tags: HTTP {response.status}"
+            )
+        payload = json.loads(response.read().decode())
+    tags = payload.get("tags", [])
+    if not tags:
+        raise RuntimeError("No tags returned from go-runner registry API.")
+
+    return tags
+
+def resolve_go_runner_tag(current_tag, go_version):
+    """Resolves the go-runner tag for the target Go version."""
+    target_tag, replacements = GO_RUNNER_GO_SEGMENT_RE.subn(
+        f"-go{go_version}-", current_tag, count=1
+    )
+    if replacements != 1:
+        raise RuntimeError(f"Unsupported go-runner tag format: {current_tag}")
+
+    if target_tag not in get_go_runner_tags():
+        raise RuntimeError(
+            f"go-runner image tag not found for Go {go_version}: {target_tag}"
+        )
+
+    print(f"Using go-runner tag {target_tag} for Go {go_version}")
+    return target_tag
+
 def _replace_file_contents(file_path, fn):
     """Replaces the contents of a file with the result of a function, applied line-by-line."""
     if not os.path.exists(file_path):
@@ -72,11 +105,19 @@ def _replace_file_contents(file_path, fn):
 
 def update_go_file(file_path, new_version):
     """Updates the go and toolchain directives in a go.mod or go.work file."""
+    parts = new_version.split(".")
+    if len(parts) < 2:
+        raise ValueError(f"Invalid Go version '{new_version}'. Expected at least major.minor.")
+    # The `go` directive should express the minimum supported Go line,
+    # so we keep it at `major.minor.0` for modules that depend on this repo.
+    # Exact patch pinning belongs in `toolchain` and runtime/build image config.
+    go_directive_version = f"{parts[0]}.{parts[1]}.0"
+
     def fn(line):
         stripped = line.lstrip()
         # Replace lines like `go 1.22.3`
         if stripped.startswith("go "):
-            return f"go {new_version}\n"
+            return f"go {go_directive_version}\n"
         # Replace lines like `toolchain go1.22.3`
         if stripped.startswith("toolchain go"):
             return f"toolchain go{new_version}\n"
@@ -92,6 +133,15 @@ def update_dockerfile(file_path, go_version):
         # Replace lines like `FROM golang:1.24.1` or `FROM --platform=... golang:1.24.1 AS builder`
         if line.lstrip().startswith("FROM ") and "golang:" in line:
             return re.sub(r"golang:[0-9.]+", f"golang:{go_version}", line)
+        # Replace runtime image tags like:
+        # `FROM registry.k8s.io/build-image/go-runner:v2.4.0-go1.25.6-bookworm.0`
+        if line.lstrip().startswith("FROM ") and "build-image/go-runner:" in line:
+            image_match = re.search(r"build-image/go-runner:(?P<tag>[^ \t\n]+)", line)
+            if not image_match:
+                return line
+            target_tag = resolve_go_runner_tag(image_match.group("tag"), go_version)
+            tag_start, tag_end = image_match.span("tag")
+            return f"{line[:tag_start]}{target_tag}{line[tag_end:]}"
         return line
 
     _replace_file_contents(file_path, fn)
@@ -103,8 +153,7 @@ def main():
     1. Fetches (or receives) the Go version to update to.
     2. Updates all go.mod and go.work files.
     3. Updates all Dockerfiles.
-    4. Updates the WORKSPACE file.
-    5. Verifies the updates with 'go mod tidy'.
+    4. Verifies the updates with 'go mod tidy'.
     """
     parser = argparse.ArgumentParser(description="Update Go version across the repository.")
     parser.add_argument("--version", help="The Go version to update to (e.g., 1.25.7). If not specified, fetches the latest stable version.")
@@ -139,7 +188,7 @@ def main():
 
 if __name__ == "__main__":
     # Ensure the script is run from the repository root
-    if not os.path.exists(WORKSPACE_PATH):
-        print(f"Error: This script must be run from the repository root directory containing the WORKSPACE file.")
+    if not os.path.exists(ROOT_MARKER_PATH):
+        print(f"Error: This script must be run from the repository root directory containing the {ROOT_MARKER_PATH} file.")
     else:
         main()

@@ -2,6 +2,8 @@ module k8s.io/metis
 
 go 1.25.0
 
+toolchain go1.25.8
+
 require (
 	github.com/spf13/cobra v1.10.0
 	github.com/spf13/pflag v1.0.10
