@@ -35,6 +35,7 @@ if [[ -z "${GCP_PROJECT:-}" ]]; then
     CLEANUP_BOSKOS="true"
 fi
 export IMAGE_REPO="gcr.io/${GCP_PROJECT}"
+export KOPS_STATE_STORE="gs://kops-state-${GCP_PROJECT}"
 
 # 2. Cluster Lifecycle Management
 export KOPS_CLUSTER_NAME="${CLUSTER_NAME:-run-e2e-test.k8s.local}"

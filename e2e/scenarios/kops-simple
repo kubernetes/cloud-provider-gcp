@@ -33,6 +33,7 @@ else
     export GCP_PROJECT
 fi
 export IMAGE_REPO="gcr.io/${GCP_PROJECT}"
+export KOPS_STATE_STORE="gs://kops-state-${GCP_PROJECT}"
 
 # 2. Cluster Lifecycle Management
 export KOPS_CLUSTER_NAME="${CLUSTER_NAME:-kops-simple.k8s.local}"
