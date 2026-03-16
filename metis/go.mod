@@ -2,6 +2,8 @@ module k8s.io/metis
 
 go 1.25.0
 
+toolchain go1.25.8
+
 require (
 	github.com/go-logr/logr v1.4.3
 	github.com/mattn/go-sqlite3 v1.14.37
