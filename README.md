@@ -1,5 +1,16 @@
 # cloud-provider-gcp
 
+[![Go Report Card](https://goreportcard.com/badge/k8s.io/cloud-provider-gcp)](https://goreportcard.com/report/k8s.io/cloud-provider-gcp)
+[![GitHub stars](https://img.shields.io/github/stars/kubernetes/cloud-provider-gcp.svg)](https://github.com/kubernetes/cloud-provider-gcp/stargazers)
+[![Contributions](https://img.shields.io/badge/contributions-welcome-orange.svg)](https://github.com/kubernetes/cloud-provider-gcp/blob/master/CONTRIBUTING.md)
+[![License](https://img.shields.io/github/license/kubernetes/cloud-provider-gcp)](https://github.com/kubernetes/cloud-provider-gcp/blob/master/LICENSE)
+[![Release tag](https://img.shields.io/github/v/tag/kubernetes/cloud-provider-gcp)](https://github.com/kubernetes/cloud-provider-gcp/tags)
+
+## Introduction
+
+This repository implements the [cloud provider](https://github.com/kubernetes/cloud-provider) interface for Google Cloud Platform (GCP).
+It provides the [GCP Cloud Controller Manager (CCM)](https://kubernetes.io/docs/concepts/architecture/cloud-controller/), which is necessary for self-managed Kubernetes clusters in GCP and is automatically installed in GKE clusters. It is maintained primarily by the Cloud Kubernetes team at Google.
+
 ## Publishing cloud-controller-manager image
 
 Create an [Artifact Registry repository](https://docs.cloud.google.com/artifact-registry/docs/docker/store-docker-container-images) for the CCM image.
@@ -17,6 +28,8 @@ If `IMAGE_REPO` is not set, the script will exit with an error. If `IMAGE_TAG` i
 
 ### Docker Commands
 
+Run `make help` to see all available commands.
+
 **Note:** To push images to Google Artifact Registry, you must first authenticate Docker by running the following command:
 `gcloud auth configure-docker ${LOCATION}-docker.pkg.dev`
 
@@ -27,9 +40,14 @@ If `IMAGE_REPO` is not set, the script will exit with an error. If `IMAGE_TAG` i
 *   **`make clean-builder`**: Removes the `docker buildx` builder used for multi-platform Docker builds. This command is useful to reset the builder environment if the builder encounters an error or becomes corrupted. It can also be used to free up resources when the builder is no longer needed.
 
 
-# Cross-compiling
+## Cross-compiling
 
 Platform-specific release tarballs can be built using the following commands.
+
+To build all release artifacts for all platforms, run:
+```sh
+make release-tars
+```
 
 This command builds the release tarball for Windows (`kubernetes-node-windows-amd64.tar.gz`):
 
@@ -43,37 +61,32 @@ This command builds the release tarballs for Linux (`kubernetes-server-linux-amd
 make release-tars-linux-amd64
 ```
 
-To build all release artifacts for all platforms, run:
-```sh
-make release-tars
-```
 
-
-# Dependency management
+## Dependency management
 
 Dependencies are managed using [Go modules](https://github.com/golang/go/wiki/Modules) (`go mod` subcommands).
 
 
-## Working within GOPATH
+### Working within GOPATH
 
 If you work within `GOPATH`, `go mod` will error out unless you do one of:
 
 - move repo outside of GOPATH (it should "just work")
 - set env var `GO111MODULE=on`
 
-## Add a new dependency
+### Add a new dependency
 
 ```sh
 go get github.com/new/dependency && make update-vendor
 ```
 
-## Update an existing dependency
+### Update an existing dependency
 
 ```sh
 go get -u github.com/existing/dependency && make update-vendor
 ```
 
-## Update all dependencies
+### Update all dependencies
 
 ```sh
 go get -u && make update-vendor
@@ -81,20 +94,3 @@ go get -u && make update-vendor
 
 Note that this most likely won't work due to cross-dependency issues or repos
 not implementing modules correctly.
-
-# Bazel
-
-Bazel is required to build and release cloud-provider-gcp.
-
-To install:
-
-```sh
-go get github.com/bazelbuild/bazelisk
-alias bazel=bazelisk
-```
-
-To re-generate `BUILD` files:
-
-```sh
-tools/update_bazel.sh
-```
