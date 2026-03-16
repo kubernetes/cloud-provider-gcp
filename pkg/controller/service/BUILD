@@ -1,4 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "service",
@@ -33,5 +33,16 @@ go_library(
         "//vendor/k8s.io/component-base/metrics/legacyregistry",
         "//vendor/k8s.io/component-base/metrics/prometheus/controllers",
         "//vendor/k8s.io/klog/v2:klog",
+    ],
+)
+
+go_test(
+    name = "service_test",
+    srcs = ["controller_test.go"],
+    embed = [":service"],
+    deps = [
+        "//vendor/k8s.io/api/core/v1:core",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:meta",
+        "//vendor/k8s.io/cloud-provider/service/helpers",
     ],
 )
