@@ -43,7 +43,7 @@ vendor: ## Tidy and vendor the Go module dependencies.
 .PHONY: build
 build: ## Build the Metis binary locally.
 	@mkdir -p bin
-	go build -a -o bin/metis -ldflags "$(VERSION_LDFLAGS)" ./cmd
+	CGO_ENABLED=1 go build -a -o bin/metis -ldflags "$(VERSION_LDFLAGS)" ./cmd
 
 .PHONY: test
 test: ## Run the Go tests.
