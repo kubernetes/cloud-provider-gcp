@@ -8,9 +8,11 @@ import (
 	nodetopologyv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
 	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/client-go/tools/cache"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider-gcp/providers/gce"
@@ -109,9 +111,35 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 	}
 	updatedNodeTopologyCR.Status.Subnets = updatedSubnets
 
-	if updatedNodeTopologyCR.Status.Zones == nil {
-		updatedNodeTopologyCR.Status.Zones = []string{}
+	zonesMap := make(map[string]bool, 0)
+	for _, node := range allNodes {
+		providerID := node.Spec.ProviderID
+		if providerID == "" {
+			var err error
+			if providerID, err = cloudprovider.GetInstanceProviderID(context.TODO(), syncer.cloud, types.NodeName(node.Name)); err != nil {
+				klog.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
+				continue
+			}
+		}
+		zone, err := syncer.cloud.GetZoneByProviderID(context.TODO(), node.Spec.ProviderID)
+		if err != nil {
+			klog.ErrorS(err, "Failed to get zone information for node", "node", node.ObjectMeta.Name, "providerID", node.Spec.ProviderID)
+			continue			
+		}
+		if zone.FailureDomain == "" {
+			klog.Errorf("node %s's zone information is empty, providerID %s", node.ObjectMeta.Name, node.Spec.ProviderID)
+			continue
+		}
+		if !zonesMap[zone.FailureDomain] {
+			zonesMap[zone.FailureDomain] = true
+		}
 	}
+	zonesSlice := make([]string, 0, len(zonesMap))
+	for zone := range zonesMap {
+		zonesSlice = append(zonesSlice, zone)
+	}
+	updatedNodeTopologyCR.Status.Zones = zonesSlice
+
 	_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), updatedNodeTopologyCR, metav1.UpdateOptions{})
 	if updateErr != nil {
 		klog.ErrorS(updateErr, "Error updating nodeTopology CR", "nodetopologyCR", nodeTopologyCRName)
@@ -135,6 +163,39 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		klog.Errorf("Failed to get NodeTopology: %v, err: %v", nodeTopologyCRName, err)
 		return err
 	}
+
+	// // Add zone information if needed
+	// providerID := node.Spec.ProviderID
+	// if providerID == "" {
+	// 	var err error
+	// 	if providerID, err = cloudprovider.GetInstanceProviderID(context.TODO(), syncer.cloud, types.NodeName(node.Name)); err != nil {
+	// 		klog.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
+	// 		return err
+	// 	}
+	// }
+
+	// nodeZone, err := syncer.cloud.GetZoneByProviderID(context.TODO(), providerID)
+	// if err != nil {
+	// 	klog.ErrorS(err, "Failed to get zone information for node", "node", node.ObjectMeta.Name, "providerID", providerID)
+	// 	return err		
+	// }
+	// if nodeZone.FailureDomain == "" {
+	// 	klog.Errorf("node %s's zone information is empty, providerID %s", node.ObjectMeta.Name, providerID)
+	// 	return err
+	// }
+	// zoneExist := false
+	// for _, zone := range updatedCR.Status.Zones {
+	// 	if zone == nodeZone.FailureDomain {
+	// 		zoneExist = true
+	// 		break
+	// 	}
+	// }
+	// if !zoneExist {
+	// 	klog.Infof("Adding the node's zone %s to the cr", nodeZone.FailureDomain)
+	// 	updatedCR.Status.Zones = append(updatedCR.Status.Zones, nodeZone.FailureDomain)
+	// }
+
+	nodeTopologyCR, err = ensureNodeZoneInStatus(context.TODO(), syncer, node, nodeTopologyCR)
 
 	crSubnets := nodeTopologyCR.Status.Subnets
 	// We will always add the default subnet to the CR.
@@ -172,11 +233,12 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 			klog.Errorf("Error updating the CR: %v, err: %v", nodeTopologyCRName, updateErr)
 			return updateErr
 		}
-
+		
 		klog.Infof("Successfully added the default subnet %v to nodetopology CR", defaultSubnet)
 
 		return nil
 	}
+
 
 	if !hasSubnetLabel {
 		klog.V(2).Infof("No additional subnet detected. Default subnetwork is added to the CR.")
@@ -249,3 +311,50 @@ func getSubnetWithPrefixFromURL(url string) (subnetName string, subnetPrefix str
 	subnetPrefix = strings.Join(subnetPrefixParts, "/") + "/"
 	return
 }
+
+func ensureNodeZoneInStatus(ctx context.Context, syncer *NodeTopologySyncer, node *v1.Node, nodeTopologyCR *nodetopologyv1.NodeTopology) (*nodetopologyv1.NodeTopology, error) {
+	providerID := node.Spec.ProviderID
+	if providerID == "" {
+		var err error
+		if providerID, err = cloudprovider.GetInstanceProviderID(ctx, syncer.cloud, types.NodeName(node.Name)); err != nil {
+			klog.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
+			return nodeTopologyCR, err
+		}
+	}
+
+	nodeZoneConfig, err := syncer.cloud.GetZoneByProviderID(ctx, providerID)
+	if err != nil {
+		klog.ErrorS(err, "Failed to get zone information for node", "node", node.ObjectMeta.Name, "providerID", providerID)
+		return nodeTopologyCR, err		
+	}
+	nodeZone := nodeZoneConfig.FailureDomain
+	if nodeZone == "" {
+		klog.Errorf("node %s's zone information is empty, providerID %s", node.ObjectMeta.Name, providerID)
+		err = fmt.Errorf("node %s's zone information is empty, providerID %s", node.ObjectMeta.Name, providerID)
+		return nodeTopologyCR, err
+	}
+
+	zoneExist := false
+	for _, zone := range nodeTopologyCR.Status.Zones {
+		if zone == nodeZone {
+			zoneExist = true
+			break
+		}
+	}
+	if !zoneExist {
+		klog.Infof("Adding the node's zone %s to nodetopology CR", nodeZone)
+		updatedCR := nodeTopologyCR.DeepCopy()
+		updatedCR.Status.Zones = append(updatedCR.Status.Zones, nodeZone)
+
+		newCR, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(ctx, updatedCR, metav1.UpdateOptions{})
+		if updateErr != nil {
+			klog.Errorf("Error updating the CR: %v, err: %v", nodeTopologyCRName, updateErr)
+			return nodeTopologyCR, updateErr
+		}
+
+		klog.Infof("Successfully added the zone %s to nodetopology CR", nodeZone)
+		return newCR, nil
+	}
+	return nodeTopologyCR, nil
+}
+
