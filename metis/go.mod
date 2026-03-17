@@ -3,7 +3,7 @@ module k8s.io/metis
 go 1.24.13
 
 require (
-	github.com/spf13/pflag v1.0.10
+	github.com/spf13/cobra v1.10.0
 	k8s.io/component-base v0.34.2
 	k8s.io/klog/v2 v2.140.0
 )
@@ -28,7 +28,7 @@ require (
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
-	github.com/spf13/cobra v1.10.0 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.opentelemetry.io/otel v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect

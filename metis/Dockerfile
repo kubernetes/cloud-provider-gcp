@@ -4,6 +4,8 @@ FROM --platform=${BUILDPLATFORM} golang:1.24.13 AS builder
 RUN apt-get update && apt-get install -y \
     gcc-aarch64-linux-gnu \
     gcc-x86-64-linux-gnu \
+    sqlite3 \
+    libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # golang envs
@@ -25,11 +27,14 @@ RUN if [ "${TARGETARCH}" = "amd64" ]; then \
     else \
         echo "Unsupported architecture: ${TARGETARCH}"; exit 1; \
     fi && \
-    CGO_ENABLED=1 go build -o metis-daemon-bin ./cmd/metis
+    CGO_ENABLED=1 go build -o metis ./cmd
 
 # Use ubuntu as base image to package the binary
 FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y \
+    sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /
-COPY --from=builder /app/metis-daemon-bin .
+COPY --from=builder /app/metis .
 
-ENTRYPOINT ["/metis-daemon-bin"]
+ENTRYPOINT ["/metis"]
