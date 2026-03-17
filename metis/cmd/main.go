@@ -16,7 +16,6 @@ limitations under the License.
 package main
 
 import (
-	"errors"
 	"flag"
 
 	"github.com/spf13/cobra"
@@ -33,14 +32,13 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:   "metis",
 		Short: "Metis implements adaptive cluster IPAM for GKE",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Help()
-			return errors.New("subcommand is required")
+		Run: func(cmd *cobra.Command, args []string) {
+			klog.InfoS("metis started in non-daemon mode")
+			// TODO: fix me for CNI mode
 		},
 	}
 
 	rootCmd.AddCommand(newDaemonCommand())
-	rootCmd.AddCommand(newCNICommand())
 
 	flag.Parse()
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)

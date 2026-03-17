@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package main
 
 import (
@@ -26,12 +27,12 @@ import (
 
 func newDaemonCommand() *cobra.Command {
 
-	opts := &MetisDaemonOptions{
+	opts := &DaemonOptions{
 		Config: &daemon.Config{},
 	}
 
 	// Define command-line flags to configure the daemon
-	fss := opts.Flags()
+	fss := opts.AddFlags()
 
 	cmd := &cobra.Command{
 		Use:   "daemon",

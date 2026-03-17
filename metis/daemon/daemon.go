@@ -16,6 +16,8 @@ limitations under the License.
 package daemon
 
 import (
+	"fmt"
+
 	"k8s.io/klog/v2"
 )
 
@@ -33,6 +35,6 @@ func NewDaemon(cfg Config) *Daemon {
 
 // Run starts the daemon process.
 func (d *Daemon) Run() error {
-	klog.InfoS("metis daemon has started successfully", "config", d.Config)
+	klog.InfoS("metis daemon has started successfully", "config", fmt.Sprintf("%+v", d.Config))
 	return nil
 }
