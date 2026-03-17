@@ -9,14 +9,7 @@ set -o xtrace
 REPO_ROOT=$GOPATH/src/k8s.io/cloud-provider-gcp
 cd
 export GO111MODULE=on
-if [[ -f "${REPO_ROOT}/.bazelversion" ]]; then
-  export BAZEL_VERSION=$(cat "${REPO_ROOT}/.bazelversion")
-  echo "BAZEL_VERSION set to ${BAZEL_VERSION}"
-else
-  export BAZEL_VERSION="5.3.0"
-  echo "BAZEL_VERSION - Falling back to 5.3.0"
-fi
-/workspace/test-infra/images/kubekins-e2e/install-bazel.sh
+
 go install sigs.k8s.io/kubetest2@latest
 go install sigs.k8s.io/kubetest2/kubetest2-gce@latest
 go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest

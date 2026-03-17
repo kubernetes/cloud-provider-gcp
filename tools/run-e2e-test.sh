@@ -76,7 +76,6 @@ trap cleanup INT TERM EXIT
 
 # Set up (for cli runs) or acquire a (in case of prow CI) GCP project
 # for bringing up the cluster.
-bazel_user=""
 if [[ ! -v  GCP_PROJECT ]]; then
     # GCP_PROJECT not defined, so attempt to acquire a boskos project
     echo "No GCP Project specified...attempting to acquire boskos project"
@@ -93,8 +92,6 @@ else
 	GCP_ZONE=${DEFAULT_GCP_ZONE}
     fi
     echo "GCP ZONE: ${GCP_ZONE}"
-    # Install bazel in user directory if running from command-line.
-    bazel_user="--user"
 fi
 gcp_project_args="--gcp-project ${GCP_PROJECT} --gcp-zone ${GCP_ZONE} "
 test_args="--provider=gce --gce-project=${GCP_PROJECT} --gce-zone=${GCP_ZONE} --minStartupPods=8"
@@ -137,27 +134,6 @@ go test -c
 popd
 echo "Move e2e.test binary to: ${RUN_DIR}"
 mv -f "${REPO_ROOT}/test/e2e/e2e.test" "${RUN_DIR}/e2e.test"
-
-# Install bazel
-#
-BAZEL_VERSION="5.4.0"
-if [[ -f "${REPO_ROOT}/.bazelversion" ]]; then
-    BAZEL_VERSION=$(cat "${REPO_ROOT}/.bazelversion")
-fi
-echo "BAZEL_VERSION set to ${BAZEL_VERSION}"
-INSTALLER="bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh"
-if [[ "${BAZEL_VERSION}" =~ ([0-9\.]+)(rc[0-9]+) ]]; then
-    DOWNLOAD_URL="https://storage.googleapis.com/bazel/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}/${INSTALLER}"
-else
-    DOWNLOAD_URL="https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/${INSTALLER}"
-fi
-echo "$DOWNLOAD_URL"
-# get the installer
-wget -q "${DOWNLOAD_URL}" && chmod +x "${INSTALLER}"
-# install to /usr/local or user dir
-"./${INSTALLER}" ${bazel_user}
-# remove the installer, we no longer need it
-rm "${INSTALLER}"
 
 # Run the e2e test using the "gce" provider and the "ginkgo" tester.
 echo "Running e2e test with k8s version: ${VERSION}"

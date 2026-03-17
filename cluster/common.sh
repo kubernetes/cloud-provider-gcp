@@ -307,10 +307,7 @@ function find-tar() {
   local -r tarball=$1
   # Shell expansion for release/*/ requires avoiding quotes or using find
   local -a locations=(
-    "${KUBE_ROOT}/bazel-bin/release/${tarball}"
-    #"${KUBE_ROOT}/node/${tarball}"
-    #"${KUBE_ROOT}/server/${tarball}"
-    #"${KUBE_ROOT}/_output/release-tars/${tarball}"
+    "${KUBE_ROOT}/_output/release-tars/${tarball}"
   )
   # Add release/*/ locations manually by globbing
   for d in "${KUBE_ROOT}"/release/*/; do

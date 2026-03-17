@@ -15,7 +15,7 @@ def find_go_files():
     go_files = []
     for root, dirs, files in os.walk("."):
         # Prune directories we don't want to search
-        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ["vendor", "_tmp", "_artifacts", "_rundir"] and not d.startswith("bazel-")]
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ["vendor", "_tmp", "_artifacts", "_rundir"]]
         for file in files:
             if file in ["go.mod", "go.work"]:
                 go_files.append(os.path.join(root, file))
@@ -25,7 +25,7 @@ def find_dockerfiles():
     """Finds all Dockerfiles in the repository."""
     dockerfile_files = []
     for root, dirs, files in os.walk("."):
-        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ["vendor", "_tmp", "_artifacts", "_rundir"] and not d.startswith("bazel-")]
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ["vendor", "_tmp", "_artifacts", "_rundir"]]
         if "Dockerfile" in files:
             dockerfile_files.append(os.path.join(root, "Dockerfile"))
     return dockerfile_files
@@ -85,15 +85,6 @@ def update_go_file(file_path, new_version):
     _replace_file_contents(file_path, fn)
 
 
-def update_bazel_workspace(file_path, go_version):
-    """Updates the Go SDK version in the WORKSPACE file."""
-    def fn(line):
-        # Replace lines like `go_download_sdk(name = "go_sdk",version = "1.24.1")`
-        if "go_download_sdk(" in line and "version =" in line:
-            return re.sub(r'version = "[0-9.]+"', f'version = "{go_version}"', line)
-        return line
-
-    _replace_file_contents(file_path, fn)
 
 def update_dockerfile(file_path, go_version):
     """Updates the Go version in the Dockerfile."""
@@ -113,7 +104,7 @@ def main():
     2. Updates all go.mod and go.work files.
     3. Updates all Dockerfiles.
     4. Updates the WORKSPACE file.
-    5. Verifies the updates with 'go mod tidy' and 'bazel sync'.
+    5. Verifies the updates with 'go mod tidy'.
     """
     parser = argparse.ArgumentParser(description="Update Go version across the repository.")
     parser.add_argument("--version", help="The Go version to update to (e.g., 1.25.7). If not specified, fetches the latest stable version.")
@@ -136,7 +127,6 @@ def main():
     for dockerfile_path in find_dockerfiles():
         update_dockerfile(dockerfile_path, target_version)
 
-    update_bazel_workspace(WORKSPACE_PATH, target_version)
 
     # 2. Run verification commands
     for go_path in go_files:
@@ -144,8 +134,6 @@ def main():
             print(f"Running go mod tidy for {go_path}")
             subprocess.run(["go", "mod", "tidy"], cwd=os.path.dirname(go_path) or ".", check=True, env=env)
 
-    print("Running bazel sync...")
-    subprocess.run(["bazel", "sync"], check=True, env=env)
 
     print(f"\nGo version update to {target_version} complete!")
 
