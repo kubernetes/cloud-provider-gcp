@@ -43,7 +43,7 @@ spec:
       serviceAccountName: cloud-controller-manager
       containers:
       - name: cloud-controller-manager
-        image: k8scloudprovidergcp/cloud-controller-manager:latest
+        image: registry.k8s.io/cloud-provider-gcp/cloud-controller-manager:v35.0.0
         imagePullPolicy: IfNotPresent
         # ko puts it somewhere else... command: ['/usr/local/bin/cloud-controller-manager']
         args: [] # args must be replaced by tooling
