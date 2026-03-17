@@ -56,7 +56,7 @@ function cleanup {
 trap cleanup EXIT
 
 # 3. Test Setup
-export K8S_VERSION=$(make print-k8s-version)
+export K8S_VERSION=$(make --silent print-k8s-version)
 export KOPS_BIN="${REPO_ROOT}/bin/kops"
 export SSH_PRIVATE_KEY="${SSH_PRIVATE_KEY:-$(pwd)/../clusters/${KOPS_CLUSTER_NAME}/google_compute_engine}"
 export KUBE_SSH_USER="${KUBE_SSH_USER:-${USER}}"

@@ -54,7 +54,7 @@ function cleanup {
 trap cleanup EXIT
 
 # 4. Test Execution
-export K8S_VERSION=$(make print-k8s-version)
+export K8S_VERSION=$(make --silent print-k8s-version)
 make kops-e2e-test KOPS_CLUSTER_NAME="${KOPS_CLUSTER_NAME}"
 
 # 5. Teardown
