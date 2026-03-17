@@ -1804,7 +1804,7 @@ function generate-certs {
   # Note: This was heavily cribbed from make-ca-cert.sh
   (set -x
     cd "${CERT_DIR}"
-    ./easyrsa init-pki
+    EASYRSA_BATCH=1 ./easyrsa init-pki
     # this puts the cert into pki/ca.crt and the key into pki/private/ca.key
     # PRIMARY_CN (expected to be) defined by caller
     # shellcheck disable=SC2153
@@ -1873,7 +1873,7 @@ function generate-aggregator-certs {
   # Note: This was heavily cribbed from make-ca-cert.sh
   (set -x
     cd "${KUBE_TEMP}/easy-rsa/aggregator"
-    ./easyrsa init-pki
+    EASYRSA_BATCH=1 ./easyrsa init-pki
     # this puts the cert into pki/ca.crt and the key into pki/private/ca.key
     ./easyrsa --batch "--req-cn=${AGGREGATOR_PRIMARY_CN}@$(date +%s)" build-ca nopass
     ./easyrsa --batch --subject-alt-name="${AGGREGATOR_SANS}" build-server-full "${AGGREGATOR_MASTER_NAME}" nopass
@@ -1934,7 +1934,7 @@ function generate-konnectivity-server-certs {
   (set -x
     # Make the client <-> konnectivity server side certificates.
     cd "${KUBE_TEMP}/easy-rsa/konnectivity-server"
-    ./easyrsa init-pki
+    EASYRSA_BATCH=1 ./easyrsa init-pki
     # this puts the cert into pki/ca.crt and the key into pki/private/ca.key
     ./easyrsa --batch "--req-cn=${KONNECTIVITY_SERVER_PRIMARY_CN}@$(date +%s)" build-ca nopass
     ./easyrsa --batch --subject-alt-name="IP:127.0.0.1,${KONNECTIVITY_SERVER_SANS}" build-server-full server nopass
@@ -1950,7 +1950,7 @@ function generate-konnectivity-server-certs {
 
     # Make the agent <-> konnectivity server side certificates.
     cd "${KUBE_TEMP}/easy-rsa/konnectivity-agent"
-    ./easyrsa init-pki
+    EASYRSA_BATCH=1 ./easyrsa init-pki
     # this puts the cert into pki/ca.crt and the key into pki/private/ca.key
     ./easyrsa --batch "--req-cn=${KONNECTIVITY_SERVER_PRIMARY_CN}@$(date +%s)" build-ca nopass
     ./easyrsa --batch --subject-alt-name="${KONNECTIVITY_SERVER_SANS}" build-server-full server nopass
@@ -2012,7 +2012,7 @@ function generate-cloud-pvl-admission-certs {
   (set -x
     # Make the client <-> cloud-pvl-admission server side certificates.
     cd "${KUBE_TEMP}/easy-rsa/cloud-pvl-admission"
-    ./easyrsa init-pki
+    EASYRSA_BATCH=1 ./easyrsa init-pki
     # this puts the cert into pki/ca.crt and the key into pki/private/ca.key
     ./easyrsa --batch "--req-cn=${CLOUD_PVL_ADMISSION_PRIMARY_CN}@$(date +%s)" build-ca nopass
     ./easyrsa --batch --subject-alt-name="IP:127.0.0.1,${CLOUD_PVL_ADMISSION_SANS}" build-server-full server nopass
@@ -2028,7 +2028,7 @@ function generate-cloud-pvl-admission-certs {
 
     # Make the cloud-pvl-admission server side certificates.
     cd "${KUBE_TEMP}/easy-rsa/cloud-pvl-admission"
-    ./easyrsa init-pki
+    EASYRSA_BATCH=1 ./easyrsa init-pki
     # this puts the cert into pki/ca.crt and the key into pki/private/ca.key
     ./easyrsa --batch "--req-cn=${CLOUD_PVL_ADMISSION_PRIMARY_CN}@$(date +%s)" build-ca nopass
     ./easyrsa --batch --subject-alt-name="${CLOUD_PVL_ADMISSION_SANS}" build-server-full server nopass
@@ -2146,18 +2146,14 @@ function update-or-verify-gcloud() {
     version=$(gcloud version --format=json)
     python3 -c"
 import json,sys
-from distutils import version
 
-minVersion = version.LooseVersion('1.3.0')
 required = [ 'alpha', 'beta', 'core' ]
 data = json.loads(sys.argv[1])
 rel = data.get('Google Cloud SDK')
 if 'CL @' in rel:
   print('Using dev version of gcloud: %s' %rel)
   exit(0)
-if rel != 'HEAD' and version.LooseVersion(rel) < minVersion:
-  print('gcloud version out of date ( < %s )' % minVersion)
-  exit(1)
+
 missing = []
 for c in required:
   if not data.get(c):

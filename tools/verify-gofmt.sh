@@ -25,23 +25,13 @@ KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
 cd "${KUBE_ROOT}"
 
-# Prefer bazel's gofmt.
-gofmt="external/io_bazel_rules_go_toolchain/bin/gofmt"
-if [[ ! -x "${gofmt}" ]]; then
-  gofmt=$(which gofmt)
-  #kube::golang::verify_go_version
-fi
+gofmt=$(which gofmt)
 
 find_files() {
   find . -not \( \
       \( \
         -wholename './output' \
         -o -wholename './.git' \
-        -o -wholename './_artifacts' \
-        -o -wholename './bazel-bin' \
-        -o -wholename './bazel-cloud-provider-gcp' \
-        -o -wholename './bazel-out' \
-        -o -wholename './bazel-testlogs' \
         -o -wholename './_gopath' \
         -o -wholename './release' \
         -o -wholename '*/vendor/*' \
@@ -60,4 +50,3 @@ if [[ -n "${diff}" ]]; then
   echo "Run ./tools/update-gofmt.sh" >&2
   exit 1
 fi
-

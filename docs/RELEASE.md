@@ -61,11 +61,11 @@ Update the `/cluster` directory if needed. A script under `/cluster` is used to 
 1. Selectively re-apply direct contributions made to the /cluster directory of cloud-provider-gcp that are clobbered by the rebase of the /cluster directory (see reference in the end of this documentation).
 1. Remove any changes regarding OWNERS files.
 
-**_Note_**: Use `tools/bump_cluster.sh` to automate part of this process.
+**_Note_**: Use `make bump-cluster` to automate part of this process.
 
 ### Testing
-1. Run `tools/verify-all.sh`.
-1. Build `cloud-provider-gcp` with command `bazel clean && bazel build //release:release-tars`.
+1. Run `make verify`.
+1. Build `cloud-provider-gcp` with command `make clean && make release-tars`.
 1. Bring the cluster up with `kubetest2 gce -v 2 --repo-root $REPO\_ROOT --build --up`
 1. Run conformance tests locally with `kubetest2 gce -v 2 --repo-root $REPO\_ROOT --build --up --down --test=ginkgo -- --test-package-version=[your version] --focus-regex='\[Conformance\]'`
 
@@ -171,3 +171,8 @@ Follow instructions at go/gke-ccm-releasing.
 *   [Bump cloud-provider-gcp to v1.21 #204](https://github.com/kubernetes/cloud-provider-gcp/pull/204)
     *   **cluster/gce/manifests/cloud-controller-manager.manifest: --log-file -> --log\_file**
 *   [Use at minimum n1-standard-2 in cluster/gce/config-common.sh #228](https://github.com/kubernetes/cloud-provider-gcp/pull/228)
+*   **Split make release-tars by platform**
+    *   **cluster/gce/manifests/cloud-controller-manager.manifest**
+        *   **Change `args` to `command` and insert `/go-runner`**
+    *   **cluster/gce/util.sh**
+        *   **Prefix `./easyrsa init-pki` with `EASYRSA_BATCH=1`**
