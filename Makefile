@@ -235,10 +235,6 @@ update-vendor: ## Update vendor directory.
 update-gofmt: ## Update gofmt.
 	./tools/update-gofmt.sh
 
-.PHONY: update-bazel
-update-bazel: ## Update bazel.
-	./tools/update_bazel.sh
-
 .PHONY: update-golang
 update-golang: ## Update golang version.
 	./dev/tools/update-golang

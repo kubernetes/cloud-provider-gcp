@@ -305,11 +305,9 @@ function set_binary_version() {
 #   $1 name of tarball to search for
 function find-tar() {
   local -r tarball=$1
-  locations=(
-    "${KUBE_ROOT}/bazel-bin/release/${tarball}"
-    #"${KUBE_ROOT}/node/${tarball}"
-    #"${KUBE_ROOT}/server/${tarball}"
-    #"${KUBE_ROOT}/_output/release-tars/${tarball}"
+  # Shell expansion for release/*/ requires avoiding quotes or using find
+  local -a locations=(
+    "${KUBE_ROOT}/_output/release-tars/${tarball}"
   )
   location=$( (ls -t "${locations[@]}" 2>/dev/null || true) | head -1 )
 
