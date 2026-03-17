@@ -8,11 +8,9 @@ import (
 	nodetopologyv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
 	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/client-go/tools/cache"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider-gcp/providers/gce"
@@ -115,20 +113,16 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 	for _, node := range allNodes {
 		providerID := node.Spec.ProviderID
 		if providerID == "" {
-			var err error
-			if providerID, err = cloudprovider.GetInstanceProviderID(context.TODO(), syncer.cloud, types.NodeName(node.Name)); err != nil {
-				klog.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
-				continue
-			}
+			klog.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
+			return fmt.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
 		}
 		zone, err := syncer.cloud.GetZoneByProviderID(context.TODO(), node.Spec.ProviderID)
 		if err != nil {
-			klog.ErrorS(err, "Failed to get zone information for node", "node", node.ObjectMeta.Name, "providerID", node.Spec.ProviderID)
-			continue			
+			return err		
 		}
 		if zone.FailureDomain == "" {
-			klog.Errorf("node %s's zone information is empty, providerID %s", node.ObjectMeta.Name, node.Spec.ProviderID)
-			continue
+			klog.Errorf("node %s doesn't have zone information, providerID %s", node.ObjectMeta.Name, node.Spec.ProviderID)
+			return fmt.Errorf("node %s doesn't have zone information, providerID %s", node.ObjectMeta.Name, node.Spec.ProviderID)
 		}
 		if !zonesMap[zone.FailureDomain] {
 			zonesMap[zone.FailureDomain] = true
@@ -146,6 +140,7 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 		return updateErr
 	}
 	klog.InfoS("Successfully reconciled nodeTopolody CR")
+
 	return nil
 }
 
@@ -164,38 +159,11 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		return err
 	}
 
-	// // Add zone information if needed
-	// providerID := node.Spec.ProviderID
-	// if providerID == "" {
-	// 	var err error
-	// 	if providerID, err = cloudprovider.GetInstanceProviderID(context.TODO(), syncer.cloud, types.NodeName(node.Name)); err != nil {
-	// 		klog.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
-	// 		return err
-	// 	}
-	// }
-
-	// nodeZone, err := syncer.cloud.GetZoneByProviderID(context.TODO(), providerID)
-	// if err != nil {
-	// 	klog.ErrorS(err, "Failed to get zone information for node", "node", node.ObjectMeta.Name, "providerID", providerID)
-	// 	return err		
-	// }
-	// if nodeZone.FailureDomain == "" {
-	// 	klog.Errorf("node %s's zone information is empty, providerID %s", node.ObjectMeta.Name, providerID)
-	// 	return err
-	// }
-	// zoneExist := false
-	// for _, zone := range updatedCR.Status.Zones {
-	// 	if zone == nodeZone.FailureDomain {
-	// 		zoneExist = true
-	// 		break
-	// 	}
-	// }
-	// if !zoneExist {
-	// 	klog.Infof("Adding the node's zone %s to the cr", nodeZone.FailureDomain)
-	// 	updatedCR.Status.Zones = append(updatedCR.Status.Zones, nodeZone.FailureDomain)
-	// }
-
 	nodeTopologyCR, err = ensureNodeZoneInStatus(context.TODO(), syncer, node, nodeTopologyCR)
+	if err != nil {
+		klog.Errorf("Failed to add zone to NodeTopology: %v, err: %v", nodeTopologyCRName, err)
+		return err
+	}
 
 	crSubnets := nodeTopologyCR.Status.Subnets
 	// We will always add the default subnet to the CR.
@@ -315,11 +283,9 @@ func getSubnetWithPrefixFromURL(url string) (subnetName string, subnetPrefix str
 func ensureNodeZoneInStatus(ctx context.Context, syncer *NodeTopologySyncer, node *v1.Node, nodeTopologyCR *nodetopologyv1.NodeTopology) (*nodetopologyv1.NodeTopology, error) {
 	providerID := node.Spec.ProviderID
 	if providerID == "" {
-		var err error
-		if providerID, err = cloudprovider.GetInstanceProviderID(ctx, syncer.cloud, types.NodeName(node.Name)); err != nil {
-			klog.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
-			return nodeTopologyCR, err
-		}
+		err := fmt.Errorf("node %s doesn't have providerID", node.Name)
+		klog.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
+		return nodeTopologyCR, err
 	}
 
 	nodeZoneConfig, err := syncer.cloud.GetZoneByProviderID(ctx, providerID)
@@ -330,7 +296,7 @@ func ensureNodeZoneInStatus(ctx context.Context, syncer *NodeTopologySyncer, nod
 	nodeZone := nodeZoneConfig.FailureDomain
 	if nodeZone == "" {
 		klog.Errorf("node %s's zone information is empty, providerID %s", node.ObjectMeta.Name, providerID)
-		err = fmt.Errorf("node %s's zone information is empty, providerID %s", node.ObjectMeta.Name, providerID)
+		err = fmt.Errorf("node %s doesn't have zone information, providerID %s", node.ObjectMeta.Name, providerID)
 		return nodeTopologyCR, err
 	}
 
@@ -342,7 +308,7 @@ func ensureNodeZoneInStatus(ctx context.Context, syncer *NodeTopologySyncer, nod
 		}
 	}
 	if !zoneExist {
-		klog.Infof("Adding the node's zone %s to nodetopology CR", nodeZone)
+		klog.Infof("Adding zone %s of node %s to nodetopology CR", nodeZone, node.Name)
 		updatedCR := nodeTopologyCR.DeepCopy()
 		updatedCR.Status.Zones = append(updatedCR.Status.Zones, nodeZone)
 

@@ -440,7 +440,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 		wantErr         bool
 	}{
 		{
-			name: "new node in new zone, add zone to cr",
+			name: "add new node in new zone, add zone to cr",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node-2",
@@ -476,7 +476,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 			expectedZones: []string{"us-central1-b", "us-central1-c"},
 		},
 		{
-			name: "new node in existing zone, no change to cr",
+			name: "add new node in existing zone, no change to cr",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node-2",
@@ -512,7 +512,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 			expectedZones: []string{"us-central1-b"},
 		},
 		{
-			name: "removing node, change cr",
+			name: "removing the only node in a zone, change cr",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "non-exist-node",
@@ -529,18 +529,6 @@ func TestNodeTopologySyncZone(t *testing.T) {
 					},
 					Spec: v1.NodeSpec{
 						ProviderID: "gce://test-project/us-central1-b/node-1",
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "node-2",
-						Labels: map[string]string{
-							testNodePoolSubnetLabelPrefix: "subnet-def",
-							"another-label":               "value",
-						},
-					},
-					Spec: v1.NodeSpec{
-						ProviderID: "gce://test-project/us-central1-b/node-2",
 					},
 				},
 			},
@@ -548,31 +536,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 			expectedZones: []string{"us-central1-b"},
 		},
 		{
-			name: "removing node, not removing zone from cr",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "non-exist-node",
-				},
-			},
-			nodeListInCache: []*v1.Node{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "node-1",
-						Labels: map[string]string{
-							testNodePoolSubnetLabelPrefix: "subnet-def",
-							"another-label":               "value",
-						},
-					},
-					Spec: v1.NodeSpec{
-						ProviderID: "gce://test-project/us-central1-b/node-1",
-					},
-				},
-			},
-			existingZones: []string{"us-central1-b"},
-			expectedZones: []string{"us-central1-b"},
-		},
-		{
-			name: "removing node, removing zone from cr",
+			name: "removing all node, removing all zone from cr",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "non-exist-node",
@@ -581,6 +545,76 @@ func TestNodeTopologySyncZone(t *testing.T) {
 			nodeListInCache: []*v1.Node{},
 			existingZones: []string{"us-central1-b"},
 			expectedZones: []string{},
+		},
+		{
+			name: "removing node, other nodes still in same zone, not removing zone from cr",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "non-exist-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{
+						ProviderID: "gce://test-project/us-central1-b/node-1",
+					},
+				},
+			},
+			existingZones: []string{"us-central1-b"},
+			expectedZones: []string{"us-central1-b"},
+		},
+		{
+			name: "add new node, providerID doesn't exist, return error",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-1",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{},
+				},
+			},
+			existingZones: []string{"us-central1-b"},
+			expectedZones: []string{},
+			wantErr: true,
+		},
+		{
+			name: "remove node, providerID doesn't exist, return error",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "non-exist-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{},
+				},
+			},
+			existingZones: []string{"us-central1-b"},
+			expectedZones: []string{},
+			wantErr: true,
 		},
 	}
 
