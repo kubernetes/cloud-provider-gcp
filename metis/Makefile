@@ -5,18 +5,25 @@ IMAGE_REGISTRY ?= gcr.io/$(USER)-gke-dev
 IMAGE_NAME ?= metis
 TAG ?= $(shell git describe --tags --always --dirty | sed 's|.*/||')
 
-# Get version metadata from git
+# Get version metadata from git for version injection
 GIT_VERSION ?= $(shell git describe --tags --always --dirty)
 GIT_COMMIT  ?= $(shell git rev-parse HEAD)
 BUILD_DATE  ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 
-# Standard K8s versioning - injected via linker flags
+# Standard K8s versioning - injected via linker flags at build time.
 VERSION_LDFLAGS := \
   -X 'k8s.io/component-base/version.gitVersion=$(GIT_VERSION)' \
   -X 'k8s.io/component-base/version.gitCommit=$(GIT_COMMIT)' \
   -X 'k8s.io/component-base/version.buildDate=$(BUILD_DATE)'
 
+# Platforms for multi-arch container builds
+PLATFORMS ?= linux/amd64,linux/arm64
+
 ##@ Development
+
+.PHONY: tidy
+tidy: ## Tidy the Go module dependencies.
+	go mod tidy
 
 .PHONY: fmt
 fmt: ## Format the Go source code.
@@ -26,13 +33,8 @@ fmt: ## Format the Go source code.
 vet: ## Run Go vet to check for potential issues.
 	go vet ./...
 
-.PHONY: vendor
-vendor: ## Tidy and vendor the Go module dependencies.
-	GOWORK=off go mod tidy
-	GOWORK=off go mod vendor
-
 .PHONY: build
-build: ## Build the Metis binary locally.
+build: ## Build the Metis binary locally using workspace dependencies.
 	@mkdir -p bin
 	CGO_ENABLED=1 go build -a -o bin/metis -ldflags "$(VERSION_LDFLAGS)" ./cmd
 
@@ -40,11 +42,8 @@ build: ## Build the Metis binary locally.
 test: ## Run the Go tests.
 	go test ./...
 
-.PHONY: lint
-lint: vet ## Run the linters.
-
 .PHONY: all
-all: fmt lint test build ## Run all standard development targets.
+all: tidy fmt vet test build ## Run all standard development targets.
 
 .PHONY: clean
 clean: ## Clean up build artifacts.
@@ -54,9 +53,13 @@ clean: ## Clean up build artifacts.
 ##@ Docker
 
 .PHONY: push-image
-push-image: ## Build and push the multi-arch image using the repo's shared tool.
-	@echo "Building and Pushing Metis image..."
-	REGISTRY=$(IMAGE_REGISTRY) IMAGE=$(IMAGE_NAME) TAG=$(TAG) ../tools/push-images metis
+push-image: ## Build and push the multi-arch image independently.
+	@echo "Building and Pushing multi-arch image: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(TAG)..."
+	docker buildx build --platform $(PLATFORMS) \
+		--build-arg GIT_VERSION=$(GIT_VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(TAG) --push .
 
 ##@ Help
 
