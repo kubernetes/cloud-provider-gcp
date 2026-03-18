@@ -14,6 +14,11 @@ ARG GOOS=linux
 ENV GOARCH=${TARGETARCH}
 ENV GOOS=${GOOS}
 
+# Versioning ARGs
+ARG GIT_VERSION
+ARG GIT_COMMIT
+ARG BUILD_DATE
+
 WORKDIR /app
 
 # Copy the go source
@@ -27,7 +32,11 @@ RUN if [ "${TARGETARCH}" = "amd64" ]; then \
     else \
         echo "Unsupported architecture: ${TARGETARCH}"; exit 1; \
     fi && \
-    CGO_ENABLED=1 go build -o metis ./cmd
+    CGO_ENABLED=1 go build -o metis \
+    -ldflags="-X 'k8s.io/component-base/version.gitVersion=${GIT_VERSION}' \
+              -X 'k8s.io/component-base/version.gitCommit=${GIT_COMMIT}' \
+              -X 'k8s.io/component-base/version.buildDate=${BUILD_DATE}'" \
+    ./cmd
 
 # Use ubuntu as base image to package the binary
 FROM ubuntu:22.04
