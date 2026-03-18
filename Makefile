@@ -92,10 +92,11 @@ gke-gcloud-auth-plugin-windows-amd64 gke-gcloud-auth-plugin-windows-arm64 gke-gc
 	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/windows/$*
 	CGO_ENABLED=0 GOOS=windows GOARCH=$* go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/windows/$*/gke-gcloud-auth-plugin.exe k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
 
-.PHONY: gke-gcloud-auth-plugin-darwin-arm64
-gke-gcloud-auth-plugin-darwin-arm64:
-	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
+.PHONY: gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64
+gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64: gke-gcloud-auth-plugin-darwin-%:
+	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/$*
+	CGO_ENABLED=0 GOOS=darwin GOARCH=$* go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/$*/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
+
 
 ## --------------------------------------
 ##@ Docker
@@ -120,11 +121,6 @@ clean-builder: ## Remove the docker buildx builder.
 	@echo "Removing docker buildx builder..."
 	docker buildx rm multiarch-multiplatform-builder || true
 	@echo "Docker buildx builder removed."
-
-.PHONY: gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64
-gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64: gke-gcloud-auth-plugin-darwin-%:
-	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/$*
-	CGO_ENABLED=0 GOOS=darwin GOARCH=$* go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/$*/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
   
 .PHONY: copy-binaries-to-gcs
 copy-binaries-to-gcs: build-all ## Build and copy binaries to GCS.
