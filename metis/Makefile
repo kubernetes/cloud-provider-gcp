@@ -43,7 +43,7 @@ test: ## Run the Go tests.
 	go test ./...
 
 .PHONY: all
-all: tidy fmt vet test build ## Run all standard development targets.
+all: clean tidy fmt vet test build ## Run all standard development targets.
 
 .PHONY: clean
 clean: ## Clean up build artifacts.
