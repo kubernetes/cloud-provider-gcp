@@ -4,26 +4,17 @@
 IMAGE_REGISTRY ?= gcr.io/$(USER)-gke-dev
 IMAGE_NAME ?= metis
 TAG ?= $(shell git describe --tags --always --dirty | sed 's|.*/||')
-BUILDER_NAME := metis-builder
 
-# Variables for Louhi
-LOUHI_REGISTRY ?= $(IMAGE_REGISTRY)
-LOUHI_IMAGE_NAME ?= $(IMAGE_NAME)
-LOUHI_TAG ?= $(TAG)
+# Get version metadata from git
+GIT_VERSION ?= $(shell git describe --tags --always --dirty)
+GIT_COMMIT  ?= $(shell git rev-parse HEAD)
+BUILD_DATE  ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 
-# Platforms for multi-arch build
-PLATFORMS ?= linux/amd64,linux/arm64
-
-GO_MODULE := k8s.io/metis
-VERSION_LDFLAGS := -X '$(GO_MODULE)/pkg/version.Version=$(TAG)'
-
-# Full image paths
-DEV_IMAGE := $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(TAG)
-LOUHI_IMAGE := $(LOUHI_REGISTRY)/$(LOUHI_IMAGE_NAME):$(LOUHI_TAG)
-
-# Enable Docker BuildKit
-export DOCKER_BUILDKIT=1
-export DOCKER_CLI_EXPERIMENTAL=enabled
+# Standard K8s versioning - injected via linker flags
+VERSION_LDFLAGS := \
+  -X 'k8s.io/component-base/version.gitVersion=$(GIT_VERSION)' \
+  -X 'k8s.io/component-base/version.gitCommit=$(GIT_COMMIT)' \
+  -X 'k8s.io/component-base/version.buildDate=$(BUILD_DATE)'
 
 ##@ Development
 
@@ -37,8 +28,8 @@ vet: ## Run Go vet to check for potential issues.
 
 .PHONY: vendor
 vendor: ## Tidy and vendor the Go module dependencies.
-	@GOPRIVATE=*.googlesource.com,*.git.corp.google.com go mod tidy
-	@GOPRIVATE=*.googlesource.com,*.git.corp.google.com go mod vendor
+	go mod tidy
+	go mod vendor
 
 .PHONY: build
 build: ## Build the Metis binary locally.
@@ -62,27 +53,10 @@ clean: ## Clean up build artifacts.
 
 ##@ Docker
 
-.PHONY: ensure-builder
-ensure-builder:
-	@docker buildx inspect $(BUILDER_NAME) > /dev/null 2>&1 || docker buildx create --name $(BUILDER_NAME) --use
-
-.PHONY: docker-manifest
-docker-manifest: ensure-builder ## Build and push multi-arch manifest using buildx.
-	@echo "Building and Pushing multi-arch image: $(DEV_IMAGE)..."
-	docker buildx build --platform $(PLATFORMS) \
-		--builder $(BUILDER_NAME) \
-		--build-arg VERSION_LDFLAGS="$(VERSION_LDFLAGS)" \
-		-t $(DEV_IMAGE) --push .
-
-##@ Louhi Release
-
-.PHONY: release
-release: ensure-builder ## Build and push the multi-arch image for Louhi release.
-	@echo "LOUHI: Releasing multi-arch image $(LOUHI_IMAGE)..."
-	docker buildx build --platform $(PLATFORMS) \
-		--builder $(BUILDER_NAME) \
-		--build-arg VERSION_LDFLAGS="$(VERSION_LDFLAGS)" \
-		-t $(LOUHI_IMAGE) --push .
+.PHONY: push-image
+push-image: ## Build and push the multi-arch image using the repo's shared tool.
+	@echo "Building and Pushing Metis image..."
+	REGISTRY=$(IMAGE_REGISTRY) IMAGE=$(IMAGE_NAME) TAG=$(TAG) ../tools/push-images metis
 
 ##@ Help
 
