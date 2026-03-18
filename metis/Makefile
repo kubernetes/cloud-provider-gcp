@@ -28,8 +28,8 @@ vet: ## Run Go vet to check for potential issues.
 
 .PHONY: vendor
 vendor: ## Tidy and vendor the Go module dependencies.
-	go mod tidy
-	go mod vendor
+	GOWORK=off go mod tidy
+	GOWORK=off go mod vendor
 
 .PHONY: build
 build: ## Build the Metis binary locally.
