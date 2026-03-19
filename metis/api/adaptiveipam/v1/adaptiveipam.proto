@@ -7,7 +7,10 @@ option go_package = "k8s.io/metis/api/adaptiveipam/v1;adaptiveipam";
 // AdaptiveIpam serves the request for cluster wide pod IP allocation. The IP
 // returned is from the initial cidr range, or dynamically fetched from cloud provider.
 service AdaptiveIpam {
+  // AllocatePodIP allocates a pod IP based on the provided configuration.
   rpc AllocatePodIP(AllocatePodIPRequest) returns (AllocatePodIPResponse);
+
+  // DeallocatePodIP releases a previously allocated pod IP.
   rpc DeallocatePodIP(DeallocatePodIPRequest) returns (DeallocatePodIPResponse);
 }
 
@@ -22,14 +25,15 @@ message IPConfig {
 // supplementary IPs may be dynamically acquired from the cloud provider.
 message AllocatePodIPRequest {
   string network = 1;
-  string initial_cidr_range = 2;
+  string initial_pod_cidr = 2;
   IPConfig ipv4_config = 3;
   IPConfig ipv6_config = 4;
 }
 
+// PodIP is the result of the allocated IPs for the pod.
 message PodIP {
   string ip_address = 1;
-  string cidr_block = 2;
+  string cidr = 2;
 }
 
 // AllocatePodIPResponse represents the result of a pod IP allocation request,
