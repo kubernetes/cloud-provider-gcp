@@ -438,6 +438,9 @@ func TestNodeTopologySyncZone(t *testing.T) {
 		existingZones 	[]string
 		expectedZones   []string
 		wantErr         bool
+		continueWithErr	bool
+		existingSubnets []string
+		wantSubnets     []string
 	}{
 		{
 			name: "add new node in new zone, add zone to cr",
@@ -472,6 +475,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 					},
 				},
 			},
+			existingSubnets: []string{"subnet-def"},
 			existingZones: []string{"us-central1-b"},
 			expectedZones: []string{"us-central1-b", "us-central1-c"},
 		},
@@ -508,6 +512,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 					},
 				},
 			},
+			existingSubnets: []string{"subnet-def"},
 			existingZones: []string{"us-central1-b"},
 			expectedZones: []string{"us-central1-b"},
 		},
@@ -532,6 +537,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 					},
 				},
 			},
+			existingSubnets: []string{"subnet-def"},
 			existingZones: []string{"us-central1-b", "us-central1-c"},
 			expectedZones: []string{"us-central1-b"},
 		},
@@ -567,6 +573,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 					},
 				},
 			},
+			existingSubnets: []string{"subnet-def"},
 			existingZones: []string{"us-central1-b"},
 			expectedZones: []string{"us-central1-b"},
 		},
@@ -589,7 +596,8 @@ func TestNodeTopologySyncZone(t *testing.T) {
 					Spec: v1.NodeSpec{},
 				},
 			},
-			existingZones: []string{"us-central1-b"},
+			existingSubnets: []string{"subnet-def"},
+			existingZones: []string{},
 			expectedZones: []string{},
 			wantErr: true,
 		},
@@ -616,6 +624,82 @@ func TestNodeTopologySyncZone(t *testing.T) {
 			expectedZones: []string{},
 			wantErr: true,
 		},
+		{
+			name: "No subnet in cr, add new node, change cr",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-1",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{
+						ProviderID: "gce://test-project/us-central1-b/node-1",
+					},
+				},
+			},
+			
+			existingZones: []string{},
+			expectedZones: []string{"us-central1-b"},
+			wantSubnets:   []string{"subnet-def"},
+		},
+		{
+			name: "No subnet in cr, add new node, update cr",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-1",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{
+						ProviderID: "gce://test-project/us-central1-b/node-1",
+					},
+				},
+			},
+			
+			existingZones: []string{},
+			expectedZones: []string{"us-central1-b"},
+			wantSubnets:   []string{"subnet-def"},
+		},
+		{
+			name: "No subnet in cr, new node don't have providerID, only update subnet",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-1",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{},
+				},
+			},
+			continueWithErr: true,
+			existingZones: []string{},
+			expectedZones: []string{},
+			wantSubnets:   []string{"subnet-def"},
+		},	
 	}
 
 	for _, tc := range tests {
@@ -640,7 +724,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 				}
 				return
 			}
-			if err != nil {
+			if err != nil && !tc.continueWithErr {
 				t.Fatalf("NodeTopologySyncer.sync() returned error: %v", err)
 			}
 			updatedNodeTopologyCR, _ := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().Get(context.TODO(), "default", metav1.GetOptions{})
@@ -650,6 +734,13 @@ func TestNodeTopologySyncZone(t *testing.T) {
 
 			if diff := cmp.Diff(tc.expectedZones, actualZones); diff != "" {
 				t.Errorf("Zones mismatch (-want +got):\n%s", diff)
+			}
+
+			if len(tc.wantSubnets) == 0 {
+				return
+			}
+			if ok, cr := verifySubnetsInCR(t, tc.wantSubnets, ntClient); !ok {
+				t.Errorf("NodeTopologySyncer.sync() returned incorrect subnets, got %v, expected %v", cr.Status.Subnets, tc.wantSubnets)
 			}
 		})
 	}

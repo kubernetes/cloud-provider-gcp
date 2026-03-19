@@ -8,6 +8,7 @@ import (
 	nodetopologyv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
 	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -109,30 +110,13 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 	}
 	updatedNodeTopologyCR.Status.Subnets = updatedSubnets
 
-	zonesMap := make(map[string]bool, 0)
+	zoneSet := sets.NewString() 
 	for _, node := range allNodes {
-		providerID := node.Spec.ProviderID
-		if providerID == "" {
-			klog.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
-			return fmt.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
-		}
-		zone, err := syncer.cloud.GetZoneByProviderID(context.TODO(), node.Spec.ProviderID)
-		if err != nil {
-			return err		
-		}
-		if zone.FailureDomain == "" {
-			klog.Errorf("node %s doesn't have zone information, providerID %s", node.ObjectMeta.Name, node.Spec.ProviderID)
-			return fmt.Errorf("node %s doesn't have zone information, providerID %s", node.ObjectMeta.Name, node.Spec.ProviderID)
-		}
-		if !zonesMap[zone.FailureDomain] {
-			zonesMap[zone.FailureDomain] = true
-		}
+		zone, err := getZoneFromNode(context.TODO(), syncer, node)
+		if err != nil { return err }
+		zoneSet.Insert(zone) 
 	}
-	zonesSlice := make([]string, 0, len(zonesMap))
-	for zone := range zonesMap {
-		zonesSlice = append(zonesSlice, zone)
-	}
-	updatedNodeTopologyCR.Status.Zones = zonesSlice
+	updatedNodeTopologyCR.Status.Zones = zoneSet.List()
 
 	_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), updatedNodeTopologyCR, metav1.UpdateOptions{})
 	if updateErr != nil {
@@ -159,10 +143,10 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		return err
 	}
 
-	nodeTopologyCR, err = ensureNodeZoneInStatus(context.TODO(), syncer, node, nodeTopologyCR)
-	if err != nil {
-		klog.Errorf("Failed to add zone to NodeTopology: %v, err: %v", nodeTopologyCRName, err)
-		return err
+	zone, zoneErr := getZoneFromNode(context.TODO(), syncer, node)
+	shouldUpdateZone := false
+	if zoneErr == nil {
+		shouldUpdateZone = !isNodeZoneInStatus(zone, nodeTopologyCR)
 	}
 
 	crSubnets := nodeTopologyCR.Status.Subnets
@@ -196,6 +180,10 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		if updatedCR.Status.Zones == nil {
 			updatedCR.Status.Zones = []string{}
 		}
+		if shouldUpdateZone {
+			updatedCR.Status.Zones = append(updatedCR.Status.Zones, zone)
+		}
+
 		_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), updatedCR, metav1.UpdateOptions{})
 		if updateErr != nil {
 			klog.Errorf("Error updating the CR: %v, err: %v", nodeTopologyCRName, updateErr)
@@ -204,21 +192,37 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		
 		klog.Infof("Successfully added the default subnet %v to nodetopology CR", defaultSubnet)
 
+		if zoneErr != nil { 
+			klog.ErrorS(zoneErr, "Error updating zone for nodeTopology CR", "nodetopologyCR", nodeTopologyCRName, "node", node.Name)
+			return zoneErr
+		}
 		return nil
 	}
 
-
+	shouldUpdateSubnet := false	
 	if !hasSubnetLabel {
 		klog.V(2).Infof("No additional subnet detected. Default subnetwork is added to the CR.")
-		return nil
+	} else {
+		// Check if subnet already exists in the CR
+		exists := false
+		for _, subnet := range crSubnets {
+			if subnet.Name == nodeSubnet {
+				exists = true
+				break
+			}
+		}
+
+		if exists {
+			klog.V(2).InfoS("Subnet already exists in the node topology CR", "subnet", nodeSubnet)
+		} else {
+			shouldUpdateSubnet = true
+		}
 	}
 
-	// Check if subnet already exists in the CR
-	for _, subnet := range crSubnets {
-		if subnet.Name == nodeSubnet {
-			klog.V(2).Infof("The subnet %s already exists in the node topology CR", nodeSubnet)
-			return nil
-		}
+	// Nothing to update, skip
+	if !shouldUpdateSubnet && !shouldUpdateZone {
+		klog.V(2).InfoS("Both subnet and zone are already up to date, skipping", "node", node.Name)
+		return nil
 	}
 
 	// We have a new subnet that should be added to the CR
@@ -232,6 +236,9 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 	if updatedCR.Status.Zones == nil {
 		updatedCR.Status.Zones = []string{}
 	}
+	if shouldUpdateZone {
+		updatedCR.Status.Zones = append(updatedCR.Status.Zones, zone)
+	}
 
 	_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), updatedCR, metav1.UpdateOptions{})
 	if updateErr != nil {
@@ -239,8 +246,16 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		return updateErr
 	}
 
-	klog.V(2).Infof("Successfully add the subnet %v to the nodetopology CR", nodeSubnet)
-
+	if shouldUpdateSubnet {
+		klog.V(2).Infof("Successfully add the subnet %v to the nodetopology CR", nodeSubnet)
+	}
+	if zoneErr != nil { 
+		klog.ErrorS(zoneErr, "Error updating zone for nodeTopology CR", "nodetopologyCR", nodeTopologyCRName, "node", node.Name)
+		return zoneErr 
+	}
+	if shouldUpdateZone {
+		klog.V(2).Infof("Successfully add zone %v to the nodetopology CR", zone)
+	}
 	return nil
 
 }
@@ -280,47 +295,55 @@ func getSubnetWithPrefixFromURL(url string) (subnetName string, subnetPrefix str
 	return
 }
 
-func ensureNodeZoneInStatus(ctx context.Context, syncer *NodeTopologySyncer, node *v1.Node, nodeTopologyCR *nodetopologyv1.NodeTopology) (*nodetopologyv1.NodeTopology, error) {
+func isNodeZoneInStatus(nodeZone string, nodeTopologyCR *nodetopologyv1.NodeTopology) bool {
+	for _, zone := range nodeTopologyCR.Status.Zones {
+		if zone == nodeZone {
+			return true
+		}
+	}
+	return false
+}
+
+func getZoneFromNode(ctx context.Context, syncer *NodeTopologySyncer, node *v1.Node) (string, error){
 	providerID := node.Spec.ProviderID
 	if providerID == "" {
-		err := fmt.Errorf("node %s doesn't have providerID", node.Name)
-		klog.Errorf("node %s doesn't have providerID, err: %v", node.Name, err)
-		return nodeTopologyCR, err
+		err := fmt.Errorf("node doesn't have providerID")
+		klog.ErrorS(err, "node doesn't have providerID", "node", node.Name)
+		return "", err
 	}
 
 	nodeZoneConfig, err := syncer.cloud.GetZoneByProviderID(ctx, providerID)
 	if err != nil {
-		klog.ErrorS(err, "Failed to get zone information for node", "node", node.ObjectMeta.Name, "providerID", providerID)
-		return nodeTopologyCR, err		
-	}
-	nodeZone := nodeZoneConfig.FailureDomain
-	if nodeZone == "" {
-		klog.Errorf("node %s's zone information is empty, providerID %s", node.ObjectMeta.Name, providerID)
-		err = fmt.Errorf("node %s doesn't have zone information, providerID %s", node.ObjectMeta.Name, providerID)
-		return nodeTopologyCR, err
+		klog.ErrorS(err, "Failed to get zone information for node", "node", node.Name, "providerID", providerID)
+		return "", err		
 	}
 
-	zoneExist := false
-	for _, zone := range nodeTopologyCR.Status.Zones {
-		if zone == nodeZone {
-			zoneExist = true
-			break
-		}
-	}
-	if !zoneExist {
-		klog.Infof("Adding zone %s of node %s to nodetopology CR", nodeZone, node.Name)
-		updatedCR := nodeTopologyCR.DeepCopy()
-		updatedCR.Status.Zones = append(updatedCR.Status.Zones, nodeZone)
-
-		newCR, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(ctx, updatedCR, metav1.UpdateOptions{})
-		if updateErr != nil {
-			klog.Errorf("Error updating the CR: %v, err: %v", nodeTopologyCRName, updateErr)
-			return nodeTopologyCR, updateErr
-		}
-
-		klog.Infof("Successfully added the zone %s to nodetopology CR", nodeZone)
-		return newCR, nil
-	}
-	return nodeTopologyCR, nil
+	return nodeZoneConfig.FailureDomain, nil
 }
 
+// func ensureNodeZoneInStatus(ctx context.Context, syncer *NodeTopologySyncer, node *v1.Node, nodeTopologyCR *nodetopologyv1.NodeTopology) (*nodetopologyv1.NodeTopology, error) {
+// 	nodeZone, err := getZoneFromNode(ctx, syncer, node)
+// 	if err != nil { return nodeTopologyCR, err }
+// 	zoneExist := false
+// 	for _, zone := range nodeTopologyCR.Status.Zones {
+// 		if zone == nodeZone {
+// 			zoneExist = true
+// 			break
+// 		}
+// 	}
+// 	if !zoneExist {
+// 		klog.Infof("Adding zone %s of node %s to nodetopology CR", nodeZone, node.Name)
+// 		updatedCR := nodeTopologyCR.DeepCopy()
+// 		updatedCR.Status.Zones = append(updatedCR.Status.Zones, nodeZone)
+
+// 		newCR, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(ctx, updatedCR, metav1.UpdateOptions{})
+// 		if updateErr != nil {
+// 			klog.ErrorS(updateErr, "Error updating nodeTopology CR", "nodetopologyCR", nodeTopologyCRName)
+// 			return nodeTopologyCR, updateErr
+// 		}
+
+// 		klog.Infof("Successfully added the zone %s to nodetopology CR", nodeZone)
+// 		return newCR, nil
+// 	}
+// 	return nodeTopologyCR, nil
+// }
