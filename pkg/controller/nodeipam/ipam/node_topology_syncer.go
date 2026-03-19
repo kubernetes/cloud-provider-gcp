@@ -143,6 +143,7 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		return err
 	}
 
+	// Check for zone update
 	zone, zoneErr := getZoneFromNode(context.TODO(), syncer, node)
 	shouldUpdateZone := false
 	if zoneErr == nil {
@@ -320,30 +321,3 @@ func getZoneFromNode(ctx context.Context, syncer *NodeTopologySyncer, node *v1.N
 
 	return nodeZoneConfig.FailureDomain, nil
 }
-
-// func ensureNodeZoneInStatus(ctx context.Context, syncer *NodeTopologySyncer, node *v1.Node, nodeTopologyCR *nodetopologyv1.NodeTopology) (*nodetopologyv1.NodeTopology, error) {
-// 	nodeZone, err := getZoneFromNode(ctx, syncer, node)
-// 	if err != nil { return nodeTopologyCR, err }
-// 	zoneExist := false
-// 	for _, zone := range nodeTopologyCR.Status.Zones {
-// 		if zone == nodeZone {
-// 			zoneExist = true
-// 			break
-// 		}
-// 	}
-// 	if !zoneExist {
-// 		klog.Infof("Adding zone %s of node %s to nodetopology CR", nodeZone, node.Name)
-// 		updatedCR := nodeTopologyCR.DeepCopy()
-// 		updatedCR.Status.Zones = append(updatedCR.Status.Zones, nodeZone)
-
-// 		newCR, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(ctx, updatedCR, metav1.UpdateOptions{})
-// 		if updateErr != nil {
-// 			klog.ErrorS(updateErr, "Error updating nodeTopology CR", "nodetopologyCR", nodeTopologyCRName)
-// 			return nodeTopologyCR, updateErr
-// 		}
-
-// 		klog.Infof("Successfully added the zone %s to nodetopology CR", nodeZone)
-// 		return newCR, nil
-// 	}
-// 	return nodeTopologyCR, nil
-// }
