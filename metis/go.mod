@@ -3,6 +3,7 @@ module k8s.io/metis
 go 1.24.13
 
 require (
+	github.com/mattn/go-sqlite3 v1.14.37
 	github.com/spf13/cobra v1.10.0
 	github.com/spf13/pflag v1.0.10
 	k8s.io/component-base v0.34.2
