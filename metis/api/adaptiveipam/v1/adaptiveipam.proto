@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package adaptiveipam.v1;
+
+option go_package = "k8s.io/metis/api/adaptiveipam/v1;adaptiveipam";
+
+// AdaptiveIpam serves the request for cluster wide pod IP allocation. The IP
+// returned is from the initial cidr range, or dynamically fetched from cloud provider.
+service AdaptiveIpam {
+  // AllocatePodIP allocates a pod IP based on the provided configuration.
+  rpc AllocatePodIP(AllocatePodIPRequest) returns (AllocatePodIPResponse);
+
+  // DeallocatePodIP releases a previously allocated pod IP.
+  rpc DeallocatePodIP(DeallocatePodIPRequest) returns (DeallocatePodIPResponse);
+}
+
+message IPConfig {
+  string interface_name = 1;
+  string container_id = 2;
+}
+
+// AllocatePodIPRequest contains the parameters required to allocate a pod IP.
+// The allocation takes into account the specified network, the initial CIDR block, and the IP family
+// configuration (IPv4, IPv6, or dual-stack). If the node depletes its initial block of pod IPs,
+// supplementary IPs may be dynamically acquired from the cloud provider.
+message AllocatePodIPRequest {
+  string network = 1;
+  string initial_pod_cidr = 2;
+  IPConfig ipv4_config = 3;
+  IPConfig ipv6_config = 4;
+}
+
+// PodIP is the result of the allocated IPs for the pod.
+message PodIP {
+  string ip_address = 1;
+  string cidr = 2;
+}
+
+// AllocatePodIPResponse represents the result of a pod IP allocation request,
+// detailing the assigned IPv4 and/or IPv6 addresses and their respective CIDR blocks.
+message AllocatePodIPResponse {
+  PodIP ipv4 = 1;
+  PodIP ipv6 = 2;
+}
+
+// DeallocatePodIPRequest contains the parameters required to deallocate a pod IP.
+message DeallocatePodIPRequest {
+  string network = 1;
+  string interface_name = 2;
+  string container_id = 3;
+}
+
+// DeallocatePodIPResponse represents the result of a pod IP deallocation request.
+// An empty message is returned on success; RPC errors are used to indicate failure.
+message DeallocatePodIPResponse {
+}
