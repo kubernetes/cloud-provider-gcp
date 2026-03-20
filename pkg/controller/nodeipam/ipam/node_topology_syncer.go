@@ -222,6 +222,10 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 
 	// Nothing to update, skip
 	if !shouldUpdateSubnet && !shouldUpdateZone {
+		if zoneErr != nil {
+            klog.V(4).InfoS("Waiting for zone info to be populated, forcing retry", "node", node.Name)
+            return zoneErr
+        }
 		klog.V(2).InfoS("Both subnet and zone are already up to date, skipping", "node", node.Name)
 		return nil
 	}
@@ -229,10 +233,12 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 	// We have a new subnet that should be added to the CR
 	// We assume all the subnets are in the same project and region
 	updatedCR := nodeTopologyCR.DeepCopy()
-	updatedCR.Status.Subnets = append(updatedCR.Status.Subnets, nodetopologyv1.SubnetConfig{
-		Name:       nodeSubnet,
-		SubnetPath: subnetPrefix + nodeSubnet,
-	})
+	if shouldUpdateSubnet {
+		updatedCR.Status.Subnets = append(updatedCR.Status.Subnets, nodetopologyv1.SubnetConfig{
+			Name:       nodeSubnet,
+			SubnetPath: subnetPrefix + nodeSubnet,
+		})
+	}
 	// We always expect zones field in the status.
 	if updatedCR.Status.Zones == nil {
 		updatedCR.Status.Zones = []string{}
