@@ -8,8 +8,26 @@
 
 ## Introduction
 
-This repository implements the [cloud provider](https://github.com/kubernetes/cloud-provider) interface for Google Cloud Platform (GCP).
-It provides the [GCP Cloud Controller Manager (CCM)](https://kubernetes.io/docs/concepts/architecture/cloud-controller/), which is necessary for self-managed Kubernetes clusters in GCP and is automatically installed in GKE clusters. It is maintained primarily by the Cloud Kubernetes team at Google.
+This repository implements the [cloud provider](https://github.com/kubernetes/cloud-provider) interface for [Google Cloud Platform (GCP)](https://cloud.google.com/).
+It provides components for Kubernetes clusters running on GCP and is maintained primarily by the Kubernetes team at Google.
+
+To see all available commands in this repository, run `make help`.
+
+## Components
+
+This repository contains the following components, located in `cmd/`:
+
+*   **Cloud Controller Manager (`cloud-controller-manager`)**: The GCP [Cloud Controller Manager (CCM)](https://kubernetes.io/docs/concepts/architecture/cloud-controller/) is responsible for running cloud-provider-dependent controllers (e.g. node health, routing, load balancing, etc.) for Kubernetes clusters running in GCP.
+*   **GCP Auth Provider (`auth-provider-gcp`)**: A GCP [Container Runtime Interface (CRI)](https://kubernetes.io/docs/concepts/containers/cri/) plugin for fetching credentials for kubelet to pull images from [Google Container Registry (GCR)](https://cloud.google.com/container-registry) and [Artifact Registry (AR)](https://cloud.google.com/artifact-registry) when needed for pods.
+*   **GKE Auth Plugin (`gke-gcloud-auth-plugin`)**: A client-go credential plugin that provides Google Cloud access tokens to `kubectl` and other Kubernetes clients for authenticating to [GKE clusters](https://cloud.google.com/kubernetes-engine), e.g. in `gcloud container clusters get-credentials`.
+
+## Testing
+
+This repository includes several testing commands you can run locally during development:
+
+*   **`make test`**: Runs the standard Go unit tests.
+*   **`make verify`**: Runs all verification scripts (format, lint, etc.).
+*   **`make run-e2e-test`**: Runs the E2E test suite on a provisional [kOps](https://kops.sigs.k8s.io/) cluster.
 
 ## Publishing cloud-controller-manager image
 
@@ -27,8 +45,6 @@ IMAGE_REPO=${LOCATION}-docker.pkg.dev/${PROJECT}/${REPO} IMAGE_TAG=v0 make publi
 If `IMAGE_REPO` is not set, the script will exit with an error. If `IMAGE_TAG` is not set, it defaults to a unique value combining the current git commit SHA and the build date.
 
 ### Docker Commands
-
-Run `make help` to see all available commands.
 
 **Note:** To push images to Google Artifact Registry, you must first authenticate Docker by running the following command:
 `gcloud auth configure-docker ${LOCATION}-docker.pkg.dev`
