@@ -18,7 +18,9 @@ package ipam
 
 import (
 	"database/sql"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/go-logr/logr"
@@ -154,4 +156,48 @@ func TestNewStore_SchemaVerification(t *testing.T) {
 			t.Errorf("Schema verification failed: expected trigger '%s' not found: %v", trigger, err)
 		}
 	}
+}
+
+func TestStore_Concurrency(t *testing.T) {
+	// Initialize a temporary store
+	dbPath := filepath.Join(t.TempDir(), "ipam-concurrency.db")
+	s, err := NewStore(logr.Discard(), dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize store: %v", err)
+	}
+	defer s.Close()
+
+	var wg sync.WaitGroup
+	numGoroutines := 10
+
+	// Simulate 10 concurrent gRPC requests hitting the database
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			// 1. Simulate an Insert
+			cidr := fmt.Sprintf("10.0.%d.0/24", id)
+			insertQuery := `INSERT INTO cidr_blocks (cidr, network, gateway_ip, broadcast_ip, ip_family, total_ips, allocated_ips, state) 
+							VALUES (?, 'test-network', '10.0.0.1', '10.0.0.255', 'ipv4', 256, 0, 'Ready')`
+
+			_, err := s.db.Exec(insertQuery, cidr)
+			if err != nil {
+				t.Errorf("Goroutine %d failed to insert: %v", id, err)
+				return
+			}
+
+			// 2. Simulate a Read
+			var state string
+			readQuery := `SELECT state FROM cidr_blocks WHERE cidr = ?`
+			err = s.db.QueryRow(readQuery, cidr).Scan(&state)
+			if err != nil {
+				t.Errorf("Goroutine %d failed to read: %v", id, err)
+				return
+			}
+		}(i)
+	}
+
+	// Wait for all goroutines to finish
+	wg.Wait()
 }

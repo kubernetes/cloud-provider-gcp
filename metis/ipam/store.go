@@ -92,8 +92,8 @@ func NewStore(log logr.Logger, dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(10)
 	// Sets the maximum amount of time a connection may be reused to infinity
 	// (0). This guarantees the single connection never expires.
 	db.SetConnMaxLifetime(0)
@@ -129,15 +129,28 @@ func (s *Store) initSchema() error {
 
 	s.log.Info("Initializing DB schema", "currentVersion", currentVersion, "expectedVersion", dbSchemaVersion)
 
-	// Set User Version.
+	// 1. Begin an atomic transaction
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	// Safe to defer; Rollback does nothing if Commit() is successful
+	defer tx.Rollback()
+
+	// 2. Execute the embedded schema.sql file
+	if _, err := tx.Exec(schemaSQL); err != nil {
+		return fmt.Errorf("failed to execute schema.sql: %w", err)
+	}
+
+	// 3. Set User Version
 	setVersion := fmt.Sprintf("PRAGMA user_version = %d;", dbSchemaVersion)
-	if _, err := s.db.Exec(setVersion); err != nil {
+	if _, err := tx.Exec(setVersion); err != nil {
 		return fmt.Errorf("failed to set user_version: %w", err)
 	}
 
-	// Execute the embedded schema.sql file.
-	if _, err := s.db.Exec(schemaSQL); err != nil {
-		return fmt.Errorf("failed to execute schema.sql: %w", err)
+	// 4. Commit everything atomically
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit schema transaction: %w", err)
 	}
 
 	s.log.Info("Database schema initialized or updated successfully")
