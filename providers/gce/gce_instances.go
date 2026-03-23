@@ -173,7 +173,7 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 						break
 					}
 					if internalIPV6 != "" {
-						nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: internalIPV6})
+						nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: canonicalizeIPv6(internalIPV6)})
 					} else {
 						klog.Warningf("Internal IPv6 range is empty for node %v.", nodeName)
 					}
@@ -198,7 +198,7 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 					}
 
 					if externalIP != "" {
-						nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: externalIP})
+						nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: canonicalizeIPv6(externalIP)})
 					}
 				}
 			}
@@ -291,14 +291,14 @@ func (g *Cloud) nodeAddressesFromInstance(instance *compute.Instance) ([]v1.Node
 	nodeAddresses := []v1.NodeAddress{}
 	for _, nic := range instance.NetworkInterfaces {
 		if nic.NetworkIP != "" {
-			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: nic.NetworkIP})
+			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: canonicalizeIPv6(nic.NetworkIP)})
 		}
 		for _, config := range nic.AccessConfigs {
-			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: config.NatIP})
+			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: canonicalizeIPv6(config.NatIP)})
 		}
 		ipv6Addr := getIPV6AddressFromInterface(nic)
 		if ipv6Addr != "" {
-			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: ipv6Addr})
+			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: canonicalizeIPv6(ipv6Addr)})
 		}
 	}
 
@@ -313,6 +313,25 @@ func getIPV6AddressFromInterface(nic *compute.NetworkInterface) string {
 		}
 	}
 	return ipv6Addr
+}
+
+// canonicalizeIPv6 normalizes an IPv6 address string to its canonical form.
+// Returns the input unchanged if it's not a valid IPv6 address.
+func canonicalizeIPv6(addr string) string {
+	if addr == "" {
+		return addr
+	}
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		// Not a valid IP, return as-is
+		return addr
+	}
+	if utilnet.IsIPv6(ip) {
+		// Canonicalize by parsing and converting back to string
+		return ip.String()
+	}
+	// IPv4 address, return unchanged
+	return addr
 }
 
 // InstanceTypeByProviderID returns the cloudprovider instance type of the node
@@ -606,7 +625,7 @@ func (g *Cloud) AliasRangesByProviderID(providerID string) (cidrs []string, err 
 
 	for _, networkInterface := range res.NetworkInterfaces {
 		for _, r := range networkInterface.AliasIpRanges {
-			cidrs = append(cidrs, r.IpCidrRange)
+			cidrs = append(cidrs, canonicalizeIPv6(r.IpCidrRange))
 		}
 		ipv6Addr := g.GetIPV6Address(networkInterface)
 		if ipv6Addr != nil {
