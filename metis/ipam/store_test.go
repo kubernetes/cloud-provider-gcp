@@ -158,6 +158,12 @@ func TestNewStore_SchemaVerification(t *testing.T) {
 	}
 }
 
+// TestStore_Concurrency verifies that the SQLite connection pool and
+// transaction locks (_txlock=immediate, MaxOpenConns=10) can successfully
+// handle high bursts of concurrent requests without throwing SQLITE_BUSY
+// errors. It achieves maximum contention by spawning multiple goroutines and
+// using a broadcast channel as a "starting gun" to release them at the exact
+// same logical moment.
 func TestStore_Concurrency(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "ipam-concurrency.db")
 	s, err := NewStore(logr.Discard(), dbPath)
