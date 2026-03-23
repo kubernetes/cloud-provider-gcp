@@ -689,3 +689,319 @@ func TestProjectFromNodeProviderID(t *testing.T) {
 		})
 	}
 }
+
+// TestIPv6Canonicalization tests that IPv6 addresses in both short and long notation
+// are canonicalized correctly in node addresses
+func TestIPv6Canonicalization(t *testing.T) {
+	gce, err := fakeGCECloud(DefaultTestClusterValues())
+	require.NoError(t, err)
+
+	instanceMap := make(map[string]*ga.Instance)
+
+	// Test case 1: Short notation IPv6 internal address
+	instanceWithIPv6ShortInternal := &ga.Instance{
+		Name: "short-internal",
+		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				NetworkIP:   "10.1.1.1",
+				StackType:   "IPV4_IPV6",
+				Ipv6Address: "fd20:d32:f30f::2:0:0", // Short notation
+			},
+		},
+	}
+	instanceMap["short-internal"] = instanceWithIPv6ShortInternal
+
+	// Test case 2: Long notation IPv6 internal address (same address as above)
+	instanceWithIPv6LongInternal := &ga.Instance{
+		Name: "long-internal",
+		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				NetworkIP:   "10.1.1.2",
+				StackType:   "IPV4_IPV6",
+				Ipv6Address: "fd20:0d32:f30f:0000:0000:0002:0000:0000", // Long notation
+			},
+		},
+	}
+	instanceMap["long-internal"] = instanceWithIPv6LongInternal
+
+	// Test case 3: Short notation IPv6 external address
+	instanceWithIPv6ShortExternal := &ga.Instance{
+		Name: "short-external",
+		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				NetworkIP:      "10.1.1.3",
+				StackType:      "IPV4_IPV6",
+				Ipv6AccessType: "EXTERNAL",
+				Ipv6AccessConfigs: []*ga.AccessConfig{
+					{ExternalIpv6: "2001:db8:85a3::8a2e:370:7334"}, // Short notation
+				},
+			},
+		},
+	}
+	instanceMap["short-external"] = instanceWithIPv6ShortExternal
+
+	// Test case 4: Long notation IPv6 external address (same address as above)
+	instanceWithIPv6LongExternal := &ga.Instance{
+		Name: "long-external",
+		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				NetworkIP:      "10.1.1.4",
+				StackType:      "IPV4_IPV6",
+				Ipv6AccessType: "EXTERNAL",
+				Ipv6AccessConfigs: []*ga.AccessConfig{
+					{ExternalIpv6: "2001:0db8:85a3:0000:0000:8a2e:0370:7334"}, // Long notation
+				},
+			},
+		},
+	}
+	instanceMap["long-external"] = instanceWithIPv6LongExternal
+
+	// Test case 5: Short notation IPv6 in NatIP (access config)
+	instanceWithIPv6ShortNat := &ga.Instance{
+		Name: "short-natip",
+		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				NetworkIP: "10.1.1.5",
+				StackType: "IPV4_IPV6",
+				AccessConfigs: []*ga.AccessConfig{
+					{NatIP: "2001:db8::1"}, // Short notation
+				},
+			},
+		},
+	}
+	instanceMap["short-natip"] = instanceWithIPv6ShortNat
+
+	// Test case 6: Long notation IPv6 in NatIP (same address as above)
+	instanceWithIPv6LongNat := &ga.Instance{
+		Name: "long-natip",
+		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				NetworkIP: "10.1.1.6",
+				StackType: "IPV4_IPV6",
+				AccessConfigs: []*ga.AccessConfig{
+					{NatIP: "2001:0db8:0000:0000:0000:0000:0000:0001"}, // Long notation
+				},
+			},
+		},
+	}
+	instanceMap["long-natip"] = instanceWithIPv6LongNat
+
+	// Test case 7: Short notation IPv6 in NetworkIP field
+	instanceWithIPv6ShortNetworkIP := &ga.Instance{
+		Name: "short-networkip",
+		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				NetworkIP: "fd00::1", // Short notation IPv6
+				StackType: "IPV6",
+			},
+		},
+	}
+	instanceMap["short-networkip"] = instanceWithIPv6ShortNetworkIP
+
+	// Test case 8: Long notation IPv6 in NetworkIP field (same address as above)
+	instanceWithIPv6LongNetworkIP := &ga.Instance{
+		Name: "long-networkip",
+		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				NetworkIP: "fd00:0000:0000:0000:0000:0000:0000:0001", // Long notation IPv6
+				StackType: "IPV6",
+			},
+		},
+	}
+	instanceMap["long-networkip"] = instanceWithIPv6LongNetworkIP
+
+	mockGCE := gce.c.(*cloud.MockGCE)
+	mi := mockGCE.Instances().(*cloud.MockInstances)
+	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
+		ret, ok := instanceMap[key.Name]
+		if !ok {
+			return true, nil, fmt.Errorf("instance not found")
+		}
+		return true, ret, nil
+	}
+
+	testcases := []struct {
+		name      string
+		nodeName  string
+		stackType StackType
+		wantAddrs []v1.NodeAddress
+	}{
+		{
+			name:      "short notation internal IPv6",
+			nodeName:  "short-internal",
+			stackType: clusterStackDualStack,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "10.1.1.1"},
+				{Type: v1.NodeInternalIP, Address: "fd20:d32:f30f::2:0:0"},
+			},
+		},
+		{
+			name:      "long notation internal IPv6 - should canonicalize to same format",
+			nodeName:  "long-internal",
+			stackType: clusterStackDualStack,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "10.1.1.2"},
+				{Type: v1.NodeInternalIP, Address: "fd20:d32:f30f::2:0:0"}, // Canonical form
+			},
+		},
+		{
+			name:      "short notation external IPv6",
+			nodeName:  "short-external",
+			stackType: clusterStackDualStack,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "10.1.1.3"},
+				{Type: v1.NodeInternalIP, Address: "2001:db8:85a3::8a2e:370:7334"},
+			},
+		},
+		{
+			name:      "long notation external IPv6 - should canonicalize to same format",
+			nodeName:  "long-external",
+			stackType: clusterStackDualStack,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "10.1.1.4"},
+				{Type: v1.NodeInternalIP, Address: "2001:db8:85a3::8a2e:370:7334"}, // Canonical form
+			},
+		},
+		{
+			name:      "short notation NatIP IPv6",
+			nodeName:  "short-natip",
+			stackType: clusterStackDualStack,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "10.1.1.5"},
+				{Type: v1.NodeExternalIP, Address: "2001:db8::1"},
+			},
+		},
+		{
+			name:      "long notation NatIP IPv6 - should canonicalize to same format",
+			nodeName:  "long-natip",
+			stackType: clusterStackDualStack,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "10.1.1.6"},
+				{Type: v1.NodeExternalIP, Address: "2001:db8::1"}, // Canonical form
+			},
+		},
+		{
+			name:      "short notation NetworkIP IPv6",
+			nodeName:  "short-networkip",
+			stackType: clusterStackIPV6,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "fd00::1"},
+			},
+		},
+		{
+			name:      "long notation NetworkIP IPv6 - should canonicalize to same format",
+			nodeName:  "long-networkip",
+			stackType: clusterStackIPV6,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "fd00::1"}, // Canonical form
+			},
+		},
+	}
+
+	for _, test := range testcases {
+		t.Run(test.name, func(t *testing.T) {
+			SetFakeStackType(gce, test.stackType)
+
+			gotAddrs, err := gce.NodeAddresses(context.Background(), types.NodeName(test.nodeName))
+			require.NoError(t, err)
+			assert.Equal(t, test.wantAddrs, gotAddrs)
+		})
+	}
+}
+
+// TestCanonicalizeIPv6 tests the canonicalizeIPv6 function directly
+func TestCanonicalizeIPv6(t *testing.T) {
+	testcases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "IPv4 address unchanged",
+			input:    "192.168.1.1",
+			expected: "192.168.1.1",
+		},
+		{
+			name:     "IPv6 short notation - already canonical",
+			input:    "2001:db8::1",
+			expected: "2001:db8::1",
+		},
+		{
+			name:     "IPv6 long notation - should canonicalize",
+			input:    "2001:0db8:0000:0000:0000:0000:0000:0001",
+			expected: "2001:db8::1",
+		},
+		{
+			name:     "IPv6 mixed notation - should canonicalize",
+			input:    "fd20:d32:f30f::2:0:0",
+			expected: "fd20:d32:f30f::2:0:0",
+		},
+		{
+			name:     "IPv6 full long notation - should canonicalize",
+			input:    "fd20:0d32:f30f:0000:0000:0002:0000:0000",
+			expected: "fd20:d32:f30f::2:0:0",
+		},
+		{
+			name:     "IPv6 localhost short",
+			input:    "::1",
+			expected: "::1",
+		},
+		{
+			name:     "IPv6 localhost long",
+			input:    "0000:0000:0000:0000:0000:0000:0000:0001",
+			expected: "::1",
+		},
+		{
+			name:     "IPv6 unspecified short",
+			input:    "::",
+			expected: "::",
+		},
+		{
+			name:     "IPv6 unspecified long",
+			input:    "0000:0000:0000:0000:0000:0000:0000:0000",
+			expected: "::",
+		},
+		{
+			name:     "IPv6 with leading zeros",
+			input:    "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+			expected: "2001:db8:85a3::8a2e:370:7334",
+		},
+		{
+			name:     "IPv6 short already compressed",
+			input:    "2001:db8:85a3::8a2e:370:7334",
+			expected: "2001:db8:85a3::8a2e:370:7334",
+		},
+		{
+			name:     "invalid IP returns unchanged",
+			input:    "not-an-ip",
+			expected: "not-an-ip",
+		},
+		{
+			name:     "CIDR notation returns unchanged (not a valid IP)",
+			input:    "2001:db8::/32",
+			expected: "2001:db8::/32",
+		},
+	}
+
+	for _, test := range testcases {
+		t.Run(test.name, func(t *testing.T) {
+			got := canonicalizeIPv6(test.input)
+			if got != test.expected {
+				t.Errorf("canonicalizeIPv6(%q) = %q; want %q", test.input, got, test.expected)
+			}
+		})
+	}
+}
