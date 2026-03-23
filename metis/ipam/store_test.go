@@ -17,11 +17,13 @@ limitations under the License.
 package ipam
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr"
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
@@ -214,5 +216,70 @@ func TestStore_Concurrency(t *testing.T) {
 	close(startLine)
 
 	// Wait for all goroutines to finish.
+	wg.Wait()
+}
+
+// TestStore_MaxOpenConns_Limit verifies that the connection pool can fan out
+// to the configured maxOpenConns limit. It proves this by holding
+// (maxOpenConns - 1) read connections hostage and ensuring the final allowed
+// concurrent query can still execute successfully without hitting a pool bottleneck.
+func TestStore_MaxOpenConns_Limit(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "ipam-pool-limit.db")
+	s, err := NewStore(logr.Discard(), dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize store: %v", err)
+	}
+	defer s.Close()
+
+	// Dynamically scale the test based on the Store's configuration
+	hostageCount := s.db.Stats().MaxOpenConnections - 1
+	connAcquired := make(chan struct{}, hostageCount)
+	releaseHostages := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// 1. Take (maxOpenConns - 1) connections hostage using unclosed read queries
+	for i := range hostageCount {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			rows, err := s.db.Query(`SELECT state FROM cidr_blocks`)
+			if err != nil {
+				t.Errorf("Goroutine %d failed to execute read query: %v", id, err)
+				return
+			}
+			defer rows.Close()
+
+			connAcquired <- struct{}{}
+			<-releaseHostages
+		}(i)
+	}
+
+	// Wait for all hostage connections to be checked out of the pool.
+	// We use a 1-second timeout to prevent the test from hanging indefinitely
+	// if the connection pool is configured smaller than hostageCount.
+	timeout := time.After(1 * time.Second)
+	for i := 0; i < hostageCount; i++ {
+		select {
+		case <-connAcquired:
+			// Connection successfully acquired
+		case <-timeout:
+			t.Fatalf("Test timed out waiting to acquire %d connections. MaxOpenConns is likely configured lower than the expected limit.", hostageCount)
+		}
+	}
+
+	// 2. Execute the final allowed query to reach maxOpenConns
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var state string
+	err = s.db.QueryRowContext(ctx, `SELECT state FROM cidr_blocks LIMIT 1`).Scan(&state)
+
+	if err != nil && err != sql.ErrNoRows {
+		t.Fatalf("Final concurrent query failed (pool limit reached prematurely): %v", err)
+	}
+
+	// 3. Clean up
+	close(releaseHostages)
 	wg.Wait()
 }

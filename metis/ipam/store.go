@@ -30,9 +30,13 @@ import (
 //go:embed schema.sql
 var schemaSQL string
 
-// dbSchemaVersion tracks the SQLite schema version to allow safe local
-// migrations and prevent state corruption across daemon restarts.
-const dbSchemaVersion = 1
+const (
+	// dbSchemaVersion tracks the SQLite schema version to allow safe local
+	// migrations and prevent state corruption across daemon restarts.
+	dbSchemaVersion = 1
+	maxOpenConns    = 10
+	maxIdleConns    = 10
+)
 
 // Store manages database operations for IPAM.
 type Store struct {
@@ -92,8 +96,8 @@ func NewStore(log logr.Logger, dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(10)
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxIdleConns)
 	// Sets the maximum amount of time a connection may be reused to infinity
 	// (0). This guarantees the single connection never expires.
 	db.SetConnMaxLifetime(0)
