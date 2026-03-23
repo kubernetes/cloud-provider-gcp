@@ -170,11 +170,17 @@ func TestStore_Concurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	numGoroutines := 10
 
+	// 1. Create the Starting Line channel
+	startLine := make(chan struct{})
+
 	// Simulate 10 concurrent gRPC requests hitting the database
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
+
+			// 2. Block this goroutine until the starting gun fires
+			<-startLine
 
 			// 1. Simulate an Insert
 			cidr := fmt.Sprintf("10.0.%d.0/24", id)
@@ -197,6 +203,10 @@ func TestStore_Concurrency(t *testing.T) {
 			}
 		}(i)
 	}
+
+	// 3. Fire the starting gun!
+	// Closing the channel instantly releases all 10 blocked goroutines at the exact same time.
+	close(startLine)
 
 	// Wait for all goroutines to finish
 	wg.Wait()
