@@ -209,7 +209,7 @@ func TestStore_Concurrency(t *testing.T) {
 		}(i)
 	}
 
-	// 3. Fire the starting gun!
+	// Fire the starting gun!
 	// Closing the channel instantly releases all 10 blocked goroutines at the exact same time.
 	close(startLine)
 
