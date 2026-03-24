@@ -70,10 +70,7 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 	nwInformer := nwInfFactory.Networking().V1().Networks()
 	gnpInformer := nwInfFactory.Networking().V1().GKENetworkParamSets()
 
-	// TODO: Add a flag to control to start this informer specific to required GKE functionality
-	go nwInfFactory.Start(ctx.Stop)
-
-	return nodeipamcontroller.StartNodeIpamController(
+	ctrl, started, err := nodeipamcontroller.StartNodeIpamController(
 		wait.ContextForChannel(ctx.Stop),
 		ccmConfig.SharedInformers.Core().V1().Nodes(),
 		ccmConfig.ClientBuilder.ClientOrDie("node-controller"),
@@ -89,4 +86,13 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 		ipam.CIDRAllocatorType(ccmConfig.ComponentConfig.KubeCloudShared.CIDRAllocatorType),
 		ctx.ControllerManagerMetrics,
 	)
+
+	if err != nil {
+		return nil, false, err
+	}
+
+	// TODO: Add a flag to control to start this informer specific to required GKE functionality
+	go nwInfFactory.Start(ctx.Stop)
+
+	return ctrl, started, nil
 }
