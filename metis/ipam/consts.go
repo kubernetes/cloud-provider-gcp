@@ -16,4 +16,4 @@ limitations under the License.
 
 package ipam
 
-const DefaultDBPath = "/var/lib/cni/gke-ipam/gke-ipam.sqlite"
+const DefaultDBPath = "/var/lib/cni/metis/metis.sqlite"
