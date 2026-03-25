@@ -19,15 +19,6 @@ CREATE TABLE IF NOT EXISTS cidr_blocks (
     -- Example: 'ipv4' or 'ipv6'
     ip_family TEXT NOT NULL,
 
-    -- The default gateway IP address for this specific CIDR block.
-    -- This maps directly to the CNI specification's gateway result field.
-    -- Example: '10.0.0.1'
-    gateway_ip TEXT NOT NULL,
-
-    -- The last IP address in the CIDR block. 
-    -- Example: '10.0.1.15'
-    broadcast_ip TEXT NOT NULL,
-
     -- The total number of IP addresses contained within this block.
     -- Note: SQLite does not support unsigned integers, so standard INTEGER is used.
     -- Example: 16
@@ -66,6 +57,12 @@ CREATE TABLE IF NOT EXISTS ip_addresses (
     -- Example: 'f093u09jfioj...'
     container_id TEXT,
 
+    -- The Kubernetes Pod Name holding this IP.
+    pod_name TEXT,
+
+    -- The Kubernetes Pod Namespace holding this IP.
+    pod_namespace TEXT,
+
     -- The CNI_IFNAME inside the container holding this IP.
     -- Example: 'eth0'
     interface_name TEXT,
@@ -87,7 +84,7 @@ CREATE TABLE IF NOT EXISTS ip_addresses (
 );
 
 -- Index to optimize the daemon's search for the next available IP address.
-CREATE INDEX IF NOT EXISTS idx_ip_avail 
+CREATE INDEX IF NOT EXISTS idx_available_ips 
     ON ip_addresses(cidr_block_id, id) 
     WHERE is_allocated = FALSE;
 
