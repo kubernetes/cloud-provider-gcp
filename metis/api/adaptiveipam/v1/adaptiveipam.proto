@@ -23,6 +23,11 @@ message IPConfig {
   string interface_name = 1;
   // container_id is the id of the pod container.
   string container_id = 2;
+
+  // initial_pod_cidr is the CIDR block initially assigned to the node.
+  // The CNI must provide this CIDR, which is used to allocate IPs for pods created
+  // early in the node's lifecycle, typically including critical system pods.
+  string initial_pod_cidr = 3;
 }
 
 // AllocatePodIPRequest contains the parameters required to allocate a pod IP.
@@ -33,14 +38,14 @@ message IPConfig {
 message AllocatePodIPRequest {
   // network is the name of the network for which the IP is requested.
   string network = 1;
-  // initial_pod_cidr is the CIDR block initially assigned to the node.
-  // The CNI must provide this CIDR, which is used to allocate IPs for pods created
-  // early in the node's lifecycle, typically including critical system pods.
-  string initial_pod_cidr = 2;
   // ipv4_config specifies the pod configuration for IPv4 allocation.
-  IPConfig ipv4_config = 3;
+  IPConfig ipv4_config = 2;
   // ipv6_config specifies the pod configuration for IPv6 allocation.
-  IPConfig ipv6_config = 4;
+  IPConfig ipv6_config = 3;
+  // pod_name is the name of the pod. This is for logging purposes.
+  string pod_name = 4;
+  // pod_namespace is the namespace of the pod. This is for logging purposes.
+  string pod_namespace = 5;
 }
 
 // PodIP is the result of the allocated IPs for the pod.
@@ -68,6 +73,10 @@ message DeallocatePodIPRequest {
   string interface_name = 2;
   // container_id is the id of the pod container.
   string container_id = 3;
+  // pod_name is the name of the pod. This is for logging purposes.
+  string pod_name = 4;
+  // pod_namespace is the namespace of the pod. This is for logging purposes.
+  string pod_namespace = 5;
 }
 
 // DeallocatePodIPResponse represents the result of a pod IP deallocation request.
