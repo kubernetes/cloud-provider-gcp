@@ -244,6 +244,26 @@ func TestNodeTopologySync(t *testing.T) {
 			wantSubnets:     []string{"subnet-def"},
 		},
 		{
+			name: "node has a non-default subnet and cr's subnets is empty",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "a-node-2",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "a-node-2",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def-1",
+						},
+					},
+				},
+			},
+			existingSubnets: []string{},
+			wantSubnets:     []string{"subnet-def", "subnet-def-1"},
+		},
+		{
 			name: "node has no subnet label and ensure we add the default subnet to cr",
 			node: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
