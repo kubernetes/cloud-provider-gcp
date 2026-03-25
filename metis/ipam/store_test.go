@@ -129,7 +129,7 @@ func TestNewStore_SchemaVerification(t *testing.T) {
 
 	// Define the expected schema components.
 	expectedTables := []string{"cidr_blocks", "ip_addresses"}
-	expectedIndexes := []string{"idx_ip_avail", "idx_ip_idempotency"}
+	expectedIndexes := []string{"idx_available_ips", "idx_ip_idempotency"}
 	expectedTriggers := []string{"update_cidr_blocks_updated_at", "update_ip_addresses_updated_at"}
 
 	// Verify Tables.
@@ -191,8 +191,8 @@ func TestStore_Concurrency(t *testing.T) {
 
 			// Simulate an Insert.
 			cidr := fmt.Sprintf("10.0.%d.0/24", id)
-			insertQuery := `INSERT INTO cidr_blocks (cidr, network, gateway_ip, broadcast_ip, ip_family, total_ips, allocated_ips, state) 
-							VALUES (?, 'test-network', '10.0.0.1', '10.0.0.255', 'ipv4', 256, 0, 'Ready')`
+			insertQuery := `INSERT INTO cidr_blocks (cidr, network, ip_family, total_ips, allocated_ips, state) 
+							VALUES (?, 'test-network', 'ipv4', 256, 0, 'Ready')`
 
 			_, err := s.db.Exec(insertQuery, cidr)
 			if err != nil {
