@@ -118,6 +118,17 @@ const clusterStackIPV4 StackType = "IPV4"
 // The underlying VPC's stack type could be either IPV6 or dual stack IPV4_IPV6.
 const clusterStackIPV6 StackType = "IPV6"
 
+// FirewallRulesManagement indicates how firewall rules are managed by the provider.
+type FirewallRulesManagement string
+
+// firewallRulesManagementEnabled indicates that the firewall rules should be managed by the provider.
+// This includes firewall rule creation, deletion, and updates.
+const firewallRulesManagementEnabled FirewallRulesManagement = "Enabled"
+
+// firewallRulesManagementDisabled indicates that the firewall rules should not be managed by the provider.
+// This includes firewall rule creation, deletion, and updates.
+const firewallRulesManagementDisabled FirewallRulesManagement = "Disabled"
+
 // Cloud is an implementation of Interface, LoadBalancer and Instances for Google Compute Engine.
 type Cloud struct {
 	// ClusterID contains functionality for getting (and initializing) the ingress-uid. Call Cloud.Initialize()
@@ -217,6 +228,8 @@ type Cloud struct {
 
 	// enableL4DenyFirewallRollbackCleanup
 	enableL4DenyFirewallRollbackCleanup bool
+
+	firewallRulesManagement FirewallRulesManagement
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -254,6 +267,10 @@ type ConfigGlobal struct {
 	// Default to none.
 	// For example: MyFeatureFlag
 	AlphaFeatures []string `gcfg:"alpha-features"`
+
+	// FirewallRulesManagement indicates whether the provider should handle all firewall
+	// operations, such as creation, deletion, and updates.
+	FirewallRulesManagement string `gcfg:"firewall-rules-management"`
 }
 
 // ConfigFile is the struct used to parse the /etc/gce.conf configuration file.
@@ -281,13 +298,14 @@ type CloudConfig struct {
 	SubnetworkName       string
 	SubnetworkURL        string
 	// DEPRECATED: Do not rely on this value as it may be incorrect.
-	SecondaryRangeName string
-	NodeTags           []string
-	NodeInstancePrefix string
-	TokenSource        oauth2.TokenSource
-	UseMetadataServer  bool
-	AlphaFeatureGate   *AlphaFeatureGate
-	StackType          string
+	SecondaryRangeName      string
+	NodeTags                []string
+	NodeInstancePrefix      string
+	TokenSource             oauth2.TokenSource
+	UseMetadataServer       bool
+	AlphaFeatureGate        *AlphaFeatureGate
+	StackType               string
+	FirewallRulesManagement string
 }
 
 func init() {
@@ -379,6 +397,7 @@ func GenerateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 		cloudConfig.NodeTags = configFile.Global.NodeTags
 		cloudConfig.NodeInstancePrefix = configFile.Global.NodeInstancePrefix
 		cloudConfig.AlphaFeatureGate = NewAlphaFeatureGate(configFile.Global.AlphaFeatures)
+		cloudConfig.FirewallRulesManagement = configFile.Global.FirewallRulesManagement
 	}
 
 	// retrieve projectID and zone
@@ -582,6 +601,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		metricsCollector:         newLoadBalancerMetrics(),
 		projectsBasePath:         getProjectsBasePath(service.BasePath),
 		stackType:                StackType(config.StackType),
+		firewallRulesManagement:  FirewallRulesManagement(config.FirewallRulesManagement),
 	}
 
 	gce.manager = &gceServiceManager{gce}
