@@ -21,16 +21,16 @@ set -o pipefail
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 cd "${KUBE_ROOT}"
+TOOLS_BIN="${PWD}/_tmp/bin"
+mkdir -p "${TOOLS_BIN}"
+export PATH="${TOOLS_BIN}:${PATH}"
 
 # Install protoc if not present
 if ! command -v protoc &> /dev/null; then
   echo "protoc not found, installing locally..."
-  PROTOC_VERSION="25.3"
+  PROTOC_VERSION="34.1"
   PROTOC_ZIP="protoc-${PROTOC_VERSION}-linux-x86_64.zip"
   PROTOC_URL="https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/${PROTOC_ZIP}"
-  
-  TOOLS_BIN="${PWD}/_tmp/bin"
-  mkdir -p "${TOOLS_BIN}"
   
   TMP_PROTOC_DIR=$(mktemp -d "${PWD}/_tmp/protoc.XXXXXX")
   
@@ -41,8 +41,15 @@ if ! command -v protoc &> /dev/null; then
   chmod +x "${TOOLS_BIN}/protoc"
   
   rm -rf "${TMP_PROTOC_DIR}"
+fi
+
+# Install protoc-gen-go and protoc-gen-go-grpc if not present
+if ! command -v protoc-gen-go &> /dev/null || ! command -v protoc-gen-go-grpc &> /dev/null; then
+  echo "protoc-gen-go/grpc not found, installing..."
+  export GOBIN="${TOOLS_BIN}"
   
-  export PATH="${TOOLS_BIN}:${PATH}"
+  go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+  go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 fi
 
 # Find all proto files outside of vendor and temporary/artifact directories
