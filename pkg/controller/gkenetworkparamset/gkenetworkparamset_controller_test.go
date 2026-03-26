@@ -20,8 +20,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	condmeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	clientgotesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider-gcp/providers/gce"
@@ -54,6 +56,9 @@ const (
 
 func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParamSetController {
 	fakeNetworking := networkfake.NewSimpleClientset()
+	// Temporary workaround to disable watch list. It should be fixed properly by updating gke-networking-api
+	// Pending PR: https://github.com/GoogleCloudPlatform/gke-networking-api/pull/75
+	disableWatchListForFakeNetworkingClient(fakeNetworking)
 	nwInfFactory := networkinformers.NewSharedInformerFactory(fakeNetworking, 0*time.Second)
 	nwInformer := nwInfFactory.Networking().V1().Networks()
 	gnpInformer := nwInfFactory.Networking().V1().GKENetworkParamSets()
@@ -102,6 +107,26 @@ func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParam
 		cloud:           fakeGCE,
 		nodeStore:       fakeNodeInformer.Informer().GetStore(),
 	}
+}
+
+// disableWatchListForFakeNetworkingClient rejects watch-list requests for this
+// fake client so reflector falls back to classic list+watch.
+func disableWatchListForFakeNetworkingClient(client *networkfake.Clientset) {
+	client.PrependWatchReactor("*", func(action clientgotesting.Action) (bool, watch.Interface, error) {
+		watchAction, ok := action.(interface {
+			GetListOptions() metav1.ListOptions
+		})
+		if !ok {
+			return false, nil, nil
+		}
+
+		opts := watchAction.GetListOptions()
+		if opts.SendInitialEvents != nil && *opts.SendInitialEvents {
+			// Force reflector fallback to classic list+watch for this fake client only.
+			return true, nil, errors.NewBadRequest("watch-list unsupported by gke-networking-api fake client")
+		}
+		return false, nil, nil
+	})
 }
 
 func (testVals *testGKENetworkParamSetController) runGKENetworkParamSetController(ctx context.Context) {
