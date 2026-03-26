@@ -1,11 +1,12 @@
 # Makefile for metis component
 
-# Variables for local development
+# Variables for local development, can be overridden by Louhi
 IMAGE_REGISTRY ?= gcr.io/$(USER)-gke-dev
 IMAGE_NAME ?= metis
 TAG ?= $(shell git describe --tags --match "metis-v*" --always --dirty | sed 's|.*/||')
+ALL_PLATFORMS ?= linux/amd64,linux/arm64
 
-# Get version metadata from git for version injection
+# Get version metadata from git for version injection, can be overridden by Louhi
 GIT_VERSION ?= $(shell git describe --tags --match "metis-v*" --always --dirty)
 GIT_COMMIT  ?= $(shell git rev-parse HEAD)
 BUILD_DATE  ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
@@ -15,9 +16,6 @@ VERSION_LDFLAGS := \
   -X 'k8s.io/component-base/version.gitVersion=$(GIT_VERSION)' \
   -X 'k8s.io/component-base/version.gitCommit=$(GIT_COMMIT)' \
   -X 'k8s.io/component-base/version.buildDate=$(BUILD_DATE)'
-
-# Platforms for multi-arch container builds
-PLATFORMS ?= linux/amd64,linux/arm64
 
 ##@ Development
 
@@ -53,9 +51,9 @@ clean: ## Clean up build artifacts.
 ##@ Docker
 
 .PHONY: push-image
-push-image: ## Build and push the multi-arch image independently.
-	@echo "Building and Pushing multi-arch image: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(TAG)..."
-	docker buildx build --platform $(PLATFORMS) \
+push-image: ## Build and push the multi-arch image.
+	@echo "Building and Pushing multi-arch image: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(TAG) for platforms $(ALL_PLATFORMS)..."
+	docker buildx build --platform $(ALL_PLATFORMS) \
 		--build-arg GIT_VERSION=$(GIT_VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
