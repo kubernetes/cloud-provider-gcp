@@ -3,6 +3,8 @@ module k8s.io/metis
 go 1.24.13
 
 require (
+	github.com/go-logr/logr v1.4.3
+	github.com/mattn/go-sqlite3 v1.14.37
 	github.com/spf13/cobra v1.10.0
 	github.com/spf13/pflag v1.0.10
 	k8s.io/component-base v0.34.2
@@ -15,7 +17,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
