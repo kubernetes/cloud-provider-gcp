@@ -22,6 +22,29 @@ set -o pipefail
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 cd "${KUBE_ROOT}"
 
+# Install protoc if not present
+if ! command -v protoc &> /dev/null; then
+  echo "protoc not found, installing locally..."
+  PROTOC_VERSION="25.3"
+  PROTOC_ZIP="protoc-${PROTOC_VERSION}-linux-x86_64.zip"
+  PROTOC_URL="https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/${PROTOC_ZIP}"
+  
+  TOOLS_BIN="${PWD}/_tmp/bin"
+  mkdir -p "${TOOLS_BIN}"
+  
+  TMP_PROTOC_DIR=$(mktemp -d "${PWD}/_tmp/protoc.XXXXXX")
+  
+  curl -L -o "${TMP_PROTOC_DIR}/${PROTOC_ZIP}" "${PROTOC_URL}"
+  unzip -q -o "${TMP_PROTOC_DIR}/${PROTOC_ZIP}" -d "${TMP_PROTOC_DIR}"
+  
+  mv "${TMP_PROTOC_DIR}/bin/protoc" "${TOOLS_BIN}/"
+  chmod +x "${TOOLS_BIN}/protoc"
+  
+  rm -rf "${TMP_PROTOC_DIR}"
+  
+  export PATH="${TOOLS_BIN}:${PATH}"
+fi
+
 # Find all proto files outside of vendor and temporary/artifact directories
 proto_files=$(find . -name "*.proto" -not -path "./vendor/*" -not -path "./_*" )
 
