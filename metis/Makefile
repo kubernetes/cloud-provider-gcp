@@ -1,23 +1,33 @@
 # Makefile for metis component
 
-# Variables for local development
+# Variables for local development, can be overridden by the caller
 IMAGE_REGISTRY ?= gcr.io/$(USER)-gke-dev
 IMAGE_NAME ?= metis
-TAG ?= $(shell git describe --tags --match "metis-v*" --always --dirty | sed 's|.*/||')
+ALL_PLATFORMS ?= linux/amd64,linux/arm64
 
-# Get version metadata from git for version injection
-GIT_VERSION ?= $(shell git describe --tags --match "metis-v*" --always --dirty)
-GIT_COMMIT  ?= $(shell git rev-parse HEAD)
-BUILD_DATE  ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+# Optional space-separated list of arbitrary extra tags (e.g., pipeline IDs or dev tags)
+ADDITIONAL_IMAGE_TAGS ?=
+
+# Version metadata strictly computed by the internal repository state
+GIT_VERSION := $(shell git describe --tags --always --dirty)
+GIT_COMMIT  := $(shell git rev-parse HEAD)
+BUILD_DATE  := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+# Base tag cleanly stripped of directory paths (natively appends -dirty if uncommitted changes exist)
+TAG := $(shell echo $(GIT_VERSION) | sed 's|.*/||')
+
+# Extract short SHA natively via git, explicitly appending -dirty if uncommitted modifications are detected
+SHORT_SHA := $(shell git rev-parse --short HEAD)$(shell git diff-index --quiet HEAD -- || echo "-dirty")
+
+# Build the list of all UNIQUE applicable tags and map them to -t arguments
+ALL_TAGS := $(sort $(TAG) $(SHORT_SHA) $(ADDITIONAL_IMAGE_TAGS))
+DOCKER_TAG_ARGS := $(foreach tag,$(ALL_TAGS),-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(tag))
 
 # Standard K8s versioning - injected via linker flags at build time.
 VERSION_LDFLAGS := \
   -X 'k8s.io/component-base/version.gitVersion=$(GIT_VERSION)' \
   -X 'k8s.io/component-base/version.gitCommit=$(GIT_COMMIT)' \
   -X 'k8s.io/component-base/version.buildDate=$(BUILD_DATE)'
-
-# Platforms for multi-arch container builds
-PLATFORMS ?= linux/amd64,linux/arm64
 
 ##@ Development
 
@@ -52,14 +62,23 @@ clean: ## Clean up build artifacts.
 
 ##@ Docker
 
+.PHONY: init-buildx
+init-buildx: ## Initialize the docker buildx multi-arch builder if it doesn't exist.
+	@if ! docker buildx inspect builder > /dev/null 2>&1; then \
+		echo "Initializing docker buildx multi-arch builder..."; \
+		docker run --privileged --rm tonistiigi/binfmt --install all; \
+		docker buildx create --name builder --use; \
+	fi
+
 .PHONY: push-image
-push-image: ## Build and push the multi-arch image independently.
-	@echo "Building and Pushing multi-arch image: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(TAG)..."
-	docker buildx build --platform $(PLATFORMS) \
+push-image: init-buildx ## Build and push the multi-arch image.
+	@echo "Building and Pushing multi-arch image: $(IMAGE_REGISTRY)/$(IMAGE_NAME)..."
+	@echo "Applying tags: $(ALL_TAGS)..."
+	docker buildx build --platform $(ALL_PLATFORMS) \
 		--build-arg GIT_VERSION=$(GIT_VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(TAG) --push .
+		$(DOCKER_TAG_ARGS) --push .
 
 ##@ Help
 
