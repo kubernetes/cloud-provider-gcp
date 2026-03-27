@@ -2,7 +2,6 @@ go 1.25.0
 
 use (
 	.
-	./metis
 	./providers
 	./test/e2e
 )
