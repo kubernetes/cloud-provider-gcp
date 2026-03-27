@@ -22,7 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
-	"k8s.io/metis/daemon"
+	"k8s.io/metis/pkg/daemon"
 )
 
 func newDaemonCommand() *cobra.Command {

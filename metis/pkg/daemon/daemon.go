@@ -19,6 +19,9 @@ import (
 	"fmt"
 
 	"k8s.io/klog/v2"
+	"k8s.io/metis/pkg"
+	"k8s.io/metis/pkg/dal"
+	"k8s.io/metis/pkg/store"
 )
 
 // Daemon represents the metis daemon process.
@@ -33,8 +36,25 @@ func NewDaemon(cfg Config) *Daemon {
 	}
 }
 
-// Run starts the daemon process.
+// Run starts the daemon process and listens for gRPC requests on a domain socket.
 func (d *Daemon) Run() error {
-	klog.InfoS("metis daemon has started successfully", "config", fmt.Sprintf("%+v", d.Config))
-	return nil
+	klog.InfoS("metis daemon is starting", "config", fmt.Sprintf("%+v", d.Config))
+
+	dbPath := d.Config.DBPath
+	if dbPath == "" {
+		dbPath = pkg.DefaultDBPath
+	}
+
+	logger := klog.Background() // klog/v2 provides a logr.Logger
+
+	storeInstance, err := store.NewStore(logger, dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to initialize sqlite store: %w", err)
+	}
+	defer storeInstance.Close()
+
+	dataAccess := dal.NewDataAccess(logger, storeInstance)
+	server := &adaptiveIpamServer{dal: dataAccess, sockPath: d.Config.SocketPath}
+	return server.start()
+
 }
