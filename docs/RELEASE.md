@@ -36,8 +36,11 @@ LIBRARY_FILES=(
 2. Bump library versions.
 ```bash
 sed -i s/v1.$MINOR_OLD.$PATCH_OLD/v1.$MINOR.$PATCH/ "${VERSION_FILES[@]}"
-sed -i s/v0.$MINOR_OLD.$PATCH_OLD/v0.$MINOR.$PATCH/ "${LIBRARY_FILES[@]}"
-sed -i s/v1.$MINOR_OLD.$PATCH_OLD/v1.$MINOR.$PATCH/ "${LIBRARY_FILES[@]}"
+for f in "${LIBRARY_FILES[@]}" go.work; do
+  sed -E -i \
+    "s#(k8s\\.io/[^[:space:]]+[[:space:]]+v0\\.)$MINOR_OLD\\.$PATCH_OLD#\\1$MINOR.$PATCH#g; s#(k8s\\.io/kubernetes[[:space:]]+v1\\.)$MINOR_OLD\\.$PATCH_OLD#\\1$MINOR.$PATCH#g" \
+    "$f"
+done
 for go_mod_file in "${LIBRARY_FILES[@]}"; do
   dir=$(dirname "$go_mod_file")
   pushd $dir
