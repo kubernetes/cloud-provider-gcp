@@ -21,18 +21,35 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	"google.golang.org/grpc"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg"
 	"k8s.io/metis/pkg/dal"
+	"k8s.io/metis/pkg/store"
 )
 
 type adaptiveIpamServer struct {
 	adaptiveipam.UnimplementedAdaptiveIpamServer
-	dal      *dal.DataAccess
-	sockPath string
+	dal             *dal.DataAccess
+	sockPath        string
+	releaseCooldown time.Duration
+	grpcServer      *grpc.Server
+}
+
+func newAdaptiveIpamServer(storeInstance *store.Store, socketPath string, releaseCooldown time.Duration) (*adaptiveIpamServer, error) {
+	logger := klog.Background() // klog/v2 provides a logr.Logger
+
+	dataAccess := dal.NewDataAccess(logger, storeInstance)
+	server := &adaptiveIpamServer{
+		dal:             dataAccess,
+		sockPath:        socketPath,
+		releaseCooldown: releaseCooldown,
+	}
+
+	return server, nil
 }
 
 func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest) (*adaptiveipam.AllocatePodIPResponse, error) {
@@ -87,7 +104,7 @@ func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptivei
 		"podName", req.PodName,
 		"podNamespace", req.PodNamespace)
 
-	count, err := s.dal.ReleaseIPsByOwner(req.Network, req.ContainerId, req.InterfaceName, 0)
+	count, err := s.dal.ReleaseIPsByOwner(req.Network, req.ContainerId, req.InterfaceName, s.releaseCooldown)
 	if err != nil {
 		klog.ErrorS(err, "failed to deallocate ips", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		return nil, fmt.Errorf("failed to deallocate ips for pod %s/%s: %w", req.PodNamespace, req.PodName, err)
@@ -119,8 +136,16 @@ func (s *adaptiveIpamServer) start() error {
 	defer listener.Close()
 
 	grpcServer := grpc.NewServer()
+	s.grpcServer = grpcServer // store it for stopping
 	adaptiveipam.RegisterAdaptiveIpamServer(grpcServer, s)
 
 	klog.InfoS("gRPC server is listening", "socket", sockPath)
 	return grpcServer.Serve(listener)
+}
+
+func (s *adaptiveIpamServer) stop() {
+	if s.grpcServer != nil {
+		klog.InfoS("Stopping gRPC server gracefully")
+		s.grpcServer.GracefulStop()
+	}
 }

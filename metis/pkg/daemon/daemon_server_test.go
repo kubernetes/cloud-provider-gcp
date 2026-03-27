@@ -19,6 +19,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -26,6 +27,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg/dal"
@@ -189,7 +192,7 @@ func TestAdaptiveIpamServer_DeallocatePodIP(t *testing.T) {
 	defer s.Close()
 
 	dalInstance := dal.NewDataAccess(logger, s)
-	server := &adaptiveIpamServer{dal: dalInstance, sockPath: ""}
+	server := &adaptiveIpamServer{dal: dalInstance, sockPath: "", releaseCooldown: 1 * time.Minute}
 
 	network := "gke-pod-network"
 	cidr := "10.0.1.0/24"
@@ -247,3 +250,66 @@ func TestAdaptiveIpamServer_DeallocatePodIP(t *testing.T) {
 		t.Errorf("Expected IP to be unallocated")
 	}
 }
+
+func TestAdaptiveIpamServer_GRPCClientIntegration(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	sockPath := filepath.Join(tempDir, "metis_test_client_integration.sock")
+	dbPath := filepath.Join(tempDir, "metis_client_integration.sqlite")
+
+	s, err := store.NewStore(logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	dalInstance := dal.NewDataAccess(logger, s)
+	server := &adaptiveIpamServer{dal: dalInstance, sockPath: sockPath}
+
+	// 1. Start server in background
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.start()
+	}()
+
+	// Wait for socket to appear
+	time.Sleep(100 * time.Millisecond)
+
+	// 2. Dial using gRPC client
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext(ctx, sockPath, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+		return net.Dial("unix", addr)
+	}))
+	if err != nil {
+		t.Fatalf("Failed to dial UDS %s: %v", sockPath, err)
+	}
+	defer conn.Close()
+
+	client := adaptiveipam.NewAdaptiveIpamClient(conn)
+
+	// 3. Prepare data and call
+	network := "integration-network"
+	cidr := "10.0.1.0/24"
+	req := &adaptiveipam.AllocatePodIPRequest{
+		Network:      network,
+		PodName:      "test-pod",
+		PodNamespace: "default",
+		Ipv4Config: &adaptiveipam.IPConfig{
+			InterfaceName:  "eth0",
+			ContainerId:    "test-container-integration",
+			InitialPodCidr: cidr,
+		},
+	}
+
+	resp, err := client.AllocatePodIP(ctx, req)
+	if err != nil {
+		t.Fatalf("gRPC Client AllocatePodIP failed: %v", err)
+	}
+
+	if resp.Ipv4 == nil || resp.Ipv4.IpAddress == "" {
+		t.Errorf("Expected valid IP address from gRPC client, got response: %v", resp)
+	}
+}
+

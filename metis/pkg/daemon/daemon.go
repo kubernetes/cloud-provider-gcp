@@ -16,11 +16,11 @@ limitations under the License.
 package daemon
 
 import (
+	"context"
 	"fmt"
 
 	"k8s.io/klog/v2"
 	"k8s.io/metis/pkg"
-	"k8s.io/metis/pkg/dal"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -37,7 +37,7 @@ func NewDaemon(cfg Config) *Daemon {
 }
 
 // Run starts the daemon process and listens for gRPC requests on a domain socket.
-func (d *Daemon) Run() error {
+func (d *Daemon) Run(ctx context.Context) error {
 	klog.InfoS("metis daemon is starting", "config", fmt.Sprintf("%+v", d.Config))
 
 	dbPath := d.Config.DBPath
@@ -53,8 +53,23 @@ func (d *Daemon) Run() error {
 	}
 	defer storeInstance.Close()
 
-	dataAccess := dal.NewDataAccess(logger, storeInstance)
-	server := &adaptiveIpamServer{dal: dataAccess, sockPath: d.Config.SocketPath}
-	return server.start()
+	server, err := newAdaptiveIpamServer(storeInstance, d.Config.SocketPath, d.Config.ReleaseCooldown)
+	if err != nil {
+		return err
+	}
 
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.start()
+	}()
+
+	select {
+	case err := <-errCh:
+		return fmt.Errorf("server failed: %w", err)
+	case <-ctx.Done():
+		klog.InfoS("Context cancelled, shutting down daemon")
+		server.stop()
+	}
+
+	return nil
 }
