@@ -14,6 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package ipam
+package pkg
 
-const DefaultDBPath = "/var/lib/cni/metis/metis.sqlite"
+const (
+	DefaultDBPath   = "/var/lib/cni/metis/metis.sqlite"
+	DefaultSockPath = "/var/lib/cni/metis/metis-adaptive-ipam.sock"
+)

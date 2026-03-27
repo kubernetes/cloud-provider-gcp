@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package ipam
+package store
 
 import (
 	"context"
@@ -282,4 +282,275 @@ func TestStore_MaxOpenConns_Limit(t *testing.T) {
 	// 3. Clean up
 	close(releaseHostages)
 	wg.Wait()
+}
+
+func TestStore_AddCIDR(t *testing.T) {
+	logger := logr.Discard() // Use discard logger to avoid klog dependency in tests
+
+	// Use testing.T.TempDir() which is standard in modern Go and cleans up automatically!
+	tempDir := t.TempDir()
+
+	dbPath := filepath.Join(tempDir, "metis.sqlite")
+	s, err := NewStore(logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore returned unexpected error: %v", err)
+	}
+	defer s.Close()
+
+	network := "gke-pod-network-addcidr"
+	cidr := "10.0.1.0/29" // 8 IPs: 10.0.1.0 to 10.0.1.7
+
+	err = s.AddCIDR(network, cidr)
+	if err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	// 1. Verify cidr_block table insertion
+	var totalIPs, allocatedIPs int
+	var state string
+	err = s.db.QueryRow(`SELECT total_ips, allocated_ips, state FROM cidr_blocks WHERE cidr = ?`, cidr).Scan(&totalIPs, &allocatedIPs, &state)
+	if err != nil {
+		t.Fatalf("Failed to query inserted cidr_block: %v", err)
+	}
+
+	if totalIPs != 8 {
+		t.Errorf("Expected total_ips 8, got %d", totalIPs)
+	}
+	if allocatedIPs != 3 {
+		t.Errorf("Expected allocated_ips 3 (first two and last one reserved), got %d", allocatedIPs)
+	}
+	if state != "Ready" {
+		t.Errorf("Expected state Ready, got %s", state)
+	}
+
+	// 2. Verify ip_addresses table insertion and allocations
+	rows, err := s.db.Query(`SELECT address, is_allocated FROM ip_addresses WHERE cidr_block_id = (SELECT id FROM cidr_blocks WHERE cidr = ?) ORDER BY address`, cidr)
+	if err != nil {
+		t.Fatalf("Failed to query inserted ip_addresses: %v", err)
+	}
+	defer rows.Close()
+
+	var addresses []string
+	var allocations []bool
+	for rows.Next() {
+		var addr string
+		var isAlloc bool
+		if err := rows.Scan(&addr, &isAlloc); err != nil {
+			t.Fatalf("Failed to scan ip_address: %v", err)
+		}
+		addresses = append(addresses, addr)
+		allocations = append(allocations, isAlloc)
+	}
+
+	expectedAddrs := []string{
+		"10.0.1.0", "10.0.1.1", "10.0.1.2", "10.0.1.3",
+		"10.0.1.4", "10.0.1.5", "10.0.1.6", "10.0.1.7",
+	}
+	expectedAllocs := []bool{
+		true, true, false, false,
+		false, false, false, true,
+	}
+
+	if len(addresses) != len(expectedAddrs) {
+		t.Fatalf("Expected %d addresses, got %d", len(expectedAddrs), len(addresses))
+	}
+
+	for i := range expectedAddrs {
+		if addresses[i] != expectedAddrs[i] {
+			t.Errorf("[%d] Expected address %s, got %s", i, expectedAddrs[i], addresses[i])
+		}
+		if allocations[i] != expectedAllocs[i] {
+			t.Errorf("[%d] Expected allocation %v for address %s, got %v", i, expectedAllocs[i], addresses[i], allocations[i])
+		}
+	}
+}
+
+func TestStore_AllocateIPv4(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+
+	dbPath := filepath.Join(tempDir, "metis_allocate.sqlite")
+	s, err := NewStore(logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore returned unexpected error: %v", err)
+	}
+	defer s.Close()
+
+	network := "gke-pod-network-allocate"
+	cidr := "10.0.2.0/29" // 8 IPs: .0 to .7. Reserved: .0, .1, .7. Available: .2, .3, .4, .5, .6.
+
+	// Test Case 1: Error - No CIDR blocks found (DB empty)
+	_, _, err = s.AllocateIPv4(1, "eth0", "container-1")
+	if err == nil {
+		t.Error("Expected error for no CIDR blocks, got nil")
+	} else if err.Error() != fmt.Sprintf("cidr_block_id 1 is either not found, full, or not ready") {
+		t.Errorf("Unexpected error message: %v", err)
+	}
+
+	// Add the CIDR
+	if err := s.AddCIDR(network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	var cidrBlockID int64
+	err = s.db.QueryRow("SELECT id FROM cidr_blocks WHERE cidr = ?", cidr).Scan(&cidrBlockID)
+	if err != nil {
+		t.Fatalf("Failed to query cidr_block_id: %v", err)
+	}
+
+	// Test Case 2: Happy path - First allocation
+	ip1, cidrRange1, err := s.AllocateIPv4(cidrBlockID, "eth0", "container-1")
+	if err != nil {
+		t.Fatalf("First allocation failed: %v", err)
+	}
+	if ip1 != "10.0.2.2" {
+		t.Errorf("Expected IP 10.0.2.2, got %s", ip1)
+	}
+	if cidrRange1 != cidr {
+		t.Errorf("Expected CIDR range %s, got %s", cidr, cidrRange1)
+	}
+
+	// Verify DB state for first allocation
+	var isAlloc bool
+	var containerID, interfaceName string
+	err = s.db.QueryRow(`SELECT is_allocated, container_id, interface_name FROM ip_addresses WHERE address = '10.0.2.2'`).Scan(&isAlloc, &containerID, &interfaceName)
+	if err != nil {
+		t.Fatalf("Failed to query DB for IP status: %v", err)
+	}
+	if !isAlloc {
+		t.Error("Expected IP 10.0.2.2 to be marked as allocated")
+	}
+	if containerID != "container-1" || interfaceName != "eth0" {
+		t.Errorf("Expected container-1/eth0, got %s/%s", containerID, interfaceName)
+	}
+
+	// Test Case 3: Happy path - Second allocation
+	ip2, _, err := s.AllocateIPv4(cidrBlockID, "eth0", "container-2")
+	if err != nil {
+		t.Fatalf("Second allocation failed: %v", err)
+	}
+	if ip2 != "10.0.2.3" {
+		t.Errorf("Expected IP 10.0.2.3, got %s", ip2)
+	}
+
+	// Test Case 4: Exhaust allocation
+	// We had 5 available IPs: .2, .3, .4, .5, .6.
+	// We already allocated .2 and .3.
+	// Let's allocate .4, .5, .6.
+	for i := 4; i <= 6; i++ {
+		expectedIP := fmt.Sprintf("10.0.2.%d", i)
+		ip, _, err := s.AllocateIPv4(cidrBlockID, "eth0", fmt.Sprintf("container-%d", i))
+		if err != nil {
+			t.Fatalf("Allocation failed for %s: %v", expectedIP, err)
+		}
+		if ip != expectedIP {
+			t.Errorf("Expected IP %s, got %s", expectedIP, ip)
+		}
+	}
+
+	// Now it should be exhausted. Next allocation should fail.
+	_, _, err = s.AllocateIPv4(cidrBlockID, "eth0", "container-exhaust")
+	if err == nil {
+		t.Error("Expected error for exhausted CIDR, got nil")
+	} else if err.Error() != fmt.Sprintf("cidr_block_id %d is either not found, full, or not ready", cidrBlockID) {
+		t.Errorf("Unexpected error message for exhausted CIDR: %v", err)
+	}
+
+	// Test Case 5: Error - No available IP address found (desync)
+	newNetwork := "gke-pod-network-2"
+	newCIDR := "10.0.3.0/29"
+	if err := s.AddCIDR(newNetwork, newCIDR); err != nil {
+		t.Fatalf("Failed to add new CIDR: %v", err)
+	}
+
+	var newCidrBlockID int64
+	err = s.db.QueryRow("SELECT id FROM cidr_blocks WHERE cidr = ?", newCIDR).Scan(&newCidrBlockID)
+	if err != nil {
+		t.Fatalf("Failed to get cidr_block_id: %v", err)
+	}
+
+	// Manually mark all IPs as allocated in `ip_addresses` to simulate desync
+	_, err = s.db.Exec(`UPDATE ip_addresses SET is_allocated = TRUE WHERE cidr_block_id = ?`, newCidrBlockID)
+	if err != nil {
+		t.Fatalf("Failed to manually corrupt DB: %v", err)
+	}
+
+	_, _, err = s.AllocateIPv4(newCidrBlockID, "eth0", "container-desync")
+	if err == nil {
+		t.Error("Expected error due to IP address desync, got nil")
+	} else if err.Error() != fmt.Sprintf("no available ip_address found for cidr_block_id %d", newCidrBlockID) {
+		t.Errorf("Unexpected error message for desync: %v", err)
+	}
+}
+
+func TestStore_ReleaseIPByOwner(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_release_test.sqlite")
+
+	s, err := NewStore(logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	network := "test-network"
+	cidr := "10.0.1.0/24"
+
+	if err := s.AddCIDR(network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	var cidrBlockID int64
+	err = s.db.QueryRow("SELECT id FROM cidr_blocks WHERE cidr = ?", cidr).Scan(&cidrBlockID)
+	if err != nil {
+		t.Fatalf("Failed to query cidr_block_id: %v", err)
+	}
+
+	containerID := "test-container"
+	interfaceName := "eth0"
+
+	ip, _, err := s.AllocateIPv4(cidrBlockID, interfaceName, containerID)
+	if err != nil {
+		t.Fatalf("AllocateIPv4 failed: %v", err)
+	}
+
+	var allocatedIPs int
+	err = s.db.QueryRow("SELECT allocated_ips FROM cidr_blocks WHERE id = ?", cidrBlockID).Scan(&allocatedIPs)
+	if err != nil {
+		t.Fatalf("QueryRow failed: %v", err)
+	}
+	if allocatedIPs != 4 { // 3 reserved + 1 allocated
+		t.Errorf("Expected 4 allocated IPs, got %d", allocatedIPs)
+	}
+
+	cooloff := 1 * time.Minute
+	count, err := s.ReleaseIPByOwner(network, containerID, interfaceName, cooloff)
+	if err != nil {
+		t.Fatalf("ReleaseIPByOwner failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 IP to be released, got %d", count)
+	}
+
+	err = s.db.QueryRow("SELECT allocated_ips FROM cidr_blocks WHERE id = ?", cidrBlockID).Scan(&allocatedIPs)
+	if err != nil {
+		t.Fatalf("QueryRow failed after release: %v", err)
+	}
+	if allocatedIPs != 3 { // Back to 3!
+		t.Errorf("Expected 3 allocated IPs after release, got %d", allocatedIPs)
+	}
+
+	var isAlloc bool
+	var releaseAt sql.NullTime
+	err = s.db.QueryRow("SELECT is_allocated, release_at FROM ip_addresses WHERE address = ?", ip).Scan(&isAlloc, &releaseAt)
+	if err != nil {
+		t.Fatalf("QueryRow failed for IP status: %v", err)
+	}
+	if isAlloc {
+		t.Error("Expected IP to be unallocated")
+	}
+	if !releaseAt.Valid {
+		t.Error("Expected release_at to be valid")
+	}
 }

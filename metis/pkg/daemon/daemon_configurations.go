@@ -21,4 +21,6 @@ import "time"
 type Config struct {
 	MonitorInterval time.Duration
 	ReleaseCooldown time.Duration
+	DBPath          string
+	SocketPath      string
 }
