@@ -638,3 +638,36 @@ func TestGetProjectsBasePath(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedResourceLocksScoping(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	gce := NewFakeGCECloud(vals)
+
+	// Use the exact same resource name across different ResourceTypes
+	// to check that the namespace isolation prevents collisions.
+	const sharedName = "collide-test"
+
+	unlockHC := gce.lockResourceIfShared(true, ResourceTypeHealthCheck, sharedName)
+	unlockHC()
+
+	unlockIG := gce.lockResourceIfShared(true, ResourceTypeInstanceGroup, sharedName)
+	unlockIG()
+
+	var keys []string
+	gce.sharedResourceLocks.Range(func(key, value any) bool {
+		keys = append(keys, key.(string))
+		return true
+	})
+
+	// This check proves that namespace scoping prevented a key collision.
+	if len(keys) != 2 {
+		t.Fatalf("Expected exactly 2 locks (scoping failed to prevent collision), got %d", len(keys))
+	}
+
+	for _, k := range keys {
+		// Validating the internal prefix grammar.
+		if !strings.HasPrefix(k, string(ResourceTypeHealthCheck)+":") && !strings.HasPrefix(k, string(ResourceTypeInstanceGroup)+":") {
+			t.Errorf("Unexpected lock scoped in sharedResourceLocks: %s", k)
+		}
+	}
+}

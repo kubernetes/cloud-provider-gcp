@@ -176,8 +176,9 @@ type Cloud struct {
 	// sharedResourceLock is used to serialize GCE operations that may mutate shared state to
 	// prevent inconsistencies. For example, load balancers manipulation methods will take the
 	// lock to prevent shared resources from being prematurely deleted while the operation is
-	// in progress.
 	sharedResourceLock sync.Mutex
+	// sharedResourceLocks is a concurrent map used for resource-specific fine-grained locking of shared resources (e.g. InstanceGroups, shared HealthChecks).
+	sharedResourceLocks sync.Map // map[string]*sync.Mutex
 	// AlphaFeatureGate gates gce alpha features in Cloud instance.
 	// Related wrapper functions that interacts with gce alpha api should examine whether
 	// the corresponding api is enabled.
@@ -217,6 +218,30 @@ type Cloud struct {
 
 	// enableL4DenyFirewallRollbackCleanup
 	enableL4DenyFirewallRollbackCleanup bool
+}
+
+type SharedResourceType string
+
+const (
+	ResourceTypeHealthCheck   SharedResourceType = "hc"
+	ResourceTypeInstanceGroup SharedResourceType = "ig"
+	ResourceTypeFirewall      SharedResourceType = "fw"
+)
+
+func (g *Cloud) getLockForResource(resType SharedResourceType, name string) *sync.Mutex {
+	key := string(resType) + ":" + name
+	v, _ := g.sharedResourceLocks.LoadOrStore(key, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
+// lockResourceIfShared conditionally acquires a lock and returns a func to defer for unlocking.
+func (g *Cloud) lockResourceIfShared(shared bool, resType SharedResourceType, name string) func() {
+	if !shared {
+		return func() {} // No-op
+	}
+	lock := g.getLockForResource(resType, name)
+	lock.Lock()
+	return lock.Unlock
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
