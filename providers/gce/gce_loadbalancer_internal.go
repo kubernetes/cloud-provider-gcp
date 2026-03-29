@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -127,10 +128,6 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 			return nil, err
 		}
 	}
-
-	// Lock the sharedResourceLock to prevent any deletions of shared resources while assembling shared resources here
-	g.sharedResourceLock.Lock()
-	defer g.sharedResourceLock.Unlock()
 
 	// Ensure health check exists before creating the backend service. The health check is shared
 	// if externalTrafficPolicy=Cluster.
@@ -354,9 +351,6 @@ func (g *Cloud) updateInternalLoadBalancer(clusterName, clusterID string, svc *v
 		klog.V(2).Infof("Skipped updateInternalLoadBalancer for service %s/%s as service contains %q loadBalancerClass.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
 		return cloudprovider.ImplementedElsewhere
 	}
-	g.sharedResourceLock.Lock()
-	defer g.sharedResourceLock.Unlock()
-
 	igName := makeInstanceGroupName(clusterID)
 	igLinks, err := g.ensureInternalInstanceGroups(igName, nodes)
 	if err != nil {
@@ -392,9 +386,6 @@ func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string,
 	scheme := cloud.SchemeInternal
 	sharedBackend := shareBackendService(svc)
 	sharedHealthCheck := !servicehelpers.RequestsOnlyLocalTraffic(svc)
-
-	g.sharedResourceLock.Lock()
-	defer g.sharedResourceLock.Unlock()
 
 	klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): attempting delete of region internal address", loadBalancerName)
 	ensureAddressDeleted(g, loadBalancerName, g.region)
@@ -608,17 +599,43 @@ func (g *Cloud) ensureInternalHealthCheck(name string, svcName types.NamespacedN
 	}
 
 	if hc == nil {
-		klog.V(2).Infof("ensureInternalHealthCheck: did not find health check %v, creating one with port %v path %v", name, port, path)
-		if err = g.CreateHealthCheck(expectedHC); err != nil {
-			return nil, err
-		}
-		hc, err = g.GetHealthCheck(name)
+		var created bool
+		err = func() error {
+			var lock *sync.Mutex
+			if shared {
+				lock = g.getLockForResource(ResourceTypeHealthCheck, name)
+				lock.Lock()
+			}
+			defer func() {
+				if lock != nil {
+					lock.Unlock()
+				}
+			}()
+
+			hc, err = g.GetHealthCheck(name)
+			if err != nil && !isNotFound(err) {
+				return err
+			}
+
+			if hc == nil {
+				klog.V(2).Infof("ensureInternalHealthCheck: did not find health check %v, creating one with port %v path %v", name, port, path)
+				if err = g.CreateHealthCheck(expectedHC); err != nil {
+					return err
+				}
+				hc, err = g.GetHealthCheck(name)
+				if err != nil {
+					return err
+				}
+				created = true
+			}
+			return nil
+		}()
 		if err != nil {
-			klog.Errorf("Failed to get http health check %v", err)
 			return nil, err
 		}
-		klog.V(2).Infof("ensureInternalHealthCheck: created health check %v", name)
-		return hc, nil
+		if created {
+			return hc, nil
+		}
 	}
 
 	if needToUpdateHealthChecks(hc, expectedHC) {
@@ -638,6 +655,10 @@ func (g *Cloud) ensureInternalHealthCheck(name string, svcName types.NamespacedN
 }
 
 func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []*v1.Node, emptyZoneNodes []*v1.Node) (string, error) {
+	lock := g.getLockForResource(ResourceTypeInstanceGroup, name+"-"+zone)
+	lock.Lock()
+	defer lock.Unlock()
+
 	klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): checking group that it contains %v nodes [node names limited, total number of nodes: %d], the following nodes have empty string in the zone field and won't be deleted: %v", name, zone, loggableNodeNames(nodes), len(nodes), loggableNodeNames(emptyZoneNodes))
 	ig, err := g.GetInstanceGroup(name, zone)
 	if err != nil && !isNotFound(err) {
