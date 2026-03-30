@@ -8,9 +8,9 @@ import (
 	nodetopologyv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
 	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/sets"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
@@ -110,11 +110,13 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 	}
 	updatedNodeTopologyCR.Status.Subnets = updatedSubnets
 
-	zoneSet := sets.NewString() 
+	zoneSet := sets.NewString()
 	for _, node := range allNodes {
 		zone, err := getZoneFromNode(context.TODO(), syncer, node)
-		if err != nil { return err }
-		zoneSet.Insert(zone) 
+		if err != nil {
+			return err
+		}
+		zoneSet.Insert(zone)
 	}
 	updatedNodeTopologyCR.Status.Zones = zoneSet.List()
 
@@ -190,18 +192,18 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 			klog.Errorf("Error updating the CR: %v, err: %v", nodeTopologyCRName, updateErr)
 			return updateErr
 		}
-		
+
 		klog.Infof("Successfully added the default subnet %v to nodetopology CR", defaultSubnet)
 
-		if zoneErr != nil { 
+		if zoneErr != nil {
 			klog.ErrorS(zoneErr, "Error updating zone for nodeTopology CR", "nodetopologyCR", nodeTopologyCRName, "node", node.Name)
 			return zoneErr
 		}
 		return nil
 	}
 
-    // Check if we need to update subnet in CR
-	shouldUpdateSubnet := false	
+	// Check if we need to update subnet in CR
+	shouldUpdateSubnet := false
 	if hasSubnetLabel {
 		// Check if subnet already exists in the CR
 		if !isSubnetInCR(nodeSubnet, nodeTopologyCR) {
@@ -216,9 +218,9 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 	// Nothing to update, skip
 	if !shouldUpdateSubnet && !shouldUpdateZone {
 		if zoneErr != nil {
-            klog.V(4).InfoS("Waiting for zone info to be populated, forcing retry", "node", node.Name)
-            return zoneErr
-        }
+			klog.V(4).InfoS("Waiting for zone info to be populated, forcing retry", "node", node.Name)
+			return zoneErr
+		}
 		klog.V(2).InfoS("Both subnet and zone are already up to date, skipping", "node", node.Name)
 		return nil
 	}
@@ -249,9 +251,9 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 	if shouldUpdateSubnet {
 		klog.V(2).Infof("Successfully add the subnet %v to the nodetopology CR", nodeSubnet)
 	}
-	if zoneErr != nil { 
+	if zoneErr != nil {
 		klog.ErrorS(zoneErr, "Error updating zone for nodeTopology CR", "nodetopologyCR", nodeTopologyCRName, "node", node.Name)
-		return zoneErr 
+		return zoneErr
 	}
 	if shouldUpdateZone {
 		klog.V(2).Infof("Successfully add zone %v to the nodetopology CR", zone)
@@ -313,7 +315,7 @@ func isSubnetInCR(nodeSubnet string, nodeTopologyCR *nodetopologyv1.NodeTopology
 	return false
 }
 
-func getZoneFromNode(ctx context.Context, syncer *NodeTopologySyncer, node *v1.Node) (string, error){
+func getZoneFromNode(ctx context.Context, syncer *NodeTopologySyncer, node *v1.Node) (string, error) {
 	providerID := node.Spec.ProviderID
 	if providerID == "" {
 		err := fmt.Errorf("node doesn't have providerID")
@@ -324,7 +326,7 @@ func getZoneFromNode(ctx context.Context, syncer *NodeTopologySyncer, node *v1.N
 	nodeZoneConfig, err := syncer.cloud.GetZoneByProviderID(ctx, providerID)
 	if err != nil {
 		klog.ErrorS(err, "Failed to get zone information for node", "node", node.Name, "providerID", providerID)
-		return "", err		
+		return "", err
 	}
 
 	return nodeZoneConfig.FailureDomain, nil

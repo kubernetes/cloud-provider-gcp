@@ -400,6 +400,9 @@ func TestNodeTopologySync(t *testing.T) {
 			fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, 0*time.Second)
 			fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
 			for _, node := range tc.nodeListInCache {
+				node.Spec = v1.NodeSpec{
+					ProviderID: "gce://test-project/us-central1-b/node-1",
+				}
 				fakeNodeInformer.Informer().GetStore().Add(node)
 			}
 			syncer := &NodeTopologySyncer{
@@ -435,10 +438,10 @@ func TestNodeTopologySyncZone(t *testing.T) {
 		name            string
 		node            *v1.Node
 		nodeListInCache []*v1.Node
-		existingZones 	[]string
+		existingZones   []string
 		expectedZones   []string
 		wantErr         bool
-		continueWithErr	bool
+		continueWithErr bool
 		existingSubnets []string
 		wantSubnets     []string
 	}{
@@ -476,8 +479,8 @@ func TestNodeTopologySyncZone(t *testing.T) {
 				},
 			},
 			existingSubnets: []string{"subnet-def"},
-			existingZones: []string{"us-central1-b"},
-			expectedZones: []string{"us-central1-b", "us-central1-c"},
+			existingZones:   []string{"us-central1-b"},
+			expectedZones:   []string{"us-central1-b", "us-central1-c"},
 		},
 		{
 			name: "add new node in existing zone, no change to cr",
@@ -513,8 +516,8 @@ func TestNodeTopologySyncZone(t *testing.T) {
 				},
 			},
 			existingSubnets: []string{"subnet-def"},
-			existingZones: []string{"us-central1-b"},
-			expectedZones: []string{"us-central1-b"},
+			existingZones:   []string{"us-central1-b"},
+			expectedZones:   []string{"us-central1-b"},
 		},
 		{
 			name: "removing the only node in a zone, change cr",
@@ -538,8 +541,8 @@ func TestNodeTopologySyncZone(t *testing.T) {
 				},
 			},
 			existingSubnets: []string{"subnet-def"},
-			existingZones: []string{"us-central1-b", "us-central1-c"},
-			expectedZones: []string{"us-central1-b"},
+			existingZones:   []string{"us-central1-b", "us-central1-c"},
+			expectedZones:   []string{"us-central1-b"},
 		},
 		{
 			name: "removing all node, removing all zone from cr",
@@ -549,8 +552,8 @@ func TestNodeTopologySyncZone(t *testing.T) {
 				},
 			},
 			nodeListInCache: []*v1.Node{},
-			existingZones: []string{"us-central1-b"},
-			expectedZones: []string{},
+			existingZones:   []string{"us-central1-b"},
+			expectedZones:   []string{},
 		},
 		{
 			name: "removing node, other nodes still in same zone, not removing zone from cr",
@@ -574,8 +577,8 @@ func TestNodeTopologySyncZone(t *testing.T) {
 				},
 			},
 			existingSubnets: []string{"subnet-def"},
-			existingZones: []string{"us-central1-b"},
-			expectedZones: []string{"us-central1-b"},
+			existingZones:   []string{"us-central1-b"},
+			expectedZones:   []string{"us-central1-b"},
 		},
 		{
 			name: "add new node, providerID doesn't exist, return error",
@@ -597,9 +600,9 @@ func TestNodeTopologySyncZone(t *testing.T) {
 				},
 			},
 			existingSubnets: []string{"subnet-def"},
-			existingZones: []string{},
-			expectedZones: []string{},
-			wantErr: true,
+			existingZones:   []string{},
+			expectedZones:   []string{},
+			wantErr:         true,
 		},
 		{
 			name: "remove node, providerID doesn't exist, return error",
@@ -622,7 +625,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 			},
 			existingZones: []string{"us-central1-b"},
 			expectedZones: []string{},
-			wantErr: true,
+			wantErr:       true,
 		},
 		{
 			name: "No subnet in cr, add new node, change cr",
@@ -645,7 +648,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 					},
 				},
 			},
-			
+
 			existingZones: []string{},
 			expectedZones: []string{"us-central1-b"},
 			wantSubnets:   []string{"subnet-def"},
@@ -671,7 +674,7 @@ func TestNodeTopologySyncZone(t *testing.T) {
 					},
 				},
 			},
-			
+
 			existingZones: []string{},
 			expectedZones: []string{"us-central1-b"},
 			wantSubnets:   []string{"subnet-def"},
@@ -696,10 +699,10 @@ func TestNodeTopologySyncZone(t *testing.T) {
 				},
 			},
 			continueWithErr: true,
-			existingZones: []string{},
-			expectedZones: []string{},
-			wantSubnets:   []string{"subnet-def"},
-		},	
+			existingZones:   []string{},
+			expectedZones:   []string{},
+			wantSubnets:     []string{"subnet-def"},
+		},
 	}
 
 	for _, tc := range tests {
