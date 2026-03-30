@@ -32,71 +32,70 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 )
 
-// NetworkInterfaceInformer provides access to a shared informer and lister for
-// NetworkInterfaces.
-type NetworkInterfaceInformer interface {
+// SubnetworkInformer provides access to a shared informer and lister for
+// Subnetworks.
+type SubnetworkInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() networkv1.NetworkInterfaceLister
+	Lister() networkv1.SubnetworkLister
 }
 
-type networkInterfaceInformer struct {
+type subnetworkInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
-	namespace        string
 }
 
-// NewNetworkInterfaceInformer constructs a new informer for NetworkInterface type.
+// NewSubnetworkInformer constructs a new informer for Subnetwork type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewNetworkInterfaceInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredNetworkInterfaceInformer(client, namespace, resyncPeriod, indexers, nil)
+func NewSubnetworkInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredSubnetworkInformer(client, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredNetworkInterfaceInformer constructs a new informer for NetworkInterface type.
+// NewFilteredSubnetworkInformer constructs a new informer for Subnetwork type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredNetworkInterfaceInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredSubnetworkInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.NetworkingV1().NetworkInterfaces(namespace).List(context.Background(), options)
+				return client.NetworkingV1().Subnetworks().List(context.Background(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.NetworkingV1().NetworkInterfaces(namespace).Watch(context.Background(), options)
+				return client.NetworkingV1().Subnetworks().Watch(context.Background(), options)
 			},
 			ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.NetworkingV1().NetworkInterfaces(namespace).List(ctx, options)
+				return client.NetworkingV1().Subnetworks().List(ctx, options)
 			},
 			WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.NetworkingV1().NetworkInterfaces(namespace).Watch(ctx, options)
+				return client.NetworkingV1().Subnetworks().Watch(ctx, options)
 			},
 		}, client),
-		&apisnetworkv1.NetworkInterface{},
+		&apisnetworkv1.Subnetwork{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func (f *networkInterfaceInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredNetworkInterfaceInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func (f *subnetworkInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewFilteredSubnetworkInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *networkInterfaceInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisnetworkv1.NetworkInterface{}, f.defaultInformer)
+func (f *subnetworkInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&apisnetworkv1.Subnetwork{}, f.defaultInformer)
 }
 
-func (f *networkInterfaceInformer) Lister() networkv1.NetworkInterfaceLister {
-	return networkv1.NewNetworkInterfaceLister(f.Informer().GetIndexer())
+func (f *subnetworkInformer) Lister() networkv1.SubnetworkLister {
+	return networkv1.NewSubnetworkLister(f.Informer().GetIndexer())
 }

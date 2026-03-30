@@ -35,25 +35,20 @@ github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/mtcontext
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/taskqueue
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfigcr
-# github.com/GoogleCloudPlatform/gke-networking-api v0.1.2-0.20240904205008-bc15495fd43f
-## explicit; go 1.22.0
+# github.com/GoogleCloudPlatform/gke-networking-api v0.2.1-0.20260327205951-1d0cb5d74c02
+## explicit; go 1.25.0
 github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1
-github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1alpha1
 github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/fake
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/scheme
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/typed/network/v1
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/typed/network/v1/fake
-github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/typed/network/v1alpha1
-github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/typed/network/v1alpha1/fake
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/internalinterfaces
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1
-github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1alpha1
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/listers/network/v1
-github.com/GoogleCloudPlatform/gke-networking-api/client/network/listers/network/v1alpha1
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/fake
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/scheme
@@ -196,8 +191,8 @@ github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
-# github.com/google/pprof v0.0.0-20250403155104-27863c87afa6
-## explicit; go 1.23
+# github.com/google/pprof v0.0.0-20250820193118-f64d9cf942d6
+## explicit; go 1.24.0
 github.com/google/pprof/profile
 # github.com/google/s2a-go v0.1.8
 ## explicit; go 1.20
@@ -324,7 +319,7 @@ github.com/onsi/ginkgo/v2/internal/reporters
 github.com/onsi/ginkgo/v2/internal/testingtproxy
 github.com/onsi/ginkgo/v2/reporters
 github.com/onsi/ginkgo/v2/types
-# github.com/onsi/gomega v1.38.2
+# github.com/onsi/gomega v1.38.3
 ## explicit; go 1.23.0
 github.com/onsi/gomega
 github.com/onsi/gomega/format
