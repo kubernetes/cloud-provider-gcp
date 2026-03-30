@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
+LOCAL_BIN := $(PROJECT_DIR)/bin
+GCP_PROJECT ?= $(shell gcloud config get-value project)
 
 GIT_VERSION := $(shell git describe --tags --always --dirty | sed 's|.*/||')
 GIT_COMMIT := $(shell git rev-parse HEAD)
@@ -92,10 +95,11 @@ gke-gcloud-auth-plugin-windows-amd64 gke-gcloud-auth-plugin-windows-arm64 gke-gc
 	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/windows/$*
 	CGO_ENABLED=0 GOOS=windows GOARCH=$* go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/windows/$*/gke-gcloud-auth-plugin.exe k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
 
-.PHONY: gke-gcloud-auth-plugin-darwin-arm64
-gke-gcloud-auth-plugin-darwin-arm64:
-	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/arm64/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
+.PHONY: gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64
+gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64: gke-gcloud-auth-plugin-darwin-%:
+	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/$*
+	CGO_ENABLED=0 GOOS=darwin GOARCH=$* go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/$*/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
+
 
 ## --------------------------------------
 ##@ Docker
@@ -120,11 +124,6 @@ clean-builder: ## Remove the docker buildx builder.
 	@echo "Removing docker buildx builder..."
 	docker buildx rm multiarch-multiplatform-builder || true
 	@echo "Docker buildx builder removed."
-
-.PHONY: gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64
-gke-gcloud-auth-plugin-darwin-arm64 gke-gcloud-auth-plugin-darwin-amd64: gke-gcloud-auth-plugin-darwin-%:
-	mkdir -p release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/$*
-	CGO_ENABLED=0 GOOS=darwin GOARCH=$* go build $(LDFLAGS) -o release/$(GIT_VERSION)/gke-gcloud-auth-plugin/darwin/$*/gke-gcloud-auth-plugin k8s.io/cloud-provider-gcp/cmd/gke-gcloud-auth-plugin
   
 .PHONY: copy-binaries-to-gcs
 copy-binaries-to-gcs: build-all ## Build and copy binaries to GCS.
@@ -316,7 +315,8 @@ bump-cluster: ## Bump cluster version.
 
 .PHONY: push-images
 push-images: ## Push images to IMAGE_REPO.
-	./tools/push-images
+	gcloud auth configure-docker
+	IMAGE_REPO=$(IMAGE_REPO) IMAGE_TAG=$(IMAGE_TAG) ./tools/push-images
 
 .PHONY: merge-licenses
 merge-licenses: ## Merge licenses from vendor directory.
@@ -329,3 +329,87 @@ run-e2e-test: ## Run e2e tests.
 .PHONY: verify-up-to-date
 verify-up-to-date: ## Verify that the repository is up to date.
 	./tools/verify-up-to-date.sh
+
+.PHONY: print-k8s-version
+print-k8s-version: ## Print the pinned Kubernetes version.
+	@if [ -f ginko-test-package-version.env ]; then cat ginko-test-package-version.env | tr -d '[:space:]'; else curl -sL https://dl.k8s.io/release/stable.txt; fi
+
+## --------------------------------------
+##@ kOps E2E
+## --------------------------------------
+
+KOPS_CLUSTER_NAME ?= kops-e2e.k8s.local
+GCP_LOCATION ?= us-central1
+GCP_ZONES ?= $(GCP_LOCATION)-b
+IMAGE_REPO ?= gcr.io/$(GCP_PROJECT)
+KOPS_STATE_STORE ?= gs://kops-state-$(GCP_PROJECT)
+IMAGE_TAG ?= $(shell git rev-parse --short HEAD)
+
+.PHONY: kops-simple
+kops-simple: ## Run kOps simple E2E test scenario.
+	./e2e/scenarios/kops-simple
+
+.PHONY: install-kops-deps
+install-kops-deps: ## Install kubetest2 and other dependencies.
+	@echo "Installing kubetest2 and plugins..."
+	@mkdir -p $(LOCAL_BIN)
+	@GOBIN=$(LOCAL_BIN) go install sigs.k8s.io/kubetest2@latest
+	@GOBIN=$(LOCAL_BIN) go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest
+	@TEMP_DIR=$$(mktemp -d); \
+	trap 'rm -rf "$$TEMP_DIR"' EXIT; \
+	git clone --depth 1 https://github.com/kubernetes/kops.git "$$TEMP_DIR"; \
+	cd "$$TEMP_DIR/tests/e2e" && GOBIN=$(LOCAL_BIN) go install ./kubetest2-kops ./kubetest2-tester-kops
+	@echo "Downloading latest green kOps binary..."
+	@KOPS_BASE_URL=$$(curl -s https://storage.googleapis.com/k8s-staging-kops/kops/releases/markers/master/latest-ci-updown-green.txt); \
+	mkdir -p $(LOCAL_BIN); \
+	wget -qO $(LOCAL_BIN)/kops.tmp $${KOPS_BASE_URL}/linux/amd64/kops; \
+	chmod +x $(LOCAL_BIN)/kops.tmp; \
+	mv $(LOCAL_BIN)/kops.tmp $(LOCAL_BIN)/kops
+
+.PHONY: kops-tool
+kops-tool: $(LOCAL_BIN)/gkops ## Build the kOps lifecycle tool.
+
+$(LOCAL_BIN)/gkops: tools/kops/main.go tools/kops/pkg/kops/*.go
+	@echo "Building kOps lifecycle tool..."
+	mkdir -p $(LOCAL_BIN)
+	go build -o $(LOCAL_BIN)/gkops tools/kops/main.go
+
+.PHONY: kops-setup
+kops-setup: install-kops-deps kops-tool push-images ## Setup environment for kOps E2E.
+
+.PHONY: kops-up
+kops-up: kops-setup ## Provision kOps cluster.
+	PATH=$(LOCAL_BIN):$(PATH) KOPS_STATE_STORE=$(KOPS_STATE_STORE) $(LOCAL_BIN)/gkops up \
+		--cluster-name=$(KOPS_CLUSTER_NAME) \
+		--gcp-project=$(GCP_PROJECT) \
+		--gcp-location=$(GCP_LOCATION) \
+		--gcp-zones=$(GCP_ZONES) \
+		--state-store=$(KOPS_STATE_STORE) \
+		--image-repo=$(IMAGE_REPO) \
+		--image-tag=$(IMAGE_TAG)
+
+.PHONY: kops-down
+kops-down: kops-tool ## Tear down kOps cluster.
+	PATH=$(LOCAL_BIN):$(PATH) KOPS_STATE_STORE=$(KOPS_STATE_STORE) $(LOCAL_BIN)/gkops down \
+		--cluster-name=$(KOPS_CLUSTER_NAME) \
+		--gcp-project=$(GCP_PROJECT) \
+		--state-store=$(KOPS_STATE_STORE)
+
+.PHONY: kops-e2e-test
+kops-e2e-test: kops-tool ## Run E2E tests on kOps cluster.
+	@echo "Running E2E tests on cluster $(KOPS_CLUSTER_NAME)..."
+	PATH=$(LOCAL_BIN):$(PATH) KOPS_STATE_STORE=$(KOPS_STATE_STORE) KOPS_CLUSTER_NAME= CLUSTER_NAME= $(LOCAL_BIN)/kubetest2 kops \
+		-v=2 \
+		--cloud-provider=gce \
+		--cluster-name=$(KOPS_CLUSTER_NAME) \
+		--kops-binary-path=$(LOCAL_BIN)/kops \
+		--gcp-project=$(GCP_PROJECT) \
+		--admin-access=$(ADMIN_ACCESS) \
+		--test=kops \
+		--kubernetes-version=$(K8S_VERSION) \
+		-- \
+		--parallel=30 \
+		--test-package-version="${K8S_VERSION}" \
+		--skip-regex="\[Serial\]" \
+		--focus-regex="\[Conformance\]"
+
