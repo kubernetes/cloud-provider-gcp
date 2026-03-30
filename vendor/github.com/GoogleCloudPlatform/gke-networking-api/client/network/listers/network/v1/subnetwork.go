@@ -25,24 +25,24 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 )
 
-// GKENetworkParamSetLister helps list GKENetworkParamSets.
+// SubnetworkLister helps list Subnetworks.
 // All objects returned here must be treated as read-only.
-type GKENetworkParamSetLister interface {
-	// List lists all GKENetworkParamSets in the indexer.
+type SubnetworkLister interface {
+	// List lists all Subnetworks in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*networkv1.GKENetworkParamSet, err error)
-	// Get retrieves the GKENetworkParamSet from the index for a given name.
+	List(selector labels.Selector) (ret []*networkv1.Subnetwork, err error)
+	// Get retrieves the Subnetwork from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*networkv1.GKENetworkParamSet, error)
-	GKENetworkParamSetListerExpansion
+	Get(name string) (*networkv1.Subnetwork, error)
+	SubnetworkListerExpansion
 }
 
-// gKENetworkParamSetLister implements the GKENetworkParamSetLister interface.
-type gKENetworkParamSetLister struct {
-	listers.ResourceIndexer[*networkv1.GKENetworkParamSet]
+// subnetworkLister implements the SubnetworkLister interface.
+type subnetworkLister struct {
+	listers.ResourceIndexer[*networkv1.Subnetwork]
 }
 
-// NewGKENetworkParamSetLister returns a new GKENetworkParamSetLister.
-func NewGKENetworkParamSetLister(indexer cache.Indexer) GKENetworkParamSetLister {
-	return &gKENetworkParamSetLister{listers.New[*networkv1.GKENetworkParamSet](indexer, networkv1.Resource("gkenetworkparamset"))}
+// NewSubnetworkLister returns a new SubnetworkLister.
+func NewSubnetworkLister(indexer cache.Indexer) SubnetworkLister {
+	return &subnetworkLister{listers.New[*networkv1.Subnetwork](indexer, networkv1.Resource("subnetwork"))}
 }
