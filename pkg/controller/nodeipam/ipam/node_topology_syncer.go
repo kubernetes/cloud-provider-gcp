@@ -147,7 +147,7 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 	zone, zoneErr := getZoneFromNode(context.TODO(), syncer, node)
 	shouldUpdateZone := false
 	if zoneErr == nil {
-		shouldUpdateZone = !isNodeZoneInStatus(zone, nodeTopologyCR)
+		shouldUpdateZone = !isZoneInCR(zone, nodeTopologyCR)
 	}
 
 	crSubnets := nodeTopologyCR.Status.Subnets
@@ -200,24 +200,17 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		return nil
 	}
 
+    // Check if we need to update subnet in CR
 	shouldUpdateSubnet := false	
-	if !hasSubnetLabel {
-		klog.V(2).Infof("No additional subnet detected. Default subnetwork is added to the CR.")
-	} else {
+	if hasSubnetLabel {
 		// Check if subnet already exists in the CR
-		exists := false
-		for _, subnet := range crSubnets {
-			if subnet.Name == nodeSubnet {
-				exists = true
-				break
-			}
-		}
-
-		if exists {
-			klog.V(2).InfoS("Subnet already exists in the node topology CR", "subnet", nodeSubnet)
-		} else {
+		if !isSubnetInCR(nodeSubnet, nodeTopologyCR) {
 			shouldUpdateSubnet = true
+		} else {
+			klog.V(2).InfoS("Subnet already exists in the node topology CR", "subnet", nodeSubnet)
 		}
+	} else {
+		klog.V(2).Infof("No additional subnet detected. Default subnetwork is added to the CR.")
 	}
 
 	// Nothing to update, skip
@@ -302,9 +295,18 @@ func getSubnetWithPrefixFromURL(url string) (subnetName string, subnetPrefix str
 	return
 }
 
-func isNodeZoneInStatus(nodeZone string, nodeTopologyCR *nodetopologyv1.NodeTopology) bool {
+func isZoneInCR(nodeZone string, nodeTopologyCR *nodetopologyv1.NodeTopology) bool {
 	for _, zone := range nodeTopologyCR.Status.Zones {
 		if zone == nodeZone {
+			return true
+		}
+	}
+	return false
+}
+
+func isSubnetInCR(nodeSubnet string, nodeTopologyCR *nodetopologyv1.NodeTopology) bool {
+	for _, subnet := range nodeTopologyCR.Status.Subnets {
+		if subnet.Name == nodeSubnet {
 			return true
 		}
 	}
