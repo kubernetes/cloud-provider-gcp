@@ -36,7 +36,7 @@ vet: ## Run Go vet to check for potential issues.
 .PHONY: build
 build: ## Build the Metis binary locally using workspace dependencies.
 	@mkdir -p bin
-	CGO_ENABLED=1 go build -a -o bin/metis -ldflags "$(VERSION_LDFLAGS)" ./cmd
+	CGO_ENABLED=0 go build -a -o bin/metis -ldflags "$(VERSION_LDFLAGS)" ./cmd
 
 .PHONY: test
 test: ## Run the Go tests.
