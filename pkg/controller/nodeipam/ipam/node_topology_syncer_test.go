@@ -2,6 +2,7 @@ package ipam
 
 import (
 	"context"
+	"sort"
 	"testing"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/cloud-provider-gcp/providers/gce"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // Mock the utilnode.NodePoolSubnetLabelPrefix for testing purposes
@@ -397,6 +400,9 @@ func TestNodeTopologySync(t *testing.T) {
 			fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, 0*time.Second)
 			fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
 			for _, node := range tc.nodeListInCache {
+				node.Spec = v1.NodeSpec{
+					ProviderID: "gce://test-project/us-central1-b/node-1",
+				}
 				fakeNodeInformer.Informer().GetStore().Add(node)
 			}
 			syncer := &NodeTopologySyncer{
@@ -422,6 +428,327 @@ func TestNodeTopologySync(t *testing.T) {
 	}
 }
 
+func TestNodeTopologySyncZone(t *testing.T) {
+	testClusterValues := gce.DefaultTestClusterValues()
+	testClusterValues.SubnetworkURL = exampleSubnetURL
+	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+	ntClient := testClient()
+
+	tests := []struct {
+		name            string
+		node            *v1.Node
+		nodeListInCache []*v1.Node
+		existingZones   []string
+		expectedZones   []string
+		wantErr         bool
+		continueWithErr bool
+		existingSubnets []string
+		wantSubnets     []string
+	}{
+		{
+			name: "add new node in new zone, add zone to cr",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-2",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{
+						ProviderID: "gce://test-project/us-central1-b/node-1",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-2",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{
+						ProviderID: "gce://test-project/us-central1-c/node-2",
+					},
+				},
+			},
+			existingSubnets: []string{"subnet-def"},
+			existingZones:   []string{"us-central1-b"},
+			expectedZones:   []string{"us-central1-b", "us-central1-c"},
+		},
+		{
+			name: "add new node in existing zone, no change to cr",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-2",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{
+						ProviderID: "gce://test-project/us-central1-b/node-1",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-2",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{
+						ProviderID: "gce://test-project/us-central1-b/node-2",
+					},
+				},
+			},
+			existingSubnets: []string{"subnet-def"},
+			existingZones:   []string{"us-central1-b"},
+			expectedZones:   []string{"us-central1-b"},
+		},
+		{
+			name: "removing the only node in a zone, change cr",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "non-exist-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{
+						ProviderID: "gce://test-project/us-central1-b/node-1",
+					},
+				},
+			},
+			existingSubnets: []string{"subnet-def"},
+			existingZones:   []string{"us-central1-b", "us-central1-c"},
+			expectedZones:   []string{"us-central1-b"},
+		},
+		{
+			name: "removing all node, removing all zone from cr",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "non-exist-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{},
+			existingZones:   []string{"us-central1-b"},
+			expectedZones:   []string{},
+		},
+		{
+			name: "removing node, other nodes still in same zone, not removing zone from cr",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "non-exist-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{
+						ProviderID: "gce://test-project/us-central1-b/node-1",
+					},
+				},
+			},
+			existingSubnets: []string{"subnet-def"},
+			existingZones:   []string{"us-central1-b"},
+			expectedZones:   []string{"us-central1-b"},
+		},
+		{
+			name: "add new node, providerID doesn't exist, return error",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-1",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{},
+				},
+			},
+			existingSubnets: []string{"subnet-def"},
+			existingZones:   []string{},
+			expectedZones:   []string{},
+			wantErr:         true,
+		},
+		{
+			name: "remove node, providerID doesn't exist, return error",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "non-exist-node",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{},
+				},
+			},
+			existingZones: []string{"us-central1-b"},
+			expectedZones: []string{},
+			wantErr:       true,
+		},
+		{
+			name: "No subnet in cr, add new node, change cr",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-1",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{
+						ProviderID: "gce://test-project/us-central1-b/node-1",
+					},
+				},
+			},
+
+			existingZones: []string{},
+			expectedZones: []string{"us-central1-b"},
+			wantSubnets:   []string{"subnet-def"},
+		},
+		{
+			name: "No subnet in cr, add new node, update cr",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-1",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{
+						ProviderID: "gce://test-project/us-central1-b/node-1",
+					},
+				},
+			},
+
+			existingZones: []string{},
+			expectedZones: []string{"us-central1-b"},
+			wantSubnets:   []string{"subnet-def"},
+		},
+		{
+			name: "No subnet in cr, new node don't have providerID, only update subnet",
+			node: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-1",
+				},
+			},
+			nodeListInCache: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1",
+						Labels: map[string]string{
+							testNodePoolSubnetLabelPrefix: "subnet-def",
+							"another-label":               "value",
+						},
+					},
+					Spec: v1.NodeSpec{},
+				},
+			},
+			continueWithErr: true,
+			existingZones:   []string{},
+			expectedZones:   []string{},
+			wantSubnets:     []string{"subnet-def"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			addZonesToCR(tc.existingZones, ntClient)
+			fakeClient := &fake.Clientset{}
+			fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, 0*time.Second)
+			fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
+			for _, node := range tc.nodeListInCache {
+				fakeNodeInformer.Informer().GetStore().Add(node)
+			}
+			syncer := &NodeTopologySyncer{
+				cloud:              fakeGCE,
+				nodeTopologyClient: ntClient,
+				nodeLister:         fakeNodeInformer.Lister(),
+			}
+			key, _ := nodeTopologyKeyFun(tc.node)
+			err := syncer.sync(key)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("NodeTopologySyncer.sync() returns nil but want error")
+				}
+				return
+			}
+			if err != nil && !tc.continueWithErr {
+				t.Fatalf("NodeTopologySyncer.sync() returned error: %v", err)
+			}
+			updatedNodeTopologyCR, _ := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().Get(context.TODO(), "default", metav1.GetOptions{})
+			actualZones := updatedNodeTopologyCR.Status.Zones
+			sort.Strings(actualZones)
+			sort.Strings(tc.expectedZones)
+
+			if diff := cmp.Diff(tc.expectedZones, actualZones); diff != "" {
+				t.Errorf("Zones mismatch (-want +got):\n%s", diff)
+			}
+
+			if len(tc.wantSubnets) == 0 {
+				return
+			}
+			if ok, cr := verifySubnetsInCR(t, tc.wantSubnets, ntClient); !ok {
+				t.Errorf("NodeTopologySyncer.sync() returned incorrect subnets, got %v, expected %v", cr.Status.Subnets, tc.wantSubnets)
+			}
+		})
+	}
+}
+
 func addSubnetsToCR(subnets []string, client ntclient.Interface) {
 	ctx := context.Background()
 
@@ -436,6 +763,20 @@ func addSubnetsToCR(subnets []string, client ntclient.Interface) {
 			Name:       subnet,
 			SubnetPath: exampleSubnetPathPrefix + subnet,
 		})
+	}
+	client.NetworkingV1().NodeTopologies().UpdateStatus(ctx, cr, metav1.UpdateOptions{})
+}
+
+func addZonesToCR(zones []string, client ntclient.Interface) {
+	ctx := context.Background()
+
+	cr := &ntv1.NodeTopology{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "default",
+		},
+	}
+	for _, zone := range zones {
+		cr.Status.Zones = append(cr.Status.Zones, zone)
 	}
 	client.NetworkingV1().NodeTopologies().UpdateStatus(ctx, cr, metav1.UpdateOptions{})
 }
