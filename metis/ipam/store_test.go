@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	_ "github.com/ncruces/go-sqlite3/driver" // SQLite driver
 )
 
 // TestNewStore_SuccessAndClose verifies that a new Store can be created,

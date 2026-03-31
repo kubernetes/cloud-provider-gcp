@@ -24,7 +24,8 @@ import (
 	"path/filepath"
 
 	"github.com/go-logr/logr"
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	_ "github.com/ncruces/go-sqlite3/driver" // SQLite driver
+	_ "github.com/ncruces/go-sqlite3/embed"  // SQLite binary embed
 )
 
 //go:embed schema.sql
@@ -59,29 +60,26 @@ func NewStore(log logr.Logger, dbPath string) (*Store, error) {
 	// SQLite is configured directly through the DSN string. This approach
 	// guarantees every new connection spawned by the sql.DB pool inherits these
 	// exact configurations natively.
-	dsn := dbPath +
+	dsn := "file:" + dbPath +
 		// Enables Write-Ahead Logging (WAL) mode. This significantly improves
 		// concurrency by allowing multiple readers to access the database
 		// simultaneously without blocking a writer, which is critical for burst
 		// requests.
-		// See: https://www.sqlite.org/pragma.html#pragma_journal_mode
-		"?_journal_mode=WAL" +
+		"?_pragma=journal_mode(wal)" +
 		// Enforces foreign key constraints. SQLite ignores these by default.
 		// This is required to ensure ON DELETE CASCADE functions correctly on the
 		// ip_addresses table when a draining CIDR block is officially removed.
-		// See: https://www.sqlite.org/pragma.html#pragma_foreign_keys
-		"&_foreign_keys=on" +
+		"&_pragma=foreign_keys(on)" +
 		// Sets the busy timeout to 5000 milliseconds. If the database is locked
 		// by another transaction, this tells the SQLite driver to wait for up
 		// to 5 seconds before giving up and returning a locked error.
-		// See: https://www.sqlite.org/pragma.html#pragma_busy_timeout
-		"&_busy_timeout=5000" +
+		"&_pragma=busy_timeout(5000)" +
 		// Instructs the Go driver to send "BEGIN IMMEDIATE" instead of standard
 		// "BEGIN" when starting a transaction. This grabs a write lock instantly,
 		// preventing deadlocks when concurrent requests try to upgrade their
 		// read locks to write locks simultaneously. Note: This is a go-sqlite3
 		// driver feature, not a native SQLite PRAGMA.
-		// See: https://github.com/mattn/go-sqlite3#connection-string
+		// See: https://pkg.go.dev/github.com/ncruces/go-sqlite3/driver#hdr-Default_transaction_mode
 		"&_txlock=immediate" +
 		// Maps to PRAGMA synchronous = NORMAL. In WAL mode, this is the optimal
 		// setting for high-concurrency daemons. It prevents database corruption
@@ -89,7 +87,7 @@ func NewStore(log logr.Logger, dbPath string) (*Store, error) {
 		// performance than FULL mode, sacrificing only a few milliseconds of
 		// un-checkpointed durability.
 		// See: https://www.sqlite.org/pragma.html#pragma_synchronous
-		"&_synchronous=1"
+		"&_pragma=synchronous(1)"
 
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
