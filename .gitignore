@@ -9,3 +9,4 @@ _rundir/
 _tmp/
 /bin/
 __pycache__/
+/clusters/
