@@ -21,30 +21,27 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg"
-	"k8s.io/metis/pkg/dal"
 	"k8s.io/metis/pkg/store"
 )
 
 type adaptiveIpamServer struct {
 	adaptiveipam.UnimplementedAdaptiveIpamServer
-	dal             *dal.DataAccess
+	store           *store.Store
 	sockPath        string
 	releaseCooldown time.Duration
 	grpcServer      *grpc.Server
 }
 
 func newAdaptiveIpamServer(storeInstance *store.Store, socketPath string, releaseCooldown time.Duration) (*adaptiveIpamServer, error) {
-	logger := klog.Background() // klog/v2 provides a logr.Logger
-
-	dataAccess := dal.NewDataAccess(logger, storeInstance)
 	server := &adaptiveIpamServer{
-		dal:             dataAccess,
+		store:           storeInstance,
 		sockPath:        socketPath,
 		releaseCooldown: releaseCooldown,
 	}
@@ -69,13 +66,24 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 	var ipv4Alloc *adaptiveipam.PodIP
 	if req.Ipv4Config != nil {
 		if req.Ipv4Config.InitialPodCidr != "" {
-			if err := s.dal.AddCIDR(req.Network, req.Ipv4Config.InitialPodCidr); err != nil {
-				klog.ErrorS(err, "failed to add initial cidr block", "network", req.Network, "cidr", req.Ipv4Config.InitialPodCidr)
-				return nil, fmt.Errorf("failed to add initial cidr block %s for network %s: %w", req.Ipv4Config.InitialPodCidr, req.Network, err)
+			exists, err := s.store.GetCIDRBlockByCIDR(req.Ipv4Config.InitialPodCidr)
+			if err != nil {
+				klog.ErrorS(err, "failed to check if initial cidr block exists", "network", req.Network, "cidr", req.Ipv4Config.InitialPodCidr)
+				return nil, fmt.Errorf("failed to check if initial cidr block %s exists for network %s: %w", req.Ipv4Config.InitialPodCidr, req.Network, err)
+			}
+			if !exists {
+				if err := s.store.AddCIDR(req.Network, req.Ipv4Config.InitialPodCidr); err != nil {
+					if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+						klog.InfoS("Initial CIDR block already added by another thread", "network", req.Network, "cidr", req.Ipv4Config.InitialPodCidr)
+					} else {
+						klog.ErrorS(err, "failed to add initial cidr block", "network", req.Network, "cidr", req.Ipv4Config.InitialPodCidr)
+						return nil, fmt.Errorf("failed to add initial cidr block %s for network %s: %w", req.Ipv4Config.InitialPodCidr, req.Network, err)
+					}
+				}
 			}
 		}
 
-		ip, cidr, err := s.dal.AllocateIPv4(req.Network, req.Ipv4Config.InterfaceName, req.Ipv4Config.ContainerId, req.PodName, req.PodNamespace)
+		ip, cidr, err := s.store.AllocateIPv4ByNetwork(req.Network, req.Ipv4Config.InterfaceName, req.Ipv4Config.ContainerId)
 
 		if err != nil {
 			klog.ErrorS(err, "failed to allocate ipv4", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
@@ -104,7 +112,7 @@ func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptivei
 		"podName", req.PodName,
 		"podNamespace", req.PodNamespace)
 
-	count, err := s.dal.ReleaseIPsByOwner(req.Network, req.ContainerId, req.InterfaceName, s.releaseCooldown)
+	count, err := s.store.ReleaseIPByOwner(req.Network, req.ContainerId, req.InterfaceName, s.releaseCooldown)
 	if err != nil {
 		klog.ErrorS(err, "failed to deallocate ips", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		return nil, fmt.Errorf("failed to deallocate ips for pod %s/%s: %w", req.PodNamespace, req.PodName, err)

@@ -31,7 +31,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/api/adaptiveipam/v1"
-	"k8s.io/metis/pkg/dal"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -69,8 +68,7 @@ func TestAdaptiveIpamServer_AllocatePodIP(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	dalInstance := dal.NewDataAccess(logger, storeInstance)
-	server := &adaptiveIpamServer{dal: dalInstance}
+	server := &adaptiveIpamServer{store: storeInstance}
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -111,8 +109,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_Concurrency(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	dalInstance := dal.NewDataAccess(logger, storeInstance)
-	server := &adaptiveIpamServer{dal: dalInstance}
+	server := &adaptiveIpamServer{store: storeInstance}
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -191,8 +188,7 @@ func TestAdaptiveIpamServer_DeallocatePodIP(t *testing.T) {
 	}
 	defer s.Close()
 
-	dalInstance := dal.NewDataAccess(logger, s)
-	server := &adaptiveIpamServer{dal: dalInstance, sockPath: "", releaseCooldown: 1 * time.Minute}
+	server := &adaptiveIpamServer{store: s, sockPath: "", releaseCooldown: 1 * time.Minute}
 
 	network := "gke-pod-network"
 	cidr := "10.0.1.0/24"
@@ -263,8 +259,7 @@ func TestAdaptiveIpamServer_GRPCClientIntegration(t *testing.T) {
 	}
 	defer s.Close()
 
-	dalInstance := dal.NewDataAccess(logger, s)
-	server := &adaptiveIpamServer{dal: dalInstance, sockPath: sockPath}
+	server := &adaptiveIpamServer{store: s, sockPath: sockPath}
 
 	// 1. Start server in background
 	errCh := make(chan error, 1)
@@ -312,4 +307,3 @@ func TestAdaptiveIpamServer_GRPCClientIntegration(t *testing.T) {
 		t.Errorf("Expected valid IP address from gRPC client, got response: %v", resp)
 	}
 }
-

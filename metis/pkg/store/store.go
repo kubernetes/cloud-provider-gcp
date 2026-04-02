@@ -180,25 +180,19 @@ func (s *Store) DB() *sql.DB {
 	return s.db
 }
 
-// AllocateIPv4 finds the first available IP from Ready CIDR blocks and allocates it.
-// It returns the allocated IP address string and the CIDR block definition.
-func (s *Store) AllocateIPv4(cidrBlockID int64, interfaceName, containerID string) (string, string, error) {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return "", "", fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
+// allocateIPv4Tx is a helper that executes the IP allocation within an existing transaction.
+// It returns sql.ErrNoRows if the CIDR block is full or not found, allowing the caller to try another block.
+func (s *Store) allocateIPv4Tx(tx *sql.Tx, cidrBlockID int64, interfaceName, containerID string) (string, string, error) {
 	// 1. Fetch CIDR range for the given ID and verify it is not full
 	var cidrRange string
-	err = tx.QueryRow(`
+	err := tx.QueryRow(`
 		SELECT cidr FROM cidr_blocks 
 		WHERE id = ? AND ip_family = 'ipv4' AND total_ips > allocated_ips AND state = 'Ready'
 	`, cidrBlockID).Scan(&cidrRange)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return "", "", fmt.Errorf("cidr_block_id %d is either not found, full, or not ready", cidrBlockID)
+			return "", "", sql.ErrNoRows
 		}
 		return "", "", fmt.Errorf("failed to query cidr_block: %w", err)
 	}
@@ -214,7 +208,7 @@ func (s *Store) AllocateIPv4(cidrBlockID int64, interfaceName, containerID strin
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return "", "", fmt.Errorf("no available ip_address found for cidr_block_id %d", cidrBlockID)
+			return "", "", sql.ErrNoRows
 		}
 		return "", "", fmt.Errorf("failed to query ip_addresses: %w", err)
 	}
@@ -241,11 +235,99 @@ func (s *Store) AllocateIPv4(cidrBlockID int64, interfaceName, containerID strin
 		return "", "", fmt.Errorf("failed to update allocated_ips in cidr_blocks: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return "", "", fmt.Errorf("failed to commit transaction: %w", err)
+	return address, cidrRange, nil
+}
+
+// AllocateIPv4ByNetwork finds the first available IP from Ready CIDR blocks for a given network and allocates it.
+// It also performs an idempotency check to see if the container already has an IP allocated.
+func (s *Store) AllocateIPv4ByNetwork(network, interfaceName, containerID string) (string, string, error) {
+	// 1. Idempotency check (Fast Path - outside write transaction)
+	var address string
+	var cidrRange string
+	err := s.db.QueryRow(`
+		SELECT i.address, c.cidr 
+		FROM ip_addresses i 
+		JOIN cidr_blocks c ON i.cidr_block_id = c.id 
+		WHERE i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE AND c.ip_family = 'ipv4'
+		LIMIT 1
+	`, containerID, interfaceName).Scan(&address, &cidrRange)
+
+	if err == nil {
+		s.log.Info("Idempotency check hit (fast path), returning existing allocation", "containerID", containerID, "interfaceName", interfaceName, "address", address, "cidr", cidrRange)
+		return address, cidrRange, nil
+	}
+	if err != sql.ErrNoRows {
+		return "", "", fmt.Errorf("failed during fast-path idempotency check: %w", err)
 	}
 
-	return address, cidrRange, nil
+	// 2. Query available CIDRs (Outside write transaction)
+	rows, err := s.db.Query(`
+		SELECT id FROM cidr_blocks 
+		WHERE network = ? AND ip_family = 'ipv4' AND total_ips > allocated_ips AND state = 'Ready'
+	`, network)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to query available cidr blocks: %w", err)
+	}
+	defer rows.Close()
+
+	var cidrBlockIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return "", "", fmt.Errorf("failed to scan cidr block id: %w", err)
+		}
+		cidrBlockIDs = append(cidrBlockIDs, id)
+	}
+
+	if len(cidrBlockIDs) == 0 {
+		return "", "", fmt.Errorf("no available cidr blocks found for network %s", network)
+	}
+
+	// 3. Loop and try to allocate with short transactions
+	for _, cidrBlockID := range cidrBlockIDs {
+		// Start a short BEGIN IMMEDIATE transaction for this specific CIDR
+		tx, err := s.db.Begin()
+		if err != nil {
+			return "", "", fmt.Errorf("failed to begin transaction: %w", err)
+		}
+
+		// Re-check idempotency inside the lock to be 100% safe against concurrent race to different CIDRs
+		err = tx.QueryRow(`
+			SELECT i.address, c.cidr 
+			FROM ip_addresses i 
+			JOIN cidr_blocks c ON i.cidr_block_id = c.id 
+			WHERE i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE AND c.ip_family = 'ipv4'
+			LIMIT 1
+		`, containerID, interfaceName).Scan(&address, &cidrRange)
+
+		if err == nil {
+			tx.Rollback() // Release lock!
+			s.log.Info("Idempotency check hit (slow path), returning existing allocation", "containerID", containerID, "interfaceName", interfaceName, "address", address, "cidr", cidrRange)
+			return address, cidrRange, nil
+		}
+		if err != sql.ErrNoRows {
+			tx.Rollback()
+			return "", "", fmt.Errorf("failed during slow-path idempotency check: %w", err)
+		}
+
+		ip, cidr, err := s.allocateIPv4Tx(tx, cidrBlockID, interfaceName, containerID)
+		if err == nil {
+			if err := tx.Commit(); err != nil {
+				return "", "", fmt.Errorf("failed to commit transaction: %w", err)
+			}
+			return ip, cidr, nil
+		}
+
+		tx.Rollback() // Rollback if failed (full or error)
+
+		if err == sql.ErrNoRows {
+			s.log.V(4).Info("No available IPs in cidr block, tried next one", "cidrBlockID", cidrBlockID)
+			continue
+		}
+		return "", "", fmt.Errorf("failed to allocate ipv4 in cidr block %d: %w", cidrBlockID, err)
+	}
+
+	return "", "", fmt.Errorf("failed to allocate ipv4 in any cidr block for network %s", network)
 }
 
 // GetCIDRBlockByCIDR checks if a CIDR block already exists in the database.
