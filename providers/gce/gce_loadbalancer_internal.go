@@ -742,7 +742,7 @@ func (g *Cloud) ensureInternalInstanceGroups(name string, nodes []*v1.Node) ([]s
 	}
 
 	zonedNodes := splitNodesByZone(filteredNodes)
-	klog.V(2).Infof("ensureInternalInstanceGroups(%v): %d nodes over %d zones in region %v", name, len(nodes), len(zonedNodes), g.region)
+	klog.V(2).Infof("ensureInternalInstanceGroups(%v): %d filtered nodes over %d zones in region %v", name, len(filteredNodes), len(zonedNodes), g.region)
 
 	emptyZoneNodesNames := sets.NewString()
 	for _, n := range zonedNodes[""] {
