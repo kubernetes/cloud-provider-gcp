@@ -61,6 +61,22 @@ push-image: ## Build and push the multi-arch image independently.
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(TAG) --push .
 
+.PHONY: test-glibc-floor
+test-glibc-floor: ## Build image and test glibc floor locally in container
+	docker build \
+		--build-arg GIT_VERSION=v1.0.0 \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t metis-candidate .
+	@mkdir -p bin
+	-docker rm -f temp-metis 2>/dev/null
+	docker create --name temp-metis metis-candidate
+	docker cp temp-metis:/metis bin/metis-candidate
+	docker rm temp-metis
+	chmod +x bin/metis-candidate
+	docker run --rm -v $(CURDIR)/bin/metis-candidate:/metis ubuntu:22.04 /metis --help
+	rm bin/metis-candidate
+
 ##@ Help
 
 .PHONY: help

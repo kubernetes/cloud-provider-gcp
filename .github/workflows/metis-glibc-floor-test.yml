@@ -1,0 +1,30 @@
+name: Metis GLIBC Floor Test
+
+on:
+  pull_request:
+    paths:
+      - 'metis/**/*.go'
+      - 'metis/Dockerfile'
+
+jobs:
+  native-execution-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          cd metis
+          docker build -t metis-candidate .
+
+      - name: Extract binary
+        run: |
+          docker create --name temp-metis metis-candidate
+          docker cp temp-metis:/metis ./metis-candidate
+          docker rm temp-metis
+          chmod +x ./metis-candidate
+
+      - name: Execute binary natively
+        run: |
+          ./metis-candidate --help
