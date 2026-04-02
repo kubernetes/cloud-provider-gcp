@@ -104,3 +104,24 @@ func EnsureSSHKey(c *Config) error {
 
 	return nil
 }
+
+// CleanSSHKey cleanly removes SSH configuration metadata appended by kOps and deletes the generated keys.
+func CleanSSHKey(c *Config) error {
+	if c.SSHPrivateKey == "" {
+		return nil
+	}
+
+	fmt.Printf("Cleaning up SSH configuration and keys...\n")
+	cmd := exec.Command("gcloud", "compute", "--project="+c.GCPProject, "config-ssh", "--remove")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("Warning: failed to cleanly remove gcloud ssh configurations: %v\n", err)
+	}
+
+	// Remove the actual key files if they exist
+	_ = os.Remove(c.SSHPrivateKey)
+	_ = os.Remove(c.SSHPublicKey)
+
+	return nil
+}

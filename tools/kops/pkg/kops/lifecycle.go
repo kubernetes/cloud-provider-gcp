@@ -63,11 +63,37 @@ func Up(c *Config) error {
 	return runKubetest2(c, args)
 }
 
-// Down tears down the cluster.
+// Down tears down the cluster and performs local cleanup.
 func Down(c *Config) error {
 	args := commonArgs(c)
 	args = append(args, "--down")
-	return runKubetest2(c, args)
+
+	err := runKubetest2(c, args)
+	if err != nil {
+		return err
+	}
+
+	// Local cleanup of resources created during Up()
+	if c.TemplatePath != "" {
+		_ = os.Remove(c.TemplatePath)
+		_ = os.Remove(filepath.Join(filepath.Dir(c.TemplatePath), "cloud-provider-gcp.yaml"))
+
+		// If the templates were placed in the specific cluster workspace under "clusters/", remove the directory
+		dir := filepath.Dir(c.TemplatePath)
+		if filepath.Base(filepath.Dir(dir)) == "clusters" {
+			_ = os.RemoveAll(dir)
+		}
+	}
+
+	// Optional cleanup of local cluster.yaml if generated in root tree (due to environment/invocation nuances)
+	repoRoot, errRoot := repoRoot()
+	if errRoot == nil {
+		_ = os.Remove(filepath.Join(repoRoot, "cluster.yaml"))
+	}
+
+	_ = CleanSSHKey(c)
+
+	return nil
 }
 
 func commonArgs(c *Config) []string {
@@ -99,6 +125,10 @@ func commonArgs(c *Config) []string {
 
 	if c.GoogleAppCredentials != "" {
 		args = append(args, "--env=GOOGLE_APPLICATION_CREDENTIALS="+c.GoogleAppCredentials)
+	}
+
+	if user := os.Getenv("USER"); user != "" {
+		args = append(args, "--env=USER="+user)
 	}
 
 	return args
