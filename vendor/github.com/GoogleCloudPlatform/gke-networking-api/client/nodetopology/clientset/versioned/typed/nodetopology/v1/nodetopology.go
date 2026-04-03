@@ -19,15 +19,14 @@ limitations under the License.
 package v1
 
 import (
-	"context"
-	"time"
+	context "context"
 
-	v1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
+	nodetopologyv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
 	scheme "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
-	rest "k8s.io/client-go/rest"
+	gentype "k8s.io/client-go/gentype"
 )
 
 // NodeTopologiesGetter has a method to return a NodeTopologyInterface.
@@ -38,147 +37,34 @@ type NodeTopologiesGetter interface {
 
 // NodeTopologyInterface has methods to work with NodeTopology resources.
 type NodeTopologyInterface interface {
-	Create(ctx context.Context, nodeTopology *v1.NodeTopology, opts metav1.CreateOptions) (*v1.NodeTopology, error)
-	Update(ctx context.Context, nodeTopology *v1.NodeTopology, opts metav1.UpdateOptions) (*v1.NodeTopology, error)
-	UpdateStatus(ctx context.Context, nodeTopology *v1.NodeTopology, opts metav1.UpdateOptions) (*v1.NodeTopology, error)
+	Create(ctx context.Context, nodeTopology *nodetopologyv1.NodeTopology, opts metav1.CreateOptions) (*nodetopologyv1.NodeTopology, error)
+	Update(ctx context.Context, nodeTopology *nodetopologyv1.NodeTopology, opts metav1.UpdateOptions) (*nodetopologyv1.NodeTopology, error)
+	// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+	UpdateStatus(ctx context.Context, nodeTopology *nodetopologyv1.NodeTopology, opts metav1.UpdateOptions) (*nodetopologyv1.NodeTopology, error)
 	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error
-	Get(ctx context.Context, name string, opts metav1.GetOptions) (*v1.NodeTopology, error)
-	List(ctx context.Context, opts metav1.ListOptions) (*v1.NodeTopologyList, error)
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*nodetopologyv1.NodeTopology, error)
+	List(ctx context.Context, opts metav1.ListOptions) (*nodetopologyv1.NodeTopologyList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.NodeTopology, err error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *nodetopologyv1.NodeTopology, err error)
 	NodeTopologyExpansion
 }
 
 // nodeTopologies implements NodeTopologyInterface
 type nodeTopologies struct {
-	client rest.Interface
+	*gentype.ClientWithList[*nodetopologyv1.NodeTopology, *nodetopologyv1.NodeTopologyList]
 }
 
 // newNodeTopologies returns a NodeTopologies
 func newNodeTopologies(c *NetworkingV1Client) *nodeTopologies {
 	return &nodeTopologies{
-		client: c.RESTClient(),
+		gentype.NewClientWithList[*nodetopologyv1.NodeTopology, *nodetopologyv1.NodeTopologyList](
+			"nodetopologies",
+			c.RESTClient(),
+			scheme.ParameterCodec,
+			"",
+			func() *nodetopologyv1.NodeTopology { return &nodetopologyv1.NodeTopology{} },
+			func() *nodetopologyv1.NodeTopologyList { return &nodetopologyv1.NodeTopologyList{} },
+		),
 	}
-}
-
-// Get takes name of the nodeTopology, and returns the corresponding nodeTopology object, and an error if there is any.
-func (c *nodeTopologies) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.NodeTopology, err error) {
-	result = &v1.NodeTopology{}
-	err = c.client.Get().
-		Resource("nodetopologies").
-		Name(name).
-		VersionedParams(&options, scheme.ParameterCodec).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// List takes label and field selectors, and returns the list of NodeTopologies that match those selectors.
-func (c *nodeTopologies) List(ctx context.Context, opts metav1.ListOptions) (result *v1.NodeTopologyList, err error) {
-	var timeout time.Duration
-	if opts.TimeoutSeconds != nil {
-		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
-	}
-	result = &v1.NodeTopologyList{}
-	err = c.client.Get().
-		Resource("nodetopologies").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Watch returns a watch.Interface that watches the requested nodeTopologies.
-func (c *nodeTopologies) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	var timeout time.Duration
-	if opts.TimeoutSeconds != nil {
-		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
-	}
-	opts.Watch = true
-	return c.client.Get().
-		Resource("nodetopologies").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Watch(ctx)
-}
-
-// Create takes the representation of a nodeTopology and creates it.  Returns the server's representation of the nodeTopology, and an error, if there is any.
-func (c *nodeTopologies) Create(ctx context.Context, nodeTopology *v1.NodeTopology, opts metav1.CreateOptions) (result *v1.NodeTopology, err error) {
-	result = &v1.NodeTopology{}
-	err = c.client.Post().
-		Resource("nodetopologies").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(nodeTopology).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Update takes the representation of a nodeTopology and updates it. Returns the server's representation of the nodeTopology, and an error, if there is any.
-func (c *nodeTopologies) Update(ctx context.Context, nodeTopology *v1.NodeTopology, opts metav1.UpdateOptions) (result *v1.NodeTopology, err error) {
-	result = &v1.NodeTopology{}
-	err = c.client.Put().
-		Resource("nodetopologies").
-		Name(nodeTopology.Name).
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(nodeTopology).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *nodeTopologies) UpdateStatus(ctx context.Context, nodeTopology *v1.NodeTopology, opts metav1.UpdateOptions) (result *v1.NodeTopology, err error) {
-	result = &v1.NodeTopology{}
-	err = c.client.Put().
-		Resource("nodetopologies").
-		Name(nodeTopology.Name).
-		SubResource("status").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(nodeTopology).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Delete takes name of the nodeTopology and deletes it. Returns an error if one occurs.
-func (c *nodeTopologies) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	return c.client.Delete().
-		Resource("nodetopologies").
-		Name(name).
-		Body(&opts).
-		Do(ctx).
-		Error()
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *nodeTopologies) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	var timeout time.Duration
-	if listOpts.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
-	}
-	return c.client.Delete().
-		Resource("nodetopologies").
-		VersionedParams(&listOpts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Body(&opts).
-		Do(ctx).
-		Error()
-}
-
-// Patch applies the patch and returns the patched nodeTopology.
-func (c *nodeTopologies) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.NodeTopology, err error) {
-	result = &v1.NodeTopology{}
-	err = c.client.Patch(pt).
-		Resource("nodetopologies").
-		Name(name).
-		SubResource(subresources...).
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(data).
-		Do(ctx).
-		Into(result)
-	return
 }

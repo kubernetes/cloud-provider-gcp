@@ -7,3 +7,4 @@ _artifacts/
 _rundir/
 _tmp/
 /bin/
+__pycache__/
