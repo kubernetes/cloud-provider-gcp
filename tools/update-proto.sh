@@ -19,9 +19,17 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# This script currently only supports Linux x86_64
+if [[ "$(uname -s)" != "Linux" ]] || [[ "$(uname -m)" != "x86_64" ]]; then
+  echo "Error: This script is currently only supported on Linux x86_64."
+  echo "Detected OS: $(uname -s) Architecture: $(uname -m)"
+  exit 1
+fi
+
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 cd "${KUBE_ROOT}"
-TOOLS_BIN="${PWD}/_tmp/bin"
+_TMP_DIR="${PWD}/_tmp"
+TOOLS_BIN="${_TMP_DIR}/bin"
 mkdir -p "${TOOLS_BIN}"
 export PATH="${TOOLS_BIN}:${PATH}"
 
@@ -32,9 +40,14 @@ if ! command -v protoc &> /dev/null; then
   PROTOC_ZIP="protoc-${PROTOC_VERSION}-linux-x86_64.zip"
   PROTOC_URL="https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/${PROTOC_ZIP}"
   
-  TMP_PROTOC_DIR=$(mktemp -d "${PWD}/_tmp/protoc.XXXXXX")
+  TMP_PROTOC_DIR=$(mktemp -d "${_TMP_DIR}/protoc.XXXXXX")
   
   curl -L -o "${TMP_PROTOC_DIR}/${PROTOC_ZIP}" "${PROTOC_URL}"
+  # The checksum can be found on the GitHub Release page for Protocol Buffers
+  # (https://github.com/protocolbuffers/protobuf/releases/tag/v${PROTOC_VERSION}).
+  echo "Verifying checksum..."
+  echo "af27ea66cd26938fe48587804ca7d4817457a08350021a1c6e23a27ccc8c6904  ${TMP_PROTOC_DIR}/${PROTOC_ZIP}" | sha256sum -c -
+
   unzip -q -o "${TMP_PROTOC_DIR}/${PROTOC_ZIP}" -d "${TMP_PROTOC_DIR}"
   
   mv "${TMP_PROTOC_DIR}/bin/protoc" "${TOOLS_BIN}/"

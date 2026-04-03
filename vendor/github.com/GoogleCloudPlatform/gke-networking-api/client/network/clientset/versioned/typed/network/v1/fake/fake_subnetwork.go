@@ -24,24 +24,24 @@ import (
 	gentype "k8s.io/client-go/gentype"
 )
 
-// fakeNetworks implements NetworkInterface
-type fakeNetworks struct {
-	*gentype.FakeClientWithList[*v1.Network, *v1.NetworkList]
+// fakeSubnetworks implements SubnetworkInterface
+type fakeSubnetworks struct {
+	*gentype.FakeClientWithList[*v1.Subnetwork, *v1.SubnetworkList]
 	Fake *FakeNetworkingV1
 }
 
-func newFakeNetworks(fake *FakeNetworkingV1) networkv1.NetworkInterface {
-	return &fakeNetworks{
-		gentype.NewFakeClientWithList[*v1.Network, *v1.NetworkList](
+func newFakeSubnetworks(fake *FakeNetworkingV1) networkv1.SubnetworkInterface {
+	return &fakeSubnetworks{
+		gentype.NewFakeClientWithList[*v1.Subnetwork, *v1.SubnetworkList](
 			fake.Fake,
 			"",
-			v1.SchemeGroupVersion.WithResource("networks"),
-			v1.SchemeGroupVersion.WithKind("Network"),
-			func() *v1.Network { return &v1.Network{} },
-			func() *v1.NetworkList { return &v1.NetworkList{} },
-			func(dst, src *v1.NetworkList) { dst.ListMeta = src.ListMeta },
-			func(list *v1.NetworkList) []*v1.Network { return gentype.ToPointerSlice(list.Items) },
-			func(list *v1.NetworkList, items []*v1.Network) { list.Items = gentype.FromPointerSlice(items) },
+			v1.SchemeGroupVersion.WithResource("subnetworks"),
+			v1.SchemeGroupVersion.WithKind("Subnetwork"),
+			func() *v1.Subnetwork { return &v1.Subnetwork{} },
+			func() *v1.SubnetworkList { return &v1.SubnetworkList{} },
+			func(dst, src *v1.SubnetworkList) { dst.ListMeta = src.ListMeta },
+			func(list *v1.SubnetworkList) []*v1.Subnetwork { return gentype.ToPointerSlice(list.Items) },
+			func(list *v1.SubnetworkList, items []*v1.Subnetwork) { list.Items = gentype.FromPointerSlice(items) },
 		),
 		fake,
 	}
