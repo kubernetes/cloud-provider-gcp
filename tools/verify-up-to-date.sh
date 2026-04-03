@@ -23,6 +23,7 @@ cd $KUBE_ROOT
 
 tools/update-gofmt.sh
 tools/update_vendor.sh
+tools/update-proto.sh
 
 source tools/version.sh
 get_version_vars
