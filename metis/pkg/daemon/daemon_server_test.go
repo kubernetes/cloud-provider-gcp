@@ -324,7 +324,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_RetryOnDBError(t *testing.T) {
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
-	
+
 	if err := storeInstance.AddCIDR(context.Background(), network, cidr); err != nil {
 		t.Fatalf("Failed to add CIDR: %v", err)
 	}
