@@ -19,6 +19,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -36,7 +37,7 @@ func TestNewStore_SuccessAndClose(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "test_ipam.db")
 	logger := logr.Discard()
 
-	store, err := NewStore(logger, dbPath)
+	store, err := NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestNewStore_Idempotency(t *testing.T) {
 	logger := logr.Discard()
 
 	// Initial creation sets up the full schema and user_version = 1.
-	store1, err := NewStore(logger, dbPath)
+	store1, err := NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("First NewStore call failed: %v", err)
 	}
@@ -92,7 +93,7 @@ func TestNewStore_Idempotency(t *testing.T) {
 
 	// If the short-circuit works, it will see user_version=1 and return early,
 	// meaning it will NOT execute the CREATE statements to fix the missing index.
-	store2, err := NewStore(logger, dbPath)
+	store2, err := NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("Second NewStore call failed: %v", err)
 	}
@@ -121,7 +122,7 @@ func TestNewStore_SchemaVerification(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "schema_test.db")
 	logger := logr.Discard()
 
-	store, err := NewStore(logger, dbPath)
+	store, err := NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -168,7 +169,7 @@ func TestNewStore_SchemaVerification(t *testing.T) {
 // same logical moment.
 func TestStore_Concurrency(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "ipam-concurrency.db")
-	s, err := NewStore(logr.Discard(), dbPath)
+	s, err := NewStore(context.Background(), logr.Discard(), dbPath)
 	if err != nil {
 		t.Fatalf("Failed to initialize store: %v", err)
 	}
@@ -225,7 +226,7 @@ func TestStore_Concurrency(t *testing.T) {
 // concurrent query can still execute successfully without hitting a pool bottleneck.
 func TestStore_MaxOpenConns_Limit(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "ipam-pool-limit.db")
-	s, err := NewStore(logr.Discard(), dbPath)
+	s, err := NewStore(context.Background(), logr.Discard(), dbPath)
 	if err != nil {
 		t.Fatalf("Failed to initialize store: %v", err)
 	}
@@ -291,7 +292,7 @@ func TestStore_AddCIDR(t *testing.T) {
 	tempDir := t.TempDir()
 
 	dbPath := filepath.Join(tempDir, "metis.sqlite")
-	s, err := NewStore(logger, dbPath)
+	s, err := NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("NewStore returned unexpected error: %v", err)
 	}
@@ -300,7 +301,7 @@ func TestStore_AddCIDR(t *testing.T) {
 	network := "gke-pod-network-addcidr"
 	cidr := "10.0.1.0/29" // 8 IPs: 10.0.1.0 to 10.0.1.7
 
-	err = s.AddCIDR(network, cidr)
+	err = s.AddCIDR(context.Background(), network, cidr)
 	if err != nil {
 		t.Fatalf("AddCIDR failed: %v", err)
 	}
@@ -365,12 +366,12 @@ func TestStore_AddCIDR(t *testing.T) {
 	}
 }
 
-func TestStore_AllocateIPv4ByNetwork_SingleCIDR_EdgeCases(t *testing.T) {
+func TestStore_AllocateIPv4_SingleCIDR_EdgeCases(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()
 
 	dbPath := filepath.Join(tempDir, "metis_allocate_network_single.sqlite")
-	s, err := NewStore(logger, dbPath)
+	s, err := NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("NewStore returned unexpected error: %v", err)
 	}
@@ -380,18 +381,20 @@ func TestStore_AllocateIPv4ByNetwork_SingleCIDR_EdgeCases(t *testing.T) {
 	cidr := "10.0.2.0/29" // 8 IPs: .0 to .7. Reserved: .0, .1, .7. Available: .2, .3, .4, .5, .6.
 
 	// Test Case 1: Error - No CIDR blocks found (DB empty)
-	_, _, err = s.AllocateIPv4ByNetwork(network, "eth0", "container-1")
+	_, _, err = s.AllocateIPv4(context.Background(), network, "eth0", "container-1")
 	if err == nil {
 		t.Error("Expected error for no CIDR blocks, got nil")
+	} else if !errors.Is(err, ErrNoAvailableIPs) {
+		t.Errorf("Expected ErrNoAvailableIPs, got %v", err)
 	}
 
 	// Add the CIDR
-	if err := s.AddCIDR(network, cidr); err != nil {
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
 		t.Fatalf("AddCIDR failed: %v", err)
 	}
 
 	// Test Case 2: Happy path - First allocation
-	ip1, cidrRange1, err := s.AllocateIPv4ByNetwork(network, "eth0", "container-1")
+	ip1, cidrRange1, err := s.AllocateIPv4(context.Background(), network, "eth0", "container-1")
 	if err != nil {
 		t.Fatalf("First allocation failed: %v", err)
 	}
@@ -417,7 +420,7 @@ func TestStore_AllocateIPv4ByNetwork_SingleCIDR_EdgeCases(t *testing.T) {
 	}
 
 	// Test Case 3: Happy path - Second allocation
-	ip2, _, err := s.AllocateIPv4ByNetwork(network, "eth0", "container-2")
+	ip2, _, err := s.AllocateIPv4(context.Background(), network, "eth0", "container-2")
 	if err != nil {
 		t.Fatalf("Second allocation failed: %v", err)
 	}
@@ -431,7 +434,7 @@ func TestStore_AllocateIPv4ByNetwork_SingleCIDR_EdgeCases(t *testing.T) {
 	// Let's allocate .4, .5, .6.
 	for i := 4; i <= 6; i++ {
 		expectedIP := fmt.Sprintf("10.0.2.%d", i)
-		ip, _, err := s.AllocateIPv4ByNetwork(network, "eth0", fmt.Sprintf("container-%d", i))
+		ip, _, err := s.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
 		if err != nil {
 			t.Fatalf("Allocation failed for %s: %v", expectedIP, err)
 		}
@@ -441,15 +444,17 @@ func TestStore_AllocateIPv4ByNetwork_SingleCIDR_EdgeCases(t *testing.T) {
 	}
 
 	// Now it should be exhausted. Next allocation should fail.
-	ipEx, _, err := s.AllocateIPv4ByNetwork(network, "eth0", "container-exhaust")
+	ipEx, _, err := s.AllocateIPv4(context.Background(), network, "eth0", "container-exhaust")
 	if err == nil {
 		t.Errorf("Expected error for exhausted CIDR, got nil. Returned IP: %s", ipEx)
+	} else if !errors.Is(err, ErrNoAvailableIPs) {
+		t.Errorf("Expected ErrNoAvailableIPs, got %v", err)
 	}
 
 	// Test Case 5: Error - No available IP address found (desync)
 	newNetwork := "gke-pod-network-2"
 	newCIDR := "10.0.3.0/29"
-	if err := s.AddCIDR(newNetwork, newCIDR); err != nil {
+	if err := s.AddCIDR(context.Background(), newNetwork, newCIDR); err != nil {
 		t.Fatalf("Failed to add new CIDR: %v", err)
 	}
 
@@ -465,9 +470,11 @@ func TestStore_AllocateIPv4ByNetwork_SingleCIDR_EdgeCases(t *testing.T) {
 		t.Fatalf("Failed to manually corrupt DB: %v", err)
 	}
 
-	ipDesync, _, err := s.AllocateIPv4ByNetwork(newNetwork, "eth0", "container-desync")
+	ipDesync, _, err := s.AllocateIPv4(context.Background(), newNetwork, "eth0", "container-desync")
 	if err == nil {
 		t.Errorf("Expected error due to IP address desync, got nil. Returned IP: %s", ipDesync)
+	} else if !errors.Is(err, ErrNoAvailableIPs) {
+		t.Errorf("Expected ErrNoAvailableIPs, got %v", err)
 	}
 }
 
@@ -476,7 +483,7 @@ func TestStore_ReleaseIPByOwner(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "metis_release_test.sqlite")
 
-	s, err := NewStore(logger, dbPath)
+	s, err := NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -485,7 +492,7 @@ func TestStore_ReleaseIPByOwner(t *testing.T) {
 	network := "test-network"
 	cidr := "10.0.1.0/24"
 
-	if err := s.AddCIDR(network, cidr); err != nil {
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
 		t.Fatalf("AddCIDR failed: %v", err)
 	}
 
@@ -498,9 +505,9 @@ func TestStore_ReleaseIPByOwner(t *testing.T) {
 	containerID := "test-container"
 	interfaceName := "eth0"
 
-	ip, _, err := s.AllocateIPv4ByNetwork(network, interfaceName, containerID)
+	ip, _, err := s.AllocateIPv4(context.Background(), network, interfaceName, containerID)
 	if err != nil {
-		t.Fatalf("AllocateIPv4ByNetwork failed: %v", err)
+		t.Fatalf("AllocateIPv4 failed: %v", err)
 	}
 
 	var allocatedIPs int
@@ -513,7 +520,7 @@ func TestStore_ReleaseIPByOwner(t *testing.T) {
 	}
 
 	cooloff := 1 * time.Minute
-	count, err := s.ReleaseIPByOwner(network, containerID, interfaceName, cooloff)
+	count, err := s.ReleaseIPByOwner(context.Background(), network, containerID, interfaceName, cooloff)
 	if err != nil {
 		t.Fatalf("ReleaseIPByOwner failed: %v", err)
 	}
@@ -543,12 +550,12 @@ func TestStore_ReleaseIPByOwner(t *testing.T) {
 	}
 }
 
-func TestStore_AllocateIPv4ByNetwork_FallbackAndCooldown(t *testing.T) {
+func TestStore_AllocateIPv4_FallbackAndCooldown(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "fallback_test.sqlite")
 
-	s, err := NewStore(logger, dbPath)
+	s, err := NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -557,34 +564,34 @@ func TestStore_AllocateIPv4ByNetwork_FallbackAndCooldown(t *testing.T) {
 	network := "test-network"
 	cidr1 := "10.0.1.0/29" // 5 available addresses (.2 to .6)
 
-	if err := s.AddCIDR(network, cidr1); err != nil {
+	if err := s.AddCIDR(context.Background(), network, cidr1); err != nil {
 		t.Fatalf("AddCIDR failed: %v", err)
 	}
 
 	// 1. Allocate 5 IPs to exhaust the first CIDR
 	for i := 1; i <= 5; i++ {
-		_, _, err := s.AllocateIPv4ByNetwork(network, "eth0", fmt.Sprintf("container-%d", i))
+		_, _, err := s.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
 		if err != nil {
 			t.Fatalf("Failed to allocate container-%d: %v", i, err)
 		}
 	}
 
 	// 2. Attempting to allocate another should FAIL because the first CIDR is full
-	_, _, err = s.AllocateIPv4ByNetwork(network, "eth0", "container-6")
+	_, _, err = s.AllocateIPv4(context.Background(), network, "eth0", "container-6")
 	if err == nil {
-		t.Error("Expected AllocateIPv4ByNetwork to fail when first CIDR is full, got nil")
+		t.Error("Expected AllocateIPv4 to fail when first CIDR is full, got nil")
 	}
 
 	// 3. Add a second CIDR block
 	cidr2 := "10.0.2.0/29"
-	if err := s.AddCIDR(network, cidr2); err != nil {
+	if err := s.AddCIDR(context.Background(), network, cidr2); err != nil {
 		t.Fatalf("Failed to add second CIDR block: %v", err)
 	}
 
 	// 4. Try allocating again, it should succeed by falling back to the second CIDR
-	ip, cidr, err := s.AllocateIPv4ByNetwork(network, "eth0", "container-7")
+	ip, cidr, err := s.AllocateIPv4(context.Background(), network, "eth0", "container-7")
 	if err != nil {
-		t.Fatalf("AllocateIPv4ByNetwork failed after adding second CIDR: %v", err)
+		t.Fatalf("AllocateIPv4 failed after adding second CIDR: %v", err)
 	}
 
 	if ip != "10.0.2.2" { // First available in second CIDR
@@ -595,16 +602,16 @@ func TestStore_AllocateIPv4ByNetwork_FallbackAndCooldown(t *testing.T) {
 	}
 
 	// 5. Release one IP with cooldown
-	_, err = s.ReleaseIPByOwner(network, "container-1", "eth0", 1*time.Hour)
+	_, err = s.ReleaseIPByOwner(context.Background(), network, "container-1", "eth0", 1*time.Hour)
 	if err != nil {
 		t.Fatalf("ReleaseIPByOwner failed: %v", err)
 	}
 
 	// 6. Try to re-allocate for a NEW container. It should NOT pick the released IP (since it's in cooldown).
 	// It should pick the next available in the second CIDR (since first CIDR is full except for the cooled-down one).
-	ipNew, _, err := s.AllocateIPv4ByNetwork(network, "eth0", "container-new")
+	ipNew, _, err := s.AllocateIPv4(context.Background(), network, "eth0", "container-new")
 	if err != nil {
-		t.Fatalf("AllocateIPv4ByNetwork failed after release with cooldown: %v", err)
+		t.Fatalf("AllocateIPv4 failed after release with cooldown: %v", err)
 	}
 
 	if ipNew == "10.0.1.2" {
@@ -612,12 +619,12 @@ func TestStore_AllocateIPv4ByNetwork_FallbackAndCooldown(t *testing.T) {
 	}
 }
 
-func TestStore_AllocateIPv4ByNetwork_Idempotency_Concurrency(t *testing.T) {
+func TestStore_AllocateIPv4_Idempotency_Concurrency(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "idempotency_concurrency_test.sqlite")
 
-	s, err := NewStore(logger, dbPath)
+	s, err := NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -626,7 +633,7 @@ func TestStore_AllocateIPv4ByNetwork_Idempotency_Concurrency(t *testing.T) {
 	network := "test-network"
 	cidr := "10.0.1.0/24"
 
-	if err := s.AddCIDR(network, cidr); err != nil {
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
 		t.Fatalf("AddCIDR failed: %v", err)
 	}
 
@@ -642,7 +649,7 @@ func TestStore_AllocateIPv4ByNetwork_Idempotency_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			addr, _, err := s.AllocateIPv4ByNetwork(network, interfaceName, containerID)
+			addr, _, err := s.AllocateIPv4(context.Background(), network, interfaceName, containerID)
 			ips[idx] = addr
 			errs[idx] = err
 		}(i)
@@ -677,12 +684,12 @@ func TestStore_AllocateIPv4ByNetwork_Idempotency_Concurrency(t *testing.T) {
 	}
 }
 
-func TestStore_AllocateIPv4ByNetwork_Concurrency_DifferentContainers(t *testing.T) {
+func TestStore_AllocateIPv4_Concurrency_DifferentContainers(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "concurrency_diff_containers.sqlite")
 
-	s, err := NewStore(logger, dbPath)
+	s, err := NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -691,7 +698,7 @@ func TestStore_AllocateIPv4ByNetwork_Concurrency_DifferentContainers(t *testing.
 	network := "test-network"
 	cidr := "10.0.1.0/24" // 253 available IPs
 
-	if err := s.AddCIDR(network, cidr); err != nil {
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
 		t.Fatalf("AddCIDR failed: %v", err)
 	}
 
@@ -704,7 +711,7 @@ func TestStore_AllocateIPv4ByNetwork_Concurrency_DifferentContainers(t *testing.
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			addr, _, err := s.AllocateIPv4ByNetwork(network, "eth0", fmt.Sprintf("container-%d", idx))
+			addr, _, err := s.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", idx))
 			ips[idx] = addr
 			errs[idx] = err
 		}(i)

@@ -18,11 +18,20 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"k8s.io/klog/v2"
 	"k8s.io/metis/pkg"
 	"k8s.io/metis/pkg/store"
 )
+
+// Config contains the configuration parameters for the daemon.
+type Config struct {
+	MonitorInterval time.Duration
+	ReleaseCooldown time.Duration
+	DBPath          string
+	SocketPath      string
+}
 
 // Daemon represents the metis daemon process.
 type Daemon struct {
@@ -47,7 +56,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	logger := klog.Background() // klog/v2 provides a logr.Logger
 
-	storeInstance, err := store.NewStore(logger, dbPath)
+	storeInstance, err := store.NewStore(ctx, logger, dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize sqlite store: %w", err)
 	}

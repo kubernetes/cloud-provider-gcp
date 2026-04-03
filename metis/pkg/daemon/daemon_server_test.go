@@ -18,10 +18,12 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -62,7 +64,7 @@ func TestAdaptiveIpamServer_AllocatePodIP(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "metis_server_test.sqlite")
 
-	storeInstance, err := store.NewStore(logger, dbPath)
+	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
@@ -103,7 +105,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_Concurrency(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "metis_server_concurrency_test.sqlite")
 
-	storeInstance, err := store.NewStore(logger, dbPath)
+	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
@@ -182,7 +184,7 @@ func TestAdaptiveIpamServer_DeallocatePodIP(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "metis_daemon_test_release.sqlite")
 
-	s, err := store.NewStore(logger, dbPath)
+	s, err := store.NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("NewStore returned unexpected error: %v", err)
 	}
@@ -253,7 +255,7 @@ func TestAdaptiveIpamServer_GRPCClientIntegration(t *testing.T) {
 	sockPath := filepath.Join(tempDir, "metis_test_client_integration.sock")
 	dbPath := filepath.Join(tempDir, "metis_client_integration.sqlite")
 
-	s, err := store.NewStore(logger, dbPath)
+	s, err := store.NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -305,5 +307,98 @@ func TestAdaptiveIpamServer_GRPCClientIntegration(t *testing.T) {
 
 	if resp.Ipv4 == nil || resp.Ipv4.IpAddress == "" {
 		t.Errorf("Expected valid IP address from gRPC client, got response: %v", resp)
+	}
+}
+
+func TestAdaptiveIpamServer_AllocatePodIP_RetryOnDBError(t *testing.T) {
+	logger := klog.Background()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_server_retry_test.sqlite")
+
+	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	server := &adaptiveIpamServer{store: storeInstance}
+
+	network := "test-network"
+	cidr := "10.0.1.0/24"
+	
+	if err := storeInstance.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("Failed to add CIDR: %v", err)
+	}
+
+	req := &adaptiveipam.AllocatePodIPRequest{
+		Network:      network,
+		PodName:      "test-pod",
+		PodNamespace: "default",
+		Ipv4Config: &adaptiveipam.IPConfig{
+			InterfaceName: "eth0",
+			ContainerId:   "test-container",
+		},
+	}
+
+	// Close the DB to simulate transient error
+	storeInstance.Close()
+
+	startTime := time.Now()
+	_, err = server.AllocatePodIP(context.Background(), req)
+	duration := time.Since(startTime)
+
+	if err == nil {
+		t.Fatal("Expected error after closing DB, got nil")
+	}
+
+	// Expect it to have retried, so duration should be at least 300ms
+	if duration < 300*time.Millisecond {
+		t.Errorf("Expected test to take at least 300ms due to retries, took %v", duration)
+	}
+
+	if !strings.Contains(err.Error(), "database is closed") {
+		t.Errorf("Expected error to contain 'database is closed', got: %v", err)
+	}
+}
+
+func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
+	logger := klog.Background()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_server_exhaust_test.sqlite")
+
+	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	server := &adaptiveIpamServer{store: storeInstance}
+
+	network := "test-network"
+
+	req := &adaptiveipam.AllocatePodIPRequest{
+		Network:      network,
+		PodName:      "test-pod",
+		PodNamespace: "default",
+		Ipv4Config: &adaptiveipam.IPConfig{
+			InterfaceName: "eth0",
+			ContainerId:   "test-container",
+		},
+	}
+
+	startTime := time.Now()
+	_, err = server.AllocatePodIP(context.Background(), req)
+	duration := time.Since(startTime)
+
+	if err == nil {
+		t.Fatal("Expected error for exhausted store, got nil")
+	}
+
+	// Expect it to fail fast, so duration should be small (much less than 100ms backoff)
+	if duration >= 100*time.Millisecond {
+		t.Errorf("Expected test to fail fast, but took %v", duration)
+	}
+
+	if !errors.Is(err, store.ErrNoAvailableIPs) {
+		t.Errorf("Expected error to be ErrNoAvailableIPs, got: %v", err)
 	}
 }

@@ -18,6 +18,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -25,6 +26,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg"
@@ -66,13 +68,13 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 	var ipv4Alloc *adaptiveipam.PodIP
 	if req.Ipv4Config != nil {
 		if req.Ipv4Config.InitialPodCidr != "" {
-			exists, err := s.store.GetCIDRBlockByCIDR(req.Ipv4Config.InitialPodCidr)
+			exists, err := s.store.GetCIDRBlockByCIDR(ctx, req.Ipv4Config.InitialPodCidr)
 			if err != nil {
 				klog.ErrorS(err, "failed to check if initial cidr block exists", "network", req.Network, "cidr", req.Ipv4Config.InitialPodCidr)
 				return nil, fmt.Errorf("failed to check if initial cidr block %s exists for network %s: %w", req.Ipv4Config.InitialPodCidr, req.Network, err)
 			}
 			if !exists {
-				if err := s.store.AddCIDR(req.Network, req.Ipv4Config.InitialPodCidr); err != nil {
+				if err := s.store.AddCIDR(ctx, req.Network, req.Ipv4Config.InitialPodCidr); err != nil {
 					if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 						klog.InfoS("Initial CIDR block already added by another thread", "network", req.Network, "cidr", req.Ipv4Config.InitialPodCidr)
 					} else {
@@ -83,9 +85,27 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 			}
 		}
 
-		ip, cidr, err := s.store.AllocateIPv4ByNetwork(req.Network, req.Ipv4Config.InterfaceName, req.Ipv4Config.ContainerId)
+		var ip, cidr string
+		var lastErr error
+		err := wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, 350*time.Millisecond, true, func(ctx context.Context) (bool, error) {
+			ip, cidr, lastErr = s.store.AllocateIPv4(ctx, req.Network, req.Ipv4Config.InterfaceName, req.Ipv4Config.ContainerId)
+			if lastErr == nil {
+				return true, nil // Success
+			}
+			if errors.Is(lastErr, store.ErrNoAvailableIPs) {
+				return true, lastErr // Stop immediately on non-retryable error
+			}
+			if ctx.Err() != nil {
+				return true, ctx.Err() // Stop immediately if context is done
+			}
+			klog.V(2).InfoS("Retrying AllocateIPv4 due to transient error", "err", lastErr, "network", req.Network)
+			return false, nil // Retry
+		})
 
 		if err != nil {
+			if (errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded)) && lastErr != nil {
+				err = lastErr // Use last error if timed out
+			}
 			klog.ErrorS(err, "failed to allocate ipv4", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 			return nil, fmt.Errorf("failed to allocate ipv4 for pod %s/%s: %w", req.PodNamespace, req.PodName, err)
 		}
@@ -112,7 +132,7 @@ func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptivei
 		"podName", req.PodName,
 		"podNamespace", req.PodNamespace)
 
-	count, err := s.store.ReleaseIPByOwner(req.Network, req.ContainerId, req.InterfaceName, s.releaseCooldown)
+	count, err := s.store.ReleaseIPByOwner(ctx, req.Network, req.ContainerId, req.InterfaceName, s.releaseCooldown)
 	if err != nil {
 		klog.ErrorS(err, "failed to deallocate ips", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		return nil, fmt.Errorf("failed to deallocate ips for pod %s/%s: %w", req.PodNamespace, req.PodName, err)
