@@ -64,7 +64,7 @@ push-image: ## Build and push the multi-arch image independently.
 .PHONY: test-glibc-floor
 test-glibc-floor: ## Build image and test glibc floor locally in container
 	docker build \
-		--build-arg GIT_VERSION=v1.0.0 \
+		--build-arg GIT_VERSION=$(GIT_VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		-t metis-candidate .
