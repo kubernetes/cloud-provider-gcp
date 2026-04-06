@@ -6,7 +6,7 @@ IMAGE_NAME ?= metis
 TAG ?= $(shell git describe --tags --always --dirty | sed 's|.*/||')
 
 # Get version metadata from git for version injection
-GIT_VERSION ?= $(shell git describe --tags --always --dirty)
+GIT_VERSION ?= $(shell git describe --tags --always --dirty | sed 's|.*/||')
 GIT_COMMIT  ?= $(shell git rev-parse HEAD)
 BUILD_DATE  ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 
