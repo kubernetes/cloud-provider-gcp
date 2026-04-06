@@ -92,7 +92,6 @@ _tmp/metis-candidate: build-image-local
 	docker cp temp-metis:/metis _tmp/metis-candidate
 	docker rm temp-metis
 
-.ONESHELL:
 .PHONY: test-glibc-floor
 test-glibc-floor: _tmp/metis-candidate ## Build image and test glibc floor locally in container
 	# Verify symbol compatibility by running natively within the configured floor environment.
