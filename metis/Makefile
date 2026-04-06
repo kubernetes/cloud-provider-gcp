@@ -31,7 +31,7 @@ PLATFORMS ?= linux/amd64,linux/arm64
 #
 # WARNING: Do not link this binary against newer GLIBC symbols. Doing so
 # will cause immediate runtime panics when scheduled on baseline fleet nodes.
-GLIBC_FLOOR_IMAGE := ubuntu:22.04
+GLIBC_FLOOR_IMAGE := ubuntu:20.04
 
 ##@ Development
 
