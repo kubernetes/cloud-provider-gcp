@@ -38,7 +38,13 @@ RUN if [ "${TARGETARCH}" = "amd64" ]; then \
               -X 'k8s.io/component-base/version.buildDate=${BUILD_DATE}'" \
     ./cmd
 
-# Use ubuntu as base image to package the binary
+# CAUTION: The Metis binary leverages CGO and links against the host's C library.
+# To prevent runtime panics on baseline GKE fleet nodes, this image must remain
+# compatible with the active GLIBC floor constraint defined in the Makefile.
+#
+# Always verify any base image upgrades by running `make test-glibc-floor`.
+#
+# See metis/Makefile for the full historical context and version baseline.
 FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y \
     sqlite3 \
