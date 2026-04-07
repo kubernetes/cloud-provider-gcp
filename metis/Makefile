@@ -110,7 +110,8 @@ _tmp/metis-candidate: build-image-local
 	@mkdir -p _tmp
 	-docker rm -f temp-metis 2>/dev/null
 	docker create --name temp-metis metis-candidate
-	docker cp temp-metis:/metis _tmp/metis-candidate
+	docker cp temp-metis:/bin/metis _tmp/metis-candidate
+
 	docker rm temp-metis
 
 .PHONY: test-glibc-floor
