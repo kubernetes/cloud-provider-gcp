@@ -145,78 +145,29 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		return err
 	}
 
-	// Check for zone update
 	zone, zoneErr := getZoneFromNode(context.TODO(), syncer, node)
-	shouldUpdateZone := false
-	if zoneErr == nil {
-		shouldUpdateZone = !isZoneInCR(zone, nodeTopologyCR)
-	}
 
-	crSubnets := nodeTopologyCR.Status.Subnets
-	// We will always add the default subnet to the CR.
-	// We do not let additional subnetworks to be added during cluster creation.
-	// Hence, we are sure to always add the default subnet first.
-	// The reconciliation logic will also ensure this behavior.
-	if crSubnets == nil {
-		// Add the default subnet to the node topology CR
-		klog.V(2).Infof("No subnets found in the cr, adding the default subnet")
-		updatedCR := nodeTopologyCR.DeepCopy()
-		updatedCR.Status.Subnets = append(updatedCR.Status.Subnets, nodetopologyv1.SubnetConfig{
+	var subnetsToAdd []nodetopologyv1.SubnetConfig
+	if !isSubnetInCR(defaultSubnet, nodeTopologyCR) {
+		subnetsToAdd = append(subnetsToAdd, nodetopologyv1.SubnetConfig{
 			Name:       defaultSubnet,
 			SubnetPath: subnetPrefix + defaultSubnet,
 		})
-
-		// If the node we are processing has a subnet that isn't the default, add it immediately.
-		// This is necessary because the informer's LIST/WATCH mechanism does not guarantee
-		// strict chronological ordering of external events. A node heavily delayed in
-		// registration, or a restart of this controller, could result in a node with a
-		// custom subnet being processed before the default subnet.
-		if hasSubnetLabel && nodeSubnet != defaultSubnet {
-			klog.V(2).Infof("Adding the node's subnet %s to the cr along with default subnetwork", nodeSubnet)
-			updatedCR.Status.Subnets = append(updatedCR.Status.Subnets, nodetopologyv1.SubnetConfig{
-				Name:       nodeSubnet,
-				SubnetPath: subnetPrefix + nodeSubnet,
-			})
-		}
-
-		// We always expect zones field in the status.
-		if updatedCR.Status.Zones == nil {
-			updatedCR.Status.Zones = []string{}
-		}
-		if shouldUpdateZone {
-			updatedCR.Status.Zones = append(updatedCR.Status.Zones, zone)
-		}
-
-		_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), updatedCR, metav1.UpdateOptions{})
-		if updateErr != nil {
-			klog.Errorf("Error updating the CR: %v, err: %v", nodeTopologyCRName, updateErr)
-			return updateErr
-		}
-
-		klog.Infof("Successfully added the default subnet %v to nodetopology CR", defaultSubnet)
-
-		if zoneErr != nil {
-			klog.ErrorS(zoneErr, "Error updating zone for nodeTopology CR", "nodetopologyCR", nodeTopologyCRName, "node", node.Name)
-			return zoneErr
-		}
-		return nil
 	}
 
-	// Check if we need to update subnet in CR
-	shouldUpdateSubnet := false
-	if hasSubnetLabel {
-		// Check if subnet already exists in the CR
-		if !isSubnetInCR(nodeSubnet, nodeTopologyCR) {
-			shouldUpdateSubnet = true
-		} else {
-			klog.V(2).InfoS("Subnet already exists in the node topology CR", "subnet", nodeSubnet)
-		}
-	} else {
-		klog.V(2).Infof("No additional subnet detected. Default subnetwork is added to the CR.")
+	if hasSubnetLabel && nodeSubnet != defaultSubnet && !isSubnetInCR(nodeSubnet, nodeTopologyCR) {
+		subnetsToAdd = append(subnetsToAdd, nodetopologyv1.SubnetConfig{
+			Name:       nodeSubnet,
+			SubnetPath: subnetPrefix + nodeSubnet,
+		})
 	}
 
-	// Nothing to update, skip
-	if !shouldUpdateSubnet && !shouldUpdateZone {
+	var zonesToAdd []string
+	if zoneErr == nil && !isZoneInCR(zone, nodeTopologyCR) {
+		zonesToAdd = append(zonesToAdd, zone)
+	}
+
+	if len(subnetsToAdd) == 0 && len(zonesToAdd) == 0 {
 		if zoneErr != nil {
 			klog.V(4).InfoS("Waiting for zone info to be populated, forcing retry", "node", node.Name)
 			return zoneErr
@@ -225,22 +176,17 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		return nil
 	}
 
-	// We have a new subnet that should be added to the CR
-	// We assume all the subnets are in the same project and region
 	updatedCR := nodeTopologyCR.DeepCopy()
-	if shouldUpdateSubnet {
-		updatedCR.Status.Subnets = append(updatedCR.Status.Subnets, nodetopologyv1.SubnetConfig{
-			Name:       nodeSubnet,
-			SubnetPath: subnetPrefix + nodeSubnet,
-		})
+	if updatedCR.Status.Subnets == nil {
+		updatedCR.Status.Subnets = []nodetopologyv1.SubnetConfig{}
 	}
+	updatedCR.Status.Subnets = append(updatedCR.Status.Subnets, subnetsToAdd...)
+
 	// We always expect zones field in the status.
 	if updatedCR.Status.Zones == nil {
 		updatedCR.Status.Zones = []string{}
 	}
-	if shouldUpdateZone {
-		updatedCR.Status.Zones = append(updatedCR.Status.Zones, zone)
-	}
+	updatedCR.Status.Zones = append(updatedCR.Status.Zones, zonesToAdd...)
 
 	_, updateErr := syncer.nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), updatedCR, metav1.UpdateOptions{})
 	if updateErr != nil {
@@ -248,18 +194,19 @@ func (syncer *NodeTopologySyncer) updateNodeTopology(node *v1.Node) error {
 		return updateErr
 	}
 
-	if shouldUpdateSubnet {
-		klog.V(2).Infof("Successfully add the subnet %v to the nodetopology CR", nodeSubnet)
+	for _, subnet := range subnetsToAdd {
+		klog.V(2).Infof("Successfully add the subnet %v to the nodetopology CR", subnet.Name)
 	}
+	for _, z := range zonesToAdd {
+		klog.V(2).Infof("Successfully add zone %v to the nodetopology CR", z)
+	}
+
 	if zoneErr != nil {
 		klog.ErrorS(zoneErr, "Error updating zone for nodeTopology CR", "nodetopologyCR", nodeTopologyCRName, "node", node.Name)
 		return zoneErr
 	}
-	if shouldUpdateZone {
-		klog.V(2).Infof("Successfully add zone %v to the nodetopology CR", zone)
-	}
-	return nil
 
+	return nil
 }
 
 // getNodeSubnetLabel returns true if the node has subnet label along with the subnet
