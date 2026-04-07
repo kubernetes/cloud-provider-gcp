@@ -9,18 +9,18 @@ ALL_PLATFORMS ?= linux/amd64,linux/arm64
 ADDITIONAL_IMAGE_TAGS ?=
 
 # Version metadata strictly computed by the internal repository state
-GIT_VERSION := $(shell git describe --tags --always --dirty)
+GIT_VERSION := $(shell git describe --tags --always --dirty | sed 's|.*/||')
+
 GIT_COMMIT  := $(shell git rev-parse HEAD)
 BUILD_DATE  := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 
-# Base tag cleanly stripped of directory paths (natively appends -dirty if uncommitted changes exist)
-TAG := $(shell echo $(GIT_VERSION) | sed 's|.*/||')
+
 
 # Extract short SHA natively via git, explicitly appending -dirty if uncommitted modifications are detected
 SHORT_SHA := $(shell git rev-parse --short HEAD)$(shell git diff-index --quiet HEAD -- || echo "-dirty")
 
 # Build the list of all UNIQUE applicable tags and map them to -t arguments
-ALL_TAGS := $(sort $(TAG) $(SHORT_SHA) $(ADDITIONAL_IMAGE_TAGS))
+ALL_TAGS := $(sort $(GIT_VERSION) $(SHORT_SHA) $(ADDITIONAL_IMAGE_TAGS))
 DOCKER_TAG_ARGS := $(foreach tag,$(ALL_TAGS),-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(tag))
 
 # Standard K8s versioning - injected via linker flags at build time.
@@ -29,6 +29,19 @@ VERSION_LDFLAGS := \
   -X 'k8s.io/component-base/version.gitCommit=$(GIT_COMMIT)' \
   -X 'k8s.io/component-base/version.buildDate=$(BUILD_DATE)'
 
+# GLIBC Compatibility Test Image
+#
+# Context: Across GKE fleet nodes, the CGO Metis CNI binary executes natively
+# inside the host OS space (via the Kubelet) rather than within a container.
+# This rigidly binds its link constraints to the host's C standard library.
+#
+# Baseline: During the GKE release baseline of 1.30.14-gke.2250000, the
+# lowest available GLIBC version across the active fleet OS footprints
+# (Ubuntu 22.04 LTS and COS Milestone 117) was precisely GLIBC 2.35.
+#
+# WARNING: Do not link this binary against newer GLIBC symbols. Doing so
+# will cause immediate runtime panics when scheduled on baseline fleet nodes.
+GLIBC_FLOOR_IMAGE := ubuntu:22.04
 ##@ Development
 
 .PHONY: tidy
@@ -66,6 +79,11 @@ clean: ## Clean up build artifacts.
 
 ##@ Docker
 
+DOCKER_BUILD_ARGS := \
+	--build-arg GIT_VERSION=$(GIT_VERSION) \
+	--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+	--build-arg BUILD_DATE=$(BUILD_DATE)
+
 .PHONY: init-buildx
 init-buildx: ## Initialize the docker buildx multi-arch builder if it doesn't exist.
 	@if ! docker buildx inspect builder > /dev/null 2>&1; then \
@@ -79,10 +97,26 @@ push-image: init-buildx ## Build and push the multi-arch image.
 	@echo "Building and Pushing multi-arch image: $(IMAGE_REGISTRY)/$(IMAGE_NAME)..."
 	@echo "Applying tags: $(ALL_TAGS)..."
 	docker buildx build --platform $(ALL_PLATFORMS) \
-		--build-arg GIT_VERSION=$(GIT_VERSION) \
-		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
-		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		$(DOCKER_BUILD_ARGS) \
 		$(DOCKER_TAG_ARGS) --push .
+
+
+.PHONY: build-image-local
+build-image-local:
+	docker buildx build $(DOCKER_BUILD_ARGS) -t metis-candidate --load .
+
+
+_tmp/metis-candidate: build-image-local
+	@mkdir -p _tmp
+	-docker rm -f temp-metis 2>/dev/null
+	docker create --name temp-metis metis-candidate
+	docker cp temp-metis:/metis _tmp/metis-candidate
+	docker rm temp-metis
+
+.PHONY: test-glibc-floor
+test-glibc-floor: _tmp/metis-candidate ## Build image and test glibc floor locally in container
+	# Verify symbol compatibility by running natively within the configured floor environment.
+	docker run --rm -v $(CURDIR)/_tmp/metis-candidate:/metis $(GLIBC_FLOOR_IMAGE) /metis --help
 
 ##@ Help
 
