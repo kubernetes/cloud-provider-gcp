@@ -366,7 +366,55 @@ func TestStore_AddCIDR(t *testing.T) {
 	}
 }
 
-func TestStore_AllocateIPv4_SingleCIDR_EdgeCases(t *testing.T) {
+func TestStore_AddCIDR_Small(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+
+	dbPath := filepath.Join(tempDir, "metis_small.sqlite")
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore returned unexpected error: %v", err)
+	}
+	defer s.Close()
+
+	// Test /31 (2 IPs)
+	network31 := "gke-pod-network-31"
+	cidr31 := "10.0.2.0/31" // 2 IPs: 10.0.2.0, 10.0.2.1
+
+	err = s.AddCIDR(context.Background(), network31, cidr31)
+	if err != nil {
+		t.Fatalf("AddCIDR failed for /31: %v", err)
+	}
+
+	var allocatedIPs31 int
+	err = s.db.QueryRow(`SELECT allocated_ips FROM cidr_blocks WHERE cidr = ?`, cidr31).Scan(&allocatedIPs31)
+	if err != nil {
+		t.Fatalf("Failed to query inserted cidr_block for /31: %v", err)
+	}
+	if allocatedIPs31 != 0 {
+		t.Errorf("Expected allocated_ips 0 for /31, got %d", allocatedIPs31)
+	}
+
+	// Test /32 (1 IP)
+	network32 := "gke-pod-network-32"
+	cidr32 := "10.0.3.0/32" // 1 IP: 10.0.3.0
+
+	err = s.AddCIDR(context.Background(), network32, cidr32)
+	if err != nil {
+		t.Fatalf("AddCIDR failed for /32: %v", err)
+	}
+
+	var allocatedIPs32 int
+	err = s.db.QueryRow(`SELECT allocated_ips FROM cidr_blocks WHERE cidr = ?`, cidr32).Scan(&allocatedIPs32)
+	if err != nil {
+		t.Fatalf("Failed to query inserted cidr_block for /32: %v", err)
+	}
+	if allocatedIPs32 != 0 {
+		t.Errorf("Expected allocated_ips 0 for /32, got %d", allocatedIPs32)
+	}
+}
+
+func TestStore_AllocateIPv4_SingleCIDR(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()
 

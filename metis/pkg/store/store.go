@@ -202,31 +202,25 @@ func (s *Store) allocateIPv4Tx(ctx context.Context, tx *sql.Tx, cidrBlockID int6
 		return "", "", fmt.Errorf("failed to query cidr_block: %w", err)
 	}
 
-	// 2. Find the first available entry in ip_addresses table
-	var ipAddressID int64
+	// 2. Find the first available entry and mark it as allocated
 	var address string
 	err = tx.QueryRowContext(ctx, `
-		SELECT id, address FROM ip_addresses 
-		WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= CURRENT_TIMESTAMP)
-		LIMIT 1
-	`, cidrBlockID).Scan(&ipAddressID, &address)
+		UPDATE ip_addresses 
+		SET is_allocated = TRUE, container_id = ?, interface_name = ?, allocated_at = CURRENT_TIMESTAMP 
+		WHERE id = (
+			SELECT id FROM ip_addresses 
+			WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= CURRENT_TIMESTAMP)
+			ORDER BY id ASC
+			LIMIT 1
+		)
+		RETURNING address
+	`, containerID, interfaceName, cidrBlockID).Scan(&address)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", "", sql.ErrNoRows
 		}
-		return "", "", fmt.Errorf("failed to query ip_addresses: %w", err)
-	}
-
-	// 3. Mark the is_allocated as TRUE and record container metadata
-	_, err = tx.ExecContext(ctx, `
-		UPDATE ip_addresses 
-		SET is_allocated = TRUE, container_id = ?, interface_name = ?, allocated_at = CURRENT_TIMESTAMP 
-		WHERE id = ?
-	`, containerID, interfaceName, ipAddressID)
-
-	if err != nil {
-		return "", "", fmt.Errorf("failed to update ip_addresses allocation: %w", err)
+		return "", "", fmt.Errorf("failed to allocate ip: %w", err)
 	}
 
 	// Also increment allocated_ips in cidr_blocks to keep it in sync
@@ -397,18 +391,26 @@ func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 
 	// 2. Insert IP addresses and determine allocation status
 	var allocatedCount int
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO ip_addresses (cidr_block_id, address, is_allocated, container_id, interface_name) 
+		VALUES (?, ?, ?, '', '')
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare insert statement: %w", err)
+	}
+	defer stmt.Close()
+
 	for idx, addr := range ips {
 		isAllocated := false
-		if idx == 0 || idx == 1 || idx == len(ips)-1 {
+		// For small CIDRs (smaller than /30, i.e., /31 and /32), we do not reserve
+		// the first two and the last IPs. The IPs returned will still be routable
+		// by the underlying infrastructure.
+		if len(ips) >= 4 && (idx == 0 || idx == 1 || idx == len(ips)-1) {
 			isAllocated = true
 			allocatedCount++
 		}
 
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO ip_addresses (cidr_block_id, address, is_allocated, container_id, interface_name) 
-			VALUES (?, ?, ?, '', '')
-		`, cidrBlockID, addr, isAllocated)
-
+		_, err = stmt.ExecContext(ctx, cidrBlockID, addr, isAllocated)
 		if err != nil {
 			return fmt.Errorf("failed to insert ip_address %s: %w", addr, err)
 		}

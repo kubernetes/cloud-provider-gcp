@@ -55,7 +55,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		dbPath = pkg.DefaultDBPath
 	}
 
-	logger := klog.Background() // klog/v2 provides a logr.Logger
+	logger := klog.Background().WithName("metis").WithName("daemon") // klog/v2 provides a logr.Logger
 
 	storeInstance, err := store.NewStore(ctx, logger, dbPath)
 	if err != nil {
@@ -63,10 +63,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	defer storeInstance.Close()
 
-	server, err := newAdaptiveIpamServer(storeInstance, d.Config.SocketPath, d.Config.ReleaseCooldown)
-	if err != nil {
-		return err
-	}
+	server := newAdaptiveIpamServer(logger, storeInstance, d.Config.SocketPath, d.Config.ReleaseCooldown)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -75,7 +72,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	select {
 	case err := <-errCh:
-		return fmt.Errorf("server failed: %w", err)
+		if err != nil {
+			return fmt.Errorf("server failed: %w", err)
+		}
 	case <-ctx.Done():
 		klog.InfoS("Context cancelled, shutting down daemon")
 		server.stop()
