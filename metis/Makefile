@@ -10,11 +10,8 @@ ADDITIONAL_IMAGE_TAGS ?=
 
 # Version metadata strictly computed by the internal repository state
 GIT_VERSION := $(shell git describe --tags --always --dirty | sed 's|.*/||')
-
 GIT_COMMIT  := $(shell git rev-parse HEAD)
 BUILD_DATE  := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
-
-
 
 # Extract short SHA natively via git, explicitly appending -dirty if uncommitted modifications are detected
 SHORT_SHA := $(shell git rev-parse --short HEAD)$(shell git diff-index --quiet HEAD -- || echo "-dirty")
@@ -42,6 +39,7 @@ VERSION_LDFLAGS := \
 # WARNING: Do not link this binary against newer GLIBC symbols. Doing so
 # will cause immediate runtime panics when scheduled on baseline fleet nodes.
 GLIBC_FLOOR_IMAGE := ubuntu:22.04
+
 ##@ Development
 
 .PHONY: tidy
@@ -100,18 +98,15 @@ push-image: init-buildx ## Build and push the multi-arch image.
 		$(DOCKER_BUILD_ARGS) \
 		$(DOCKER_TAG_ARGS) --push .
 
-
 .PHONY: build-image-local
 build-image-local:
 	docker buildx build $(DOCKER_BUILD_ARGS) -t metis-candidate --load .
-
 
 _tmp/metis-candidate: build-image-local
 	@mkdir -p _tmp
 	-docker rm -f temp-metis 2>/dev/null
 	docker create --name temp-metis metis-candidate
 	docker cp temp-metis:/bin/metis _tmp/metis-candidate
-
 	docker rm temp-metis
 
 .PHONY: test-glibc-floor
