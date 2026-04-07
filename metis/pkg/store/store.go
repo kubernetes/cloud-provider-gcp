@@ -40,6 +40,8 @@ const (
 	dbSchemaVersion = 1
 	maxOpenConns    = 10
 	maxIdleConns    = 10
+	// DefaultBusyTimeout is the default timeout for SQLite busy handler.
+	DefaultBusyTimeout = 5000 * time.Millisecond
 )
 
 // ErrNoAvailableIPs is returned when no available IPs can be found in any CIDR block.
@@ -78,11 +80,11 @@ func NewStore(ctx context.Context, log logr.Logger, dbPath string) (*Store, erro
 		// ip_addresses table when a draining CIDR block is officially removed.
 		// See: https://www.sqlite.org/pragma.html#pragma_foreign_keys
 		"&_foreign_keys=on" +
-		// Sets the busy timeout to 5000 milliseconds. If the database is locked
+		// Sets the busy timeout. If the database is locked
 		// by another transaction, this tells the SQLite driver to wait for up
-		// to 5 seconds before giving up and returning a locked error.
+		// to this duration before giving up and returning a locked error.
 		// See: https://www.sqlite.org/pragma.html#pragma_busy_timeout
-		"&_busy_timeout=5000" +
+		fmt.Sprintf("&_busy_timeout=%d", DefaultBusyTimeout.Milliseconds()) +
 		// Instructs the Go driver to send "BEGIN IMMEDIATE" instead of standard
 		// "BEGIN" when starting a transaction. This grabs a write lock instantly,
 		// preventing deadlocks when concurrent requests try to upgrade their

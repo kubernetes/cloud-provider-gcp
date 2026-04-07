@@ -38,15 +38,17 @@ type adaptiveIpamServer struct {
 	store           *store.Store
 	sockPath        string
 	releaseCooldown time.Duration
+	busyTimeout     time.Duration
 	grpcServer      *grpc.Server
 	logger          logr.Logger
 }
 
-func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socketPath string, releaseCooldown time.Duration) *adaptiveIpamServer {
+func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socketPath string, releaseCooldown time.Duration, busyTimeout time.Duration) *adaptiveIpamServer {
 	server := &adaptiveIpamServer{
 		store:           storeInstance,
 		sockPath:        socketPath,
 		releaseCooldown: releaseCooldown,
+		busyTimeout:     busyTimeout,
 		logger:          logger,
 	}
 
@@ -89,9 +91,14 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 
 		var ip, cidr string
 		var lastErr error
-		// The total timeout is set to 5000ms to align with the SQLite busy_timeout
+		timeout := s.busyTimeout
+		if timeout == 0 {
+			timeout = store.DefaultBusyTimeout
+		}
+		// The total timeout is set to timeout to align with the SQLite busy_timeout
 		// configured in the DSN in store.go.
-		err := wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, 5000*time.Millisecond, true, func(ctx context.Context) (bool, error) {
+		// TODO: Measure the store allocation query time and update the interval appropriately.
+		err := wait.PollUntilContextTimeout(ctx, 50*time.Millisecond, timeout, true, func(ctx context.Context) (bool, error) {
 			ip, cidr, lastErr = s.store.AllocateIPv4(ctx, req.Network, req.Ipv4Config.InterfaceName, req.Ipv4Config.ContainerId)
 			if lastErr == nil {
 				return true, nil // Success

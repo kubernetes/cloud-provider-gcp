@@ -320,7 +320,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_RetryOnDBError(t *testing.T) {
 		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	server := &adaptiveIpamServer{store: storeInstance}
+	server := &adaptiveIpamServer{store: storeInstance, busyTimeout: 500 * time.Millisecond}
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"

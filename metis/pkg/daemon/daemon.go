@@ -63,7 +63,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	defer storeInstance.Close()
 
-	server := newAdaptiveIpamServer(logger, storeInstance, d.Config.SocketPath, d.Config.ReleaseCooldown)
+	server := newAdaptiveIpamServer(logger, storeInstance, d.Config.SocketPath, d.Config.ReleaseCooldown, store.DefaultBusyTimeout)
 
 	errCh := make(chan error, 1)
 	go func() {
