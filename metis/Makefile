@@ -52,6 +52,10 @@ build: ## Build the Metis binary locally using workspace dependencies.
 test: ## Run the Go tests.
 	go test ./...
 
+.PHONY: proto
+proto: ## Generate code from proto files.
+	../tools/update-proto.sh
+
 .PHONY: all
 all: clean tidy fmt vet test build ## Run all standard development targets.
 
