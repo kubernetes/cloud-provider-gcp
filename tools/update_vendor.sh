@@ -44,4 +44,5 @@ go work vendor
 # clean up unused dependencies
 (cd providers && go mod tidy)
 (cd test/e2e && go mod tidy)
+(cd metis && go mod tidy)
 go mod tidy
