@@ -1,23 +1,30 @@
 # Makefile for metis component
 
-# Variables for local development
+# Variables for local development, can be overridden by the caller
 IMAGE_REGISTRY ?= gcr.io/$(USER)-gke-dev
 IMAGE_NAME ?= metis
-TAG ?= $(shell git describe --tags --always --dirty | sed 's|.*/||')
+ALL_PLATFORMS ?= linux/amd64,linux/arm64
 
-# Get version metadata from git for version injection
-GIT_VERSION ?= $(shell git describe --tags --always --dirty | sed 's|.*/||')
-GIT_COMMIT  ?= $(shell git rev-parse HEAD)
-BUILD_DATE  ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+# Optional space-separated list of arbitrary extra tags (e.g., pipeline IDs or dev tags)
+ADDITIONAL_IMAGE_TAGS ?=
+
+# Version metadata strictly computed by the internal repository state
+GIT_VERSION := $(shell git describe --tags --always --dirty | sed 's|.*/||')
+GIT_COMMIT  := $(shell git rev-parse HEAD)
+BUILD_DATE  := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+# Extract short SHA natively via git, explicitly appending -dirty if uncommitted modifications are detected
+SHORT_SHA := $(shell git rev-parse --short HEAD)$(shell git diff-index --quiet HEAD -- || echo "-dirty")
+
+# Build the list of all UNIQUE applicable tags and map them to -t arguments
+ALL_TAGS := $(sort $(GIT_VERSION) $(SHORT_SHA) $(ADDITIONAL_IMAGE_TAGS))
+DOCKER_TAG_ARGS := $(foreach tag,$(ALL_TAGS),-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(tag))
 
 # Standard K8s versioning - injected via linker flags at build time.
 VERSION_LDFLAGS := \
   -X 'k8s.io/component-base/version.gitVersion=$(GIT_VERSION)' \
   -X 'k8s.io/component-base/version.gitCommit=$(GIT_COMMIT)' \
   -X 'k8s.io/component-base/version.buildDate=$(BUILD_DATE)'
-
-# Platforms for multi-arch container builds
-PLATFORMS ?= linux/amd64,linux/arm64
 
 # GLIBC Compatibility Test Image
 #
@@ -75,21 +82,35 @@ DOCKER_BUILD_ARGS := \
 	--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 	--build-arg BUILD_DATE=$(BUILD_DATE)
 
+.PHONY: init-buildx
+init-buildx: ## Initialize the docker buildx multi-arch builder if it doesn't exist.
+	@if ! docker buildx inspect builder > /dev/null 2>&1; then \
+		echo "Initializing docker buildx multi-arch builder..."; \
+		docker run --privileged --rm tonistiigi/binfmt --install all; \
+		docker buildx create --name builder --use; \
+	fi
+
 .PHONY: push-image
-push-image: ## Build and push the multi-arch image independently.
-	@echo "Building and Pushing multi-arch image: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(TAG)..."
-	docker buildx build --platform $(PLATFORMS) $(DOCKER_BUILD_ARGS) \
-		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(TAG) --push .
+push-image: init-buildx ## Build and push the multi-arch image.
+	@echo "Building and Pushing multi-arch image: $(IMAGE_REGISTRY)/$(IMAGE_NAME)..."
+	@echo "Applying tags: $(ALL_TAGS)..."
+	docker buildx build --platform $(ALL_PLATFORMS) \
+		$(DOCKER_BUILD_ARGS) \
+		$(DOCKER_TAG_ARGS) --push .
+	@echo "Building and loading local image for host architecture..."
+	docker buildx build --platform linux/amd64 \
+		$(DOCKER_BUILD_ARGS) \
+		$(DOCKER_TAG_ARGS) --load .
 
 .PHONY: build-image-local
 build-image-local:
-	docker build $(DOCKER_BUILD_ARGS) -t metis-candidate .
+	docker buildx build $(DOCKER_BUILD_ARGS) -t metis-candidate --load .
 
 _tmp/metis-candidate: build-image-local
 	@mkdir -p _tmp
 	-docker rm -f temp-metis 2>/dev/null
 	docker create --name temp-metis metis-candidate
-	docker cp temp-metis:/metis _tmp/metis-candidate
+	docker cp temp-metis:/bin/metis _tmp/metis-candidate
 	docker rm temp-metis
 
 .PHONY: test-glibc-floor
