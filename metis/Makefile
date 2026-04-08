@@ -92,7 +92,7 @@ init-buildx: ## Initialize the docker buildx multi-arch builder if it doesn't ex
 	fi
 
 .PHONY: build-tarball
-build-tarball: init-buildx
+build-tarball: init-buildx ## Build the multi-arch image as an OCI tarball.
 	@echo "Building OCI tarball for multi-arch image: $(IMAGE_NAME)..."
 	docker buildx build --platform $(ALL_PLATFORMS) \
 		$(DOCKER_BUILD_ARGS) \
