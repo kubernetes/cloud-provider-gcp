@@ -74,6 +74,7 @@ all: clean tidy fmt vet test build ## Run all standard development targets.
 .PHONY: clean
 clean: ## Clean up build artifacts.
 	rm -rf bin
+	rm -rf *.tar
 	go clean
 
 ##@ Docker
