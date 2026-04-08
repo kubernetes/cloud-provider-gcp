@@ -97,6 +97,10 @@ push-image: init-buildx ## Build and push the multi-arch image.
 	docker buildx build --platform $(ALL_PLATFORMS) \
 		$(DOCKER_BUILD_ARGS) \
 		$(DOCKER_TAG_ARGS) --push .
+	@echo "Building and loading local image for host architecture..."
+	docker buildx build --platform linux/amd64 \
+		$(DOCKER_BUILD_ARGS) \
+		$(DOCKER_TAG_ARGS) --load .
 
 .PHONY: build-image-local
 build-image-local:
