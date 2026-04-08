@@ -4,6 +4,7 @@
 IMAGE_REGISTRY ?= gcr.io/$(USER)-gke-dev
 IMAGE_NAME ?= metis
 ALL_PLATFORMS ?= linux/amd64,linux/arm64
+OCI_TARBALL_PATH ?= /workspace/metis.tar
 
 # Optional space-separated list of arbitrary extra tags (e.g., pipeline IDs or dev tags)
 ADDITIONAL_IMAGE_TAGS ?=
@@ -90,6 +91,15 @@ init-buildx: ## Initialize the docker buildx multi-arch builder if it doesn't ex
 		docker buildx create --name builder --use; \
 	fi
 
+.PHONY: build-tarball
+build-tarball: init-buildx
+	@echo "Building OCI tarball for multi-arch image: $(IMAGE_NAME)..."
+	docker buildx build --platform $(ALL_PLATFORMS) \
+		$(DOCKER_BUILD_ARGS) \
+		--output=type=oci,dest=$(OCI_TARBALL_PATH) \
+		--provenance=false \
+		--sbom=false .
+
 .PHONY: push-image
 push-image: init-buildx ## Build and push the multi-arch image.
 	@echo "Building and Pushing multi-arch image: $(IMAGE_REGISTRY)/$(IMAGE_NAME)..."
@@ -97,10 +107,6 @@ push-image: init-buildx ## Build and push the multi-arch image.
 	docker buildx build --platform $(ALL_PLATFORMS) \
 		$(DOCKER_BUILD_ARGS) \
 		$(DOCKER_TAG_ARGS) --push .
-	@echo "Building and loading local image for host architecture..."
-	docker buildx build --platform linux/amd64 \
-		$(DOCKER_BUILD_ARGS) \
-		$(DOCKER_TAG_ARGS) --load .
 
 .PHONY: build-image-local
 build-image-local:
