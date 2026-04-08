@@ -95,8 +95,9 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 		if timeout == 0 {
 			timeout = store.DefaultBusyTimeout
 		}
-		// The total timeout is set to timeout to align with the SQLite busy_timeout
-		// configured in the DSN in store.go.
+		// The total timeout is set to align with the SQLite busy_timeout configured in the DSN.
+		// PollUntilContextTimeout creates a derived context with this timeout, but also respects
+		// the parent gRPC context (ctx) cancellation.
 		// TODO: Measure the store allocation query time and update the interval appropriately.
 		err := wait.PollUntilContextTimeout(ctx, 50*time.Millisecond, timeout, true, func(ctx context.Context) (bool, error) {
 			ip, cidr, lastErr = s.store.AllocateIPv4(ctx, req.Network, req.Ipv4Config.InterfaceName, req.Ipv4Config.ContainerId)
@@ -107,7 +108,7 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 				return true, lastErr // Stop immediately on non-retryable error
 			}
 			if ctx.Err() != nil {
-				return true, ctx.Err() // Stop immediately if context is done
+				return true, ctx.Err() // Stop immediately if context is done (cancelled or timed out). Prevents misleading "Retrying" logs.
 			}
 			s.logger.V(4).Info("Retrying AllocateIPv4 due to transient error", "err", lastErr, "network", req.Network)
 			return false, nil // Retry
