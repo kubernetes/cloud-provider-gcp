@@ -4,7 +4,7 @@
 IMAGE_REGISTRY ?= gcr.io/$(USER)-gke-dev
 IMAGE_NAME ?= metis
 ALL_PLATFORMS ?= linux/amd64,linux/arm64
-OCI_TARBALL_PATH ?= /workspace/metis.tar
+OCI_TARBALL_PATH ?= metis.tar
 
 # Optional space-separated list of arbitrary extra tags (e.g., pipeline IDs or dev tags)
 ADDITIONAL_IMAGE_TAGS ?=
