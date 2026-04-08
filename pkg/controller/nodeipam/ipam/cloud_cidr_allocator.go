@@ -95,7 +95,9 @@ type cloudCIDRAllocator struct {
 	// NewCloudCIDRAllocator.
 	nodeLister corelisters.NodeLister
 	// nodesSynced returns true if the node shared informer has been synced at least once.
-	nodesSynced cache.InformerSynced
+	nodesSynced    cache.InformerSynced
+	networksSynced cache.InformerSynced
+	gnpsSynced     cache.InformerSynced
 
 	recorder          record.EventRecorder
 	queue             workqueue.RateLimitingInterface
@@ -147,6 +149,8 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		gnpLister:             gnpInformer.Lister(),
 		nodeLister:            nodeInformer.Lister(),
 		nodesSynced:           nodeInformer.Informer().HasSynced,
+		networksSynced:        nwInformer.Informer().HasSynced,
+		gnpsSynced:            gnpInformer.Informer().HasSynced,
 		recorder:              recorder,
 		queue:                 workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
 		stackType:             stackType,
@@ -289,7 +293,12 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 	klog.Infof("Starting cloud CIDR allocator")
 	defer klog.Infof("Shutting down cloud CIDR allocator")
 
-	if !cache.WaitForNamedCacheSync("cidrallocator", stopCh, ca.nodesSynced) {
+	syncFuncs := []cache.InformerSynced{ca.nodesSynced}
+	if ca.enableMultiNetworking {
+		syncFuncs = append(syncFuncs, ca.networksSynced, ca.gnpsSynced)
+	}
+
+	if !cache.WaitForNamedCacheSync("cidrallocator", stopCh, syncFuncs...) {
 		return
 	}
 

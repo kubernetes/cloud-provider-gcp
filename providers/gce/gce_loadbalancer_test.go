@@ -29,7 +29,38 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	cloudprovider "k8s.io/cloud-provider"
+
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"google.golang.org/api/compute/v1"
 )
+
+func TestEnsureLoadBalancerError(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodeNames := []string{"test-node-1"}
+	nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+	require.NoError(t, err)
+
+	apiService := fakeLoadbalancerService(string(LBTypeInternal))
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	// Inject error
+	mockGCE := gce.c.(*cloud.MockGCE)
+	mockGCE.MockInstanceGroups.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstanceGroups, options ...cloud.Option) (bool, *compute.InstanceGroup, error) {
+		return true, nil, fmt.Errorf("injected error")
+	}
+
+	status, err := gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
+	require.Error(t, err)
+	assert.Nil(t, status)
+	assert.Contains(t, err.Error(), "injected error")
+}
 
 func TestGetLoadBalancer(t *testing.T) {
 	t.Parallel()

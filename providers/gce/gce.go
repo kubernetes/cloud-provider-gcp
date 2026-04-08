@@ -85,13 +85,15 @@ const (
 	gceComputeAPIEndpointBeta = "https://www.googleapis.com/compute/beta/"
 )
 
-var _ cloudprovider.Interface = (*Cloud)(nil)
-var _ cloudprovider.Instances = (*Cloud)(nil)
-var _ cloudprovider.LoadBalancer = (*Cloud)(nil)
-var _ cloudprovider.Routes = (*Cloud)(nil)
-var _ cloudprovider.Zones = (*Cloud)(nil)
-var _ cloudprovider.PVLabeler = (*Cloud)(nil)
-var _ cloudprovider.Clusters = (*Cloud)(nil)
+var (
+	_ cloudprovider.Interface    = (*Cloud)(nil)
+	_ cloudprovider.Instances    = (*Cloud)(nil)
+	_ cloudprovider.LoadBalancer = (*Cloud)(nil)
+	_ cloudprovider.Routes       = (*Cloud)(nil)
+	_ cloudprovider.Zones        = (*Cloud)(nil)
+	_ cloudprovider.PVLabeler    = (*Cloud)(nil)
+	_ cloudprovider.Clusters     = (*Cloud)(nil)
+)
 
 type StackType string
 
@@ -115,17 +117,6 @@ const clusterStackIPV4 StackType = "IPV4"
 // clusterStackIPV6 represents a cluster in which Pods and Services are addressable with IPv6 addresses.
 // The underlying VPC's stack type could be either IPV6 or dual stack IPV4_IPV6.
 const clusterStackIPV6 StackType = "IPV6"
-
-// FirewallRulesManagement indicates how firewall rules are managed by the provider.
-type FirewallRulesManagement string
-
-// firewallRulesManagementEnabled indicates that the firewall rules should be managed by the provider.
-// This includes firewall rule creation, deletion, and updates.
-const firewallRulesManagementEnabled FirewallRulesManagement = "Enabled"
-
-// firewallRulesManagementDisabled indicates that the firewall rules should not be managed by the provider.
-// This includes firewall rule creation, deletion, and updates.
-const firewallRulesManagementDisabled FirewallRulesManagement = "Disabled"
 
 // Cloud is an implementation of Interface, LoadBalancer and Instances for Google Compute Engine.
 type Cloud struct {
@@ -214,18 +205,18 @@ type Cloud struct {
 	// Enable this ony when the Node's .spec.providerID can be fully trusted.
 	projectFromNodeProviderID bool
 
-	// enableDiscretePortForwarding enables forwarding of individual ports
-	// instead of port ranges in Forwarding Rules for external load balancers.
-	enableDiscretePortForwarding bool
-
-	// externalInstanceGroupsPrefix if set, finds instance groups with
-	// the provided prefix and considers them for ILB backends.
-	externalInstanceGroupsPrefix string
-
 	// enableRBSDefaultForL4NetLB disable Service controller from picking up services by default
 	enableRBSDefaultForL4NetLB bool
 
-	firewallRulesManagement FirewallRulesManagement
+	// enableL4LBAnnotations enable annotations related to provisioned resources in GCE
+	enableL4LBAnnotations bool
+
+	// enableL4DenyFirewallRule creates an additional deny firewall rule at priority 1000
+	// and moves the allow rule to priority 999 to improve security posture.
+	enableL4DenyFirewallRule bool
+
+	// enableL4DenyFirewallRollbackCleanup
+	enableL4DenyFirewallRollbackCleanup bool
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -263,14 +254,6 @@ type ConfigGlobal struct {
 	// Default to none.
 	// For example: MyFeatureFlag
 	AlphaFeatures []string `gcfg:"alpha-features"`
-
-	// ExternalInstanceGroupsPrefix, when not-empty, is used to filter instance groups (from an external GCP Project)
-	// and include them in the backend for ILB.
-	ExternalInstanceGroupsPrefix string `gcfg:"external-instance-groups-prefix"`
-
-	// FirewallRulesManagement indicates whether the provider should handle all firewall
-	// operations, such as creation, deletion, and updates.
-	FirewallRulesManagement string `gcfg:"firewall-rules-management"`
 }
 
 // ConfigFile is the struct used to parse the /etc/gce.conf configuration file.
@@ -298,15 +281,13 @@ type CloudConfig struct {
 	SubnetworkName       string
 	SubnetworkURL        string
 	// DEPRECATED: Do not rely on this value as it may be incorrect.
-	SecondaryRangeName           string
-	NodeTags                     []string
-	NodeInstancePrefix           string
-	TokenSource                  oauth2.TokenSource
-	UseMetadataServer            bool
-	AlphaFeatureGate             *AlphaFeatureGate
-	StackType                    string
-	ExternalInstanceGroupsPrefix string
-	FirewallRulesManagement      string
+	SecondaryRangeName string
+	NodeTags           []string
+	NodeInstancePrefix string
+	TokenSource        oauth2.TokenSource
+	UseMetadataServer  bool
+	AlphaFeatureGate   *AlphaFeatureGate
+	StackType          string
 }
 
 func init() {
@@ -353,10 +334,11 @@ func newGCECloud(config io.Reader) (gceCloud *Cloud, err error) {
 		klog.Infof("Using GCE provider config %+v", configFile)
 	}
 
-	cloudConfig, err = generateCloudConfig(configFile)
+	cloudConfig, err = GenerateCloudConfig(configFile)
 	if err != nil {
 		return nil, err
 	}
+
 	return CreateGCECloud(cloudConfig)
 }
 
@@ -369,7 +351,7 @@ func readConfig(reader io.Reader) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err error) {
+func GenerateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err error) {
 	cloudConfig = &CloudConfig{}
 	// By default, fetch token from GCE metadata server
 	cloudConfig.TokenSource = google.ComputeTokenSource("")
@@ -397,8 +379,6 @@ func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 		cloudConfig.NodeTags = configFile.Global.NodeTags
 		cloudConfig.NodeInstancePrefix = configFile.Global.NodeInstancePrefix
 		cloudConfig.AlphaFeatureGate = NewAlphaFeatureGate(configFile.Global.AlphaFeatures)
-		cloudConfig.ExternalInstanceGroupsPrefix = configFile.Global.ExternalInstanceGroupsPrefix
-		cloudConfig.FirewallRulesManagement = configFile.Global.FirewallRulesManagement
 	}
 
 	// retrieve projectID and zone
@@ -484,7 +464,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 
 	// Create a user-agent header append string to supply to the Google API
 	// clients, to identify Kubernetes as the origin of the GCP API calls.
-	userAgent := fmt.Sprintf("Kubernetes/%s (%s %s)", version, runtime.GOOS, runtime.GOARCH)
+	userAgent := fmt.Sprintf("Kubernetes/%s (%s %s)", version, runtime.GOOS, runtime.GOARCH) // e.g. "Kubernetes/v1.18.0 (linux amd64)"
 
 	// Use ProjectID for NetworkProjectID, if it wasn't explicitly set.
 	if config.NetworkProjectID == "" {
@@ -577,33 +557,31 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 	operationPollRateLimiter := flowcontrol.NewTokenBucketRateLimiter(5, 5) // 5 qps, 5 burst.
 
 	gce := &Cloud{
-		service:                      service,
-		serviceAlpha:                 serviceAlpha,
-		serviceBeta:                  serviceBeta,
-		containerService:             containerService,
-		tpuService:                   tpuService,
-		projectID:                    projID,
-		networkProjectID:             netProjID,
-		onXPN:                        onXPN,
-		region:                       config.Region,
-		regional:                     config.Regional,
-		localZone:                    config.Zone,
-		managedZones:                 config.ManagedZones,
-		networkURL:                   networkURL,
-		unsafeIsLegacyNetwork:        isLegacyNetwork,
-		unsafeSubnetworkURL:          subnetURL,
-		secondaryRangeName:           config.SecondaryRangeName,
-		nodeTags:                     config.NodeTags,
-		nodeInstancePrefix:           config.NodeInstancePrefix,
-		useMetadataServer:            config.UseMetadataServer,
-		operationPollRateLimiter:     operationPollRateLimiter,
-		AlphaFeatureGate:             config.AlphaFeatureGate,
-		nodeZones:                    map[string]sets.String{},
-		metricsCollector:             newLoadBalancerMetrics(),
-		projectsBasePath:             getProjectsBasePath(service.BasePath),
-		stackType:                    StackType(config.StackType),
-		externalInstanceGroupsPrefix: config.ExternalInstanceGroupsPrefix,
-		firewallRulesManagement:      FirewallRulesManagement(config.FirewallRulesManagement),
+		service:                  service,
+		serviceAlpha:             serviceAlpha,
+		serviceBeta:              serviceBeta,
+		containerService:         containerService,
+		tpuService:               tpuService,
+		projectID:                projID,
+		networkProjectID:         netProjID,
+		onXPN:                    onXPN,
+		region:                   config.Region,
+		regional:                 config.Regional,
+		localZone:                config.Zone,
+		managedZones:             config.ManagedZones,
+		networkURL:               networkURL,
+		unsafeIsLegacyNetwork:    isLegacyNetwork,
+		unsafeSubnetworkURL:      subnetURL,
+		secondaryRangeName:       config.SecondaryRangeName,
+		nodeTags:                 config.NodeTags,
+		nodeInstancePrefix:       config.NodeInstancePrefix,
+		useMetadataServer:        config.UseMetadataServer,
+		operationPollRateLimiter: operationPollRateLimiter,
+		AlphaFeatureGate:         config.AlphaFeatureGate,
+		nodeZones:                map[string]sets.String{},
+		metricsCollector:         newLoadBalancerMetrics(),
+		projectsBasePath:         getProjectsBasePath(service.BasePath),
+		stackType:                StackType(config.StackType),
 	}
 
 	gce.manager = &gceServiceManager{gce}
@@ -892,13 +870,17 @@ func (g *Cloud) SetProjectFromNodeProviderID(enabled bool) {
 	g.projectFromNodeProviderID = enabled
 }
 
-// SetEnableDiscretePortForwarding configures enableDiscretePortForwarding option.
-func (g *Cloud) SetEnableDiscretePortForwarding(enabled bool) {
-	g.enableDiscretePortForwarding = enabled
-}
-
 func (g *Cloud) SetEnableRBSDefaultForL4NetLB(enabled bool) {
 	g.enableRBSDefaultForL4NetLB = enabled
+}
+
+func (g *Cloud) SetEnableL4LBAnnotations(enabled bool) {
+	g.enableL4LBAnnotations = enabled
+}
+
+func (g *Cloud) SetEnableL4DenyFirewallRule(firewallEnabled, rollbackEnabled bool) {
+	g.enableL4DenyFirewallRule = firewallEnabled
+	g.enableL4DenyFirewallRollbackCleanup = rollbackEnabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.
@@ -994,7 +976,7 @@ func getZonesForRegion(svc *compute.Service, projectID, region string) ([]string
 	// listCall = listCall.Filter("region eq " + region)
 
 	var zones []string
-	var accumulator = func(response *compute.ZoneList) error {
+	accumulator := func(response *compute.ZoneList) error {
 		for _, zone := range response.Items {
 			regionName := lastComponent(zone.Region)
 			if regionName == region {

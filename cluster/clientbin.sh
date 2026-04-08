@@ -79,21 +79,7 @@ function get_bin() {
 
   locations=(
     "${KUBE_ROOT}/cluster/bin/${bin}"
-    #"${KUBE_ROOT}/bazel-bin/external/io_k8s_release/${bin}"
-    #"${KUBE_ROOT}/build/server/kubernetes/server/bin/${bin}"
-    #"${KUBE_ROOT}/_output/bin/${bin}"
-    #"${KUBE_ROOT}/_output/dockerized/bin/${host_os}/${host_arch}/${bin}"
-    #"${KUBE_ROOT}/_output/local/bin/${host_os}/${host_arch}/${bin}"
-    #"${KUBE_ROOT}/platforms/${host_os}/${host_arch}/${bin}"
   )
-  # Also search for binary in bazel build tree.
-  # The bazel go rules place binaries in subtrees like
-  # "bazel-bin/source/path/linux_amd64_pure_stripped/binaryname", so make sure
-  # the platform name is matched in the path.
-  while IFS=$'\n' read -r line; do
-    locations+=( "${line}" )
-  done < <(find "${KUBE_ROOT}/bazel-bin/${srcdir}" -type f -executable \
-    -path "*/${host_os}_${host_arch}*/${bin}" 2>/dev/null || true)
 
   (ls -t "${locations[@]}" 2>/dev/null || true) | head -1
 }
