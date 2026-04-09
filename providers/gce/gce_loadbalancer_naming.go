@@ -26,7 +26,7 @@ import (
 	"strings"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -121,6 +121,13 @@ func MakeHealthCheckFirewallName(clusterID, hcName string, isNodesHealthCheck bo
 // balancers (l4) for serving traffic.
 func MakeFirewallName(name string) string {
 	return fmt.Sprintf("k8s-fw-%s", name)
+}
+
+// MakeFirewallDenyName returns the name of the deny firewall rule
+// used by the GCE L4 NetLBs for blocking all traffic that is not
+// defined by the firewall rule.
+func MakeFirewallDenyName(name string) string {
+	return fmt.Sprintf("k8s-fw-%s-deny", name)
 }
 
 func makeFirewallDescription(serviceName, ipAddress string) string {

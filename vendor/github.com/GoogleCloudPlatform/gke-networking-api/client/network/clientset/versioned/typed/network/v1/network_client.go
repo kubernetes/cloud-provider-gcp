@@ -19,21 +19,19 @@ limitations under the License.
 package v1
 
 import (
-	"net/http"
+	http "net/http"
 
-	v1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
-	"github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/scheme"
+	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
+	scheme "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
 )
 
 type NetworkingV1Interface interface {
 	RESTClient() rest.Interface
 	GKENetworkParamSetsGetter
-	GKENetworkParamSetListsGetter
 	NetworksGetter
 	NetworkInterfacesGetter
-	NetworkInterfaceListsGetter
-	NetworkListsGetter
+	SubnetworksGetter
 }
 
 // NetworkingV1Client is used to interact with features provided by the networking.gke.io group.
@@ -45,10 +43,6 @@ func (c *NetworkingV1Client) GKENetworkParamSets() GKENetworkParamSetInterface {
 	return newGKENetworkParamSets(c)
 }
 
-func (c *NetworkingV1Client) GKENetworkParamSetLists() GKENetworkParamSetListInterface {
-	return newGKENetworkParamSetLists(c)
-}
-
 func (c *NetworkingV1Client) Networks() NetworkInterface {
 	return newNetworks(c)
 }
@@ -57,12 +51,8 @@ func (c *NetworkingV1Client) NetworkInterfaces(namespace string) NetworkInterfac
 	return newNetworkInterfaces(c, namespace)
 }
 
-func (c *NetworkingV1Client) NetworkInterfaceLists(namespace string) NetworkInterfaceListInterface {
-	return newNetworkInterfaceLists(c, namespace)
-}
-
-func (c *NetworkingV1Client) NetworkLists() NetworkListInterface {
-	return newNetworkLists(c)
+func (c *NetworkingV1Client) Subnetworks() SubnetworkInterface {
+	return newSubnetworks(c)
 }
 
 // NewForConfig creates a new NetworkingV1Client for the given config.
@@ -70,9 +60,7 @@ func (c *NetworkingV1Client) NetworkLists() NetworkListInterface {
 // where httpClient was generated with rest.HTTPClientFor(c).
 func NewForConfig(c *rest.Config) (*NetworkingV1Client, error) {
 	config := *c
-	if err := setConfigDefaults(&config); err != nil {
-		return nil, err
-	}
+	setConfigDefaults(&config)
 	httpClient, err := rest.HTTPClientFor(&config)
 	if err != nil {
 		return nil, err
@@ -84,9 +72,7 @@ func NewForConfig(c *rest.Config) (*NetworkingV1Client, error) {
 // Note the http client provided takes precedence over the configured transport values.
 func NewForConfigAndClient(c *rest.Config, h *http.Client) (*NetworkingV1Client, error) {
 	config := *c
-	if err := setConfigDefaults(&config); err != nil {
-		return nil, err
-	}
+	setConfigDefaults(&config)
 	client, err := rest.RESTClientForConfigAndClient(&config, h)
 	if err != nil {
 		return nil, err
@@ -109,17 +95,15 @@ func New(c rest.Interface) *NetworkingV1Client {
 	return &NetworkingV1Client{c}
 }
 
-func setConfigDefaults(config *rest.Config) error {
-	gv := v1.SchemeGroupVersion
+func setConfigDefaults(config *rest.Config) {
+	gv := networkv1.SchemeGroupVersion
 	config.GroupVersion = &gv
 	config.APIPath = "/apis"
-	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
+	config.NegotiatedSerializer = rest.CodecFactoryForGeneratedClient(scheme.Scheme, scheme.Codecs).WithoutConversion()
 
 	if config.UserAgent == "" {
 		config.UserAgent = rest.DefaultKubernetesUserAgent()
 	}
-
-	return nil
 }
 
 // RESTClient returns a RESTClient that is used to communicate

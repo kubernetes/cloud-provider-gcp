@@ -544,7 +544,7 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 				},
 				Spec: networkv1.GKENetworkParamSetSpec{
 					VPC:        "test-vpc",
-					VPCSubnet:  "non-existant-test-subnet",
+					VPCSubnet:  "non-existent-test-subnet",
 					DeviceMode: "test-device-mode",
 				},
 			},

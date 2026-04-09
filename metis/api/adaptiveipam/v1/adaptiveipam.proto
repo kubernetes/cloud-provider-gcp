@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package adaptiveipam.v1;
+
+option go_package = "k8s.io/metis/api/adaptiveipam/v1;adaptiveipam";
+
+// AdaptiveIpam serves the request for cluster wide pod IP allocation. The IP
+// returned is from the initial cidr range, or dynamically fetched from cloud provider.
+service AdaptiveIpam {
+  // AllocatePodIP allocates a pod IP based on the provided configuration.
+  rpc AllocatePodIP(AllocatePodIPRequest) returns (AllocatePodIPResponse);
+
+  // DeallocatePodIP releases a previously allocated pod IP.
+  // The completion of this RPC indicates the pod IP is released for the pod.
+  // The IP can be reused for other pods on the node level, or will be eventually
+  // released at the cloud provider.
+  rpc DeallocatePodIP(DeallocatePodIPRequest) returns (DeallocatePodIPResponse);
+}
+
+// IPConfig contains parameters required to allocate a pod IP.
+message IPConfig {
+  // interface_name is the name of the pod interface.
+  string interface_name = 1;
+  // container_id is the id of the pod container.
+  string container_id = 2;
+
+  // initial_pod_cidr is the CIDR block initially assigned to the node.
+  // The CNI must provide this CIDR, which is used to allocate IPs for pods created
+  // early in the node's lifecycle, typically including critical system pods.
+  string initial_pod_cidr = 3;
+}
+
+// AllocatePodIPRequest contains the parameters required to allocate a pod IP.
+// The allocation takes into account the specified network, the initial CIDR block, and the IP family
+// configuration (IPv4, IPv6, or dual-stack). If the node depletes its initial block of pod IPs,
+// supplementary IPs may be dynamically acquired from the cloud provider.
+// At least one of ipv4_config and ipv6_config must be populated.
+message AllocatePodIPRequest {
+  // network is the name of the network for which the IP is requested.
+  string network = 1;
+  // ipv4_config specifies the pod configuration for IPv4 allocation.
+  IPConfig ipv4_config = 2;
+  // ipv6_config specifies the pod configuration for IPv6 allocation.
+  IPConfig ipv6_config = 3;
+  // pod_name is the name of the pod. This is for logging purposes.
+  string pod_name = 4;
+  // pod_namespace is the namespace of the pod. This is for logging purposes.
+  string pod_namespace = 5;
+}
+
+// PodIP is the result of the allocated IPs for the pod.
+message PodIP {
+  // ip_address is the allocated IP address.
+  string ip_address = 1;
+  // cidr is the CIDR block the IP address belongs to.
+  string cidr = 2;
+}
+
+// AllocatePodIPResponse represents the result of a pod IP allocation request,
+// detailing the assigned IPv4 and/or IPv6 addresses and their respective CIDR blocks.
+message AllocatePodIPResponse {
+  // ipv4 contains the allocated IPv4 details.
+  PodIP ipv4 = 1;
+  // ipv6 contains the allocated IPv6 details.
+  PodIP ipv6 = 2;
+}
+
+// DeallocatePodIPRequest contains the parameters required to deallocate a pod IP.
+message DeallocatePodIPRequest {
+  // network is the name of the network from which the IP should be deallocated.
+  string network = 1;
+  // interface_name is the name of the pod interface.
+  string interface_name = 2;
+  // container_id is the id of the pod container.
+  string container_id = 3;
+  // pod_name is the name of the pod. This is for logging purposes.
+  string pod_name = 4;
+  // pod_namespace is the namespace of the pod. This is for logging purposes.
+  string pod_namespace = 5;
+}
+
+// DeallocatePodIPResponse represents the result of a pod IP deallocation request.
+// An empty message is returned on success; RPC errors are used to indicate failure.
+message DeallocatePodIPResponse {
+}

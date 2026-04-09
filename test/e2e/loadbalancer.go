@@ -208,14 +208,14 @@ var _ = Describe("[cloud-provider-gcp-e2e] LoadBalancer", func() {
 		testReachableUDP(udpIngressIP, svcPort, loadBalancerCreateTimeout)
 
 		By("Scaling the pods to 0")
-		err = udpJig.Scale(ctx, 0)
+		err = udpJig.Scale(0)
 		framework.ExpectNoError(err)
 
 		By("looking for ICMP REJECT on the UDP service's LoadBalancer")
 		testRejectedUDP(udpIngressIP, svcPort, loadBalancerCreateTimeout)
 
 		By("Scaling the pods to 1")
-		err = udpJig.Scale(ctx, 1)
+		err = udpJig.Scale(1)
 		framework.ExpectNoError(err)
 
 		By("hitting the UDP service's NodePort")

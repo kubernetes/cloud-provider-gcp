@@ -183,7 +183,8 @@ func TestMinMaxPortRange(t *testing.T) {
 			svcPorts: []v1.ServicePort{
 				{Port: 1},
 				{Port: 10},
-				{Port: 100}},
+				{Port: 100},
+			},
 			expectedRange: "1-100",
 			expectError:   false,
 		},
@@ -193,20 +194,23 @@ func TestMinMaxPortRange(t *testing.T) {
 				{Port: 1},
 				{Port: 50},
 				{Port: 100},
-				{Port: 90}},
+				{Port: 90},
+			},
 			expectedRange: "1-100",
 			expectError:   false,
 		},
 		{
 			svcPorts: []v1.ServicePort{
-				{Port: 10}},
+				{Port: 10},
+			},
 			expectedRange: "10-10",
 			expectError:   false,
 		},
 		{
 			svcPorts: []v1.ServicePort{
 				{Port: 100},
-				{Port: 10}},
+				{Port: 10},
+			},
 			expectedRange: "10-100",
 			expectError:   false,
 		},
@@ -214,7 +218,8 @@ func TestMinMaxPortRange(t *testing.T) {
 			svcPorts: []v1.ServicePort{
 				{Port: 100},
 				{Port: 50},
-				{Port: 10}},
+				{Port: 10},
+			},
 			expectedRange: "10-100",
 			expectError:   false,
 		},
@@ -285,7 +290,7 @@ func TestCreateForwardingRuleWithTier(t *testing.T) {
 			lbName := tc.expectedRule.Name
 			ipAddr := tc.expectedRule.IPAddress
 
-			err = createForwardingRule(s, lbName, serviceName, s.region, ipAddr, target, ports, tc.netTier, false)
+			err = createForwardingRule(s, lbName, serviceName, s.region, ipAddr, target, ports, tc.netTier)
 			assert.NoError(t, err)
 
 			Rule, err := s.GetRegionForwardingRule(lbName, s.region)
@@ -323,90 +328,49 @@ func TestCreateForwardingRulePorts(t *testing.T) {
 	wideRangePortsTCP := basePortsTCP[:]
 
 	for _, tc := range []struct {
-		desc                   string
-		frName                 string
-		ports                  []v1.ServicePort
-		discretePortForwarding bool
-		expectedPorts          []string
-		expectedPortRange      string
+		desc              string
+		frName            string
+		ports             []v1.ServicePort
+		expectedPorts     []string
+		expectedPortRange string
 	}{
 		{
-			desc:                   "Single Port, discretePorts enabled",
-			frName:                 "fwd-rule1",
-			ports:                  onePortUDP,
-			discretePortForwarding: true,
-			expectedPorts:          []string{"80"},
-			expectedPortRange:      "",
+			desc:              "Single Port (PortRange)",
+			frName:            "fwd-rule5",
+			ports:             onePortUDP,
+			expectedPorts:     []string{},
+			expectedPortRange: "80-80",
 		},
 		{
-			desc:                   "Individual Ports, discretePorts enabled",
-			frName:                 "fwd-rule2",
-			ports:                  fivePortsTCP,
-			discretePortForwarding: true,
-			expectedPorts:          []string{"80", "81", "82", "83", "84"},
-			expectedPortRange:      "",
+			desc:              "5 Ports PortRange",
+			frName:            "fwd-rule6",
+			ports:             fivePortsTCP,
+			expectedPorts:     []string{},
+			expectedPortRange: "80-84",
 		},
 		{
-			desc:                   "PortRange, discretePorts enabled",
-			frName:                 "fwd-rule3",
-			ports:                  sixPortsTCP,
-			discretePortForwarding: true,
-			expectedPorts:          []string{},
-			expectedPortRange:      "80-85",
+			desc:              "6 ports PortRange",
+			frName:            "fwd-rule7",
+			ports:             sixPortsTCP,
+			expectedPorts:     []string{},
+			expectedPortRange: "80-85",
 		},
 		{
-			desc:                   "Wide PortRange, discretePorts enabled",
-			frName:                 "fwd-rule4",
-			ports:                  wideRangePortsTCP,
-			discretePortForwarding: true,
-			expectedPorts:          []string{},
-			expectedPortRange:      "80-8080",
-		},
-		{
-			desc:                   "Single Port (PortRange)",
-			frName:                 "fwd-rule5",
-			ports:                  onePortUDP,
-			discretePortForwarding: false,
-			expectedPorts:          []string{},
-			expectedPortRange:      "80-80",
-		},
-		{
-			desc:                   "5 Ports PortRange",
-			frName:                 "fwd-rule6",
-			ports:                  fivePortsTCP,
-			discretePortForwarding: false,
-			expectedPorts:          []string{},
-			expectedPortRange:      "80-84",
-		},
-		{
-			desc:                   "6 ports PortRange",
-			frName:                 "fwd-rule7",
-			ports:                  sixPortsTCP,
-			discretePortForwarding: false,
-			expectedPorts:          []string{},
-			expectedPortRange:      "80-85",
-		},
-		{
-			desc:                   "Wide PortRange",
-			frName:                 "fwd-rule8",
-			ports:                  wideRangePortsTCP,
-			discretePortForwarding: false,
-			expectedPorts:          []string{},
-			expectedPortRange:      "80-8080",
+			desc:              "Wide PortRange",
+			frName:            "fwd-rule8",
+			ports:             wideRangePortsTCP,
+			expectedPorts:     []string{},
+			expectedPortRange: "80-8080",
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			gce, err := fakeGCECloud(vals)
 			require.NoError(t, err)
 
-			if tc.discretePortForwarding {
-				gce.SetEnableDiscretePortForwarding(true)
-			}
-
 			frName := tc.frName
 			ports := tc.ports
 
-			err = createForwardingRule(gce, frName, serviceName, gce.region, ipAddr, target, ports, cloud.NetworkTierStandard, tc.discretePortForwarding)
+			err = createForwardingRule(gce, frName, serviceName, gce.region, ipAddr, target, ports, cloud.NetworkTierStandard)
 			assert.NoError(t, err)
 
 			fwdRule, err := gce.GetRegionForwardingRule(frName, gce.region)
@@ -477,7 +441,7 @@ func TestDeleteAddressWithWrongTier(t *testing.T) {
 	}
 }
 
-func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string, clusterName, clusterID, zoneName string) (*v1.LoadBalancerStatus, error) {
+func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string, clusterName, clusterID, zoneName string) (*lbSyncResult, error) {
 	nodes, err := createAndInsertNodes(gce, nodeNames, zoneName)
 	if err != nil {
 		return nil, err
@@ -490,6 +454,12 @@ func createExternalLoadBalancer(gce *Cloud, svc *v1.Service, nodeNames []string,
 		nil,
 		nodes,
 	)
+}
+
+// Helper function to assert lbSyncResult annotations
+func assertSyncResultAnnotations(t *testing.T, gce *Cloud, svc *v1.Service, clusterID string, syncResult *lbSyncResult) {
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+	assert.Equal(t, lbName, syncResult.annotations[targetPoolKey], "TargetPoolKey annotation mismatch")
 }
 
 func TestShouldNotRecreateLBWhenNetworkTiersMismatch(t *testing.T) {
@@ -540,7 +510,6 @@ func TestShouldNotRecreateLBWhenNetworkTiersMismatch(t *testing.T) {
 			mutateSvc: func(service *v1.Service) {
 				svc.Annotations[NetworkTierAnnotationKey] = string(NetworkTierAnnotationStandard)
 				svc.Spec.LoadBalancerIP = staticIP
-
 			},
 			expectNetTier: NetworkTierAnnotationStandard.ToGCEValue(),
 		},
@@ -554,14 +523,16 @@ func TestShouldNotRecreateLBWhenNetworkTiersMismatch(t *testing.T) {
 		},
 	} {
 		tc.mutateSvc(svc)
-		status, err := gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+		syncResult, err := gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 		if tc.expectError {
 			if err == nil {
 				t.Errorf("for test case %q, expect errror != nil, but got %v", tc.desc, err)
 			}
 		} else {
 			assert.NoError(t, err)
-			assert.NotEmpty(t, status.Ingress)
+			assert.NotEmpty(t, syncResult)
+			assert.NotEmpty(t, syncResult.status.Ingress)
+			assertSyncResultAnnotations(t, gce, svc, vals.ClusterID, syncResult)
 		}
 
 		lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
@@ -586,9 +557,11 @@ func TestEnsureExternalLoadBalancer(t *testing.T) {
 	svc := fakeLoadbalancerService("")
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	status, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	syncResult, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
-	assert.NotEmpty(t, status.Ingress)
+	assert.NotEmpty(t, syncResult)
+	assert.NotEmpty(t, syncResult.status.Ingress)
+	assertSyncResultAnnotations(t, gce, svc, vals.ClusterID, syncResult)
 
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -744,7 +717,6 @@ func TestLoadBalancerWrongTierResourceDeletion(t *testing.T) {
 		gce.targetPoolURL(lbName),
 		svc.Spec.Ports,
 		cloud.NetworkTierStandard,
-		false,
 	)
 	require.NoError(t, err)
 
@@ -1133,12 +1105,13 @@ func TestForwardingRuleNeedsUpdate(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	status, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
-	require.NotNil(t, status)
+	syncResult, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	require.NotNil(t, syncResult)
+	require.NotNil(t, syncResult.status)
 	require.NoError(t, err)
 
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
-	ipAddr := status.Ingress[0].IP
+	ipAddr := syncResult.status.Ingress[0].IP
 
 	lbIP := svc.Spec.LoadBalancerIP
 	wrongPorts := []v1.ServicePort{svc.Spec.Ports[0]}
@@ -1218,10 +1191,6 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 	vals := DefaultTestClusterValues()
 	serviceName := "foo-svc"
 
-	onePortTCP8080 := []v1.ServicePort{
-		{Name: "tcp1", Protocol: v1.ProtocolTCP, Port: int32(8080)},
-	}
-
 	onePortUDP := []v1.ServicePort{
 		{Name: "udp1", Protocol: v1.ProtocolUDP, Port: int32(80)},
 	}
@@ -1242,14 +1211,13 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 	sevenPortsTCP := basePortsTCP[:]
 
 	for _, tc := range []struct {
-		desc                   string
-		oldFwdRule             *compute.ForwardingRule
-		oldPorts               []v1.ServicePort
-		newlbIP                string
-		newPorts               []v1.ServicePort
-		discretePortForwarding bool
-		needsUpdate            bool
-		expectError            bool
+		desc        string
+		oldFwdRule  *compute.ForwardingRule
+		oldPorts    []v1.ServicePort
+		newlbIP     string
+		newPorts    []v1.ServicePort
+		needsUpdate bool
+		expectError bool
 	}{
 		{
 			desc: "different ip address on update",
@@ -1257,12 +1225,11 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 				Name:      "fwd-rule1",
 				IPAddress: "1.1.1.1",
 			},
-			oldPorts:               onePortTCP,
-			newlbIP:                "2.2.2.2",
-			newPorts:               onePortTCP,
-			discretePortForwarding: true,
-			needsUpdate:            true,
-			expectError:            false,
+			oldPorts:    onePortTCP,
+			newlbIP:     "2.2.2.2",
+			newPorts:    onePortTCP,
+			needsUpdate: true,
+			expectError: false,
 		},
 		{
 			desc: "different protocol",
@@ -1270,15 +1237,14 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 				Name:      "fwd-rule2",
 				IPAddress: "1.1.1.1",
 			},
-			oldPorts:               onePortTCP,
-			newlbIP:                "1.1.1.1",
-			newPorts:               onePortUDP,
-			discretePortForwarding: true,
-			needsUpdate:            true,
-			expectError:            false,
+			oldPorts:    onePortTCP,
+			newlbIP:     "1.1.1.1",
+			newPorts:    onePortUDP,
+			needsUpdate: true,
+			expectError: false,
 		},
 		{
-			desc: "same ports (PortRange)",
+			desc: "same ports",
 			oldFwdRule: &compute.ForwardingRule{
 				Name:      "fwd-rule3",
 				IPAddress: "1.1.1.1",
@@ -1287,25 +1253,9 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 			oldPorts: onePortTCP,
 			newlbIP:  "1.1.1.1",
 			// "80-80"
-			newPorts:               onePortTCP,
-			discretePortForwarding: false,
-			needsUpdate:            false,
-			expectError:            false,
-		},
-		{
-			desc: "same ports, discretePorts enabled",
-			oldFwdRule: &compute.ForwardingRule{
-				Name:      "fwd-rule4",
-				IPAddress: "1.1.1.1",
-			},
-			// ["8080"]
-			oldPorts: onePortTCP8080,
-			newlbIP:  "1.1.1.1",
-			// ["8080"]
-			newPorts:               onePortTCP8080,
-			discretePortForwarding: true,
-			needsUpdate:            false,
-			expectError:            false,
+			newPorts:    onePortTCP,
+			needsUpdate: false,
+			expectError: false,
 		},
 		{
 			desc: "same Port Range",
@@ -1317,13 +1267,12 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 			oldPorts: sixPortsTCP,
 			newlbIP:  "1.1.1.1",
 			// "80-85"
-			newPorts:               sixPortsTCP,
-			discretePortForwarding: false,
-			needsUpdate:            false,
-			expectError:            false,
+			newPorts:    sixPortsTCP,
+			needsUpdate: false,
+			expectError: false,
 		},
 		{
-			desc: "same Port Range, discretePorts enabled",
+			desc: "same Port Range",
 			oldFwdRule: &compute.ForwardingRule{
 				Name:      "fwd-rule6",
 				IPAddress: "1.1.1.1",
@@ -1332,10 +1281,9 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 			oldPorts: sevenPortsTCP,
 			newlbIP:  "1.1.1.1",
 			// "80-86"
-			newPorts:               sevenPortsTCP,
-			discretePortForwarding: true,
-			needsUpdate:            false,
-			expectError:            false,
+			newPorts:    sevenPortsTCP,
+			needsUpdate: false,
+			expectError: false,
 		},
 		{
 			desc: "port range mismatch",
@@ -1347,28 +1295,12 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 			oldPorts: sixPortsTCP,
 			newlbIP:  "1.1.1.1",
 			// "80-86"
-			newPorts:               sevenPortsTCP,
-			discretePortForwarding: false,
-			needsUpdate:            true,
-			expectError:            false,
+			newPorts:    sevenPortsTCP,
+			needsUpdate: true,
+			expectError: false,
 		},
 		{
-			desc: "port range mismatch, discretePorts enabled",
-			oldFwdRule: &compute.ForwardingRule{
-				Name:      "fwd-rule8",
-				IPAddress: "1.1.1.1",
-			},
-			// "80-85"
-			oldPorts: sixPortsTCP,
-			newlbIP:  "1.1.1.1",
-			// "80-86"
-			newPorts:               sevenPortsTCP,
-			discretePortForwarding: true,
-			needsUpdate:            true,
-			expectError:            false,
-		},
-		{
-			desc: "ports mismatch (PortRange)",
+			desc: "single port to multiple mismatch",
 			oldFwdRule: &compute.ForwardingRule{
 				Name:      "fwd-rule9",
 				IPAddress: "1.1.1.1",
@@ -1377,28 +1309,12 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 			oldPorts: onePortTCP,
 			newlbIP:  "1.1.1.1",
 			// "80-84"
-			newPorts:               fivePortsTCP,
-			discretePortForwarding: false,
-			needsUpdate:            true,
-			expectError:            false,
+			newPorts:    fivePortsTCP,
+			needsUpdate: true,
+			expectError: false,
 		},
 		{
-			desc: "ports mismatch, discretePorts enabled",
-			oldFwdRule: &compute.ForwardingRule{
-				Name:      "fwd-rule10",
-				IPAddress: "1.1.1.1",
-			},
-			// ["80", "81", "82", "83", "84"]
-			oldPorts: fivePortsTCP,
-			newlbIP:  "1.1.1.1",
-			// ["80"]
-			newPorts:               onePortTCP,
-			discretePortForwarding: true,
-			needsUpdate:            true,
-			expectError:            false,
-		},
-		{
-			desc: "PortRange to ports (PortRange)",
+			desc: "port range shrinks",
 			oldFwdRule: &compute.ForwardingRule{
 				Name:      "fwd-rule11",
 				IPAddress: "1.1.1.1",
@@ -1406,66 +1322,13 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 			// "80-85"
 			oldPorts: sixPortsTCP,
 			newlbIP:  "1.1.1.1",
-			// "80-84" five ports are still considered PortRange since discretePorts is disabled
-			newPorts:               fivePortsTCP,
-			discretePortForwarding: false,
-			needsUpdate:            true,
-			expectError:            false,
-		},
-		{
-			desc: "PortRange to ports discretePorts enabled",
-			oldFwdRule: &compute.ForwardingRule{
-				Name:      "fwd-rule12",
-				IPAddress: "1.1.1.1",
-			},
-			// "80-85"
-			oldPorts: sixPortsTCP,
-			newlbIP:  "1.1.1.1",
-			// ["80", "81", "82", "83", "84"]
-			newPorts:               fivePortsTCP,
-			discretePortForwarding: true,
-			needsUpdate:            true,
-			expectError:            false,
-		},
-		{
-			desc: "PortRange to ports within existing port range discretePorts enabled",
-			oldFwdRule: &compute.ForwardingRule{
-				Name:      "fwd-rule13",
-				IPAddress: "1.1.1.1",
-			},
-			// "80-85"
-			oldPorts: sixPortsTCP,
-			newlbIP:  "1.1.1.1",
-			// ["80", "85"]
-			newPorts: []v1.ServicePort{
-				{Name: "tcp1", Protocol: v1.ProtocolTCP, Port: int32(80)},
-				{Name: "tcp2", Protocol: v1.ProtocolTCP, Port: int32(85)},
-			},
-			discretePortForwarding: true,
-			// we don't want to unnecessarily recreate forwarding rules
-			// when upgrading from port ranges to distinct ports, because recreating
-			// forwarding rules is traffic impacting.
-			needsUpdate: false,
-			expectError: false,
-		},
-		{
-			desc: "PortRange to ports, discretePorts enabled, port outside of PortRange",
-			oldFwdRule: &compute.ForwardingRule{
-				Name:      "fwd-rule14",
-				IPAddress: "1.1.1.1",
-			},
-			// "80-85"
-			oldPorts: sixPortsTCP,
-			newlbIP:  "1.1.1.1",
-			// ["8080"]
-			newPorts:               onePortTCP8080,
-			discretePortForwarding: true,
-			// Since port is outside of portrange we expect to recreate forwarding rule
+			// "80-84"
+			newPorts:    fivePortsTCP,
 			needsUpdate: true,
 			expectError: false,
 		},
 		{
-			desc: "ports (PortRange) to PortRange",
+			desc: "ports grow",
 			oldFwdRule: &compute.ForwardingRule{
 				Name:      "fwd-rule15",
 				IPAddress: "1.1.1.1",
@@ -1474,48 +1337,14 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 			oldPorts: fivePortsTCP,
 			newlbIP:  "1.1.1.1",
 			// "80-85"
-			newPorts:               sixPortsTCP,
-			discretePortForwarding: false,
-			needsUpdate:            true,
-			expectError:            false,
-		},
-		{
-			desc: "ports to PortRange, discretePorts enabled",
-			oldFwdRule: &compute.ForwardingRule{
-				Name:      "fwd-rule16",
-				IPAddress: "1.1.1.1",
-			},
-			// ["80", "81", "82", "83", "84"]
-			oldPorts: fivePortsTCP,
-			newlbIP:  "1.1.1.1",
-			// "80-85"
-			newPorts:               sixPortsTCP,
-			discretePortForwarding: true,
-			needsUpdate:            true,
-			expectError:            false,
-		},
-		{
-			desc: "update to empty ports, discretePorts enabled",
-			oldFwdRule: &compute.ForwardingRule{
-				Name:      "fwd-rule17",
-				IPAddress: "1.1.1.1",
-			},
-			// ["80", "81", "82", "83", "84"]
-			oldPorts:               fivePortsTCP,
-			newlbIP:                "1.1.1.1",
-			newPorts:               []v1.ServicePort{},
-			discretePortForwarding: true,
-			needsUpdate:            false,
-			expectError:            true,
+			newPorts:    sixPortsTCP,
+			needsUpdate: true,
+			expectError: false,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			gce, err := fakeGCECloud(vals)
 			require.NoError(t, err)
-
-			if tc.discretePortForwarding {
-				gce.SetEnableDiscretePortForwarding(true)
-			}
 
 			frName := tc.oldFwdRule.Name
 			ipAddr := tc.oldFwdRule.IPAddress
@@ -1523,7 +1352,7 @@ func TestCreateForwardingRuleNeedsUpdate(t *testing.T) {
 			newlbIP := tc.newlbIP
 			newPorts := tc.newPorts
 
-			err = createForwardingRule(gce, frName, serviceName, gce.region, ipAddr, target, ports, cloud.NetworkTierStandard, tc.discretePortForwarding)
+			err = createForwardingRule(gce, frName, serviceName, gce.region, ipAddr, target, ports, cloud.NetworkTierStandard)
 			assert.NoError(t, err)
 
 			exists, needsUpdate, _, err := gce.forwardingRuleNeedsUpdate(frName, vals.Region, newlbIP, newPorts)
@@ -1662,12 +1491,13 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 		{Name: "port7", Protocol: v1.ProtocolTCP, Port: int32(88), TargetPort: intstr.FromInt(87)},
 	}
 
-	status, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
-	require.NotNil(t, status)
+	syncResult, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	require.NotNil(t, syncResult)
+	require.NotNil(t, syncResult.status)
 	require.NoError(t, err)
 	svcName := "/" + svc.ObjectMeta.Name
 
-	ipAddr := status.Ingress[0].IP
+	ipAddr := syncResult.status.Ingress[0].IP
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 
 	ipnet, err := utilnet.ParseIPNets("0.0.0.0/0")
@@ -1676,7 +1506,8 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 	wrongIpnet, err := utilnet.ParseIPNets("1.0.0.0/10")
 	require.NoError(t, err)
 
-	fw, err := gce.GetFirewall(MakeFirewallName(lbName))
+	fwName := MakeFirewallName(lbName)
+	fw, err := gce.GetFirewall(fwName)
 	require.NoError(t, err)
 
 	for desc, tc := range map[string]struct {
@@ -1870,7 +1701,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 			fw.SourceRanges[0] = tc.sourceRange
 			fw, err = gce.GetFirewall(MakeFirewallName(lbName))
 			require.Equal(t, fw.SourceRanges[0], tc.sourceRange)
-			require.Equal(t, fw.DestinationRanges[0], status.Ingress[0].IP)
+			require.Equal(t, fw.DestinationRanges[0], syncResult.status.Ingress[0].IP)
 
 			c := gce.c.(*cloud.MockGCE)
 			c.MockFirewalls.GetHook = tc.getHook
@@ -1880,7 +1711,9 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 				svcName,
 				tc.ipAddr,
 				tc.ports,
-				tc.ipnet)
+				tc.ipnet,
+				int64(firewallPriorityDefault),
+			)
 			assert.Equal(t, tc.exists, exists, "'exists' didn't return as expected "+desc)
 			assert.Equal(t, tc.needsUpdate, needsUpdate, "'needsUpdate' didn't return as expected "+desc)
 			if tc.hasErr {
@@ -1897,7 +1730,6 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, fw.Allowed[0].IPProtocol, "tcp")
 			require.Equal(t, fw.SourceRanges[0], trueSourceRange)
-
 		})
 	}
 }
@@ -1925,7 +1757,7 @@ func TestDisabledFirewallOperations(t *testing.T) {
 		{Name: "port7", Protocol: v1.ProtocolTCP, Port: int32(88), TargetPort: intstr.FromInt(87)},
 	}
 
-	firewall, err := gce.firewallObject(MakeFirewallName("test"), "Test Description", "0.0.0.0/0", ipnet, ports, nil)
+	firewall, err := gce.firewallObject(MakeFirewallName("test"), "Test Description", "0.0.0.0/0", ipnet, ports, nil, firewallPriorityDefault)
 
 	err = gce.CreateFirewall(firewall)
 	assert.NoError(t, err)
@@ -1967,7 +1799,7 @@ func TestDisabledFirewallNeedsUpdate(t *testing.T) {
 	require.NoError(t, err)
 	svcName := "/" + svc.ObjectMeta.Name
 
-	ipAddr := status.Ingress[0].IP
+	ipAddr := status.status.Ingress[0].IP
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 
 	ipnet, err := utilnet.ParseIPNets("0.0.0.0/0")
@@ -1991,7 +1823,8 @@ func TestDisabledFirewallNeedsUpdate(t *testing.T) {
 				svcName,
 				ipAddr,
 				svc.Spec.Ports,
-				ipnet)
+				ipnet,
+				int64(firewallPriorityDefault))
 
 			assert.Equal(t, false, exists, "firewall should not exist")
 			assert.Equal(t, false, needsUpdate, "firewall should not exist, no update needed")
@@ -2023,14 +1856,15 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	status, err := gce.ensureExternalLoadBalancer(
+	syncResult, err := gce.ensureExternalLoadBalancer(
 		vals.ClusterName,
 		vals.ClusterID,
 		svc,
 		nil,
 		nodes,
 	)
-	require.NotNil(t, status)
+	require.NotNil(t, syncResult)
+	require.NotNil(t, syncResult.status)
 	require.NoError(t, err)
 
 	hostNames := nodeNames(nodes)
@@ -2038,7 +1872,7 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	require.NoError(t, err)
 	clusterID := vals.ClusterID
 
-	ipAddr := status.Ingress[0].IP
+	ipAddr := syncResult.status.Ingress[0].IP
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 	region := vals.Region
 
@@ -2073,13 +1907,13 @@ func TestEnsureTargetPoolAndHealthCheck(t *testing.T) {
 	require.NoError(t, err)
 	err = gce.ensureTargetPoolAndHealthCheck(true, true, svc, lbName, clusterID, ipAddr, manyHosts, hcToCreate, hcToDelete)
 	assert.NoError(t, err)
-
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
 	assert.Equal(t, maxTargetPoolCreateInstances+1, len(pool.Instances))
 
 	err = gce.ensureTargetPoolAndHealthCheck(true, false, svc, lbName, clusterID, ipAddr, hosts, hcToCreate, hcToDelete)
 	assert.NoError(t, err)
+
 	pool, err = gce.GetTargetPool(lbName, region)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(pool.Instances))
@@ -2120,7 +1954,9 @@ func TestCreateAndUpdateFirewallSucceedsOnXPN(t *testing.T) {
 		"A sad little firewall",
 		ipnet,
 		svc.Spec.Ports,
-		hosts)
+		hosts,
+		firewallPriorityDefault,
+	)
 	require.NoError(t, err)
 
 	msg := fmt.Sprintf("%s %s %s", v1.EventTypeNormal, eventReasonManualChange, eventMsgFirewallChange)
@@ -2133,7 +1969,9 @@ func TestCreateAndUpdateFirewallSucceedsOnXPN(t *testing.T) {
 		"10.0.0.1",
 		ipnet,
 		svc.Spec.Ports,
-		hosts)
+		hosts,
+		firewallPriorityDefault,
+	)
 	require.NoError(t, err)
 
 	msg = fmt.Sprintf("%s %s %s", v1.EventTypeNormal, eventReasonManualChange, eventMsgFirewallChange)
@@ -2276,7 +2114,7 @@ func TestEnsureExternalLoadBalancerErrors(t *testing.T) {
 			if tc.injectMock != nil {
 				tc.injectMock(gce.c.(*cloud.MockGCE))
 			}
-			status, err := gce.ensureExternalLoadBalancer(
+			syncResult, err := gce.ensureExternalLoadBalancer(
 				params.clusterName,
 				params.clusterID,
 				params.service,
@@ -2284,7 +2122,7 @@ func TestEnsureExternalLoadBalancerErrors(t *testing.T) {
 				params.nodes,
 			)
 			assert.Error(t, err, "Should return an error when "+desc)
-			assert.Nil(t, status, "Should not return a status when "+desc)
+			assert.Nil(t, syncResult, "Should not return a status when "+desc)
 		})
 	}
 }
@@ -2325,7 +2163,6 @@ func TestExternalLoadBalancerEnsureHttpHealthCheck(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-
 			gce, err := fakeGCECloud(DefaultTestClusterValues())
 			require.NoError(t, err)
 			c := gce.c.(*cloud.MockGCE)
@@ -2356,7 +2193,6 @@ func TestExternalLoadBalancerEnsureHttpHealthCheck(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestMergeHttpHealthChecks(t *testing.T) {
@@ -2463,6 +2299,7 @@ func TestFirewallObject(t *testing.T) {
 				Ports:      []string{"80"},
 			},
 		},
+		Priority: 1000,
 	}
 
 	for _, tc := range []struct {
@@ -2549,7 +2386,7 @@ func TestFirewallObject(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			ret, err := gce.firewallObject(fwName, fwDesc, tc.destinationIP, tc.sourceRanges, tc.svcPorts, nil)
+			ret, err := gce.firewallObject(fwName, fwDesc, tc.destinationIP, tc.sourceRanges, tc.svcPorts, nil, firewallPriorityDefault)
 			require.NoError(t, err)
 			expectedFirewall := tc.expectedFirewall(baseFw)
 			retSrcRanges := sets.NewString(ret.SourceRanges...)
@@ -2658,10 +2495,14 @@ func TestEnsureExternalLoadBalancerClass(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Create NetLB
-		status, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+		syncResult, err := createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 		if tc.shouldProcess {
 			assert.NoError(t, err)
-			require.NotNil(t, status)
+			require.NotNil(t, syncResult)
+			require.NotNil(t, syncResult.status)
+
+			assertSyncResultAnnotations(t, gce, svc, vals.ClusterID, syncResult)
+
 			svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
 			assert.NoError(t, err)
 			if hasFinalizer(svc, NetLBFinalizerV2) || hasFinalizer(svc, NetLBFinalizerV3) {
@@ -2669,7 +2510,7 @@ func TestEnsureExternalLoadBalancerClass(t *testing.T) {
 			}
 		} else {
 			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
-			assert.Empty(t, status)
+			assert.Nil(t, syncResult)
 		}
 
 		nodeNames = []string{"test-node-1", "test-node-2"}
@@ -2701,4 +2542,269 @@ func TestEnsureExternalLoadBalancerClass(t *testing.T) {
 			assert.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
 		}
 	}
+}
+
+func TestFirewallsEqual(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		desc string
+		a    *compute.Firewall
+		b    *compute.Firewall
+		want bool
+	}{
+		{
+			desc: "same allow",
+			a: &compute.Firewall{
+				Priority: 1000,
+				Allowed: []*compute.FirewallAllowed{
+					{IPProtocol: "tcp", Ports: []string{"10", "11"}},
+				},
+				SourceRanges:      []string{"1.2.3.0/24", "2.3.4.5/24"},
+				DestinationRanges: []string{"12.34.56.78"},
+				Description:       "abcdef",
+			},
+			b: &compute.Firewall{
+				Priority: 1000,
+				Allowed: []*compute.FirewallAllowed{
+					{IPProtocol: "tcp", Ports: []string{"10", "11"}},
+				},
+				SourceRanges:      []string{"1.2.3.0/24", "2.3.4.5/24"},
+				DestinationRanges: []string{"12.34.56.78"},
+				Description:       "abcdef",
+			},
+			want: true,
+		},
+		{
+			desc: "same allow with different order",
+			a: &compute.Firewall{
+				Priority: 1000,
+				Allowed: []*compute.FirewallAllowed{
+					{IPProtocol: "tcp", Ports: []string{"10", "11"}},
+				},
+				SourceRanges:      []string{"1.2.3.0/24", "2.3.4.5/24"},
+				DestinationRanges: []string{"12.34.56.78"},
+				Description:       "abcdef",
+			},
+			b: &compute.Firewall{
+				Priority: 1000,
+				Allowed: []*compute.FirewallAllowed{
+					{IPProtocol: "tcp", Ports: []string{"11", "10"}},
+				},
+				SourceRanges:      []string{"2.3.4.5/24", "1.2.3.0/24"},
+				DestinationRanges: []string{"12.34.56.78"},
+				Description:       "abcdef",
+			},
+			want: true,
+		},
+		{
+			desc: "same deny",
+			a: &compute.Firewall{
+				Priority:          999,
+				Denied:            []*compute.FirewallDenied{{IPProtocol: "all"}},
+				SourceRanges:      []string{"0.0.0.0/0"},
+				DestinationRanges: []string{"12.34.56.78"},
+				Description:       "abcdef",
+			},
+			b: &compute.Firewall{
+				Priority:          999,
+				Denied:            []*compute.FirewallDenied{{IPProtocol: "all"}},
+				SourceRanges:      []string{"0.0.0.0/0"},
+				DestinationRanges: []string{"12.34.56.78"},
+				Description:       "abcdef",
+			},
+			want: true,
+		},
+		{
+			desc: "different_priority",
+			a: &compute.Firewall{
+				Priority: 1000,
+			},
+			b: &compute.Firewall{
+				Priority: 999,
+			},
+			want: false,
+		},
+		{
+			desc: "same_source_ranges",
+			a: &compute.Firewall{
+				SourceRanges: []string{"1.2.3.0/24", "2.3.4.5/24"},
+			},
+			b: &compute.Firewall{
+				SourceRanges: []string{"1.2.3.0/24", "2.3.4.5/24"},
+			},
+			want: true,
+		},
+		{
+			desc: "different_source_ranges",
+			a: &compute.Firewall{
+				SourceRanges: []string{"1.2.3.0/24", "2.3.4.5/24"},
+			},
+			b: &compute.Firewall{
+				SourceRanges: []string{"1.2.3.0/24", "2.3.4.5/32"},
+			},
+			want: false,
+		},
+		{
+			desc: "same_destination_ranges",
+			a: &compute.Firewall{
+				DestinationRanges: []string{"12.34.56.78"},
+			},
+			b: &compute.Firewall{
+				DestinationRanges: []string{"12.34.56.78"},
+			},
+			want: true,
+		},
+		{
+			desc: "different_destination_ranges",
+			a: &compute.Firewall{
+				DestinationRanges: []string{"12.34.56.78"},
+			},
+			b: &compute.Firewall{
+				DestinationRanges: []string{"1.2.3.4"},
+			},
+			want: false,
+		},
+		{
+			desc: "different_description",
+			a: &compute.Firewall{
+				Description: "cat",
+			},
+			b: &compute.Firewall{
+				Description: "dog",
+			},
+			want: false,
+		},
+		{
+			desc: "same_description",
+			a: &compute.Firewall{
+				Description: "cat",
+			},
+			b: &compute.Firewall{
+				Description: "cat",
+			},
+			want: true,
+		},
+		{
+			desc: "different_protocol",
+			a: &compute.Firewall{
+				Allowed: []*compute.FirewallAllowed{
+					{IPProtocol: "tcp", Ports: []string{"10", "11"}},
+				},
+			},
+			b: &compute.Firewall{
+				Allowed: []*compute.FirewallAllowed{
+					{IPProtocol: "udp", Ports: []string{"10", "11"}},
+				},
+			},
+			want: false,
+		},
+		{
+			desc: "different_ports",
+			a: &compute.Firewall{
+				Allowed: []*compute.FirewallAllowed{
+					{IPProtocol: "tcp", Ports: []string{"10", "11"}},
+				},
+			},
+			b: &compute.Firewall{
+				Allowed: []*compute.FirewallAllowed{
+					{IPProtocol: "tcp", Ports: []string{"10", "12"}},
+				},
+			},
+			want: false,
+		},
+		{
+			desc: "different_port_count",
+			a: &compute.Firewall{
+				Allowed: []*compute.FirewallAllowed{
+					{IPProtocol: "tcp", Ports: []string{"10", "11"}},
+				},
+			},
+			b: &compute.Firewall{
+				Allowed: []*compute.FirewallAllowed{
+					{IPProtocol: "tcp", Ports: []string{"10"}},
+				},
+			},
+			want: false,
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := firewallsEqual(tC.a, tC.b)
+			if err != nil {
+				t.Fatalf("got unexpected err when comparing firewalls %v", err)
+			}
+			if got != tC.want {
+				t.Fatalf("got %v, want %v", got, tC.want)
+			}
+		})
+	}
+}
+
+func TestEnsureExternalLoadBalancerMetrics(t *testing.T) {
+	// t.Parallel() // Disable parallel to avoid race with global metrics registry
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	lm, ok := gce.metricsCollector.(*LoadBalancerMetrics)
+	require.True(t, ok)
+
+	svc := fakeLoadbalancerService("")
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	nodes, err := createAndInsertNodes(gce, []string{"test-node-1"}, vals.ZoneName)
+	require.NoError(t, err)
+
+	// Case 1: Success
+	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	assert.NoError(t, err)
+
+	// We expect 1 success, and deny firewall None (default)
+	lm.exportNetLBMetrics()
+	verifyL4NetLBMetric(t, 1, StatusSuccess, DenyFirewallStatusNone)
+
+	// Case 2: Enable deny firewall cleanup
+	gce.enableL4DenyFirewallRollbackCleanup = true
+	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	assert.NoError(t, err)
+
+	// We expect 1 success, and deny firewall Disabled
+	lm.exportNetLBMetrics()
+	verifyL4NetLBMetric(t, 1, StatusSuccess, DenyFirewallStatusDisabled)
+
+	// Case 3: Enable deny firewall
+	gce.enableL4DenyFirewallRule = true
+	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	assert.NoError(t, err)
+
+	// We expect 1 success, and deny firewall IPv4
+	lm.exportNetLBMetrics()
+	verifyL4NetLBMetric(t, 1, StatusSuccess, DenyFirewallStatusIPv4)
+
+	// Case 4: Error on fetch
+	mockGCE := gce.Compute().(*cloud.MockGCE)
+	mockGCE.MockFirewalls.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockFirewalls, options ...cloud.Option) (bool, *compute.Firewall, error) {
+		return true, nil, fmt.Errorf("error on fetch")
+	}
+	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	assert.Error(t, err)
+
+	// We expect 1 error, and deny firewall IPv4
+	lm.exportNetLBMetrics()
+	verifyL4NetLBMetric(t, 1, StatusError, DenyFirewallStatusNone)
+
+	// Clear mock
+	mockGCE.MockFirewalls.GetHook = nil
+
+	// Case 5: Delete
+	err = gce.ensureExternalLoadBalancerDeleted(vals.ClusterName, vals.ClusterID, svc)
+	assert.NoError(t, err)
+
+	// Now verify success count is 0 (since we deleted the success service)
+	lm.exportNetLBMetrics()
+	verifyL4NetLBMetric(t, 0, StatusError, DenyFirewallStatusNone)
 }
