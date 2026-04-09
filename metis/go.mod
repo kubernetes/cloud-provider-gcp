@@ -5,6 +5,7 @@ go 1.25.0
 toolchain go1.25.8
 
 require (
+	github.com/containernetworking/cni v1.2.0
 	github.com/go-logr/logr v1.4.3
 	github.com/mattn/go-sqlite3 v1.14.37
 	github.com/spf13/cobra v1.10.0
@@ -33,6 +34,7 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
+	github.com/vishvananda/netns v0.0.4 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.opentelemetry.io/otel v1.41.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.41.0 // indirect
