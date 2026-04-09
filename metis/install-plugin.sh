@@ -1,7 +1,7 @@
 #!/bin/sh -ex
 
 CNI_DIR="${CNI_DIR:-/host/opt/cni/bin}"
-METIS_BINARY="/metis"
+METIS_BINARY="/bin/metis"
 
 echo "Installing metis CNI binary to ${CNI_DIR}..."
 mkdir -p "${CNI_DIR}"
