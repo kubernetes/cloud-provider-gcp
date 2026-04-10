@@ -9,6 +9,8 @@ set -o xtrace
 REPO_ROOT=$GOPATH/src/k8s.io/cloud-provider-gcp
 cd
 export GO111MODULE=on
+# Optional Features
+ENABLE_GCEPD=${ENABLE_GCEPD:-"false"}
 
 go install sigs.k8s.io/kubetest2@latest
 go install sigs.k8s.io/kubetest2/kubetest2-gce@latest
@@ -20,4 +22,9 @@ else
   export TEST_PACKAGE_VERSION="v1.25.0"
   echo "TEST_PACKAGE_VERSION - Falling back to v1.25.0"
 fi
-kubetest2 gce -v 2 --repo-root $REPO_ROOT --build --up --down --test=ginkgo --master-size e2-standard-2  -- --test-package-version="${TEST_PACKAGE_VERSION}" --focus-regex='\[Conformance\]'
+TEST_ARGS=""
+if [[ "${ENABLE_GCEPD}" == "true" ]]; then
+  TEST_ARGS="--enabled-volume-drivers=gcepd"
+fi
+
+kubetest2 gce -v 2 --repo-root $REPO_ROOT --build --up --down --test=ginkgo --master-size e2-standard-2  -- --test-package-version="${TEST_PACKAGE_VERSION}" --focus-regex='\[Conformance\]' --test-args="${TEST_ARGS}"
