@@ -1,0 +1,28 @@
+name: Auto Tag release branches
+
+on:
+  push:
+    branches:
+      - 'release-1.*'
+
+jobs:
+  auto-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history and tags
+
+      - name: Configure Git User
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run auto-tag script
+        env:
+          DRY_RUN: "false"
+          FORCE_BRANCH: ${{ github.ref_name }}
+        run: ./tools/auto-tag.sh
