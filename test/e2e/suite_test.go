@@ -18,12 +18,10 @@ package e2e
 
 import (
 	"flag"
-	"math/rand"
 	"os"
 	"path"
 	"path/filepath"
 	"testing"
-	"time"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/ginkgo/v2/reporters"
@@ -36,7 +34,6 @@ import (
 const kubeconfigEnvVar = "KUBECONFIG"
 
 func init() {
-	rand.Seed(time.Now().UTC().UnixNano())
 	testing.Init()
 
 	framework.RegisterProvider("gce", factory)
