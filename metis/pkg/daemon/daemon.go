@@ -48,14 +48,17 @@ func NewDaemon(cfg Config) *Daemon {
 
 // Run starts the daemon process and listens for gRPC requests on a domain socket.
 func (d *Daemon) Run(ctx context.Context) error {
-	klog.InfoS("metis daemon is starting", "config", fmt.Sprintf("%+v", d.Config))
+	// Initialize logr.Logger here at the entry point using klog.Background(). We use klog at the
+	// entry point to configure the concrete logging backend and flags. We pass the logr interface
+	// to sub-components to decouple them from the implementation, improve testability, and
+	// preserve the "metis.daemon" name context across all logs.
+	logger := klog.Background().WithName("metis").WithName("daemon") // klog/v2 provides a logr.Logger
+	logger.Info("metis daemon is starting", "config", fmt.Sprintf("%+v", d.Config))
 
 	dbPath := d.Config.DBPath
 	if dbPath == "" {
 		dbPath = pkg.DefaultDBPath
 	}
-
-	logger := klog.Background().WithName("metis").WithName("daemon") // klog/v2 provides a logr.Logger
 
 	storeInstance, err := store.NewStore(ctx, logger, dbPath)
 	if err != nil {
@@ -76,7 +79,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 			return fmt.Errorf("server failed: %w", err)
 		}
 	case <-ctx.Done():
-		klog.InfoS("Context cancelled, shutting down daemon")
+		logger.Info("Context cancelled, shutting down daemon")
 		server.stop()
 	}
 

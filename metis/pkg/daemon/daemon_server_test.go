@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -36,26 +35,64 @@ import (
 	"k8s.io/metis/pkg/store"
 )
 
-func TestAdaptiveIpamServer_Start(t *testing.T) {
+func TestAdaptiveIpamServer_withGrpcClient(t *testing.T) {
+	logger := logr.Discard()
 	tempDir := t.TempDir()
-	sockPath := filepath.Join(tempDir, "metis_test_server.sock")
+	sockPath := filepath.Join(tempDir, "metis_test_client_integration.sock")
+	dbPath := filepath.Join(tempDir, "metis_client_integration.sqlite")
 
-	server := &adaptiveIpamServer{sockPath: sockPath}
+	s, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
 
+	server := &adaptiveIpamServer{store: s, sockPath: sockPath}
+
+	// 1. Start server in background
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- server.start()
 	}()
 
-	select {
-	case err := <-errCh:
-		t.Fatalf("Server failed on start: %v", err)
-	case <-time.After(5 * time.Second):
-		// Expect it to listen for 5s
+	// Wait for socket to appear
+	time.Sleep(100 * time.Millisecond)
+
+	// 2. Dial using gRPC client
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext(ctx, sockPath, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+		return net.Dial("unix", addr)
+	}))
+	if err != nil {
+		t.Fatalf("Failed to dial UDS %s: %v", sockPath, err)
+	}
+	defer conn.Close()
+
+	client := adaptiveipam.NewAdaptiveIpamClient(conn)
+
+	// 3. Prepare data and call
+	network := "integration-network"
+	cidr := "10.0.1.0/24"
+	req := &adaptiveipam.AllocatePodIPRequest{
+		Network:      network,
+		PodName:      "test-pod",
+		PodNamespace: "default",
+		Ipv4Config: &adaptiveipam.IPConfig{
+			InterfaceName:  "eth0",
+			ContainerId:    "test-container-integration",
+			InitialPodCidr: cidr,
+		},
 	}
 
-	if _, err := os.Stat(sockPath); os.IsNotExist(err) {
-		t.Errorf("Expected socket to be created at %s, but doesn't exist", sockPath)
+	resp, err := client.AllocatePodIP(ctx, req)
+	if err != nil {
+		t.Fatalf("gRPC Client AllocatePodIP failed: %v", err)
+	}
+
+	if resp.Ipv4 == nil || resp.Ipv4.IpAddress == "" {
+		t.Errorf("Expected valid IP address from gRPC client, got response: %v", resp)
 	}
 }
 
@@ -246,67 +283,6 @@ func TestAdaptiveIpamServer_DeallocatePodIP(t *testing.T) {
 	}
 	if isAlloc {
 		t.Errorf("Expected IP to be unallocated")
-	}
-}
-
-func TestAdaptiveIpamServer_GRPCClientIntegration(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	sockPath := filepath.Join(tempDir, "metis_test_client_integration.sock")
-	dbPath := filepath.Join(tempDir, "metis_client_integration.sqlite")
-
-	s, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore failed: %v", err)
-	}
-	defer s.Close()
-
-	server := &adaptiveIpamServer{store: s, sockPath: sockPath}
-
-	// 1. Start server in background
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- server.start()
-	}()
-
-	// Wait for socket to appear
-	time.Sleep(100 * time.Millisecond)
-
-	// 2. Dial using gRPC client
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, err := grpc.DialContext(ctx, sockPath, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
-		return net.Dial("unix", addr)
-	}))
-	if err != nil {
-		t.Fatalf("Failed to dial UDS %s: %v", sockPath, err)
-	}
-	defer conn.Close()
-
-	client := adaptiveipam.NewAdaptiveIpamClient(conn)
-
-	// 3. Prepare data and call
-	network := "integration-network"
-	cidr := "10.0.1.0/24"
-	req := &adaptiveipam.AllocatePodIPRequest{
-		Network:      network,
-		PodName:      "test-pod",
-		PodNamespace: "default",
-		Ipv4Config: &adaptiveipam.IPConfig{
-			InterfaceName:  "eth0",
-			ContainerId:    "test-container-integration",
-			InitialPodCidr: cidr,
-		},
-	}
-
-	resp, err := client.AllocatePodIP(ctx, req)
-	if err != nil {
-		t.Fatalf("gRPC Client AllocatePodIP failed: %v", err)
-	}
-
-	if resp.Ipv4 == nil || resp.Ipv4.IpAddress == "" {
-		t.Errorf("Expected valid IP address from gRPC client, got response: %v", resp)
 	}
 }
 
