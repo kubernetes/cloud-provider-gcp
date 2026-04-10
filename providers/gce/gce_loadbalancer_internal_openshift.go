@@ -23,6 +23,7 @@ import (
 	"google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog/v2"
 )
 
 // filterNodesWithExistingExternalInstanceGroups filters out nodes that are already managed by
@@ -110,8 +111,11 @@ func filterNodeObjectFromName(nodesInZone []*v1.Node, nodeNames []string) []*v1.
 	filteredNodes := []*v1.Node{}
 
 	for _, node := range nodesInZone {
-		if slices.Contains(nodeNames, node.Name) {
+		canonicalName := canonicalizeInstanceName(node.Name)
+		if slices.Contains(nodeNames, canonicalName) {
 			filteredNodes = append(filteredNodes, node)
+		} else {
+			klog.Warningf("filterNodeObjectFromName: node %q (canonical: %q) not found in GCE instance names %v", node.Name, canonicalName, nodeNames)
 		}
 	}
 	return filteredNodes
@@ -143,12 +147,27 @@ func (g *Cloud) evaluateExternalInstanceGroup(ig *compute.InstanceGroup, zone st
 	// If all instances in this external instance group are also in our zone's node list,
 	// or they all have the node instance prefix, we can reuse this instance group instead
 	// of creating our own internal instance group
-	shouldReuse = gceHostNamesInZone.HasAll(instanceNames.UnsortedList()...) || g.allHaveNodePrefix(instanceNames.UnsortedList())
+	hasAll := gceHostNamesInZone.HasAll(instanceNames.UnsortedList()...)
+	allHavePrefix := g.allHaveNodePrefix(instanceNames.UnsortedList())
+	shouldReuse = hasAll || allHavePrefix
+	klog.V(2).Infof("evaluateExternalInstanceGroup(%v): shouldReuse=%v (hasAll=%v, allHavePrefix=%v), instances=%v", ig.Name, shouldReuse, hasAll, allHavePrefix, instanceNames.UnsortedList())
 
 	return shouldReuse, instanceNames, nil
 }
 
 // allHaveNodePrefix checks if all instances have the cluster's node instance prefix.
+//
+// DO NOT REMOVE. This is load-bearing for all OCP GCP clusters.
+//
+// The OpenShift installer creates per-zone master instance groups (e.g.
+// <infra>-master-<zone>). During CAPG installs (OCPBUGS-35256), the bootstrap
+// node is placed in the same master IG as a control plane node. The bootstrap
+// node is not a k8s node, so HasAll rejects the master IG. Without this prefix
+// fallback the CCM then tries to add the master to its own k8s-ig, which fails
+// with INSTANCE_IN_MULTIPLE_LOAD_BALANCED_IGS (master is already in the
+// installer's IG). It then tries to add the worker to that same k8s-ig
+// alongside the master, which fails with wrongSubnetwork (masters and workers
+// are on different subnets).
 func (g *Cloud) allHaveNodePrefix(instances []string) bool {
 	for _, instance := range instances {
 		if !strings.HasPrefix(instance, g.nodeInstancePrefix) {
