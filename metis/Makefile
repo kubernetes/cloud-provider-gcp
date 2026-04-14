@@ -97,6 +97,7 @@ build-tarball: init-buildx ## Build the multi-arch image as an OCI tarball.
 	@echo "Building OCI tarball for multi-arch image: $(IMAGE_NAME)..."
 	docker buildx build --platform $(ALL_PLATFORMS) \
 		$(DOCKER_BUILD_ARGS) \
+		$(DOCKER_TAG_ARGS) \
 		--output=type=oci,dest=$(OCI_TARBALL_PATH) \
 		--provenance=false \
 		--sbom=false .
