@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"testing"
 	"time"
@@ -717,6 +718,17 @@ func TestCloudsdkBasedGcloudAccessToken(t *testing.T) {
 
 	if ec.Status.ExpirationTimestamp != nil {
 		t.Errorf("unexpected expiration time stamp: %v", ec.Status.ExpirationTimestamp)
+	}
+}
+
+func TestGetCacheFilePathOverride(t *testing.T) {
+	overridePath := "/tmp/my_custom_cache_path"
+	os.Setenv("GKE_GCLOUD_AUTH_PLUGIN_CACHE_OVERRIDE", overridePath)
+	defer os.Setenv("GKE_GCLOUD_AUTH_PLUGIN_CACHE_OVERRIDE", "")
+
+	path := getCacheFilePath()
+	if path != overridePath {
+		t.Errorf("getCacheFilePath() = %v, want %v", path, overridePath)
 	}
 }
 
