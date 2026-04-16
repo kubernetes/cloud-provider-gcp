@@ -18,7 +18,6 @@ package daemon
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -29,7 +28,9 @@ import (
 
 	"github.com/go-logr/logr"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg/store"
@@ -331,8 +332,15 @@ func TestAdaptiveIpamServer_AllocatePodIP_RetryOnDBError(t *testing.T) {
 		t.Errorf("Expected test to take at least 300ms due to retries, took %v", duration)
 	}
 
-	if !strings.Contains(err.Error(), "database is closed") {
-		t.Errorf("Expected error to contain 'database is closed', got: %v", err)
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("Expected gRPC status error, got: %v", err)
+	}
+	if st.Code() != codes.Unavailable {
+		t.Errorf("Expected status code Unavailable, got %v", st.Code())
+	}
+	if !strings.Contains(st.Message(), "database is closed") {
+		t.Errorf("Expected error message to contain 'database is closed', got: %v", st.Message())
 	}
 }
 
@@ -374,7 +382,14 @@ func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 		t.Errorf("Expected test to fail fast, but took %v", duration)
 	}
 
-	if !errors.Is(err, store.ErrNoAvailableIPs) {
-		t.Errorf("Expected error to be ErrNoAvailableIPs, got: %v", err)
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("Expected gRPC status error, got: %v", err)
+	}
+	if st.Code() != codes.ResourceExhausted {
+		t.Errorf("Expected status code ResourceExhausted, got %v", st.Code())
+	}
+	if !strings.Contains(st.Message(), store.ErrNoAvailableIPs.Error()) {
+		t.Errorf("Expected status message to contain '%v', got: %s", store.ErrNoAvailableIPs, st.Message())
 	}
 }
