@@ -87,11 +87,6 @@ func TestCmdAdd(t *testing.T) {
 		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "initial_pod_cidr": "10.240.0.0/24"}`),
 	}
 
-	// We need to capture stdout to verify the output, but cmdAdd calls types.PrintResult which prints to stdout.
-	// For simplicity in this unit test, we just check if it returns an error.
-	// To fully test it, we would need to mock stdout or use a helper that doesn't print.
-	// Since we are reusing the CNI skeleton, it's hard to avoid stdout printing without hijacking it.
-
 	err := cmdAdd(args)
 	if err != nil {
 		t.Fatalf("cmdAdd failed: %v", err)
