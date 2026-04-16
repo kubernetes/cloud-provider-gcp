@@ -33,10 +33,21 @@ TOOLS_BIN="${_TMP_DIR}/bin"
 mkdir -p "${TOOLS_BIN}"
 export PATH="${TOOLS_BIN}:${PATH}"
 
-# Install protoc if not present
-if ! command -v protoc &> /dev/null; then
-  echo "protoc not found, installing locally..."
-  PROTOC_VERSION="34.1"
+# Install protoc if not present or version mismatches
+PROTOC_VERSION="34.1"
+need_install=true
+if command -v protoc &> /dev/null; then
+  curr_version=$(protoc --version | awk '{print $2}')
+  if [[ "$curr_version" == "$PROTOC_VERSION" ]]; then
+    need_install=false
+    echo "Found protoc version $curr_version, skipping installation."
+  else
+    echo "Found protoc version $curr_version, but want $PROTOC_VERSION."
+  fi
+fi
+
+if $need_install; then
+  echo "Installing protoc locally..."
   PROTOC_ZIP="protoc-${PROTOC_VERSION}-linux-x86_64.zip"
   PROTOC_URL="https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/${PROTOC_ZIP}"
   
@@ -56,14 +67,11 @@ if ! command -v protoc &> /dev/null; then
   rm -rf "${TMP_PROTOC_DIR}"
 fi
 
-# Install protoc-gen-go and protoc-gen-go-grpc if not present
-if ! command -v protoc-gen-go &> /dev/null || ! command -v protoc-gen-go-grpc &> /dev/null; then
-  echo "protoc-gen-go/grpc not found, installing..."
+  echo "Installing protoc-gen-go/grpc..."
   export GOBIN="${TOOLS_BIN}"
   
   go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
   go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-fi
 
 # Find all proto files outside of vendor and temporary/artifact directories
 proto_files=$(find . -name "*.proto" -not -path "./vendor/*" -not -path "./_*" )
