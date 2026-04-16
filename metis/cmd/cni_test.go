@@ -91,7 +91,7 @@ func TestCmdAdd(t *testing.T) {
 	// For simplicity in this unit test, we just check if it returns an error.
 	// To fully test it, we would need to mock stdout or use a helper that doesn't print.
 	// Since we are reusing the CNI skeleton, it's hard to avoid stdout printing without hijacking it.
-	
+
 	err := cmdAdd(args)
 	if err != nil {
 		t.Fatalf("cmdAdd failed: %v", err)
@@ -164,14 +164,13 @@ func TestCmdCheck(t *testing.T) {
 	}
 }
 
-
 func TestCniWithActualDaemon(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "metis-e2e-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tempDir)
-	
+
 	socketPath := filepath.Join(tempDir, "metis.sock")
 	dbPath := filepath.Join(tempDir, "metis.sqlite")
 
@@ -180,10 +179,10 @@ func TestCniWithActualDaemon(t *testing.T) {
 		SocketPath: socketPath,
 	}
 	d := daemon.NewDaemon(cfg)
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- d.Run(ctx)

@@ -72,18 +72,18 @@ func loadK8sArgs(args string) (*K8sArgs, error) {
 
 func getGrpcClient(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 	dialOption := grpc.WithTransportCredentials(insecure.NewCredentials())
-	
+
 	absPath, err := filepath.Abs(socketPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get absolute path for socket %s: %v", socketPath, err)
 	}
 	dialTarget := fmt.Sprintf("unix://%s", absPath)
-	
+
 	conn, err := grpc.NewClient(dialTarget, dialOption)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to daemon: %v", err)
 	}
-	
+
 	return pb.NewAdaptiveIpamClient(conn), conn, nil
 }
 
@@ -135,7 +135,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 			return fmt.Errorf("failed to parse allocated CIDR: %v", err)
 		}
 		ip := net.ParseIP(resp.Ipv4.IpAddress)
-		
+
 		result.IPs = append(result.IPs, &current.IPConfig{
 			Address: net.IPNet{IP: ip, Mask: ipNet.Mask},
 		})
