@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -156,7 +155,7 @@ func (s *adaptiveIpamServer) MaybeAddInitialPodCidr(ctx context.Context, network
 	}
 	if !exists {
 		if err := s.store.AddCIDR(ctx, network, initialPodCidr); err != nil {
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			if errors.Is(err, store.ErrCidrAlreadyExists) {
 				s.logger.Info("Initial CIDR block already added by another thread", "network", network, "cidr", initialPodCidr)
 			} else {
 				s.logger.Error(err, "failed to add initial cidr block", "network", network, "cidr", initialPodCidr)

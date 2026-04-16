@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	"github.com/mattn/go-sqlite3" // SQLite driver
 )
 
 //go:embed schema.sql
@@ -44,8 +44,13 @@ const (
 	DefaultBusyTimeout = 5000 * time.Millisecond
 )
 
-// ErrNoAvailableIPs is returned when no available IPs can be found in any CIDR block.
-var ErrNoAvailableIPs = errors.New("no available IPs in store")
+var (
+	// ErrCidrAlreadyExists is returned when a CIDR block already exists in the store.
+	ErrCidrAlreadyExists = errors.New("cidr block already exists")
+
+	// ErrNoAvailableIPs is returned when no available IPs can be found in any CIDR block.
+	ErrNoAvailableIPs = errors.New("no available IPs in store")
+)
 
 // Store manages database operations for IPAM.
 type Store struct {
@@ -390,6 +395,11 @@ func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 	`, cidr, network, ipFamily, len(ips), 0) // We will update allocated_ips later after insertions
 
 	if err != nil {
+		if sqliteErr, ok := err.(sqlite3.Error); ok {
+			if sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique {
+				return fmt.Errorf("%w: %v", ErrCidrAlreadyExists, err)
+			}
+		}
 		return fmt.Errorf("failed to insert cidr_block: %w", err)
 	}
 
