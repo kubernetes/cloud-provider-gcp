@@ -141,7 +141,9 @@ func cmdAdd(args *skel.CmdArgs) error {
 		})
 	}
 
-	// TODO: Handle IPv6 if needed
+	if resp.Ipv6 != nil {
+		return fmt.Errorf("IPv6 allocation is not implemented yet")
+	}
 
 	return types.PrintResult(result, conf.CNIVersion)
 }
