@@ -15,6 +15,9 @@ service AdaptiveIpam {
   // The IP can be reused for other pods on the node level, or will be eventually
   // released at the cloud provider.
   rpc DeallocatePodIP(DeallocatePodIPRequest) returns (DeallocatePodIPResponse);
+
+  // CheckPodIP validates that an IP address is still correctly allocated to a pod.
+  rpc CheckPodIP(CheckPodIPRequest) returns (CheckPodIPResponse);
 }
 
 // IPConfig contains parameters required to allocate a pod IP.
@@ -82,4 +85,18 @@ message DeallocatePodIPRequest {
 // DeallocatePodIPResponse represents the result of a pod IP deallocation request.
 // An empty message is returned on success; RPC errors are used to indicate failure.
 message DeallocatePodIPResponse {
+}
+
+// CheckPodIPRequest contains the parameters required to check a pod IP allocation.
+message CheckPodIPRequest {
+  // network is the name of the network.
+  string network = 1;
+  // interface_name is the name of the pod interface.
+  string interface_name = 2;
+  // container_id is the id of the pod container.
+  string container_id = 3;
+}
+
+// CheckPodIPResponse indicates the result of the check operation.
+message CheckPodIPResponse {
 }

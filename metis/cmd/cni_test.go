@@ -36,6 +36,7 @@ type mockAdaptiveIpamClient struct {
 	pb.AdaptiveIpamClient
 	allocateFunc   func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error)
 	deallocateFunc func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error)
+	checkFunc      func(ctx context.Context, in *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error)
 }
 
 func (m *mockAdaptiveIpamClient) AllocatePodIP(ctx context.Context, in *pb.AllocatePodIPRequest, opts ...grpc.CallOption) (*pb.AllocatePodIPResponse, error) {
@@ -48,6 +49,13 @@ func (m *mockAdaptiveIpamClient) AllocatePodIP(ctx context.Context, in *pb.Alloc
 func (m *mockAdaptiveIpamClient) DeallocatePodIP(ctx context.Context, in *pb.DeallocatePodIPRequest, opts ...grpc.CallOption) (*pb.DeallocatePodIPResponse, error) {
 	if m.deallocateFunc != nil {
 		return m.deallocateFunc(ctx, in)
+	}
+	return nil, fmt.Errorf("unimplemented")
+}
+
+func (m *mockAdaptiveIpamClient) CheckPodIP(ctx context.Context, in *pb.CheckPodIPRequest, opts ...grpc.CallOption) (*pb.CheckPodIPResponse, error) {
+	if m.checkFunc != nil {
+		return m.checkFunc(ctx, in)
 	}
 	return nil, fmt.Errorf("unimplemented")
 }
@@ -123,6 +131,39 @@ func TestCmdDel(t *testing.T) {
 	}
 }
 
+func TestCmdCheck(t *testing.T) {
+	origClientFactory := clientFactory
+	defer func() { clientFactory = origClientFactory }()
+
+	mockClient := &mockAdaptiveIpamClient{}
+	clientFactory = func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+		return mockClient, nil, nil
+	}
+
+	checkCalled := false
+	mockClient.checkFunc = func(ctx context.Context, in *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error) {
+		checkCalled = true
+		return &pb.CheckPodIPResponse{}, nil
+	}
+
+	args := &skel.CmdArgs{
+		ContainerID: "test-container-id",
+		Netns:       "/var/run/netns/test",
+		IfName:      "eth0",
+		Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
+		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis"}`),
+	}
+
+	err := cmdCheck(args)
+	if err != nil {
+		t.Fatalf("cmdCheck failed: %v", err)
+	}
+
+	if !checkCalled {
+		t.Fatalf("CheckPodIP was not called")
+	}
+}
+
 
 func TestCniWithActualDaemon(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "metis-e2e-")
@@ -170,5 +211,10 @@ func TestCniWithActualDaemon(t *testing.T) {
 	err = cmdAdd(args)
 	if err != nil {
 		t.Fatalf("cmdAdd failed with actual daemon: %v", err)
+	}
+
+	err = cmdCheck(args)
+	if err != nil {
+		t.Fatalf("cmdCheck failed with actual daemon: %v", err)
 	}
 }

@@ -190,13 +190,26 @@ func cmdCheck(args *skel.CmdArgs) error {
 		return err
 	}
 
-	// For check, we just verify we can connect to the daemon
-	_, conn, err := clientFactory(conf.DaemonSocket)
+	client, conn, err := clientFactory(conf.DaemonSocket)
 	if err != nil {
 		return err
 	}
 	if conn != nil {
 		defer conn.Close()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req := &pb.CheckPodIPRequest{
+		Network:       conf.Name,
+		InterfaceName: args.IfName,
+		ContainerId:   args.ContainerID,
+	}
+
+	_, err = client.CheckPodIP(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to check IP allocation via daemon: %v", err)
 	}
 
 	return nil
