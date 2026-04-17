@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -348,6 +349,10 @@ func writeCacheFile(content string) error {
 }
 
 func getCacheFilePath() string {
+	if override := os.Getenv("GKE_GCLOUD_AUTH_PLUGIN_CACHE_OVERRIDE"); override != "" {
+		return override
+	}
+
 	po := clientcmd.NewDefaultPathOptions()
 	kubeconfig := po.GetDefaultFilename()
 	dir := filepath.Dir(kubeconfig)

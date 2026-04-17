@@ -721,6 +721,17 @@ func TestCloudsdkBasedGcloudAccessToken(t *testing.T) {
 	}
 }
 
+func TestGetCacheFilePathOverride(t *testing.T) {
+	overridePath := "/tmp/my_custom_cache_path"
+	os.Setenv("GKE_GCLOUD_AUTH_PLUGIN_CACHE_OVERRIDE", overridePath)
+	defer os.Setenv("GKE_GCLOUD_AUTH_PLUGIN_CACHE_OVERRIDE", "")
+
+	path := getCacheFilePath()
+	if path != overridePath {
+		t.Errorf("getCacheFilePath() = %v, want %v", path, overridePath)
+	}
+}
+
 func fakeDefaultTokenSource(ctx context.Context, scope ...string) (oauth2.TokenSource, error) {
 	return &mockTokenSource{}, nil
 }
