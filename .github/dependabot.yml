@@ -1,5 +1,14 @@
 version: 2
 updates:
+- package-ecosystem: "github-actions"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "sunday"
+  labels:
+  - "ok-to-test"
+  - 'area/dependency'
+  - 'release-note-none'
 - package-ecosystem: gomod
   directories:
   - "/"
