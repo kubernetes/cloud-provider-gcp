@@ -523,6 +523,44 @@ func TestInstanceByProviderID(t *testing.T) {
 	}
 }
 
+func TestUnmanagedNodes(t *testing.T) {
+	gce, err := fakeGCECloud(DefaultTestClusterValues())
+	require.NoError(t, err)
+
+	unmanagedID := "aws://region/aws-node"
+	ctx := context.Background()
+
+	t.Run("InstanceExistsByProviderID", func(t *testing.T) {
+		exists, err := gce.InstanceExistsByProviderID(ctx, unmanagedID)
+		assert.NoError(t, err)
+		assert.True(t, exists, "Unmanaged nodes should be assumed to exist")
+	})
+
+	t.Run("InstanceTypeByProviderID", func(t *testing.T) {
+		mType, err := gce.InstanceTypeByProviderID(ctx, unmanagedID)
+		assert.NoError(t, err)
+		assert.Equal(t, "", mType)
+	})
+
+	t.Run("NodeAddressesByProviderID", func(t *testing.T) {
+		addrs, err := gce.NodeAddressesByProviderID(ctx, unmanagedID)
+		assert.NoError(t, err)
+		assert.Empty(t, addrs)
+	})
+
+	t.Run("InstanceByProviderID", func(t *testing.T) {
+		inst, err := gce.InstanceByProviderID(unmanagedID)
+		assert.NoError(t, err)
+		assert.Nil(t, inst)
+	})
+
+	t.Run("AliasRangesByProviderID", func(t *testing.T) {
+		ranges, err := gce.AliasRangesByProviderID(unmanagedID)
+		assert.NoError(t, err)
+		assert.Nil(t, ranges)
+	})
+}
+
 func TestGetZone(t *testing.T) {
 	testCases := []struct {
 		nodeLabels   map[string]string
