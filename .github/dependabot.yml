@@ -16,6 +16,15 @@ updates:
   - 'area/dependency'
   - 'release-note-none'
   - 'ok-to-test'
+- package-ecosystem: "github-actions"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "sunday"
+  labels:
+  - "ok-to-test"
+  - 'area/dependency'
+  - 'release-note-none'
 - package-ecosystem: gomod
   directory: /providers
   schedule:
