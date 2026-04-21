@@ -84,13 +84,13 @@ func makeHostURL(projectsAPIEndpoint, projectID, zone, host string) string {
 	return projectsAPIEndpoint + strings.Join([]string{projectID, "zones", zone, "instances", host}, "/")
 }
 
-// ToInstanceReferences returns instance references by links
 // IsNodeUnmanagedByProviderID returns true if the node is not managed by GCE cloud provider.
 // All managed node's providerIDs are in format 'gce://<project-id>/<zone>/<instance-name>'
 func (g *Cloud) IsNodeUnmanagedByProviderID(providerID string) bool {
 	return !strings.HasPrefix(providerID, ProviderName+"://")
 }
 
+// ToInstanceReferences returns instance references by links
 func (g *Cloud) ToInstanceReferences(zone string, instanceNames []string) (refs []*compute.InstanceReference) {
 	for _, ins := range instanceNames {
 		instanceLink := makeHostURL(g.projectsBasePath, g.projectID, zone, ins)
