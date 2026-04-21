@@ -42,6 +42,9 @@ const (
 	maxIdleConns    = 10
 	// DefaultBusyTimeout is the default timeout for SQLite busy handler.
 	DefaultBusyTimeout = 5000 * time.Millisecond
+	// ipv6PopulationBatchSize is the number of IPv6 addresses to populate at once
+	// when a CIDR block has no available IPs in the table.
+	ipv6PopulationBatchSize = 32
 )
 
 var (
@@ -343,6 +346,235 @@ func (s *Store) AllocateIPv4(ctx context.Context, network, interfaceName, contai
 	return "", "", fmt.Errorf("%w: failed to allocate ipv4 in any cidr block for network %s", ErrNoAvailableIPs, network)
 }
 
+// tryAllocateIPv6 attempts to allocate an IP in a specific CIDR block for IPv6.
+// It returns sql.ErrNoRows if the block is full, allowing the caller to continue.
+func (s *Store) tryAllocateIPv6(ctx context.Context, cidrBlockID int64, containerID, interfaceName string) (string, string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var address, cidrRange string
+	err = tx.QueryRowContext(ctx, `
+		SELECT i.address, c.cidr 
+		FROM ip_addresses i 
+		JOIN cidr_blocks c ON i.cidr_block_id = c.id 
+		WHERE i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE AND c.ip_family = 'ipv6'
+		LIMIT 1
+	`, containerID, interfaceName).Scan(&address, &cidrRange)
+
+	if err == nil {
+		s.log.Info("Idempotency check hit (slow path), returning existing allocation", "containerID", containerID, "interfaceName", interfaceName, "address", address, "cidr", cidrRange)
+		return address, cidrRange, nil
+	}
+	if err != sql.ErrNoRows {
+		return "", "", fmt.Errorf("failed during slow-path idempotency check: %w", err)
+	}
+
+	ip, cidr, err := s.allocateIPv6Tx(ctx, tx, cidrBlockID, interfaceName, containerID)
+	if err != nil {
+		return "", "", err // Propagates sql.ErrNoRows
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", "", fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return ip, cidr, nil
+}
+
+// AllocateIPv6 finds the first available IP from Ready CIDR blocks for a given network and allocates it.
+// For IPv6, it populates entries dynamically (32 at a time) if no available IPs are found in the table.
+func (s *Store) AllocateIPv6(ctx context.Context, network, interfaceName, containerID string) (string, string, error) {
+	// 1. Idempotency check (Fast Path - outside write transaction)
+	var address string
+	var cidrRange string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT i.address, c.cidr 
+		FROM ip_addresses i 
+		JOIN cidr_blocks c ON i.cidr_block_id = c.id 
+		WHERE i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE AND c.ip_family = 'ipv6'
+		LIMIT 1
+	`, containerID, interfaceName).Scan(&address, &cidrRange)
+
+	if err == nil {
+		s.log.Info("Idempotency check hit (fast path), returning existing allocation", "containerID", containerID, "interfaceName", interfaceName, "address", address, "cidr", cidrRange)
+		return address, cidrRange, nil
+	}
+	if err != sql.ErrNoRows {
+		return "", "", fmt.Errorf("failed during fast-path idempotency check: %w", err)
+	}
+
+	// 2. Query available CIDRs (Outside write transaction)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id FROM cidr_blocks 
+		WHERE network = ? AND ip_family = 'ipv6' AND total_ips > allocated_ips AND state = 'Ready'
+	`, network)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to query available cidr blocks: %w", err)
+	}
+	defer rows.Close()
+
+	var cidrBlockIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return "", "", fmt.Errorf("failed to scan cidr block id: %w", err)
+		}
+		cidrBlockIDs = append(cidrBlockIDs, id)
+	}
+
+	if len(cidrBlockIDs) == 0 {
+		return "", "", fmt.Errorf("%w: no available cidr blocks found for network %s", ErrNoAvailableIPs, network)
+	}
+
+	// 3. Loop and try to allocate with short transactions
+	for _, cidrBlockID := range cidrBlockIDs {
+		ip, cidr, err := s.tryAllocateIPv6(ctx, cidrBlockID, containerID, interfaceName)
+		if err == nil {
+			return ip, cidr, nil
+		}
+		if err == sql.ErrNoRows {
+			s.log.V(4).Info("No available IPs in cidr block, tried next one", "cidrBlockID", cidrBlockID)
+			continue
+		}
+		return "", "", fmt.Errorf("failed to allocate ipv6 in cidr block %d: %w", cidrBlockID, err)
+	}
+
+	return "", "", fmt.Errorf("%w: failed to allocate ipv6 in any cidr block for network %s", ErrNoAvailableIPs, network)
+}
+
+// allocateIPv6Tx executes the IPv6 allocation within an existing transaction.
+// It populates ipv6PopulationBatchSize entries if no available IPs are found.
+func (s *Store) allocateIPv6Tx(ctx context.Context, tx *sql.Tx, cidrBlockID int64, interfaceName, containerID string) (string, string, error) {
+	// 1. Fetch CIDR range for the given ID
+	var cidrRange string
+	err := tx.QueryRowContext(ctx, `
+		SELECT cidr FROM cidr_blocks 
+		WHERE id = ? AND ip_family = 'ipv6' AND total_ips > allocated_ips AND state = 'Ready'
+	`, cidrBlockID).Scan(&cidrRange)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", "", sql.ErrNoRows
+		}
+		return "", "", fmt.Errorf("failed to query cidr_block: %w", err)
+	}
+
+	// 2. Try to find the first available entry and mark it as allocated
+	var address string
+	err = tx.QueryRowContext(ctx, `
+		UPDATE ip_addresses 
+		SET is_allocated = TRUE, container_id = ?, interface_name = ?, allocated_at = CURRENT_TIMESTAMP 
+		WHERE id = (
+			SELECT id FROM ip_addresses 
+			WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= CURRENT_TIMESTAMP)
+			ORDER BY id ASC
+			LIMIT 1
+		)
+		RETURNING address
+	`, containerID, interfaceName, cidrBlockID).Scan(&address)
+
+	if err == nil {
+		// Success! Update allocated_ips
+		_, err = tx.ExecContext(ctx, `
+			UPDATE cidr_blocks 
+			SET allocated_ips = allocated_ips + 1 
+			WHERE id = ?
+		`, cidrBlockID)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to update allocated_ips in cidr_blocks: %w", err)
+		}
+		return address, cidrRange, nil
+	}
+
+	if err != sql.ErrNoRows {
+		return "", "", fmt.Errorf("failed to allocate ip: %w", err)
+	}
+
+	// 3. No available IPs found in table. Populate ipv6PopulationBatchSize entries.
+	s.log.Info(fmt.Sprintf("No available IPv6 addresses found in table, populating %d more", ipv6PopulationBatchSize), "cidrBlockID", cidrBlockID)
+
+	// Find the last inserted IP
+	var lastAddressStr string
+	err = tx.QueryRowContext(ctx, `
+		SELECT address FROM ip_addresses 
+		WHERE cidr_block_id = ? 
+		ORDER BY id DESC 
+		LIMIT 1
+	`, cidrBlockID).Scan(&lastAddressStr)
+
+	var startIP net.IP
+	if err == nil {
+		startIP = net.ParseIP(lastAddressStr)
+		startIP = incIP(startIP) // Start from the next one
+	} else if err == sql.ErrNoRows {
+		// No entries yet, start from CIDR base address
+		_, ipnet, err := net.ParseCIDR(cidrRange)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to parse cidr %s: %w", cidrRange, err)
+		}
+		startIP = ipnet.IP.Mask(ipnet.Mask)
+	} else {
+		return "", "", fmt.Errorf("failed to query last inserted ip: %w", err)
+	}
+
+	// Generate ipv6PopulationBatchSize IPs
+	var ips []string
+	curr := startIP
+	for i := 0; i < ipv6PopulationBatchSize; i++ {
+		ips = append(ips, curr.String())
+		curr = incIP(curr)
+	}
+
+	// Insert them
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO ip_addresses (cidr_block_id, address, is_allocated, container_id, interface_name) 
+		VALUES (?, ?, FALSE, '', '')
+	`)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to prepare insert statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, addr := range ips {
+		_, err = stmt.ExecContext(ctx, cidrBlockID, addr)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to insert ip_address %s: %w", addr, err)
+		}
+	}
+
+	// 4. Try to allocate again
+	err = tx.QueryRowContext(ctx, `
+		UPDATE ip_addresses 
+		SET is_allocated = TRUE, container_id = ?, interface_name = ?, allocated_at = CURRENT_TIMESTAMP 
+		WHERE id = (
+			SELECT id FROM ip_addresses 
+			WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= CURRENT_TIMESTAMP)
+			ORDER BY id ASC
+			LIMIT 1
+		)
+		RETURNING address
+	`, containerID, interfaceName, cidrBlockID).Scan(&address)
+
+	if err != nil {
+		return "", "", fmt.Errorf("failed to allocate ip after population: %w", err)
+	}
+
+	// Increment allocated_ips
+	_, err = tx.ExecContext(ctx, `
+		UPDATE cidr_blocks 
+		SET allocated_ips = allocated_ips + 1 
+		WHERE id = ?
+	`, cidrBlockID)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to update allocated_ips in cidr_blocks: %w", err)
+	}
+
+	return address, cidrRange, nil
+}
+
 // GetCIDRBlockByCIDR checks if a CIDR block already exists in the database.
 func (s *Store) GetCIDRBlockByCIDR(ctx context.Context, cidr string) (bool, error) {
 	var id int64
@@ -360,7 +592,7 @@ func (s *Store) GetCIDRBlockByCIDR(ctx context.Context, cidr string) (bool, erro
 }
 
 // AddCIDR parses the CIDR, determines family, and inserts it + its constituent IP addresses into the store.
-// The first two IPs and the last IP are automatically marked as allocated.
+// For IPv4, it populates all IPs. For IPv6, it only adds the CIDR block.
 func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 	ip, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
@@ -368,18 +600,24 @@ func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 	}
 
 	ipFamily := "ipv4"
+	isIPv6 := false
 	if ip.To4() == nil {
 		ipFamily = "ipv6"
+		isIPv6 = true
 	}
 
-	// Generate the list of all IPs in this CIDR range
-	var ips []string
-	for curr := ipnet.IP.Mask(ipnet.Mask); ipnet.Contains(curr); curr = incIP(curr) {
-		ips = append(ips, curr.String())
-	}
-
-	if len(ips) == 0 {
-		return fmt.Errorf("cidr range is empty: %s", cidr)
+	var totalIPs int64
+	if !isIPv6 {
+		ones, bits := ipnet.Mask.Size()
+		totalIPs = 1 << (bits - ones)
+	} else {
+		ones, _ := ipnet.Mask.Size()
+		bits := 128 - ones
+		if bits >= 62 {
+			totalIPs = 0x7fffffffffffffff // Max int64 for large IPv6 ranges
+		} else {
+			totalIPs = 1 << bits
+		}
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -391,8 +629,8 @@ func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 	// 1. Insert into cidr_blocks
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO cidr_blocks (cidr, network, ip_family, total_ips, allocated_ips, state) 
-		VALUES (?, ?, ?, ?, ?, 'Ready')
-	`, cidr, network, ipFamily, len(ips), 0) // We will update allocated_ips later after insertions
+		VALUES (?, ?, ?, ?, 0, 'Ready')
+	`, cidr, network, ipFamily, totalIPs)
 
 	if err != nil {
 		if sqliteErr, ok := err.(sqlite3.Error); ok {
@@ -408,46 +646,59 @@ func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 		return fmt.Errorf("failed to get last inserted id: %w", err)
 	}
 
-	// 2. Insert IP addresses and determine allocation status
-	var allocatedCount int
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO ip_addresses (cidr_block_id, address, is_allocated, container_id, interface_name) 
-		VALUES (?, ?, ?, '', '')
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to prepare insert statement: %w", err)
-	}
-	defer stmt.Close()
-
-	for idx, addr := range ips {
-		isAllocated := false
-		// For small CIDRs (smaller than /30, i.e., /31 and /32), we do not reserve
-		// the first two and the last IPs. The IPs returned will still be routable
-		// by the underlying infrastructure.
-		if len(ips) >= 4 && (idx == 0 || idx == 1 || idx == len(ips)-1) {
-			isAllocated = true
-			allocatedCount++
+	if !isIPv6 {
+		// Generate the list of all IPs in this CIDR range (IPv4 only)
+		var ips []string
+		for curr := ipnet.IP.Mask(ipnet.Mask); ipnet.Contains(curr); curr = incIP(curr) {
+			ips = append(ips, curr.String())
 		}
 
-		_, err = stmt.ExecContext(ctx, cidrBlockID, addr, isAllocated)
+		if len(ips) == 0 {
+			return fmt.Errorf("cidr range is empty: %s", cidr)
+		}
+
+		// Insert IP addresses and determine allocation status
+		var allocatedCount int
+		stmt, err := tx.PrepareContext(ctx, `
+			INSERT INTO ip_addresses (cidr_block_id, address, is_allocated, container_id, interface_name) 
+			VALUES (?, ?, ?, '', '')
+		`)
 		if err != nil {
-			return fmt.Errorf("failed to insert ip_address %s: %w", addr, err)
+			return fmt.Errorf("failed to prepare insert statement: %w", err)
 		}
-	}
+		defer stmt.Close()
 
-	// 3. Update allocated_ips to reflect the defaults we just reserved
-	_, err = tx.ExecContext(ctx, `
-		UPDATE cidr_blocks SET allocated_ips = ? WHERE id = ?
-	`, allocatedCount, cidrBlockID)
-	if err != nil {
-		return fmt.Errorf("failed to update allocated_ips: %w", err)
+		for idx, addr := range ips {
+			isAllocated := false
+			// For small CIDRs (smaller than /30, i.e., /31 and /32), we do not reserve
+			// the first two and the last IPs. The IPs returned will still be routable
+			// by the underlying infrastructure.
+			// The first two IPs and the last IP are automatically marked as allocated.
+			if len(ips) >= 4 && (idx == 0 || idx == 1 || idx == len(ips)-1) {
+				isAllocated = true
+				allocatedCount++
+			}
+
+			_, err = stmt.ExecContext(ctx, cidrBlockID, addr, isAllocated)
+			if err != nil {
+				return fmt.Errorf("failed to insert ip_address %s: %w", addr, err)
+			}
+		}
+
+		// Update allocated_ips to reflect the defaults we just reserved
+		_, err = tx.ExecContext(ctx, `
+			UPDATE cidr_blocks SET allocated_ips = ? WHERE id = ?
+		`, allocatedCount, cidrBlockID)
+		if err != nil {
+			return fmt.Errorf("failed to update allocated_ips: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	s.log.Info("Successfully added CIDR and its IPs to store", "cidr", cidr, "network", network, "totalIPs", len(ips), "reservedIPs", allocatedCount)
+	s.log.Info("Successfully added CIDR to store", "cidr", cidr, "network", network, "isIPv6", isIPv6)
 	return nil
 }
 
@@ -472,7 +723,12 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 	}
 	defer tx.Rollback()
 
-	releaseAt := time.Now().Add(releaseCooldown)
+	var releaseAt interface{}
+	if releaseCooldown > 0 {
+		releaseAt = time.Now().Add(releaseCooldown)
+	} else {
+		releaseAt = nil
+	}
 
 	rows, err := tx.QueryContext(ctx, `
 		SELECT i.id, i.cidr_block_id 
