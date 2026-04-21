@@ -57,8 +57,8 @@ $GCE_METADATA_SERVER = "169.254.169.254"
 # exist until an initial HNS network has been created on the Windows node - see
 # Add_InitialHnsNetwork().
 $MGMT_ADAPTER_NAME = "vEthernet (Ethernet*"
-$CRICTL_VERSION = 'v1.32.0'
-$CRICTL_SHA512 = 'dc8d5a5821dade9cc56d20f67d77464a0d8b6e43b72cc3c8fa34fdd5927a5eaa7cced6a93906f030e99e9f3e71dd82c60829545a99beccabf4c13b21c8aaf918'
+$CRICTL_VERSION = 'v1.34.0'
+$CRICTL_SHA512 = 'b062756922dc5c5f41c5b13922dfea379cb9f4ce2431d1676c7dbace4f45c28a99ee71fd6cdd6c6f3d7679d33ac0ff052208207fc3f341b4ad047512dad756cb'
 
 Import-Module -Force C:\common.psm1
 
@@ -1013,7 +1013,6 @@ function Start-WorkerServices {
   # otherwise kubelet and kube-proxy will not be able to run properly.
   $instance_name = "$(Get-InstanceMetadata 'name' | Out-String)"
   $default_kubelet_args = @(`
-      "--pod-infra-container-image=${env:INFRA_CONTAINER}",
       "--hostname-override=${instance_name}"
   )
 

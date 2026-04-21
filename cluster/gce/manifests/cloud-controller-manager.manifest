@@ -29,7 +29,8 @@
         "cpu": "{{cpurequest}}"
       }
     },
-    "args": [
+    "command": [
+      "/go-runner",
       "--log-file=/var/log/cloud-controller-manager.log",
       "--also-stdout=false",
       "--redirect-stderr=true",

@@ -1829,15 +1829,6 @@ function prepare-kube-proxy-manifest-variables {
     kube_watchlist_inconsistency_detector_env_name="- name: KUBE_WATCHLIST_INCONSISTENCY_DETECTOR"
     kube_watchlist_inconsistency_detector_env_value="value: \"${ENABLE_KUBE_WATCHLIST_INCONSISTENCY_DETECTOR}\""
   fi
-  local kube_list_from_cache_inconsistency_detector_env_name=""
-  local kube_list_from_cache_inconsistency_detector_env_value=""
-  if [[ -n "${ENABLE_KUBE_LIST_FROM_CACHE_INCONSISTENCY_DETECTOR:-}" ]]; then
-    if [[ -z "${container_env}" ]]; then
-      container_env="env:"
-    fi
-    kube_list_from_cache_inconsistency_detector_env_name="- name: KUBE_LIST_FROM_CACHE_INCONSISTENCY_DETECTOR"
-    kube_list_from_cache_inconsistency_detector_env_value="value: \"${ENABLE_KUBE_LIST_FROM_CACHE_INCONSISTENCY_DETECTOR}\""
-  fi
   sed -i -e "s@{{kubeconfig}}@${kubeconfig}@g" "${src_file}"
   sed -i -e "s@{{pillar\['kube_docker_registry'\]}}@${kube_docker_registry}@g" "${src_file}"
   sed -i -e "s@{{pillar\['kube-proxy_docker_tag'\]}}@${kube_proxy_docker_tag}@g" "${src_file}"
@@ -1849,8 +1840,6 @@ function prepare-kube-proxy-manifest-variables {
   sed -i -e "s@{{kube_cache_mutation_detector_env_value}}@${kube_cache_mutation_detector_env_value}@g" "${src_file}"
   sed -i -e "s@{{kube_watchlist_inconsistency_detector_env_name}}@${kube_watchlist_inconsistency_detector_env_name}@g" "${src_file}"
   sed -i -e "s@{{kube_watchlist_inconsistency_detector_env_value}}@${kube_watchlist_inconsistency_detector_env_value}@g" "${src_file}"
-  sed -i -e "s@{{kube_list_from_cache_inconsistency_detector_env_name}}@${kube_list_from_cache_inconsistency_detector_env_name}@g" "${src_file}"
-  sed -i -e "s@{{kube_list_from_cache_inconsistency_detector_env_value}}@${kube_list_from_cache_inconsistency_detector_env_value}@g" "${src_file}"
   sed -i -e "s@{{ cpurequest }}@${KUBE_PROXY_CPU_REQUEST:-100m}@g" "${src_file}"
   sed -i -e "s@{{ memoryrequest }}@${KUBE_PROXY_MEMORY_REQUEST:-50Mi}@g" "${src_file}"
   sed -i -e "s@{{api_servers_with_port}}@${api_servers}@g" "${src_file}"
@@ -1978,10 +1967,14 @@ def resolve(host):
   fi
   sed -i -e "s@{{ *etcd_protocol *}}@$etcd_protocol@g" "${temp_file}"
   sed -i -e "s@{{ *etcd_apiserver_protocol *}}@$etcd_apiserver_protocol@g" "${temp_file}"
-  sed -i -e "s@{{ *etcd_creds *}}@$etcd_creds@g" "${temp_file}"
+
+  etcd_creds_and_extra_args="${etcd_creds} ${etcd_apiserver_creds} ${etcd_extra_args}"
+  etcd_creds_and_extra_args=$(echo "$etcd_creds_and_extra_args" | awk '{for (i=1;i<=NF;i++) printf "\"%s\"%s", $i, (i<NF?", ":"") }')
+  etcdctl_certs=$(echo "$etcdctl_certs" | awk '{for (i=1; i<=NF; i++) printf "\"%s\",", $i }')
+
+  sed -i -e "s@{{ *etcd_creds_and_extra_args *}}@$etcd_creds_and_extra_args@g" "${temp_file}"
+
   sed -i -e "s@{{ *etcdctl_certs *}}@$etcdctl_certs@g" "${temp_file}"
-  sed -i -e "s@{{ *etcd_apiserver_creds *}}@$etcd_apiserver_creds@g" "${temp_file}"
-  sed -i -e "s@{{ *etcd_extra_args *}}@$etcd_extra_args@g" "${temp_file}"
   if [[ -n "${ETCD_VERSION:-}" ]]; then
     sed -i -e "s@{{ *pillar\.get('etcd_version', '\(.*\)') *}}@${ETCD_VERSION}@g" "${temp_file}"
   else
@@ -1995,6 +1988,7 @@ def resolve(host):
     container_security_context="\"securityContext\": {\"runAsUser\": ${ETCD_RUNASUSER}, \"runAsGroup\": ${ETCD_RUNASGROUP}, \"allowPrivilegeEscalation\": false, \"capabilities\": {\"drop\": [\"all\"]}},"
   fi
   sed -i -e "s@{{security_context}}@${container_security_context}@g" "${temp_file}"
+
   mv "${temp_file}" /etc/kubernetes/manifests
 }
 
@@ -2285,12 +2279,6 @@ function start-kube-controller-manager {
     fi
     container_env+="{\"name\": \"KUBE_WATCHLIST_INCONSISTENCY_DETECTOR\", \"value\": \"${ENABLE_KUBE_WATCHLIST_INCONSISTENCY_DETECTOR}\"}"
   fi
-  if [[ -n "${ENABLE_KUBE_LIST_FROM_CACHE_INCONSISTENCY_DETECTOR:-}" ]]; then
-    if [[ -n "${container_env}" ]]; then
-      container_env="${container_env}, "
-    fi
-    container_env+="{\"name\": \"KUBE_LIST_FROM_CACHE_INCONSISTENCY_DETECTOR\", \"value\": \"${ENABLE_KUBE_LIST_FROM_CACHE_INCONSISTENCY_DETECTOR}\"}"
-  fi
   if [[ -n "${container_env}" ]]; then
     container_env="\"env\":[${container_env}],"
   fi
@@ -2392,7 +2380,7 @@ function start-cloud-controller-manager {
     params+=("--controllers=${RUN_CCM_CONTROLLERS}")
   fi
 
-    # (TODO/cloud-provider-gcp): Figure out how to inject
+  # (TODO/cloud-provider-gcp): Figure out how to inject
   local kube_rc_docker_tag=$(cat /home/kubernetes/kube-docker-files/cloud-controller-manager.docker_tag)
   kube_rc_docker_tag=$(echo ${kube_rc_docker_tag} | sed 's/+/-/g')
 
@@ -2408,12 +2396,6 @@ function start-cloud-controller-manager {
       container_env="${container_env}, "
     fi
     container_env+="{\"name\": \"KUBE_WATCHLIST_INCONSISTENCY_DETECTOR\", \"value\": \"${ENABLE_KUBE_WATCHLIST_INCONSISTENCY_DETECTOR}\"}"
-  fi
-  if [[ -n "${ENABLE_KUBE_LIST_FROM_CACHE_INCONSISTENCY_DETECTOR:-}" ]]; then
-    if [[ -n "${container_env}" ]]; then
-      container_env="${container_env}, "
-    fi
-    container_env+="{\"name\": \"KUBE_LIST_FROM_CACHE_INCONSISTENCY_DETECTOR\", \"value\": \"${ENABLE_KUBE_LIST_FROM_CACHE_INCONSISTENCY_DETECTOR}\"}"
   fi
   if [[ -n "${container_env}" ]]; then
     container_env="\"env\":[${container_env}],"
@@ -3251,7 +3233,7 @@ spec:
   - name: vol
   containers:
   - name: pv-recycler
-    image: registry.k8s.io/build-image/debian-base:bookworm-v1.0.4
+    image: registry.k8s.io/build-image/debian-base:bookworm-v1.0.6
     command:
     - /bin/sh
     args:

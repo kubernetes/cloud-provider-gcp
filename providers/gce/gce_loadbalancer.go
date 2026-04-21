@@ -21,13 +21,17 @@ package gce
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
 	metav1apply "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/klog/v2"
@@ -40,6 +44,23 @@ import (
 type cidrs struct {
 	ipn   netutils.IPNetSet
 	isSet bool
+}
+
+type lbSyncResult struct {
+	status      *v1.LoadBalancerStatus
+	annotations map[string]string
+}
+
+func newLBSyncResult() *lbSyncResult {
+	annotations := make(map[string]string, len(l4ResourceAnnotationKeys))
+
+	for _, key := range l4ResourceAnnotationKeys {
+		annotations[key] = "" // Initialize to empty string to indicate deletion by default if not set later
+	}
+
+	return &lbSyncResult{
+		annotations: annotations,
+	}
 }
 
 var (
@@ -159,6 +180,7 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 				WithType(v1.LoadBalancerPortsError).
 				WithStatus(metav1.ConditionTrue).
 				WithReason(v1.LoadBalancerPortsErrorReason).
+				WithLastTransitionTime(metav1.Now()).
 				WithMessage("LoadBalancer with multiple protocols are not supported"))
 		svcApply := corev1apply.Service(svc.Name, svc.Namespace).WithStatus(svcApplyStatus)
 		if _, errApply := g.client.CoreV1().Services(svc.Namespace).ApplyStatus(ctx, svcApply, metav1.ApplyOptions{FieldManager: "gce-cloud-controller", Force: true}); errApply != nil {
@@ -196,19 +218,71 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 		}
 	}
 
-	var status *v1.LoadBalancerStatus
+	var syncResult *lbSyncResult
 	switch desiredScheme {
 	case cloud.SchemeInternal:
-		status, err = g.ensureInternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
+		syncResult, err = g.ensureInternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
 	default:
-		status, err = g.ensureExternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
+		syncResult, err = g.ensureExternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
 	}
 	if err != nil {
 		klog.Errorf("Failed to EnsureLoadBalancer(%s, %s, %s, %s, %s), err: %v", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, err)
-		return status, err
+		return nil, err
 	}
+
+	var status *v1.LoadBalancerStatus
+	var annotations map[string]string
+
+	if syncResult != nil {
+		status = syncResult.status
+		annotations = syncResult.annotations
+	}
+
+	if g.enableL4LBAnnotations {
+		if err = g.updateL4ResourcesAnnotations(ctx, svc, annotations); err != nil {
+			return status, fmt.Errorf("failed to set resource annotations, err: %w", err)
+		}
+	}
+
 	klog.V(4).Infof("EnsureLoadBalancer(%s, %s, %s, %s, %s): done ensuring loadbalancer.", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region)
 	return status, err
+}
+
+func (g *Cloud) updateL4ResourcesAnnotations(ctx context.Context, svc *v1.Service, newL4LBAnnotations map[string]string) error {
+	newObjectMetadata, shouldUpdate := computeNewAnnotationsIfNeeded(svc, newL4LBAnnotations)
+	if !shouldUpdate {
+		return nil
+	}
+	newSvc := svc.DeepCopy()
+	newSvc.ObjectMeta = *newObjectMetadata
+
+	patchBytes, err := servicePatchBytes(svc, newSvc)
+	if err != nil {
+		return err
+	}
+
+	_, err = g.client.CoreV1().Services(svc.Namespace).Patch(ctx, svc.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}, "status")
+
+	return err
+}
+
+func servicePatchBytes(oldSvc, newSvc *v1.Service) ([]byte, error) {
+	oldData, err := json.Marshal(oldSvc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to Marshal oldData for svc %s/%s: %v", oldSvc.Namespace, oldSvc.Name, err)
+	}
+
+	newData, err := json.Marshal(newSvc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to Marshal newData for svc %s/%s: %v", newSvc.Namespace, newSvc.Name, err)
+	}
+
+	patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldData, newData, v1.Service{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to CreateTwoWayMergePatch for svc %s/%s: %v", oldSvc.Namespace, oldSvc.Name, err)
+	}
+	return patchBytes, nil
+
 }
 
 // UpdateLoadBalancer is an implementation of LoadBalancer.UpdateLoadBalancer.
@@ -239,6 +313,7 @@ func (g *Cloud) UpdateLoadBalancer(ctx context.Context, clusterName string, svc 
 				WithType(v1.LoadBalancerPortsError).
 				WithStatus(metav1.ConditionTrue).
 				WithReason(v1.LoadBalancerPortsErrorReason).
+				WithLastTransitionTime(metav1.Now()).
 				WithMessage("LoadBalancer with multiple protocols are not supported"))
 		svcApply := corev1apply.Service(svc.Name, svc.Namespace).WithStatus(svcApplyStatus)
 		if _, errApply := g.client.CoreV1().Services(svc.Namespace).ApplyStatus(ctx, svcApply, metav1.ApplyOptions{FieldManager: "gce-cloud-controller", Force: true}); errApply != nil {
@@ -323,4 +398,16 @@ func hasLoadBalancerPortsError(service *v1.Service) bool {
 		}
 	}
 	return false
+}
+
+// computeNewAnnotationsIfNeeded checks if new annotations should be added to service.
+// If needed creates new service meta object.
+// This function is used by L4 LB controllers.
+func computeNewAnnotationsIfNeeded(svc *v1.Service, newAnnotations map[string]string) (*metav1.ObjectMeta, bool) {
+	newObjectMeta := svc.ObjectMeta.DeepCopy()
+	newObjectMeta.Annotations = mergeMap(newObjectMeta.Annotations, newAnnotations)
+	if reflect.DeepEqual(svc.Annotations, newObjectMeta.Annotations) {
+		return nil, false
+	}
+	return newObjectMeta, true
 }

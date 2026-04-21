@@ -1,5 +1,11 @@
-bazel-*
 cluster/bin
 MERGED_LICENSES
-go.work
-go.work.sum
+release/*
+.go-cache/
+.idea/
+.vscode/
+_artifacts/
+_rundir/
+_tmp/
+/bin/
+__pycache__/

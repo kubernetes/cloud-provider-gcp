@@ -38,7 +38,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	runtimeSchema "k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -144,7 +143,7 @@ func TestNodeTopologyQueuePeriodicSync(t *testing.T) {
 	allocatorParams := CIDRAllocatorParams{}
 
 	KuberntesClientSet := fake.NewSimpleClientset()
-	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, true, fakeNodeInformer, allocatorParams)
+	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, true, false, fakeNodeInformer, allocatorParams)
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 	cloudAllocator.nodeTopologyQueue.Run()
 
@@ -192,17 +191,15 @@ func TestNodeTopologyCR_AddOrUpdateNode(t *testing.T) {
 	testClusterValues := gce.DefaultTestClusterValues()
 	testClusterValues.SubnetworkURL = exampleSubnetURL
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+	// Add mock instances to prevent 404s
+	fakeGCE.Compute().Instances().Insert(context.TODO(), meta.ZonalKey("testNode", testClusterValues.ZoneName), &compute.Instance{Name: "testNode"})
+	fakeGCE.Compute().Instances().Insert(context.TODO(), meta.ZonalKey("testNodeTopologyLifecycle", testClusterValues.ZoneName), &compute.Instance{Name: "testNodeTopologyLifecycle"})
 
 	clientSet := clSetFake.NewSimpleClientset()
 	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, noResyncPeriodFunc()).Networking()
 	nwInformer := nwInfFactory.V1().Networks()
 	gnpInformer := nwInfFactory.V1().GKENetworkParamSets()
 
-	defaultnode := &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "testNodeTopologyLifecycle",
-		},
-	}
 	mscnode := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "testNode",
@@ -210,7 +207,19 @@ func TestNodeTopologyCR_AddOrUpdateNode(t *testing.T) {
 				testNodePoolSubnetLabelPrefix: "subnet1",
 			},
 		},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://test-project/us-central1-b/testNode",
+		},
 	}
+	defaultnode := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "testNodeTopologyLifecycle",
+		},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://test-project/us-central1-b/testNodeTopologyLifecycle",
+		},
+	}
+
 	fakeClient := fake.NewSimpleClientset(defaultnode)
 	fakeInformerFactory := informers.NewSharedInformerFactory(fakeClient, time.Second)
 	fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
@@ -224,27 +233,22 @@ func TestNodeTopologyCR_AddOrUpdateNode(t *testing.T) {
 	allocatorParams := CIDRAllocatorParams{}
 
 	KuberntesClientSet := fake.NewSimpleClientset()
-	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, true, fakeNodeInformer, allocatorParams)
+	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, true, false, fakeNodeInformer, allocatorParams)
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
-	fakeInformerFactory.Start(wait.NeverStop)
-	go cloudAllocator.Run(wait.NeverStop)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	fakeInformerFactory.Start(stopCh)
+	go cloudAllocator.Run(stopCh)
 
-	// TODO: Fix node_topology_syncer addOrUpdate should add default subnet regardless of nodes ordering on the informer
 	time.Sleep(time.Millisecond * 500)
 	fakeClient.Tracker().Add(mscnode)
 	expectedSubnets := []string{"subnet-def", "subnet1"}
-	i := 0
-	for i < 5 {
-		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
-			break
-		} else {
-			time.Sleep(time.Millisecond * 500)
-			i++
-		}
-	}
-	if i >= 5 {
-		t.Fatalf("AddOrUpdate node topology CRD not working as expected")
+	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
+		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
+		return ok, nil
+	}); err != nil {
+		t.Fatalf("AddOrUpdate node topology CRD not working as expected: %v", err)
 	}
 
 	mscnode2 := &v1.Node{
@@ -254,47 +258,34 @@ func TestNodeTopologyCR_AddOrUpdateNode(t *testing.T) {
 				testNodePoolSubnetLabelPrefix: "subnet2",
 			},
 		},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://test-project/us-central1-b/testNode2",
+		},
 	}
+	fakeGCE.Compute().Instances().Insert(context.TODO(), meta.ZonalKey("testNode2", testClusterValues.ZoneName), &compute.Instance{Name: "testNode2"})
 	fakeClient.Tracker().Add(mscnode2)
 	expectedSubnets = []string{"subnet-def", "subnet1", "subnet2"}
-	i = 0
-	for i < 5 {
-		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
-			break
-		} else {
-			time.Sleep(time.Millisecond * 500)
-			i++
-		}
-	}
-	if i >= 5 {
-		t.Fatalf("AddOrUpdate node topology CRD not working as expected")
+	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
+		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
+		return ok, nil
+	}); err != nil {
+		t.Fatalf("AddOrUpdate node topology CRD not working as expected: %v", err)
 	}
 	// Node subnet label should be immutable, update it just to test update node path
 	mscnode2.ObjectMeta.Labels[testNodePoolSubnetLabelPrefix] = "subnet3"
-	// TODO: automatically get gvr instead of hardcode
-	gvr := runtimeSchema.GroupVersionResource{
-		Version:  "v1",
-		Resource: "nodes",
-	}
-	fakeClient.Tracker().Update(gvr, mscnode2, mscnode2.GetNamespace(), metav1.UpdateOptions{})
+	fakeClient.CoreV1().Nodes().Update(context.TODO(), mscnode2, metav1.UpdateOptions{})
 	expectedSubnets = []string{"subnet-def", "subnet1", "subnet2", "subnet3"}
-	i = 0
-	for i < 5 {
-		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
-			break
-		} else {
-			time.Sleep(time.Millisecond * 500)
-			i++
-		}
-	}
-	if i >= 5 {
-		t.Fatalf("UpdateNode with different subnet lable should not dedup when enqueueing")
+	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
+		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
+		return ok, nil
+	}); err != nil {
+		t.Fatalf("UpdateNode with different subnet lable should not dedup when enqueueing: %v", err)
 	}
 	// Reset nodetopology just for test update node de-dup when the label didn't change
 	nodeTopologyClient.NetworkingV1().NodeTopologies().UpdateStatus(context.TODO(), ensuredNodeTopologyCR, metav1.UpdateOptions{})
 	// Update the node w/o changing node pool subnet label should de-dup, not enqueue
 	mscnode2.ObjectMeta.Labels[testNodePoolSubnetLabelPrefix] = "subnet3"
-	fakeClient.Tracker().Update(gvr, mscnode2, mscnode2.GetNamespace(), metav1.UpdateOptions{})
+	fakeClient.CoreV1().Nodes().Update(context.TODO(), mscnode2, metav1.UpdateOptions{})
 	time.Sleep(time.Millisecond * 500)
 	expectedSubnets = []string{}
 	if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); !ok {
@@ -306,6 +297,9 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 	testClusterValues := gce.DefaultTestClusterValues()
 	testClusterValues.SubnetworkURL = exampleSubnetURL
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+	// Add mock instances to prevent 404s
+	fakeGCE.Compute().Instances().Insert(context.TODO(), meta.ZonalKey("nodeTopologyDefautNode", testClusterValues.ZoneName), &compute.Instance{Name: "nodeTopologyDefautNode"})
+	fakeGCE.Compute().Instances().Insert(context.TODO(), meta.ZonalKey("testNode", testClusterValues.ZoneName), &compute.Instance{Name: "testNode"})
 
 	clientSet := clSetFake.NewSimpleClientset()
 	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, noResyncPeriodFunc()).Networking()
@@ -315,6 +309,9 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 	defaultnode := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "nodeTopologyDefautNode",
+		},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://test-project/us-central1-b/nodeTopologyDefautNode",
 		},
 	}
 	fakeClient := fake.NewSimpleClientset(defaultnode)
@@ -330,12 +327,13 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 	allocatorParams := CIDRAllocatorParams{}
 
 	KuberntesClientSet := fake.NewSimpleClientset()
-	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, true, fakeNodeInformer, allocatorParams)
+	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, true, false, fakeNodeInformer, allocatorParams)
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
-	fakeInformerFactory.Start(wait.NeverStop)
-	go cloudAllocator.Run(wait.NeverStop)
-
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	fakeInformerFactory.Start(stopCh)
+	go cloudAllocator.Run(stopCh)
 	mscnode := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "testNode",
@@ -343,41 +341,29 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 				testNodePoolSubnetLabelPrefix: "subnet1",
 			},
 		},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://test-project/us-central1-b/testNode",
+		},
 	}
 	fakeClient.Tracker().Add(mscnode)
 
 	expectedSubnets := []string{"subnet-def", "subnet1"}
-	i := 0
-	for i < 5 {
-		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
-			break
-		} else {
-			time.Sleep(time.Millisecond * 500)
-			i++
-		}
+	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
+		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
+		return ok, nil
+	}); err != nil {
+		t.Fatalf("Add node topology CR not working as expected: %v", err)
 	}
-	if i >= 5 {
-		t.Fatalf("Add node topology CR not working as expected")
-	}
-	// TODO: automatically get gvr instead of using hardcoded value
-	gvr := runtimeSchema.GroupVersionResource{
-		Version:  "v1",
-		Resource: "nodes",
-	}
+
+	gvr := v1.SchemeGroupVersion.WithResource("nodes")
 	fakeClient.Tracker().Delete(gvr, mscnode.GetNamespace(), mscnode.GetName(), metav1.DeleteOptions{})
 
 	expectedSubnets = []string{"subnet-def"}
-	i = 0
-	for i < 5 {
-		if ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient); ok {
-			break
-		} else {
-			time.Sleep(time.Millisecond * 500)
-			i++
-		}
-	}
-	if i >= 5 {
-		t.Fatalf("Delete node topology CR not working as expected")
+	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
+		ok, _ := verifySubnetsInCR(t, expectedSubnets, nodeTopologyClient)
+		return ok, nil
+	}); err != nil {
+		t.Fatalf("Delete node topology CR not working as expected: %v", err)
 	}
 }
 
@@ -498,16 +484,17 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 	ipv6Stack := stackIPv6
 
 	tests := []struct {
-		name            string
-		fakeNodeHandler *testutil.FakeNodeHandler
-		networks        []*networkv1.Network
-		gkeNwParams     []*networkv1.GKENetworkParamSet
-		nodeChanges     func(*v1.Node)
-		gceInstance     []*compute.Instance
-		stackType       *clusterStackType
-		expectErr       bool
-		expectErrMsg    string
-		expectedUpdate  bool
+		name                  string
+		fakeNodeHandler       *testutil.FakeNodeHandler
+		networks              []*networkv1.Network
+		gkeNwParams           []*networkv1.GKENetworkParamSet
+		nodeChanges           func(*v1.Node)
+		gceInstance           []*compute.Instance
+		stackType             *clusterStackType
+		enableMultiNetworking bool
+		expectErr             bool
+		expectErrMsg          string
+		expectedUpdate        bool
 		// expectedMetrics is optional if you'd also like to assert a metric
 		expectedMetrics map[string]float64
 	}{
@@ -971,6 +958,114 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			expectedUpdate: true,
 		},
 		{
+			name: "node has multiple interfaces and multi-networking is disabled; should use default interface for IPAM",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							Name: "nic0",
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "192.168.1.0/24",
+								},
+							},
+						},
+						{
+							Name: "nic1",
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "172.11.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			enableMultiNetworking: false,
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "192.168.1.0/24"
+				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+			},
+			expectedUpdate:  true,
+			expectedMetrics: map[string]float64{},
+		},
+		{
+			name: "node has multiple interfaces, multi-networking is disabled, and the first interface is not the default; should use default interface for IPAM",
+			fakeNodeHandler: &testutil.FakeNodeHandler{
+				Existing: []*v1.Node{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: v1.NodeSpec{
+							ProviderID: "gce://test-project/us-central1-b/test",
+						},
+					},
+				},
+				Clientset: fake.NewSimpleClientset(),
+			},
+			gceInstance: []*compute.Instance{
+				{
+					Name: "test",
+					NetworkInterfaces: []*compute.NetworkInterface{
+						{
+							Name: "nic1",
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "172.11.1.0/24",
+								},
+							},
+						},
+						{
+							Name: "nic0",
+							AliasIpRanges: []*compute.AliasIpRange{
+								{
+									IpCidrRange: "192.168.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			enableMultiNetworking: false,
+			nodeChanges: func(node *v1.Node) {
+				node.Spec.PodCIDR = "192.168.1.0/24"
+				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
+				node.Status.Conditions = []v1.NodeCondition{
+					{
+						Type:    "NetworkUnavailable",
+						Status:  "False",
+						Reason:  "RouteCreated",
+						Message: "NodeController create implicit route",
+					},
+				}
+			},
+			expectedUpdate:  true,
+			expectedMetrics: map[string]float64{},
+		},
+		{
 			name: "[mn] default network only",
 			networks: []*networkv1.Network{
 				network(networkv1.DefaultPodNetworkName, defaultGKENetworkParamsName, false),
@@ -1005,6 +1100,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Spec.PodCIDR = "192.168.1.0/24"
 				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
@@ -1063,6 +1159,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Spec.PodCIDR = "192.168.1.0/24"
 				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
@@ -1124,6 +1221,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Spec.PodCIDR = "192.168.1.0/24"
 				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
@@ -1188,6 +1286,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Spec.PodCIDR = "192.168.1.0/24"
 				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
@@ -1269,6 +1368,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
@@ -1335,6 +1435,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
@@ -1402,6 +1503,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
@@ -1472,6 +1574,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"},{\"network\":\"%s\",\"ipAddress\":\"84.1.2.1\"}]", redNetworkName, blueNetworkName)
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"},{\"name\":\"%s\",\"cidrs\":[\"20.28.1.0/26\"],\"scope\":\"host-local\"}]", redNetworkName, blueNetworkName)
@@ -1543,6 +1646,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"},{\"network\":\"%s\",\"ipAddress\":\"84.1.2.1\"}]", redNetworkName, blueNetworkName)
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"},{\"name\":\"%s\",\"cidrs\":[\"20.28.1.0/26\"],\"scope\":\"host-local\"}]", redNetworkName, blueNetworkName)
@@ -1614,6 +1718,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"},{\"network\":\"%s\",\"ipAddress\":\"84.1.2.1\"}]", redNetworkName, blueNetworkName)
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"},{\"name\":\"%s\",\"cidrs\":[\"20.28.1.0/26\"],\"scope\":\"host-local\"}]", redNetworkName, blueNetworkName)
@@ -1683,6 +1788,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
@@ -1750,6 +1856,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
@@ -1814,9 +1921,10 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
-			nodeChanges:  func(node *v1.Node) {},
-			expectErr:    true,
-			expectErrMsg: "invalid CIDR address",
+			enableMultiNetworking: true,
+			nodeChanges:           func(node *v1.Node) {},
+			expectErr:             true,
+			expectErrMsg:          "invalid CIDR address",
 		},
 		{
 			name: "[mn] want error - one additional network with /32 cidr",
@@ -1870,6 +1978,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/32\"],\"scope\":\"host-local\"}]", redNetworkName)
@@ -1944,7 +2053,8 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
-			nodeChanges: func(node *v1.Node) {},
+			enableMultiNetworking: true,
+			nodeChanges:           func(node *v1.Node) {},
 		},
 		{
 			name: "[mn] node already configured with PSC aka network attachment",
@@ -2008,7 +2118,8 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
-			nodeChanges: func(node *v1.Node) {},
+			enableMultiNetworking: true,
+			nodeChanges:           func(node *v1.Node) {},
 		},
 		{
 			name: "[mn] blue network status change to down",
@@ -2072,6 +2183,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
 				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{
@@ -2142,6 +2254,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Annotations[networkv1.NorthInterfacesAnnotationKey] = fmt.Sprintf("[{\"network\":\"%s\",\"ipAddress\":\"10.1.1.1\"}]", redNetworkName)
 				node.Annotations[networkv1.MultiNetworkAnnotationKey] = fmt.Sprintf("[{\"name\":\"%s\",\"cidrs\":[\"172.11.1.0/24\"],\"scope\":\"host-local\"}]", redNetworkName)
@@ -2193,6 +2306,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				node.Spec.PodCIDR = "192.168.1.0/24"
 				node.Spec.PodCIDRs = []string{"192.168.1.0/24"}
@@ -2268,6 +2382,7 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 					},
 				},
 			},
+			enableMultiNetworking: true,
 			nodeChanges: func(node *v1.Node) {
 				if node.Status.Capacity == nil {
 					node.Status.Capacity = map[v1.ResourceName]resource.Quantity{}
@@ -2327,15 +2442,16 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 			nodetopologyQueue := NewTaskQueue("nodetopologgTaskQueueForTest", "nodetopologyCRD", 1, nodeTopologyKeyFun, nodeTopologySyncer.sync)
 
 			ca := &cloudCIDRAllocator{
-				client:            tc.fakeNodeHandler,
-				cloud:             fakeGCE,
-				recorder:          testutil.NewFakeRecorder(),
-				nodeLister:        fakeNodeInformer.Lister(),
-				nodesSynced:       fakeNodeInformer.Informer().HasSynced,
-				networksLister:    nwInformer.Lister(),
-				gnpLister:         gnpInformer.Lister(),
-				stackType:         stackType,
-				nodeTopologyQueue: nodetopologyQueue,
+				client:                tc.fakeNodeHandler,
+				cloud:                 fakeGCE,
+				recorder:              testutil.NewFakeRecorder(),
+				nodeLister:            fakeNodeInformer.Lister(),
+				nodesSynced:           fakeNodeInformer.Informer().HasSynced,
+				networksLister:        nwInformer.Lister(),
+				gnpLister:             gnpInformer.Lister(),
+				stackType:             stackType,
+				nodeTopologyQueue:     nodetopologyQueue,
+				enableMultiNetworking: tc.enableMultiNetworking,
 			}
 
 			// test

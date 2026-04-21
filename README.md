@@ -1,95 +1,112 @@
 # cloud-provider-gcp
 
+[![Go Report Card](https://goreportcard.com/badge/k8s.io/cloud-provider-gcp)](https://goreportcard.com/report/k8s.io/cloud-provider-gcp)
+[![GitHub stars](https://img.shields.io/github/stars/kubernetes/cloud-provider-gcp.svg)](https://github.com/kubernetes/cloud-provider-gcp/stargazers)
+[![Contributions](https://img.shields.io/badge/contributions-welcome-orange.svg)](https://github.com/kubernetes/cloud-provider-gcp/blob/master/CONTRIBUTING.md)
+[![License](https://img.shields.io/github/license/kubernetes/cloud-provider-gcp)](https://github.com/kubernetes/cloud-provider-gcp/blob/master/LICENSE)
+[![Release tag](https://img.shields.io/github/v/tag/kubernetes/cloud-provider-gcp)](https://github.com/kubernetes/cloud-provider-gcp/tags)
+
+## Introduction
+
+This repository implements the [cloud provider](https://github.com/kubernetes/cloud-provider) interface for [Google Cloud Platform (GCP)](https://cloud.google.com/).
+It provides components for Kubernetes clusters running on GCP and is maintained primarily by the Kubernetes team at Google.
+
+To see all available commands in this repository, run `make help`.
+
+## Components
+
+This repository contains the following components, located in `cmd/`:
+
+*   **Cloud Controller Manager (`cloud-controller-manager`)**: The GCP [Cloud Controller Manager (CCM)](https://kubernetes.io/docs/concepts/architecture/cloud-controller/) is responsible for running cloud-provider-dependent controllers (e.g. node health, routing, load balancing, etc.) for Kubernetes clusters running in GCP.
+*   **GCP Auth Provider (`auth-provider-gcp`)**: A GCP [Container Runtime Interface (CRI)](https://kubernetes.io/docs/concepts/containers/cri/) plugin for fetching credentials for kubelet to pull images from [Google Container Registry (GCR)](https://cloud.google.com/container-registry) and [Artifact Registry (AR)](https://cloud.google.com/artifact-registry) when needed for pods.
+*   **GKE Auth Plugin (`gke-gcloud-auth-plugin`)**: A client-go credential plugin that provides Google Cloud access tokens to `kubectl` and other Kubernetes clients for authenticating to [GKE clusters](https://cloud.google.com/kubernetes-engine), e.g. in `gcloud container clusters get-credentials`.
+
+## Testing
+
+This repository includes several testing commands you can run locally during development:
+
+*   **`make test`**: Runs the standard Go unit tests.
+*   **`make verify`**: Runs all verification scripts (format, lint, etc.).
+*   **`make run-e2e-test`**: Runs the E2E test suite on a provisional [kOps](https://kops.sigs.k8s.io/) cluster.
+
 ## Publishing cloud-controller-manager image
 
-This command will build and publish cloud-controller-manager
-`registry.k8s.io/k8s-image-staging/cloud-controller-manager:latest`:
+Create an [Artifact Registry repository](https://docs.cloud.google.com/artifact-registry/docs/docker/store-docker-container-images) for the CCM image.
 
-```
-bazel run //cmd/cloud-controller-manager:publish
-```
+Then use `make publish` to build and push the `cloud-controller-manager` Docker image. For example, the following command will build and push the image to `us-central1-docker.pkg.dev/my-project/my-repo/cloud-controller-manager:v0`.
+Change the location, project, and repo names to match yours.
 
-Environment variables `IMAGE_REGISTRY`, `IMAGE_REPO` and `IMAGE_TAG` can be
-used to override destination GCR repository and tag.
-
-This command will build and publish
-`example.com/my-repo/cloud-controller-manager:v1`:
-
-
-```
-IMAGE_REGISTRY=example.com IMAGE_REPO=my-repo IMAGE_TAG=v1 bazel run //cmd/cloud-controller-manager:publish
+```sh
+LOCATION=us-central1 PROJECT=my-project REPO=my-repo
+gcloud auth configure-docker ${LOCATION}-docker.pkg.dev
+IMAGE_REPO=${LOCATION}-docker.pkg.dev/${PROJECT}/${REPO} IMAGE_TAG=v0 make publish
 ```
 
-Alternatively, you can run [push-images tool](https://github.com/kubernetes/cloud-provider-gcp/blob/master/tools/push-images). The tool is built from [ko](https://github.com/ko-build/ko) that does not depend on bazel, for example this command pushes image to Google Artifact Registry under project `my-project` and existing repository `my-repo`:
+If `IMAGE_REPO` is not set, the script will exit with an error. If `IMAGE_TAG` is not set, it defaults to a unique value combining the current git commit SHA and the build date.
 
+### Docker Commands
+
+**Note:** To push images to Google Artifact Registry, you must first authenticate Docker by running the following command:
+`gcloud auth configure-docker ${LOCATION}-docker.pkg.dev`
+
+*   **`make publish`**: Builds the `cloud-controller-manager` Docker image (including multi-architecture support) and pushes it to the container registry specified by the `IMAGE_REPO` environment variable.
+
+*   **`make bundle`**: Builds the `cloud-controller-manager` Docker image and saves it as a `.tar` file locally, along with creating a `.docker_tag` file. This is useful for offline distribution or loading.
+
+*   **`make clean-builder`**: Removes the `docker buildx` builder used for multi-platform Docker builds. This command is useful to reset the builder environment if the builder encounters an error or becomes corrupted. It can also be used to free up resources when the builder is no longer needed.
+
+
+## Cross-compiling
+
+Platform-specific release tarballs can be built using the following commands.
+
+To build all release artifacts for all platforms, run:
+```sh
+make release-tars
 ```
-IMAGE_REPO=us-central1-docker.pkg.dev/my-project/my-repo IMAGE_TAG=v0 ./tools/push-images
+
+This command builds the release tarball for Windows (`kubernetes-node-windows-amd64.tar.gz`):
+
+```sh
+make release-tars-windows-amd64
 ```
 
-# Cross-compiling
+This command builds the release tarballs for Linux (`kubernetes-server-linux-amd64.tar.gz` and `kubernetes-node-linux-amd64.tar.gz`):
 
-Selecting the target platform is done with the `--platforms` option with `bazel`.
-This command builds release tarballs for Windows:
-
-```
-bazel build --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64 //release:release-tars
-```
-
-This command explicitly targets Linux as the target platform:
-
-```
-bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 //release:release-tars
+```sh
+make release-tars-linux-amd64
 ```
 
 
-# Dependency management
+## Dependency management
 
 Dependencies are managed using [Go modules](https://github.com/golang/go/wiki/Modules) (`go mod` subcommands).
 
-Note that builds are done with Bazel and not the Go tool. Don't follow public
-Go module docs, instead use instructions in this readme.
 
-## Working within GOPATH
+### Working within GOPATH
 
 If you work within `GOPATH`, `go mod` will error out unless you do one of:
 
 - move repo outside of GOPATH (it should "just work")
 - set env var `GO111MODULE=on`
 
-## Add a new dependency
+### Add a new dependency
 
-```
-go get github.com/new/dependency && ./tools/update_vendor.sh
-```
-
-## Update an existing dependency
-
-```
-go get -u github.com/existing/dependency && ./tools/update_vendor.sh
+```sh
+go get github.com/new/dependency && make update-vendor
 ```
 
-## Update all dependencies
+### Update an existing dependency
 
+```sh
+go get -u github.com/existing/dependency && make update-vendor
 ```
-go get -u && ./tools/update_vendor.sh
+
+### Update all dependencies
+
+```sh
+go get -u && make update-vendor
 ```
 
 Note that this most likely won't work due to cross-dependency issues or repos
 not implementing modules correctly.
-
-# Bazel
-
-Bazel is required to build and release cloud-provider-gcp.
-
-To install:
-
-```sh
-go get github.com/bazelbuild/bazelisk
-alias bazel=bazelisk
-```
-
-To re-generate `BUILD` files:
-
-```sh
-tools/update_bazel.sh
-```

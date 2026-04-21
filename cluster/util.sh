@@ -211,14 +211,6 @@ kube::util::find-binary-for-platform() {
     "${KUBE_ROOT}/_output/local/bin/${platform}/${lookfor}"
     "${KUBE_ROOT}/platforms/${platform}/${lookfor}"
   )
-  # Also search for binary in bazel build tree.
-  # The bazel go rules place some binaries in subtrees like
-  # "bazel-bin/source/path/linux_amd64_pure_stripped/binaryname", so make sure
-  # the platform name is matched in the path.
-  while IFS=$'\n' read -r location; do
-    locations+=("$location");
-  done < <(find "${KUBE_ROOT}/bazel-bin/" -type f -executable \
-    \( -path "*/${platform/\//_}*/${lookfor}" -o -path "*/${lookfor}" \) 2>/dev/null || true)
 
   # List most recently-updated location.
   local -r bin=$( (ls -t "${locations[@]}" 2>/dev/null || true) | head -1 )

@@ -85,13 +85,15 @@ const (
 	gceComputeAPIEndpointBeta = "https://www.googleapis.com/compute/beta/"
 )
 
-var _ cloudprovider.Interface = (*Cloud)(nil)
-var _ cloudprovider.Instances = (*Cloud)(nil)
-var _ cloudprovider.LoadBalancer = (*Cloud)(nil)
-var _ cloudprovider.Routes = (*Cloud)(nil)
-var _ cloudprovider.Zones = (*Cloud)(nil)
-var _ cloudprovider.PVLabeler = (*Cloud)(nil)
-var _ cloudprovider.Clusters = (*Cloud)(nil)
+var (
+	_ cloudprovider.Interface    = (*Cloud)(nil)
+	_ cloudprovider.Instances    = (*Cloud)(nil)
+	_ cloudprovider.LoadBalancer = (*Cloud)(nil)
+	_ cloudprovider.Routes       = (*Cloud)(nil)
+	_ cloudprovider.Zones        = (*Cloud)(nil)
+	_ cloudprovider.PVLabeler    = (*Cloud)(nil)
+	_ cloudprovider.Clusters     = (*Cloud)(nil)
+)
 
 type StackType string
 
@@ -203,9 +205,18 @@ type Cloud struct {
 	// Enable this ony when the Node's .spec.providerID can be fully trusted.
 	projectFromNodeProviderID bool
 
-	// enableDiscretePortForwarding enables forwarding of individual ports
-	// instead of port ranges in Forwarding Rules for external load balancers.
-	enableDiscretePortForwarding bool
+	// enableRBSDefaultForL4NetLB disable Service controller from picking up services by default
+	enableRBSDefaultForL4NetLB bool
+
+	// enableL4LBAnnotations enable annotations related to provisioned resources in GCE
+	enableL4LBAnnotations bool
+
+	// enableL4DenyFirewallRule creates an additional deny firewall rule at priority 1000
+	// and moves the allow rule to priority 999 to improve security posture.
+	enableL4DenyFirewallRule bool
+
+	// enableL4DenyFirewallRollbackCleanup
+	enableL4DenyFirewallRollbackCleanup bool
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -323,10 +334,11 @@ func newGCECloud(config io.Reader) (gceCloud *Cloud, err error) {
 		klog.Infof("Using GCE provider config %+v", configFile)
 	}
 
-	cloudConfig, err = generateCloudConfig(configFile)
+	cloudConfig, err = GenerateCloudConfig(configFile)
 	if err != nil {
 		return nil, err
 	}
+
 	return CreateGCECloud(cloudConfig)
 }
 
@@ -339,7 +351,7 @@ func readConfig(reader io.Reader) (*ConfigFile, error) {
 	return cfg, nil
 }
 
-func generateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err error) {
+func GenerateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err error) {
 	cloudConfig = &CloudConfig{}
 	// By default, fetch token from GCE metadata server
 	cloudConfig.TokenSource = google.ComputeTokenSource("")
@@ -452,7 +464,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 
 	// Create a user-agent header append string to supply to the Google API
 	// clients, to identify Kubernetes as the origin of the GCP API calls.
-	userAgent := fmt.Sprintf("Kubernetes/%s (%s %s)", version, runtime.GOOS, runtime.GOARCH)
+	userAgent := fmt.Sprintf("Kubernetes/%s (%s %s)", version, runtime.GOOS, runtime.GOARCH) // e.g. "Kubernetes/v1.18.0 (linux amd64)"
 
 	// Use ProjectID for NetworkProjectID, if it wasn't explicitly set.
 	if config.NetworkProjectID == "" {
@@ -858,9 +870,17 @@ func (g *Cloud) SetProjectFromNodeProviderID(enabled bool) {
 	g.projectFromNodeProviderID = enabled
 }
 
-// SetEnableDiscretePortForwarding configures enableDiscretePortForwarding option.
-func (g *Cloud) SetEnableDiscretePortForwarding(enabled bool) {
-	g.enableDiscretePortForwarding = enabled
+func (g *Cloud) SetEnableRBSDefaultForL4NetLB(enabled bool) {
+	g.enableRBSDefaultForL4NetLB = enabled
+}
+
+func (g *Cloud) SetEnableL4LBAnnotations(enabled bool) {
+	g.enableL4LBAnnotations = enabled
+}
+
+func (g *Cloud) SetEnableL4DenyFirewallRule(firewallEnabled, rollbackEnabled bool) {
+	g.enableL4DenyFirewallRule = firewallEnabled
+	g.enableL4DenyFirewallRollbackCleanup = rollbackEnabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.
@@ -956,7 +976,7 @@ func getZonesForRegion(svc *compute.Service, projectID, region string) ([]string
 	// listCall = listCall.Filter("region eq " + region)
 
 	var zones []string
-	var accumulator = func(response *compute.ZoneList) error {
+	accumulator := func(response *compute.ZoneList) error {
 		for _, zone := range response.Items {
 			regionName := lastComponent(zone.Region)
 			if regionName == region {

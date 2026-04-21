@@ -535,7 +535,7 @@ func (c *Controller) handleGNPDelete(ctx context.Context, params *networkv1.GKEN
 		return c.executeGNPDelete(ctx, params, network)
 	}
 
-	// Prevent removal if there is still a network refering to this GNP
+	// Prevent removal if there is still a network referring to this GNP
 	return nil
 }
 
@@ -579,7 +579,7 @@ func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1.GKENet
 		return cidrs
 	}
 
-	// get secondary ranges' cooresponding cidrs
+	// get secondary ranges' corresponding cidrs
 	for _, sr := range subnet.SecondaryIpRanges {
 		if !paramSetIncludesRange(paramset, sr.RangeName) {
 			continue

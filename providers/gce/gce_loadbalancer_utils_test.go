@@ -322,7 +322,7 @@ func checkEvent(t *testing.T, recorder *record.FakeRecorder, expected string, sh
 	select {
 	case received := <-recorder.Events:
 		if strings.HasPrefix(received, expected) != shouldMatch {
-			t.Errorf(received)
+			t.Errorf("received: %v", received)
 			if shouldMatch {
 				t.Errorf("Should receive message \"%v\" but got \"%v\".", expected, received)
 			} else {

@@ -1,0 +1,37 @@
+name: Dependabot Go Work Sync
+
+on:
+  pull_request:
+    paths:
+      - '**/go.mod'
+      - '**/go.sum'
+
+permissions:
+  contents: write
+
+jobs:
+  go-work-sync:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version-file: 'go.work'
+
+      - name: Sync Go Workspace
+        run: go work sync
+        
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add go.work.sum
+          # Only commit if there are actual changes
+          git diff --quiet && git diff --staged --quiet || git commit -m "chore: update go.work.sum"
+          git push

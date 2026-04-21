@@ -1,10 +1,12 @@
 # See the OWNERS docs at https://go.k8s.io/owners
 
 approvers:
+- sig-cloud-provider-leads
 - aojea
 - bowei
 - cheftako
-- jprzychodzen
+- hdp617
+- LogicalShark
 - mmamczur
 - SergeyKanzhelev
 - vinayakankugoyal
@@ -12,7 +14,9 @@ approvers:
 emeritus_approvers:
 - bentheelder
 - dnardo
+- jprzychodzen
 - nicksardo
 reviewers:
+- sig-cloud-provider-leads
 - justinsb
 - seans3

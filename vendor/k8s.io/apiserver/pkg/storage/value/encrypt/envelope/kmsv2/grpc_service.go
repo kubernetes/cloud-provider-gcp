@@ -58,6 +58,7 @@ func NewGRPCService(ctx context.Context, endpoint, providerName string, callTime
 	s := &gRPCService{callTimeout: callTimeout}
 	s.connection, err = grpc.Dial(
 		addr,
+		grpc.WithAuthority("localhost"),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 		grpc.WithContextDialer(
@@ -144,9 +145,10 @@ func (g *gRPCService) Status(ctx context.Context) (*kmsservice.StatusResponse, e
 
 func recordMetricsInterceptor(providerName string) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		start := NowFunc()
+		nowFunc := GetNowFunc(providerName)
+		start := nowFunc()
 		respErr := invoker(ctx, method, req, reply, cc, opts...)
-		elapsed := NowFunc().Sub(start)
+		elapsed := nowFunc().Sub(start)
 		metrics.RecordKMSOperationLatency(providerName, method, elapsed, respErr)
 		return respErr
 	}
