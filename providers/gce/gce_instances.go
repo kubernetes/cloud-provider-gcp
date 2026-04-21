@@ -87,7 +87,7 @@ func makeHostURL(projectsAPIEndpoint, projectID, zone, host string) string {
 // IsNodeUnmanagedByProviderID returns true if the node is not managed by GCE cloud provider.
 // All managed node's providerIDs are in format 'gce://<project-id>/<zone>/<instance-name>'
 func (g *Cloud) IsNodeUnmanagedByProviderID(providerID string) bool {
-	return !strings.HasPrefix(providerID, ProviderName+"://")
+	return providerID != "" && !strings.HasPrefix(providerID, ProviderName+"://")
 }
 
 // ToInstanceReferences returns instance references by links

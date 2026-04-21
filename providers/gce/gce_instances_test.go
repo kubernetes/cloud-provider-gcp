@@ -527,38 +527,63 @@ func TestUnmanagedNodes(t *testing.T) {
 	gce, err := fakeGCECloud(DefaultTestClusterValues())
 	require.NoError(t, err)
 
-	unmanagedID := "aws://region/aws-node"
-	ctx := context.Background()
+	testCases := []struct {
+		name        string
+		providerID  string
+		expectExist bool
+		expectErr   bool
+	}{
+		{
+			name:        "aws provider ID",
+			providerID:  "aws://region/aws-node",
+			expectExist: true,
+		},
+		{
+			name:        "azure provider ID",
+			providerID:  "azure:///subscriptions/subid/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/azure-test-node",
+			expectExist: true,
+		},
+		{
+			name:        "empty provider ID",
+			providerID:  "",
+			expectExist: false,
+			expectErr:   true,
+		},
+	}
 
-	t.Run("InstanceExistsByProviderID", func(t *testing.T) {
-		exists, err := gce.InstanceExistsByProviderID(ctx, unmanagedID)
-		assert.NoError(t, err)
-		assert.True(t, exists, "Unmanaged nodes should be assumed to exist")
-	})
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
 
-	t.Run("InstanceTypeByProviderID", func(t *testing.T) {
-		mType, err := gce.InstanceTypeByProviderID(ctx, unmanagedID)
-		assert.NoError(t, err)
-		assert.Equal(t, "", mType)
-	})
+			t.Run("InstanceExistsByProviderID", func(t *testing.T) {
+				exists, err := gce.InstanceExistsByProviderID(ctx, tc.providerID)
+				if tc.expectErr {
+					assert.Error(t, err)
+				} else {
+					assert.NoError(t, err)
+					assert.Equal(t, tc.expectExist, exists)
+				}
+			})
 
-	t.Run("NodeAddressesByProviderID", func(t *testing.T) {
-		addrs, err := gce.NodeAddressesByProviderID(ctx, unmanagedID)
-		assert.NoError(t, err)
-		assert.Empty(t, addrs)
-	})
+			if !tc.expectErr {
+				mType, err := gce.InstanceTypeByProviderID(ctx, tc.providerID)
+				assert.NoError(t, err)
+				assert.Equal(t, "", mType)
 
-	t.Run("InstanceByProviderID", func(t *testing.T) {
-		inst, err := gce.InstanceByProviderID(unmanagedID)
-		assert.NoError(t, err)
-		assert.Nil(t, inst)
-	})
+				addrs, err := gce.NodeAddressesByProviderID(ctx, tc.providerID)
+				assert.NoError(t, err)
+				assert.Empty(t, addrs)
 
-	t.Run("AliasRangesByProviderID", func(t *testing.T) {
-		ranges, err := gce.AliasRangesByProviderID(unmanagedID)
-		assert.NoError(t, err)
-		assert.Nil(t, ranges)
-	})
+				inst, err := gce.InstanceByProviderID(tc.providerID)
+				assert.NoError(t, err)
+				assert.Nil(t, inst)
+
+				ranges, err := gce.AliasRangesByProviderID(tc.providerID)
+				assert.NoError(t, err)
+				assert.Nil(t, ranges)
+			}
+		})
+	}
 }
 
 func TestGetZone(t *testing.T) {

@@ -48,7 +48,7 @@ func (g *Cloud) GetZone(ctx context.Context) (cloudprovider.Zone, error) {
 // This is particularly useful in external cloud providers where the kubelet
 // does not initialize node data.
 func (g *Cloud) GetZoneByProviderID(ctx context.Context, providerID string) (cloudprovider.Zone, error) {
-	if !strings.HasPrefix(providerID, ProviderName+"://") {
+	if g.IsNodeUnmanagedByProviderID(providerID) {
 		return cloudprovider.Zone{}, nil
 	}
 	_, zone, _, err := splitProviderID(providerID)
