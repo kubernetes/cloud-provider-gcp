@@ -55,6 +55,14 @@ var (
 	ErrNoAvailableIPs = errors.New("no available IPs in store")
 )
 
+// IPFamily represents the IP protocol family.
+type IPFamily string
+
+const (
+	IPv4 IPFamily = "ipv4"
+	IPv6 IPFamily = "ipv6"
+)
+
 // Store manages database operations for IPAM.
 type Store struct {
 	db  *sql.DB
@@ -247,9 +255,8 @@ func (s *Store) allocateIPv4Tx(ctx context.Context, tx *sql.Tx, cidrBlockID int6
 	return address, cidrRange, nil
 }
 
-// tryAllocateIPv4 attempts to allocate an IP in a specific CIDR block.
-// It returns sql.ErrNoRows if the block is full, allowing the caller to continue.
-func (s *Store) tryAllocateIPv4(ctx context.Context, cidrBlockID int64, containerID, interfaceName string) (string, string, error) {
+// tryAllocateIP contains the shared idempotency check and transaction structure for attempting allocation.
+func (s *Store) tryAllocateIP(ctx context.Context, ipFamily IPFamily, cidrBlockID int64, containerID, interfaceName string, allocTxFn func(context.Context, *sql.Tx, int64, string, string) (string, string, error)) (string, string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to begin transaction: %w", err)
@@ -261,9 +268,9 @@ func (s *Store) tryAllocateIPv4(ctx context.Context, cidrBlockID int64, containe
 		SELECT i.address, c.cidr 
 		FROM ip_addresses i 
 		JOIN cidr_blocks c ON i.cidr_block_id = c.id 
-		WHERE i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE AND c.ip_family = 'ipv4'
+		WHERE i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE AND c.ip_family = ?
 		LIMIT 1
-	`, containerID, interfaceName).Scan(&address, &cidrRange)
+	`, containerID, interfaceName, ipFamily).Scan(&address, &cidrRange)
 
 	if err == nil {
 		s.log.Info("Idempotency check hit (slow path), returning existing allocation", "containerID", containerID, "interfaceName", interfaceName, "address", address, "cidr", cidrRange)
@@ -273,7 +280,7 @@ func (s *Store) tryAllocateIPv4(ctx context.Context, cidrBlockID int64, containe
 		return "", "", fmt.Errorf("failed during slow-path idempotency check: %w", err)
 	}
 
-	ip, cidr, err := s.allocateIPv4Tx(ctx, tx, cidrBlockID, interfaceName, containerID)
+	ip, cidr, err := allocTxFn(ctx, tx, cidrBlockID, interfaceName, containerID)
 	if err != nil {
 		return "", "", err // Propagates sql.ErrNoRows
 	}
@@ -283,166 +290,90 @@ func (s *Store) tryAllocateIPv4(ctx context.Context, cidrBlockID int64, containe
 	}
 
 	return ip, cidr, nil
+}
+
+// allocateIP provides the generalized logic for managing IP allocations across address families.
+func (s *Store) allocateIP(ctx context.Context, ipFamily IPFamily, network, interfaceName, containerID string, tryAllocFn func(context.Context, int64, string, string) (string, string, error)) (string, string, error) {
+	// 1. Idempotency check (Fast Path - outside write transaction)
+	var address string
+	var cidrRange string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT i.address, c.cidr 
+		FROM ip_addresses i 
+		JOIN cidr_blocks c ON i.cidr_block_id = c.id 
+		WHERE i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE AND c.ip_family = ?
+		LIMIT 1
+	`, containerID, interfaceName, ipFamily).Scan(&address, &cidrRange)
+
+	if err == nil {
+		s.log.Info("Idempotency check hit (fast path), returning existing allocation", "containerID", containerID, "interfaceName", interfaceName, "address", address, "cidr", cidrRange)
+		return address, cidrRange, nil
+	}
+	if err != sql.ErrNoRows {
+		return "", "", fmt.Errorf("failed during fast-path idempotency check: %w", err)
+	}
+
+	// 2. Query available CIDRs (Outside write transaction)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id FROM cidr_blocks 
+		WHERE network = ? AND ip_family = ? AND total_ips > allocated_ips AND state = 'Ready'
+	`, network, ipFamily)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to query available cidr blocks: %w", err)
+	}
+	defer rows.Close()
+
+	var cidrBlockIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return "", "", fmt.Errorf("failed to scan cidr block id: %w", err)
+		}
+		cidrBlockIDs = append(cidrBlockIDs, id)
+	}
+
+	if len(cidrBlockIDs) == 0 {
+		return "", "", fmt.Errorf("%w: no available cidr blocks found for network %s", ErrNoAvailableIPs, network)
+	}
+
+	// 3. Loop and try to allocate with short transactions
+	for _, cidrBlockID := range cidrBlockIDs {
+		ip, cidr, err := tryAllocFn(ctx, cidrBlockID, containerID, interfaceName)
+		if err == nil {
+			return ip, cidr, nil
+		}
+		if err == sql.ErrNoRows {
+			s.log.V(4).Info("No available IPs in cidr block, tried next one", "cidrBlockID", cidrBlockID)
+			continue
+		}
+		return "", "", fmt.Errorf("failed to allocate %s in cidr block %d: %w", ipFamily, cidrBlockID, err)
+	}
+
+	return "", "", fmt.Errorf("%w: failed to allocate %s in any cidr block for network %s", ErrNoAvailableIPs, ipFamily, network)
+}
+
+// tryAllocateIPv4 attempts to allocate an IP in a specific CIDR block.
+// It returns sql.ErrNoRows if the block is full, allowing the caller to continue.
+func (s *Store) tryAllocateIPv4(ctx context.Context, cidrBlockID int64, containerID, interfaceName string) (string, string, error) {
+	return s.tryAllocateIP(ctx, IPv4, cidrBlockID, containerID, interfaceName, s.allocateIPv4Tx)
 }
 
 // AllocateIPv4 finds the first available IP from Ready CIDR blocks for a given network and allocates it.
 // It also performs an idempotency check to see if the container already has an IP allocated.
 func (s *Store) AllocateIPv4(ctx context.Context, network, interfaceName, containerID string) (string, string, error) {
-	// 1. Idempotency check (Fast Path - outside write transaction)
-	var address string
-	var cidrRange string
-	err := s.db.QueryRowContext(ctx, `
-		SELECT i.address, c.cidr 
-		FROM ip_addresses i 
-		JOIN cidr_blocks c ON i.cidr_block_id = c.id 
-		WHERE i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE AND c.ip_family = 'ipv4'
-		LIMIT 1
-	`, containerID, interfaceName).Scan(&address, &cidrRange)
-
-	if err == nil {
-		s.log.Info("Idempotency check hit (fast path), returning existing allocation", "containerID", containerID, "interfaceName", interfaceName, "address", address, "cidr", cidrRange)
-		return address, cidrRange, nil
-	}
-	if err != sql.ErrNoRows {
-		return "", "", fmt.Errorf("failed during fast-path idempotency check: %w", err)
-	}
-
-	// 2. Query available CIDRs (Outside write transaction)
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id FROM cidr_blocks 
-		WHERE network = ? AND ip_family = 'ipv4' AND total_ips > allocated_ips AND state = 'Ready'
-	`, network)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to query available cidr blocks: %w", err)
-	}
-	defer rows.Close()
-
-	var cidrBlockIDs []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return "", "", fmt.Errorf("failed to scan cidr block id: %w", err)
-		}
-		cidrBlockIDs = append(cidrBlockIDs, id)
-	}
-
-	if len(cidrBlockIDs) == 0 {
-		return "", "", fmt.Errorf("%w: no available cidr blocks found for network %s", ErrNoAvailableIPs, network)
-	}
-
-	// 3. Loop and try to allocate with short transactions
-	for _, cidrBlockID := range cidrBlockIDs {
-		ip, cidr, err := s.tryAllocateIPv4(ctx, cidrBlockID, containerID, interfaceName)
-		if err == nil {
-			return ip, cidr, nil
-		}
-		if err == sql.ErrNoRows {
-			s.log.V(4).Info("No available IPs in cidr block, tried next one", "cidrBlockID", cidrBlockID)
-			continue
-		}
-		return "", "", fmt.Errorf("failed to allocate ipv4 in cidr block %d: %w", cidrBlockID, err)
-	}
-
-	return "", "", fmt.Errorf("%w: failed to allocate ipv4 in any cidr block for network %s", ErrNoAvailableIPs, network)
+	return s.allocateIP(ctx, IPv4, network, interfaceName, containerID, s.tryAllocateIPv4)
 }
 
 // tryAllocateIPv6 attempts to allocate an IP in a specific CIDR block for IPv6.
 // It returns sql.ErrNoRows if the block is full, allowing the caller to continue.
 func (s *Store) tryAllocateIPv6(ctx context.Context, cidrBlockID int64, containerID, interfaceName string) (string, string, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	var address, cidrRange string
-	err = tx.QueryRowContext(ctx, `
-		SELECT i.address, c.cidr 
-		FROM ip_addresses i 
-		JOIN cidr_blocks c ON i.cidr_block_id = c.id 
-		WHERE i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE AND c.ip_family = 'ipv6'
-		LIMIT 1
-	`, containerID, interfaceName).Scan(&address, &cidrRange)
-
-	if err == nil {
-		s.log.Info("Idempotency check hit (slow path), returning existing allocation", "containerID", containerID, "interfaceName", interfaceName, "address", address, "cidr", cidrRange)
-		return address, cidrRange, nil
-	}
-	if err != sql.ErrNoRows {
-		return "", "", fmt.Errorf("failed during slow-path idempotency check: %w", err)
-	}
-
-	ip, cidr, err := s.allocateIPv6Tx(ctx, tx, cidrBlockID, interfaceName, containerID)
-	if err != nil {
-		return "", "", err // Propagates sql.ErrNoRows
-	}
-
-	if err := tx.Commit(); err != nil {
-		return "", "", fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return ip, cidr, nil
+	return s.tryAllocateIP(ctx, IPv6, cidrBlockID, containerID, interfaceName, s.allocateIPv6Tx)
 }
 
 // AllocateIPv6 finds the first available IP from Ready CIDR blocks for a given network and allocates it.
 // For IPv6, it populates entries dynamically (32 at a time) if no available IPs are found in the table.
 func (s *Store) AllocateIPv6(ctx context.Context, network, interfaceName, containerID string) (string, string, error) {
-	// 1. Idempotency check (Fast Path - outside write transaction)
-	var address string
-	var cidrRange string
-	err := s.db.QueryRowContext(ctx, `
-		SELECT i.address, c.cidr 
-		FROM ip_addresses i 
-		JOIN cidr_blocks c ON i.cidr_block_id = c.id 
-		WHERE i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE AND c.ip_family = 'ipv6'
-		LIMIT 1
-	`, containerID, interfaceName).Scan(&address, &cidrRange)
-
-	if err == nil {
-		s.log.Info("Idempotency check hit (fast path), returning existing allocation", "containerID", containerID, "interfaceName", interfaceName, "address", address, "cidr", cidrRange)
-		return address, cidrRange, nil
-	}
-	if err != sql.ErrNoRows {
-		return "", "", fmt.Errorf("failed during fast-path idempotency check: %w", err)
-	}
-
-	// 2. Query available CIDRs (Outside write transaction)
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id FROM cidr_blocks 
-		WHERE network = ? AND ip_family = 'ipv6' AND total_ips > allocated_ips AND state = 'Ready'
-	`, network)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to query available cidr blocks: %w", err)
-	}
-	defer rows.Close()
-
-	var cidrBlockIDs []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return "", "", fmt.Errorf("failed to scan cidr block id: %w", err)
-		}
-		cidrBlockIDs = append(cidrBlockIDs, id)
-	}
-
-	if len(cidrBlockIDs) == 0 {
-		return "", "", fmt.Errorf("%w: no available cidr blocks found for network %s", ErrNoAvailableIPs, network)
-	}
-
-	// 3. Loop and try to allocate with short transactions
-	for _, cidrBlockID := range cidrBlockIDs {
-		ip, cidr, err := s.tryAllocateIPv6(ctx, cidrBlockID, containerID, interfaceName)
-		if err == nil {
-			return ip, cidr, nil
-		}
-		if err == sql.ErrNoRows {
-			s.log.V(4).Info("No available IPs in cidr block, tried next one", "cidrBlockID", cidrBlockID)
-			continue
-		}
-		return "", "", fmt.Errorf("failed to allocate ipv6 in cidr block %d: %w", cidrBlockID, err)
-	}
-
-	return "", "", fmt.Errorf("%w: failed to allocate ipv6 in any cidr block for network %s", ErrNoAvailableIPs, network)
+	return s.allocateIP(ctx, IPv6, network, interfaceName, containerID, s.tryAllocateIPv6)
 }
 
 // allocateIPv6Tx executes the IPv6 allocation within an existing transaction.
@@ -599,10 +530,10 @@ func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 		return fmt.Errorf("failed to parse cidr %s: %w", cidr, err)
 	}
 
-	ipFamily := "ipv4"
+	ipFamily := IPv4
 	isIPv6 := false
 	if ip.To4() == nil {
-		ipFamily = "ipv6"
+		ipFamily = IPv6
 		isIPv6 = true
 	}
 

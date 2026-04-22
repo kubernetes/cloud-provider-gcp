@@ -76,7 +76,7 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 	var ipv4Alloc *adaptiveipam.PodIP
 	var err error
 	if req.Ipv4Config != nil {
-		ipv4Alloc, err = s.allocateIP(ctx, req.Network, req.PodName, req.PodNamespace, req.Ipv4Config.InitialPodCidr, req.Ipv4Config.InterfaceName, req.Ipv4Config.ContainerId, s.store.AllocateIPv4, "4")
+		ipv4Alloc, err = s.allocateIP(ctx, req, req.Ipv4Config, s.store.AllocateIPv4, store.IPv4)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +84,7 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 
 	var ipv6Alloc *adaptiveipam.PodIP
 	if req.Ipv6Config != nil {
-		ipv6Alloc, err = s.allocateIP(ctx, req.Network, req.PodName, req.PodNamespace, req.Ipv6Config.InitialPodCidr, req.Ipv6Config.InterfaceName, req.Ipv6Config.ContainerId, s.store.AllocateIPv6, "6")
+		ipv6Alloc, err = s.allocateIP(ctx, req, req.Ipv6Config, s.store.AllocateIPv6, store.IPv6)
 		if err != nil {
 			return nil, err
 		}
@@ -96,8 +96,8 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 	}, nil
 }
 
-func (s *adaptiveIpamServer) allocateIP(ctx context.Context, network string, podName string, podNamespace string, initialPodCidr string, interfaceName string, containerId string, allocateFunc func(context.Context, string, string, string) (string, string, error), ipVersion string) (*adaptiveipam.PodIP, error) {
-	if err := s.MaybeAddInitialPodCidr(ctx, network, initialPodCidr); err != nil {
+func (s *adaptiveIpamServer) allocateIP(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest, config *adaptiveipam.IPConfig, allocateFunc func(context.Context, string, string, string) (string, string, error), ipFamily store.IPFamily) (*adaptiveipam.PodIP, error) {
+	if err := s.MaybeAddInitialPodCidr(ctx, req.Network, config.InitialPodCidr); err != nil {
 		return nil, err
 	}
 
@@ -112,7 +112,7 @@ func (s *adaptiveIpamServer) allocateIP(ctx context.Context, network string, pod
 	// PollUntilContextTimeout creates a derived context with this timeout, but also respects
 	// the parent gRPC context (ctx) cancellation.
 	err := wait.PollUntilContextTimeout(ctx, defaultPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
-		ip, cidr, lastErr = allocateFunc(ctx, network, interfaceName, containerId)
+		ip, cidr, lastErr = allocateFunc(ctx, req.Network, config.InterfaceName, config.ContainerId)
 		if lastErr == nil {
 			return true, nil // Success
 		}
@@ -122,7 +122,7 @@ func (s *adaptiveIpamServer) allocateIP(ctx context.Context, network string, pod
 		if ctx.Err() != nil {
 			return true, ctx.Err() // Stop immediately if context is done
 		}
-		s.logger.V(4).Info(fmt.Sprintf("Retrying AllocateIP%s due to transient error", ipVersion), "err", lastErr, "network", network)
+		s.logger.V(4).Info(fmt.Sprintf("Retrying %s allocation due to transient error", ipFamily), "err", lastErr, "network", req.Network)
 		return false, nil // Retry
 	})
 
@@ -130,13 +130,13 @@ func (s *adaptiveIpamServer) allocateIP(ctx context.Context, network string, pod
 		if (errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded)) && lastErr != nil {
 			err = lastErr // Use last error if timed out
 		}
-		s.logger.Error(err, fmt.Sprintf("failed to allocate ipv%s", ipVersion), "network", network, "podName", podName, "podNamespace", podNamespace)
+		s.logger.Error(err, fmt.Sprintf("failed to allocate %s", ipFamily), "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 
 		if errors.Is(err, store.ErrNoAvailableIPs) {
-			return nil, status.Errorf(codes.ResourceExhausted, "failed to allocate ipv%s for pod %s/%s: %v", ipVersion, podNamespace, podName, err)
+			return nil, status.Errorf(codes.ResourceExhausted, "failed to allocate %s for pod %s/%s: %v", ipFamily, req.PodNamespace, req.PodName, err)
 		}
 		// TODO: Refine status code to return a more specific code based on the error type instead of a fallback Unavailable.
-		return nil, status.Errorf(codes.Unavailable, "failed to allocate ipv%s for pod %s/%s: %v", ipVersion, podNamespace, podName, err)
+		return nil, status.Errorf(codes.Unavailable, "failed to allocate %s for pod %s/%s: %v", ipFamily, req.PodNamespace, req.PodName, err)
 	}
 
 	return &adaptiveipam.PodIP{
