@@ -17,8 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"time"
-
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/metis/pkg"
 	"k8s.io/metis/pkg/daemon"
@@ -37,8 +35,8 @@ func (o *DaemonOptions) AddFlags() cliflag.NamedFlagSets {
 	}
 
 	fs := fss.FlagSet("daemon")
-	fs.DurationVar(&o.MonitorInterval, "monitor-interval", 5*time.Second, "Monitor interval (e.g., 5s, 1m)")
-	fs.DurationVar(&o.ReleaseCooldown, "release-cooldown", 1*time.Minute, "Release cooldown duration (e.g., 5m)")
+	fs.DurationVar(&o.MonitorInterval, "monitor-interval", daemon.DefaultMonitorInterval, "Monitor interval (e.g., 5s, 1m)")
+	fs.DurationVar(&o.ReleaseCooldown, "release-cooldown", daemon.DefaultReleaseCooldown, "Release cooldown duration (e.g., 5m)")
 	fs.StringVar(&o.DBPath, "db-path", pkg.DefaultDBPath, "Path to the SQLite database file")
 	fs.StringVar(&o.SocketPath, "socket-path", pkg.DefaultSockPath, "Path to the Unix domain socket")
 

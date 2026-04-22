@@ -108,7 +108,7 @@ func TestAdaptiveIpamServer_AllocatePodIP(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	server := &adaptiveIpamServer{store: storeInstance}
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -149,7 +149,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_Concurrency(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	server := &adaptiveIpamServer{store: storeInstance}
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -228,7 +228,7 @@ func TestAdaptiveIpamServer_DeallocatePodIP(t *testing.T) {
 	}
 	defer s.Close()
 
-	server := &adaptiveIpamServer{store: s, sockPath: "", releaseCooldown: 1 * time.Minute}
+	server := newAdaptiveIpamServer(logger, s, "", 1*time.Minute, 0)
 
 	network := "gke-pod-network"
 	cidr := "10.0.1.0/24"
@@ -297,7 +297,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_RetryOnDBError(t *testing.T) {
 		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	server := &adaptiveIpamServer{store: storeInstance, busyTimeout: 500 * time.Millisecond}
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 500*time.Millisecond)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -320,7 +320,9 @@ func TestAdaptiveIpamServer_AllocatePodIP_RetryOnDBError(t *testing.T) {
 	storeInstance.Close()
 
 	startTime := time.Now()
-	_, err = server.AllocatePodIP(context.Background(), req)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err = server.AllocatePodIP(ctx, req)
 	duration := time.Since(startTime)
 
 	if err == nil {
@@ -355,7 +357,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	server := &adaptiveIpamServer{store: storeInstance}
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
 
 	network := "test-network"
 
@@ -370,7 +372,9 @@ func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 	}
 
 	startTime := time.Now()
-	_, err = server.AllocatePodIP(context.Background(), req)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	_, err = server.AllocatePodIP(ctx, req)
 	duration := time.Since(startTime)
 
 	if err == nil {

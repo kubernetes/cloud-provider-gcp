@@ -642,8 +642,8 @@ func TestStore_AllocateIPv4_FallbackAndCooldown(t *testing.T) {
 		t.Fatalf("AllocateIPv4 failed after adding second CIDR: %v", err)
 	}
 
-	if ip != "10.0.2.2" { // First available in second CIDR
-		t.Errorf("Expected IP 10.0.2.2 from second CIDR, got %s", ip)
+	if ip != "10.0.2.0" { // First available in second CIDR (no reserved IPs for dynamic blocks)
+		t.Errorf("Expected IP 10.0.2.0 from second CIDR, got %s", ip)
 	}
 	if cidr != cidr2 {
 		t.Errorf("Expected CIDR %s, got %s", cidr2, cidr)
@@ -795,5 +795,207 @@ func TestStore_AllocateIPv4_Concurrency_DifferentContainers(t *testing.T) {
 	}
 	if count != numGoroutines {
 		t.Errorf("Expected %d allocated rows in DB, got %d", numGoroutines, count)
+	}
+}
+
+func TestStore_GetIPUsageByNetwork(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_usage_test.sqlite")
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	network1 := "network-1"
+	network2 := "network-2"
+
+	// Network 1: 1 Ready block, 1 Draining block, 1 Deleting block
+	err = s.AddCIDR(context.Background(), network1, "10.0.1.0/29") // 8 IPs
+	if err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+	
+	// Allocate 2 IPs from Block 1
+	_, _, err = s.AllocateIPv4(context.Background(), network1, "eth0", "container-1")
+	_, _, err = s.AllocateIPv4(context.Background(), network1, "eth0", "container-2")
+
+	// Block 2 (Draining): 8 IPs
+	err = s.AddCIDR(context.Background(), network1, "10.0.2.0/29")
+	if err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+	block2, err := s.GetReadyCIDRBlocksSorted(context.Background(), network1)
+	if err != nil || len(block2) == 0 {
+		t.Fatalf("Failed to get ready blocks: %v", err)
+	}
+	err = s.DrainCIDRBlock(context.Background(), block2[0].ID)
+	if err != nil {
+		t.Fatalf("DrainCIDRBlock failed: %v", err)
+	}
+
+	// Block 3 (Deleting): 8 IPs
+	err = s.AddCIDR(context.Background(), network1, "10.0.3.0/29")
+	if err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+	block3, err := s.GetReadyCIDRBlocksSorted(context.Background(), network1)
+	if err != nil || len(block3) == 0 {
+		t.Fatalf("Failed to get ready blocks: %v", err)
+	}
+	err = s.MarkCIDRBlockAsDeleting(context.Background(), block3[0].ID)
+	if err != nil {
+		t.Fatalf("MarkCIDRBlockAsDeleting failed: %v", err)
+	}
+
+	// Network 2: 1 Ready block (8 IPs)
+	err = s.AddCIDR(context.Background(), network2, "10.0.4.0/29")
+	if err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	// Call GetIPUsageByNetwork
+	// Call GetIPUsageByNetwork for Network 1
+	u1, err := s.GetIPUsageByNetwork(context.Background(), network1)
+	if err != nil {
+		t.Fatalf("GetIPUsageByNetwork failed for network1: %v", err)
+	}
+
+	if u1.Total != 16 {
+		t.Errorf("Expected total 16 for Network 1, got %d", u1.Total)
+	}
+	if u1.Allocated != 5 { // 3 reserved + 2 allocated + 0 reserved on block 2
+		t.Errorf("Expected allocated 5 for Network 1, got %d", u1.Allocated)
+	}
+	if u1.Draining != 8 {
+		t.Errorf("Expected draining 8 for Network 1, got %d", u1.Draining)
+	}
+
+	// Call GetIPUsageByNetwork for Network 2
+	u2, err := s.GetIPUsageByNetwork(context.Background(), network2)
+	if err != nil {
+		t.Fatalf("GetIPUsageByNetwork failed for network2: %v", err)
+	}
+
+	if u2.Total != 8 {
+		t.Errorf("Expected total 8 for Network 2, got %d", u2.Total)
+	}
+	if u2.Allocated != 3 { // 3 reserved
+		t.Errorf("Expected allocated 3 for Network 2, got %d", u2.Allocated)
+	}
+	if u2.Draining != 0 {
+		t.Errorf("Expected draining 0 for Network 2, got %d", u2.Draining)
+	}
+}
+
+func TestStore_FindAndMarkExpiredDrainingCIDRBlocks(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "expired_test.sqlite")
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	network := "test-network"
+
+	// 1. Add initial block (so subsequent blocks are not initial)
+	err = s.AddCIDR(context.Background(), network, "10.0.1.0/29") // 8 IPs
+	if err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	// 2. Add second block (non-initial, starts with 0 allocated IPs)
+	err = s.AddCIDR(context.Background(), network, "10.0.2.0/29") // 8 IPs
+	if err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	// Get blocks to find ID of second block
+	blocks, err := s.GetReadyCIDRBlocksSorted(context.Background(), network)
+	if err != nil || len(blocks) < 2 {
+		t.Fatalf("Failed to get ready blocks: %v", err)
+	}
+	// Assuming sorted by created_at DESC, block 2 is first (most recent).
+	block2 := blocks[0]
+	if block2.CIDR != "10.0.2.0/29" {
+		t.Fatalf("Expected block2 to be 10.0.2.0/29, got %s", block2.CIDR)
+	}
+
+	// 3. Allocate an IP from block 2.
+	// Exhaust block 1 first (5 available IPs: .2 to .6)
+	for i := 1; i <= 5; i++ {
+		_, _, err := s.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-b1-%d", i))
+		if err != nil {
+			t.Fatalf("Failed to exhaust block 1: %v", err)
+		}
+	}
+
+	// Now next allocation MUST come from block 2.
+	ip, _, err := s.AllocateIPv4(context.Background(), network, "eth0", "container-b2-1")
+	if err != nil {
+		t.Fatalf("AllocateIPv4 failed for block 2: %v", err)
+	}
+	if ip != "10.0.2.0" {
+		t.Fatalf("Expected IP 10.0.2.0 from block 2, got %s", ip)
+	}
+
+	// 4. Mark block 2 as Draining
+	err = s.DrainCIDRBlock(context.Background(), block2.ID)
+	if err != nil {
+		t.Fatalf("DrainCIDRBlock failed: %v", err)
+	}
+
+	// Wait for expiration (1s)
+	time.Sleep(1100 * time.Millisecond)
+
+	// 5. Call FindAndMarkExpiredDrainingCIDRBlocks. It should NOT find it because allocated_ips = 1.
+	expiredBlocks, err := s.FindAndMarkExpiredDrainingCIDRBlocks(context.Background(), network, 1*time.Second)
+	if err != nil {
+		t.Fatalf("FindAndMarkExpiredDrainingCIDRBlocks failed: %v", err)
+	}
+	if len(expiredBlocks) != 0 {
+		t.Errorf("Expected 0 expired blocks (block has allocated IPs), got %d", len(expiredBlocks))
+	}
+
+	// 6. Release the IP. This sets allocated_ips = 0 and updates updated_at to NOW.
+	_, err = s.ReleaseIPByOwner(context.Background(), network, "container-b2-1", "eth0", 1*time.Second)
+	if err != nil {
+		t.Fatalf("ReleaseIPByOwner failed: %v", err)
+	}
+
+	// 7. Call FindAndMarkExpiredDrainingCIDRBlocks immediately. It should NOT find it because updated_at is NOW.
+	expiredBlocks, err = s.FindAndMarkExpiredDrainingCIDRBlocks(context.Background(), network, 1*time.Second)
+	if err != nil {
+		t.Fatalf("FindAndMarkExpiredDrainingCIDRBlocks failed: %v", err)
+	}
+	if len(expiredBlocks) != 0 {
+		t.Errorf("Expected 0 expired blocks (just released, not expired yet), got %d", len(expiredBlocks))
+	}
+
+	// 8. Wait for expiration again
+	time.Sleep(1100 * time.Millisecond)
+
+	// 9. Call FindAndMarkExpiredDrainingCIDRBlocks. It SHOULD find it now!
+	expiredBlocks, err = s.FindAndMarkExpiredDrainingCIDRBlocks(context.Background(), network, 1*time.Second)
+	if err != nil {
+		t.Fatalf("FindAndMarkExpiredDrainingCIDRBlocks failed: %v", err)
+	}
+	if len(expiredBlocks) != 1 {
+		t.Errorf("Expected 1 expired block, got %d", len(expiredBlocks))
+	} else if expiredBlocks[0].ID != block2.ID {
+		t.Errorf("Expected expired block ID %d, got %d", block2.ID, expiredBlocks[0].ID)
+	}
+
+	// Verify state in DB is now Deleting
+	var state string
+	err = s.db.QueryRow("SELECT state FROM cidr_blocks WHERE id = ?", block2.ID).Scan(&state)
+	if err != nil {
+		t.Fatalf("Failed to query state: %v", err)
+	}
+	if state != "Deleting" {
+		t.Errorf("Expected state Deleting, got %s", state)
 	}
 }

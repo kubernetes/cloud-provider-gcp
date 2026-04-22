@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -37,6 +38,13 @@ import (
 // TODO: Measure the store allocation query time and update the interval appropriately.
 const defaultPollInterval = 50 * time.Millisecond
 
+type cniClient struct {
+	containerID  string
+	network      string
+	podName      string
+	podNamespace string
+}
+
 type adaptiveIpamServer struct {
 	adaptiveipam.UnimplementedAdaptiveIpamServer
 	store           *store.Store
@@ -45,6 +53,9 @@ type adaptiveIpamServer struct {
 	busyTimeout     time.Duration
 	grpcServer      *grpc.Server
 	logger          logr.Logger
+	requestsMap      map[cniClient]chan struct{}
+	requestsMu       sync.RWMutex
+	daemonController *DaemonController
 }
 
 func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socketPath string, releaseCooldown time.Duration, busyTimeout time.Duration) *adaptiveIpamServer {
@@ -54,6 +65,7 @@ func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socke
 		releaseCooldown: releaseCooldown,
 		busyTimeout:     busyTimeout,
 		logger:          logger,
+		requestsMap:     make(map[cniClient]chan struct{}),
 	}
 
 	return server
@@ -106,41 +118,89 @@ func (s *adaptiveIpamServer) allocateIPv4(ctx context.Context, req *adaptiveipam
 		timeout = store.DefaultBusyTimeout
 	}
 
-	// The total timeout is set to align with the SQLite busy_timeout configured in the DSN.
-	// PollUntilContextTimeout creates a derived context with this timeout, but also respects
-	// the parent gRPC context (ctx) cancellation.
-	err := wait.PollUntilContextTimeout(ctx, defaultPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
-		ip, cidr, lastErr = s.store.AllocateIPv4(ctx, network, config.InterfaceName, config.ContainerId)
-		if lastErr == nil {
-			return true, nil // Success
-		}
-		if errors.Is(lastErr, store.ErrNoAvailableIPs) {
-			return true, lastErr // Stop immediately on non-retryable error
-		}
-		if ctx.Err() != nil {
-			return true, ctx.Err() // Stop immediately if context is done
-		}
-		s.logger.V(4).Info("Retrying AllocateIPv4 due to transient error", "err", lastErr, "network", network)
-		return false, nil // Retry
-	})
+	for {
+		err := wait.PollUntilContextTimeout(ctx, defaultPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
+			ip, cidr, lastErr = s.store.AllocateIPv4(ctx, network, config.InterfaceName, config.ContainerId)
+			if lastErr == nil {
+				return true, nil // Success
+			}
+			if errors.Is(lastErr, store.ErrNoAvailableIPs) {
+				return true, lastErr // Stop immediately on non-retryable error
+			}
+			if ctx.Err() != nil {
+				return true, ctx.Err() // Stop immediately if context is done
+			}
+			s.logger.V(4).Info("Retrying AllocateIPv4 due to transient error", "err", lastErr, "network", network)
+			return false, nil // Retry
+		})
 
-	if err != nil {
-		if (errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded)) && lastErr != nil {
-			err = lastErr // Use last error if timed out
-		}
-		s.logger.Error(err, "failed to allocate ipv4", "network", network, "podName", req.PodName, "podNamespace", req.PodNamespace)
+		if err != nil {
+			if (errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded)) && lastErr != nil {
+				err = lastErr // Use last error if timed out
+			}
+			s.logger.Error(err, "failed to allocate ipv4", "network", network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 
-		if errors.Is(err, store.ErrNoAvailableIPs) {
-			return nil, status.Errorf(codes.ResourceExhausted, "failed to allocate ipv4 for pod %s/%s: %v", req.PodNamespace, req.PodName, err)
+			if errors.Is(err, store.ErrNoAvailableIPs) {
+				undrainedCount, err := s.store.UndrainCIDRBlocks(ctx, network)
+				if err == nil && undrainedCount > 0 {
+					s.logger.Info("Successfully undrained CIDR blocks, retrying local allocation", "network", network)
+					continue // Retry the poll immediately!
+				}
+
+				if err := s.handleDynamicAllocation(ctx, req); err != nil {
+					return nil, status.Errorf(codes.ResourceExhausted, "failed to allocate ipv4 for pod %s/%s: %v", req.PodNamespace, req.PodName, err)
+				}
+				continue // Retry polling after handleDynamicAllocation returns success
+			}
+			// TODO: Refine status code to return a more specific code based on the error type instead of a fallback Unavailable.
+			return nil, status.Errorf(codes.Unavailable, "failed to allocate ipv4 for pod %s/%s: %v", req.PodNamespace, req.PodName, err)
 		}
-		// TODO: Refine status code to return a more specific code based on the error type instead of a fallback Unavailable.
-		return nil, status.Errorf(codes.Unavailable, "failed to allocate ipv4 for pod %s/%s: %v", req.PodNamespace, req.PodName, err)
+
+		return &adaptiveipam.PodIP{
+			IpAddress: ip,
+			Cidr:      cidr,
+		}, nil
+	}
+}
+
+func (s *adaptiveIpamServer) handleDynamicAllocation(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest) error {
+	clientKey := cniClient{
+		containerID:  req.Ipv4Config.ContainerId,
+		network:      req.Network,
+		podName:      req.PodName,
+		podNamespace: req.PodNamespace,
 	}
 
-	return &adaptiveipam.PodIP{
-		IpAddress: ip,
-		Cidr:      cidr,
-	}, nil
+	if s.daemonController == nil {
+		s.logger.V(2).Info("No daemon controller available, failing fast on exhaustion", "network", req.Network)
+		return fmt.Errorf("failed to allocate ipv4 for pod %s/%s: %w", req.PodNamespace, req.PodName, store.ErrNoAvailableIPs)
+	}
+
+	s.logger.Error(store.ErrNoAvailableIPs, "IP exhaustion detected, waiting for controller to add IPs", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
+
+	s.requestsMu.Lock()
+	ch, ok := s.requestsMap[clientKey]
+	if !ok {
+		ch = make(chan struct{})
+		s.requestsMap[clientKey] = ch
+	}
+	s.requestsMu.Unlock()
+
+	if !ok {
+		// Enqueue the request to trigger the controller sync for dynamic allocation.
+		s.daemonController.Enqueue(req.Network)
+	}
+
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("failed to allocate ipv4 for pod %s/%s (timed out): %w", req.PodNamespace, req.PodName, store.ErrNoAvailableIPs)
+	case <-ch:
+		// Woken up
+		s.requestsMu.Lock()
+		delete(s.requestsMap, clientKey)
+		s.requestsMu.Unlock()
+		return nil
+	}
 }
 
 func (s *adaptiveIpamServer) MaybeAddInitialPodCidr(ctx context.Context, network string, initialPodCidr string) error {
@@ -187,6 +247,36 @@ func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptivei
 	}
 
 	return &adaptiveipam.DeallocatePodIPResponse{}, nil
+}
+
+func (s *adaptiveIpamServer) getPendingRequestsCount(network string) int {
+	s.requestsMu.RLock()
+	defer s.requestsMu.RUnlock()
+
+	count := 0
+	for client := range s.requestsMap {
+		if client.network == network {
+			count++
+		}
+	}
+	return count
+}
+
+func (s *adaptiveIpamServer) onCIDRAdded(network string, availableIPs int) {
+	s.requestsMu.Lock()
+	defer s.requestsMu.Unlock()
+
+	count := 0
+	for client, ch := range s.requestsMap {
+		if client.network == network {
+			close(ch)
+			delete(s.requestsMap, client)
+			count++
+			if count >= availableIPs {
+				break
+			}
+		}
+	}
 }
 
 func (s *adaptiveIpamServer) start() error {
