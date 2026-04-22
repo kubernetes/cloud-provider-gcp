@@ -6,7 +6,6 @@ approvers:
 - bowei
 - cheftako
 - hdp617
-- jprzychodzen
 - LogicalShark
 - mmamczur
 - SergeyKanzhelev
@@ -15,6 +14,7 @@ approvers:
 emeritus_approvers:
 - bentheelder
 - dnardo
+- jprzychodzen
 - nicksardo
 reviewers:
 - sig-cloud-provider-leads
