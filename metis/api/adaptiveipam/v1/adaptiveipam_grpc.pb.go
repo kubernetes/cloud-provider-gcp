@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	AdaptiveIpam_AllocatePodIP_FullMethodName   = "/adaptiveipam.v1.AdaptiveIpam/AllocatePodIP"
 	AdaptiveIpam_DeallocatePodIP_FullMethodName = "/adaptiveipam.v1.AdaptiveIpam/DeallocatePodIP"
+	AdaptiveIpam_CheckPodIP_FullMethodName      = "/adaptiveipam.v1.AdaptiveIpam/CheckPodIP"
 )
 
 // AdaptiveIpamClient is the client API for AdaptiveIpam service.
@@ -37,6 +38,8 @@ type AdaptiveIpamClient interface {
 	// The IP can be reused for other pods on the node level, or will be eventually
 	// released at the cloud provider.
 	DeallocatePodIP(ctx context.Context, in *DeallocatePodIPRequest, opts ...grpc.CallOption) (*DeallocatePodIPResponse, error)
+	// CheckPodIP validates that an IP address is still correctly allocated to a pod.
+	CheckPodIP(ctx context.Context, in *CheckPodIPRequest, opts ...grpc.CallOption) (*CheckPodIPResponse, error)
 }
 
 type adaptiveIpamClient struct {
@@ -67,6 +70,16 @@ func (c *adaptiveIpamClient) DeallocatePodIP(ctx context.Context, in *Deallocate
 	return out, nil
 }
 
+func (c *adaptiveIpamClient) CheckPodIP(ctx context.Context, in *CheckPodIPRequest, opts ...grpc.CallOption) (*CheckPodIPResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CheckPodIPResponse)
+	err := c.cc.Invoke(ctx, AdaptiveIpam_CheckPodIP_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdaptiveIpamServer is the server API for AdaptiveIpam service.
 // All implementations must embed UnimplementedAdaptiveIpamServer
 // for forward compatibility.
@@ -81,6 +94,8 @@ type AdaptiveIpamServer interface {
 	// The IP can be reused for other pods on the node level, or will be eventually
 	// released at the cloud provider.
 	DeallocatePodIP(context.Context, *DeallocatePodIPRequest) (*DeallocatePodIPResponse, error)
+	// CheckPodIP validates that an IP address is still correctly allocated to a pod.
+	CheckPodIP(context.Context, *CheckPodIPRequest) (*CheckPodIPResponse, error)
 	mustEmbedUnimplementedAdaptiveIpamServer()
 }
 
@@ -96,6 +111,9 @@ func (UnimplementedAdaptiveIpamServer) AllocatePodIP(context.Context, *AllocateP
 }
 func (UnimplementedAdaptiveIpamServer) DeallocatePodIP(context.Context, *DeallocatePodIPRequest) (*DeallocatePodIPResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeallocatePodIP not implemented")
+}
+func (UnimplementedAdaptiveIpamServer) CheckPodIP(context.Context, *CheckPodIPRequest) (*CheckPodIPResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CheckPodIP not implemented")
 }
 func (UnimplementedAdaptiveIpamServer) mustEmbedUnimplementedAdaptiveIpamServer() {}
 func (UnimplementedAdaptiveIpamServer) testEmbeddedByValue()                      {}
@@ -154,6 +172,24 @@ func _AdaptiveIpam_DeallocatePodIP_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdaptiveIpam_CheckPodIP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckPodIPRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdaptiveIpamServer).CheckPodIP(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdaptiveIpam_CheckPodIP_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdaptiveIpamServer).CheckPodIP(ctx, req.(*CheckPodIPRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdaptiveIpam_ServiceDesc is the grpc.ServiceDesc for AdaptiveIpam service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -168,6 +204,10 @@ var AdaptiveIpam_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeallocatePodIP",
 			Handler:    _AdaptiveIpam_DeallocatePodIP_Handler,
+		},
+		{
+			MethodName: "CheckPodIP",
+			Handler:    _AdaptiveIpam_CheckPodIP_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

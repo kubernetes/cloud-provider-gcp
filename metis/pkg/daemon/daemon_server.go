@@ -189,6 +189,22 @@ func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptivei
 	return &adaptiveipam.DeallocatePodIPResponse{}, nil
 }
 
+func (s *adaptiveIpamServer) CheckPodIP(ctx context.Context, req *adaptiveipam.CheckPodIPRequest) (*adaptiveipam.CheckPodIPResponse, error) {
+	s.logger.Info("CheckPodIP request received",
+		"network", req.Network,
+		"containerID", req.ContainerId,
+		"interfaceName", req.InterfaceName)
+
+	err := s.store.CheckAllocation(ctx, req.Network, req.ContainerId, req.InterfaceName)
+	if err != nil {
+		s.logger.Error(err, "CheckPodIP failed", "network", req.Network, "containerID", req.ContainerId)
+		return nil, status.Errorf(codes.NotFound, "allocation check failed: %v", err)
+	}
+
+	s.logger.Info("CheckPodIP succeeded", "network", req.Network, "containerID", req.ContainerId)
+	return &adaptiveipam.CheckPodIPResponse{}, nil
+}
+
 func (s *adaptiveIpamServer) start() error {
 	sockPath := s.sockPath
 	if sockPath == "" {
