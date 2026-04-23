@@ -25,6 +25,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2708,4 +2709,46 @@ func TestEnsureExternalLoadBalancerMetrics(t *testing.T) {
 	// Now verify success count is 0 (since we deleted the success service)
 	lm.exportNetLBMetrics()
 	verifyL4NetLBMetric(t, 0, StatusError, DenyFirewallStatusNone)
+}
+
+func TestExternalLoadBalancerUsesLegacyLock(t *testing.T) {
+	t.Parallel()
+	vals := DefaultTestClusterValues()
+	gce, _ := fakeGCECloud(vals)
+	
+	// Enable fine-grained locks to verify that external LB still falls back to legacy lock
+	gce.SetEnableFineGrainedLocks(true)
+	
+	svc := fakeLoadbalancerService("")
+	
+	// Acquire the legacy global lock
+	gce.sharedResourceLock.Lock()
+	
+	// Call an operation that should use the global lock in a goroutine
+	errCh := make(chan error, 1)
+	go func() {
+		// We use a different name for health check to trigger isNodesHealthCheck = true
+		err := gce.DeleteExternalTargetPoolAndChecks(svc, "lb-name", gce.region, vals.ClusterID, "node-hc-name")
+		errCh <- err
+	}()
+	
+	// Verify that it blocks on the legacy lock
+	select {
+	case err := <-errCh:
+		t.Fatalf("Expected operation to block on global lock, but it completed with err: %v", err)
+	case <-time.After(100 * time.Millisecond):
+		// Success, it blocked!
+	}
+	
+	// Now release the lock and verify it completes
+	gce.sharedResourceLock.Unlock()
+	
+	select {
+	case err := <-errCh:
+		// It should complete now. It might error because we didn't fully mock the GCE API,
+		// but it should not block anymore.
+		t.Logf("Operation completed after unlocking with err: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Operation still blocked after releasing global lock")
+	}
 }
