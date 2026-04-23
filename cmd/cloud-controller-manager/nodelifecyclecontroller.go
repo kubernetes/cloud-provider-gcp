@@ -39,7 +39,7 @@ func startCloudNodeLifecycleController(ctx context.Context, initContext app.Cont
 	cloudNodeLifecycleController, err := nodelifecycle.NewCloudNodeLifecycleController(
 		completedConfig.SharedInformers.Core().V1().Nodes(),
 		// cloud node lifecycle controller uses existing cluster role from node-controller
-		completedConfig.ClientBuilder.ClientOrDie(initContext.ClientName),
+		completedConfig.ClientBuilder.ClientOrDie("cloud-node-lifecycle-controller"),
 		cloud,
 		completedConfig.ComponentConfig.KubeCloudShared.NodeMonitorPeriod.Duration,
 	)
