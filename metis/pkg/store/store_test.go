@@ -797,3 +797,196 @@ func TestStore_AllocateIPv4_Concurrency_DifferentContainers(t *testing.T) {
 		t.Errorf("Expected %d allocated rows in DB, got %d", numGoroutines, count)
 	}
 }
+
+func TestStore_AllocateIPv6(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+
+	dbPath := filepath.Join(tempDir, "metis_allocate_ipv6_test.sqlite")
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore returned unexpected error: %v", err)
+	}
+	defer s.Close()
+
+	network := "gke-pod-network-allocate-ipv6"
+	cidr := "2001:db8::/64"
+
+	// Add the CIDR
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	// Test Case 1: Happy path - First allocation
+	ip1, cidrRange1, err := s.AllocateIPv6(context.Background(), network, "eth0", "container-1")
+	if err != nil {
+		t.Fatalf("First allocation failed: %v", err)
+	}
+	if ip1 == "" {
+		t.Fatal("Expected valid IP address, got empty string")
+	}
+	if cidrRange1 != cidr {
+		t.Errorf("Expected CIDR range %s, got %s", cidr, cidrRange1)
+	}
+
+	// Verify DB state for first allocation
+	var isAlloc bool
+	var containerID, interfaceName string
+	err = s.db.QueryRow(`SELECT is_allocated, container_id, interface_name FROM ip_addresses WHERE address = ?`, ip1).Scan(&isAlloc, &containerID, &interfaceName)
+	if err != nil {
+		t.Fatalf("Failed to query DB for IP status: %v", err)
+	}
+	if !isAlloc {
+		t.Errorf("Expected IP %s to be marked as allocated", ip1)
+	}
+	if containerID != "container-1" || interfaceName != "eth0" {
+		t.Errorf("Expected container-1/eth0, got %s/%s", containerID, interfaceName)
+	}
+
+	// Test Case 2: Release path
+	count, err := s.ReleaseIPByOwner(context.Background(), network, "container-1", "eth0", 0)
+	if err != nil {
+		t.Fatalf("ReleaseIPByOwner failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 IP to be released, got %d", count)
+	}
+
+	// Verify DB state after release
+	err = s.db.QueryRow(`SELECT is_allocated FROM ip_addresses WHERE address = ?`, ip1).Scan(&isAlloc)
+	if err != nil {
+		t.Fatalf("Failed to query DB for IP status after release: %v", err)
+	}
+	if isAlloc {
+		t.Errorf("Expected IP %s to be unallocated after release", ip1)
+	}
+
+	// Test Case 3: Allocate after release
+	ip2, _, err := s.AllocateIPv6(context.Background(), network, "eth0", "container-2")
+	if err != nil {
+		t.Fatalf("Allocation after release failed: %v", err)
+	}
+	if ip2 != ip1 {
+		t.Errorf("Expected released IP %s to be reused, got %s", ip1, ip2)
+	}
+}
+
+func TestStore_AllocateIPv6_ExceedBatch(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+
+	dbPath := filepath.Join(tempDir, "metis_allocate_ipv6_batch_test.sqlite")
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore returned unexpected error: %v", err)
+	}
+	defer s.Close()
+
+	network := "gke-pod-network-batch"
+	cidr := "2001:db8::/64"
+
+	// Add the CIDR
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	// Allocate 33 IPs
+	// The constant is 32, so 33 will trigger the second batch population.
+	ips := make([]string, 33)
+	for i := 0; i < 33; i++ {
+		ip, _, err := s.AllocateIPv6(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
+		if err != nil {
+			t.Fatalf("Allocation failed at index %d: %v", i, err)
+		}
+		ips[i] = ip
+	}
+
+	// Verify we got unique IPs
+	uniqueIPs := make(map[string]bool)
+	for _, ip := range ips {
+		if uniqueIPs[ip] {
+			t.Errorf("Duplicate IP allocated: %s", ip)
+		}
+		uniqueIPs[ip] = true
+	}
+
+	if len(uniqueIPs) != 33 {
+		t.Errorf("Expected 33 unique IPs, got %d", len(uniqueIPs))
+	}
+
+	// Verify that the number of entries in ip_addresses is at least 64 (2 batches)
+	var count int
+	err = s.db.QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE cidr_block_id = (SELECT id FROM cidr_blocks WHERE cidr = ?)", cidr).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query DB for count: %v", err)
+	}
+	if count < 64 {
+		t.Errorf("Expected at least 64 entries (2 batches), got %d", count)
+	}
+}
+
+func TestStore_AllocateIPv6_Concurrency(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "concurrency_ipv6.sqlite")
+
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	network := "test-network"
+	cidr := "2001:db8::/64"
+
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	const numGoroutines = 50 // High contention
+	var wg sync.WaitGroup
+	ips := make([]string, numGoroutines)
+	errs := make([]error, numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			addr, _, err := s.AllocateIPv6(context.Background(), network, "eth0", fmt.Sprintf("container-%d", idx))
+			ips[idx] = addr
+			errs[idx] = err
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify all succeeded and IPs are unique
+	uniqueIPs := make(map[string]bool)
+	for i := 0; i < numGoroutines; i++ {
+		if errs[i] != nil {
+			t.Errorf("Goroutine %d failed: %v", i, errs[i])
+		}
+		if ips[i] == "" {
+			t.Errorf("Goroutine %d returned empty IP", i)
+		} else {
+			if uniqueIPs[ips[i]] {
+				t.Errorf("Duplicate IP allocated: %s", ips[i])
+			}
+			uniqueIPs[ips[i]] = true
+		}
+	}
+
+	if len(uniqueIPs) != numGoroutines {
+		t.Errorf("Expected %d unique IPs, got %d", numGoroutines, len(uniqueIPs))
+	}
+
+	// Verify DB stats
+	var count int
+	err = s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE is_allocated = TRUE AND container_id LIKE 'container-%'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query DB for count: %v", err)
+	}
+	if count != numGoroutines {
+		t.Errorf("Expected %d allocated rows in DB, got %d", numGoroutines, count)
+	}
+}
