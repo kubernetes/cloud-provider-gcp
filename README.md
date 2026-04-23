@@ -58,6 +58,42 @@ If `IMAGE_REPO` is not set, the script will exit with an error. If `IMAGE_TAG` i
 *   **`make clean-builder`**: Removes the `docker buildx` builder used for multi-platform Docker builds. This command is useful to reset the builder environment if the builder encounters an error or becomes corrupted. It can also be used to free up resources when the builder is no longer needed.
 
 
+## Releases
+
+This repository uses [GitHub Releases](https://github.com/kubernetes/cloud-provider-gcp/releases) to publish versioned releases with release notes and artifacts.
+
+### Creating a Release
+
+To create a GitHub release from an existing tag, use the provided script:
+
+```sh
+./tools/create-github-release.sh <tag> [draft]
+```
+
+For example, to create a release for tag `v35.0.8`:
+
+```sh
+./tools/create-github-release.sh v35.0.8
+```
+
+To create a draft release (for review before publishing):
+
+```sh
+./tools/create-github-release.sh v35.0.8 true
+```
+
+The script will:
+1. Generate release notes based on commits since the previous tag
+2. Display a preview of the release notes
+3. Prompt for confirmation before creating the release
+4. Create the GitHub release using the `gh` CLI
+
+### Requirements
+
+- `gh` CLI installed and authenticated ([installation guide](https://cli.github.com/))
+- Git tags fetched locally (`git fetch --tags`)
+- Write access to the repository
+
 ## Cross-compiling
 
 Platform-specific release tarballs can be built using the following commands.
