@@ -21,9 +21,10 @@ import (
 	"net"
 	"sync"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -93,12 +94,15 @@ func NewCIDRRangeAllocator(client clientset.Interface, nodeInformer informers.No
 		cidrSets[idx] = cidrSet
 	}
 
+	// Wrap the informer to filter nodes
+	filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: nodeInformer}
+
 	ra := &rangeAllocator{
 		client:                client,
 		clusterCIDRs:          allocatorParams.ClusterCIDRs,
 		cidrSets:              cidrSets,
-		nodeLister:            nodeInformer.Lister(),
-		nodesSynced:           nodeInformer.Informer().HasSynced,
+		nodeLister:            filteringInformer.Lister(),
+		nodesSynced:           filteringInformer.Informer().HasSynced,
 		nodeCIDRUpdateChannel: make(chan nodeReservedCIDRs, cidrUpdateQueueSize),
 		recorder:              recorder,
 		nodesInProcessing:     sets.NewString(),
@@ -133,7 +137,7 @@ func NewCIDRRangeAllocator(client clientset.Interface, nodeInformer informers.No
 		}
 	}
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	filteringInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: nodeutil.CreateAddNodeHandler(ra.AllocateOrOccupyCIDR),
 		UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(_, newNode *v1.Node) error {
 			// If the PodCIDRs list is not empty we either:
@@ -335,6 +339,9 @@ func (r *rangeAllocator) updateCIDRsAllocation(data nodeReservedCIDRs) error {
 	cidrsString := cidrsAsString(data.allocatedCIDRs)
 	node, err = r.nodeLister.Get(data.nodeName)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil // node no longer available, skip processing
+		}
 		klog.Errorf("Failed while getting node %v for updating Node.Spec.PodCIDRs: %v", data.nodeName, err)
 		return err
 	}

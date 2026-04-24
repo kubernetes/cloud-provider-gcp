@@ -24,9 +24,14 @@ import (
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	v1lister "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
 
@@ -39,7 +44,64 @@ const (
 	DefaultSubnetLabelPrefix = "cloud.google.com/gke-np-default-subnet"
 	// NodePoolSubnetLabelPrefix is the prefix for the subnet name for this node
 	NodePoolSubnetLabelPrefix = "cloud.google.com/gke-node-pool-subnet"
+	// GKEUnmanagedNodeLabelKey is the label key used to identify nodes that should be ignored by GKE controllers.
+	GKEUnmanagedNodeLabelKey = "cloud.google.com/gke-unmanaged-node"
+	// GKEUnmanagedNodeLabelValue is the label value used to identify nodes that should be ignored by GKE controllers.
+	GKEUnmanagedNodeLabelValue = "true"
 )
+
+// GCEFilteringNodeInformer wraps a NodeInformer to filter out unmanaged nodes from the lister.
+type GCEFilteringNodeInformer struct {
+	coreinformers.NodeInformer
+}
+
+func (i *GCEFilteringNodeInformer) Lister() v1lister.NodeLister {
+	return &GCEFilteringNodeLister{i.NodeInformer.Lister()}
+}
+
+func (i *GCEFilteringNodeInformer) Informer() cache.SharedIndexInformer {
+	return i.NodeInformer.Informer()
+}
+
+// IsUnmanagedNode returns true if the node has the unmanaged label.
+func IsUnmanagedNode(node *v1.Node) bool {
+	if node == nil {
+		return false
+	}
+	val, ok := node.Labels[GKEUnmanagedNodeLabelKey]
+	return ok && val == GKEUnmanagedNodeLabelValue
+}
+
+// GCEFilteringNodeLister wraps a NodeLister to filter out nodes with the unmanaged label.
+type GCEFilteringNodeLister struct {
+	v1lister.NodeLister
+}
+
+func (l *GCEFilteringNodeLister) List(selector labels.Selector) (ret []*v1.Node, err error) {
+	nodes, err := l.NodeLister.List(selector)
+	if err != nil {
+		return nil, err
+	}
+	var filtered []*v1.Node
+	for _, n := range nodes {
+		if IsUnmanagedNode(n) {
+			continue
+		}
+		filtered = append(filtered, n)
+	}
+	return filtered, nil
+}
+
+func (l *GCEFilteringNodeLister) Get(name string) (*v1.Node, error) {
+	node, err := l.NodeLister.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	if IsUnmanagedNode(node) {
+		return nil, errors.NewNotFound(v1.Resource("node"), name)
+	}
+	return node, nil
+}
 
 type nodeForConditionPatch struct {
 	Status nodeStatusForPatch `json:"status"`

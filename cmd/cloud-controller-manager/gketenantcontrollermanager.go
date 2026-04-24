@@ -28,8 +28,8 @@ import (
 
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
+	"k8s.io/cloud-provider-gcp/pkg/controller/nodelifecycle"
 	"k8s.io/cloud-provider/controllers/node"
-	"k8s.io/cloud-provider/controllers/nodelifecycle"
 )
 
 type gkeTenantControllerManagerConfig struct {
