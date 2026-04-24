@@ -285,11 +285,17 @@ func (g *Cloud) instanceByProviderID(providerID string) (*gceInstance, error) {
 
 // InstanceShutdownByProviderID returns true if the instance is in safe state to detach volumes
 func (g *Cloud) InstanceShutdownByProviderID(ctx context.Context, providerID string) (bool, error) {
+	if g.IsNodeUnmanagedByProviderID(providerID) {
+		return false, nil
+	}
 	return false, cloudprovider.NotImplemented
 }
 
 // InstanceShutdown returns true if the instance is in safe state to detach volumes
 func (g *Cloud) InstanceShutdown(ctx context.Context, node *v1.Node) (bool, error) {
+	if node.Spec.ProviderID != "" && g.IsNodeUnmanagedByProviderID(node.Spec.ProviderID) {
+		return false, nil
+	}
 	return false, cloudprovider.NotImplemented
 }
 
