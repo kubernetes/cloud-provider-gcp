@@ -93,12 +93,15 @@ func NewCIDRRangeAllocator(client clientset.Interface, nodeInformer informers.No
 		cidrSets[idx] = cidrSet
 	}
 
+	// Wrap the informer to filter nodes
+	filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: nodeInformer}
+
 	ra := &rangeAllocator{
 		client:                client,
 		clusterCIDRs:          allocatorParams.ClusterCIDRs,
 		cidrSets:              cidrSets,
-		nodeLister:            nodeInformer.Lister(),
-		nodesSynced:           nodeInformer.Informer().HasSynced,
+		nodeLister:            filteringInformer.Lister(),
+		nodesSynced:           filteringInformer.Informer().HasSynced,
 		nodeCIDRUpdateChannel: make(chan nodeReservedCIDRs, cidrUpdateQueueSize),
 		recorder:              recorder,
 		nodesInProcessing:     sets.NewString(),
@@ -133,7 +136,7 @@ func NewCIDRRangeAllocator(client clientset.Interface, nodeInformer informers.No
 		}
 	}
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	filteringInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: nodeutil.CreateAddNodeHandler(ra.AllocateOrOccupyCIDR),
 		UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(_, newNode *v1.Node) error {
 			// If the PodCIDRs list is not empty we either:

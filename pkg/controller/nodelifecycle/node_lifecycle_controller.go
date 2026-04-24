@@ -19,59 +19,12 @@ package nodelifecycle
 import (
 	"time"
 
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	v1lister "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/tools/cache"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/cloud-provider/controllers/nodelifecycle"
+	"k8s.io/cloud-provider-gcp/pkg/util/node"
 )
-
-const (
-	// GKEUnmanagedNodeLabelKey is the label key used to identify nodes that should be ignored by the node lifecycle manager.
-	GKEUnmanagedNodeLabelKey = "cloud.google.com/gke-unmanaged-node"
-	// GKEUnmanagedNodeLabelValue is the label value used to identify nodes that should be ignored by the node lifecycle manager.
-	GKEUnmanagedNodeLabelValue = "true"
-)
-
-// GCEFilteringNodeInformer wraps a NodeInformer to filter out unmanaged nodes from the lister.
-type GCEFilteringNodeInformer struct {
-	coreinformers.NodeInformer
-}
-
-func (i *GCEFilteringNodeInformer) Lister() v1lister.NodeLister {
-	return &GCEFilteringNodeLister{i.NodeInformer.Lister()}
-}
-
-func (i *GCEFilteringNodeInformer) Informer() cache.SharedIndexInformer {
-	return i.NodeInformer.Informer()
-}
-
-// GCEFilteringNodeLister wraps a NodeLister to filter out nodes with the unmanaged label.
-type GCEFilteringNodeLister struct {
-	v1lister.NodeLister
-}
-
-func (l *GCEFilteringNodeLister) List(selector labels.Selector) (ret []*v1.Node, err error) {
-	nodes, err := l.NodeLister.List(selector)
-	if err != nil {
-		return nil, err
-	}
-	var filtered []*v1.Node
-	for _, n := range nodes {
-		if val, ok := n.Labels[GKEUnmanagedNodeLabelKey]; ok && val == GKEUnmanagedNodeLabelValue {
-			continue
-		}
-		filtered = append(filtered, n)
-	}
-	return filtered, nil
-}
-
-func (l *GCEFilteringNodeLister) Get(name string) (*v1.Node, error) {
-	return l.NodeLister.Get(name)
-}
 
 // NewCloudNodeLifecycleController returns a new cloud node lifecycle controller that filters out unmanaged nodes.
 func NewCloudNodeLifecycleController(
@@ -81,7 +34,7 @@ func NewCloudNodeLifecycleController(
 	nodeMonitorPeriod time.Duration) (*nodelifecycle.CloudNodeLifecycleController, error) {
 
 	// Wrap the informer to filter nodes
-	filteringInformer := &GCEFilteringNodeInformer{NodeInformer: nodeInformer}
+	filteringInformer := &node.GCEFilteringNodeInformer{NodeInformer: nodeInformer}
 
 	return nodelifecycle.NewCloudNodeLifecycleController(
 		filteringInformer,
