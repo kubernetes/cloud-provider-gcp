@@ -26,6 +26,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	cloudprovider "k8s.io/cloud-provider"
+	"k8s.io/cloud-provider-gcp/pkg/util/node"
 )
 
 type mockInstances struct {
@@ -71,7 +72,7 @@ func TestMonitorNodes_FilterLabel(t *testing.T) {
 	unmanagedNode := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "unmanaged-node",
-			Labels: map[string]string{GKEUnmanagedNodeLabelKey: GKEUnmanagedNodeLabelValue},
+			Labels: map[string]string{node.GKEUnmanagedNodeLabelKey: node.GKEUnmanagedNodeLabelValue},
 		},
 		Spec:   v1.NodeSpec{ProviderID: "gce://project/zone/unmanaged-node"},
 		Status: v1.NodeStatus{Conditions: []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionFalse}}},
@@ -79,7 +80,7 @@ func TestMonitorNodes_FilterLabel(t *testing.T) {
 	labeledManagedNode := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "labeled-managed-node",
-			Labels: map[string]string{GKEUnmanagedNodeLabelKey: "false"},
+			Labels: map[string]string{node.GKEUnmanagedNodeLabelKey: "false"},
 		},
 		Spec:   v1.NodeSpec{ProviderID: "gce://project/zone/labeled-managed-node"},
 		Status: v1.NodeStatus{Conditions: []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionFalse}}},

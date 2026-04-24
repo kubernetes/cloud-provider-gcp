@@ -142,13 +142,16 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		stackType = stackIPv6
 	}
 
+	// Wrap the informer to filter nodes
+	filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: nodeInformer}
+
 	ca := &cloudCIDRAllocator{
 		client:                client,
 		cloud:                 gceCloud,
 		networksLister:        nwInformer.Lister(),
 		gnpLister:             gnpInformer.Lister(),
-		nodeLister:            nodeInformer.Lister(),
-		nodesSynced:           nodeInformer.Informer().HasSynced,
+		nodeLister:            filteringInformer.Lister(),
+		nodesSynced:           filteringInformer.Informer().HasSynced,
 		networksSynced:        nwInformer.Informer().HasSynced,
 		gnpsSynced:            gnpInformer.Informer().HasSynced,
 		recorder:              recorder,
@@ -157,7 +160,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		enableMultiNetworking: enableMultiNetworking,
 	}
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	filteringInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: nodeutil.CreateAddNodeHandler(ca.AllocateOrOccupyCIDR),
 		UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(oldNode, newNode *v1.Node) error {
 			if newNode.Spec.PodCIDR == "" {
@@ -186,12 +189,12 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		nodeTopologySyncer := &NodeTopologySyncer{
 			nodeTopologyClient: nodeTopologyClient,
 			cloud:              gceCloud,
-			nodeLister:         nodeInformer.Lister(),
+			nodeLister:         filteringInformer.Lister(),
 		}
 		nodetopologyQueue := NewTaskQueue("nodetopologyTaskQueue", "nodetopologyCRD", nodeTopologyWorkers, nodeTopologyKeyFun, nodeTopologySyncer.sync)
 		ca.nodeTopologyQueue = nodetopologyQueue
 
-		nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		filteringInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: nodeutil.CreateAddNodeHandler(func(node *v1.Node) error {
 				ca.nodeTopologyQueue.Enqueue(node)
 				return nil

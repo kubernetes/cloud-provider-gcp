@@ -34,6 +34,7 @@ import (
 	informers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	cloudprovider "k8s.io/cloud-provider"
+	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 )
 
 // CIDRAllocatorType is the type of the allocator to use.
@@ -120,6 +121,15 @@ func New(kubeClient clientset.Interface, cloud cloudprovider.Interface, nodeInfo
 	if err != nil {
 		return nil, err
 	}
+
+	var filteredNodes []v1.Node
+	for _, n := range nodeList.Items {
+		if utilnode.IsUnmanagedNode(&n) {
+			continue
+		}
+		filteredNodes = append(filteredNodes, n)
+	}
+	nodeList.Items = filteredNodes
 
 	switch allocatorType {
 	case RangeAllocatorType:
