@@ -406,6 +406,10 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
 		return fmt.Errorf("failed to get instance from provider: %v", err)
 	}
+	if instance == nil {
+		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
+		return fmt.Errorf("failed to get instance from provider for node %s: instance not found", nodeName)
+	}
 
 	cidrStrings := make([]string, 0)
 
