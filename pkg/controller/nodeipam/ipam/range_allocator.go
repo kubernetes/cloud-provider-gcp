@@ -21,9 +21,10 @@ import (
 	"net"
 	"sync"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -338,6 +339,9 @@ func (r *rangeAllocator) updateCIDRsAllocation(data nodeReservedCIDRs) error {
 	cidrsString := cidrsAsString(data.allocatedCIDRs)
 	node, err = r.nodeLister.Get(data.nodeName)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil // node no longer available, skip processing
+		}
 		klog.Errorf("Failed while getting node %v for updating Node.Spec.PodCIDRs: %v", data.nodeName, err)
 		return err
 	}

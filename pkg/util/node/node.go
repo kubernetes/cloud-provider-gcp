@@ -24,6 +24,7 @@ import (
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -92,7 +93,14 @@ func (l *GCEFilteringNodeLister) List(selector labels.Selector) (ret []*v1.Node,
 }
 
 func (l *GCEFilteringNodeLister) Get(name string) (*v1.Node, error) {
-	return l.NodeLister.Get(name)
+	node, err := l.NodeLister.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	if IsUnmanagedNode(node) {
+		return nil, errors.NewNotFound(v1.Resource("node"), name)
+	}
+	return node, nil
 }
 
 type nodeForConditionPatch struct {

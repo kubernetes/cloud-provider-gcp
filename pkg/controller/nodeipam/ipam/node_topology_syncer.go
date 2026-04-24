@@ -8,6 +8,7 @@ import (
 	nodetopologyv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1"
 	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -53,6 +54,9 @@ func (syncer *NodeTopologySyncer) sync(key string) error {
 	}
 	node, err := syncer.nodeLister.Get(name)
 	if node == nil || err != nil {
+		if errors.IsNotFound(err) {
+			return nil // node no longer available, skip processing
+		}
 		klog.InfoS("Node not found or error, reconcile.", "node key", key, "error", err)
 		err := syncer.reconcile()
 		if err != nil {
