@@ -345,6 +345,10 @@ IMAGE_REPO ?= gcr.io/$(GCP_PROJECT)
 KOPS_STATE_STORE ?= gs://kops-state-$(GCP_PROJECT)
 IMAGE_TAG ?= $(shell git rev-parse --short HEAD)
 
+# Defaults for kOps E2E tests
+KOPS_FOCUS_REGEX ?= "\[Conformance\]"
+KOPS_SKIP_REGEX ?= "\[Serial\]"
+
 .PHONY: kops-simple
 kops-simple: ## Run kOps simple E2E test scenario.
 	./e2e/scenarios/kops-simple
@@ -410,6 +414,6 @@ kops-e2e-test: kops-tool ## Run E2E tests on kOps cluster.
 		-- \
 		--parallel=30 \
 		--test-package-version="${K8S_VERSION}" \
-		--skip-regex="\[Serial\]" \
-		--focus-regex="\[Conformance\]"
+		--skip-regex="$(KOPS_SKIP_REGEX)" \
+		--focus-regex="$(KOPS_FOCUS_REGEX)"
 
