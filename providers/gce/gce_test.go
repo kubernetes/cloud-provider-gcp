@@ -300,6 +300,12 @@ func TestGetZoneByProviderID(t *testing.T) {
 			fail:         true,
 			description:  "invalid name of the GCE zone",
 		},
+		{
+			providerID:   "aws://region/aws-node",
+			expectedZone: cloudprovider.Zone{},
+			fail:         false,
+			description:  "non-GCE provider ID",
+		},
 	}
 
 	gce := &Cloud{
@@ -309,7 +315,7 @@ func TestGetZoneByProviderID(t *testing.T) {
 	for _, test := range tests {
 		zone, err := gce.GetZoneByProviderID(context.TODO(), test.providerID)
 		if (err != nil) != test.fail {
-			t.Errorf("Expected to fail=%t, provider ID %v, tests %s", test.fail, test, test.description)
+			t.Errorf("Expected to fail=%t, got err=%v, provider ID %v, tests %s", test.fail, err, test.providerID, test.description)
 		}
 
 		if test.fail {

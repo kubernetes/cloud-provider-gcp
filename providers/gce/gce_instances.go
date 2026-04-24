@@ -84,6 +84,12 @@ func makeHostURL(projectsAPIEndpoint, projectID, zone, host string) string {
 	return projectsAPIEndpoint + strings.Join([]string{projectID, "zones", zone, "instances", host}, "/")
 }
 
+// IsNodeUnmanagedByProviderID returns true if the node is not managed by GCE cloud provider.
+// All managed node's providerIDs are in format 'gce://<project-id>/<zone>/<instance-name>'
+func (g *Cloud) IsNodeUnmanagedByProviderID(providerID string) bool {
+	return providerID != "" && !strings.HasPrefix(providerID, ProviderName+"://")
+}
+
 // ToInstanceReferences returns instance references by links
 func (g *Cloud) ToInstanceReferences(zone string, instanceNames []string) (refs []*compute.InstanceReference) {
 	for _, ins := range instanceNames {
@@ -233,6 +239,9 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 // NodeAddressesByProviderID will not be called from the node that is requesting this ID.
 // i.e. metadata service and other local methods cannot be used here
 func (g *Cloud) NodeAddressesByProviderID(ctx context.Context, providerID string) ([]v1.NodeAddress, error) {
+	if g.IsNodeUnmanagedByProviderID(providerID) {
+		return []v1.NodeAddress{}, nil
+	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, 1*time.Hour)
 	defer cancel()
 
@@ -276,11 +285,17 @@ func (g *Cloud) instanceByProviderID(providerID string) (*gceInstance, error) {
 
 // InstanceShutdownByProviderID returns true if the instance is in safe state to detach volumes
 func (g *Cloud) InstanceShutdownByProviderID(ctx context.Context, providerID string) (bool, error) {
+	if g.IsNodeUnmanagedByProviderID(providerID) {
+		return false, nil
+	}
 	return false, cloudprovider.NotImplemented
 }
 
 // InstanceShutdown returns true if the instance is in safe state to detach volumes
 func (g *Cloud) InstanceShutdown(ctx context.Context, node *v1.Node) (bool, error) {
+	if node.Spec.ProviderID != "" && g.IsNodeUnmanagedByProviderID(node.Spec.ProviderID) {
+		return false, nil
+	}
 	return false, cloudprovider.NotImplemented
 }
 
@@ -320,6 +335,9 @@ func getIPV6AddressFromInterface(nic *compute.NetworkInterface) string {
 // node that is requesting this ID. i.e. metadata service and other local
 // methods cannot be used here
 func (g *Cloud) InstanceTypeByProviderID(ctx context.Context, providerID string) (string, error) {
+	if g.IsNodeUnmanagedByProviderID(providerID) {
+		return "", nil
+	}
 	instance, err := g.instanceByProviderID(providerID)
 	if err != nil {
 		return "", err
@@ -331,6 +349,9 @@ func (g *Cloud) InstanceTypeByProviderID(ctx context.Context, providerID string)
 // InstanceExistsByProviderID returns true if the instance with the given provider id still exists and is running.
 // If false is returned with no error, the instance will be immediately deleted by the cloud controller manager.
 func (g *Cloud) InstanceExistsByProviderID(ctx context.Context, providerID string) (bool, error) {
+	if g.IsNodeUnmanagedByProviderID(providerID) {
+		return true, nil
+	}
 	_, err := g.instanceByProviderID(providerID)
 	if err != nil {
 		if err == cloudprovider.InstanceNotFound {
@@ -586,6 +607,9 @@ func (g *Cloud) CurrentNodeName(ctx context.Context, hostname string) (types.Nod
 // `node` for allocation to pods. Returns a list of the form
 // "<ip>/<netmask>".
 func (g *Cloud) AliasRangesByProviderID(providerID string) (cidrs []string, err error) {
+	if g.IsNodeUnmanagedByProviderID(providerID) {
+		return nil, nil
+	}
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -944,6 +968,9 @@ func (g *Cloud) GetNodeTags(nodeNames []string) ([]string, error) {
 
 // NodeNetworkInterfacesByProviderID returns a list of node interfaces that exist on the node.
 func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, err error) {
+	if g.IsNodeUnmanagedByProviderID(providerID) {
+		return nil, nil
+	}
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 

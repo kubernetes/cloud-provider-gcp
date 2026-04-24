@@ -406,6 +406,14 @@ func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
 		return fmt.Errorf("failed to get instance from provider: %v", err)
 	}
+	if instance == nil {
+		if ca.cloud.IsNodeUnmanagedByProviderID(node.Spec.ProviderID) {
+			klog.V(4).Infof("Skipping CIDR allocation for unmanaged node %s", nodeName)
+			return nil
+		}
+		nodeutil.RecordNodeStatusChange(ca.recorder, node, "CIDRNotAvailable")
+		return fmt.Errorf("failed to get instance from provider for node %s: instance not found", nodeName)
+	}
 
 	cidrStrings := make([]string, 0)
 

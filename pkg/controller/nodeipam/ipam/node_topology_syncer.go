@@ -116,7 +116,9 @@ func (syncer *NodeTopologySyncer) reconcile() error {
 		if err != nil {
 			return err
 		}
-		zoneSet.Insert(zone)
+		if zone != "" {
+			zoneSet.Insert(zone)
+		}
 	}
 	updatedNodeTopologyCR.Status.Zones = zoneSet.List()
 
