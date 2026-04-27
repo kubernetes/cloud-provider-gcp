@@ -48,7 +48,11 @@ var _ = Describe("[cloud-provider-gcp-e2e] Firewall Rules", func() {
 		framework.ExpectNoError(err)
 
 		By("Checking well known ports on master and nodes are not exposed externally")
-		nodeAddr := e2enode.FirstAddress(nodes, v1.NodeExternalIP)
+		nodeExternalIPs := e2enode.CollectAddresses(nodes, v1.NodeExternalIP)
+		nodeAddr := ""
+		if len(nodeExternalIPs) > 0 {
+			nodeAddr = nodeExternalIPs[0]
+		}
 		if nodeAddr != "" {
 			assertNotReachableHTTPTimeout(nodeAddr, "/", ports.KubeletPort, firewallTestTCPTimeout, false)
 			assertNotReachableHTTPTimeout(nodeAddr, "/", ports.KubeletReadOnlyPort, firewallTestTCPTimeout, false)
