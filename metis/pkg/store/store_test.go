@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -364,6 +365,51 @@ func TestStore_AddCIDR(t *testing.T) {
 			t.Errorf("[%d] Expected allocation %v for address %s, got %v", i, expectedAllocs[i], addresses[i], allocations[i])
 		}
 	}
+
+	// 3. Add a second CIDR block for the SAME network and verify NO reservations
+	cidr2 := "10.0.2.0/29"
+	err = s.AddCIDR(context.Background(), network, cidr2)
+	if err != nil {
+		t.Fatalf("AddCIDR failed for second block: %v", err)
+	}
+
+	// Verify cidr_block table insertion for second block
+	var totalIPs2, allocatedIPs2 int
+	var state2 string
+	err = s.db.QueryRow(`SELECT total_ips, allocated_ips, state FROM cidr_blocks WHERE cidr = ?`, cidr2).Scan(&totalIPs2, &allocatedIPs2, &state2)
+	if err != nil {
+		t.Fatalf("Failed to query inserted cidr_block 2: %v", err)
+	}
+
+	if totalIPs2 != 8 {
+		t.Errorf("Expected total_ips 8 for block 2, got %d", totalIPs2)
+	}
+	if allocatedIPs2 != 0 {
+		t.Errorf("Expected allocated_ips 0 for block 2 (no reservations), got %d", allocatedIPs2)
+	}
+
+	// Verify ip_addresses table insertion for second block (all should be false)
+	rows2, err := s.db.Query(`SELECT address, is_allocated FROM ip_addresses WHERE cidr_block_id = (SELECT id FROM cidr_blocks WHERE cidr = ?) ORDER BY address`, cidr2)
+	if err != nil {
+		t.Fatalf("Failed to query inserted ip_addresses 2: %v", err)
+	}
+	defer rows2.Close()
+
+	var count2 int
+	for rows2.Next() {
+		var addr string
+		var isAlloc bool
+		if err := rows2.Scan(&addr, &isAlloc); err != nil {
+			t.Fatalf("Failed to scan ip_address 2: %v", err)
+		}
+		count2++
+		if isAlloc {
+			t.Errorf("Expected address %s to NOT be allocated in second block", addr)
+		}
+	}
+	if count2 != 8 {
+		t.Errorf("Expected 8 addresses for block 2, got %d", count2)
+	}
 }
 
 func TestStore_AddCIDR_Small(t *testing.T) {
@@ -414,6 +460,55 @@ func TestStore_AddCIDR_Small(t *testing.T) {
 	}
 }
 
+func TestStore_AddCIDR_IPv6(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+
+	dbPath := filepath.Join(tempDir, "metis_addcidr_ipv6.sqlite")
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore returned unexpected error: %v", err)
+	}
+	defer s.Close()
+
+	network := "gke-pod-network-ipv6"
+	cidr := "2001:db8::/64"
+
+	err = s.AddCIDR(context.Background(), network, cidr)
+	if err != nil {
+		t.Fatalf("AddCIDR failed for IPv6: %v", err)
+	}
+
+	// 1. Verify cidr_block table insertion
+	var totalIPs, allocatedIPs int64
+	var state string
+	err = s.db.QueryRow(`SELECT total_ips, allocated_ips, state FROM cidr_blocks WHERE cidr = ?`, cidr).Scan(&totalIPs, &allocatedIPs, &state)
+	if err != nil {
+		t.Fatalf("Failed to query inserted cidr_block: %v", err)
+	}
+
+	if totalIPs != 0x7fffffffffffffff {
+		t.Errorf("Expected total_ips %d, got %d", 0x7fffffffffffffff, totalIPs)
+	}
+	if allocatedIPs != 0 {
+		t.Errorf("Expected allocated_ips 0, got %d", allocatedIPs)
+	}
+	if state != "Ready" {
+		t.Errorf("Expected state Ready, got %s", state)
+	}
+
+	// 2. Verify ip_addresses table insertion (should have ipv6PopulationBatchSize entries)
+	var count int
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM ip_addresses WHERE cidr_block_id = (SELECT id FROM cidr_blocks WHERE cidr = ?)`, cidr).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query ip_addresses count: %v", err)
+	}
+
+	if count != ipv6PopulationBatchSize {
+		t.Errorf("Expected %d populated IPs, got %d", ipv6PopulationBatchSize, count)
+	}
+}
+
 func TestStore_AllocateIPv4_SingleCIDR(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()
@@ -429,7 +524,7 @@ func TestStore_AllocateIPv4_SingleCIDR(t *testing.T) {
 	cidr := "10.0.2.0/29" // 8 IPs: .0 to .7. Reserved: .0, .1, .7. Available: .2, .3, .4, .5, .6.
 
 	// Test Case 1: Error - No CIDR blocks found (DB empty)
-	_, _, err = s.AllocateIPv4(context.Background(), network, "eth0", "container-1")
+	_, _, err = s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-1", IPFamily: IPv4})
 	if err == nil {
 		t.Error("Expected error for no CIDR blocks, got nil")
 	} else if !errors.Is(err, ErrNoAvailableIPs) {
@@ -442,7 +537,7 @@ func TestStore_AllocateIPv4_SingleCIDR(t *testing.T) {
 	}
 
 	// Test Case 2: Happy path - First allocation
-	ip1, cidrRange1, err := s.AllocateIPv4(context.Background(), network, "eth0", "container-1")
+	ip1, cidrRange1, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-1", IPFamily: IPv4})
 	if err != nil {
 		t.Fatalf("First allocation failed: %v", err)
 	}
@@ -468,7 +563,7 @@ func TestStore_AllocateIPv4_SingleCIDR(t *testing.T) {
 	}
 
 	// Test Case 3: Happy path - Second allocation
-	ip2, _, err := s.AllocateIPv4(context.Background(), network, "eth0", "container-2")
+	ip2, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-2", IPFamily: IPv4})
 	if err != nil {
 		t.Fatalf("Second allocation failed: %v", err)
 	}
@@ -482,7 +577,7 @@ func TestStore_AllocateIPv4_SingleCIDR(t *testing.T) {
 	// Let's allocate .4, .5, .6.
 	for i := 4; i <= 6; i++ {
 		expectedIP := fmt.Sprintf("10.0.2.%d", i)
-		ip, _, err := s.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
+		ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: IPv4})
 		if err != nil {
 			t.Fatalf("Allocation failed for %s: %v", expectedIP, err)
 		}
@@ -492,7 +587,7 @@ func TestStore_AllocateIPv4_SingleCIDR(t *testing.T) {
 	}
 
 	// Now it should be exhausted. Next allocation should fail.
-	ipEx, _, err := s.AllocateIPv4(context.Background(), network, "eth0", "container-exhaust")
+	ipEx, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-exhaust", IPFamily: IPv4})
 	if err == nil {
 		t.Errorf("Expected error for exhausted CIDR, got nil. Returned IP: %s", ipEx)
 	} else if !errors.Is(err, ErrNoAvailableIPs) {
@@ -518,7 +613,7 @@ func TestStore_AllocateIPv4_SingleCIDR(t *testing.T) {
 		t.Fatalf("Failed to manually corrupt DB: %v", err)
 	}
 
-	ipDesync, _, err := s.AllocateIPv4(context.Background(), newNetwork, "eth0", "container-desync")
+	ipDesync, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: newNetwork, InterfaceName: "eth0", ContainerID: "container-desync", IPFamily: IPv4})
 	if err == nil {
 		t.Errorf("Expected error due to IP address desync, got nil. Returned IP: %s", ipDesync)
 	} else if !errors.Is(err, ErrNoAvailableIPs) {
@@ -553,7 +648,7 @@ func TestStore_ReleaseIPByOwner(t *testing.T) {
 	containerID := "test-container"
 	interfaceName := "eth0"
 
-	ip, _, err := s.AllocateIPv4(context.Background(), network, interfaceName, containerID)
+	ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: interfaceName, ContainerID: containerID, IPFamily: IPv4})
 	if err != nil {
 		t.Fatalf("AllocateIPv4 failed: %v", err)
 	}
@@ -618,14 +713,14 @@ func TestStore_AllocateIPv4_FallbackAndCooldown(t *testing.T) {
 
 	// 1. Allocate 5 IPs to exhaust the first CIDR
 	for i := 1; i <= 5; i++ {
-		_, _, err := s.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
+		_, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: IPv4})
 		if err != nil {
 			t.Fatalf("Failed to allocate container-%d: %v", i, err)
 		}
 	}
 
 	// 2. Attempting to allocate another should FAIL because the first CIDR is full
-	_, _, err = s.AllocateIPv4(context.Background(), network, "eth0", "container-6")
+	_, _, err = s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-6", IPFamily: IPv4})
 	if err == nil {
 		t.Error("Expected AllocateIPv4 to fail when first CIDR is full, got nil")
 	}
@@ -637,13 +732,13 @@ func TestStore_AllocateIPv4_FallbackAndCooldown(t *testing.T) {
 	}
 
 	// 4. Try allocating again, it should succeed by falling back to the second CIDR
-	ip, cidr, err := s.AllocateIPv4(context.Background(), network, "eth0", "container-7")
+	ip, cidr, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-7", IPFamily: IPv4})
 	if err != nil {
 		t.Fatalf("AllocateIPv4 failed after adding second CIDR: %v", err)
 	}
 
-	if ip != "10.0.2.2" { // First available in second CIDR
-		t.Errorf("Expected IP 10.0.2.2 from second CIDR, got %s", ip)
+	if ip != "10.0.2.0" { // First available in second CIDR (no reservations for subsequent blocks)
+		t.Errorf("Expected IP 10.0.2.0 from second CIDR, got %s", ip)
 	}
 	if cidr != cidr2 {
 		t.Errorf("Expected CIDR %s, got %s", cidr2, cidr)
@@ -657,7 +752,7 @@ func TestStore_AllocateIPv4_FallbackAndCooldown(t *testing.T) {
 
 	// 6. Try to re-allocate for a NEW container. It should NOT pick the released IP (since it's in cooldown).
 	// It should pick the next available in the second CIDR (since first CIDR is full except for the cooled-down one).
-	ipNew, _, err := s.AllocateIPv4(context.Background(), network, "eth0", "container-new")
+	ipNew, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-new", IPFamily: IPv4})
 	if err != nil {
 		t.Fatalf("AllocateIPv4 failed after release with cooldown: %v", err)
 	}
@@ -697,7 +792,7 @@ func TestStore_AllocateIPv4_Idempotency_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			addr, _, err := s.AllocateIPv4(context.Background(), network, interfaceName, containerID)
+			addr, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: interfaceName, ContainerID: containerID, IPFamily: IPv4})
 			ips[idx] = addr
 			errs[idx] = err
 		}(i)
@@ -759,7 +854,7 @@ func TestStore_AllocateIPv4_Concurrency_DifferentContainers(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			addr, _, err := s.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", idx))
+			addr, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", idx), IPFamily: IPv4})
 			ips[idx] = addr
 			errs[idx] = err
 		}(i)
@@ -818,7 +913,7 @@ func TestStore_AllocateIPv6(t *testing.T) {
 	}
 
 	// Test Case 1: Happy path - First allocation
-	ip1, cidrRange1, err := s.AllocateIPv6(context.Background(), network, "eth0", "container-1")
+	ip1, cidrRange1, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-1", IPFamily: IPv6})
 	if err != nil {
 		t.Fatalf("First allocation failed: %v", err)
 	}
@@ -862,7 +957,7 @@ func TestStore_AllocateIPv6(t *testing.T) {
 	}
 
 	// Test Case 3: Allocate after release
-	ip2, _, err := s.AllocateIPv6(context.Background(), network, "eth0", "container-2")
+	ip2, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-2", IPFamily: IPv6})
 	if err != nil {
 		t.Fatalf("Allocation after release failed: %v", err)
 	}
@@ -894,7 +989,7 @@ func TestStore_AllocateIPv6_ExceedBatch(t *testing.T) {
 	// The constant is 32, so 33 will trigger the second batch population.
 	ips := make([]string, 33)
 	for i := 0; i < 33; i++ {
-		ip, _, err := s.AllocateIPv6(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
+		ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: IPv6})
 		if err != nil {
 			t.Fatalf("Allocation failed at index %d: %v", i, err)
 		}
@@ -952,7 +1047,7 @@ func TestStore_AllocateIPv6_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			addr, _, err := s.AllocateIPv6(context.Background(), network, "eth0", fmt.Sprintf("container-%d", idx))
+			addr, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", idx), IPFamily: IPv6})
 			ips[idx] = addr
 			errs[idx] = err
 		}(i)
@@ -988,5 +1083,259 @@ func TestStore_AllocateIPv6_Concurrency(t *testing.T) {
 	}
 	if count != numGoroutines {
 		t.Errorf("Expected %d allocated rows in DB, got %d", numGoroutines, count)
+	}
+}
+
+func TestStore_AllocateIPv6_Exhaustion(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+
+	dbPath := filepath.Join(tempDir, "metis_exhaustion_test.sqlite")
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore returned unexpected error: %v", err)
+	}
+	defer s.Close()
+
+	network := "gke-pod-network-exhaust"
+	cidr := "2001:db8::/126" // 4 IPs
+
+	// Add the CIDR
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	// Allocate 4 IPs to exhaust the block
+	for i := 0; i < 4; i++ {
+		_, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: IPv6})
+		if err != nil {
+			t.Fatalf("Allocation failed at index %d: %v", i, err)
+		}
+	}
+
+	// The 5th allocation should trigger expansion, which should fail with ErrCidrBlockExhausted
+	// and then allocateIP should return ErrNoAvailableIPs because no blocks could be expanded.
+	_, _, err = s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-5", IPFamily: IPv6})
+
+	if err == nil {
+		t.Fatal("Expected allocation to fail, but it succeeded")
+	}
+
+	if !errors.Is(err, ErrNoAvailableIPs) {
+		t.Errorf("Expected ErrNoAvailableIPs, got %v", err)
+	}
+}
+
+func TestStore_AllocateIPv6_MultiCIDRExpansion(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+
+	dbPath := filepath.Join(tempDir, "metis_fallback_expand.sqlite")
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore returned unexpected error: %v", err)
+	}
+	defer s.Close()
+
+	network := "gke-pod-network-fallback"
+	cidr1 := "2001:db8:1::/126" // 4 IPs
+	cidr2 := "2001:db8:2::/64"  // Large
+
+	// Add CIDRs
+	if err := s.AddCIDR(context.Background(), network, cidr1); err != nil {
+		t.Fatalf("AddCIDR failed for cidr1: %v", err)
+	}
+	if err := s.AddCIDR(context.Background(), network, cidr2); err != nil {
+		t.Fatalf("AddCIDR failed for cidr2: %v", err)
+	}
+
+	// Exhaust both initial populations
+	// CIDR 1 has 4 IPs. CIDR 2 has 32 IPs (batch size).
+	// Total 36 IPs.
+	for i := 0; i < 36; i++ {
+		_, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: IPv6})
+		if err != nil {
+			t.Fatalf("Allocation failed at index %d: %v", i, err)
+		}
+	}
+
+	// The 37th allocation should trigger expansion.
+	ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-37", IPFamily: IPv6})
+	if err != nil {
+		t.Fatalf("Allocation failed after expansion: %v", err)
+	}
+
+	if ip == "" {
+		t.Fatal("Expected valid IP address, got empty string")
+	}
+
+	if !strings.HasPrefix(ip, "2001:db8:2::") {
+		t.Errorf("Expected IP from CIDR 2 (2001:db8:2::), got %s", ip)
+	}
+}
+
+func TestStore_AllocateIPv6_Concurrency_AllocateAndRelease(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "concurrency_alloc_release_ipv6.sqlite")
+
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	network := "test-network"
+	// CIDR 1: Max capacity = 4 IPs. Initial population = 4.
+	cidr1 := "2001:db8:1::/126"
+	// CIDR 2: Max capacity = 64 IPs. Initial population = 32.
+	cidr2 := "2001:db8:2::/122"
+
+	if err := s.AddCIDR(context.Background(), network, cidr1); err != nil {
+		t.Fatalf("AddCIDR failed for cidr1: %v", err)
+	}
+	if err := s.AddCIDR(context.Background(), network, cidr2); err != nil {
+		t.Fatalf("AddCIDR failed for cidr2: %v", err)
+	}
+
+	// Step 1: Pre-allocate exactly 60 IPs to bring it close to exhaustion and trigger initial expansion.
+	// Total capacity across both blocks = 4 + 64 = 68 IPs.
+	// So 8 available initially.
+	const initialAllocations = 60
+	for i := 0; i < initialAllocations; i++ {
+		_, _, err := s.AllocateIP(context.Background(), AllocateIPParams{
+			Network:       network,
+			InterfaceName: "eth0",
+			ContainerID:   fmt.Sprintf("container-init-%d", i),
+			IPFamily:      IPv6,
+		})
+		if err != nil {
+			t.Fatalf("Pre-allocation failed at %d: %v", i, err)
+		}
+	}
+
+	// Step 2: Start 30 Allocators and 20 Releasers concurrently.
+	// Allocators grab new IPs. There are 8 initially available.
+	// Releasers free 20 IPs.
+	// Total slots available for allocators = 8 + 20 = 28.
+	// So exactly 28 allocators should succeed, and exactly 2 should fail.
+	const numAllocators = 30
+	const numReleasers = 20
+
+	var wg sync.WaitGroup
+	wg.Add(numAllocators + numReleasers)
+
+	type result struct {
+		ip  string
+		err error
+	}
+	results := make([]result, numAllocators)
+
+	// Start Allocators
+	for i := 0; i < numAllocators; i++ {
+		go func(workerID int) {
+			defer wg.Done()
+			containerID := fmt.Sprintf("container-new-%d", workerID)
+			interfaceName := "eth0"
+
+			ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{
+				Network:       network,
+				InterfaceName: interfaceName,
+				ContainerID:   containerID,
+				IPFamily:      IPv6,
+			})
+			results[workerID] = result{ip: ip, err: err}
+		}(i)
+	}
+
+	// Start Releasers (releasing first 20 of initial allocations)
+	for i := 0; i < numReleasers; i++ {
+		go func(workerID int) {
+			defer wg.Done()
+			containerID := fmt.Sprintf("container-init-%d", workerID)
+			interfaceName := "eth0"
+
+			released, err := s.ReleaseIPByOwner(context.Background(), network, containerID, interfaceName, 0)
+			if err != nil {
+				t.Errorf("Releaser %d failed: %v", workerID, err)
+			}
+			if released != 1 {
+				t.Errorf("Releaser %d expected 1 released IP, got %d", workerID, released)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	var successCount, exhaustErrorCount int
+	var successfulAllocators []int
+
+	for i, r := range results {
+		if r.err == nil {
+			if r.ip == "" {
+				t.Errorf("Allocator %d returned no error but empty IP", i)
+			} else {
+				successCount++
+				successfulAllocators = append(successfulAllocators, i)
+			}
+		} else if errors.Is(r.err, ErrNoAvailableIPs) {
+			exhaustErrorCount++
+		} else {
+			t.Errorf("Allocator %d failed with unexpected error: %v", i, r.err)
+		}
+	}
+
+	if successCount < 8 || successCount > 28 {
+		t.Errorf("Expected successful allocations to be between 8 and 28, got %d", successCount)
+	}
+	if successCount+exhaustErrorCount != numAllocators {
+		t.Errorf("Expected total successes and failures to equal %d, got %d successes and %d exhaust errors", numAllocators, successCount, exhaustErrorCount)
+	}
+
+	// Step 3: Clean up by releasing all remaining allocations.
+	var cleanWg sync.WaitGroup
+
+	// Release remaining initial allocations (container-init-20 to container-init-59)
+	for i := numReleasers; i < initialAllocations; i++ {
+		cleanWg.Add(1)
+		go func(wID int) {
+			defer cleanWg.Done()
+			containerID := fmt.Sprintf("container-init-%d", wID)
+			released, err := s.ReleaseIPByOwner(context.Background(), network, containerID, "eth0", 0)
+			if err != nil {
+				t.Errorf("Clean release for container-init-%d failed: %v", wID, err)
+			}
+			if released != 1 {
+				t.Errorf("Clean release for container-init-%d expected 1 released IP, got %d", wID, released)
+			}
+		}(i)
+	}
+
+	// Release new allocations
+	for _, wID := range successfulAllocators {
+		cleanWg.Add(1)
+		go func(wID int) {
+			defer cleanWg.Done()
+			containerID := fmt.Sprintf("container-new-%d", wID)
+			released, err := s.ReleaseIPByOwner(context.Background(), network, containerID, "eth0", 0)
+			if err != nil {
+				t.Errorf("Clean release for container-new-%d failed: %v", wID, err)
+			}
+			if released != 1 {
+				t.Errorf("Clean release for container-new-%d expected 1 released IP, got %d", wID, released)
+			}
+		}(wID)
+	}
+
+	cleanWg.Wait()
+
+	// At the end, all IPs should be released.
+	var count int
+	err = s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE is_allocated = TRUE").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query DB for count: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Expected 0 allocated IPs after all releases, got %d", count)
 	}
 }

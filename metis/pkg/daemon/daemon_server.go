@@ -76,7 +76,7 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 	var ipv4Alloc *adaptiveipam.PodIP
 	var err error
 	if req.Ipv4Config != nil {
-		ipv4Alloc, err = s.allocateIP(ctx, req, req.Ipv4Config, s.store.AllocateIPv4, store.IPv4)
+		ipv4Alloc, err = s.allocateIP(ctx, req, req.Ipv4Config, store.IPv4)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +84,7 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 
 	var ipv6Alloc *adaptiveipam.PodIP
 	if req.Ipv6Config != nil {
-		ipv6Alloc, err = s.allocateIP(ctx, req, req.Ipv6Config, s.store.AllocateIPv6, store.IPv6)
+		ipv6Alloc, err = s.allocateIP(ctx, req, req.Ipv6Config, store.IPv6)
 		if err != nil {
 			return nil, err
 		}
@@ -96,7 +96,7 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 	}, nil
 }
 
-func (s *adaptiveIpamServer) allocateIP(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest, config *adaptiveipam.IPConfig, allocateFunc func(context.Context, string, string, string) (string, string, error), ipFamily store.IPFamily) (*adaptiveipam.PodIP, error) {
+func (s *adaptiveIpamServer) allocateIP(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest, config *adaptiveipam.IPConfig, ipFamily store.IPFamily) (*adaptiveipam.PodIP, error) {
 	if err := s.MaybeAddInitialPodCidr(ctx, req.Network, config.InitialPodCidr); err != nil {
 		return nil, err
 	}
@@ -108,11 +108,18 @@ func (s *adaptiveIpamServer) allocateIP(ctx context.Context, req *adaptiveipam.A
 		timeout = store.DefaultBusyTimeout
 	}
 
+	params := store.AllocateIPParams{
+		Network:       req.Network,
+		InterfaceName: config.InterfaceName,
+		ContainerID:   config.ContainerId,
+		IPFamily:      ipFamily,
+	}
+
 	// The total timeout is set to align with the SQLite busy_timeout configured in the DSN.
 	// PollUntilContextTimeout creates a derived context with this timeout, but also respects
 	// the parent gRPC context (ctx) cancellation.
 	err := wait.PollUntilContextTimeout(ctx, defaultPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
-		ip, cidr, lastErr = allocateFunc(ctx, req.Network, config.InterfaceName, config.ContainerId)
+		ip, cidr, lastErr = s.store.AllocateIP(ctx, params)
 		if lastErr == nil {
 			return true, nil // Success
 		}
