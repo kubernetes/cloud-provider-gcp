@@ -20,6 +20,7 @@ require (
 
 require (
 	cloud.google.com/go/compute/metadata v0.9.0
+	golang.org/x/sync v0.19.0
 	k8s.io/cloud-provider v0.36.0
 )
 
