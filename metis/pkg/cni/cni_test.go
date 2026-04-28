@@ -34,28 +34,28 @@ import (
 
 type mockAdaptiveIpamClient struct {
 	pb.AdaptiveIpamClient
-	allocateFunc   func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error)
-	deallocateFunc func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error)
-	checkFunc      func(ctx context.Context, in *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error)
+	allocatePodIPFunc   func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error)
+	deallocatePodIPFunc func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error)
+	checkPodIPFunc      func(ctx context.Context, in *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error)
 }
 
 func (m *mockAdaptiveIpamClient) AllocatePodIP(ctx context.Context, in *pb.AllocatePodIPRequest, opts ...grpc.CallOption) (*pb.AllocatePodIPResponse, error) {
-	if m.allocateFunc != nil {
-		return m.allocateFunc(ctx, in)
+	if m.allocatePodIPFunc != nil {
+		return m.allocatePodIPFunc(ctx, in)
 	}
 	return nil, fmt.Errorf("unimplemented")
 }
 
 func (m *mockAdaptiveIpamClient) DeallocatePodIP(ctx context.Context, in *pb.DeallocatePodIPRequest, opts ...grpc.CallOption) (*pb.DeallocatePodIPResponse, error) {
-	if m.deallocateFunc != nil {
-		return m.deallocateFunc(ctx, in)
+	if m.deallocatePodIPFunc != nil {
+		return m.deallocatePodIPFunc(ctx, in)
 	}
 	return nil, fmt.Errorf("unimplemented")
 }
 
 func (m *mockAdaptiveIpamClient) CheckPodIP(ctx context.Context, in *pb.CheckPodIPRequest, opts ...grpc.CallOption) (*pb.CheckPodIPResponse, error) {
-	if m.checkFunc != nil {
-		return m.checkFunc(ctx, in)
+	if m.checkPodIPFunc != nil {
+		return m.checkPodIPFunc(ctx, in)
 	}
 	return nil, fmt.Errorf("unimplemented")
 }
@@ -66,7 +66,7 @@ func TestCmdAdd(t *testing.T) {
 		return mockClient, nil, nil
 	})
 
-	mockClient.allocateFunc = func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
+	mockClient.allocatePodIPFunc = func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
 		return &pb.AllocatePodIPResponse{
 			Ipv4: &pb.PodIP{
 				IpAddress: "10.240.0.2",
@@ -96,7 +96,7 @@ func TestCmdDel(t *testing.T) {
 	})
 
 	deallocateCalled := false
-	mockClient.deallocateFunc = func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
+	mockClient.deallocatePodIPFunc = func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
 		deallocateCalled = true
 		return &pb.DeallocatePodIPResponse{}, nil
 	}
@@ -126,7 +126,7 @@ func TestCmdCheck(t *testing.T) {
 	})
 
 	checkCalled := false
-	mockClient.checkFunc = func(ctx context.Context, in *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error) {
+	mockClient.checkPodIPFunc = func(ctx context.Context, in *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error) {
 		checkCalled = true
 		return &pb.CheckPodIPResponse{}, nil
 	}

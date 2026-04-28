@@ -34,28 +34,7 @@ import (
 	"k8s.io/metis/pkg"
 )
 
-// NetConf extends standard CNI network configuration.
-type NetConf struct {
-	types.NetConf
-	DaemonSocket string `json:"daemon_socket"`
-	IPAM         struct {
-		Type   string `json:"type,omitempty"`
-		Ranges [][]struct {
-			Subnet string `json:"subnet"`
-		} `json:"ranges,omitempty"`
-	} `json:"ipam,omitempty"`
-}
 
-// K8sArgs contains the standard Kubernetes CNI arguments.
-type K8sArgs struct {
-	types.CommonArgs
-	K8S_POD_NAME      types.UnmarshallableString `json:"K8S_POD_NAME"`
-	K8S_POD_NAMESPACE types.UnmarshallableString `json:"K8S_POD_NAMESPACE"`
-}
-
-type Plugin struct {
-	newClientFunc func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error)
-}
 
 // NewPlugin creates a new Plugin with default settings for production use.
 func NewPlugin() *Plugin {
