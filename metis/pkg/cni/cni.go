@@ -28,13 +28,11 @@ import (
 	"github.com/containernetworking/cni/pkg/types"
 	current "github.com/containernetworking/cni/pkg/types/100"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials/local"
 
 	pb "k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg"
 )
-
-
 
 // NewPlugin creates a new Plugin with default settings for production use.
 func NewPlugin() *Plugin {
@@ -70,7 +68,7 @@ func loadK8sArgs(args string) (*K8sArgs, error) {
 }
 
 func getGrpcClient(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
-	dialOption := grpc.WithTransportCredentials(insecure.NewCredentials())
+	dialOption := grpc.WithTransportCredentials(local.NewCredentials())
 
 	absPath, err := filepath.Abs(socketPath)
 	if err != nil {

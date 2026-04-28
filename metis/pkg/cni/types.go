@@ -17,21 +17,24 @@ limitations under the License.
 package cni
 
 import (
-	"google.golang.org/grpc"
 	"github.com/containernetworking/cni/pkg/types"
+	"google.golang.org/grpc"
 	pb "k8s.io/metis/api/adaptiveipam/v1"
 )
+
+// IPAM extends standard CNI IPAM configuration.
+type IPAM struct {
+	types.IPAM
+	Ranges [][]struct {
+		Subnet string `json:"subnet"`
+	} `json:"ranges,omitempty"`
+}
 
 // NetConf extends standard CNI network configuration.
 type NetConf struct {
 	types.NetConf
-	DaemonSocket string `json:"daemon_socket"`
-	IPAM         struct {
-		Type   string `json:"type,omitempty"`
-		Ranges [][]struct {
-			Subnet string `json:"subnet"`
-		} `json:"ranges,omitempty"`
-	} `json:"ipam,omitempty"`
+	DaemonSocket string `json:"daemonSocket"`
+	IPAM         IPAM   `json:"ipam,omitempty"`
 }
 
 // K8sArgs contains the standard Kubernetes CNI arguments.

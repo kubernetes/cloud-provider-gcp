@@ -85,7 +85,7 @@ func TestLibcniConformance(t *testing.T) {
 		"cniVersion": "0.4.0",
 		"name": "metis-network",
 		"type": "metis",
-		"daemon_socket": "%s",
+		"daemonSocket": "%s",
 		"ipam": {
 			"type": "metis",
 			"ranges": [
@@ -125,7 +125,7 @@ func TestLibcniConformance(t *testing.T) {
 		"cniVersion": "0.4.0",
 		"name": "metis-network",
 		"type": "metis",
-		"daemon_socket": "%s",
+		"daemonSocket": "%s",
 		"ipam": {
 			"type": "metis",
 			"ranges": [

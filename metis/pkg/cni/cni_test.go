@@ -193,7 +193,7 @@ func TestCniWithActualDaemon(t *testing.T) {
 		Netns:       "/var/run/netns/test",
 		IfName:      "eth0",
 		Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
-		StdinData:   []byte(fmt.Sprintf(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "daemon_socket": "%s", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]]}}`, socketPath)),
+		StdinData:   []byte(fmt.Sprintf(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "daemonSocket": "%s", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]]}}`, socketPath)),
 	}
 
 	err = plugin.CmdAdd(args)
