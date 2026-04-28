@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package cni
 
 import (
 	"context"
@@ -61,14 +61,10 @@ func (m *mockAdaptiveIpamClient) CheckPodIP(ctx context.Context, in *pb.CheckPod
 }
 
 func TestCmdAdd(t *testing.T) {
-	// Save and restore clientFactory
-	origClientFactory := clientFactory
-	defer func() { clientFactory = origClientFactory }()
-
 	mockClient := &mockAdaptiveIpamClient{}
-	clientFactory = func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+	plugin := NewPluginWithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 		return mockClient, nil, nil
-	}
+	})
 
 	mockClient.allocateFunc = func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
 		return &pb.AllocatePodIPResponse{
@@ -84,23 +80,20 @@ func TestCmdAdd(t *testing.T) {
 		Netns:       "/var/run/netns/test",
 		IfName:      "eth0",
 		Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
-		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "initial_pod_cidr": "10.240.0.0/24"}`),
+		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]]}}`),
 	}
 
-	err := cmdAdd(args)
+	err := plugin.CmdAdd(args)
 	if err != nil {
-		t.Fatalf("cmdAdd failed: %v", err)
+		t.Fatalf("CmdAdd failed: %v", err)
 	}
 }
 
 func TestCmdDel(t *testing.T) {
-	origClientFactory := clientFactory
-	defer func() { clientFactory = origClientFactory }()
-
 	mockClient := &mockAdaptiveIpamClient{}
-	clientFactory = func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+	plugin := NewPluginWithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 		return mockClient, nil, nil
-	}
+	})
 
 	deallocateCalled := false
 	mockClient.deallocateFunc = func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
@@ -116,9 +109,9 @@ func TestCmdDel(t *testing.T) {
 		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis"}`),
 	}
 
-	err := cmdDel(args)
+	err := plugin.CmdDel(args)
 	if err != nil {
-		t.Fatalf("cmdDel failed: %v", err)
+		t.Fatalf("CmdDel failed: %v", err)
 	}
 
 	if !deallocateCalled {
@@ -127,13 +120,10 @@ func TestCmdDel(t *testing.T) {
 }
 
 func TestCmdCheck(t *testing.T) {
-	origClientFactory := clientFactory
-	defer func() { clientFactory = origClientFactory }()
-
 	mockClient := &mockAdaptiveIpamClient{}
-	clientFactory = func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+	plugin := NewPluginWithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 		return mockClient, nil, nil
-	}
+	})
 
 	checkCalled := false
 	mockClient.checkFunc = func(ctx context.Context, in *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error) {
@@ -149,9 +139,9 @@ func TestCmdCheck(t *testing.T) {
 		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis"}`),
 	}
 
-	err := cmdCheck(args)
+	err := plugin.CmdCheck(args)
 	if err != nil {
-		t.Fatalf("cmdCheck failed: %v", err)
+		t.Fatalf("CmdCheck failed: %v", err)
 	}
 
 	if !checkCalled {
@@ -168,6 +158,10 @@ func TestCniWithActualDaemon(t *testing.T) {
 
 	socketPath := filepath.Join(tempDir, "metis.sock")
 	dbPath := filepath.Join(tempDir, "metis.sqlite")
+
+	plugin := NewPluginWithClientFunc(func(path string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+		return getGrpcClient(socketPath)
+	})
 
 	cfg := daemon.Config{
 		DBPath:     dbPath,
@@ -199,16 +193,16 @@ func TestCniWithActualDaemon(t *testing.T) {
 		Netns:       "/var/run/netns/test",
 		IfName:      "eth0",
 		Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
-		StdinData:   []byte(fmt.Sprintf(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "daemon_socket": "%s", "initial_pod_cidr": "10.240.0.0/24"}`, socketPath)),
+		StdinData:   []byte(fmt.Sprintf(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "daemon_socket": "%s", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]]}}`, socketPath)),
 	}
 
-	err = cmdAdd(args)
+	err = plugin.CmdAdd(args)
 	if err != nil {
-		t.Fatalf("cmdAdd failed with actual daemon: %v", err)
+		t.Fatalf("CmdAdd failed with actual daemon: %v", err)
 	}
 
-	err = cmdCheck(args)
+	err = plugin.CmdCheck(args)
 	if err != nil {
-		t.Fatalf("cmdCheck failed with actual daemon: %v", err)
+		t.Fatalf("CmdCheck failed with actual daemon: %v", err)
 	}
 }

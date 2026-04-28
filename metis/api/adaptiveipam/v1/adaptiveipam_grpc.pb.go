@@ -38,7 +38,9 @@ type AdaptiveIpamClient interface {
 	// The IP can be reused for other pods on the node level, or will be eventually
 	// released at the cloud provider.
 	DeallocatePodIP(ctx context.Context, in *DeallocatePodIPRequest, opts ...grpc.CallOption) (*DeallocatePodIPResponse, error)
-	// CheckPodIP validates that an IP address is still correctly allocated to a pod.
+	// CheckPodIP validates that an IP address is currently allocated to a pod.
+	// An empty response is returned on success; RPC errors are used to indicate failure
+	// or if the IP is not allocated.
 	CheckPodIP(ctx context.Context, in *CheckPodIPRequest, opts ...grpc.CallOption) (*CheckPodIPResponse, error)
 }
 
@@ -94,7 +96,9 @@ type AdaptiveIpamServer interface {
 	// The IP can be reused for other pods on the node level, or will be eventually
 	// released at the cloud provider.
 	DeallocatePodIP(context.Context, *DeallocatePodIPRequest) (*DeallocatePodIPResponse, error)
-	// CheckPodIP validates that an IP address is still correctly allocated to a pod.
+	// CheckPodIP validates that an IP address is currently allocated to a pod.
+	// An empty response is returned on success; RPC errors are used to indicate failure
+	// or if the IP is not allocated.
 	CheckPodIP(context.Context, *CheckPodIPRequest) (*CheckPodIPResponse, error)
 	mustEmbedUnimplementedAdaptiveIpamServer()
 }

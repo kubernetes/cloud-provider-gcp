@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package test
 
 import (
 	"context"
@@ -48,7 +48,7 @@ func TestLibcniConformance(t *testing.T) {
 	dbPath := filepath.Join(tempDir, "metis.sqlite")
 
 	// 2. Build the binary automatically inside the test to guarantee synchronization
-	cmd := exec.Command("go", "build", "-o", binPath, ".")
+	cmd := exec.Command("go", "build", "-o", binPath, "k8s.io/metis/cmd")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Failed to build metis CNI binary: %v\nOutput: %s", err, string(output))
 	}
@@ -86,7 +86,12 @@ func TestLibcniConformance(t *testing.T) {
 		"name": "metis-network",
 		"type": "metis",
 		"daemon_socket": "%s",
-		"initial_pod_cidr": "10.240.0.0/24"
+		"ipam": {
+			"type": "metis",
+			"ranges": [
+				[{"subnet": "10.240.0.0/24"}]
+			]
+		}
 	}`, socketPath)
 
 	conf, err := libcni.ConfFromBytes([]byte(netConfigString))
@@ -121,7 +126,12 @@ func TestLibcniConformance(t *testing.T) {
 		"name": "metis-network",
 		"type": "metis",
 		"daemon_socket": "%s",
-		"initial_pod_cidr": "10.240.0.0/24",
+		"ipam": {
+			"type": "metis",
+			"ranges": [
+				[{"subnet": "10.240.0.0/24"}]
+			]
+		},
 		"prevResult": %s
 	}`, socketPath, string(resultBytes))
 	checkConf, _ := libcni.ConfFromBytes([]byte(checkConfigString))

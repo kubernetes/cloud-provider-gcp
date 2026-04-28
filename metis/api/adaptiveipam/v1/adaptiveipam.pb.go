@@ -469,6 +469,7 @@ func (x *CheckPodIPRequest) GetContainerId() string {
 }
 
 // CheckPodIPResponse indicates the result of the check operation.
+// An empty message is returned on success; RPC errors are used to indicate failure.
 type CheckPodIPResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields

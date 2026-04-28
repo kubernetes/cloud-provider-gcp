@@ -16,7 +16,9 @@ service AdaptiveIpam {
   // released at the cloud provider.
   rpc DeallocatePodIP(DeallocatePodIPRequest) returns (DeallocatePodIPResponse);
 
-  // CheckPodIP validates that an IP address is still correctly allocated to a pod.
+  // CheckPodIP validates that an IP address is currently allocated to a pod.
+  // An empty response is returned on success; RPC errors are used to indicate failure
+  // or if the IP is not allocated.
   rpc CheckPodIP(CheckPodIPRequest) returns (CheckPodIPResponse);
 }
 
@@ -98,5 +100,6 @@ message CheckPodIPRequest {
 }
 
 // CheckPodIPResponse indicates the result of the check operation.
+// An empty message is returned on success; RPC errors are used to indicate failure.
 message CheckPodIPResponse {
 }
