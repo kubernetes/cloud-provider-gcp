@@ -20,10 +20,10 @@ import (
 	"context"
 
 	cloudprovider "k8s.io/cloud-provider"
+	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider/app"
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/controllers/node"
-	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	controllermanagerapp "k8s.io/controller-manager/app"
 	"k8s.io/controller-manager/controller"
 	"k8s.io/klog/v2"
