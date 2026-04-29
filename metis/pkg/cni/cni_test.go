@@ -62,9 +62,15 @@ func (m *mockAdaptiveIpamClient) CheckPodIP(ctx context.Context, in *pb.CheckPod
 
 func TestCmdAdd(t *testing.T) {
 	mockClient := &mockAdaptiveIpamClient{}
-	plugin := NewPluginWithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
-		return mockClient, nil, nil
-	})
+	tempLogDir := t.TempDir()
+	logFile := filepath.Join(tempLogDir, "metis-cni.log")
+
+	plugin := NewPlugin(
+		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+			return mockClient, nil, nil
+		}),
+		WithLogFile(logFile),
+	)
 
 	mockClient.allocatePodIPFunc = func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
 		return &pb.AllocatePodIPResponse{
@@ -91,9 +97,15 @@ func TestCmdAdd(t *testing.T) {
 
 func TestCmdDel(t *testing.T) {
 	mockClient := &mockAdaptiveIpamClient{}
-	plugin := NewPluginWithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
-		return mockClient, nil, nil
-	})
+	tempLogDir := t.TempDir()
+	logFile := filepath.Join(tempLogDir, "metis-cni.log")
+
+	plugin := NewPlugin(
+		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+			return mockClient, nil, nil
+		}),
+		WithLogFile(logFile),
+	)
 
 	deallocateCalled := false
 	mockClient.deallocatePodIPFunc = func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
@@ -121,9 +133,15 @@ func TestCmdDel(t *testing.T) {
 
 func TestCmdCheck(t *testing.T) {
 	mockClient := &mockAdaptiveIpamClient{}
-	plugin := NewPluginWithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
-		return mockClient, nil, nil
-	})
+	tempLogDir := t.TempDir()
+	logFile := filepath.Join(tempLogDir, "metis-cni.log")
+
+	plugin := NewPlugin(
+		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+			return mockClient, nil, nil
+		}),
+		WithLogFile(logFile),
+	)
 
 	checkCalled := false
 	mockClient.checkPodIPFunc = func(ctx context.Context, in *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error) {
@@ -159,9 +177,15 @@ func TestCniWithActualDaemon(t *testing.T) {
 	socketPath := filepath.Join(tempDir, "metis.sock")
 	dbPath := filepath.Join(tempDir, "metis.sqlite")
 
-	plugin := NewPluginWithClientFunc(func(path string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
-		return getGrpcClient(socketPath)
-	})
+	logFile := filepath.Join(tempDir, "metis-cni.log")
+
+	plugin := NewPlugin(
+		WithClientFunc(func(path string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+			return getGrpcClient(socketPath)
+		}),
+		WithSocketPath(socketPath),
+		WithLogFile(logFile),
+	)
 
 	cfg := daemon.Config{
 		DBPath:     dbPath,
@@ -193,7 +217,7 @@ func TestCniWithActualDaemon(t *testing.T) {
 		Netns:       "/var/run/netns/test",
 		IfName:      "eth0",
 		Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
-		StdinData:   []byte(fmt.Sprintf(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "daemonSocket": "%s", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]]}}`, socketPath)),
+		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]]}}`),
 	}
 
 	err = plugin.CmdAdd(args)

@@ -33,7 +33,6 @@ type IPAM struct {
 // NetConf extends standard CNI network configuration.
 type NetConf struct {
 	types.NetConf
-	DaemonSocket string `json:"daemonSocket"`
 	IPAM         IPAM   `json:"ipam,omitempty"`
 }
 
@@ -46,4 +45,6 @@ type K8sArgs struct {
 
 type Plugin struct {
 	newClientFunc func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error)
+	socketPath    string
+	logFile       string
 }

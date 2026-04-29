@@ -20,7 +20,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -34,14 +36,40 @@ import (
 	"k8s.io/metis/pkg"
 )
 
-// NewPlugin creates a new Plugin with default settings for production use.
-func NewPlugin() *Plugin {
-	return &Plugin{newClientFunc: getGrpcClient}
+type Option func(*Plugin)
+
+// WithClientFunc sets a custom gRPC client constructor.
+func WithClientFunc(fn func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error)) Option {
+	return func(p *Plugin) {
+		p.newClientFunc = fn
+	}
 }
 
-// NewPluginWithClientFunc creates a new Plugin with a custom client constructor (e.g. for testing).
-func NewPluginWithClientFunc(fn func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error)) *Plugin {
-	return &Plugin{newClientFunc: fn}
+// WithSocketPath overrides the default daemon socket path.
+func WithSocketPath(path string) Option {
+	return func(p *Plugin) {
+		p.socketPath = path
+	}
+}
+
+// WithLogFile overrides the default CNI log path.
+func WithLogFile(path string) Option {
+	return func(p *Plugin) {
+		p.logFile = path
+	}
+}
+
+// NewPlugin creates a new Plugin with functional options.
+func NewPlugin(opts ...Option) *Plugin {
+	p := &Plugin{
+		newClientFunc: getGrpcClient,
+		socketPath:    pkg.DefaultSockPath,
+		logFile:       pkg.DefaultCNILogPath,
+	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
 }
 
 func loadNetConf(bytes []byte) (*NetConf, error) {
@@ -67,6 +95,18 @@ func loadK8sArgs(args string) (*K8sArgs, error) {
 	return k8sArgs, nil
 }
 
+func (p *Plugin) initLogger() (*log.Logger, *os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(p.logFile), 0755); err != nil {
+		return nil, nil, fmt.Errorf("failed to create log directory for %s: %v", p.logFile, err)
+	}
+	f, err := os.OpenFile(p.logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open log file %s: %v", p.logFile, err)
+	}
+	logger := log.New(f, "metis-cni: ", log.LstdFlags|log.Lshortfile)
+	return logger, f, nil
+}
+
 func getGrpcClient(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 	dialOption := grpc.WithTransportCredentials(local.NewCredentials())
 
@@ -90,15 +130,21 @@ func (p *Plugin) CmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 
-	k8sArgs, err := loadK8sArgs(args.Args)
+	logger, f, err := p.initLogger()
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
-	sockPath := pkg.DefaultSockPath
-	if conf.DaemonSocket != "" {
-		sockPath = conf.DaemonSocket
+	logger.Printf("CmdAdd invoked: ContainerID=%s, NetName=%s, IfName=%s", args.ContainerID, conf.Name, args.IfName)
+
+	k8sArgs, err := loadK8sArgs(args.Args)
+	if err != nil {
+		logger.Printf("CmdAdd failed to load K8s args: %v", err)
+		return err
 	}
+
+	sockPath := p.socketPath
 
 	client, conn, err := p.newClientFunc(sockPath)
 	if err != nil {
@@ -156,15 +202,21 @@ func (p *Plugin) CmdDel(args *skel.CmdArgs) error {
 		return err
 	}
 
-	k8sArgs, err := loadK8sArgs(args.Args)
+	logger, f, err := p.initLogger()
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
-	sockPath := pkg.DefaultSockPath
-	if conf.DaemonSocket != "" {
-		sockPath = conf.DaemonSocket
+	logger.Printf("CmdDel invoked: ContainerID=%s, NetName=%s, IfName=%s", args.ContainerID, conf.Name, args.IfName)
+
+	k8sArgs, err := loadK8sArgs(args.Args)
+	if err != nil {
+		logger.Printf("CmdDel failed to load K8s args: %v", err)
+		return err
 	}
+
+	sockPath := p.socketPath
 
 	client, conn, err := p.newClientFunc(sockPath)
 	if err != nil {
@@ -199,10 +251,15 @@ func (p *Plugin) CmdCheck(args *skel.CmdArgs) error {
 		return err
 	}
 
-	sockPath := pkg.DefaultSockPath
-	if conf.DaemonSocket != "" {
-		sockPath = conf.DaemonSocket
+	logger, f, err := p.initLogger()
+	if err != nil {
+		return err
 	}
+	defer f.Close()
+
+	logger.Printf("CmdCheck invoked: ContainerID=%s, NetName=%s, IfName=%s", args.ContainerID, conf.Name, args.IfName)
+
+	sockPath := p.socketPath
 
 	client, conn, err := p.newClientFunc(sockPath)
 	if err != nil {
