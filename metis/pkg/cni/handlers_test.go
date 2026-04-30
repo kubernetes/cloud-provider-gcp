@@ -17,8 +17,11 @@ limitations under the License.
 package cni
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -26,6 +29,7 @@ import (
 	"time"
 
 	"github.com/containernetworking/cni/pkg/skel"
+	current "github.com/containernetworking/cni/pkg/types/100"
 	"google.golang.org/grpc"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -368,5 +372,98 @@ func TestCniWithActualDaemon(t *testing.T) {
 	err = plugin.cmdCheck(args)
 	if err != nil {
 		t.Fatalf("cmdCheck failed with actual daemon: %v", err)
+	}
+}
+
+func runWithOutputCapture(t *testing.T, f func() error) (stdout string, stderr string, err error) {
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	defer func() {
+		os.Stdout = oldStdout
+		os.Stderr = oldStderr
+	}()
+
+	rOut, wOut, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rErr, wErr, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	os.Stdout = wOut
+	os.Stderr = wErr
+
+	outC := make(chan string)
+	errC := make(chan string)
+
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, rOut)
+		outC <- buf.String()
+	}()
+
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, rErr)
+		errC <- buf.String()
+	}()
+
+	err = f()
+
+	wOut.Close()
+	wErr.Close()
+
+	stdout = <-outC
+	stderr = <-errC
+
+	return stdout, stderr, err
+}
+
+func TestCmdAdd_CleanStdout(t *testing.T) {
+	mockClient := &mockAdaptiveIpamClient{}
+	tempLogDir := t.TempDir()
+	logFile := filepath.Join(tempLogDir, "metis-cni.log")
+
+	plugin := NewPlugin(
+		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+			return mockClient, nil, nil
+		}),
+		WithLogFile(logFile),
+	)
+
+	mockClient.allocatePodIPFunc = func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
+		return &pb.AllocatePodIPResponse{
+			Ipv4: &pb.PodIP{
+				IpAddress: "10.240.0.2",
+				Cidr:      "10.240.0.0/24",
+			},
+		}, nil
+	}
+
+	args := &skel.CmdArgs{
+		ContainerID: "test-container-id",
+		Netns:       "/var/run/netns/test",
+		IfName:      "eth0",
+		Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
+		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]], "routes": [{"dst": "0.0.0.0/0"}]}}`),
+	}
+
+	stdout, stderr, err := runWithOutputCapture(t, func() error {
+		return plugin.CmdAdd(args)
+	})
+
+	if err != nil {
+		t.Fatalf("CmdAdd failed: %v", err)
+	}
+
+	if stderr != "" {
+		t.Errorf("Expected empty stderr, got: %q", stderr)
+	}
+
+	var result current.Result
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Errorf("Stdout is not valid JSON, does not match schema, or has garbage: %v. Output was: %q", err, stdout)
 	}
 }
