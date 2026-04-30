@@ -22,8 +22,8 @@ import (
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	cloudprovider "k8s.io/cloud-provider"
-	"k8s.io/cloud-provider/controllers/nodelifecycle"
 	"k8s.io/cloud-provider-gcp/pkg/util/node"
+	"k8s.io/cloud-provider/controllers/nodelifecycle"
 )
 
 // NewCloudNodeLifecycleController returns a new cloud node lifecycle controller that filters out unmanaged nodes.
