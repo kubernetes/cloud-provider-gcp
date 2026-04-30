@@ -412,7 +412,11 @@ type CheckPodIPRequest struct {
 	// interface_name is the name of the pod interface.
 	InterfaceName string `protobuf:"bytes,2,opt,name=interface_name,json=interfaceName,proto3" json:"interface_name,omitempty"`
 	// container_id is the id of the pod container.
-	ContainerId   string `protobuf:"bytes,3,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
+	ContainerId string `protobuf:"bytes,3,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
+	// pod_name is the name of the pod. This is for logging purposes.
+	PodName string `protobuf:"bytes,4,opt,name=pod_name,json=podName,proto3" json:"pod_name,omitempty"`
+	// pod_namespace is the namespace of the pod. This is for logging purposes.
+	PodNamespace  string `protobuf:"bytes,5,opt,name=pod_namespace,json=podNamespace,proto3" json:"pod_namespace,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -464,6 +468,20 @@ func (x *CheckPodIPRequest) GetInterfaceName() string {
 func (x *CheckPodIPRequest) GetContainerId() string {
 	if x != nil {
 		return x.ContainerId
+	}
+	return ""
+}
+
+func (x *CheckPodIPRequest) GetPodName() string {
+	if x != nil {
+		return x.PodName
+	}
+	return ""
+}
+
+func (x *CheckPodIPRequest) GetPodNamespace() string {
+	if x != nil {
+		return x.PodNamespace
 	}
 	return ""
 }
@@ -536,11 +554,13 @@ const file_metis_api_adaptiveipam_v1_adaptiveipam_proto_rawDesc = "" +
 	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerId\x12\x19\n" +
 	"\bpod_name\x18\x04 \x01(\tR\apodName\x12#\n" +
 	"\rpod_namespace\x18\x05 \x01(\tR\fpodNamespace\"\x19\n" +
-	"\x17DeallocatePodIPResponse\"w\n" +
+	"\x17DeallocatePodIPResponse\"\xb7\x01\n" +
 	"\x11CheckPodIPRequest\x12\x18\n" +
 	"\anetwork\x18\x01 \x01(\tR\anetwork\x12%\n" +
 	"\x0einterface_name\x18\x02 \x01(\tR\rinterfaceName\x12!\n" +
-	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerId\"\x14\n" +
+	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerId\x12\x19\n" +
+	"\bpod_name\x18\x04 \x01(\tR\apodName\x12#\n" +
+	"\rpod_namespace\x18\x05 \x01(\tR\fpodNamespace\"\x14\n" +
 	"\x12CheckPodIPResponse2\xab\x02\n" +
 	"\fAdaptiveIpam\x12^\n" +
 	"\rAllocatePodIP\x12%.adaptiveipam.v1.AllocatePodIPRequest\x1a&.adaptiveipam.v1.AllocatePodIPResponse\x12d\n" +

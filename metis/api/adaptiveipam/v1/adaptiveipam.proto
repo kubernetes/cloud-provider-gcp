@@ -97,6 +97,10 @@ message CheckPodIPRequest {
   string interface_name = 2;
   // container_id is the id of the pod container.
   string container_id = 3;
+  // pod_name is the name of the pod. This is for logging purposes.
+  string pod_name = 4;
+  // pod_namespace is the namespace of the pod. This is for logging purposes.
+  string pod_namespace = 5;
 }
 
 // CheckPodIPResponse indicates the result of the check operation.

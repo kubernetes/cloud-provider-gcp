@@ -22,18 +22,29 @@ import (
 	pb "k8s.io/metis/api/adaptiveipam/v1"
 )
 
+// Route represents a network route configuration.
+type Route struct {
+	Dst string `json:"dst"`
+}
+
+// SubnetRange represents a subnet range for IP address allocation.
+type SubnetRange struct {
+	Subnet  types.IPNet `json:"subnet"`
+}
+
 // IPAM extends standard CNI IPAM configuration.
 type IPAM struct {
 	types.IPAM
-	Ranges [][]struct {
-		Subnet string `json:"subnet"`
-	} `json:"ranges,omitempty"`
+	Ranges [][]SubnetRange `json:"ranges,omitempty"`
+	Routes []Route `json:"routes,omitempty"`
 }
 
 // NetConf extends standard CNI network configuration.
 type NetConf struct {
 	types.NetConf
-	IPAM         IPAM   `json:"ipam,omitempty"`
+	IPAM         IPAM   `json:"ipam"`
+	DaemonSocket string `json:"daemonSocket,omitempty"`
+	LogFile      string `json:"logFile,omitempty"`
 }
 
 // K8sArgs contains the standard Kubernetes CNI arguments.
@@ -43,6 +54,7 @@ type K8sArgs struct {
 	K8S_POD_NAMESPACE types.UnmarshallableString `json:"K8S_POD_NAMESPACE"`
 }
 
+// Plugin holds the runtime configuration and handlers for the CNI plugin.
 type Plugin struct {
 	newClientFunc func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error)
 	socketPath    string

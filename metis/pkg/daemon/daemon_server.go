@@ -193,15 +193,17 @@ func (s *adaptiveIpamServer) CheckPodIP(ctx context.Context, req *adaptiveipam.C
 	s.logger.Info("CheckPodIP request received",
 		"network", req.Network,
 		"containerID", req.ContainerId,
-		"interfaceName", req.InterfaceName)
+		"interfaceName", req.InterfaceName,
+		"podName", req.PodName,
+		"podNamespace", req.PodNamespace)
 
 	err := s.store.CheckAllocation(ctx, req.Network, req.ContainerId, req.InterfaceName)
 	if err != nil {
-		s.logger.Error(err, "CheckPodIP failed", "network", req.Network, "containerID", req.ContainerId)
+		s.logger.Error(err, "CheckPodIP failed", "network", req.Network, "containerID", req.ContainerId, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		return nil, status.Errorf(codes.NotFound, "allocation check failed: %v", err)
 	}
 
-	s.logger.Info("CheckPodIP succeeded", "network", req.Network, "containerID", req.ContainerId)
+	s.logger.Info("CheckPodIP succeeded", "network", req.Network, "containerID", req.ContainerId, "podName", req.PodName, "podNamespace", req.PodNamespace)
 	return &adaptiveipam.CheckPodIPResponse{}, nil
 }
 

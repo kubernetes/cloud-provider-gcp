@@ -17,7 +17,11 @@ limitations under the License.
 package pkg
 
 const (
-	DefaultDBPath     = "/var/lib/cni/metis/metis.sqlite"
-	DefaultSockPath   = "/var/lib/cni/metis/metis-adaptive-ipam.sock"
-	DefaultCNILogPath = "/var/lib/cni/metis/metis-cni.log"
+	DefaultDBPath      = "/var/lib/cni/metis/metis.sqlite"
+	DefaultSockPath    = "/var/lib/cni/metis/metis-adaptive-ipam.sock"
+	DefaultCNILogPath  = "/var/lib/cni/metis/metis-cni.log"
+	// TODO(arvindbr8): check what this shoudl be?
+	DefaultGatewayIPv4 = "169.254.1.1"
+	DefaultGatewayIPv6 = "fe80::1"
 )
+

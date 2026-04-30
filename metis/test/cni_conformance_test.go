@@ -28,7 +28,6 @@ import (
 
 	"github.com/containernetworking/cni/libcni"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/metis/pkg/daemon"
 )
 
 func TestLibcniConformance(t *testing.T) {
@@ -52,20 +51,26 @@ func TestLibcniConformance(t *testing.T) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Failed to build metis CNI binary: %v\nOutput: %s", err, string(output))
 	}
-
-	// 3. Spin up the localized backend daemon
-	cfg := daemon.Config{
-		DBPath:     dbPath,
-		SocketPath: socketPath,
+	// 3. Spin up the localized backend daemon as a subprocess
+	daemonLogFile, err := os.Create(filepath.Join(tempDir, "daemon.log"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	d := daemon.NewDaemon(cfg)
+	defer daemonLogFile.Close()
+
+	daemonCmd := exec.Command(binPath, "daemon", "--socket-path", socketPath, "--db-path", dbPath)
+	daemonCmd.Stdout = daemonLogFile
+	daemonCmd.Stderr = daemonLogFile
+
+	if err := daemonCmd.Start(); err != nil {
+		t.Fatalf("Failed to start daemon subprocess: %v", err)
+	}
+	defer func() {
+		_ = daemonCmd.Process.Kill()
+	}()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- d.Run(ctx)
-	}()
 
 	// Wait until the domain socket successfully mounts
 	err = wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, 5*time.Second, true, func(ctx context.Context) (bool, error) {
@@ -86,13 +91,17 @@ func TestLibcniConformance(t *testing.T) {
 		"name": "metis-network",
 		"type": "metis",
 		"daemonSocket": "%s",
+		"logFile": "%s",
 		"ipam": {
 			"type": "metis",
 			"ranges": [
 				[{"subnet": "10.240.0.0/24"}]
+			],
+			"routes": [
+				{"dst": "0.0.0.0/0"}
 			]
 		}
-	}`, socketPath)
+	}`, socketPath, filepath.Join(tempDir, "metis-cni.log"))
 
 	conf, err := libcni.ConfFromBytes([]byte(netConfigString))
 	if err != nil {
@@ -126,14 +135,18 @@ func TestLibcniConformance(t *testing.T) {
 		"name": "metis-network",
 		"type": "metis",
 		"daemonSocket": "%s",
+		"logFile": "%s",
 		"ipam": {
 			"type": "metis",
 			"ranges": [
 				[{"subnet": "10.240.0.0/24"}]
+			],
+			"routes": [
+				{"dst": "0.0.0.0/0"}
 			]
 		},
 		"prevResult": %s
-	}`, socketPath, string(resultBytes))
+	}`, socketPath, filepath.Join(tempDir, "metis-cni.log"), string(resultBytes))
 	checkConf, _ := libcni.ConfFromBytes([]byte(checkConfigString))
 
 	// Validate CHECK (which we natively wired previously)
@@ -144,5 +157,13 @@ func TestLibcniConformance(t *testing.T) {
 	// Validate DEL
 	if err := cniLib.DelNetwork(ctx, conf, runtimeConf); err != nil {
 		t.Fatalf("libcni.DelNetwork failed: %v", err)
+	}
+
+	// Print captured logs before cleaning up
+	if cniLogBytes, err := os.ReadFile(filepath.Join(tempDir, "metis-cni.log")); err == nil {
+		t.Logf("=== CNI LOGS ===\n%s", string(cniLogBytes))
+	}
+	if daemonLogBytes, err := os.ReadFile(filepath.Join(tempDir, "daemon.log")); err == nil {
+		t.Logf("=== DAEMON LOGS ===\n%s", string(daemonLogBytes))
 	}
 }
