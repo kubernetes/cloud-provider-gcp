@@ -25,8 +25,8 @@ import (
 	"k8s.io/metis/pkg"
 )
 
-func loadNetConf(bytes []byte) (*NetConf, error) {
-	conf := &NetConf{}
+func loadNetConf(bytes []byte) (*PluginConf, error) {
+	conf := &PluginConf{}
 	if err := json.Unmarshal(bytes, conf); err != nil {
 		return nil, fmt.Errorf("failed to parse network configuration: %v", err)
 	}
@@ -38,7 +38,13 @@ func getGatewayIP(ipNet *net.IPNet) net.IP {
 		return nil
 	}
 	ones, bits := ipNet.Mask.Size()
-	if bits-ones < 2 { // smaller than /30 for IPv4, or /126 for IPv6
+	// For subnets smaller than /30 (IPv4) or /126 (IPv6), there are not enough
+	// addresses to allocate a separate gateway in the traditional way. In these
+	// edge cases, we fall back to the predefined default gateway constants.
+	//
+	// TODO: Investigate if we can always use the predefined default gateway IPs
+	// and get away without reserving any IPs in the block.
+	if bits-ones < 2 {
 		if ipNet.IP.To4() != nil {
 			return net.ParseIP(pkg.DefaultGatewayIPv4)
 		}

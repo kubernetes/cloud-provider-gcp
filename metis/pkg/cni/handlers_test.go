@@ -19,6 +19,7 @@ package cni
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -60,190 +61,209 @@ func (m *mockAdaptiveIpamClient) CheckPodIP(ctx context.Context, in *pb.CheckPod
 	return nil, fmt.Errorf("unimplemented")
 }
 
+
+
 func TestCmdAdd(t *testing.T) {
-	mockClient := &mockAdaptiveIpamClient{}
-	tempLogDir := t.TempDir()
-	logFile := filepath.Join(tempLogDir, "metis-cni.log")
-
-	plugin := NewPlugin(
-		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
-			return mockClient, nil, nil
-		}),
-		WithLogFile(logFile),
-	)
-
-	mockClient.allocatePodIPFunc = func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
-		return &pb.AllocatePodIPResponse{
-			Ipv4: &pb.PodIP{
-				IpAddress: "10.240.0.2",
-				Cidr:      "10.240.0.0/24",
+	cases := []struct {
+		name           string
+		stdinData      string
+		mockResp       *pb.AllocatePodIPResponse
+		mockErr        error
+		assertInput    func(t *testing.T, in *pb.AllocatePodIPRequest)
+		expectErr      bool
+		expectedIPs    []string
+		expectedGWs    []string
+		expectedRoutes []string
+	}{
+		{
+			name:      "IPv4 only",
+			stdinData: `{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]], "routes": [{"dst": "0.0.0.0/0"}]}}`,
+			mockResp: &pb.AllocatePodIPResponse{
+				Ipv4: &pb.PodIP{
+					IpAddress: "10.240.0.2",
+					Cidr:      "10.240.0.0/24",
+				},
 			},
-		}, nil
-	}
-
-	args := &skel.CmdArgs{
-		ContainerID: "test-container-id",
-		Netns:       "/var/run/netns/test",
-		IfName:      "eth0",
-		Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
-		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]], "routes": [{"dst": "0.0.0.0/0"}]}}`),
-	}
-
-	err := plugin.CmdAdd(args)
-	if err != nil {
-		t.Fatalf("CmdAdd failed: %v", err)
-	}
-}
-
-func TestCmdAdd_DualStack(t *testing.T) {
-	mockClient := &mockAdaptiveIpamClient{}
-	tempLogDir := t.TempDir()
-	logFile := filepath.Join(tempLogDir, "metis-cni.log")
-
-	plugin := NewPlugin(
-		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
-			return mockClient, nil, nil
-		}),
-		WithLogFile(logFile),
-	)
-
-	mockClient.allocatePodIPFunc = func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
-		if in.Ipv6Config == nil {
-			return nil, fmt.Errorf("expected IPv6 config to be passed")
-		}
-		return &pb.AllocatePodIPResponse{
-			Ipv4: &pb.PodIP{
-				IpAddress: "10.160.7.2",
-				Cidr:      "10.160.7.0/24",
+			expectedIPs:    []string{"10.240.0.2/24"},
+			expectedGWs:    []string{"10.240.0.1"},
+			expectedRoutes: []string{"0.0.0.0/0"},
+		},
+		{
+			name:      "DualStack",
+			stdinData: `{"cniVersion": "0.3.1", "name": "gke-pod-network", "type": "gke", "ipam": {"type": "host-local", "ranges": [[{"subnet":"10.160.7.0/24"}],[{"subnet":"2600:1900:4040:ae7:0:7::/112"}]], "routes": [{"dst": "0.0.0.0/0"},{"dst": "::/0"}]}}`,
+			mockResp: &pb.AllocatePodIPResponse{
+				Ipv4: &pb.PodIP{
+					IpAddress: "10.160.7.2",
+					Cidr:      "10.160.7.0/24",
+				},
+				Ipv6: &pb.PodIP{
+					IpAddress: "2600:1900:4040:ae7:0:7::2",
+					Cidr:      "2600:1900:4040:ae7:0:7::/112",
+				},
 			},
-			Ipv6: &pb.PodIP{
-				IpAddress: "2600:1900:4040:ae7:0:7::2",
-				Cidr:      "2600:1900:4040:ae7:0:7::/112",
+			assertInput: func(t *testing.T, in *pb.AllocatePodIPRequest) {
+				if in.Ipv6Config == nil {
+					t.Errorf("expected IPv6 config to be passed")
+				}
 			},
-		}, nil
-	}
-
-	args := &skel.CmdArgs{
-		ContainerID: "test-dualstack-container",
-		Netns:       "/var/run/netns/test-dualstack",
-		IfName:      "eth0",
-		Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
-		StdinData:   []byte(`{"cniVersion": "0.3.1", "name": "gke-pod-network", "type": "gke", "ipam": {"type": "host-local", "ranges": [[{"subnet":"10.160.7.0/24"}],[{"subnet":"2600:1900:4040:ae7:0:7::/112"}]], "routes": [{"dst": "0.0.0.0/0"},{"dst": "::/0"}]}}`),
-	}
-
-	err := plugin.CmdAdd(args)
-	if err != nil {
-		t.Fatalf("CmdAdd dual stack failed: %v", err)
-	}
-}
-
-func TestCmdAdd_IPv6(t *testing.T) {
-	mockClient := &mockAdaptiveIpamClient{}
-	tempLogDir := t.TempDir()
-	logFile := filepath.Join(tempLogDir, "metis-cni.log")
-
-	plugin := NewPlugin(
-		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
-			return mockClient, nil, nil
-		}),
-		WithLogFile(logFile),
-	)
-
-	mockClient.allocatePodIPFunc = func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
-		if in.Ipv6Config == nil {
-			return nil, fmt.Errorf("expected IPv6 config to be passed")
-		}
-		return &pb.AllocatePodIPResponse{
-			Ipv6: &pb.PodIP{
-				IpAddress: "2600:1900:4040:ae7:0:7::2",
-				Cidr:      "2600:1900:4040:ae7:0:7::/112",
+			expectedIPs:    []string{"10.160.7.2/24", "2600:1900:4040:ae7:0:7::2/112"},
+			expectedGWs:    []string{"10.160.7.1", "2600:1900:4040:ae7:0:7::1"},
+			expectedRoutes: []string{"0.0.0.0/0", "::/0"},
+		},
+		{
+			name:      "IPv6 only",
+			stdinData: `{"cniVersion": "0.3.1", "name": "gke-pod-network", "type": "gke", "ipam": {"type": "host-local", "ranges": [[{"subnet":"2600:1900:4040:ae7:0:7::/112"}]], "routes": [{"dst": "::/0"}]}}`,
+			mockResp: &pb.AllocatePodIPResponse{
+				Ipv6: &pb.PodIP{
+					IpAddress: "2600:1900:4040:ae7:0:7::2",
+					Cidr:      "2600:1900:4040:ae7:0:7::/112",
+				},
 			},
-		}, nil
+			assertInput: func(t *testing.T, in *pb.AllocatePodIPRequest) {
+				if in.Ipv6Config == nil {
+					t.Errorf("expected IPv6 config to be passed")
+				}
+			},
+			expectedIPs:    []string{"2600:1900:4040:ae7:0:7::2/112"},
+			expectedGWs:    []string{"2600:1900:4040:ae7:0:7::1"},
+			expectedRoutes: []string{"::/0"},
+		},
 	}
 
-	args := &skel.CmdArgs{
-		ContainerID: "test-ipv6-container",
-		Netns:       "/var/run/netns/test-ipv6",
-		IfName:      "eth0",
-		Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
-		StdinData:   []byte(`{"cniVersion": "0.3.1", "name": "gke-pod-network", "type": "gke", "ipam": {"type": "host-local", "ranges": [[{"subnet":"2600:1900:4040:ae7:0:7::/112"}]], "routes": [{"dst": "::/0"}]}}`),
-	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockClient := &mockAdaptiveIpamClient{}
+			tempLogDir := t.TempDir()
+			logFile := filepath.Join(tempLogDir, "metis-cni.log")
 
-	err := plugin.CmdAdd(args)
-	if err != nil {
-		t.Fatalf("CmdAdd IPv6 failed: %v", err)
+			plugin := NewPlugin(
+				WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+					return mockClient, nil, nil
+				}),
+				WithLogFile(logFile),
+			)
+
+			mockClient.allocatePodIPFunc = func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
+				if tc.assertInput != nil {
+					tc.assertInput(t, in)
+				}
+				return tc.mockResp, tc.mockErr
+			}
+
+			args := &skel.CmdArgs{
+				ContainerID: "test-container-id",
+				Netns:       "/var/run/netns/test",
+				IfName:      "eth0",
+				Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
+				StdinData:   []byte(tc.stdinData),
+			}
+
+			result, err := plugin.cmdAdd(args)
+
+			if (err != nil) != tc.expectErr {
+				t.Fatalf("cmdAdd failed: %v", err)
+			}
+
+			if !tc.expectErr {
+				if result == nil {
+					t.Fatal("Expected non-nil result, got nil")
+				}
+
+				// Assert IPs
+				if len(result.IPs) != len(tc.expectedIPs) {
+					t.Errorf("Expected %d IPs, got %d", len(tc.expectedIPs), len(result.IPs))
+				}
+				for i, expectedIP := range tc.expectedIPs {
+					if i >= len(result.IPs) {
+						break
+					}
+					expectedIPAddr, _, err := net.ParseCIDR(expectedIP)
+					if err != nil {
+						t.Fatalf("Failed to parse expected IP %s: %v", expectedIP, err)
+					}
+					if !result.IPs[i].Address.IP.Equal(expectedIPAddr) {
+						t.Errorf("Expected IP %s, got %s", expectedIP, result.IPs[i].Address.IP)
+					}
+					if i < len(tc.expectedGWs) {
+						expectedGW := net.ParseIP(tc.expectedGWs[i])
+						if !result.IPs[i].Gateway.Equal(expectedGW) {
+							t.Errorf("Expected GW %s, got %s", tc.expectedGWs[i], result.IPs[i].Gateway)
+						}
+					}
+				}
+
+				// Assert Routes
+				if len(result.Routes) != len(tc.expectedRoutes) {
+					t.Errorf("Expected %d routes, got %d", len(tc.expectedRoutes), len(result.Routes))
+				}
+				for i, expectedRoute := range tc.expectedRoutes {
+					if i >= len(result.Routes) {
+						break
+					}
+					if result.Routes[i].Dst.String() != expectedRoute {
+						t.Errorf("Expected route dst %s, got %s", expectedRoute, result.Routes[i].Dst.String())
+					}
+				}
+			}
+		})
 	}
 }
 
 func TestCmdDel(t *testing.T) {
-	mockClient := &mockAdaptiveIpamClient{}
-	tempLogDir := t.TempDir()
-	logFile := filepath.Join(tempLogDir, "metis-cni.log")
-
-	plugin := NewPlugin(
-		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
-			return mockClient, nil, nil
-		}),
-		WithLogFile(logFile),
-	)
-
-	deallocateCalled := false
-	mockClient.deallocatePodIPFunc = func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
-		deallocateCalled = true
-		return &pb.DeallocatePodIPResponse{}, nil
+	cases := []struct {
+		name      string
+		args      string
+		stdinData string
+	}{
+		{
+			name:      "Normal",
+			args:      "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
+			stdinData: `{"cniVersion": "0.4.0", "name": "test-net", "type": "metis"}`,
+		},
+		{
+			name:      "EmptyArgs",
+			args:      "",
+			stdinData: `{"cniVersion": "0.4.0", "name": "test-net", "type": "metis"}`,
+		},
 	}
 
-	args := &skel.CmdArgs{
-		ContainerID: "test-container-id",
-		Netns:       "/var/run/netns/test",
-		IfName:      "eth0",
-		Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
-		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis"}`),
-	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockClient := &mockAdaptiveIpamClient{}
+			tempLogDir := t.TempDir()
+			logFile := filepath.Join(tempLogDir, "metis-cni.log")
 
-	err := plugin.CmdDel(args)
-	if err != nil {
-		t.Fatalf("CmdDel failed: %v", err)
-	}
+			plugin := NewPlugin(
+				WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+					return mockClient, nil, nil
+				}),
+				WithLogFile(logFile),
+			)
 
-	if !deallocateCalled {
-		t.Fatalf("DeallocatePodIP was not called")
-	}
-}
+			deallocateCalled := false
+			mockClient.deallocatePodIPFunc = func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
+				deallocateCalled = true
+				return &pb.DeallocatePodIPResponse{}, nil
+			}
 
-func TestCmdDel_EmptyArgs(t *testing.T) {
-	mockClient := &mockAdaptiveIpamClient{}
-	tempLogDir := t.TempDir()
-	logFile := filepath.Join(tempLogDir, "metis-cni.log")
+			args := &skel.CmdArgs{
+				ContainerID: "test-container-id",
+				Netns:       "/var/run/netns/test",
+				IfName:      "eth0",
+				Args:        tc.args,
+				StdinData:   []byte(tc.stdinData),
+			}
 
-	plugin := NewPlugin(
-		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
-			return mockClient, nil, nil
-		}),
-		WithLogFile(logFile),
-	)
+			err := plugin.cmdDel(args)
 
-	deallocateCalled := false
-	mockClient.deallocatePodIPFunc = func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
-		deallocateCalled = true
-		return &pb.DeallocatePodIPResponse{}, nil
-	}
+			if err != nil {
+				t.Fatalf("cmdDel failed: %v", err)
+			}
 
-	args := &skel.CmdArgs{
-		ContainerID: "test-container-id",
-		Netns:       "/var/run/netns/test",
-		IfName:      "eth0",
-		Args:        "",
-		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis"}`),
-	}
-
-	err := plugin.CmdDel(args)
-	if err != nil {
-		t.Fatalf("CmdDel failed: %v", err)
-	}
-
-	if !deallocateCalled {
-		t.Fatalf("DeallocatePodIP was not called")
+			if !deallocateCalled {
+				t.Fatalf("DeallocatePodIP was not called")
+			}
+		})
 	}
 }
 
@@ -273,9 +293,10 @@ func TestCmdCheck(t *testing.T) {
 		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis"}`),
 	}
 
-	err := plugin.CmdCheck(args)
+	err := plugin.cmdCheck(args)
+
 	if err != nil {
-		t.Fatalf("CmdCheck failed: %v", err)
+		t.Fatalf("cmdCheck failed: %v", err)
 	}
 
 	if !checkCalled {
@@ -336,13 +357,16 @@ func TestCniWithActualDaemon(t *testing.T) {
 		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]], "routes": [{"dst": "0.0.0.0/0"}]}}`),
 	}
 
-	err = plugin.CmdAdd(args)
+	result, err := plugin.cmdAdd(args)
 	if err != nil {
-		t.Fatalf("CmdAdd failed with actual daemon: %v", err)
+		t.Fatalf("cmdAdd failed with actual daemon: %v", err)
+	}
+	if result == nil {
+		t.Fatal("Expected non-nil result from cmdAdd")
 	}
 
-	err = plugin.CmdCheck(args)
+	err = plugin.cmdCheck(args)
 	if err != nil {
-		t.Fatalf("CmdCheck failed with actual daemon: %v", err)
+		t.Fatalf("cmdCheck failed with actual daemon: %v", err)
 	}
 }

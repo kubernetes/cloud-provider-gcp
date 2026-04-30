@@ -26,12 +26,12 @@ func TestLoadNetConf(t *testing.T) {
 		name        string
 		input       []byte
 		expectError bool
-		validate    func(t *testing.T, conf *NetConf)
+		validate    func(t *testing.T, conf *PluginConf)
 	}{
 		{
 			name:  "Valid simple config",
 			input: []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis"}}`),
-			validate: func(t *testing.T, conf *NetConf) {
+			validate: func(t *testing.T, conf *PluginConf) {
 				if conf.CNIVersion != "0.4.0" {
 					t.Errorf("expected cniVersion 0.4.0, got %s", conf.CNIVersion)
 				}
@@ -56,7 +56,7 @@ func TestLoadNetConf(t *testing.T) {
 					]
 				}
 			}`),
-			validate: func(t *testing.T, conf *NetConf) {
+			validate: func(t *testing.T, conf *PluginConf) {
 				if conf.Name != "gke-pod-network" {
 					t.Errorf("expected gke-pod-network, got %s", conf.Name)
 				}
@@ -80,7 +80,7 @@ func TestLoadNetConf(t *testing.T) {
 					"routes": [{"dst": "0.0.0.0/0"}]
 				}
 			}`),
-			validate: func(t *testing.T, conf *NetConf) {
+			validate: func(t *testing.T, conf *PluginConf) {
 				if conf.Name != "v4-network" {
 					t.Errorf("expected v4-network, got %s", conf.Name)
 				}
@@ -104,7 +104,7 @@ func TestLoadNetConf(t *testing.T) {
 					"routes": [{"dst": "::/0"}]
 				}
 			}`),
-			validate: func(t *testing.T, conf *NetConf) {
+			validate: func(t *testing.T, conf *PluginConf) {
 				if conf.Name != "v6-network" {
 					t.Errorf("expected v6-network, got %s", conf.Name)
 				}
@@ -126,7 +126,7 @@ func TestLoadNetConf(t *testing.T) {
 				"logFile": "/var/log/metis-test.log",
 				"ipam": {"type": "metis"}
 			}`),
-			validate: func(t *testing.T, conf *NetConf) {
+			validate: func(t *testing.T, conf *PluginConf) {
 				if conf.DaemonSocket != "/var/run/metis-test.sock" {
 					t.Errorf("expected custom socket, got %s", conf.DaemonSocket)
 				}

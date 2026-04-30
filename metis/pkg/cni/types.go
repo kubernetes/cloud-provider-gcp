@@ -29,19 +29,19 @@ type Route struct {
 
 // SubnetRange represents a subnet range for IP address allocation.
 type SubnetRange struct {
-	Subnet  types.IPNet `json:"subnet"`
+	Subnet types.IPNet `json:"subnet"`
 }
 
 // IPAM extends standard CNI IPAM configuration.
 type IPAM struct {
 	types.IPAM
 	Ranges [][]SubnetRange `json:"ranges,omitempty"`
-	Routes []Route `json:"routes,omitempty"`
+	Routes []Route         `json:"routes,omitempty"`
 }
 
-// NetConf extends standard CNI network configuration.
-type NetConf struct {
-	types.NetConf
+// PluginConf extends standard CNI network configuration.
+type PluginConf struct {
+	types.PluginConf
 	IPAM         IPAM   `json:"ipam"`
 	DaemonSocket string `json:"daemonSocket,omitempty"`
 	LogFile      string `json:"logFile,omitempty"`

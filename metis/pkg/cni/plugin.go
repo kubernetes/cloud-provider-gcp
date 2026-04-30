@@ -17,7 +17,6 @@ limitations under the License.
 package cni
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -72,12 +71,12 @@ func NewPlugin(opts ...Option) *Plugin {
 }
 
 type pluginSession struct {
-	conf    *NetConf
-	k8sArgs *K8sArgs
-	client  pb.AdaptiveIpamClient
-	conn    *grpc.ClientConn
-	logger  logr.Logger
-	cleanup func()
+	pluginConf *PluginConf
+	k8sArgs    *K8sArgs
+	client     pb.AdaptiveIpamClient
+	conn       *grpc.ClientConn
+	logger     logr.Logger
+	cleanup    func()
 }
 
 func (s *pluginSession) close() {
@@ -126,21 +125,17 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 	}
 
 	return &pluginSession{
-		conf:    conf,
-		k8sArgs: k8sArgs,
-		client:  client,
-		conn:    conn,
-		logger:  logger,
-		cleanup: cleanup,
+		pluginConf: conf,
+		k8sArgs:    k8sArgs,
+		client:     client,
+		conn:       conn,
+		logger:     logger,
+		cleanup:    cleanup,
 	}, nil
 }
 
 func (p *Plugin) setupLogging(args *skel.CmdArgs, command string, logFile string) (logger logr.Logger, cleanup func(), err error) {
-	// We must explicitly set these klog flags to false, otherwise klog
-	// ignores the SetOutput file writer and dumps all logs to stderr.
-	_ = flag.Set("logtostderr", "false")
-	_ = flag.Set("alsologtostderr", "false")
-
+	klog.LogToStderr(false)
 	if err := os.MkdirAll(filepath.Dir(logFile), 0755); err != nil {
 		return logr.Logger{}, nil, fmt.Errorf("failed to create log directory for %s: %v", logFile, err)
 	}
