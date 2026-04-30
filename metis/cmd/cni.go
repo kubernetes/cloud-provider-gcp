@@ -34,6 +34,6 @@ func RunCni() {
 			Del:   plugin.CmdDel,
 		},
 		version.All,
-		"metis CNI plugin",
+		"Metis CNI plugin",
 	)
 }
