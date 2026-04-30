@@ -45,7 +45,7 @@ const (
 	// NodePoolSubnetLabelPrefix is the prefix for the subnet name for this node
 	NodePoolSubnetLabelPrefix = "cloud.google.com/gke-node-pool-subnet"
 	// GKEUnmanagedNodeLabelKey is the label key used to identify nodes that should be ignored by GKE controllers.
-	GKEUnmanagedNodeLabelKey = "cloud.google.com/gke-unmanaged-node"
+	GKEUnmanagedNodeLabelKey = "components.gke.io/gke-unmanaged-node"
 	// GKEUnmanagedNodeLabelValue is the label value used to identify nodes that should be ignored by GKE controllers.
 	GKEUnmanagedNodeLabelValue = "true"
 )
