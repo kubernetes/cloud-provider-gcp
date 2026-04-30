@@ -110,6 +110,7 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 				cfg.Cloud,
 				mgrCfg.completedConfig.ComponentConfig.NodeStatusUpdateFrequency.Duration,
 				mgrCfg.completedConfig.ComponentConfig.NodeController.ConcurrentNodeSyncs,
+				mgrCfg.completedConfig.ComponentConfig.NodeController.ConcurrentNodeStatusUpdates,
 			)
 			if err != nil {
 				return err
