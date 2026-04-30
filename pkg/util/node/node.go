@@ -55,10 +55,12 @@ type GCEFilteringNodeInformer struct {
 	coreinformers.NodeInformer
 }
 
+// Lister returns a GCEFilteringNodeLister.
 func (i *GCEFilteringNodeInformer) Lister() v1lister.NodeLister {
 	return &GCEFilteringNodeLister{i.NodeInformer.Lister()}
 }
 
+// Informer returns the wrapped Informer.
 func (i *GCEFilteringNodeInformer) Informer() cache.SharedIndexInformer {
 	return i.NodeInformer.Informer()
 }
@@ -77,6 +79,7 @@ type GCEFilteringNodeLister struct {
 	v1lister.NodeLister
 }
 
+// List lists all Nodes in the indexer, filtering out unmanaged nodes.
 func (l *GCEFilteringNodeLister) List(selector labels.Selector) (ret []*v1.Node, err error) {
 	nodes, err := l.NodeLister.List(selector)
 	if err != nil {
@@ -92,6 +95,7 @@ func (l *GCEFilteringNodeLister) List(selector labels.Selector) (ret []*v1.Node,
 	return filtered, nil
 }
 
+// Get retrieves a Node by name from the indexer, returning a NotFound error if the node is unmanaged.
 func (l *GCEFilteringNodeLister) Get(name string) (*v1.Node, error) {
 	node, err := l.NodeLister.Get(name)
 	if err != nil {
