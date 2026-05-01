@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package nodelifecycle
+package main
 
 import (
 	"context"
@@ -26,6 +26,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	cloudprovider "k8s.io/cloud-provider"
+	"k8s.io/cloud-provider/controllers/nodelifecycle"
 	"k8s.io/cloud-provider-gcp/pkg/util/node"
 )
 
@@ -93,7 +94,10 @@ func TestMonitorNodes_FilterLabel(t *testing.T) {
 	mockInst := &mockInstances{existsCalled: make(map[string]bool)}
 	mockCl := &mockCloud{instances: mockInst}
 
-	c, err := NewCloudNodeLifecycleController(nodeInformer, fakeClient, mockCl, 5*time.Minute)
+	// Wrap the informer to filter nodes
+	filteringInformer := &node.GCEFilteringNodeInformer{NodeInformer: nodeInformer}
+
+	c, err := nodelifecycle.NewCloudNodeLifecycleController(filteringInformer, fakeClient, mockCl, 5*time.Minute)
 	if err != nil {
 		t.Fatalf("failed to create controller: %v", err)
 	}
