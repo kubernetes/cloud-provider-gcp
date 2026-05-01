@@ -29,6 +29,7 @@ import (
 	nodeipamcontroller "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam"
 	nodeipamconfig "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/config"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
+	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider/app"
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	genericcontrollermanager "k8s.io/controller-manager/app"
@@ -70,9 +71,12 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 	nwInformer := nwInfFactory.Networking().V1().Networks()
 	gnpInformer := nwInfFactory.Networking().V1().GKENetworkParamSets()
 
+	// Wrap the informer to filter nodes
+	filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: ccmConfig.SharedInformers.Core().V1().Nodes()}
+
 	ctrl, started, err := nodeipamcontroller.StartNodeIpamController(
 		wait.ContextForChannel(ctx.Stop),
-		ccmConfig.SharedInformers.Core().V1().Nodes(),
+		filteringInformer,
 		ccmConfig.ClientBuilder.ClientOrDie("node-controller"),
 		cloud,
 		ccmConfig.ComponentConfig.KubeCloudShared.ClusterCIDR,
