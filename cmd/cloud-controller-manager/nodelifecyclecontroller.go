@@ -20,9 +20,10 @@ import (
 	"context"
 
 	cloudprovider "k8s.io/cloud-provider"
-	"k8s.io/cloud-provider-gcp/pkg/controller/nodelifecycle"
+	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider/app"
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
+	"k8s.io/cloud-provider/controllers/nodelifecycle"
 	controllermanagerapp "k8s.io/controller-manager/app"
 	"k8s.io/controller-manager/controller"
 	"k8s.io/klog/v2"
@@ -35,9 +36,12 @@ func startCloudNodeLifecycleControllerWrapper(initContext app.ControllerInitCont
 }
 
 func startCloudNodeLifecycleController(ctx context.Context, initContext app.ControllerInitContext, controllerContext controllermanagerapp.ControllerContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) (controller.Interface, bool, error) {
+	// Wrap the informer to filter nodes
+	filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: completedConfig.SharedInformers.Core().V1().Nodes()}
+
 	// Start the cloudNodeLifecycleController
 	cloudNodeLifecycleController, err := nodelifecycle.NewCloudNodeLifecycleController(
-		completedConfig.SharedInformers.Core().V1().Nodes(),
+		filteringInformer,
 		// cloud node lifecycle controller uses existing cluster role from node-controller
 		completedConfig.ClientBuilder.ClientOrDie("cloud-node-lifecycle-controller"),
 		cloud,
