@@ -29,8 +29,8 @@ import (
 
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam"
 	"k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/ipam"
-	"k8s.io/cloud-provider-gcp/pkg/controller/nodelifecycle"
 	"k8s.io/cloud-provider/controllers/node"
+	"k8s.io/cloud-provider/controllers/nodelifecycle"
 )
 
 type gkeTenantControllerManagerConfig struct {
@@ -178,8 +178,10 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 		"node-lifecycle-controller": func(cfg *gketenantcontrollers.ControllerConfig) error {
 			klog.Infof("Creating Node Lifecycle Controller for %s...", cfg.ProviderConfig.Name)
 			nodeMonitorPeriod := mgrCfg.completedConfig.ComponentConfig.KubeCloudShared.NodeMonitorPeriod.Duration
+			// Wrap the informer to filter nodes
+			filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
 			lifecycleController, err := nodelifecycle.NewCloudNodeLifecycleController(
-				cfg.NodeInformer,
+				filteringInformer,
 				cfg.KubeClient,
 				cfg.Cloud,
 				nodeMonitorPeriod,
