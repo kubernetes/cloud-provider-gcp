@@ -93,15 +93,12 @@ func NewCIDRRangeAllocator(client clientset.Interface, nodeInformer informers.No
 		cidrSets[idx] = cidrSet
 	}
 
-	// Wrap the informer to filter nodes
-	filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: nodeInformer}
-
 	ra := &rangeAllocator{
 		client:                client,
 		clusterCIDRs:          allocatorParams.ClusterCIDRs,
 		cidrSets:              cidrSets,
-		nodeLister:            filteringInformer.Lister(),
-		nodesSynced:           filteringInformer.Informer().HasSynced,
+		nodeLister:            nodeInformer.Lister(),
+		nodesSynced:           nodeInformer.Informer().HasSynced,
 		nodeCIDRUpdateChannel: make(chan nodeReservedCIDRs, cidrUpdateQueueSize),
 		recorder:              recorder,
 		nodesInProcessing:     sets.NewString(),
@@ -136,7 +133,7 @@ func NewCIDRRangeAllocator(client clientset.Interface, nodeInformer informers.No
 		}
 	}
 
-	filteringInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: nodeutil.CreateAddNodeHandler(ra.AllocateOrOccupyCIDR),
 		UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(_, newNode *v1.Node) error {
 			// If the PodCIDRs list is not empty we either:
@@ -339,7 +336,7 @@ func (r *rangeAllocator) updateCIDRsAllocation(data nodeReservedCIDRs) error {
 	node, err = r.nodeLister.Get(data.nodeName)
 	if err != nil {
 		if utilnode.IsUnmanagedNodeError(err) {
-			return nil // node no longer available, skip processing
+			return nil // node not managed, skip processing
 		}
 		klog.Errorf("Failed while getting node %v for updating Node.Spec.PodCIDRs: %v", data.nodeName, err)
 		return err
