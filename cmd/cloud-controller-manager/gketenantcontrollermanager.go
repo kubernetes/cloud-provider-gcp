@@ -136,9 +136,12 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 				tenantNodeIPAMConfig.EnableMultiSubnetCluster = false
 			}
 
+			// Wrap the informer to filter nodes
+			filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
+
 			_, started, err := nodeipam.StartNodeIpamController(
 				cfg.Context,
-				cfg.NodeInformer,
+				filteringInformer,
 				cfg.KubeClient,
 				cfg.Cloud,
 				cidrs,
