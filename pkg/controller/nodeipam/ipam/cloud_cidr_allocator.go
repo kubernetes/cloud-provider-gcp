@@ -38,7 +38,6 @@ import (
 	networklister "github.com/GoogleCloudPlatform/gke-networking-api/client/network/listers/network/v1"
 	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -393,7 +392,7 @@ func (ca *cloudCIDRAllocator) handleErr(err error, key interface{}) {
 func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 	oldNode, err := ca.nodeLister.Get(nodeName)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if utilnode.IsUnmanagedNodeError(err) {
 			return nil // node no longer available, skip processing
 		}
 		klog.ErrorS(err, "Failed while getting the node for updating Node.Spec.PodCIDR", "nodeName", nodeName)

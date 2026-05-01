@@ -24,7 +24,6 @@ import (
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -95,16 +94,43 @@ func (l *GCEFilteringNodeLister) List(selector labels.Selector) (ret []*v1.Node,
 	return filtered, nil
 }
 
-// Get retrieves a Node by name from the indexer, returning a NotFound error if the node is unmanaged.
+// Get retrieves a Node by name from the indexer, returning a ErrNodeUnmanaged error if the node is unmanaged.
 func (l *GCEFilteringNodeLister) Get(name string) (*v1.Node, error) {
 	node, err := l.NodeLister.Get(name)
 	if err != nil {
 		return nil, err
 	}
 	if IsUnmanagedNode(node) {
-		return nil, errors.NewNotFound(v1.Resource("node"), name)
+		return nil, &ErrNodeUnmanaged{Name: name}
 	}
 	return node, nil
+}
+
+// ErrNodeUnmanaged is returned when a node is found but marked as unmanaged.
+type ErrNodeUnmanaged struct {
+	Name string
+}
+
+func (e *ErrNodeUnmanaged) Error() string {
+	return fmt.Sprintf("node %q is unmanaged", e.Name)
+}
+
+// Status allows this error to be recognized by apierrors.IsNotFound()
+// so that standard controllers ignore it instead of retrying forever.
+func (e *ErrNodeUnmanaged) Status() metav1.Status {
+	return metav1.Status{
+		Reason:  metav1.StatusReasonNotFound,
+		Message: e.Error(),
+	}
+}
+
+// IsUnmanagedNodeError checks if an error is an ErrNodeUnmanaged.
+func IsUnmanagedNodeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := err.(*ErrNodeUnmanaged)
+	return ok
 }
 
 type nodeForConditionPatch struct {
