@@ -26,8 +26,8 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	cloudprovider "k8s.io/cloud-provider"
-	"k8s.io/cloud-provider/controllers/nodelifecycle"
 	"k8s.io/cloud-provider-gcp/pkg/util/node"
+	"k8s.io/cloud-provider/controllers/nodelifecycle"
 )
 
 type mockInstances struct {
