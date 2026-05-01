@@ -390,7 +390,7 @@ func (ca *cloudCIDRAllocator) handleErr(err error, key interface{}) {
 func (ca *cloudCIDRAllocator) updateCIDRAllocation(nodeName string) error {
 	oldNode, err := ca.nodeLister.Get(nodeName)
 	if err != nil {
-		if errors.IsNotFound(err) || utilnode.IsUnmanagedNodeError(err) {
+		if errors.IsNotFound(err) {
 			return nil // node no longer available, skip processing
 		}
 		klog.ErrorS(err, "Failed while getting the node for updating Node.Spec.PodCIDR", "nodeName", nodeName)
