@@ -61,7 +61,34 @@ func (i *GCEFilteringNodeInformer) Lister() v1lister.NodeLister {
 
 // Informer returns the wrapped Informer.
 func (i *GCEFilteringNodeInformer) Informer() cache.SharedIndexInformer {
-	return i.NodeInformer.Informer()
+	return &GCEFilteringSharedIndexInformer{i.NodeInformer.Informer()}
+}
+
+// GCEFilteringSharedIndexInformer wraps a SharedIndexInformer to filter out unmanaged nodes from the event stream.
+type GCEFilteringSharedIndexInformer struct {
+	cache.SharedIndexInformer
+}
+
+// AddEventHandler adds an event handler to the shared informer with filtering.
+func (f *GCEFilteringSharedIndexInformer) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
+	return f.SharedIndexInformer.AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			node, ok := obj.(*v1.Node)
+			return ok && !IsUnmanagedNode(node)
+		},
+		Handler: handler,
+	})
+}
+
+// AddEventHandlerWithResyncPeriod adds an event handler to the shared informer with a custom resync period and filtering.
+func (f *GCEFilteringSharedIndexInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) (cache.ResourceEventHandlerRegistration, error) {
+	return f.SharedIndexInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			node, ok := obj.(*v1.Node)
+			return ok && !IsUnmanagedNode(node)
+		},
+		Handler: handler,
+	}, resyncPeriod)
 }
 
 // IsUnmanagedNode returns true if the node has the unmanaged label.
