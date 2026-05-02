@@ -53,7 +53,7 @@ func (syncer *NodeTopologySyncer) sync(key string) error {
 	}
 	node, err := syncer.nodeLister.Get(name)
 	if node == nil || err != nil {
-		klog.InfoS("Node not found, not managed, or error, reconcile.", "node key", key, "error", err)
+		klog.InfoS("Node not found or error, reconcile.", "node key", key, "error", err)
 		err := syncer.reconcile()
 		if err != nil {
 			klog.ErrorS(err, "Failed to reconcile nodeTopology CR")
