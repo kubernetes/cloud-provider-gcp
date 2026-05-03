@@ -25,8 +25,12 @@ import (
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	v1lister "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
 
@@ -39,7 +43,122 @@ const (
 	DefaultSubnetLabelPrefix = "cloud.google.com/gke-np-default-subnet"
 	// NodePoolSubnetLabelPrefix is the prefix for the subnet name for this node
 	NodePoolSubnetLabelPrefix = "cloud.google.com/gke-node-pool-subnet"
+	// GKEUnmanagedNodeLabelKey is the label key used to identify nodes that should be ignored by GKE controllers.
+	GKEUnmanagedNodeLabelKey = "components.gke.io/gke-unmanaged-node"
+	// GKEUnmanagedNodeLabelValue is the label value used to identify nodes that should be ignored by GKE controllers.
+	GKEUnmanagedNodeLabelValue = "true"
 )
+
+// GCEFilteringNodeInformer wraps a NodeInformer to filter out unmanaged nodes from the lister.
+type GCEFilteringNodeInformer struct {
+	coreinformers.NodeInformer
+}
+
+// Lister returns a GCEFilteringNodeLister.
+func (i *GCEFilteringNodeInformer) Lister() v1lister.NodeLister {
+	return &GCEFilteringNodeLister{i.NodeInformer.Lister()}
+}
+
+// Informer returns the wrapped Informer.
+func (i *GCEFilteringNodeInformer) Informer() cache.SharedIndexInformer {
+	return &GCEFilteringSharedIndexInformer{i.NodeInformer.Informer()}
+}
+
+// GCEFilteringSharedIndexInformer wraps a SharedIndexInformer to filter out unmanaged nodes from the event stream.
+type GCEFilteringSharedIndexInformer struct {
+	cache.SharedIndexInformer
+}
+
+// AddEventHandler adds an event handler to the shared informer with filtering.
+func (f *GCEFilteringSharedIndexInformer) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
+	return f.SharedIndexInformer.AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			node, ok := obj.(*v1.Node)
+			return ok && !IsUnmanagedNode(node)
+		},
+		Handler: handler,
+	})
+}
+
+// AddEventHandlerWithResyncPeriod adds an event handler to the shared informer with a custom resync period and filtering.
+func (f *GCEFilteringSharedIndexInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) (cache.ResourceEventHandlerRegistration, error) {
+	return f.SharedIndexInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			node, ok := obj.(*v1.Node)
+			return ok && !IsUnmanagedNode(node)
+		},
+		Handler: handler,
+	}, resyncPeriod)
+}
+
+// IsUnmanagedNode returns true if the node has the unmanaged label.
+func IsUnmanagedNode(node *v1.Node) bool {
+	if node == nil {
+		return false
+	}
+	val, ok := node.Labels[GKEUnmanagedNodeLabelKey]
+	return ok && val == GKEUnmanagedNodeLabelValue
+}
+
+// GCEFilteringNodeLister wraps a NodeLister to filter out nodes with the unmanaged label.
+type GCEFilteringNodeLister struct {
+	v1lister.NodeLister
+}
+
+// List lists all Nodes in the indexer, filtering out unmanaged nodes.
+func (l *GCEFilteringNodeLister) List(selector labels.Selector) (ret []*v1.Node, err error) {
+	nodes, err := l.NodeLister.List(selector)
+	if err != nil {
+		return nil, err
+	}
+	var filtered []*v1.Node
+	for _, n := range nodes {
+		if IsUnmanagedNode(n) {
+			continue
+		}
+		filtered = append(filtered, n)
+	}
+	return filtered, nil
+}
+
+// Get retrieves a Node by name from the indexer, returning a ErrNodeUnmanaged error if the node is unmanaged.
+func (l *GCEFilteringNodeLister) Get(name string) (*v1.Node, error) {
+	node, err := l.NodeLister.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	if IsUnmanagedNode(node) {
+		return nil, &ErrNodeUnmanaged{Name: name}
+	}
+	return node, nil
+}
+
+// ErrNodeUnmanaged is returned when a node is found but marked as unmanaged.
+type ErrNodeUnmanaged struct {
+	Name string
+}
+
+func (e *ErrNodeUnmanaged) Error() string {
+	return fmt.Sprintf("node %q is unmanaged", e.Name)
+}
+
+// Status allows this error to be recognized by apierrors.IsNotFound()
+// so that standard controllers ignore it instead of retrying forever.
+func (e *ErrNodeUnmanaged) Status() metav1.Status {
+	return metav1.Status{
+		Reason:  metav1.StatusReasonNotFound,
+		Message: e.Error(),
+	}
+}
+
+// IsUnmanagedNodeError checks if an error is an ErrNodeUnmanaged.
+func IsUnmanagedNodeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := err.(*ErrNodeUnmanaged)
+	return ok
+}
 
 type nodeForConditionPatch struct {
 	Status nodeStatusForPatch `json:"status"`
