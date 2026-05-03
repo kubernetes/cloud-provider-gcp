@@ -414,6 +414,75 @@ func TestStore_AddCIDR_Small(t *testing.T) {
 	}
 }
 
+func TestStore_GetCIDRBlockByCIDRAndNetwork(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+
+	dbPath := filepath.Join(tempDir, "get_cidr_network.sqlite")
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore returned unexpected error: %v", err)
+	}
+	defer s.Close()
+
+	network1 := "network-1"
+	network2 := "network-2"
+	cidr := "10.10.0.0/24"
+
+	// Initially shouldn't exist in either network
+	exists, err := s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network1)
+	if err != nil {
+		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed: %v", err)
+	}
+	if exists {
+		t.Error("Expected false for network1, got true")
+	}
+
+	// Add CIDR to network1
+	if err := s.AddCIDR(context.Background(), network1, cidr); err != nil {
+		t.Fatalf("AddCIDR failed for network1: %v", err)
+	}
+
+	// Should exist in network1, but not in network2
+	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network1)
+	if err != nil {
+		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network1: %v", err)
+	}
+	if !exists {
+		t.Error("Expected true for network1, got false")
+	}
+
+	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network2)
+	if err != nil {
+		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network2: %v", err)
+	}
+	if exists {
+		t.Error("Expected false for network2, got true")
+	}
+
+	// Add same CIDR to network2 (allowed since unique on cidr, network)
+	if err := s.AddCIDR(context.Background(), network2, cidr); err != nil {
+		t.Fatalf("AddCIDR failed for network2: %v", err)
+	}
+
+	// Now it should exist in both networks
+	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network1)
+	if err != nil {
+		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network1: %v", err)
+	}
+	if !exists {
+		t.Error("Expected true for network1, got false")
+	}
+
+	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network2)
+	if err != nil {
+		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network2: %v", err)
+	}
+	if !exists {
+		t.Error("Expected true for network2, got false")
+	}
+}
+
 func TestStore_AllocateIPv4_SingleCIDR(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()

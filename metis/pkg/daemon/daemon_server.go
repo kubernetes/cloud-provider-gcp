@@ -148,7 +148,7 @@ func (s *adaptiveIpamServer) MaybeAddInitialPodCidr(ctx context.Context, network
 		return nil
 	}
 
-	exists, err := s.store.GetCIDRBlockByCIDR(ctx, initialPodCidr)
+	exists, err := s.store.GetCIDRBlockByCIDRAndNetwork(ctx, initialPodCidr, network)
 	if err != nil {
 		s.logger.Error(err, "failed to check if initial cidr block exists", "network", network, "cidr", initialPodCidr)
 		return status.Errorf(codes.Unavailable, "failed to check if initial cidr block %s exists for network %s: %v", initialPodCidr, network, err)
