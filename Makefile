@@ -417,3 +417,35 @@ kops-e2e-test: kops-tool ## Run E2E tests on kOps cluster.
 		--skip-regex="$(KOPS_SKIP_REGEX)" \
 		--focus-regex="$(KOPS_FOCUS_REGEX)"
 
+
+## --------------------------------------
+##@ E2E
+## --------------------------------------
+
+.PHONY: test-e2e-latest
+test-e2e-latest: ## Run the latest periodic E2E tests.
+	./dev/ci/periodics/ci-cloud-provider-gcp-e2e-latest.sh
+
+.PHONY: test-e2e-latest-with-gcepd
+test-e2e-latest-with-gcepd: ## Run the latest periodic E2E tests with GCE PD.
+	ENABLE_GCEPD=true ./dev/ci/periodics/ci-cloud-provider-gcp-e2e-latest.sh
+
+.PHONY: test-e2e-latest-with-kubernetes-master
+test-e2e-latest-with-kubernetes-master: ## Run the latest periodic E2E tests with Kubernetes master.
+	USE_KUBERNETES_MASTER=true ./dev/ci/periodics/ci-cloud-provider-gcp-e2e-latest.sh
+
+.PHONY: test-conformance-latest
+test-conformance-latest: ## Run the latest periodic conformance tests.
+	./dev/ci/periodics/ci-cloud-provider-gcp-conformance-latest.sh
+
+.PHONY: test-conformance-latest-with-gcepd
+test-conformance-latest-with-gcepd: ## Run the latest periodic conformance tests with GCE PD.
+	ENABLE_GCEPD=true ./dev/ci/periodics/ci-cloud-provider-gcp-conformance-latest.sh
+
+.PHONY: test-e2e-scenario-kops-simple
+test-e2e-scenario-kops-simple: ## Run the kops simple E2E periodic test.
+	./dev/ci/periodics/ci-cloud-provider-gcp-e2e-scenario-kops-simple.sh
+
+.PHONY: test-presubmit
+test-presubmit: ## Run the cloud-provider-gcp presubmit tests.
+	./dev/ci/presubmits/cloud-provider-gcp-tests
