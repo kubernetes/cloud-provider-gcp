@@ -104,6 +104,7 @@ var (
 	location                         = pflag.String("location", "", fmt.Sprintf("Location of the Cluster %s.", applicableOnlyForEdgeCloud))
 	cluster                          = pflag.String("cluster", "", fmt.Sprintf("Name of the Cluster %s.", applicableOnlyForEdgeCloud))
 	impersonateServiceAccount        = pflag.String("impersonate_service_account", "", "Impersonate a service account to retrieve tokens for the Cluster.")
+	configuration                    = pflag.String("configuration", "", "Optional named configuration to use for gcloud command")
 )
 
 func main() {
@@ -143,6 +144,7 @@ func main() {
 			account:                   *account,
 			project:                   *project,
 			impersonateServiceAccount: *impersonateServiceAccount,
+			configuration:             *configuration,
 		}
 	}
 

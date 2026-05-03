@@ -31,6 +31,7 @@ type gcloudTokenProvider struct {
 	account                   string
 	project                   string
 	impersonateServiceAccount string
+	configuration             string
 }
 
 // readGcloudConfig returns an object which represents gcloud config output
@@ -88,7 +89,7 @@ func (p *gcloudTokenProvider) useCache() bool {
 }
 
 func (p *gcloudTokenProvider) getExtraArgs() []string {
-	extraArgs := make([]string, 0, 3)
+	extraArgs := make([]string, 0, 4)
 	if p.project != "" {
 		extraArgs = append(extraArgs, fmt.Sprintf("--project=%s", p.project))
 	}
@@ -97,6 +98,9 @@ func (p *gcloudTokenProvider) getExtraArgs() []string {
 	}
 	if p.impersonateServiceAccount != "" {
 		extraArgs = append(extraArgs, fmt.Sprintf("--impersonate-service-account=%s", p.impersonateServiceAccount))
+	}
+	if p.configuration != "" {
+		extraArgs = append(extraArgs, fmt.Sprintf("--configuration=%s", p.configuration))
 	}
 	return extraArgs
 }

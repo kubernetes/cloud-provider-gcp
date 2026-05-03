@@ -114,6 +114,13 @@ var (
     "extra_args": "--project=` + fakeProject + ` --account=` + fakeAccount + `"
 }`
 
+	wantCacheFileWithConfiguration = `{
+    "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
+    "access_token": "ya29.gcloud_t0k3n",
+    "token_expiry": "2022-01-01T00:00:00Z",
+    "extra_args": "--configuration=my-config"
+}`
+
 	wantCacheFileImpersonateServiceAccount = `{
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "ya29.gcloud_t0k3n",
@@ -222,6 +229,28 @@ func TestExecCredential(t *testing.T) {
 				"--format=json",
 				"--project=" + fakeProject,
 				"--account=" + fakeAccount,
+			},
+		},
+		{
+			testName: "NewGcloudAccessTokenWithConfiguration",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+					configuration:       "my-config",
+				},
+			},
+			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
+			wantCacheFile: wantCacheFileWithConfiguration,
+			wantGcloudArgs: []string{
+				"config",
+				"config-helper",
+				"--format=json",
+				"--configuration=my-config",
 			},
 		},
 		{
