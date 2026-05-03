@@ -91,8 +91,9 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 		return nil, false, err
 	}
 
-	// TODO: Add a flag to control to start this informer specific to required GKE functionality
-	go nwInfFactory.Start(ctx.Stop)
+	if nodeIPAMConfig.EnableMultiNetworking {
+		go nwInfFactory.Start(ctx.Stop)
+	}
 
 	return ctrl, started, nil
 }
