@@ -39,13 +39,13 @@ export KOPS_STATE_STORE="gs://kops-state-${GCP_PROJECT}"
 
 # 2. Cluster Lifecycle Management
 export KOPS_CLUSTER_NAME="${CLUSTER_NAME:-run-e2e-test.k8s.local}"
-make kops-up
+make test-cluster-up
 
 # Define cleanup function
 function cleanup {
   local exit_status=$?
   if [[ "${DELETE_CLUSTER:-true}" == "true" ]]; then
-    make kops-down || echo "Warning: kops-down failed"
+    make test-cluster-down || echo "Warning: test-cluster-down failed"
   fi
   if [[ "${CLEANUP_BOSKOS:-}" == "true" ]]; then
     source test/boskos.sh
@@ -125,7 +125,7 @@ kubetest2 kops \
 
 # 4. Teardown
 if [[ "${DELETE_CLUSTER:-true}" == "true" ]]; then
-  make kops-down
+  make test-cluster-down
   DELETE_CLUSTER=false # Don't delete again in trap
 fi
 
