@@ -397,3 +397,222 @@ func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 		t.Errorf("Expected status message to contain '%v', got: %s", store.ErrNoAvailableIPs, st.Message())
 	}
 }
+
+func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
+	logger := klog.Background()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_server_dynamic_test.sqlite")
+
+	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
+
+	controller := NewDaemonController(DaemonControllerConfig{
+		Name:   "test-controller",
+		Logger: logger,
+		Store:  storeInstance,
+	})
+	server.daemonController = controller
+
+	network := "test-network"
+
+	req := &adaptiveipam.AllocatePodIPRequest{
+		Network:      network,
+		PodName:      "test-pod",
+		PodNamespace: "default",
+		Ipv4Config: &adaptiveipam.IPConfig{
+			InterfaceName: "eth0",
+			ContainerId:   "test-container",
+		},
+	}
+
+	// Run AllocatePodIP in a goroutine because it will block
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var resp *adaptiveipam.AllocatePodIPResponse
+	var allocErr error
+
+	go func() {
+		defer wg.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		resp, allocErr = server.AllocatePodIP(ctx, req)
+	}()
+
+	// Wait for the request to be enqueued and waiting in map
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify that the request is in the queue
+	item, quit := controller.queue.Get()
+	if quit {
+		t.Fatal("Queue was shut down")
+	}
+	if item != network {
+		t.Errorf("Expected network %s in queue, got %s", network, item)
+	}
+	controller.queue.Done(item)
+
+	// Verify that there is a pending request in map
+	if server.getPendingRequestsCount(network) != 1 {
+		t.Errorf("Expected 1 pending request, got %d", server.getPendingRequestsCount(network))
+	}
+
+	// Now simulate the controller adding a CIDR and waking up the request
+	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/24")
+	if err != nil {
+		t.Fatalf("Failed to add CIDR: %v", err)
+	}
+
+	// Call onCIDRAdded to wake up the request
+	server.onCIDRAdded(network, 256) // 256 IPs available
+
+	// Wait for the goroutine to finish
+	wg.Wait()
+
+	if allocErr != nil {
+		t.Fatalf("AllocatePodIP failed after dynamic allocation: %v", allocErr)
+	}
+
+	if resp.Ipv4 == nil || resp.Ipv4.IpAddress == "" {
+		t.Errorf("Expected valid IP address, got response: %v", resp)
+	}
+}
+
+func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation_MultipleRequests(t *testing.T) {
+	logger := klog.Background()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_server_dynamic_multi_test.sqlite")
+
+	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
+
+	controller := NewDaemonController(DaemonControllerConfig{
+		Name:   "test-controller",
+		Logger: logger,
+		Store:  storeInstance,
+	})
+	server.daemonController = controller
+
+	network := "test-network"
+	numRequests := 10
+
+	var wg sync.WaitGroup
+	wg.Add(numRequests)
+
+	resps := make([]*adaptiveipam.AllocatePodIPResponse, numRequests)
+	errs := make([]error, numRequests)
+
+	for i := 0; i < numRequests; i++ {
+		go func(index int) {
+			defer wg.Done()
+			req := &adaptiveipam.AllocatePodIPRequest{
+				Network:      network,
+				PodName:      fmt.Sprintf("test-pod-%d", index),
+				PodNamespace: "default",
+				Ipv4Config: &adaptiveipam.IPConfig{
+					InterfaceName: "eth0",
+					ContainerId:   fmt.Sprintf("test-container-%d", index),
+				},
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			resps[index], errs[index] = server.AllocatePodIP(ctx, req)
+		}(i)
+	}
+
+	// Wait for all requests to be enqueued and waiting in map
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify that there are pending requests in map
+	if server.getPendingRequestsCount(network) != numRequests {
+		t.Errorf("Expected %d pending requests, got %d", numRequests, server.getPendingRequestsCount(network))
+	}
+
+	// Verify that the network was enqueued at least once
+	count := 0
+	for {
+		item, quit := controller.queue.Get()
+		if quit {
+			break
+		}
+		if item == network {
+			count++
+		}
+		controller.queue.Done(item)
+		if controller.queue.Len() == 0 {
+			break
+		}
+	}
+	if count == 0 {
+		t.Error("Expected network to be enqueued at least once")
+	}
+
+	// Now simulate the controller adding a CIDR (/29 has 8 IPs)
+	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/29")
+	if err != nil {
+		t.Fatalf("Failed to add CIDR: %v", err)
+	}
+
+	// Wake up first 8 requests (matching the block size)
+	server.onCIDRAdded(network, 8)
+
+	// Wait a bit for them to process
+	time.Sleep(200 * time.Millisecond)
+
+	// Check how many succeeded
+	successCount := 0
+	for i := 0; i < numRequests; i++ {
+		if errs[i] == nil && resps[i] != nil && resps[i].Ipv4 != nil && resps[i].Ipv4.IpAddress != "" {
+			successCount++
+		}
+	}
+
+	// We added a /29 block (8 IPs). But since it is the FIRST block,
+	// 3 IPs are reserved (first two and last). So only 5 IPs are actually available!
+	// Although we woke up 8 requests, only 5 will succeed.
+	if successCount != 5 {
+		t.Errorf("Expected exactly 5 successful allocations after first onCIDRAdded, got %d", successCount)
+	}
+
+	if server.getPendingRequestsCount(network) != 5 {
+		t.Errorf("Expected 5 pending requests left, got %d", server.getPendingRequestsCount(network))
+	}
+
+	// Now simulate the controller adding a second CIDR (/29 has 8 IPs)
+	err = storeInstance.AddCIDR(context.Background(), network, "10.0.2.0/29")
+	if err != nil {
+		t.Fatalf("Failed to add second CIDR: %v", err)
+	}
+
+	// Wake up the remaining requests (passing 8 as available IPs)
+	server.onCIDRAdded(network, 8)
+
+	// Wait for all to finish
+	wg.Wait()
+
+	successCount = 0
+	for i := 0; i < numRequests; i++ {
+		if errs[i] == nil && resps[i] != nil && resps[i].Ipv4 != nil && resps[i].Ipv4.IpAddress != "" {
+			successCount++
+		} else if errs[i] != nil {
+			t.Errorf("Request %d failed: %v", i, errs[i])
+		}
+	}
+
+	if successCount != numRequests {
+		t.Errorf("Expected %d successful allocations at the end, got %d", numRequests, successCount)
+	}
+
+	if server.getPendingRequestsCount(network) != 0 {
+		t.Errorf("Expected 0 pending requests left, got %d", server.getPendingRequestsCount(network))
+	}
+}
