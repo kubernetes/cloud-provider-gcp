@@ -22,7 +22,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"time"
@@ -196,30 +196,29 @@ func (s *Store) GetCIDRBlockByCIDR(ctx context.Context, cidr string) (bool, erro
 // AddCIDR parses the CIDR, determines family, and inserts it + its constituent IP addresses into the store.
 // For IPv4, it populates all IPs. For IPv6, it only adds the CIDR block.
 func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
-	ip, ipnet, err := net.ParseCIDR(cidr)
+	prefix, err := netip.ParsePrefix(cidr)
 	if err != nil {
 		return fmt.Errorf("failed to parse cidr %s: %w", cidr, err)
 	}
 
 	ipFamily := IPv4
 	isIPv6 := false
-	if ip.To4() == nil {
+	if prefix.Addr().Is6() {
 		ipFamily = IPv6
 		isIPv6 = true
 	}
 
 	var totalIPs int64
-	if !isIPv6 {
-		ones, bits := ipnet.Mask.Size()
-		totalIPs = 1 << (bits - ones)
+	bits := prefix.Bits()
+	totalBits := 32
+	if isIPv6 {
+		totalBits = 128
+	}
+	freeBits := totalBits - bits
+	if freeBits >= 62 {
+		totalIPs = 0x7fffffffffffffff // Max int64 for large IPv6 ranges
 	} else {
-		ones, _ := ipnet.Mask.Size()
-		bits := 128 - ones
-		if bits >= 62 {
-			totalIPs = 0x7fffffffffffffff // Max int64 for large IPv6 ranges
-		} else {
-			totalIPs = 1 << bits
-		}
+		totalIPs = 1 << freeBits
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -265,8 +264,9 @@ func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 
 		// Generate the list of all IPs in this CIDR range (IPv4 only)
 		var ips []string
-		for curr := ipnet.IP.Mask(ipnet.Mask); ipnet.Contains(curr); curr = incIP(curr) {
-			ips = append(ips, curr.String())
+		addr := prefix.Addr()
+		for ; prefix.Contains(addr); addr = addr.Next() {
+			ips = append(ips, addr.String())
 		}
 
 		if len(ips) == 0 {
@@ -311,13 +311,11 @@ func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 		}
 	} else {
 		// For IPv6, populate the first batch of IPs immediately.
-		startIP := ipnet.IP.Mask(ipnet.Mask)
-
 		var ips []string
-		curr := startIP
+		addr := prefix.Addr()
 		for i := 0; i < ipv6PopulationBatchSize; i++ {
-			ips = append(ips, curr.String())
-			curr = incIP(curr)
+			ips = append(ips, addr.String())
+			addr = addr.Next()
 		}
 
 		stmt, err := tx.PrepareContext(ctx, `
@@ -647,7 +645,7 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 		return fmt.Errorf("failed to query cidr_block: %w", err)
 	}
 
-	_, ipnet, err := net.ParseCIDR(cidrRange)
+	prefix, err := netip.ParsePrefix(cidrRange)
 	if err != nil {
 		return fmt.Errorf("failed to parse cidr %s: %w", cidrRange, err)
 	}
@@ -661,14 +659,19 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 		LIMIT 1
 	`, cidrBlockID).Scan(&lastAddressStr)
 
-	var startIP net.IP
-	if err == nil {
-		startIP = net.ParseIP(lastAddressStr)
-		startIP = incIP(startIP) // Start from the next one
-	} else if err == sql.ErrNoRows {
+	var startIP netip.Addr
+	switch err {
+	case nil:
+		var parseErr error
+		startIP, parseErr = netip.ParseAddr(lastAddressStr)
+		if parseErr != nil {
+			return fmt.Errorf("failed to parse last address %s: %w", lastAddressStr, parseErr)
+		}
+		startIP = startIP.Next() // Start from the next one
+	case sql.ErrNoRows:
 		// No entries yet, start from CIDR base address
-		startIP = ipnet.IP.Mask(ipnet.Mask)
-	} else {
+		startIP = prefix.Addr()
+	default:
 		return fmt.Errorf("failed to query last inserted ip: %w", err)
 	}
 
@@ -676,11 +679,11 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 	var ips []string
 	curr := startIP
 	for i := 0; i < ipv6PopulationBatchSize; i++ {
-		if !ipnet.Contains(curr) {
+		if !prefix.Contains(curr) {
 			break
 		}
 		ips = append(ips, curr.String())
-		curr = incIP(curr)
+		curr = curr.Next()
 	}
 
 	if len(ips) == 0 {
@@ -712,15 +715,4 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 	return nil
 }
 
-// incIP increments an IP address.
-func incIP(ip net.IP) net.IP {
-	newIP := make(net.IP, len(ip))
-	copy(newIP, ip)
-	for i := len(newIP) - 1; i >= 0; i-- {
-		newIP[i]++
-		if newIP[i] > 0 {
-			break
-		}
-	}
-	return newIP
-}
+
