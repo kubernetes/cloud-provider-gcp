@@ -176,7 +176,7 @@ func (s *adaptiveIpamServer) handleDynamicAllocation(ctx context.Context, req *a
 		return fmt.Errorf("failed to allocate ipv4 for pod %s/%s: %w", req.PodNamespace, req.PodName, store.ErrNoAvailableIPs)
 	}
 
-	s.logger.Error(store.ErrNoAvailableIPs, "IP exhaustion detected, waiting for controller to add IPs", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
+	s.logger.Info("Local store IP exhaustion detected, waiting for controller to add IPs", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace, "error", store.ErrNoAvailableIPs)
 
 	s.requestsMu.Lock()
 	ch, ok := s.requestsMap[clientKey]

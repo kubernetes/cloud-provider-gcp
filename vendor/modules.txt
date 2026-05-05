@@ -51,8 +51,10 @@ github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/exter
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1
 github.com/GoogleCloudPlatform/gke-networking-api/client/network/listers/network/v1
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned
+github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/scheme
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/typed/nodenetworkconfig/v1
+github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/typed/nodenetworkconfig/v1/fake
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions/internalinterfaces
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions/nodenetworkconfig
