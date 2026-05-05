@@ -27,6 +27,7 @@ import (
 	"github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/go-logr/logr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -104,38 +105,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 	server := newAdaptiveIpamServer(logger, storeInstance, d.Config.SocketPath, d.Config.ReleaseCooldown, store.DefaultBusyTimeout)
 
 	if nncClient != nil {
-		_, err = nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, nodeName, metav1.GetOptions{})
-		if errors.IsNotFound(err) {
-			// Fetch node to get UID for owner reference. This ensures the CR is deleted when the node is deleted.
-			// The node must exist because this daemon is running as a pod scheduled on it.
-			node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to get node %s for owner reference: %w", nodeName, err)
-			}
-
-			isController := true
-			nnc := &nncv1.NodeNetworkConfig{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: nodeName,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "v1",
-							Kind:       "Node",
-							Name:       nodeName,
-							UID:        node.UID,
-							Controller: &isController,
-						},
-					},
-				},
-				Spec: nncv1.NodeNetworkConfigSpec{},
-			}
-			_, err = nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to create NodeNetworkConfig: %w", err)
-			}
-			logger.Info("Successfully created NodeNetworkConfig CR with owner reference to Node", "name", nodeName)
-		} else if err != nil {
-			return fmt.Errorf("failed to get NodeNetworkConfig: %w", err)
+		if err := ensureNodeNetworkConfig(ctx, nncClient, kubeClient, nodeName, logger); err != nil {
+			return err
 		}
 
 		nncInformerFactory := externalversions.NewSharedInformerFactory(nncClient, 0)
@@ -174,5 +145,44 @@ func (d *Daemon) Run(ctx context.Context) error {
 		server.stop()
 	}
 
+	return nil
+}
+
+// ensureNodeNetworkConfig creates the NodeNetworkConfig CR if it does not exist.
+func ensureNodeNetworkConfig(ctx context.Context, nncClient nncclientset.Interface, kubeClient kubernetes.Interface, nodeName string, logger logr.Logger) error {
+	if nncClient == nil {
+		return nil
+	}
+	_, err := nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, nodeName, metav1.GetOptions{})
+	if errors.IsNotFound(err) {
+		node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get node %s for owner reference: %w", nodeName, err)
+		}
+
+		isController := true
+		nnc := &nncv1.NodeNetworkConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "v1",
+						Kind:       "Node",
+						Name:       nodeName,
+						UID:        node.UID,
+						Controller: &isController,
+					},
+				},
+			},
+			Spec: nncv1.NodeNetworkConfigSpec{},
+		}
+		_, err = nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to create NodeNetworkConfig: %w", err)
+		}
+		logger.Info("Successfully created NodeNetworkConfig CR with owner reference to Node", "name", nodeName)
+	} else if err != nil {
+		return fmt.Errorf("failed to get NodeNetworkConfig: %w", err)
+	}
 	return nil
 }

@@ -22,6 +22,13 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
+	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	kubefake "k8s.io/client-go/kubernetes/fake"
 )
 
 func TestDaemon_Run(t *testing.T) {
@@ -70,4 +77,55 @@ func TestDaemon_Run(t *testing.T) {
 	}
 
 	// If select completes without timing out, Run() exited, meaning `defer storeInstance.Close()` was executed!
+}
+
+func TestEnsureNodeNetworkConfig(t *testing.T) {
+	nodeName := "test-node"
+	nodeUID := types.UID("test-node-uid")
+
+	// Create fake clients
+	kubeClient := kubefake.NewSimpleClientset(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nodeName,
+			UID:  nodeUID,
+		},
+	})
+	nncClient := nncfake.NewSimpleClientset()
+
+	logger := logr.Discard()
+
+	// Run ensureNodeNetworkConfig
+	err := ensureNodeNetworkConfig(context.Background(), nncClient, kubeClient, nodeName, logger)
+	if err != nil {
+		t.Fatalf("ensureNodeNetworkConfig failed: %v", err)
+	}
+
+	// Verify NNC was created
+	nnc, err := nncClient.NetworkingV1().NodeNetworkConfigs().Get(context.Background(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get NodeNetworkConfig: %v", err)
+	}
+
+	if nnc.Name != nodeName {
+		t.Errorf("Expected NNC name %s, got %s", nodeName, nnc.Name)
+	}
+
+	// Verify Owner Reference
+	if len(nnc.OwnerReferences) != 1 {
+		t.Fatalf("Expected 1 owner reference, got %d", len(nnc.OwnerReferences))
+	}
+
+	owner := nnc.OwnerReferences[0]
+	if owner.Kind != "Node" {
+		t.Errorf("Expected owner kind Node, got %s", owner.Kind)
+	}
+	if owner.Name != nodeName {
+		t.Errorf("Expected owner name %s, got %s", nodeName, owner.Name)
+	}
+	if owner.UID != nodeUID {
+		t.Errorf("Expected owner UID %s, got %s", nodeUID, owner.UID)
+	}
+	if owner.Controller == nil || !*owner.Controller {
+		t.Errorf("Expected owner to be controller")
+	}
 }
