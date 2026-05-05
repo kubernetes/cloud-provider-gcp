@@ -44,7 +44,7 @@ const (
 	DefaultBusyTimeout = 5000 * time.Millisecond
 	// ipv6PopulationBatchSize is the number of IPv6 addresses to populate at once
 	// when a CIDR block has no available IPs in the table.
-	ipv6PopulationBatchSize = 32
+	ipv6PopulationBatchSize = 64
 )
 
 var (
@@ -714,5 +714,3 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 	s.log.Info(fmt.Sprintf("Successfully expanded IPv6 block by %d entries", ipv6PopulationBatchSize), "cidrBlockID", cidrBlockID)
 	return nil
 }
-
-

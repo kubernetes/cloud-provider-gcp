@@ -985,10 +985,10 @@ func TestStore_AllocateIPv6_ExceedBatch(t *testing.T) {
 		t.Fatalf("AddCIDR failed: %v", err)
 	}
 
-	// Allocate 33 IPs
-	// The constant is 32, so 33 will trigger the second batch population.
-	ips := make([]string, 33)
-	for i := 0; i < 33; i++ {
+	// Allocate 65 IPs
+	// The constant is 64, so 65 will trigger the second batch population.
+	ips := make([]string, 65)
+	for i := 0; i < 65; i++ {
 		ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: IPv6})
 		if err != nil {
 			t.Fatalf("Allocation failed at index %d: %v", i, err)
@@ -1005,18 +1005,18 @@ func TestStore_AllocateIPv6_ExceedBatch(t *testing.T) {
 		uniqueIPs[ip] = true
 	}
 
-	if len(uniqueIPs) != 33 {
-		t.Errorf("Expected 33 unique IPs, got %d", len(uniqueIPs))
+	if len(uniqueIPs) != 65 {
+		t.Errorf("Expected 65 unique IPs, got %d", len(uniqueIPs))
 	}
 
-	// Verify that the number of entries in ip_addresses is at least 64 (2 batches)
+	// Verify that the number of entries in ip_addresses is at least 128 (2 batches)
 	var count int
 	err = s.db.QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE cidr_block_id = (SELECT id FROM cidr_blocks WHERE cidr = ?)", cidr).Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to query DB for count: %v", err)
 	}
-	if count < 64 {
-		t.Errorf("Expected at least 64 entries (2 batches), got %d", count)
+	if count < 128 {
+		t.Errorf("Expected at least 128 entries (2 batches), got %d", count)
 	}
 }
 
@@ -1150,17 +1150,17 @@ func TestStore_AllocateIPv6_MultiCIDRExpansion(t *testing.T) {
 	}
 
 	// Exhaust both initial populations
-	// CIDR 1 has 4 IPs. CIDR 2 has 32 IPs (batch size).
-	// Total 36 IPs.
-	for i := 0; i < 36; i++ {
+	// CIDR 1 has 4 IPs. CIDR 2 has 64 IPs (batch size).
+	// Total 68 IPs.
+	for i := 0; i < 68; i++ {
 		_, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: IPv6})
 		if err != nil {
 			t.Fatalf("Allocation failed at index %d: %v", i, err)
 		}
 	}
 
-	// The 37th allocation should trigger expansion.
-	ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-37", IPFamily: IPv6})
+	// The 69th allocation should trigger expansion.
+	ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-69", IPFamily: IPv6})
 	if err != nil {
 		t.Fatalf("Allocation failed after expansion: %v", err)
 	}
@@ -1188,7 +1188,7 @@ func TestStore_AllocateIPv6_Concurrency_AllocateAndRelease(t *testing.T) {
 	network := "test-network"
 	// CIDR 1: Max capacity = 4 IPs. Initial population = 4.
 	cidr1 := "2001:db8:1::/126"
-	// CIDR 2: Max capacity = 64 IPs. Initial population = 32.
+	// CIDR 2: Max capacity = 64 IPs. Initial population = 64.
 	cidr2 := "2001:db8:2::/122"
 
 	if err := s.AddCIDR(context.Background(), network, cidr1); err != nil {
