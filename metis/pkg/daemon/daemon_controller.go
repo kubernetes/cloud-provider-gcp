@@ -247,6 +247,13 @@ func (c *DaemonController) Enqueue(network string) {
 	c.queue.Add(network)
 }
 
+// TODO: Consider the following optimization:
+// 1. Only run syncCIDR or dynamicAllocation based on the trigger. For example,
+//    if triggered by an IP exhaustion event, we might only need dynamicAllocation.
+//    If triggered by an informer update, we might only need syncCIDR.
+// Note: Skipping processing a queue item if another item for the same network is already
+// waiting to be executed is not needed because the Kubernetes RateLimitingInterface
+// workqueue already deduplicates items that are waiting in the queue.
 func (c *DaemonController) syncNodeNetworkConfig(ctx context.Context, network string) error {
 	c.logger.Info("Syncing network", "network", network)
 
