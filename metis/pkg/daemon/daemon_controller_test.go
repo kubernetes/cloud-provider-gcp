@@ -28,8 +28,11 @@ import (
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
+	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
+	"github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions"
 	nnctypedv1 "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/typed/nodenetworkconfig/v1"
 	"github.com/go-logr/logr"
+	"k8s.io/client-go/tools/cache"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -57,26 +60,94 @@ func TestDaemonController_Success(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
+	nodeName := "test-node"
+	network := "test-network"
+
+	// Add network to DB so periodic sync can find it
+	if err := storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/24"); err != nil {
+		t.Fatalf("Failed to add CIDR to DB: %v", err)
+	}
+
+	mockNNC := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            nodeName,
+			ResourceVersion: "1",
+		},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{Network: network, Pods: 32},
+			},
+		},
+	}
+
+	nncClient := nncfake.NewSimpleClientset(mockNNC)
+	nncInformerFactory := externalversions.NewSharedInformerFactory(nncClient, 0)
+	nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
+
 	c := NewDaemonController(DaemonControllerConfig{
-		Name:   "test-controller",
-		Logger: logger,
-		Store:  storeInstance,
+		Name:            "test-controller",
+		Logger:          logger,
+		Store:           storeInstance,
+		NNCClient:       nncClient,
+		NodeName:        nodeName,
+		NNCInformer:     nncInformer,
+		MonitorInterval: 100 * time.Millisecond,
 	})
 	c.syncHandler = syncHandler
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	go c.Run(ctx, 1)
+	nncInformerFactory.Start(ctx.Done())
+	
+	doneCh := make(chan struct{})
+	go func() {
+		c.Run(ctx, 1)
+		close(doneCh)
+	}()
 
-	c.Enqueue("test-network")
+	if !cache.WaitForCacheSync(ctx.Done(), nncInformer.Informer().HasSynced) {
+		t.Fatal("Timed out waiting for caches to sync")
+	}
 
-	// Wait for processing
-	time.Sleep(100 * time.Millisecond)
+	mockNNCUpdated := mockNNC.DeepCopy()
+	mockNNCUpdated.ResourceVersion = "2"
+	mockNNCUpdated.Spec.Allocations[0].Pods = 64
+
+	_, err = nncClient.NetworkingV1().NodeNetworkConfigs().Update(ctx, mockNNCUpdated, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to update NodeNetworkConfig: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
 
 	mu.Lock()
-	defer mu.Unlock()
-	if !processed["test-network"] {
-		t.Errorf("Expected test-network to be processed")
+	if !processed[network] {
+		t.Errorf("Expected %s to be processed", network)
+	}
+	delete(processed, network) // Reset for periodic sync check
+	mu.Unlock()
+
+	// Wait for periodic sync to trigger (MonitorInterval is 100ms)
+	time.Sleep(300 * time.Millisecond)
+
+	mu.Lock()
+	if !processed[network] {
+		t.Errorf("Expected %s to be processed again by periodic sync", network)
+	}
+	mu.Unlock()
+
+	cancel() // Trigger shutdown
+
+	select {
+	case <-doneCh:
+		// Success, it shut down!
+	case <-time.After(2 * time.Second):
+		t.Fatal("Controller failed to shut down in time")
+	}
+
+	if !c.queue.ShuttingDown() {
+		t.Error("Expected queue to be shutting down")
 	}
 }
 
@@ -173,609 +244,366 @@ func (m *mockClientset) NetworkingV1() nnctypedv1.NetworkingV1Interface {
 }
 
 func TestDaemonController_DynamicAllocation_HighUtilization(t *testing.T) {
-	logger := klog.Background()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_controller_test.sqlite")
-
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer storeInstance.Close()
-
-	network := "test-network"
-	nodeName := "test-node"
-
-	// Add initial CIDR to DB
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/28") // 16 IPs
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	// Add another CIDR to make it 48 total.
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.2.0/27") // 32 IPs
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	// Allocate 42 IPs to trigger high utilization (>80% of 48)
-	for i := 0; i < 42; i++ {
-		_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
-		if err != nil {
-			t.Fatalf("Failed to allocate IP: %v", err)
-		}
-	}
-
-	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
-		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{
-				{
-					Network: network,
-					Pods:    32,
-				},
-			},
-		},
-		Status: nncv1.NodeNetworkConfigStatus{
-			PodCIDRs: []nncv1.PodCIDR{
-				{CIDR: "10.0.2.0/27", Network: network},
-			},
-		},
-	}
-
-	patchCalled := false
-	var patchedData []byte
-
-	mockInterface := &mockNodeNetworkConfigInterface{
-		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
-			return mockNNC, nil
-		},
-		patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
-			patchCalled = true
-			patchedData = data
-			return mockNNC, nil
-		},
-	}
-
-	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
-	mockClient := &mockClientset{networkingV1: mockNetV1}
-
-	c := NewDaemonController(DaemonControllerConfig{
-		Name:                    "test-controller",
-		Logger:                  logger,
-		NNCClient:               mockClient,
-		NodeName:                nodeName,
-		Store:                   storeInstance,
-		GetPendingRequestsCount: func(net string) int { return 10 },
-	})
-
-	err = c.dynamicAllocation(context.Background(), network)
-	if err != nil {
-		t.Fatalf("dynamicAllocation failed: %v", err)
-	}
-
-	if !patchCalled {
-		t.Fatal("Expected patch to be called")
-	}
-
-	if patchedData == nil {
-		t.Fatal("Expected patchedData to be non-nil")
-	}
-
-	var patch struct {
-		Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
-	}
-	err = json.Unmarshal(patchedData, &patch)
-	if err != nil {
-		t.Fatalf("Failed to unmarshal patch data: %v", err)
-	}
-
-	if len(patch.Spec.Allocations) == 0 {
-		t.Fatal("Expected allocations to be non-empty")
-	}
-
-	// We expect 58 pods because:
-	// Used IPs = 45 (42 allocated + 3 reserved in initial block).
-	// Pending Requests = 10.
-	// Total targeted used = 55.
-	// To bring utilization under 75%: 55 / 0.75 = 73.33 -> 74 total capacity needed.
-	// Subtracting initial IPs (16): 74 - 16 = 58.
-	if patch.Spec.Allocations[0].Pods != 58 {
-		t.Errorf("Expected new target pods to be 58, got %d", patch.Spec.Allocations[0].Pods)
-	}
-}
-
-func TestDaemonController_DynamicAllocation_NoOp_ZeroInitialIPs(t *testing.T) {
-	logger := klog.Background()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_controller_zero_initial_test.sqlite")
-
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer storeInstance.Close()
-
-	network := "test-network"
-	nodeName := "test-node"
-
-	// Do NOT add initial CIDR to DB, so initialIPs will be 0.
-
-	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
-		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{
-				{
-					Network: network,
-					Pods:    32,
-				},
-			},
-		},
-		Status: nncv1.NodeNetworkConfigStatus{
-			PodCIDRs: []nncv1.PodCIDR{},
-		},
-	}
-
-	patchCalled := false
-
-	mockInterface := &mockNodeNetworkConfigInterface{
-		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
-			return mockNNC, nil
-		},
-		patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
-			patchCalled = true
-			return mockNNC, nil
-		},
-	}
-
-	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
-	mockClient := &mockClientset{networkingV1: mockNetV1}
-
-	c := NewDaemonController(DaemonControllerConfig{
-		Name:                    "test-controller",
-		Logger:                  logger,
-		NNCClient:               mockClient,
-		NodeName:                nodeName,
-		Store:                   storeInstance,
-		GetPendingRequestsCount: func(net string) int { return 10 },
-	})
-
-	err = c.dynamicAllocation(context.Background(), network)
-	if err != nil {
-		t.Fatalf("dynamicAllocation failed: %v", err)
-	}
-
-	if patchCalled {
-		t.Error("Expected patch NOT to be called when initial IPs is 0")
-	}
-}
-
-func TestDaemonController_DynamicAllocation_ExcludeDrainingFromExhaustion(t *testing.T) {
 	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_controller_draining_test.sqlite")
-
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer storeInstance.Close()
-
 	network := "test-network"
 	nodeName := "test-node"
 
-	// Add initial block (16 IPs)
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/28")
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	// Add block 2 (Ready, 32 IPs)
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.2.0/27")
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	// Add block 3 (Draining, 32 IPs)
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.3.0/27")
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-	block3, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network)
-	if err != nil || len(block3) == 0 {
-		t.Fatalf("Failed to get ready blocks: %v", err)
-	}
-	err = storeInstance.DrainCIDRBlock(context.Background(), block3[0].ID) // Assuming block 3 is latest
-	if err != nil {
-		t.Fatalf("DrainCIDRBlock failed: %v", err)
-	}
-
-	// Total capacity in DB (Ready + Draining) = 16 + 32 + 32 = 80.
-	
-	// Allocate 40 IPs (to simulate some usage)
-	for i := 0; i < 40; i++ {
-		_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
-		if err != nil {
-			t.Fatalf("Failed to allocate IP: %v", err)
+	tests := []struct {
+		desc                    string
+		blocks                  []struct {
+			cidr  string
+			drain bool
 		}
-	}
-
-	// Pending requests = 10.
-	// Total targeted used = 40 + 10 = 50.
-
-	// Correct formula: Utilization = (used + pending) / totalRequestedCapacity
-	// Utilization = (40 + 10) / (16 + 64) = 50 / 80 = 0.625 < 0.80.
-	// Scale-up should NOT be triggered!
-	//
-	// Buggy formula (if we added draining capacity to used):
-	// Utilization = (40 + 10 + 32) / 80 = 82 / 80 = 1.025 > 0.80.
-	// Scale-up WOULD be triggered!
-
-	// Setup mock CRD
-	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
-		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{
-				{
-					Network: network,
-					Pods:    64, // Set to 64 so totalRequestedCapacity = 16 + 64 = 80
+		allocations             int
+		cooldowns               int
+		pendingRequests         int
+		mockNNC                 *nncv1.NodeNetworkConfig
+		expectedPatchCalled     bool
+		expectedPatchedPods     int32
+		expectedQueueLen        int
+	}{
+		{
+			desc: "High Utilization triggers scale up",
+			blocks: []struct {
+				cidr  string
+				drain bool
+			}{
+				{"10.0.1.0/28", false},
+				{"10.0.2.0/27", false},
+			},
+			allocations:     42,
+			pendingRequests: 10,
+			mockNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{{Network: network, Pods: 32}},
+				},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.2.0/27", Network: network}},
 				},
 			},
+			expectedPatchCalled: true,
+			expectedPatchedPods: 58,
 		},
-		Status: nncv1.NodeNetworkConfigStatus{
-			PodCIDRs: []nncv1.PodCIDR{
-				{CIDR: "10.0.2.0/27", Network: network},
+		{
+			desc: "No-op when zero initial IPs",
+			blocks:          nil,
+			allocations:     0,
+			pendingRequests: 10,
+			mockNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{{Network: network, Pods: 32}},
+				},
+				Status: nncv1.NodeNetworkConfigStatus{PodCIDRs: []nncv1.PodCIDR{}},
 			},
+			expectedPatchCalled: false,
+		},
+		{
+			desc: "Exclude draining from exhaustion",
+			blocks: []struct {
+				cidr  string
+				drain bool
+			}{
+				{"10.0.1.0/28", false},
+				{"10.0.2.0/27", false},
+				{"10.0.3.0/27", true},
+			},
+			allocations:     40,
+			pendingRequests: 10,
+			mockNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{{Network: network, Pods: 64}},
+				},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.2.0/27", Network: network}},
+				},
+			},
+			expectedPatchCalled: false,
+		},
+		{
+			desc: "Cooldown pushback",
+			blocks: []struct {
+				cidr  string
+				drain bool
+			}{
+				{"10.0.1.0/28", false},
+				{"10.0.2.0/25", false},
+			},
+			allocations:     60,
+			cooldowns:       11,
+			pendingRequests: 10,
+			mockNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{{Network: network, Pods: 64}},
+				},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.2.0/25", Network: network}},
+				},
+			},
+			expectedPatchCalled: false,
+			expectedQueueLen:    1,
 		},
 	}
 
-	patchCalled := false
-	mockInterface := &mockNodeNetworkConfigInterface{
-		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
-			return mockNNC, nil
-		},
-		patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
-			patchCalled = true
-			return mockNNC, nil
-		},
-	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			tempDir := t.TempDir()
+			dbPath := filepath.Join(tempDir, "metis_controller_combined_test.sqlite")
+			storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+			if err != nil {
+				t.Fatalf("Failed to create store: %v", err)
+			}
+			defer storeInstance.Close()
 
-	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
-	mockClient := &mockClientset{networkingV1: mockNetV1}
+			for _, b := range tc.blocks {
+				err = storeInstance.AddCIDR(context.Background(), network, b.cidr)
+				if err != nil {
+					t.Fatalf("Failed to add CIDR: %v", err)
+				}
+				if b.drain {
+					id, exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), b.cidr)
+					if err != nil {
+						t.Fatalf("GetCIDRBlockByCIDR failed: %v", err)
+					}
+					if !exists {
+						t.Fatalf("Failed to find CIDR block for %s in store", b.cidr)
+					}
+					err = storeInstance.DrainCIDRBlock(context.Background(), id)
+					if err != nil {
+						t.Fatalf("DrainCIDRBlock failed: %v", err)
+					}
+				}
+			}
 
-	c := NewDaemonController(DaemonControllerConfig{
-		Name:                    "test-controller",
-		Logger:                  logger,
-		NNCClient:               mockClient,
-		NodeName:                nodeName,
-		Store:                   storeInstance,
-		GetPendingRequestsCount: func(net string) int { return 10 },
-	})
+			for i := 0; i < tc.cooldowns; i++ {
+				containerID := fmt.Sprintf("cooldown-container-%d", i)
+				_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", containerID)
+				if err != nil {
+					t.Fatalf("Failed to allocate IP for cooldown: %v", err)
+				}
+				_, err = storeInstance.ReleaseIPByOwner(context.Background(), network, containerID, "eth0", 1*time.Hour)
+				if err != nil {
+					t.Fatalf("Failed to release IP for cooldown: %v", err)
+				}
+			}
 
-	err = c.dynamicAllocation(context.Background(), network)
-	if err != nil {
-		t.Fatalf("dynamicAllocation failed: %v", err)
-	}
+			for i := 0; i < tc.allocations; i++ {
+				_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
+				if err != nil {
+					t.Fatalf("Failed to allocate IP: %v", err)
+				}
+			}
 
-	if patchCalled {
-		t.Error("Expected patch NOT to be called, but it was called")
+			patchCalled := false
+			var patchedData []byte
+
+			mockInterface := &mockNodeNetworkConfigInterface{
+				getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+					return tc.mockNNC, nil
+				},
+				patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
+					patchCalled = true
+					patchedData = data
+					return tc.mockNNC, nil
+				},
+			}
+
+			mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
+			mockClient := &mockClientset{networkingV1: mockNetV1}
+
+			c := NewDaemonController(DaemonControllerConfig{
+				Name:                     "test-controller",
+				Logger:                   logger,
+				NNCClient:                mockClient,
+				NodeName:                 nodeName,
+				Store:                    storeInstance,
+				GetPendingRequestsCount:  func(net string) int { return tc.pendingRequests },
+				CooldownPushbackInterval: 1 * time.Millisecond,
+			})
+
+			err = c.dynamicAllocation(context.Background(), network)
+			if err != nil {
+				t.Fatalf("dynamicAllocation failed: %v", err)
+			}
+
+			if patchCalled != tc.expectedPatchCalled {
+				t.Errorf("Expected patchCalled %v, got %v", tc.expectedPatchCalled, patchCalled)
+			}
+
+			if tc.expectedPatchCalled && patchedData != nil {
+				var patch struct {
+					Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
+				}
+				err = json.Unmarshal(patchedData, &patch)
+				if err != nil {
+					t.Fatalf("Failed to unmarshal patch data: %v", err)
+				}
+				if len(patch.Spec.Allocations) == 0 {
+					t.Fatal("Expected allocations to be non-empty in patch")
+				}
+				if patch.Spec.Allocations[0].Pods != tc.expectedPatchedPods {
+					t.Errorf("Expected new target pods to be %d, got %d", tc.expectedPatchedPods, patch.Spec.Allocations[0].Pods)
+				}
+			}
+
+			if tc.expectedQueueLen > 0 {
+				// Wait for the item to be added to the queue (it has 1ms delay)
+				time.Sleep(10 * time.Millisecond)
+			}
+
+			if c.queue.Len() != tc.expectedQueueLen {
+				t.Errorf("Expected queue length %d, got %d", tc.expectedQueueLen, c.queue.Len())
+			}
+
+			if tc.expectedQueueLen > 0 {
+				item, quit := c.queue.Get()
+				if quit {
+					t.Fatal("Queue was shut down unexpectedly")
+				}
+				if item != network {
+					t.Errorf("Expected item %s in queue, got %s", network, item)
+				}
+			}
+		})
 	}
 }
 
-func TestDaemonController_DynamicAllocation_HighUtilization_CooldownPushback(t *testing.T) {
+func TestDaemonController_SyncCIDR(t *testing.T) {
 	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_controller_cooldown_test.sqlite")
-
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer storeInstance.Close()
-
 	network := "test-network"
 	nodeName := "test-node"
 
-	// Add initial block (16 IPs)
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/28")
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	// Add block 2 (128 IPs) to make it 144 total capacity
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.2.0/25")
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	// Allocate 11 IPs and release them to create cooldown state
-	for i := 0; i < 11; i++ {
-		_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("cooldown-container-%d", i))
-		if err != nil {
-			t.Fatalf("Failed to allocate IP: %v", err)
+	tests := []struct {
+		desc                string
+		blocks              []struct {
+			cidr  string
+			state string
 		}
-	}
-	
-	for i := 0; i < 11; i++ {
-		_, err = storeInstance.ReleaseIPByOwner(context.Background(), network, fmt.Sprintf("cooldown-container-%d", i), "eth0", 1*time.Hour)
-		if err != nil {
-			t.Fatalf("Failed to release IP: %v", err)
-		}
-	}
-
-	// Allocate 60 IPs to simulate high usage
-	for i := 0; i < 60; i++ {
-		_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
-		if err != nil {
-			t.Fatalf("Failed to allocate IP: %v", err)
-		}
-	}
-
-	// Setup mock CRD
-	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
-		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{
-				{
-					Network: network,
-					Pods:    64, // totalRequestedCapacity = 16 + 64 = 80
-				},
-			},
-		},
-		Status: nncv1.NodeNetworkConfigStatus{
-			PodCIDRs: []nncv1.PodCIDR{
-				{CIDR: "10.0.2.0/25", Network: network},
-			},
-		},
-	}
-
-	patchCalled := false
-	mockInterface := &mockNodeNetworkConfigInterface{
-		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
-			return mockNNC, nil
-		},
-		patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
-			patchCalled = true
-			return mockNNC, nil
-		},
-	}
-
-	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
-	mockClient := &mockClientset{networkingV1: mockNetV1}
-
-	c := NewDaemonController(DaemonControllerConfig{
-		Name:                     "test-controller",
-		Logger:                   logger,
-		NNCClient:                mockClient,
-		NodeName:                 nodeName,
-		Store:                    storeInstance,
-		GetPendingRequestsCount:  func(net string) int { return 10 },
-		CooldownPushbackInterval: 1 * time.Millisecond,
-	})
-
-	err = c.dynamicAllocation(context.Background(), network)
-	if err != nil {
-		t.Fatalf("dynamicAllocation failed: %v", err)
-	}
-
-	if patchCalled {
-		t.Error("Expected patch NOT to be called due to cooldown pushback, but it was called")
-	}
-
-	// Wait for the item to be added to the queue (it has 1ms delay)
-	time.Sleep(10 * time.Millisecond)
-
-	if c.queue.Len() != 1 {
-		t.Errorf("Expected 1 item in queue, got %d", c.queue.Len())
-	}
-
-	item, quit := c.queue.Get()
-	if quit {
-		t.Fatal("Queue quit unexpectedly")
-	}
-	if item != network {
-		t.Errorf("Expected item %s in queue, got %s", network, item)
-	}
-}
-
-func TestDaemonController_SyncCidr_Add(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_controller_sync_cidr_add_test.sqlite")
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer storeInstance.Close()
-
-	network := "test-network"
-	nodeName := "test-node"
-	cidr := "10.0.1.0/28"
-
-	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
-		Status: nncv1.NodeNetworkConfigStatus{
-			PodCIDRs: []nncv1.PodCIDR{
-				{
-					CIDR:    cidr,
-					Network: network,
-					Condition: &metav1.Condition{
-						Status: metav1.ConditionTrue,
+		mockNNC             *nncv1.NodeNetworkConfig
+		cidrToCheck         string
+		expectedExists      bool
+		expectedOnCIDRAdded bool
+	}{
+		{
+			desc: "Add new CIDR from NNC status",
+			blocks: nil,
+			mockNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.1.0/28", Network: network, Condition: &metav1.Condition{Status: metav1.ConditionTrue}},
 					},
 				},
 			},
+			cidrToCheck:         "10.0.1.0/28",
+			expectedExists:      true,
+			expectedOnCIDRAdded: true,
 		},
-	}
-
-	mockInterface := &mockNodeNetworkConfigInterface{
-		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
-			return mockNNC, nil
-		},
-	}
-	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
-	mockClient := &mockClientset{networkingV1: mockNetV1}
-
-	c := NewDaemonController(DaemonControllerConfig{
-		Name:      "test-controller",
-		Logger:    logger,
-		NNCClient: mockClient,
-		NodeName:  nodeName,
-		Store:     storeInstance,
-	})
-
-	err = c.syncCIDR(context.Background(), network)
-	if err != nil {
-		t.Fatalf("syncCIDR failed: %v", err)
-	}
-
-	// Verify DB
-	exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), cidr)
-	if err != nil {
-		t.Fatalf("GetCIDRBlockByCIDR failed: %v", err)
-	}
-	if !exists {
-		t.Errorf("Expected CIDR block %s to exist in DB", cidr)
-	}
-}
-
-func TestDaemonController_SyncCidr_IgnoreUnready(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_controller_sync_cidr_ignore_unready_test.sqlite")
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer storeInstance.Close()
-
-	network := "test-network"
-	nodeName := "test-node"
-	cidr := "10.0.1.0/28"
-
-	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
-		Status: nncv1.NodeNetworkConfigStatus{
-			PodCIDRs: []nncv1.PodCIDR{
-				{
-					CIDR:    cidr,
-					Network: network,
-					Condition: &metav1.Condition{
-						Status: metav1.ConditionFalse,
+		{
+			desc: "Ignore unready CIDR from NNC status",
+			blocks: nil,
+			mockNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.1.0/28", Network: network, Condition: &metav1.Condition{Status: metav1.ConditionFalse}},
 					},
 				},
 			},
+			cidrToCheck:         "10.0.1.0/28",
+			expectedExists:      false,
+			expectedOnCIDRAdded: false,
+		},
+		{
+			desc: "Cleanup deleting CIDR not in NNC status",
+			blocks: []struct {
+				cidr  string
+				state string
+			}{
+				{"10.0.1.0/28", "Deleting"},
+			},
+			mockNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					ReleasableCIDRs: []nncv1.PodCIDR{},
+				},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{}, // Empty status
+				},
+			},
+			cidrToCheck:         "10.0.1.0/28",
+			expectedExists:      false,
+			expectedOnCIDRAdded: false,
 		},
 	}
 
-	mockInterface := &mockNodeNetworkConfigInterface{
-		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
-			return mockNNC, nil
-		},
-	}
-	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
-	mockClient := &mockClientset{networkingV1: mockNetV1}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			tempDir := t.TempDir()
+			dbPath := filepath.Join(tempDir, "metis_controller_sync_cidr_combined.sqlite")
+			storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+			if err != nil {
+				t.Fatalf("Failed to create store: %v", err)
+			}
+			defer storeInstance.Close()
 
-	c := NewDaemonController(DaemonControllerConfig{
-		Name:      "test-controller",
-		Logger:    logger,
-		NNCClient: mockClient,
-		NodeName:  nodeName,
-		Store:     storeInstance,
-	})
+			for _, b := range tc.blocks {
+				err = storeInstance.AddCIDR(context.Background(), network, b.cidr)
+				if err != nil {
+					t.Fatalf("Failed to add CIDR: %v", err)
+				}
+				if b.state == "Deleting" {
+					blocks, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network)
+					if err != nil || len(blocks) == 0 {
+						t.Fatalf("Failed to get block ID: %v", err)
+					}
+					err = storeInstance.MarkCIDRBlockAsDeleting(context.Background(), blocks[0].ID)
+					if err != nil {
+						t.Fatalf("Failed to mark block as Deleting: %v", err)
+					}
+				}
+			}
 
-	err = c.syncCIDR(context.Background(), network)
-	if err != nil {
-		t.Fatalf("syncCIDR failed: %v", err)
-	}
+			mockInterface := &mockNodeNetworkConfigInterface{
+				getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+					return tc.mockNNC, nil
+				},
+			}
+			mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
+			mockClient := &mockClientset{networkingV1: mockNetV1}
 
-	// Verify DB
-	exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), cidr)
-	if err != nil {
-		t.Fatalf("GetCIDRBlockByCIDR failed: %v", err)
-	}
-	if exists {
-		t.Errorf("Expected CIDR block %s to NOT exist in DB", cidr)
-	}
-}
+			onCIDRAddedCalled := false
+			c := NewDaemonController(DaemonControllerConfig{
+				Name:      "test-controller",
+				Logger:    logger,
+				NNCClient: mockClient,
+				NodeName:  nodeName,
+				Store:     storeInstance,
+				OnCIDRAdded: func(net string, availableIPs int) {
+					onCIDRAddedCalled = true
+				},
+			})
 
-func TestDaemonController_SyncCidr_Cleanup(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_controller_sync_cidr_cleanup_test.sqlite")
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer storeInstance.Close()
+			err = c.syncCIDR(context.Background(), network)
+			if err != nil {
+				t.Fatalf("syncCIDR failed: %v", err)
+			}
 
-	network := "test-network"
-	nodeName := "test-node"
-	cidr := "10.0.1.0/28"
+			_, exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), tc.cidrToCheck)
+			if err != nil {
+				t.Fatalf("GetCIDRBlockByCIDR failed: %v", err)
+			}
+			if exists != tc.expectedExists {
+				t.Errorf("Expected exists %v, got %v for CIDR %s", tc.expectedExists, exists, tc.cidrToCheck)
+			}
 
-	// Add CIDR to DB and mark as Deleting
-	err = storeInstance.AddCIDR(context.Background(), network, cidr)
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-	
-	block, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network)
-	if err != nil || len(block) == 0 {
-		t.Fatalf("Failed to get block ID: %v", err)
-	}
-	err = storeInstance.MarkCIDRBlockAsDeleting(context.Background(), block[0].ID)
-	if err != nil {
-		t.Fatalf("Failed to mark block as Deleting: %v", err)
-	}
-
-	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
-		Spec: nncv1.NodeNetworkConfigSpec{
-			ReleasableCIDRs: []nncv1.PodCIDR{}, // Empty
-		},
-	}
-
-	mockInterface := &mockNodeNetworkConfigInterface{
-		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
-			return mockNNC, nil
-		},
-	}
-	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
-	mockClient := &mockClientset{networkingV1: mockNetV1}
-
-	c := NewDaemonController(DaemonControllerConfig{
-		Name:      "test-controller",
-		Logger:    logger,
-		NNCClient: mockClient,
-		NodeName:  nodeName,
-		Store:     storeInstance,
-	})
-
-	err = c.syncCIDR(context.Background(), network)
-	if err != nil {
-		t.Fatalf("syncCIDR failed: %v", err)
-	}
-
-	// Verify DB
-	exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), cidr)
-	if err != nil {
-		t.Fatalf("GetCIDRBlockByCIDR failed: %v", err)
-	}
-	if exists {
-		t.Errorf("Expected CIDR block %s to be deleted from DB", cidr)
+			if onCIDRAddedCalled != tc.expectedOnCIDRAdded {
+				t.Errorf("Expected onCIDRAddedCalled %v, got %v", tc.expectedOnCIDRAdded, onCIDRAddedCalled)
+			}
+		})
 	}
 }
 
@@ -967,7 +795,7 @@ func TestDaemonController_FullLoop(t *testing.T) {
 	
 	time.Sleep(500 * time.Millisecond)
 
-	exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), "10.0.2.0/28")
+	_, exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), "10.0.2.0/28")
 	if err != nil {
 		t.Fatalf("GetCIDRBlockByCIDR failed: %v", err)
 	}

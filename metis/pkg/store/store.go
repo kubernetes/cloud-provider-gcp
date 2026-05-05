@@ -351,20 +351,20 @@ func (s *Store) AllocateIPv4(ctx context.Context, network, interfaceName, contai
 	return "", "", fmt.Errorf("%w: failed to allocate ipv4 in any cidr block for network %s", ErrNoAvailableIPs, network)
 }
 
-// GetCIDRBlockByCIDR checks if a CIDR block already exists in the database.
-func (s *Store) GetCIDRBlockByCIDR(ctx context.Context, cidr string) (bool, error) {
+// GetCIDRBlockByCIDR checks if a CIDR block already exists in the database and returns its ID.
+func (s *Store) GetCIDRBlockByCIDR(ctx context.Context, cidr string) (int64, bool, error) {
 	var id int64
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id FROM cidr_blocks WHERE cidr = ? LIMIT 1
 	`, cidr).Scan(&id)
 
 	if err == nil {
-		return true, nil
+		return id, true, nil
 	}
 	if err == sql.ErrNoRows {
-		return false, nil
+		return 0, false, nil
 	}
-	return false, fmt.Errorf("failed to query cidr_blocks: %w", err)
+	return 0, false, fmt.Errorf("failed to query cidr_blocks: %w", err)
 }
 
 // AddCIDR parses the CIDR, determines family, and inserts it + its constituent IP addresses into the store.

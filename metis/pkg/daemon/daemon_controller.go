@@ -29,7 +29,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	"fmt"
-	"net"
+	"net/netip"
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
@@ -303,21 +303,25 @@ func (c *DaemonController) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkCo
 			continue
 		}
 
-		c.logger.Info("Adding podCIDR to local DB", "cidr", podCIDR.CIDR, "network", podCIDR.Network)
-		// Parse CIDR first for capacity calculation
-		availableIPs := 0
-		_, ipnet, err := net.ParseCIDR(podCIDR.CIDR)
-		if err == nil {
-			ones, bits := ipnet.Mask.Size()
-			totalIPs := 1 << (bits - ones)
-			availableIPs = totalIPs
-		} else {
+		prefix, err := netip.ParsePrefix(podCIDR.CIDR)
+		if err != nil {
 			c.logger.Error(err, "failed to parse CIDR", "cidr", podCIDR.CIDR)
 			continue
 		}
 
+		// Ignore IPv6 as it is not supported for dynamic allocation path.
+		if prefix.Addr().Is6() {
+			c.logger.V(4).Info("Ignoring IPv6 CIDR, not supported in dynamic allocation path", "cidr", podCIDR.CIDR)
+			continue
+		}
+
+		c.logger.Info("Adding podCIDR to local DB", "cidr", podCIDR.CIDR, "network", podCIDR.Network)
+		// Parse CIDR first for capacity calculation
+		bits := prefix.Bits()
+		availableIPs := 1 << (32 - bits)
+
 		// Idempotency check: check if CIDR already exists
-		exists, err := c.store.GetCIDRBlockByCIDR(ctx, podCIDR.CIDR)
+		_, exists, err := c.store.GetCIDRBlockByCIDR(ctx, podCIDR.CIDR)
 		if err != nil {
 			return fmt.Errorf("failed to check if CIDR exists in store: %w", err)
 		}
