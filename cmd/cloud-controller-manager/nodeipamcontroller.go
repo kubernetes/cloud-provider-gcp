@@ -72,7 +72,7 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 	gnpInformer := nwInfFactory.Networking().V1().GKENetworkParamSets()
 
 	// Wrap the informer to filter nodes
-	filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: ccmConfig.SharedInformers.Core().V1().Nodes()}
+	filteringInformer := &utilnode.GKEFilteringNodeInformer{NodeInformer: ccmConfig.SharedInformers.Core().V1().Nodes()}
 
 	ctrl, started, err := nodeipamcontroller.StartNodeIpamController(
 		wait.ContextForChannel(ctx.Stop),
