@@ -37,7 +37,7 @@ func startCloudNodeLifecycleControllerWrapper(initContext app.ControllerInitCont
 
 func startCloudNodeLifecycleController(ctx context.Context, initContext app.ControllerInitContext, controllerContext controllermanagerapp.ControllerContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) (controller.Interface, bool, error) {
 	// Wrap the informer to filter nodes
-	filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: completedConfig.SharedInformers.Core().V1().Nodes()}
+	filteringInformer := &utilnode.GKEFilteringNodeInformer{NodeInformer: completedConfig.SharedInformers.Core().V1().Nodes()}
 
 	// Start the cloudNodeLifecycleController
 	cloudNodeLifecycleController, err := nodelifecycle.NewCloudNodeLifecycleController(

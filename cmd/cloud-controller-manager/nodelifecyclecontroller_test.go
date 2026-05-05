@@ -95,7 +95,7 @@ func TestMonitorNodes_FilterLabel(t *testing.T) {
 	mockCl := &mockCloud{instances: mockInst}
 
 	// Wrap the informer to filter nodes
-	filteringInformer := &node.GCEFilteringNodeInformer{NodeInformer: nodeInformer}
+	filteringInformer := &node.GKEFilteringNodeInformer{NodeInformer: nodeInformer}
 
 	c, err := nodelifecycle.NewCloudNodeLifecycleController(filteringInformer, fakeClient, mockCl, 5*time.Minute)
 	if err != nil {

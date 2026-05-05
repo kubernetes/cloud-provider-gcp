@@ -49,28 +49,28 @@ const (
 	GKEUnmanagedNodeLabelValue = "true"
 )
 
-// GCEFilteringNodeInformer wraps a NodeInformer to filter out unmanaged nodes from the lister.
-type GCEFilteringNodeInformer struct {
+// GKEFilteringNodeInformer wraps a NodeInformer to filter out unmanaged nodes from the lister.
+type GKEFilteringNodeInformer struct {
 	coreinformers.NodeInformer
 }
 
-// Lister returns a GCEFilteringNodeLister.
-func (i *GCEFilteringNodeInformer) Lister() v1lister.NodeLister {
-	return &GCEFilteringNodeLister{i.NodeInformer.Lister()}
+// Lister returns a GKEFilteringNodeLister.
+func (i *GKEFilteringNodeInformer) Lister() v1lister.NodeLister {
+	return &GKEFilteringNodeLister{i.NodeInformer.Lister()}
 }
 
 // Informer returns the wrapped Informer.
-func (i *GCEFilteringNodeInformer) Informer() cache.SharedIndexInformer {
-	return &GCEFilteringSharedIndexInformer{i.NodeInformer.Informer()}
+func (i *GKEFilteringNodeInformer) Informer() cache.SharedIndexInformer {
+	return &GKEFilteringSharedIndexInformer{i.NodeInformer.Informer()}
 }
 
-// GCEFilteringSharedIndexInformer wraps a SharedIndexInformer to filter out unmanaged nodes from the event stream.
-type GCEFilteringSharedIndexInformer struct {
+// GKEFilteringSharedIndexInformer wraps a SharedIndexInformer to filter out unmanaged nodes from the event stream.
+type GKEFilteringSharedIndexInformer struct {
 	cache.SharedIndexInformer
 }
 
 // AddEventHandler adds an event handler to the shared informer with filtering.
-func (f *GCEFilteringSharedIndexInformer) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
+func (f *GKEFilteringSharedIndexInformer) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
 	return f.SharedIndexInformer.AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			node, ok := obj.(*v1.Node)
@@ -81,7 +81,7 @@ func (f *GCEFilteringSharedIndexInformer) AddEventHandler(handler cache.Resource
 }
 
 // AddEventHandlerWithResyncPeriod adds an event handler to the shared informer with a custom resync period and filtering.
-func (f *GCEFilteringSharedIndexInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) (cache.ResourceEventHandlerRegistration, error) {
+func (f *GKEFilteringSharedIndexInformer) AddEventHandlerWithResyncPeriod(handler cache.ResourceEventHandler, resyncPeriod time.Duration) (cache.ResourceEventHandlerRegistration, error) {
 	return f.SharedIndexInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			node, ok := obj.(*v1.Node)
@@ -100,13 +100,13 @@ func IsUnmanagedNode(node *v1.Node) bool {
 	return ok && val == GKEUnmanagedNodeLabelValue
 }
 
-// GCEFilteringNodeLister wraps a NodeLister to filter out nodes with the unmanaged label.
-type GCEFilteringNodeLister struct {
+// GKEFilteringNodeLister wraps a NodeLister to filter out nodes with the unmanaged label.
+type GKEFilteringNodeLister struct {
 	v1lister.NodeLister
 }
 
 // List lists all Nodes in the indexer, filtering out unmanaged nodes.
-func (l *GCEFilteringNodeLister) List(selector labels.Selector) (ret []*v1.Node, err error) {
+func (l *GKEFilteringNodeLister) List(selector labels.Selector) (ret []*v1.Node, err error) {
 	nodes, err := l.NodeLister.List(selector)
 	if err != nil {
 		return nil, err
@@ -122,29 +122,29 @@ func (l *GCEFilteringNodeLister) List(selector labels.Selector) (ret []*v1.Node,
 }
 
 // Get retrieves a Node by name from the indexer, returning a ErrNodeUnmanaged error if the node is unmanaged.
-func (l *GCEFilteringNodeLister) Get(name string) (*v1.Node, error) {
+func (l *GKEFilteringNodeLister) Get(name string) (*v1.Node, error) {
 	node, err := l.NodeLister.Get(name)
 	if err != nil {
 		return nil, err
 	}
 	if IsUnmanagedNode(node) {
-		return nil, &ErrNodeUnmanaged{Name: name}
+		return nil, &ErrNodeUnmanagedByGKE{Name: name}
 	}
 	return node, nil
 }
 
-// ErrNodeUnmanaged is returned when a node is found but marked as unmanaged.
-type ErrNodeUnmanaged struct {
+// ErrNodeUnmanagedByGKE is returned when a node is found but marked as unmanaged.
+type ErrNodeUnmanagedByGKE struct {
 	Name string
 }
 
-func (e *ErrNodeUnmanaged) Error() string {
-	return fmt.Sprintf("node %q is unmanaged", e.Name)
+func (e *ErrNodeUnmanagedByGKE) Error() string {
+	return fmt.Sprintf("node %q is unmanaged by GKE", e.Name)
 }
 
 // Status allows this error to be recognized by apierrors.IsNotFound()
 // so that standard controllers ignore it instead of retrying forever.
-func (e *ErrNodeUnmanaged) Status() metav1.Status {
+func (e *ErrNodeUnmanagedByGKE) Status() metav1.Status {
 	return metav1.Status{
 		Reason:  metav1.StatusReasonNotFound,
 		Message: e.Error(),
@@ -156,7 +156,7 @@ func IsUnmanagedNodeError(err error) bool {
 	if err == nil {
 		return false
 	}
-	_, ok := err.(*ErrNodeUnmanaged)
+	_, ok := err.(*ErrNodeUnmanagedByGKE)
 	return ok
 }
 

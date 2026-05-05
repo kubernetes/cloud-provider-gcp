@@ -106,7 +106,7 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 		"node-controller": func(cfg *gketenantcontrollers.ControllerConfig) error {
 			klog.Infof("Creating OSS Cloud Node Controller for %s...", cfg.ProviderConfig.Name)
 			// Wrap the informer to filter nodes
-			filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
+			filteringInformer := &utilnode.GKEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
 			nodeController, err := node.NewCloudNodeController(
 				filteringInformer,
 				cfg.KubeClient,
@@ -137,7 +137,7 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 			}
 
 			// Wrap the informer to filter nodes
-			filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
+			filteringInformer := &utilnode.GKEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
 
 			_, started, err := nodeipam.StartNodeIpamController(
 				cfg.Context,
@@ -179,7 +179,7 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 			klog.Infof("Creating Node Lifecycle Controller for %s...", cfg.ProviderConfig.Name)
 			nodeMonitorPeriod := mgrCfg.completedConfig.ComponentConfig.KubeCloudShared.NodeMonitorPeriod.Duration
 			// Wrap the informer to filter nodes
-			filteringInformer := &utilnode.GCEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
+			filteringInformer := &utilnode.GKEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
 			lifecycleController, err := nodelifecycle.NewCloudNodeLifecycleController(
 				filteringInformer,
 				cfg.KubeClient,
