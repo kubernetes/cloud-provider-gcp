@@ -20,6 +20,7 @@ import (
 	"k8s.io/cloud-provider-gcp/pkg/controller/gketenantcontrollers"
 	"k8s.io/cloud-provider-gcp/pkg/controller/gketenantcontrollers/utils"
 	nodeipamconfig "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/config"
+	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider/app"
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	controllermanagerapp "k8s.io/controller-manager/app"
@@ -104,8 +105,10 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 	controllers := map[string]gketenantcontrollers.ControllerStartFunc{
 		"node-controller": func(cfg *gketenantcontrollers.ControllerConfig) error {
 			klog.Infof("Creating OSS Cloud Node Controller for %s...", cfg.ProviderConfig.Name)
+			// Wrap the informer to filter nodes
+			filteringInformer := &utilnode.GKEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
 			nodeController, err := node.NewCloudNodeController(
-				cfg.NodeInformer,
+				filteringInformer,
 				cfg.KubeClient,
 				cfg.Cloud,
 				mgrCfg.completedConfig.ComponentConfig.NodeStatusUpdateFrequency.Duration,
@@ -132,9 +135,12 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 				tenantNodeIPAMConfig.EnableMultiSubnetCluster = false
 			}
 
+			// Wrap the informer to filter nodes
+			filteringInformer := &utilnode.GKEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
+
 			_, started, err := nodeipam.StartNodeIpamController(
 				cfg.Context,
-				cfg.NodeInformer,
+				filteringInformer,
 				cfg.KubeClient,
 				cfg.Cloud,
 				cidrs,
@@ -171,8 +177,10 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 		"node-lifecycle-controller": func(cfg *gketenantcontrollers.ControllerConfig) error {
 			klog.Infof("Creating Node Lifecycle Controller for %s...", cfg.ProviderConfig.Name)
 			nodeMonitorPeriod := mgrCfg.completedConfig.ComponentConfig.KubeCloudShared.NodeMonitorPeriod.Duration
+			// Wrap the informer to filter nodes
+			filteringInformer := &utilnode.GKEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
 			lifecycleController, err := nodelifecycle.NewCloudNodeLifecycleController(
-				cfg.NodeInformer,
+				filteringInformer,
 				cfg.KubeClient,
 				cfg.Cloud,
 				nodeMonitorPeriod,
