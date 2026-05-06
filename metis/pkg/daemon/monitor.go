@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
@@ -57,7 +58,6 @@ type Monitor struct {
 	logger                  logr.Logger
 	lowUtilizationTimers    map[string]time.Time
 	GetPendingRequestsCount func(network string) int
-	cooldownPushbackInterval time.Duration
 	drainingExpiration       time.Duration
 	monitorInterval          time.Duration
 	lowUtilizationThreshold         float64
@@ -67,6 +67,7 @@ type Monitor struct {
 	// before we hold off on sending new outgoing requests for more CIDR blocks.
 	// This prevents requesting more capacity when we have many IPs about to become available.
 	cooldownPushbackThreshold       int
+	cooldownPushbackInterval time.Duration
 	sustainedLowUtilizationDuration time.Duration
 }
 
@@ -145,37 +146,52 @@ func (m *Monitor) Run(ctx context.Context, workers int) {
 		}
 	}, m.monitorInterval)
 
-	// Periodic expired draining blocks handler
-	go wait.UntilWithContext(ctx, func(ctx context.Context) {
-		networks, err := m.store.GetAllNetworks(ctx)
-		if err != nil {
-			m.logger.Error(err, "failed to get networks for expired draining blocks check")
-			return
-		}
-		for _, network := range networks {
-			info, err := m.getUtilizationInfo(ctx, network)
-			if err != nil {
-				m.logger.Error(err, "failed to get utilization info", "network", network)
-				continue
-			}
-			updated, err := m.handleExpiredDrainingBlocks(ctx, network, info.NncCopy, info.CurrentAllocation)
-			if err != nil {
-				m.logger.Error(err, "failed to handle expired draining blocks", "network", network)
-				continue
-			}
-			if updated {
-				if err := m.patchNNC(ctx, info); err != nil {
-					m.logger.Error(err, "failed to patch NNC for expired draining blocks", "network", network)
-				}
-			}
-		}
-	}, 1*time.Minute)
+	// Periodic expired draining blocks handler.
+	// This runs directly instead of using the workqueue because it is a lower-priority
+	// cleanup operation. Putting it in the queue could delay the processing of higher-priority
+	// items (like on-demand scaling) when the queue is backed up, as our queue does not
+	// support priorities.
+	go wait.UntilWithContext(ctx, m.processExpiredDrainingBlocks, m.monitorInterval)
 
 	for i := 0; i < workers; i++ {
 		go wait.UntilWithContext(ctx, m.runWorker, time.Second)
 	}
 
 	<-ctx.Done()
+}
+
+func (m *Monitor) processExpiredDrainingBlocks(ctx context.Context) {
+	networks, err := m.store.GetAllNetworks(ctx)
+	if err != nil {
+		m.logger.Error(err, "failed to get networks for expired draining blocks check")
+		return
+	}
+	for _, network := range networks {
+		nnc, err := m.getNodeNetworkConfig(ctx)
+		if err != nil {
+			m.logger.Error(err, "failed to get NodeNetworkConfig", "network", network)
+			continue
+		}
+		nncCopy := nnc.DeepCopy()
+		var currentAllocation *nncv1.Allocation
+		for i := range nncCopy.Spec.Allocations {
+			if nncCopy.Spec.Allocations[i].Network == network {
+				currentAllocation = &nncCopy.Spec.Allocations[i]
+				break
+			}
+		}
+
+		updated, err := m.handleExpiredDrainingBlocks(ctx, network, nncCopy, currentAllocation)
+		if err != nil {
+			m.logger.Error(err, "failed to handle expired draining blocks", "network", network)
+			continue
+		}
+		if updated {
+			if err := m.patchNNC(ctx, nncCopy); err != nil {
+				m.logger.Error(err, "failed to patch NNC for expired draining blocks", "network", network)
+			}
+		}
+	}
 }
 
 func (m *Monitor) runWorker(ctx context.Context) {
@@ -225,30 +241,24 @@ func (m *Monitor) syncNetwork(ctx context.Context, network string) error {
 		return nil
 	}
 
-	updated := false
-	if info.Utilization > m.highUtilizationThreshold {
-		updatedBranch, err := m.handleHighUtilization(network, info)
-		if err != nil {
-			return err
-		}
-		if updatedBranch {
-			updated = true
-		}
+	updated, err := m.maybeScaleUp(network, info)
+	if err != nil {
+		return err
 	}
 
 	m.maybeDrainExcessive(ctx, network, info)
 
 	if updated {
-		return m.patchNNC(ctx, info)
+		return m.patchNNC(ctx, info.NncCopy)
 	}
 	return nil
 }
 
-func (m *Monitor) patchNNC(ctx context.Context, info *UtilizationInfo) error {
+func (m *Monitor) patchNNC(ctx context.Context, nncCopy *nncv1.NodeNetworkConfig) error {
 	patchData := map[string]interface{}{
 		"spec": map[string]interface{}{
-			"allocations":     info.NncCopy.Spec.Allocations,
-			"releasableCIDRs": info.NncCopy.Spec.ReleasableCIDRs,
+			"allocations":     nncCopy.Spec.Allocations,
+			"releasableCIDRs": nncCopy.Spec.ReleasableCIDRs,
 		},
 	}
 	patchBytes, err := json.Marshal(patchData)
@@ -260,7 +270,7 @@ func (m *Monitor) patchNNC(ctx context.Context, info *UtilizationInfo) error {
 	if err != nil {
 		return fmt.Errorf("failed to patch NodeNetworkConfig: %w", err)
 	}
-	m.logger.Info("Successfully patched NodeNetworkConfig", "allocations", info.NncCopy.Spec.Allocations, "releasableCIDRs", info.NncCopy.Spec.ReleasableCIDRs)
+	m.logger.Info("Successfully patched NodeNetworkConfig", "allocations", nncCopy.Spec.Allocations, "releasableCIDRs", nncCopy.Spec.ReleasableCIDRs)
 	return nil
 }
 
@@ -280,13 +290,16 @@ type UtilizationInfo struct {
 	Usage                  store.NetworkIPUsage
 	PendingRequests        int
 	InitialIPs            int
-	TargetPods             int
-	CurrentAllocation      *nncv1.Allocation
 	NncCopy                *nncv1.NodeNetworkConfig
 	TotalRequestedCapacity int
 }
 
 func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*UtilizationInfo, error) {
+	// GetIPUsageByNetwork returns IP usage details including allocated and cooldown counts,
+	// while ignoring CIDR blocks that are marked as Deleting.
+	// Note that this includes CIDR blocks in Draining status in both used and total counts.
+	// This ensures that processing prefetch (dynamic allocation) is not interfered with
+	// (triggered unnecessarily) while we are trying to remove excessive capacity by draining blocks.
 	usage, err := m.store.GetIPUsageByNetwork(ctx, network)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query IP usage: %w", err)
@@ -298,7 +311,7 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*Util
 	}
 
 	nncCopy := nnc.DeepCopy()
-	usedIPs := usage.Allocated + usage.Cooldown
+	usedIPs := usage.Allocated // Only allocated, not in cooldown
 
 	initialIPs, err := m.store.GetInitialIPCount(ctx, network)
 	if err != nil {
@@ -314,30 +327,17 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*Util
 		pendingRequests = m.GetPendingRequestsCount(network)
 	}
 
-	targetPods := 0
-	var currentAllocation *nncv1.Allocation
-	for i := range nncCopy.Spec.Allocations {
-		if nncCopy.Spec.Allocations[i].Network == network {
-			currentAllocation = &nncCopy.Spec.Allocations[i]
-			targetPods = int(currentAllocation.Pods)
-			break
-		}
-	}
+	utilization := m.calculateUtilization(usedIPs, pendingRequests, usage.Total)
 
-	totalRequestedCapacity := initialIPs + targetPods
-	utilization := m.calculateUtilization(usedIPs, pendingRequests, totalRequestedCapacity)
-
-	m.logger.Info("Calculated utilization", "network", network, "used", usedIPs, "pending", pendingRequests, "total", usage.Total, "totalRequestedCapacity", totalRequestedCapacity, "utilization", utilization)
+	m.logger.Info("Calculated utilization", "network", network, "used", usedIPs, "pending", pendingRequests, "total", usage.Total, "utilization", utilization)
 
 	return &UtilizationInfo{
 		Utilization:            utilization,
 		Usage:                  usage,
 		PendingRequests:        pendingRequests,
 		InitialIPs:            initialIPs,
-		TargetPods:             targetPods,
-		CurrentAllocation:      currentAllocation,
 		NncCopy:                nncCopy,
-		TotalRequestedCapacity: totalRequestedCapacity,
+		TotalRequestedCapacity: usage.Total,
 	}, nil
 }
 
@@ -352,43 +352,69 @@ func (m *Monitor) getNodeNetworkConfig(ctx context.Context) (*nncv1.NodeNetworkC
 	return nil, fmt.Errorf("no client available to fetch NodeNetworkConfig")
 }
 
-func (m *Monitor) handleHighUtilization(network string, info *UtilizationInfo) (bool, error) {
-	usedIPs := info.Usage.Allocated + info.Usage.Cooldown
+func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) (bool, error) {
+	usedIPs := info.Usage.Allocated
+	pendingRequests := info.PendingRequests
+	initialIPs := info.InitialIPs
+	localTotal := info.Usage.Total
+
+	// TODO: In a burst of release immediately after dynamic allocation is triggered,
+	// there may never be new CIDRs to wake up the blocking requests from the daemon server.
+	// So we need to callback onCIDR when we check there are enough available IPs.
 	if info.Usage.Cooldown > m.cooldownPushbackThreshold {
 		m.logger.Info("Too many IPs in cooldown, holding on sending outgoing requests", "network", network, "cooldownCount", info.Usage.Cooldown)
 		m.queue.AddAfter(network, m.cooldownPushbackInterval)
 		return false, nil
 	}
 
-	m.logger.Info(fmt.Sprintf("Utilization exceeds %d%%, triggering dynamic allocation", int(m.highUtilizationThreshold*100)), "network", network)
-
-	newTotalCapacity := int(float64(usedIPs+info.PendingRequests)/m.targetUtilizationAfterScaleUp) + 1
-	newTargetPods := newTotalCapacity - info.InitialIPs
-	if newTargetPods < 0 {
-		newTargetPods = 0
+	var currentAllocation *nncv1.Allocation
+	for i := range info.NncCopy.Spec.Allocations {
+		if info.NncCopy.Spec.Allocations[i].Network == network {
+			currentAllocation = &info.NncCopy.Spec.Allocations[i]
+			break
+		}
 	}
 
-	if newTargetPods <= info.TargetPods {
-		m.logger.Info("Calculated new target pods is less than or equal to current target pods, skipping scale up", "network", network, "currentPods", info.TargetPods, "newPods", newTargetPods)
+	// Base line is total local IPs + pending requests
+	baseLine := localTotal + pendingRequests
+	podsWithBuffer := int(math.Ceil(float64(usedIPs+pendingRequests)/m.targetUtilizationAfterScaleUp)) - initialIPs
+	podsWithBuffer = max(0, podsWithBuffer)
+
+	// Ensure CRD pods + initial IPs is strictly larger than base line
+	minPods := baseLine - initialIPs
+	minPods = max(0, minPods)
+
+	newPods := max(podsWithBuffer, minPods)
+
+	currentPods := 0
+	if currentAllocation != nil {
+		currentPods = int(currentAllocation.Pods)
+	}
+
+	if newPods <= currentPods {
+		// No need to scale up
 		return false, nil
 	}
 
-	m.logger.Info("Scaling up", "network", network, "currentPods", info.TargetPods, "newPods", newTargetPods)
+	m.logger.Info("Scaling up", "network", network, "currentPods", currentPods, "newPods", newPods)
 
-	if info.CurrentAllocation != nil {
-		info.CurrentAllocation.Pods = int32(newTargetPods)
+	if currentAllocation != nil {
+		currentAllocation.Pods = int32(newPods)
 	} else {
 		info.NncCopy.Spec.Allocations = append(info.NncCopy.Spec.Allocations, nncv1.Allocation{
 			Network: network,
-			Pods:    int32(newTargetPods),
+			Pods:    int32(newPods),
 		})
 	}
 
 	return true, nil
 }
 
-func (m *Monitor) handleLowUtilization(ctx context.Context, network string, info *UtilizationInfo) (bool, error) {
-	usedIPs := info.Usage.Allocated + info.Usage.Cooldown
+// Note that utilization stats and store CIDR blocks might already be changed by the time we attempt to drain.
+// It is possible to drain a newly added block (less likely to happen due to small window), or drained more
+// or less blocks than strictly necessary, and that is still fine. The system will self-correct in subsequent cycles.
+func (m *Monitor) drainExcessive(ctx context.Context, network string, info *UtilizationInfo) (bool, error) {
+	usedIPs := info.Usage.Allocated // Only allocated, not in cooldown
 	m.logger.Info(fmt.Sprintf("Utilization falls below %d%% for 8h, evaluating CIDR blocks to drain", int(m.lowUtilizationThreshold*100)), "network", network)
 
 	readyBlocks, err := m.store.GetReadyCIDRBlocksSorted(ctx, network)
@@ -402,9 +428,9 @@ func (m *Monitor) handleLowUtilization(ctx context.Context, network string, info
 	}
 
 	blocksToMark := readyBlocks[:len(readyBlocks)-1]
-	totalRequestedCapacity := info.InitialIPs + info.TargetPods
+	totalPods := info.Usage.Total + info.PendingRequests
 	simulatedUsedIPs := usedIPs + info.PendingRequests
-	targetUsedIPs := int(m.lowUtilizationThreshold * float64(totalRequestedCapacity))
+	targetUsedIPs := int(m.lowUtilizationThreshold * float64(totalPods))
 
 	updated := false
 	for _, block := range blocksToMark {
@@ -442,7 +468,7 @@ func (m *Monitor) maybeDrainExcessive(ctx context.Context, network string, info 
 		}
 
 		if time.Since(m.lowUtilizationTimers[network]) > m.sustainedLowUtilizationDuration {
-			drained, err := m.handleLowUtilization(ctx, network, info)
+			drained, err := m.drainExcessive(ctx, network, info)
 			if err != nil {
 				m.logger.Error(err, "Failed to handle low utilization", "network", network)
 				return false

@@ -29,12 +29,12 @@ import (
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
+
 	adaptiveipam "k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg/store"
 )
 
-func TestMonitor_DynamicAllocation_HighUtilization(t *testing.T) {
+func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 	logger := logr.Discard()
 	network := "test-network"
 	nodeName := "test-node"
@@ -76,6 +76,12 @@ func TestMonitor_DynamicAllocation_HighUtilization(t *testing.T) {
 				},
 			},
 			expectedPatchCalled: true,
+			// Expected pods calculation:
+			// used = 42 (allocations) + 3 (reserved) = 45.
+			// pending = 10, initial = 16, total = 48.
+			// desired = ceil((45+10)/0.75) - 16 = ceil(73.33) - 16 = 58.
+			// min = 48 + 10 - 16 = 42.
+			// max(58, 42) = 58.
 			expectedPatchedPods: 58,
 		},
 		{
@@ -110,10 +116,20 @@ func TestMonitor_DynamicAllocation_HighUtilization(t *testing.T) {
 					Allocations: []nncv1.Allocation{{Network: network, Pods: 64}},
 				},
 				Status: nncv1.NodeNetworkConfigStatus{
-					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.2.0/27", Network: network}},
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.2.0/27", Network: network},
+						{CIDR: "10.0.3.0/27", Network: network},
+					},
 				},
 			},
-			expectedPatchCalled: false,
+			expectedPatchCalled: true,
+			// Expected pods calculation:
+			// used = 40 (allocations) + 3 (reserved) = 43.
+			// pending = 10, initial = 16, total = 80 (includes draining block).
+			// desired = ceil((43+10)/0.75) - 16 = ceil(70.66) - 16 = 55.
+			// min = 80 + 10 - 16 = 74.
+			// max(55, 74) = 74.
+			expectedPatchedPods: 74,
 		},
 		{
 			desc: "Cooldown pushback",
@@ -281,83 +297,169 @@ func TestMonitor_DynamicAllocation_HighUtilization(t *testing.T) {
 	}
 }
 
-func TestMonitor_DynamicAllocation_LowUtilization(t *testing.T) {
+func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_monitor_low_util_test.sqlite")
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer storeInstance.Close()
-
 	network := "test-network"
 	nodeName := "test-node"
 
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/28") // 16 IPs
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.2.0/27") // 32 IPs
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.3.0/27") // 32 IPs
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
-		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{
-				{
-					Network: network,
-					Pods:    50,
-				},
-			},
-		},
-	}
-
-	mockInterface := &mockNodeNetworkConfigInterface{
-		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
-			return mockNNC, nil
-		},
-	}
-	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
-	mockClient := &mockClientset{networkingV1: mockNetV1}
-
-	m := NewMonitor(MonitorConfig{
-		Logger:    logger,
-		NNCClient: mockClient,
-		Store:     storeInstance,
-		NodeName:  nodeName,
-	})
-
-	m.lowUtilizationTimers[network] = time.Now().Add(-9 * time.Hour)
-
-	err = m.syncNetwork(context.Background(), network)
-	if err != nil {
-		t.Fatalf("syncNetwork failed: %v", err)
-	}
-
-	readyBlocks, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network)
-	if err != nil {
-		t.Fatalf("GetReadyCIDRBlocksSorted failed: %v", err)
-	}
-
-	if len(readyBlocks) != 2 {
-		t.Errorf("Expected 2 ready blocks, got %d", len(readyBlocks))
-	}
-
-	for _, b := range readyBlocks {
-		if b.CIDR == "10.0.3.0/27" {
-			t.Errorf("Expected block %s to be Draining, but it is still Ready", b.CIDR)
+	tests := []struct {
+		desc            string
+		blocks          []struct {
+			cidr  string
+			drain bool
 		}
+		allocations     int
+		cooldowns       int
+		pendingRequests int
+		expectedReadyBlocks int
+	}{
+		{
+			desc: "All excessive blocks drained when utilization is very low",
+			blocks: []struct {
+				cidr  string
+				drain bool
+			}{
+				{"10.0.1.0/28", false}, // 16 IPs (initial)
+				{"10.0.2.0/27", false}, // 32 IPs
+				{"10.0.3.0/27", false}, // 32 IPs
+			},
+			allocations:     0,
+			pendingRequests: 0,
+			expectedReadyBlocks: 1, // Only initial block left
+		},
+		{
+			desc: "Initial block is never drained",
+			blocks: []struct {
+				cidr  string
+				drain bool
+			}{
+				{"10.0.1.0/28", false}, // 16 IPs (initial)
+			},
+			allocations:     0,
+			pendingRequests: 0,
+			expectedReadyBlocks: 1,
+		},
+		{
+			desc: "Cooldowns are not considered as allocated",
+			blocks: []struct {
+				cidr  string
+				drain bool
+			}{
+				{"10.0.1.0/28", false}, // 16 IPs (initial)
+				{"10.0.2.0/27", false}, // 32 IPs
+			},
+			allocations:     2,  // 2 allocated IPs (+3 reserved = 5 used)
+			cooldowns:       20, // 20 IPs in cooldown
+			pendingRequests: 0,
+			// Total = 48. Target = 24.
+			// Used = 5 (ignores cooldown).
+			// 5 < 24 -> Drains block 2!
+			// Leaving only initial block ready.
+			expectedReadyBlocks: 1,
+		},
+		{
+			desc: "No-op when utilization is high enough",
+			blocks: []struct {
+				cidr  string
+				drain bool
+			}{
+				{"10.0.1.0/28", false}, // 16 IPs (initial)
+				{"10.0.2.0/27", false}, // 32 IPs
+			},
+			allocations:     25, // 25 allocated IPs (+3 reserved = 28 used)
+			pendingRequests: 0,
+			// Total = 48. Target = 24.
+			// Used = 28 >= 24 -> No-op!
+			expectedReadyBlocks: 2,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			tempDir := t.TempDir()
+			dbPath := filepath.Join(tempDir, "metis_monitor_low_util_test.sqlite")
+			storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+			if err != nil {
+				t.Fatalf("Failed to create store: %v", err)
+			}
+			defer storeInstance.Close()
+
+			for _, b := range tc.blocks {
+				err = storeInstance.AddCIDR(context.Background(), network, b.cidr)
+				if err != nil {
+					t.Fatalf("Failed to add CIDR: %v", err)
+				}
+				if b.drain {
+					id, exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), b.cidr)
+					if err != nil {
+						t.Fatalf("GetCIDRBlockByCIDR failed: %v", err)
+					}
+					if !exists {
+						t.Fatalf("Failed to find CIDR block for %s in store", b.cidr)
+					}
+					err = storeInstance.DrainCIDRBlock(context.Background(), id)
+					if err != nil {
+						t.Fatalf("DrainCIDRBlock failed: %v", err)
+					}
+				}
+			}
+
+			for i := 0; i < tc.cooldowns; i++ {
+				containerID := fmt.Sprintf("cooldown-container-%d", i)
+				_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", containerID)
+				if err != nil {
+					t.Fatalf("Failed to allocate IP for cooldown: %v", err)
+				}
+				_, err = storeInstance.ReleaseIPByOwner(context.Background(), network, containerID, "eth0", 1*time.Hour)
+				if err != nil {
+					t.Fatalf("Failed to release IP for cooldown: %v", err)
+				}
+			}
+
+			for i := 0; i < tc.allocations; i++ {
+				_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
+				if err != nil {
+					t.Fatalf("Failed to allocate IP: %v", err)
+				}
+			}
+
+			mockNNC := &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec:       nncv1.NodeNetworkConfigSpec{},
+			}
+
+			mockInterface := &mockNodeNetworkConfigInterface{
+				getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+					return mockNNC, nil
+				},
+			}
+			mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
+			mockClient := &mockClientset{networkingV1: mockNetV1}
+
+			m := NewMonitor(MonitorConfig{
+				Logger:    logger,
+				NNCClient: mockClient,
+				Store:     storeInstance,
+				NodeName:  nodeName,
+				GetPendingRequestsCount: func(net string) int { return tc.pendingRequests },
+			})
+
+			m.lowUtilizationTimers[network] = time.Now().Add(-9 * time.Hour)
+
+			err = m.syncNetwork(context.Background(), network)
+			if err != nil {
+				t.Fatalf("syncNetwork failed: %v", err)
+			}
+
+			readyBlocks, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network)
+			if err != nil {
+				t.Fatalf("GetReadyCIDRBlocksSorted failed: %v", err)
+			}
+
+			if len(readyBlocks) != tc.expectedReadyBlocks {
+				t.Errorf("Expected %d ready blocks, got %d", tc.expectedReadyBlocks, len(readyBlocks))
+			}
+		})
 	}
 }
 
@@ -457,7 +559,6 @@ func TestMonitor_MaybeDrainExcessive(t *testing.T) {
 			info := &UtilizationInfo{
 				Utilization: tc.utilization,
 				InitialIPs:  tc.initialIPs,
-				TargetPods:  tc.targetPods,
 				Usage:       tc.usage,
 			}
 
@@ -479,126 +580,154 @@ func TestMonitor_MaybeDrainExcessive(t *testing.T) {
 	}
 }
 
-func TestMonitor_HandleExpiredDrainingBlocks(t *testing.T) {
-	logger := klog.Background()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_monitor_expired_test.sqlite")
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer storeInstance.Close()
-
+func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
+	logger := logr.Discard()
 	network := "test-network"
 	nodeName := "test-node"
 
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/28")
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.2.0/28")
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	readyBlocks, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network)
-	if err != nil || len(readyBlocks) < 2 {
-		t.Fatalf("Failed to get ready blocks: %v", err)
-	}
-
-	err = storeInstance.DrainCIDRBlock(context.Background(), readyBlocks[0].ID)
-	if err != nil {
-		t.Fatalf("DrainCIDRBlock failed: %v", err)
-	}
-
-	time.Sleep(1 * time.Second)
-
-	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
-		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{
-				{Network: network, Pods: 16},
+	tests := []struct {
+		desc                    string
+		setup                   func(t *testing.T, ctx context.Context, s *store.Store)
+		initialNNC             *nncv1.NodeNetworkConfig
+		expectedReleasableCIDRs []string
+		expectedPatchCount      int
+	}{
+		{
+			desc: "Draining block expires and is added to ReleasableCIDRs",
+			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
+				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
+				s.AddCIDR(ctx, network, "10.0.1.0/28")
+				id, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.1.0/28")
+				s.DrainCIDRBlock(ctx, id)
+				time.Sleep(1100 * time.Millisecond) // Wait for expiration (1s)
 			},
-		},
-		Status: nncv1.NodeNetworkConfigStatus{
-			PodCIDRs: []nncv1.PodCIDR{
-				{Id: "block-2", CIDR: "10.0.2.0/28", Network: network},
+			initialNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.1.0/28", Network: network}},
+				},
 			},
+			expectedReleasableCIDRs: []string{"10.0.1.0/28"},
+			expectedPatchCount:      1,
+		},
+		{
+			desc: "Deleting block in store but not in CRD is reconciled",
+			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
+				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
+				s.AddCIDR(ctx, network, "10.0.2.0/28")
+				id, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.2.0/28")
+				s.MarkCIDRBlockAsDeleting(ctx, id) // Mark as deleting directly
+				time.Sleep(100 * time.Millisecond) // Give DB a moment
+			},
+			initialNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.2.0/28", Network: network}},
+				},
+			},
+			expectedReleasableCIDRs: []string{"10.0.2.0/28"},
+			expectedPatchCount:      1,
+		},
+		{
+			desc: "Both expired draining and missed deleting blocks are handled",
+			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
+				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
+				// Expired draining
+				s.AddCIDR(ctx, network, "10.0.3.0/28")
+				id3, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.3.0/28")
+				s.DrainCIDRBlock(ctx, id3)
+				
+				// Missed deleting
+				s.AddCIDR(ctx, network, "10.0.4.0/28")
+				id4, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.4.0/28")
+				s.MarkCIDRBlockAsDeleting(ctx, id4)
+				
+				time.Sleep(1100 * time.Millisecond) // Wait for expiration
+			},
+			initialNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.3.0/28", Network: network},
+						{CIDR: "10.0.4.0/28", Network: network},
+					},
+				},
+			},
+			expectedReleasableCIDRs: []string{"10.0.3.0/28", "10.0.4.0/28"},
+			expectedPatchCount:      1,
 		},
 	}
 
-	var patchCount int
-	var patchErr error
-	var patchedData []byte
-
-	mockInterface := &mockNodeNetworkConfigInterface{
-		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
-			return mockNNC, nil
-		},
-		patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
-			patchCount++
-			patchedData = data
-			if patchErr != nil {
-				return nil, patchErr
-			}
-			var patch struct {
-				Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
-			}
-			json.Unmarshal(data, &patch)
-			mockNNC.Spec.ReleasableCIDRs = patch.Spec.ReleasableCIDRs
-			return mockNNC, nil
-		},
-	}
-
-	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
-	mockClient := &mockClientset{networkingV1: mockNetV1}
-
-	m := NewMonitor(MonitorConfig{
-		Logger:             logger,
-		NNCClient:          mockClient,
-		Store:              storeInstance,
-		NodeName:           nodeName,
-		DrainingExpiration: 1 * time.Second,
-	})
-
-	t.Run("Success scenario adds to ReleasableCIDRs", func(t *testing.T) {
-		patchCount = 0
-		patchErr = nil
-		mockNNC.Spec.ReleasableCIDRs = []nncv1.PodCIDR{}
-
-		info, err := m.getUtilizationInfo(context.Background(), network)
-		if err != nil {
-			t.Fatalf("getUtilizationInfo failed: %v", err)
-		}
-		updated, err := m.handleExpiredDrainingBlocks(context.Background(), network, info.NncCopy, info.CurrentAllocation)
-		if err != nil {
-			t.Fatalf("handleExpiredDrainingBlocks failed: %v", err)
-		}
-		if updated {
-			err = m.patchNNC(context.Background(), info)
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			tempDir := t.TempDir()
+			dbPath := filepath.Join(tempDir, "metis_monitor_expired_test.sqlite")
+			storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
 			if err != nil {
-				t.Fatalf("patchNNC failed: %v", err)
+				t.Fatalf("Failed to create store: %v", err)
 			}
-		}
+			defer storeInstance.Close()
 
-		if patchCount != 1 {
-			t.Errorf("Expected patch to be called once, got %d", patchCount)
-		}
+			tc.setup(t, context.Background(), storeInstance)
 
-		var patchData struct {
-			Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
-		}
-		json.Unmarshal(patchedData, &patchData)
+			var patchCount int
+			var patchedData []byte
+			var mu sync.Mutex
 
-		if len(patchData.Spec.ReleasableCIDRs) != 1 {
-			t.Errorf("Expected 1 releasable CIDR in patch, got %d", len(patchData.Spec.ReleasableCIDRs))
-		} else if patchData.Spec.ReleasableCIDRs[0].CIDR != "10.0.2.0/28" {
-			t.Errorf("Expected releasable CIDR 10.0.2.0/28, got %s", patchData.Spec.ReleasableCIDRs[0].CIDR)
-		}
-	})
+			mockInterface := &mockNodeNetworkConfigInterface{
+				getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+					return tc.initialNNC, nil
+				},
+				patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
+					mu.Lock()
+					defer mu.Unlock()
+					patchCount++
+					patchedData = data
+					return tc.initialNNC, nil
+				},
+			}
+			mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
+			mockClient := &mockClientset{networkingV1: mockNetV1}
+
+			m := NewMonitor(MonitorConfig{
+				Logger:             logger,
+				NNCClient:          mockClient,
+				Store:              storeInstance,
+				NodeName:           nodeName,
+				DrainingExpiration: 1 * time.Second,
+			})
+
+			m.processExpiredDrainingBlocks(context.Background())
+
+			if patchCount != tc.expectedPatchCount {
+				t.Errorf("Expected patch count %d, got %d", tc.expectedPatchCount, patchCount)
+			}
+
+			if tc.expectedPatchCount > 0 {
+				var patch struct {
+					Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
+				}
+				json.Unmarshal(patchedData, &patch)
+				
+				if len(patch.Spec.ReleasableCIDRs) != len(tc.expectedReleasableCIDRs) {
+					t.Errorf("Expected %d releasable CIDRs, got %d", len(tc.expectedReleasableCIDRs), len(patch.Spec.ReleasableCIDRs))
+				}
+				
+				for _, expected := range tc.expectedReleasableCIDRs {
+					found := false
+					for _, r := range patch.Spec.ReleasableCIDRs {
+						if r.CIDR == expected {
+							found = true
+							break
+						}
+					}
+					if !found {
+						t.Errorf("Expected CIDR %s to be in ReleasableCIDRs", expected)
+					}
+				}
+			}
+		})
+	}
 }
 
 func TestMonitor_ConcurrentAllocationAndDraining(t *testing.T) {
