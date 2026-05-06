@@ -25,27 +25,25 @@ import (
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	"github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions"
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"github.com/go-logr/logr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/pkg"
-	"k8s.io/metis/pkg/store"
-)
 
-const (
-	DefaultMonitorInterval = 2 * time.Second
-	DefaultReleaseCooldown = 1 * time.Minute
+	"k8s.io/metis/pkg/store"
 )
 
 // Config contains the configuration parameters for the daemon.
 type Config struct {
-	MonitorInterval time.Duration
-	ReleaseCooldown time.Duration
 	DBPath          string
 	SocketPath      string
+	MonitorInterval time.Duration
+	ReleaseCooldown time.Duration
+	DrainingExpiration       time.Duration
+	SustainedLowUtilizationDuration time.Duration
 }
 
 // Daemon represents the metis daemon process.
@@ -112,21 +110,23 @@ func (d *Daemon) Run(ctx context.Context) error {
 		nncInformerFactory := externalversions.NewSharedInformerFactory(nncClient, 0)
 		nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
 
-		controller := NewDaemonController(DaemonControllerConfig{
-			Name:                    "metis-daemon-controller",
-			Logger:                  logger,
-			NNCClient:               nncClient,
-			NodeName:                nodeName,
-			NNCInformer:             nncInformer,
-			Store:                   storeInstance,
-			MonitorInterval:         d.Config.MonitorInterval,
-			OnCIDRAdded:             server.onCIDRAdded,
-			GetPendingRequestsCount: server.getPendingRequestsCount,
+		watcher := NewWatcher(logger, nncClient, nncInformer, storeInstance, nodeName, server.onCIDRAdded)
+		monitorInstance := NewMonitor(MonitorConfig{
+			Logger:                          logger,
+			NNCClient:                       nncClient,
+			Store:                           storeInstance,
+			NodeName:                        nodeName,
+			GetPendingRequestsCount:         server.getPendingRequestsCount,
+			CooldownPushbackInterval:        DefaultCooldownPushbackInterval,
+			DrainingExpiration:              d.Config.DrainingExpiration,
+			MonitorInterval:                 d.Config.MonitorInterval,
+			SustainedLowUtilizationDuration: d.Config.SustainedLowUtilizationDuration,
 		})
 
-		server.daemonController = controller
+		server.monitor = monitorInstance
 
-		go controller.Run(ctx, DefaultWorkers)
+		go watcher.Run(ctx, defaultWatcherWorkers)
+		go monitorInstance.Run(ctx, defaultMonitorWorkers)
 		nncInformerFactory.Start(ctx.Done())
 	}
 

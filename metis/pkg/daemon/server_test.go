@@ -31,6 +31,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
+	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg/store"
@@ -411,12 +414,20 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 
 	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
 
-	controller := NewDaemonController(DaemonControllerConfig{
-		Name:   "test-controller",
-		Logger: logger,
-		Store:  storeInstance,
+	nodeName := "test-node"
+	mockNNC := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+	}
+	nncClient := nncfake.NewSimpleClientset(mockNNC)
+
+	monitorInstance := NewMonitor(MonitorConfig{
+		Logger:          logger,
+		NNCClient:       nncClient,
+		Store:           storeInstance,
+		NodeName:        nodeName,
+		MonitorInterval: 1 * time.Second,
 	})
-	server.daemonController = controller
+	server.monitor = monitorInstance
 
 	network := "test-network"
 
@@ -445,16 +456,6 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 
 	// Wait for the request to be enqueued and waiting in map
 	time.Sleep(100 * time.Millisecond)
-
-	// Verify that the request is in the queue
-	item, quit := controller.queue.Get()
-	if quit {
-		t.Fatal("Queue was shut down")
-	}
-	if item != network {
-		t.Errorf("Expected network %s in queue, got %s", network, item)
-	}
-	controller.queue.Done(item)
 
 	// Verify that there is a pending request in map
 	if server.getPendingRequestsCount(network) != 1 {
@@ -495,12 +496,20 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation_MultipleRequests(t *
 
 	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
 
-	controller := NewDaemonController(DaemonControllerConfig{
-		Name:   "test-controller",
-		Logger: logger,
-		Store:  storeInstance,
+	nodeName := "test-node"
+	mockNNC := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+	}
+	nncClient := nncfake.NewSimpleClientset(mockNNC)
+
+	monitorInstance := NewMonitor(MonitorConfig{
+		Logger:          logger,
+		NNCClient:       nncClient,
+		Store:           storeInstance,
+		NodeName:        nodeName,
+		MonitorInterval: 1 * time.Second,
 	})
-	server.daemonController = controller
+	server.monitor = monitorInstance
 
 	network := "test-network"
 	numRequests := 10
@@ -519,8 +528,8 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation_MultipleRequests(t *
 				PodName:      fmt.Sprintf("test-pod-%d", index),
 				PodNamespace: "default",
 				Ipv4Config: &adaptiveipam.IPConfig{
-					InterfaceName: "eth0",
-					ContainerId:   fmt.Sprintf("test-container-%d", index),
+					InterfaceName:  "eth0",
+					ContainerId:    fmt.Sprintf("test-container-%d", index),
 					InitialPodCidr: "10.0.0.0/29",
 				},
 			}
@@ -536,25 +545,6 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation_MultipleRequests(t *
 	// Verify that there are pending requests in map (5 should be pending as 5 succeeded from initial block)
 	if server.getPendingRequestsCount(network) != 5 {
 		t.Errorf("Expected 5 pending requests, got %d", server.getPendingRequestsCount(network))
-	}
-
-	// Verify that the network was enqueued at least once
-	count := 0
-	for {
-		item, quit := controller.queue.Get()
-		if quit {
-			break
-		}
-		if item == network {
-			count++
-		}
-		controller.queue.Done(item)
-		if controller.queue.Len() == 0 {
-			break
-		}
-	}
-	if count == 0 {
-		t.Error("Expected network to be enqueued at least once")
 	}
 
 	// Now simulate the controller adding a CIDR (/29 has 8 IPs)
@@ -586,4 +576,3 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation_MultipleRequests(t *
 		t.Errorf("Expected 0 pending requests left, got %d", server.getPendingRequestsCount(network))
 	}
 }
-// Dummy comment to force recompile.

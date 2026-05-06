@@ -39,6 +39,8 @@ func (o *DaemonOptions) AddFlags() cliflag.NamedFlagSets {
 	fs.DurationVar(&o.ReleaseCooldown, "release-cooldown", daemon.DefaultReleaseCooldown, "Release cooldown duration (e.g., 5m)")
 	fs.StringVar(&o.DBPath, "db-path", pkg.DefaultDBPath, "Path to the SQLite database file")
 	fs.StringVar(&o.SocketPath, "socket-path", pkg.DefaultSockPath, "Path to the Unix domain socket")
+	fs.DurationVar(&o.DrainingExpiration, "draining-expiration", daemon.DefaultDrainingExpiration, "Draining expiration duration (e.g., 5h)")
+	fs.DurationVar(&o.SustainedLowUtilizationDuration, "sustained-low-utilization-duration", daemon.DefaultSustainedLowUtilizationDuration, "Sustained low utilization duration (e.g., 8h)")
 
 	return fss
 }
@@ -53,6 +55,8 @@ func (o *DaemonOptions) ApplyTo(cfg *daemon.Config) error {
 	cfg.ReleaseCooldown = o.ReleaseCooldown
 	cfg.DBPath = o.DBPath
 	cfg.SocketPath = o.SocketPath
+	cfg.DrainingExpiration = o.DrainingExpiration
+	cfg.SustainedLowUtilizationDuration = o.SustainedLowUtilizationDuration
 
 	return nil
 }

@@ -35,7 +35,6 @@ import (
 	"k8s.io/metis/pkg/store"
 )
 
-// TODO: Measure the store allocation query time and update the interval appropriately.
 const defaultPollInterval = 50 * time.Millisecond
 
 type cniClient struct {
@@ -55,7 +54,7 @@ type adaptiveIpamServer struct {
 	logger          logr.Logger
 	requestsMap      map[cniClient]chan struct{}
 	requestsMu       sync.RWMutex
-	daemonController *DaemonController
+	monitor          *Monitor
 }
 
 func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socketPath string, releaseCooldown time.Duration, busyTimeout time.Duration) *adaptiveIpamServer {
@@ -171,12 +170,12 @@ func (s *adaptiveIpamServer) handleDynamicAllocation(ctx context.Context, req *a
 		podNamespace: req.PodNamespace,
 	}
 
-	if s.daemonController == nil {
-		s.logger.V(2).Info("No daemon controller available, failing fast on exhaustion", "network", req.Network)
+	if s.monitor == nil {
+		s.logger.V(2).Info("No monitor available, failing fast on exhaustion", "network", req.Network)
 		return fmt.Errorf("failed to allocate ipv4 for pod %s/%s: %w", req.PodNamespace, req.PodName, store.ErrNoAvailableIPs)
 	}
 
-	s.logger.Info("Local store IP exhaustion detected, waiting for controller to add IPs", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace, "error", store.ErrNoAvailableIPs)
+	s.logger.Info("Local store IP exhaustion detected, requesting scale up", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace, "error", store.ErrNoAvailableIPs)
 
 	s.requestsMu.Lock()
 	ch, ok := s.requestsMap[clientKey]
@@ -188,7 +187,7 @@ func (s *adaptiveIpamServer) handleDynamicAllocation(ctx context.Context, req *a
 
 	if !ok {
 		// Enqueue the request to trigger the controller sync for dynamic allocation.
-		s.daemonController.Enqueue(req.Network)
+		s.monitor.Enqueue(req.Network)
 	}
 
 	select {
