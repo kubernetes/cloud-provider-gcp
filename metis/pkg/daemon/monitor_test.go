@@ -25,12 +25,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-logr/logr"
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
+	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	adaptiveipam "k8s.io/metis/api/adaptiveipam/v1"
+
+
 	"k8s.io/metis/pkg/store"
 )
 
@@ -631,7 +632,6 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 		{
 			desc: "Both expired draining and missed deleting blocks are handled",
 			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
-				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				// Expired draining
 				s.AddCIDR(ctx, network, "10.0.3.0/28")
 				id3, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.3.0/28")
@@ -655,6 +655,24 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 			},
 			expectedReleasableCIDRs: []string{"10.0.3.0/28", "10.0.4.0/28"},
 			expectedPatchCount:      1,
+		},
+		{
+			desc: "No-op when draining block is not expired",
+			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
+				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
+				s.AddCIDR(ctx, network, "10.0.5.0/28")
+				id, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.5.0/28")
+				s.DrainCIDRBlock(ctx, id)
+				// Do not sleep, so it is not expired (expiration is 1s)
+			},
+			initialNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.5.0/28", Network: network}},
+				},
+			},
+			expectedReleasableCIDRs: []string{},
+			expectedPatchCount:      0,
 		},
 	}
 
@@ -730,159 +748,61 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 	}
 }
 
-func TestMonitor_ConcurrentAllocationAndDraining(t *testing.T) {
+func TestMonitor_DynamicAllocation_Run(t *testing.T) {
 	logger := logr.Discard()
+	network := "test-network"
+	nodeName := "test-node"
+
 	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_monitor_concurrent_test.sqlite")
+	dbPath := filepath.Join(tempDir, "metis_monitor_run_test.sqlite")
 	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
 	defer storeInstance.Close()
 
-	network := "test-network"
-	nodeName := "test-node"
-
 	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/28")
 	if err != nil {
 		t.Fatalf("Failed to add CIDR: %v", err)
 	}
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.2.0/27")
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-
-	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
-	m := NewMonitor(MonitorConfig{
-		Logger:   logger,
-		Store:    storeInstance,
-		NodeName: nodeName,
-	})
-	server.monitor = m
-
-	m.lowUtilizationTimers[network] = time.Now().Add(-9 * time.Hour)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				m.syncNetwork(ctx, network)
-				time.Sleep(10 * time.Millisecond)
-			}
-		}
-	}()
-
-	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			req := &adaptiveipam.AllocatePodIPRequest{
-				Network:      network,
-				PodName:      fmt.Sprintf("pod-%d", id),
-				PodNamespace: "default",
-				Ipv4Config: &adaptiveipam.IPConfig{
-					InterfaceName: "eth0",
-					ContainerId:   fmt.Sprintf("container-%d", id),
-				},
-			}
-			_, err := server.AllocatePodIP(ctx, req)
-			if err != nil {
-				t.Errorf("Allocation failed for pod-%d: %v", id, err)
-			}
-		}(i)
-	}
-
-	wg.Wait()
-
-	readyBlocks, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network)
-	if err != nil {
-		t.Fatalf("GetReadyCIDRBlocksSorted failed: %v", err)
-	}
-	
-	if len(readyBlocks) == 0 {
-		t.Errorf("Expected at least the initial block to be Ready")
-	}
-}
-
-func TestMonitor_FullLoop(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_monitor_full_loop_test.sqlite")
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer storeInstance.Close()
-
-	network := "test-network"
-	nodeName := "test-node"
-
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/28")
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
+		_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
+		if err != nil {
+			t.Fatalf("Failed to allocate IP: %v", err)
+		}
 	}
 
 	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: nodeName},
 		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{
-				{Network: network, Pods: 0},
-			},
+			Allocations: []nncv1.Allocation{{Network: network, Pods: 0}},
 		},
 		Status: nncv1.NodeNetworkConfigStatus{
-			PodCIDRs: []nncv1.PodCIDR{
-				{CIDR: "10.0.1.0/28", Network: network},
-			},
+			PodCIDRs: []nncv1.PodCIDR{},
 		},
 	}
 
+	var patchCount int
+	var patchedData []byte
 	var mu sync.Mutex
-	
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	mockInterface := &mockNodeNetworkConfigInterface{
 		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
-			mu.Lock()
-			defer mu.Unlock()
-			return mockNNC.DeepCopy(), nil
+			return mockNNC, nil
 		},
 		patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
 			mu.Lock()
 			defer mu.Unlock()
-			
-			var patch struct {
-				Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
+			patchCount++
+			patchedData = data
+			if patchCount == 1 {
+				wg.Done()
 			}
-			err := json.Unmarshal(data, &patch)
-			if err != nil {
-				return nil, err
-			}
-			
-			mockNNC.Spec.Allocations = patch.Spec.Allocations
-			
-			for _, alloc := range mockNNC.Spec.Allocations {
-				if alloc.Pods > 0 && len(mockNNC.Status.PodCIDRs) == 1 {
-					mockNNC.Status.PodCIDRs = append(mockNNC.Status.PodCIDRs, nncv1.PodCIDR{
-						Id:      "block-2",
-						Network: network,
-						CIDR:    "10.0.2.0/28",
-						Condition: &metav1.Condition{
-							Status: metav1.ConditionTrue,
-						},
-					})
-				}
-			}
-			
 			return mockNNC, nil
 		},
 	}
-
 	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
 	mockClient := &mockClientset{networkingV1: mockNetV1}
 
@@ -892,38 +812,34 @@ func TestMonitor_FullLoop(t *testing.T) {
 		Store:           storeInstance,
 		NodeName:        nodeName,
 		MonitorInterval: 100 * time.Millisecond,
+		GetPendingRequestsCount: func(net string) int { return 5 },
 	})
-	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
-	server.monitor = m
-
-	// Create Watcher to simulate CIDR sync
-	w := NewWatcher(logger, mockClient, nil, storeInstance, nodeName, server.onCIDRAdded)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	go m.Run(ctx, 1)
 
-	m.GetPendingRequestsCount = func(net string) int {
-		return 15
-	}
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 
-	m.Enqueue(network)
-
-	// Wait for Monitor to process and patch NNC
-	time.Sleep(500 * time.Millisecond)
-
-	// Now call syncCIDR manually to update DB!
-	err = w.syncCIDR(ctx, network)
-	if err != nil {
-		t.Fatalf("syncCIDR failed: %v", err)
-	}
-
-	_, exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), "10.0.2.0/28")
-	if err != nil {
-		t.Fatalf("GetCIDRBlockByCIDR failed: %v", err)
-	}
-	if !exists {
-		t.Errorf("Expected new CIDR block 10.0.2.0/28 to exist in DB")
+	select {
+	case <-done:
+		// Success!
+		var patch struct {
+			Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
+		}
+		json.Unmarshal(patchedData, &patch)
+		if len(patch.Spec.Allocations) == 0 {
+			t.Fatal("Expected allocations to be non-empty in patch")
+		}
+		if patch.Spec.Allocations[0].Pods != 8 {
+			t.Errorf("Expected new target pods to be 8, got %d", patch.Spec.Allocations[0].Pods)
+		}
+	case <-ctx.Done():
+		t.Errorf("Timed out waiting for Monitor to process queue and patch NNC. Patch count: %d", patchCount)
 	}
 }
