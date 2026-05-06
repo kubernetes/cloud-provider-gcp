@@ -510,7 +510,9 @@ func TestUpdateCIDRAllocation(t *testing.T) {
 				},
 				Clientset: fake.NewSimpleClientset(),
 			},
-			nodeChanges: func(node *v1.Node) {},
+			nodeChanges:  func(node *v1.Node) {},
+			expectErr:    true,
+			expectErrMsg: "node \"test\" not found",
 		},
 		{
 			name: "want error - provider not set",
