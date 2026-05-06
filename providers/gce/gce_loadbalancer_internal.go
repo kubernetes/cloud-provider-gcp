@@ -132,9 +132,8 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 		}
 	}
 
-	// Lock the sharedResourceLock to prevent any deletions of shared resources while assembling shared resources here
-	g.sharedResourceLock.Lock()
-	defer g.sharedResourceLock.Unlock()
+	unlock := g.lockSharedResourcesIfCoarse()
+	defer unlock()
 
 	// Ensure health check exists before creating the backend service. The health check is shared
 	// if externalTrafficPolicy=Cluster.
@@ -250,7 +249,7 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 
 	// Delete the previous internal load balancer resources if necessary
 	if existingBackendService != nil {
-		g.clearPreviousInternalResources(svc, loadBalancerName, existingBackendService, backendServiceName, hcName)
+		g.clearPreviousInternalResources(svc, loadBalancerName, clusterID, existingBackendService, backendServiceName, hcName)
 	}
 
 	serviceState.InSuccess = true
@@ -320,7 +319,7 @@ func truncateList[T any](l []T, max int) []T {
 	return l[:max]
 }
 
-func (g *Cloud) clearPreviousInternalResources(svc *v1.Service, loadBalancerName string, existingBackendService *compute.BackendService, expectedBSName, expectedHCName string) {
+func (g *Cloud) clearPreviousInternalResources(svc *v1.Service, loadBalancerName, clusterID string, existingBackendService *compute.BackendService, expectedBSName, expectedHCName string) {
 	// If a new backend service was created, delete the old one.
 	if existingBackendService.Name != expectedBSName {
 		klog.V(2).Infof("clearPreviousInternalResources(%v): expected backend service %q does not match previous %q - deleting backend service", loadBalancerName, expectedBSName, existingBackendService.Name)
@@ -334,7 +333,8 @@ func (g *Cloud) clearPreviousInternalResources(svc *v1.Service, loadBalancerName
 		existingHCName := getNameFromLink(existingBackendService.HealthChecks[0])
 		if existingHCName != expectedHCName {
 			klog.V(2).Infof("clearPreviousInternalResources(%v): expected health check %q does not match previous %q - deleting health check", loadBalancerName, expectedHCName, existingHCName)
-			if err := g.teardownInternalHealthCheckAndFirewall(svc, existingHCName); err != nil {
+			shared := isSharedHealthCheckName(existingHCName, clusterID)
+			if err := g.teardownInternalHealthCheckAndFirewall(svc, existingHCName, shared); err != nil {
 				klog.Warningf("clearPreviousInternalResources: could not delete existing healthcheck: %v, err: %v", existingHCName, err)
 			}
 		}
@@ -362,8 +362,8 @@ func (g *Cloud) updateInternalLoadBalancer(clusterName, clusterID string, svc *v
 	if err := g.processMixedProtocolCheck(context.TODO(), svc, true); err != nil {
 		return err
 	}
-	g.sharedResourceLock.Lock()
-	defer g.sharedResourceLock.Unlock()
+	unlock := g.lockSharedResourcesIfCoarse()
+	defer unlock()
 
 	igName := makeInstanceGroupName(clusterID)
 	igLinks, err := g.ensureInternalInstanceGroups(igName, nodes)
@@ -395,14 +395,15 @@ func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string,
 	}
 
 	loadBalancerName := g.GetLoadBalancerName(context.TODO(), clusterName, svc)
+
 	svcNamespacedName := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
 	_, _, protocol := getPortsAndProtocol(svc.Spec.Ports)
 	scheme := cloud.SchemeInternal
 	sharedBackend := shareBackendService(svc)
 	sharedHealthCheck := !servicehelpers.RequestsOnlyLocalTraffic(svc)
 
-	g.sharedResourceLock.Lock()
-	defer g.sharedResourceLock.Unlock()
+	unlock := g.lockSharedResourcesIfCoarse()
+	defer unlock()
 
 	klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): attempting delete of region internal address", loadBalancerName)
 	ensureAddressDeleted(g, loadBalancerName, g.region)
@@ -442,7 +443,7 @@ func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string,
 
 	hcName := makeHealthCheckName(loadBalancerName, clusterID, sharedHealthCheck)
 	klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): deleting health check %v and its firewall", loadBalancerName, hcName)
-	if err := g.teardownInternalHealthCheckAndFirewall(svc, hcName); err != nil {
+	if err := g.teardownInternalHealthCheckAndFirewall(svc, hcName, sharedHealthCheck); err != nil {
 		return err
 	}
 
@@ -480,7 +481,11 @@ func (g *Cloud) teardownInternalBackendService(bsName string) error {
 	return nil
 }
 
-func (g *Cloud) teardownInternalHealthCheckAndFirewall(svc *v1.Service, hcName string) error {
+func (g *Cloud) teardownInternalHealthCheckAndFirewall(svc *v1.Service, hcName string, shared bool) error {
+	hcFirewallName := makeHealthCheckFirewallNameFromHC(hcName)
+	defer g.lockHealthCheck(hcName, shared)()
+	defer g.lockFirewall(hcFirewallName, shared)()
+
 	if err := g.DeleteHealthCheck(hcName); err != nil {
 		if isNotFound(err) {
 			klog.V(2).Infof("teardownInternalHealthCheckAndFirewall(%v): health check does not exist.", hcName)
@@ -494,7 +499,6 @@ func (g *Cloud) teardownInternalHealthCheckAndFirewall(svc *v1.Service, hcName s
 	}
 	klog.V(2).Infof("teardownInternalHealthCheckAndFirewall(%v): health check deleted", hcName)
 
-	hcFirewallName := makeHealthCheckFirewallNameFromHC(hcName)
 	if err := ignoreNotFound(g.DeleteFirewall(hcFirewallName)); err != nil {
 		if isForbidden(err) && g.OnXPN() {
 			klog.V(2).Infof("teardownInternalHealthCheckAndFirewall(%v): could not delete health check traffic firewall on XPN cluster. Raising Event.", hcName)
@@ -508,7 +512,9 @@ func (g *Cloud) teardownInternalHealthCheckAndFirewall(svc *v1.Service, hcName s
 	return nil
 }
 
-func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinationIP string, sourceRanges []string, portRanges []string, protocol v1.Protocol, nodes []*v1.Node, legacyFwName string) error {
+func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinationIP string, sourceRanges []string, portRanges []string, protocol v1.Protocol, nodes []*v1.Node, legacyFwName string, shared bool) error {
+	defer g.lockFirewall(fwName, shared)()
+
 	klog.V(2).Infof("ensureInternalFirewall(%v): checking existing firewall", fwName)
 	targetTags, err := g.GetNodeTags(nodeNames(nodes))
 	if err != nil {
@@ -595,7 +601,7 @@ func (g *Cloud) ensureInternalFirewalls(loadBalancerName, ipAddress, clusterID s
 		return err
 	}
 
-	err = g.ensureInternalFirewall(svc, MakeFirewallName(loadBalancerName), fwDesc, ipAddress, sourceRanges.StringSlice(), portRanges, protocol, nodes, loadBalancerName)
+	err = g.ensureInternalFirewall(svc, MakeFirewallName(loadBalancerName), fwDesc, ipAddress, sourceRanges.StringSlice(), portRanges, protocol, nodes, loadBalancerName, false)
 	if err != nil {
 		return err
 	}
@@ -603,10 +609,12 @@ func (g *Cloud) ensureInternalFirewalls(loadBalancerName, ipAddress, clusterID s
 	// Second firewall is for health checking nodes / services
 	fwHCName := makeHealthCheckFirewallName(loadBalancerName, clusterID, sharedHealthCheck)
 	hcSrcRanges := L4LoadBalancerSrcRanges()
-	return g.ensureInternalFirewall(svc, fwHCName, "", "", hcSrcRanges, []string{healthCheckPort}, v1.ProtocolTCP, nodes, "")
+	return g.ensureInternalFirewall(svc, fwHCName, "", "", hcSrcRanges, []string{healthCheckPort}, v1.ProtocolTCP, nodes, "", sharedHealthCheck)
 }
 
 func (g *Cloud) ensureInternalHealthCheck(name string, svcName types.NamespacedName, shared bool, path string, port int32) (*compute.HealthCheck, error) {
+	defer g.lockHealthCheck(name, shared)()
+
 	klog.V(2).Infof("ensureInternalHealthCheck(%v, %v, %v): checking existing health check", name, path, port)
 	expectedHC := newInternalLBHealthCheck(name, svcName, shared, path, port)
 
@@ -646,6 +654,8 @@ func (g *Cloud) ensureInternalHealthCheck(name string, svcName types.NamespacedN
 }
 
 func (g *Cloud) ensureInternalInstanceGroup(name, zone string, nodes []*v1.Node, emptyZoneNodes []*v1.Node) (string, error) {
+	defer g.lockInstanceGroup(name, zone)()
+
 	klog.V(2).Infof("ensureInternalInstanceGroup(%v, %v): checking group that it contains %v nodes [node names limited, total number of nodes: %d], the following nodes have empty string in the zone field and won't be deleted: %v", name, zone, loggableNodeNames(nodes), len(nodes), loggableNodeNames(emptyZoneNodes))
 	ig, err := g.GetInstanceGroup(name, zone)
 	if err != nil && !isNotFound(err) {
@@ -783,7 +793,15 @@ func (g *Cloud) ensureInternalInstanceGroupsDeleted(name string) error {
 	if !g.AlphaFeatureGate.Enabled(AlphaFeatureSkipIGsManagement) {
 		klog.V(2).Infof("ensureInternalInstanceGroupsDeleted(%v): attempting delete instance group in all %d zones", name, len(zones))
 		for _, z := range zones {
-			if err := g.DeleteInstanceGroup(name, z.Name); err != nil && !isNotFoundOrInUse(err) {
+			err := func() error {
+				defer g.lockInstanceGroup(name, z.Name)()
+
+				if err := g.DeleteInstanceGroup(name, z.Name); err != nil && !isNotFoundOrInUse(err) {
+					return err
+				}
+				return nil
+			}()
+			if err != nil {
 				return err
 			}
 		}
@@ -791,6 +809,8 @@ func (g *Cloud) ensureInternalInstanceGroupsDeleted(name string) error {
 	return nil
 }
 
+// Note: In the case of shared backend services,
+// concurrent updates are safely serialized by GCE's Optimistic Concurrency Control using resource fingerprints.
 func (g *Cloud) ensureInternalBackendService(name, description string, affinityType v1.ServiceAffinity, scheme cloud.LbScheme, protocol v1.Protocol, igLinks []string, hcLink string) error {
 	klog.V(2).Infof("ensureInternalBackendService(%v, %v, %v): checking existing backend service with %d groups", name, scheme, protocol, len(igLinks))
 	bs, err := g.GetRegionBackendService(name, g.region)
