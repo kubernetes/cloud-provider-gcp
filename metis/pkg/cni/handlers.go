@@ -48,7 +48,8 @@ func (p *Plugin) cmdAdd(args *skel.CmdArgs) (*current.Result, error) {
 	}
 
 	req := &pb.AllocatePodIPRequest{
-		Network: session.pluginConf.Name,
+		// Network is left empty to use the daemon's default VPC network for now.
+		// TODO(https://github.com/kubernetes/cloud-provider-gcp/issues/1111): Support multi-network by passing the correct VPC network name.
 	}
 
 	// The Metis Daemon server only requires the initial block allocation range
