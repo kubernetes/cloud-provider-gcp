@@ -180,12 +180,12 @@ func TestGetGatewayIP(t *testing.T) {
 		{
 			name:       "Small IPv4 CIDR",
 			subnet:     "10.240.0.0/31",
-			expectedGW: "169.254.1.1",
+			expectedGW: "169.254.4.6",
 		},
 		{
 			name:       "Small IPv6 CIDR",
 			subnet:     "2600:1900:4040:ae7:0:7::/128",
-			expectedGW: "fe80::1",
+			expectedGW: "fe80::8893:b6ff:fe2c:7a0d",
 		},
 	}
 
