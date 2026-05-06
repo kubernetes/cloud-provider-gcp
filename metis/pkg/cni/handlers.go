@@ -116,7 +116,8 @@ func (p *Plugin) cmdDel(args *skel.CmdArgs) error {
 	defer cancel()
 
 	req := &pb.DeallocatePodIPRequest{
-		Network:       session.pluginConf.Name,
+		// Network is left empty to use the daemon's default VPC network for now.
+		// TODO(https://github.com/kubernetes/cloud-provider-gcp/issues/1111): Support multi-network by passing the correct VPC network name.
 		InterfaceName: args.IfName,
 		ContainerId:   args.ContainerID,
 	}
@@ -151,7 +152,8 @@ func (p *Plugin) cmdCheck(args *skel.CmdArgs) error {
 	defer cancel()
 
 	req := &pb.CheckPodIPRequest{
-		Network:       session.pluginConf.Name,
+		// Network is left empty to use the daemon's default VPC network for now.
+		// TODO(https://github.com/kubernetes/cloud-provider-gcp/issues/1111): Support multi-network by passing the correct VPC network name.
 		InterfaceName: args.IfName,
 		ContainerId:   args.ContainerID,
 	}
