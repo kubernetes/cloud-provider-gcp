@@ -180,11 +180,14 @@ type Cloud struct {
 	// resources are only created in zones with active node capacity.
 	nodeZones          map[string]sets.String
 	nodeInformerSynced cache.InformerSynced
+
 	// sharedResourceLock is used to serialize GCE operations that may mutate shared state to
 	// prevent inconsistencies. For example, load balancers manipulation methods will take the
 	// lock to prevent shared resources from being prematurely deleted while the operation is
 	// in progress.
 	sharedResourceLock sync.Mutex
+	// sharedResourceLocks is a concurrent map used for resource-specific fine-grained locking of shared resources (e.g. InstanceGroups, shared HealthChecks).
+	sharedResourceLocks sync.Map // map[string]*sync.Mutex
 	// AlphaFeatureGate gates gce alpha features in Cloud instance.
 	// Related wrapper functions that interacts with gce alpha api should examine whether
 	// the corresponding api is enabled.
@@ -224,6 +227,67 @@ type Cloud struct {
 
 	// enableL4DenyFirewallRollbackCleanup
 	enableL4DenyFirewallRollbackCleanup bool
+
+	// enableL4ILBFineGrainedLocks enables fine-grained resource-specific locking
+	enableL4ILBFineGrainedLocks bool
+}
+
+type SharedResourceType string
+
+const (
+	ResourceTypeHealthCheck   SharedResourceType = "hc"
+	ResourceTypeInstanceGroup SharedResourceType = "ig"
+	ResourceTypeFirewall      SharedResourceType = "fw"
+)
+
+func (g *Cloud) getLockForResource(resType SharedResourceType, name string) *sync.Mutex {
+	key := string(resType) + ":" + name
+	if v, ok := g.sharedResourceLocks.Load(key); ok {
+		return v.(*sync.Mutex)
+	}
+	v, _ := g.sharedResourceLocks.LoadOrStore(key, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
+// lockSharedResourcesIfCoarse acquires the global sharedResourceLock when fine-grained
+// locking is disabled, preserving the legacy coarse locking behavior.
+// It returns a function to defer for unlocking.
+func (g *Cloud) lockSharedResourcesIfCoarse() func() {
+	if g.enableL4ILBFineGrainedLocks {
+		return func() { /* no-op */ }
+	}
+	g.sharedResourceLock.Lock()
+	return g.sharedResourceLock.Unlock
+}
+
+// lockResourceIfShared is a helper function for acquiring locks on shared resources.
+// If fine-grained locking is disabled or the resource is not shared, it does nothing.
+func (g *Cloud) lockResourceIfShared(shared bool, resType SharedResourceType, name string) func() {
+	if !g.enableL4ILBFineGrainedLocks || !shared {
+		return func() { /* no-op */ }
+	}
+	lock := g.getLockForResource(resType, name)
+	lock.Lock()
+	return lock.Unlock
+}
+
+// lockInstanceGroup locks the shared unmanaged instance group in the specified zone.
+// Since instance groups are always shared across the cluster, this locks unconditionally.
+// It returns a function to defer for unlocking.
+func (g *Cloud) lockInstanceGroup(igName, zone string) func() {
+	return g.lockResourceIfShared(true, ResourceTypeInstanceGroup, igName+"-"+zone)
+}
+
+// lockHealthCheck locks a health check resource by name.
+// It returns a function to defer for unlocking.
+func (g *Cloud) lockHealthCheck(hcName string, shared bool) func() {
+	return g.lockResourceIfShared(shared, ResourceTypeHealthCheck, hcName)
+}
+
+// lockFirewall locks a firewall resource by name.
+// It returns a function to defer for unlocking.
+func (g *Cloud) lockFirewall(fwName string, shared bool) func() {
+	return g.lockResourceIfShared(shared, ResourceTypeFirewall, fwName)
 }
 
 // ConfigGlobal is the in memory representation of the gce.conf config data
@@ -921,6 +985,10 @@ func (g *Cloud) SetEnableL4LBAnnotations(enabled bool) {
 func (g *Cloud) SetEnableL4DenyFirewallRule(firewallEnabled, rollbackEnabled bool) {
 	g.enableL4DenyFirewallRule = firewallEnabled
 	g.enableL4DenyFirewallRollbackCleanup = rollbackEnabled
+}
+
+func (g *Cloud) SetEnableL4ILBFineGrainedLocks(enabled bool) {
+	g.enableL4ILBFineGrainedLocks = enabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.

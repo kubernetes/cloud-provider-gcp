@@ -73,6 +73,12 @@ func makeHealthCheckName(loadBalancerName, clusterID string, shared bool) string
 	return loadBalancerName
 }
 
+// isSharedHealthCheckName returns true if name is the cluster-wide shared
+// health check name produced by makeHealthCheckName for the given clusterID.
+func isSharedHealthCheckName(name, clusterID string) bool {
+	return name == makeHealthCheckName("", clusterID, true)
+}
+
 func makeHealthCheckFirewallNameFromHC(healthCheckName string) string {
 	return healthCheckName + "-hc"
 }
