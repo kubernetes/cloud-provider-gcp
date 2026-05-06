@@ -38,11 +38,11 @@ import (
 
 // Config contains the configuration parameters for the daemon.
 type Config struct {
-	DBPath          string
-	SocketPath      string
-	MonitorInterval time.Duration
-	ReleaseCooldown time.Duration
-	DrainingExpiration       time.Duration
+	DBPath                          string
+	SocketPath                      string
+	MonitorInterval                 time.Duration
+	ReleaseCooldown                 time.Duration
+	DrainingExpiration              time.Duration
 	SustainedLowUtilizationDuration time.Duration
 }
 

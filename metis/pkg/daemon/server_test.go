@@ -26,13 +26,13 @@ import (
 	"testing"
 	"time"
 
+	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
+	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
 	"github.com/go-logr/logr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
-	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
-	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/api/adaptiveipam/v1"
@@ -494,7 +494,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation_MultipleRequests(t *
 	}
 	defer storeInstance.Close()
 
-	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 10*time.Second)
 
 	nodeName := "test-node"
 	mockNNC := &nncv1.NodeNetworkConfig{
@@ -533,7 +533,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation_MultipleRequests(t *
 					InitialPodCidr: "10.0.0.0/29",
 				},
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			resps[index], errs[index] = server.AllocatePodIP(ctx, req)
 		}(i)

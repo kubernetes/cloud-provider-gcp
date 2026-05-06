@@ -26,10 +26,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-logr/logr"
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
 	"github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions"
+	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/metis/pkg/store"
@@ -86,7 +86,7 @@ func TestWatcher_Success(t *testing.T) {
 	defer cancel()
 
 	nncInformerFactory.Start(ctx.Done())
-	
+
 	doneCh := make(chan struct{})
 	go func() {
 		w.Run(ctx, 1)
@@ -176,8 +176,8 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 	nodeName := "test-node"
 
 	tests := []struct {
-		desc                string
-		blocks              []struct {
+		desc   string
+		blocks []struct {
 			cidr  string
 			state string
 		}
@@ -191,7 +191,7 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 		lockDB              bool
 	}{
 		{
-			desc: "Add new CIDR from NNC status",
+			desc:   "Add new CIDR from NNC status",
 			blocks: nil,
 			mockNNC: &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
@@ -206,7 +206,7 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 			expectedOnCIDRAdded: true,
 		},
 		{
-			desc: "Ignore unready CIDR from NNC status",
+			desc:   "Ignore unready CIDR from NNC status",
 			blocks: nil,
 			mockNNC: &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
@@ -250,7 +250,7 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 			expectedErr:         true,
 		},
 		{
-			desc:                "Store error on GetCIDRBlockByCIDR (addCIDR)",
+			desc: "Store error on GetCIDRBlockByCIDR (addCIDR)",
 			mockNNC: &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
 				Status: nncv1.NodeNetworkConfigStatus{
@@ -266,7 +266,7 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 			closeDB:             true,
 		},
 		{
-			desc:                "Store error on GetDeletingCIDRBlocks (maybeDeleteCIDRs)",
+			desc: "Store error on GetDeletingCIDRBlocks (maybeDeleteCIDRs)",
 			mockNNC: &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
 				Status: nncv1.NodeNetworkConfigStatus{
@@ -280,7 +280,7 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 			closeDB:             true,
 		},
 		{
-			desc:                "Store error on AddCIDR (Database Busy)",
+			desc: "Store error on AddCIDR (Database Busy)",
 			mockNNC: &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
 				Status: nncv1.NodeNetworkConfigStatus{

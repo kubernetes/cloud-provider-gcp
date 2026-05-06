@@ -36,18 +36,18 @@ import (
 )
 
 const (
-	DefaultMonitorInterval                  = 2 * time.Second
-	DefaultReleaseCooldown                  = 1 * time.Minute
-	DefaultLowUtilizationThreshold         = 0.50
-	DefaultHighUtilizationThreshold        = 0.80
+	DefaultMonitorInterval         = 2 * time.Second
+	DefaultReleaseCooldown         = 1 * time.Minute
+	DefaultLowUtilizationThreshold = 0.50
+
 	DefaultTargetUtilizationAfterScaleUp   = 0.75
 	DefaultCooldownPushbackThreshold       = 10
-	DefaultCooldownPushbackInterval = 2 * time.Second
-	DefaultDrainingExpiration       = 5 * time.Hour
+	DefaultCooldownPushbackInterval        = 2 * time.Second
+	DefaultDrainingExpiration              = 5 * time.Hour
 	DefaultSustainedLowUtilizationDuration = 8 * time.Hour
 
-	updateMaxRetries                = 10
-	defaultMonitorWorkers          = 4
+	updateMaxRetries      = 10
+	defaultMonitorWorkers = 4
 )
 
 type Monitor struct {
@@ -58,29 +58,41 @@ type Monitor struct {
 	logger                  logr.Logger
 	lowUtilizationTimers    map[string]time.Time
 	GetPendingRequestsCount func(network string) int
-	drainingExpiration       time.Duration
-	monitorInterval          time.Duration
-	lowUtilizationThreshold         float64
-	highUtilizationThreshold        float64
-	targetUtilizationAfterScaleUp   float64
+
+	// drainingExpiration is the duration after which a draining CIDR block is considered expired and candidate for release.
+	drainingExpiration time.Duration
+
+	// monitorInterval is how often the monitor evaluates network utilization (pre-fetch) and checks for expired draining blocks.
+	monitorInterval time.Duration
+
+	// lowUtilizationThreshold is the threshold (e.g., 0.50) below which a network is considered under-utilized.
+	lowUtilizationThreshold float64
+
+	// targetUtilizationAfterScaleUp is the desired utilization level (e.g., 0.75) aimed for after scaling up.
+	targetUtilizationAfterScaleUp float64
+
 	// cooldownPushbackThreshold is the maximum number of IPs allowed to be in cooldown
 	// before we hold off on sending new outgoing requests for more CIDR blocks.
 	// This prevents requesting more capacity when we have many IPs about to become available.
-	cooldownPushbackThreshold       int
+	cooldownPushbackThreshold int
+
+	// cooldownPushbackInterval is how long to wait before re-evaluating a network when held back by cooldown threshold.
 	cooldownPushbackInterval time.Duration
+
+	// sustainedLowUtilizationDuration is the duration utilization must remain low before triggering a drain.
 	sustainedLowUtilizationDuration time.Duration
 }
 
 // MonitorConfig holds the configuration for the Monitor.
 type MonitorConfig struct {
-	Logger                  logr.Logger
-	NNCClient               nncclientset.Interface
-	Store                   *store.Store
-	NodeName                string
-	GetPendingRequestsCount func(network string) int
-	CooldownPushbackInterval time.Duration
-	DrainingExpiration       time.Duration
-	MonitorInterval          time.Duration
+	Logger                          logr.Logger
+	NNCClient                       nncclientset.Interface
+	Store                           *store.Store
+	NodeName                        string
+	GetPendingRequestsCount         func(network string) int
+	CooldownPushbackInterval        time.Duration
+	DrainingExpiration              time.Duration
+	MonitorInterval                 time.Duration
 	SustainedLowUtilizationDuration time.Duration
 }
 
@@ -109,18 +121,18 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 	}
 
 	return &Monitor{
-		queue:                   queue,
-		nncClient:               cfg.NNCClient,
-		nodeName:                cfg.NodeName,
-		store:                   cfg.Store,
-		logger:                  cfg.Logger,
-		lowUtilizationTimers:    make(map[string]time.Time),
-		GetPendingRequestsCount: cfg.GetPendingRequestsCount,
+		queue:                    queue,
+		nncClient:                cfg.NNCClient,
+		nodeName:                 cfg.NodeName,
+		store:                    cfg.Store,
+		logger:                   cfg.Logger,
+		lowUtilizationTimers:     make(map[string]time.Time),
+		GetPendingRequestsCount:  cfg.GetPendingRequestsCount,
 		cooldownPushbackInterval: cooldownPushbackInterval,
 		drainingExpiration:       drainingExpiration,
 		monitorInterval:          monitorInterval,
-		lowUtilizationThreshold:         DefaultLowUtilizationThreshold,
-		highUtilizationThreshold:        DefaultHighUtilizationThreshold,
+		lowUtilizationThreshold:  DefaultLowUtilizationThreshold,
+
 		targetUtilizationAfterScaleUp:   DefaultTargetUtilizationAfterScaleUp,
 		cooldownPushbackThreshold:       DefaultCooldownPushbackThreshold,
 		sustainedLowUtilizationDuration: sustainedLowUtilizationDuration,
@@ -289,7 +301,7 @@ type UtilizationInfo struct {
 	Utilization            float64
 	Usage                  store.NetworkIPUsage
 	PendingRequests        int
-	InitialIPs            int
+	InitialIPs             int
 	NncCopy                *nncv1.NodeNetworkConfig
 	TotalRequestedCapacity int
 }
@@ -335,7 +347,7 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*Util
 		Utilization:            utilization,
 		Usage:                  usage,
 		PendingRequests:        pendingRequests,
-		InitialIPs:            initialIPs,
+		InitialIPs:             initialIPs,
 		NncCopy:                nncCopy,
 		TotalRequestedCapacity: usage.Total,
 	}, nil

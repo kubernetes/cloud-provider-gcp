@@ -30,8 +30,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-
-
 	"k8s.io/metis/pkg/store"
 )
 
@@ -41,20 +39,20 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 	nodeName := "test-node"
 
 	tests := []struct {
-		desc                    string
-		blocks                  []struct {
+		desc   string
+		blocks []struct {
 			cidr  string
 			drain bool
 		}
-		allocations             int
-		cooldowns               int
-		pendingRequests         int
-		mockNNC                 *nncv1.NodeNetworkConfig
-		injectPatchErr          error
-		expectedPatchCalled     bool
-		expectedPatchedPods     int32
-		expectedQueueLen        int
-		expectedErr             bool
+		allocations         int
+		cooldowns           int
+		pendingRequests     int
+		mockNNC             *nncv1.NodeNetworkConfig
+		injectPatchErr      error
+		expectedPatchCalled bool
+		expectedPatchedPods int32
+		expectedQueueLen    int
+		expectedErr         bool
 	}{
 		{
 			desc: "High Utilization triggers scale up",
@@ -86,7 +84,7 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 			expectedPatchedPods: 58,
 		},
 		{
-			desc: "No-op when zero initial IPs",
+			desc:            "No-op when zero initial IPs",
 			blocks:          nil,
 			allocations:     0,
 			pendingRequests: 10,
@@ -248,11 +246,11 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 			mockClient := &mockClientset{networkingV1: mockNetV1}
 
 			m := NewMonitor(MonitorConfig{
-				Logger:                  logger,
-				NNCClient:               mockClient,
-				Store:                   storeInstance,
-				NodeName:                nodeName,
-				GetPendingRequestsCount: func(net string) int { return tc.pendingRequests },
+				Logger:                   logger,
+				NNCClient:                mockClient,
+				Store:                    storeInstance,
+				NodeName:                 nodeName,
+				GetPendingRequestsCount:  func(net string) int { return tc.pendingRequests },
 				CooldownPushbackInterval: 1 * time.Millisecond,
 			})
 
@@ -304,14 +302,14 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 	nodeName := "test-node"
 
 	tests := []struct {
-		desc            string
-		blocks          []struct {
+		desc   string
+		blocks []struct {
 			cidr  string
 			drain bool
 		}
-		allocations     int
-		cooldowns       int
-		pendingRequests int
+		allocations         int
+		cooldowns           int
+		pendingRequests     int
 		expectedReadyBlocks int
 	}{
 		{
@@ -324,8 +322,8 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 				{"10.0.2.0/27", false}, // 32 IPs
 				{"10.0.3.0/27", false}, // 32 IPs
 			},
-			allocations:     0,
-			pendingRequests: 0,
+			allocations:         0,
+			pendingRequests:     0,
 			expectedReadyBlocks: 1, // Only initial block left
 		},
 		{
@@ -336,8 +334,8 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 			}{
 				{"10.0.1.0/28", false}, // 16 IPs (initial)
 			},
-			allocations:     0,
-			pendingRequests: 0,
+			allocations:         0,
+			pendingRequests:     0,
 			expectedReadyBlocks: 1,
 		},
 		{
@@ -438,10 +436,10 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 			mockClient := &mockClientset{networkingV1: mockNetV1}
 
 			m := NewMonitor(MonitorConfig{
-				Logger:    logger,
-				NNCClient: mockClient,
-				Store:     storeInstance,
-				NodeName:  nodeName,
+				Logger:                  logger,
+				NNCClient:               mockClient,
+				Store:                   storeInstance,
+				NodeName:                nodeName,
 				GetPendingRequestsCount: func(net string) int { return tc.pendingRequests },
 			})
 
@@ -471,56 +469,56 @@ func TestMonitor_MaybeDrainExcessive(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		desc                    string
-		setTimer                bool
-		timerDuration           time.Duration
-		utilization             float64
-		initialIPs              int
-		targetPods              int
-		usage                   store.NetworkIPUsage
-		blocksToAdd             []string
-		expectedTimerExists     bool
-		expectedTimerUnchanged  bool
-		expectedDrained         bool
+		desc                   string
+		setTimer               bool
+		timerDuration          time.Duration
+		utilization            float64
+		initialIPs             int
+		targetPods             int
+		usage                  store.NetworkIPUsage
+		blocksToAdd            []string
+		expectedTimerExists    bool
+		expectedTimerUnchanged bool
+		expectedDrained        bool
 	}{
 		{
-			desc: "Utilization above threshold resets timer",
-			setTimer: true,
-			timerDuration: 0,
-			utilization: DefaultLowUtilizationThreshold + 0.1,
+			desc:                "Utilization above threshold resets timer",
+			setTimer:            true,
+			timerDuration:       0,
+			utilization:         DefaultLowUtilizationThreshold + 0.1,
 			expectedTimerExists: false,
 		},
 		{
-			desc: "Utilization above threshold no-op when no timer",
-			setTimer: false,
-			utilization: DefaultLowUtilizationThreshold + 0.1,
+			desc:                "Utilization above threshold no-op when no timer",
+			setTimer:            false,
+			utilization:         DefaultLowUtilizationThreshold + 0.1,
 			expectedTimerExists: false,
 		},
 		{
-			desc: "Utilization below threshold starts timer",
-			setTimer: false,
-			utilization: DefaultLowUtilizationThreshold - 0.1,
+			desc:                "Utilization below threshold starts timer",
+			setTimer:            false,
+			utilization:         DefaultLowUtilizationThreshold - 0.1,
 			expectedTimerExists: true,
 		},
 		{
-			desc: "Utilization below threshold maintains timer",
-			setTimer: true,
-			timerDuration: -1 * time.Hour,
-			utilization: DefaultLowUtilizationThreshold - 0.1,
-			expectedTimerExists: true,
+			desc:                   "Utilization below threshold maintains timer",
+			setTimer:               true,
+			timerDuration:          -1 * time.Hour,
+			utilization:            DefaultLowUtilizationThreshold - 0.1,
+			expectedTimerExists:    true,
 			expectedTimerUnchanged: true,
 		},
 		{
-			desc: "Utilization below threshold for sustained duration triggers drain",
-			setTimer: true,
-			timerDuration: -9 * time.Hour,
-			utilization: DefaultLowUtilizationThreshold - 0.1,
-			initialIPs: 16,
-			targetPods: 16,
-			usage: store.NetworkIPUsage{Total: 32},
-			blocksToAdd: []string{"10.0.1.0/28", "10.0.2.0/28"},
+			desc:                "Utilization below threshold for sustained duration triggers drain",
+			setTimer:            true,
+			timerDuration:       -9 * time.Hour,
+			utilization:         DefaultLowUtilizationThreshold - 0.1,
+			initialIPs:          16,
+			targetPods:          16,
+			usage:               store.NetworkIPUsage{Total: 32},
+			blocksToAdd:         []string{"10.0.1.0/28", "10.0.2.0/28"},
 			expectedTimerExists: false,
-			expectedDrained: true,
+			expectedDrained:     true,
 		},
 	}
 
@@ -589,7 +587,7 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 	tests := []struct {
 		desc                    string
 		setup                   func(t *testing.T, ctx context.Context, s *store.Store)
-		initialNNC             *nncv1.NodeNetworkConfig
+		initialNNC              *nncv1.NodeNetworkConfig
 		expectedReleasableCIDRs []string
 		expectedPatchCount      int
 	}{
@@ -636,12 +634,12 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 				s.AddCIDR(ctx, network, "10.0.3.0/28")
 				id3, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.3.0/28")
 				s.DrainCIDRBlock(ctx, id3)
-				
+
 				// Missed deleting
 				s.AddCIDR(ctx, network, "10.0.4.0/28")
 				id4, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.4.0/28")
 				s.MarkCIDRBlockAsDeleting(ctx, id4)
-				
+
 				time.Sleep(1100 * time.Millisecond) // Wait for expiration
 			},
 			initialNNC: &nncv1.NodeNetworkConfig{
@@ -726,11 +724,11 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 					Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
 				}
 				json.Unmarshal(patchedData, &patch)
-				
+
 				if len(patch.Spec.ReleasableCIDRs) != len(tc.expectedReleasableCIDRs) {
 					t.Errorf("Expected %d releasable CIDRs, got %d", len(tc.expectedReleasableCIDRs), len(patch.Spec.ReleasableCIDRs))
 				}
-				
+
 				for _, expected := range tc.expectedReleasableCIDRs {
 					found := false
 					for _, r := range patch.Spec.ReleasableCIDRs {
@@ -807,11 +805,11 @@ func TestMonitor_DynamicAllocation_Run(t *testing.T) {
 	mockClient := &mockClientset{networkingV1: mockNetV1}
 
 	m := NewMonitor(MonitorConfig{
-		Logger:          logger,
-		NNCClient:       mockClient,
-		Store:           storeInstance,
-		NodeName:        nodeName,
-		MonitorInterval: 100 * time.Millisecond,
+		Logger:                  logger,
+		NNCClient:               mockClient,
+		Store:                   storeInstance,
+		NodeName:                nodeName,
+		MonitorInterval:         100 * time.Millisecond,
 		GetPendingRequestsCount: func(net string) int { return 5 },
 	})
 

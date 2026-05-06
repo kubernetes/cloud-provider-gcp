@@ -52,9 +52,9 @@ type adaptiveIpamServer struct {
 	busyTimeout     time.Duration
 	grpcServer      *grpc.Server
 	logger          logr.Logger
-	requestsMap      map[cniClient]chan struct{}
-	requestsMu       sync.RWMutex
-	monitor          *Monitor
+	requestsMap     map[cniClient]chan struct{}
+	requestsMu      sync.RWMutex
+	monitor         *Monitor
 }
 
 func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socketPath string, releaseCooldown time.Duration, busyTimeout time.Duration) *adaptiveIpamServer {

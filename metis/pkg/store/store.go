@@ -667,6 +667,7 @@ func (s *Store) MarkCIDRBlockAsDeleting(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", StateDeleting, id)
 	return err
 }
+
 // GetInitialIPCount queries the total number of IPs in the first CIDR block for a network.
 func (s *Store) GetInitialIPCount(ctx context.Context, network string) (int, error) {
 	var initialIPs int
@@ -676,6 +677,7 @@ func (s *Store) GetInitialIPCount(ctx context.Context, network string) (int, err
 	}
 	return initialIPs, nil
 }
+
 // NetworkIPUsage holds the allocated, cooldown, total, and draining IP counts for a network.
 type NetworkIPUsage struct {
 	Allocated int
@@ -702,7 +704,7 @@ func (s *Store) GetIPUsageByNetwork(ctx context.Context, network string) (Networ
 		FROM cidr_blocks c
 		WHERE network = ? AND c.state != ?
 	`, network, StateDeleting, StateDraining, network, StateDeleting).Scan(&usage.Allocated, &usage.Cooldown, &usage.Total, &usage.Draining)
-	
+
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return NetworkIPUsage{}, nil

@@ -816,7 +816,7 @@ func TestStore_GetIPUsageByNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddCIDR failed: %v", err)
 	}
-	
+
 	// Allocate 2 IPs from Block 1
 	_, _, err = s.AllocateIPv4(context.Background(), network1, "eth0", "container-1")
 	_, _, err = s.AllocateIPv4(context.Background(), network1, "eth0", "container-2")
