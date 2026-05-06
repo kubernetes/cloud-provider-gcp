@@ -797,3 +797,55 @@ func TestStore_AllocateIPv4_Concurrency_DifferentContainers(t *testing.T) {
 		t.Errorf("Expected %d allocated rows in DB, got %d", numGoroutines, count)
 	}
 }
+
+func TestStore_CheckAllocation(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "check_alloc_test.sqlite")
+
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	network := "test-network"
+	cidr := "10.0.1.0/24"
+
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	containerID := "test-container"
+	interfaceName := "eth0"
+
+	// 1. Check before allocation (should fail)
+	err = s.CheckAllocation(context.Background(), network, containerID, interfaceName)
+	if err == nil {
+		t.Error("Expected error for non-existent allocation, got nil")
+	}
+
+	// 2. Allocate IP
+	_, _, err = s.AllocateIPv4(context.Background(), network, interfaceName, containerID)
+	if err != nil {
+		t.Fatalf("AllocateIPv4 failed: %v", err)
+	}
+
+	// 3. Check after allocation (should succeed)
+	err = s.CheckAllocation(context.Background(), network, containerID, interfaceName)
+	if err != nil {
+		t.Errorf("CheckAllocation failed for active allocation: %v", err)
+	}
+
+	// 4. Check with wrong container ID (should fail)
+	err = s.CheckAllocation(context.Background(), network, "wrong-container", interfaceName)
+	if err == nil {
+		t.Error("Expected error for wrong container ID, got nil")
+	}
+
+	// 5. Check with wrong interface name (should fail)
+	err = s.CheckAllocation(context.Background(), network, containerID, "wrong-iface")
+	if err == nil {
+		t.Error("Expected error for wrong interface name, got nil")
+	}
+}

@@ -59,16 +59,18 @@ func (p *Plugin) cmdAdd(args *skel.CmdArgs) (*current.Result, error) {
 			continue
 		}
 
+		// TODO(https://github.com/kubernetes/cloud-provider-gcp/issues/1109): Support multi-range since it is CNI standard.
 		ipNet := (net.IPNet)(rangeSet[0].Subnet)
+		_, bits := ipNet.Mask.Size()
 		config := &pb.IPConfig{
 			InterfaceName:  args.IfName,
 			ContainerId:    args.ContainerID,
 			InitialPodCidr: ipNet.String(),
 		}
 
-		if rangeSet[0].Subnet.IP.To4() != nil && req.Ipv4Config == nil {
+		if bits == 32 && req.Ipv4Config == nil {
 			req.Ipv4Config = config
-		} else if rangeSet[0].Subnet.IP.To4() == nil && req.Ipv6Config == nil {
+		} else if bits == 128 && req.Ipv6Config == nil {
 			req.Ipv6Config = config
 		}
 	}
@@ -178,7 +180,7 @@ func buildIPConfig(ipConfig *pb.PodIP) (*current.IPConfig, net.IP, error) {
 	}
 	ip := net.ParseIP(ipConfig.IpAddress)
 	gw := getGatewayIP(ipNet)
-	
+
 	return &current.IPConfig{
 		Address: net.IPNet{IP: ip, Mask: ipNet.Mask},
 		Gateway: gw,

@@ -65,8 +65,6 @@ func (m *mockAdaptiveIpamClient) CheckPodIP(ctx context.Context, in *pb.CheckPod
 	return nil, fmt.Errorf("unimplemented")
 }
 
-
-
 func TestCmdAdd(t *testing.T) {
 	cases := []struct {
 		name           string

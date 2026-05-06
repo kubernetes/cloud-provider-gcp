@@ -44,8 +44,8 @@ func getGatewayIP(ipNet *net.IPNet) net.IP {
 	//
 	// TODO: Investigate if we can always use the predefined default gateway IPs
 	// and get away without reserving any IPs in the block.
-	if bits-ones < 2 {
-		if ipNet.IP.To4() != nil {
+	if hostBits := bits - ones; hostBits < 2 {
+		if bits == 32 {
 			return net.ParseIP(pkg.DefaultGatewayIPv4)
 		}
 		return net.ParseIP(pkg.DefaultGatewayIPv6)
@@ -53,12 +53,7 @@ func getGatewayIP(ipNet *net.IPNet) net.IP {
 
 	gw := make(net.IP, len(ipNet.IP))
 	copy(gw, ipNet.IP)
-	for i := len(gw) - 1; i >= 0; i-- {
-		gw[i]++
-		if gw[i] > 0 {
-			break
-		}
-	}
+	gw[len(gw)-1]++
 	return gw
 }
 
