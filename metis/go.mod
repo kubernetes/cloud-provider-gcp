@@ -1,21 +1,19 @@
 module k8s.io/metis
 
-go 1.25.0
-
-toolchain go1.25.8
+go 1.26.0
 
 require (
 	github.com/GoogleCloudPlatform/gke-networking-api v0.2.1-0.20260327205951-1d0cb5d74c02
 	github.com/go-logr/logr v1.4.3
 	github.com/mattn/go-sqlite3 v1.14.37
-	github.com/spf13/cobra v1.10.0
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	google.golang.org/grpc v1.79.3
-	google.golang.org/protobuf v1.36.10
 	k8s.io/api v0.35.1
-	k8s.io/apimachinery v0.35.1
 	k8s.io/client-go v0.35.1
-	k8s.io/component-base v0.35.1
+	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
+	k8s.io/apimachinery v0.36.0
+	k8s.io/component-base v0.36.0
 	k8s.io/klog/v2 v2.140.0
 )
 
@@ -42,8 +40,8 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.66.1 // indirect
-	github.com/prometheus/procfs v0.16.1 // indirect
+	github.com/prometheus/common v0.67.5 // indirect
+	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.opentelemetry.io/otel v1.41.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.41.0 // indirect

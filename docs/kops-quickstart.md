@@ -14,6 +14,8 @@ The `make kops-up` target is an end-to-end workflow that automatically:
 - Pushes the image to your Artifact Registry.
 - Deploys the CCM (along with required RBAC) to the cluster.
 
+You'll also need to configure default credentials, using `gcloud auth application-default login`.
+
 Run the following commands to get started:
 
 ```sh
@@ -33,6 +35,9 @@ gcloud storage buckets create ${KOPS_STATE_STORE} --location=${GCP_LOCATION} || 
 
 # Run the cluster creation target, may take several minutes
 make kops-up
+
+# Ensure you are configured to talk to the correct cluster.
+kubectl config use-context $KOPS_CLUSTER_NAME
 ```
 
 ## Verification
