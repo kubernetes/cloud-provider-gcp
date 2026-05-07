@@ -631,6 +631,7 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 			desc: "Both expired draining and missed deleting blocks are handled",
 			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
 				// Expired draining
+				s.AddCIDR(ctx, network, "10.0.2.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.3.0/28")
 				id3, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.3.0/28")
 				s.DrainCIDRBlock(ctx, id3)

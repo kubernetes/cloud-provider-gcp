@@ -298,12 +298,11 @@ func (m *Monitor) calculateUtilization(usedIPs, pendingRequests, totalRequestedC
 
 // UtilizationInfo holds details about IP utilization for a network.
 type UtilizationInfo struct {
-	Utilization            float64
-	Usage                  store.NetworkIPUsage
-	PendingRequests        int
-	InitialIPs             int
-	NncCopy                *nncv1.NodeNetworkConfig
-	TotalRequestedCapacity int
+	Utilization     float64
+	Usage           store.NetworkIPUsage
+	PendingRequests int
+	InitialIPs      int
+	NncCopy         *nncv1.NodeNetworkConfig
 }
 
 func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*UtilizationInfo, error) {
@@ -344,12 +343,11 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*Util
 	m.logger.Info("Calculated utilization", "network", network, "used", usedIPs, "pending", pendingRequests, "total", usage.Total, "utilization", utilization)
 
 	return &UtilizationInfo{
-		Utilization:            utilization,
-		Usage:                  usage,
-		PendingRequests:        pendingRequests,
-		InitialIPs:             initialIPs,
-		NncCopy:                nncCopy,
-		TotalRequestedCapacity: usage.Total,
+		Utilization:     utilization,
+		Usage:           usage,
+		PendingRequests: pendingRequests,
+		InitialIPs:      initialIPs,
+		NncCopy:         nncCopy,
 	}, nil
 }
 
@@ -525,6 +523,8 @@ func (m *Monitor) handleExpiredDrainingBlocks(ctx context.Context, network strin
 		reducePods += block.TotalIPs
 
 		if !releasableSet[block.CIDR] {
+			// We need to find the podCIDR ID.
+			// TODO: Maybe add podCIDR ID to local store.
 			podCIDR, inStatus := statusMap[block.CIDR]
 			if !inStatus {
 				m.logger.Error(nil, "failed to find CIDR in CR status for draining block", "cidr", block.CIDR)
