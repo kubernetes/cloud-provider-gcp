@@ -68,8 +68,8 @@ Update the `/cluster` directory if needed. A script under `/cluster` is used to 
 
 ### Testing
 1. Run `make verify`.
-1. Bring the cluster up with `make kops-up`
-1. Run conformance tests locally with `make kops-e2e-test`
+1. Bring the cluster up with `make test-cluster-up`
+1. Run conformance tests locally with `make test-cluster-e2e-test`
 
 ## Create Release Branch
 This is only necessary for CCM releases corresponding to a Kubernetes minor version release. Create a branch from the latest commit on master with the dependency updates mentioned above.
