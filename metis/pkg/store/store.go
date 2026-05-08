@@ -557,11 +557,12 @@ type DeletingCIDRBlock struct {
 	ID       int64
 	TotalIPs int
 	CIDR     string
+	Network  string
 }
 
-// GetDeletingCIDRBlocks fetches all CIDR blocks in Deleting state.
-func (s *Store) GetDeletingCIDRBlocks(ctx context.Context) ([]DeletingCIDRBlock, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, total_ips, cidr FROM cidr_blocks WHERE state = ?", StateDeleting)
+// GetDeletingCIDRBlocks fetches all CIDR blocks in Deleting state for a specific network.
+func (s *Store) GetDeletingCIDRBlocks(ctx context.Context, network string) ([]DeletingCIDRBlock, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT id, total_ips, cidr, network FROM cidr_blocks WHERE state = ? AND network = ?", StateDeleting, network)
 	if err != nil {
 		return nil, err
 	}
@@ -570,7 +571,7 @@ func (s *Store) GetDeletingCIDRBlocks(ctx context.Context) ([]DeletingCIDRBlock,
 	var result []DeletingCIDRBlock
 	for rows.Next() {
 		var r DeletingCIDRBlock
-		if err := rows.Scan(&r.ID, &r.TotalIPs, &r.CIDR); err != nil {
+		if err := rows.Scan(&r.ID, &r.TotalIPs, &r.CIDR, &r.Network); err != nil {
 			return nil, err
 		}
 		result = append(result, r)

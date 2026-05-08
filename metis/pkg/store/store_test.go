@@ -999,3 +999,94 @@ func TestStore_FindAndMarkExpiredDrainingCIDRBlocks(t *testing.T) {
 		t.Errorf("Expected state Deleting, got %s", state)
 	}
 }
+
+func TestStore_GetDeletingCIDRBlocks(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "deleting_test.sqlite")
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	network1 := "network-1"
+	network2 := "network-2"
+
+	// Add blocks for network 1
+	err = s.AddCIDR(context.Background(), network1, "10.0.1.0/29")
+	if err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+	err = s.AddCIDR(context.Background(), network1, "10.0.2.0/29")
+	if err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	// Add block for network 2
+	err = s.AddCIDR(context.Background(), network2, "10.0.3.0/29")
+	if err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	// Mark one block of network 1 as Deleting
+	blocks1, err := s.GetReadyCIDRBlocksSorted(context.Background(), network1)
+	if err != nil || len(blocks1) < 2 {
+		t.Fatalf("Failed to get ready blocks for network 1: %v", err)
+	}
+	err = s.MarkCIDRBlockAsDeleting(context.Background(), blocks1[0].ID)
+	if err != nil {
+		t.Fatalf("MarkCIDRBlockAsDeleting failed: %v", err)
+	}
+
+	// Mark block of network 2 as Deleting
+	blocks2, err := s.GetReadyCIDRBlocksSorted(context.Background(), network2)
+	if err != nil || len(blocks2) == 0 {
+		t.Fatalf("Failed to get ready blocks for network 2: %v", err)
+	}
+	err = s.MarkCIDRBlockAsDeleting(context.Background(), blocks2[0].ID)
+	if err != nil {
+		t.Fatalf("MarkCIDRBlockAsDeleting failed: %v", err)
+	}
+
+	// Call GetDeletingCIDRBlocks for Network 1
+	deleting1, err := s.GetDeletingCIDRBlocks(context.Background(), network1)
+	if err != nil {
+		t.Fatalf("GetDeletingCIDRBlocks failed for network 1: %v", err)
+	}
+	if len(deleting1) != 1 {
+		t.Errorf("Expected 1 deleting block for Network 1, got %d", len(deleting1))
+	} else {
+		if deleting1[0].CIDR != "10.0.2.0/29" {
+			t.Errorf("Expected deleting block 10.0.2.0/29, got %s", deleting1[0].CIDR)
+		}
+		if deleting1[0].Network != network1 {
+			t.Errorf("Expected network %s, got %s", network1, deleting1[0].Network)
+		}
+	}
+
+	// Call GetDeletingCIDRBlocks for Network 2
+	deleting2, err := s.GetDeletingCIDRBlocks(context.Background(), network2)
+	if err != nil {
+		t.Fatalf("GetDeletingCIDRBlocks failed for network 2: %v", err)
+	}
+	if len(deleting2) != 1 {
+		t.Errorf("Expected 1 deleting block for Network 2, got %d", len(deleting2))
+	} else {
+		if deleting2[0].CIDR != "10.0.3.0/29" {
+			t.Errorf("Expected deleting block 10.0.3.0/29, got %s", deleting2[0].CIDR)
+		}
+		if deleting2[0].Network != network2 {
+			t.Errorf("Expected network %s, got %s", network2, deleting2[0].Network)
+		}
+	}
+
+	// Call GetDeletingCIDRBlocks for a non-existent network
+	deleting3, err := s.GetDeletingCIDRBlocks(context.Background(), "non-existent")
+	if err != nil {
+		t.Fatalf("GetDeletingCIDRBlocks failed for non-existent network: %v", err)
+	}
+	if len(deleting3) != 0 {
+		t.Errorf("Expected 0 deleting blocks for non-existent network, got %d", len(deleting3))
+	}
+}

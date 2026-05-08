@@ -53,7 +53,7 @@ type Watcher struct {
 func NewWatcher(logger logr.Logger, nncClient nncclientset.Interface, nncInformer nncinformers.NodeNetworkConfigInformer, store *store.Store, nodeName string, onCIDRAdded func(network string, availableIPs int)) *Watcher {
 	rl := workqueue.DefaultTypedControllerRateLimiter[string]()
 	queue := workqueue.NewTypedRateLimitingQueueWithConfig(rl, workqueue.TypedRateLimitingQueueConfig[string]{
-		Name: "crd-watcher",
+		Name: "metis-nnc-watcher",
 	})
 
 	var nncLister nnclisters.NodeNetworkConfigLister
@@ -113,11 +113,11 @@ func NewWatcher(logger logr.Logger, nncClient nncclientset.Interface, nncInforme
 func (w *Watcher) Run(ctx context.Context, workers int) {
 	defer w.queue.ShutDown()
 
-	w.logger.Info("Starting CRD watcher", "workers", workers)
-	defer w.logger.Info("Stopping CRD watcher")
+	w.logger.Info("Starting Metis Daemon NodeNetworkConfig CRD watcher", "workers", workers)
+	defer w.logger.Info("Stopping Metis Daemon NodeNetworkConfig CRD watcher")
 
 	if w.nncSynced != nil {
-		if !cache.WaitForNamedCacheSync("CRDWatcher", ctx.Done(), w.nncSynced) {
+		if !cache.WaitForNamedCacheSync("MetisNNCWatcher", ctx.Done(), w.nncSynced) {
 			return
 		}
 	}
@@ -170,7 +170,7 @@ func (w *Watcher) syncCIDR(ctx context.Context, network string) error {
 		return err
 	}
 
-	return w.maybeDeleteCIDRs(ctx, nnc)
+	return w.maybeDeleteCIDRs(ctx, nnc, network)
 }
 
 // getNodeNetworkConfig fetches the NodeNetworkConfig CR.
@@ -245,33 +245,33 @@ func (w *Watcher) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkConfig, net
 	return nil
 }
 
-func (w *Watcher) maybeDeleteCIDRs(ctx context.Context, nnc *nncv1.NodeNetworkConfig) error {
-	toBeDeletedBlocks, err := w.store.GetDeletingCIDRBlocks(ctx)
+func (w *Watcher) maybeDeleteCIDRs(ctx context.Context, nnc *nncv1.NodeNetworkConfig, network string) error {
+	toBeDeletedBlocks, err := w.store.GetDeletingCIDRBlocks(ctx, network)
 	if err != nil {
 		return fmt.Errorf("failed to query deleting cidr blocks: %w", err)
 	}
 
-	var toBeDeletedBlockIDs []int64
-	for _, block := range toBeDeletedBlocks {
-		inStatus := false
-		for _, podCIDR := range nnc.Status.PodCIDRs {
-			if podCIDR.CIDR == block.CIDR {
-				inStatus = true
-				break
-			}
-		}
-
-		if !inStatus {
-			toBeDeletedBlockIDs = append(toBeDeletedBlockIDs, block.ID)
+	// Create a map for quick lookup of CIDRs in NNC status for the current network
+	statusCIDRs := make(map[string]bool)
+	for _, podCIDR := range nnc.Status.PodCIDRs {
+		if podCIDR.Network == network {
+			statusCIDRs[podCIDR.CIDR] = true
 		}
 	}
 
-	for _, id := range toBeDeletedBlockIDs {
-		err = w.store.DeleteCIDRBlock(ctx, id)
-		if err != nil {
-			return fmt.Errorf("failed to delete cidr block %d from store: %w", id, err)
+	var blocksToDelete []store.DeletingCIDRBlock
+	for _, block := range toBeDeletedBlocks {
+		if !statusCIDRs[block.CIDR] {
+			blocksToDelete = append(blocksToDelete, block)
 		}
-		w.logger.Info("Deleted CIDR block from local DB as it was released by GCE", "cidrBlockID", id)
+	}
+
+	for _, block := range blocksToDelete {
+		err = w.store.DeleteCIDRBlock(ctx, block.ID)
+		if err != nil {
+			return fmt.Errorf("failed to delete cidr block %d from store: %w", block.ID, err)
+		}
+		w.logger.Info("Deleted CIDR block from local DB as it was released by GCE", "cidrBlockID", block.ID, "cidr", block.CIDR, "network", network)
 	}
 
 	return nil

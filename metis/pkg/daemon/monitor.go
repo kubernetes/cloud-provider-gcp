@@ -99,6 +99,10 @@ type MonitorConfig struct {
 // NewMonitor creates a new Monitor.
 func NewMonitor(cfg MonitorConfig) *Monitor {
 	rl := workqueue.DefaultTypedControllerRateLimiter[string]()
+	// We use a rate-limiting queue to:
+	// 1. Deduplicate requests from the daemon server and the periodic monitor loop.
+	// 2. Decouple the daemon server from processing inline, allowing it to just enqueue items.
+	// 3. Benefit from automatic exponential backoff for retries on failure.
 	queue := workqueue.NewTypedRateLimitingQueueWithConfig(rl, workqueue.TypedRateLimitingQueueConfig[string]{
 		Name: "metis-daemon-monitor",
 	})
@@ -121,18 +125,17 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 	}
 
 	return &Monitor{
-		queue:                    queue,
-		nncClient:                cfg.NNCClient,
-		nodeName:                 cfg.NodeName,
-		store:                    cfg.Store,
-		logger:                   cfg.Logger,
-		lowUtilizationTimers:     make(map[string]time.Time),
-		GetPendingRequestsCount:  cfg.GetPendingRequestsCount,
-		cooldownPushbackInterval: cooldownPushbackInterval,
-		drainingExpiration:       drainingExpiration,
-		monitorInterval:          monitorInterval,
-		lowUtilizationThreshold:  DefaultLowUtilizationThreshold,
-
+		queue:                           queue,
+		nncClient:                       cfg.NNCClient,
+		nodeName:                        cfg.NodeName,
+		store:                           cfg.Store,
+		logger:                          cfg.Logger,
+		lowUtilizationTimers:            make(map[string]time.Time),
+		GetPendingRequestsCount:         cfg.GetPendingRequestsCount,
+		cooldownPushbackInterval:        cooldownPushbackInterval,
+		drainingExpiration:              drainingExpiration,
+		monitorInterval:                 monitorInterval,
+		lowUtilizationThreshold:         DefaultLowUtilizationThreshold,
 		targetUtilizationAfterScaleUp:   DefaultTargetUtilizationAfterScaleUp,
 		cooldownPushbackThreshold:       DefaultCooldownPushbackThreshold,
 		sustainedLowUtilizationDuration: sustainedLowUtilizationDuration,
@@ -143,8 +146,8 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 func (m *Monitor) Run(ctx context.Context, workers int) {
 	defer m.queue.ShutDown()
 
-	m.logger.Info("Starting IPAM monitor", "workers", workers)
-	defer m.logger.Info("Stopping IPAM monitor")
+	m.logger.Info("Starting Metis Daemon Monitor", "node", m.nodeName, "workers", workers, "interval", m.monitorInterval)
+	defer m.logger.Info("Stopping Metis Daemon Monitor")
 
 	// Periodic enqueuer
 	go wait.UntilWithContext(ctx, func(ctx context.Context) {
@@ -178,13 +181,16 @@ func (m *Monitor) processExpiredDrainingBlocks(ctx context.Context) {
 		m.logger.Error(err, "failed to get networks for expired draining blocks check")
 		return
 	}
+
+	nnc, err := m.getNodeNetworkConfig(ctx)
+	if err != nil {
+		m.logger.Error(err, "failed to get NodeNetworkConfig")
+		return
+	}
+	nncCopy := nnc.DeepCopy()
+	anyUpdated := false
+
 	for _, network := range networks {
-		nnc, err := m.getNodeNetworkConfig(ctx)
-		if err != nil {
-			m.logger.Error(err, "failed to get NodeNetworkConfig", "network", network)
-			continue
-		}
-		nncCopy := nnc.DeepCopy()
 		var currentAllocation *nncv1.Allocation
 		for i := range nncCopy.Spec.Allocations {
 			if nncCopy.Spec.Allocations[i].Network == network {
@@ -193,15 +199,19 @@ func (m *Monitor) processExpiredDrainingBlocks(ctx context.Context) {
 			}
 		}
 
-		updated, err := m.handleExpiredDrainingBlocks(ctx, network, nncCopy, currentAllocation)
+		updated, err := m.handleExpiredDrainingBlocksPerNetwork(ctx, network, nncCopy, currentAllocation)
 		if err != nil {
 			m.logger.Error(err, "failed to handle expired draining blocks", "network", network)
 			continue
 		}
 		if updated {
-			if err := m.patchNNC(ctx, nncCopy); err != nil {
-				m.logger.Error(err, "failed to patch NNC for expired draining blocks", "network", network)
-			}
+			anyUpdated = true
+		}
+	}
+
+	if anyUpdated {
+		if err := m.patchNNC(ctx, nncCopy); err != nil {
+			m.logger.Error(err, "failed to patch NNC for expired draining blocks")
 		}
 	}
 }
@@ -493,7 +503,12 @@ func (m *Monitor) maybeDrainExcessive(ctx context.Context, network string, info 
 	return false
 }
 
-func (m *Monitor) handleExpiredDrainingBlocks(ctx context.Context, network string, nncCopy *nncv1.NodeNetworkConfig, currentAllocation *nncv1.Allocation) (bool, error) {
+func (m *Monitor) handleExpiredDrainingBlocksPerNetwork(ctx context.Context, network string, nncCopy *nncv1.NodeNetworkConfig, currentAllocation *nncv1.Allocation) (bool, error) {
+	deletingBlocks, err := m.store.GetDeletingCIDRBlocks(ctx, network)
+	if err != nil {
+		return false, fmt.Errorf("failed to query deleting cidr blocks: %w", err)
+	}
+
 	expiredBlocks, err := m.store.FindAndMarkExpiredDrainingCIDRBlocks(ctx, network, m.drainingExpiration)
 	if err != nil {
 		return false, fmt.Errorf("failed to query and mark draining cidr blocks: %w", err)
@@ -501,11 +516,6 @@ func (m *Monitor) handleExpiredDrainingBlocks(ctx context.Context, network strin
 
 	var reducePods int
 	updated := false
-
-	deletingBlocks, err := m.store.GetDeletingCIDRBlocks(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to query deleting cidr blocks: %w", err)
-	}
 
 	statusMap := make(map[string]nncv1.PodCIDR)
 	for _, podCIDR := range nncCopy.Status.PodCIDRs {
@@ -539,6 +549,7 @@ func (m *Monitor) handleExpiredDrainingBlocks(ctx context.Context, network strin
 
 	// Reconcile blocks that are in Deleting state in the local DB but failed to be added
 	// to the CRD's Spec.ReleasableCIDRs in a previous iteration.
+	// Removing entry from status and releasableset is atomic, this is atomically done by other controllers.
 	for _, block := range deletingBlocks {
 		podCIDR, inStatus := statusMap[block.CIDR]
 		if inStatus && !releasableSet[block.CIDR] {

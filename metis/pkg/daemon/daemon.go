@@ -69,7 +69,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
-		klog.Warning("NODE_NAME environment variable not set")
+		logger.Info("NODE_NAME environment variable not set")
 	}
 
 	dbPath := d.Config.DBPath
@@ -88,7 +88,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	var nncClient nncclientset.Interface
 	var kubeClient kubernetes.Interface
 	if err != nil {
-		klog.Warning("Failed to get in-cluster config, clients will not be initialized")
+		logger.Info("Failed to get in-cluster config, clients will not be initialized")
 	} else {
 		nncClient, err = nncclientset.NewForConfig(config)
 		if err != nil {
