@@ -377,9 +377,9 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 				t.Fatalf("syncCIDR failed: %v", err)
 			}
 
-			_, exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), tc.cidrToCheck)
+			_, exists, err := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), tc.cidrToCheck, network)
 			if err != nil {
-				t.Fatalf("GetCIDRBlockByCIDR failed: %v", err)
+				t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed: %v", err)
 			}
 			if exists != tc.expectedExists {
 				t.Errorf("Expected exists %v, got %v for CIDR %s", tc.expectedExists, exists, tc.cidrToCheck)

@@ -192,9 +192,9 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 					t.Fatalf("Failed to add CIDR: %v", err)
 				}
 				if b.drain {
-					id, exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), b.cidr)
+					id, exists, err := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), b.cidr, network)
 					if err != nil {
-						t.Fatalf("GetCIDRBlockByCIDR failed: %v", err)
+						t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed: %v", err)
 					}
 					if !exists {
 						t.Fatalf("Failed to find CIDR block for %s in store", b.cidr)
@@ -389,9 +389,9 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 					t.Fatalf("Failed to add CIDR: %v", err)
 				}
 				if b.drain {
-					id, exists, err := storeInstance.GetCIDRBlockByCIDR(context.Background(), b.cidr)
+					id, exists, err := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), b.cidr, network)
 					if err != nil {
-						t.Fatalf("GetCIDRBlockByCIDR failed: %v", err)
+						t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed: %v", err)
 					}
 					if !exists {
 						t.Fatalf("Failed to find CIDR block for %s in store", b.cidr)
@@ -596,7 +596,7 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.1.0/28")
-				id, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.1.0/28")
+				id, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.1.0/28", network)
 				s.DrainCIDRBlock(ctx, id)
 				time.Sleep(1100 * time.Millisecond) // Wait for expiration (1s)
 			},
@@ -614,7 +614,7 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.2.0/28")
-				id, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.2.0/28")
+				id, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.2.0/28", network)
 				s.MarkCIDRBlockAsDeleting(ctx, id) // Mark as deleting directly
 				time.Sleep(100 * time.Millisecond) // Give DB a moment
 			},
@@ -633,12 +633,12 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 				// Expired draining
 				s.AddCIDR(ctx, network, "10.0.2.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.3.0/28")
-				id3, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.3.0/28")
+				id3, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.3.0/28", network)
 				s.DrainCIDRBlock(ctx, id3)
 
 				// Missed deleting
 				s.AddCIDR(ctx, network, "10.0.4.0/28")
-				id4, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.4.0/28")
+				id4, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.4.0/28", network)
 				s.MarkCIDRBlockAsDeleting(ctx, id4)
 
 				time.Sleep(1100 * time.Millisecond) // Wait for expiration
@@ -660,7 +660,7 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.5.0/28")
-				id, _, _ := s.GetCIDRBlockByCIDR(ctx, "10.0.5.0/28")
+				id, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.5.0/28", network)
 				s.DrainCIDRBlock(ctx, id)
 				// Do not sleep, so it is not expired (expiration is 1s)
 			},

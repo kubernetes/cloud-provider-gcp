@@ -220,7 +220,7 @@ func (w *Watcher) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkConfig, net
 		bits := prefix.Bits()
 		availableIPs := 1 << (32 - bits)
 
-		_, exists, err := w.store.GetCIDRBlockByCIDR(ctx, podCIDR.CIDR)
+		_, exists, err := w.store.GetCIDRBlockByCIDRAndNetwork(ctx, podCIDR.CIDR, network)
 		if err != nil {
 			return fmt.Errorf("failed to check if CIDR exists in store: %w", err)
 		}
