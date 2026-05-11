@@ -14,8 +14,8 @@ github.com/GoogleCloudPlatform/gke-enterprise-mt v0.1.0 h1:VbaMM0mWLVKE5z/UrGxdB
 github.com/GoogleCloudPlatform/gke-enterprise-mt v0.1.0/go.mod h1:4OaeS6mKZtfsPHaDGOgZ3uz15sUO8KXl9tElNunV5Zc=
 github.com/GoogleCloudPlatform/gke-networking-api v0.2.1-0.20260327205951-1d0cb5d74c02 h1:wU4juqROYf7cVS+9NNJt55ivHVFZrDploNHZWP6TdHA=
 github.com/GoogleCloudPlatform/gke-networking-api v0.2.1-0.20260327205951-1d0cb5d74c02/go.mod h1:jC8/IazDeY3D4zTcEsZK6WiwbmqSTYjGNTZqXucxVVU=
-github.com/GoogleCloudPlatform/k8s-cloud-provider v1.27.0 h1:5slI4ZAsvkgpVEfrKZGlvcpeYTv2roIbDzK6zvJYhwY=
-github.com/GoogleCloudPlatform/k8s-cloud-provider v1.27.0/go.mod h1:TFNxHb9YGSjLB86UWy5BQCgVTXQscyy/X5tC/2olieA=
+github.com/GoogleCloudPlatform/k8s-cloud-provider v1.34.0 h1:QoaPZxsKBqKlIAwQSUJgiXlhz1Nu+Y1DgGqR7GV2uIA=
+github.com/GoogleCloudPlatform/k8s-cloud-provider v1.34.0/go.mod h1:Zl1a9zE67QrQpwIib8BlF7mv7FAVXQwJDKD6rAQk/jw=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/NYTimes/gziphandler v1.1.1 h1:ZUDjpQae29j0ryrS0u/B8HZfJBtBQHjqw2rQ2cqUQ3I=
