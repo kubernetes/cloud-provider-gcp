@@ -1,4 +1,3 @@
-cluster/bin
 MERGED_LICENSES
 release/*
 .go-cache/
