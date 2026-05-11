@@ -123,6 +123,9 @@ func main() {
 	}
 
 	controllerInitializers[names.CloudNodeLifecycleController] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: "node-controller",
+		},
 		Constructor: startCloudNodeLifecycleControllerWrapper,
 	}
 
