@@ -1,0 +1,33 @@
+name: Tag auth-provider-gcp
+
+on:
+  push:
+    branches:
+      - 'release-1.*'
+    paths:
+      - 'cmd/auth-provider-gcp/**'
+      - 'go.mod'
+      - 'go.sum'
+
+jobs:
+  tag-auth-provider-gcp:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0 # Fetch all history and tags
+
+      - name: Configure Git User
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run auto-tag script
+        env:
+          DRY_RUN: "false"
+          FORCE_BRANCH: ${{ github.ref_name }}
+          COMPONENT_PREFIX: "auth-provider-gcp/"
+        run: ./tools/auto-tag.sh
