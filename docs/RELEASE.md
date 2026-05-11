@@ -57,15 +57,6 @@ export KUBE_VERSION=v1.$MINOR.$PATCH
 tools/sha256_generator.sh
 ```
 
-### Update `/cluster` Directory
-Update the `/cluster` directory if needed. A script under `/cluster` is used to provision a k8s cluster on GCE,  [kube-up.sh](https://github.com/kubernetes/cloud-provider-gcp/blob/master/cluster/kube-up.sh)
-
-1. Rebase the /cluster directory with the /cluster directory from kubernetes/kubernetes at desired Kubernetes release version. (kubernetes/kubernetes/cluster/images should not be pulled in cloud-provide-gcp.)
-1. Selectively re-apply direct contributions made to the /cluster directory of cloud-provider-gcp that are clobbered by the rebase of the /cluster directory (see reference in the end of this documentation).
-1. Remove any changes regarding OWNERS files.
-
-**_Note_**: Use `make bump-cluster` to automate part of this process.
-
 ### Testing
 1. Run `make verify`.
 1. Bring the cluster up with `make test-cluster-up`
@@ -110,62 +101,3 @@ Update the GCE job [version](https://github.com/kubernetes/kubernetes/blob/1b4c3
 
 ## GKE release
 Follow instructions at go/gke-ccm-releasing.
-
-## Reference of cloud-provider-gcp specific changes in /cluster directory
-
-*   [Deploy Kubernetes from cloud-provider-gcp. #143](https://github.com/kubernetes/cloud-provider-gcp/pull/143)
-    *   **cluster/addons/addon-manager/kube-addons.sh (moved mostly to cluster/addons/addon-manager/kube-addons-main.sh)**
-        *   **is\_cloud\_leader decl and if is\_leader || is\_cloud\_leader**
-    *   **cluster/common.sh**
-        *   **hack/lib/util.sh -> cluster/util.sh**
-        *   **set\_binary\_version locations changes to just bazel-bin**
-        *   **verify-kube-binaries hack to get a local kubectl from existing tars**
-    *   **cluster/gce/config-test.sh**
-        *   **CLOUD\_CONTROLLER\_MANAGER\_TEST\_ARGS**
-    *   **cluster/gce/gci/configure-helper.sh**
-        *   **CLOUD\_CONTROLLER\_MANAGER\_TOKEN set and used to append\_or\_replace\_prefixed\_line**
-        *   **system:cloud-controller-manager added (2 times) in Policy objects**
-        *   **start-kube-controller-manager: --cloud-provider=external**
-        *   **start-cloud-controller-manager decl**
-        *   **CLOUD\_CONTROLLER\_MANAGER\_CPU\_REQUEST**
-        *   **CLOUD\_CONTROLLER\_MANAGER\_TOKEN**
-        *   **start-cloud-controller-manager called in main**
-*   **cluster/gce/gci/configure.sh**
-    *   **try-load-docker-image "${img\_dir}/cloud-controller-manager.tar"**
-    *   **cp "${src\_dir}/cloud-controller-manager.tar" "${dst\_dir}"**
-*   [Add basic cluster up/down e2e test. #144](https://github.com/kubernetes/cloud-provider-gcp/pull/144)
-    *   **cluster/gce/gci/configure.sh - sha512 changes**
-*   [Add logdump for e2e create. #148](https://github.com/kubernetes/cloud-provider-gcp/pull/148)
-    *   **cluster/log-dump/log-dump.sh - adds cloud-controller-manager.log as party of cherry-pick**
-*   [Fix CCM image. #151](https://github.com/kubernetes/cloud-provider-gcp/pull/151)
-    *   **cloud-node-controller-role.yaml fixes**
-    *   **cluster/gce/gci/configure-helper.sh**
-        *   **add convert-manifest-params**
-        *   **start-kube-controller-manager**
-            *   **--external-cloud-volume-plugin=gce**
-        *   **start-cloud-controller-manager**
-            *   **--v=4, params+=" --port=10253"**
-        *   **kube\_rc\_docker\_tag changes**
-    *   **cluster/gce/gci/configure-kubeapiserver.sh**
-        *   **start-kube-apiserver: --cloud-provider=external**
-    *   **cluster/gce/manifests/cloud-controller-manager.manifest**
-        *   **--log-file, --logtostderr (switched to --log\_file by ???)**
-*   [Fix shellcheck failure in cluster/gce/config-default.sh #152](https://github.com/kubernetes/cloud-provider-gcp/pull/152)
-    *   **cherry-pick of shellcheck (**[Fix shellcheck failure in cluster/gce/config-default.sh kubernetes#82062](https://github.com/kubernetes/kubernetes/pull/82062)**) - This is a no-op, just mentioned here for completeness.**
-*   [Create the bucket for tars based on $PROJECT #154](https://github.com/kubernetes/cloud-provider-gcp/pull/154)
-    *   **cluster/gce/util.sh: add PROJECT to gsutil call (also in upstream ?)**
-*   [Add auth-provider-gcp for out-of-tree credential provision #168](https://github.com/kubernetes/cloud-provider-gcp/pull/168)
-    *   **cluster/gce/config-default.sh: ENABLE\_CREDENTIAL\_SIDECAR setup**
-    *   **cluster/gce/gci/configure-helper.sh: create-sidecar-config if ENABLE\_CREDENTIAL\_SIDECAR and create-sidecar-config decl**
-    *   **cluster/gce/gci/configure.sh: mv auth-provider-gcp to bin**
-    *   **cluster/gce/util.sh: construct-linux-kubelet-flags with --image-credential-provider-config, ENABLE\_CREDENTIAL\_SIDECAR: $(yaml-quote …)**
-*   [Disable local loopback for volume host #181](https://github.com/kubernetes/cloud-provider-gcp/pull/181)
-    *   **cluster/gce/gci/configure-helper.sh: --volume-host-allow-local-loopback**
-*   [Bump cloud-provider-gcp to v1.21 #204](https://github.com/kubernetes/cloud-provider-gcp/pull/204)
-    *   **cluster/gce/manifests/cloud-controller-manager.manifest: --log-file -> --log\_file**
-*   [Use at minimum n1-standard-2 in cluster/gce/config-common.sh #228](https://github.com/kubernetes/cloud-provider-gcp/pull/228)
-*   **Split make release-tars by platform**
-    *   **cluster/gce/manifests/cloud-controller-manager.manifest**
-        *   **Change `args` to `command` and insert `/go-runner`**
-    *   **cluster/gce/util.sh**
-        *   **Prefix `./easyrsa init-pki` with `EASYRSA_BATCH=1`**
