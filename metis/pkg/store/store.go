@@ -343,12 +343,12 @@ func (s *Store) AllocateIPv4(ctx context.Context, network, interfaceName, contai
 	return "", "", fmt.Errorf("%w: failed to allocate ipv4 in any cidr block for network %s", ErrNoAvailableIPs, network)
 }
 
-// GetCIDRBlockByCIDR checks if a CIDR block already exists in the database.
-func (s *Store) GetCIDRBlockByCIDR(ctx context.Context, cidr string) (bool, error) {
+// GetCIDRBlockByCIDRAndNetwork checks if a CIDR block exists for the specific network.
+func (s *Store) GetCIDRBlockByCIDRAndNetwork(ctx context.Context, cidr, network string) (bool, error) {
 	var id int64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id FROM cidr_blocks WHERE cidr = ? LIMIT 1
-	`, cidr).Scan(&id)
+		SELECT id FROM cidr_blocks WHERE cidr = ? AND network = ? LIMIT 1
+	`, cidr, network).Scan(&id)
 
 	if err == nil {
 		return true, nil

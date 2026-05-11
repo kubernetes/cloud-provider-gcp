@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS cidr_blocks (
 
     -- The actual IP range allocated from GCE. 
     -- Example: '10.0.1.0/28'
-    cidr TEXT UNIQUE NOT NULL,
+    cidr TEXT NOT NULL,
 
     -- The logical network this block belongs to, matching the CNI networkName.
     -- Example: 'gke-pod-network'
@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS cidr_blocks (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Timestamp of the last mutation to this block's state or capacity.
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE(cidr, network)
 );
 
 -- ip_addresses tracks the assignment state, ownership, and cooldown periods 
@@ -47,7 +49,7 @@ CREATE TABLE IF NOT EXISTS ip_addresses (
 
     -- The specific IP address string.
     -- Example: '10.0.1.2'
-    address TEXT UNIQUE NOT NULL,
+    address TEXT NOT NULL,
 
     -- The parent CIDR block this IP belongs to. 
     -- Enforces cascading deletes if the parent block is removed by the daemon.
@@ -80,7 +82,8 @@ CREATE TABLE IF NOT EXISTS ip_addresses (
     -- Timestamp of the last mutation to this IP record.
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (cidr_block_id) REFERENCES cidr_blocks(id) ON DELETE CASCADE
+    FOREIGN KEY (cidr_block_id) REFERENCES cidr_blocks(id) ON DELETE CASCADE,
+    UNIQUE(address, cidr_block_id)
 );
 
 -- Index to optimize the daemon's search for the next available IP address.
