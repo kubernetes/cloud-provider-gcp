@@ -3,7 +3,7 @@ module k8s.io/cloud-provider-gcp/test/e2e
 go 1.26.0
 
 require (
-	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.27.0
+	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.34.0
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	google.golang.org/api v0.199.0
