@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1"
 )
 
 // DockerConfigProvider is the interface that registered extensions implement
@@ -32,10 +33,8 @@ type DockerConfigProvider interface {
 	Enabled() bool
 	// Provide returns docker configuration.
 	// Implementations can be blocking - e.g. metadata server unavailable.
-	// The image is passed in as context in the event that the
-	// implementation depends on information in the image name to return
-	// credentials; implementations are safe to ignore the image.
-	Provide(image string) DockerConfig
+	// The authRequest is passed as context to the provider, as the implementation depends on information in the request to return credentials.
+	Provide(authRequest credentialproviderapi.CredentialProviderRequest) DockerConfig
 }
 
 // CachingDockerConfigProvider implements DockerConfigProvider by composing
@@ -61,7 +60,7 @@ func (d *CachingDockerConfigProvider) Enabled() bool {
 }
 
 // Provide implements dockerConfigProvider
-func (d *CachingDockerConfigProvider) Provide(image string) DockerConfig {
+func (d *CachingDockerConfigProvider) Provide(authRequest credentialproviderapi.CredentialProviderRequest) DockerConfig {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -71,7 +70,7 @@ func (d *CachingDockerConfigProvider) Provide(image string) DockerConfig {
 	}
 
 	klog.V(2).Infof("Refreshing cache for provider: %v", reflect.TypeOf(d.Provider).String())
-	config := d.Provider.Provide(image)
+	config := d.Provider.Provide(authRequest)
 	if d.ShouldCache == nil || d.ShouldCache(config) {
 		d.cacheDockerConfig = config
 		d.expiration = time.Now().Add(d.Lifetime)

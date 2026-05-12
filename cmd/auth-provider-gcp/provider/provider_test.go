@@ -16,12 +16,15 @@ limitations under the License.
 package provider
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -82,7 +85,7 @@ func TestContainerRegistry(t *testing.T) {
 		},
 	})
 	provider := MakeRegistryProvider(transport)
-	response, err := GetResponse(dummyImage, provider)
+	response, err := GetResponse(credentialproviderapi.CredentialProviderRequest{Image: dummyImage}, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
@@ -144,7 +147,7 @@ func TestConfigProvider(t *testing.T) {
 		},
 	})
 	provider := MakeDockerConfigProvider(transport)
-	response, err := GetResponse(dummyImage, provider)
+	response, err := GetResponse(credentialproviderapi.CredentialProviderRequest{Image: dummyImage}, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
@@ -201,7 +204,7 @@ func TestConfigURLProvider(t *testing.T) {
 	})
 
 	provider := MakeDockerConfigURLProvider(transport)
-	response, err := GetResponse(dummyImage, provider)
+	response, err := GetResponse(credentialproviderapi.CredentialProviderRequest{Image: dummyImage}, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
@@ -214,6 +217,114 @@ func TestConfigURLProvider(t *testing.T) {
 		}
 		if password != auth.Password {
 			t.Errorf("Expected password %s not found (password: %s)", password, auth.Password)
+		}
+	}
+}
+
+func TestK8sSAWIFProvider(t *testing.T) {
+	registryURL := strings.Split(dummyImage, "/")[0]
+	gcpRegistryURL := "container.cloud.google.com"
+
+	projectNum := "123456789"
+	poolId := "test-pool"
+	providerId := "test-provider"
+
+	os.Setenv("GCP_WIF_PROJECT_NUMBER", projectNum)
+	os.Setenv("GCP_WIF_POOL_ID", poolId)
+	os.Setenv("GCP_WIF_PROVIDER_ID", providerId)
+	defer os.Unsetenv("GCP_WIF_PROJECT_NUMBER")
+	defer os.Unsetenv("GCP_WIF_POOL_ID")
+	defer os.Unsetenv("GCP_WIF_PROVIDER_ID")
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/v1/token") {
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "application/json")
+			tokenResponse := map[string]interface{}{
+				"access_token":      dummyToken,
+				"expires_in":        3600,
+				"issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+			}
+			resp, _ := json.Marshal(tokenResponse)
+			if _, err := w.Write(resp); err != nil {
+				t.Fatalf("write token response: %v", err)
+			}
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	serverURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	transport := server.Client().Transport.(*http.Transport).Clone()
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if strings.HasPrefix(addr, "sts.googleapis.com:") {
+			var d net.Dialer
+			return d.DialContext(ctx, network, serverURL.Host)
+		}
+		var d net.Dialer
+		return d.DialContext(ctx, network, addr)
+	}
+	transport.TLSClientConfig.ServerName = "127.0.0.1"
+
+	provider, err := MakeK8sSAWIFProvider(transport)
+	if err != nil {
+		t.Fatalf("Unexpected error while creating provider: %v", err)
+	}
+
+	if provider == nil {
+		t.Fatalf("Expected K8sSAWIFProvider but got nil")
+	}
+
+	if provider.WIFConfig.ProjectNumber != projectNum {
+		t.Errorf("Expected project number %s, got %s", projectNum, provider.WIFConfig.ProjectNumber)
+	}
+	if provider.WIFConfig.PoolId != poolId {
+		t.Errorf("Expected pool ID %s, got %s", poolId, provider.WIFConfig.PoolId)
+	}
+	if provider.WIFConfig.ProviderId != providerId {
+		t.Errorf("Expected provider ID %s, got %s", providerId, provider.WIFConfig.ProviderId)
+	}
+	if !provider.UseRegistryFromImage {
+		t.Errorf("Expected UseRegistryFromImage to be true")
+	}
+	if provider.StsService == nil {
+		t.Errorf("Expected StsService to be configured")
+	}
+
+	response, err := GetResponse(credentialproviderapi.CredentialProviderRequest{Image: dummyImage}, provider)
+	if err != nil {
+		t.Fatalf("Unexpected error while getting response: %v", err)
+	}
+
+	if !hasURL(registryURL, response) || !hasURL(gcpRegistryURL, response) {
+		if !hasURL(registryURL, response) {
+			t.Errorf("URL %s expected in response, not found (response: %s)", registryURL, response.Auth)
+		}
+		if !hasURL(gcpRegistryURL, response) {
+			t.Errorf("URL %s expected in response, not found (response: %s)", gcpRegistryURL, response.Auth)
+		}
+	}
+
+	if apiKind != response.TypeMeta.Kind {
+		t.Errorf("Expected Kind %s, got %s", apiKind, response.TypeMeta.Kind)
+	}
+	if apiVersion != response.TypeMeta.APIVersion {
+		t.Errorf("Expected APIVersion %s, got %s", apiVersion, response.TypeMeta.APIVersion)
+	}
+	if expectedCacheKey != response.CacheKeyType {
+		t.Errorf("Expected %s as cache key (found %s instead)", expectedCacheKey, response.CacheKeyType)
+	}
+	for _, auth := range response.Auth {
+		if expectedUsername != auth.Username {
+			t.Errorf("Expected username %s not found (username: %s)", expectedUsername, auth.Username)
+		}
+		if dummyToken != auth.Password {
+			t.Errorf("Expected password %s not found (password: %s)", dummyToken, auth.Password)
 		}
 	}
 }

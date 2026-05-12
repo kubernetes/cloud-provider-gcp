@@ -17,11 +17,14 @@ limitations under the License.
 package provider
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"time"
 
+	"google.golang.org/api/option"
+	"google.golang.org/api/sts/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cloud-provider-gcp/pkg/credentialconfig"
 	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
@@ -40,13 +43,25 @@ const (
 )
 
 // MakeRegistryProvider returns a ContainerRegistryProvider with the given transport.
-func MakeRegistryProvider(transport *http.Transport) *gcpcredential.ContainerRegistryProvider {
+func MakeRegistryProvider(transport *http.Transport, projectNumber, poolID, providerID string) (*gcpcredential.ContainerRegistryProvider, error) {
 	httpClient := makeHTTPClient(transport)
 	provider := &gcpcredential.ContainerRegistryProvider{
 		MetadataProvider:     gcpcredential.MetadataProvider{Client: httpClient},
 		UseRegistryFromImage: true,
 	}
-	return provider
+	if projectNumber != "" && poolID != "" && providerID != "" {
+		stsService, err := sts.NewService(context.Background(), option.WithHTTPClient(httpClient))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create sts service: %w", err)
+		}
+		provider.WIFProvider = gcpcredential.WIFProvider{
+			StsService:    stsService,
+			ProjectNumber: projectNumber,
+			PoolId:        poolID,
+			ProviderId:    providerID,
+		}
+	}
+	return provider, nil
 }
 
 // MakeDockerConfigProvider returns a DockerConfigKeyProvider with the given transport.
@@ -109,8 +124,8 @@ func getCacheKeyType() (credentialproviderapi.PluginCacheKeyType, error) {
 }
 
 // GetResponse queries the given provider for credentials.
-func GetResponse(image string, provider credentialconfig.DockerConfigProvider) (*credentialproviderapi.CredentialProviderResponse, error) {
-	cfg := provider.Provide(image)
+func GetResponse(authRequest credentialproviderapi.CredentialProviderRequest, provider credentialconfig.DockerConfigProvider) (*credentialproviderapi.CredentialProviderResponse, error) {
+	cfg := provider.Provide(authRequest)
 	response := &credentialproviderapi.CredentialProviderResponse{Auth: make(map[string]credentialproviderapi.AuthConfig)}
 	for url, dockerConfig := range cfg {
 		response.Auth[url] = credentialproviderapi.AuthConfig{Username: dockerConfig.Username, Password: dockerConfig.Password}

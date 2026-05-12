@@ -19,6 +19,8 @@ package credentialconfig
 import (
 	"testing"
 	"time"
+
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1"
 )
 
 type testProvider struct {
@@ -31,7 +33,7 @@ func (d *testProvider) Enabled() bool {
 }
 
 // Provide implements dockerConfigProvider
-func (d *testProvider) Provide(image string) DockerConfig {
+func (d *testProvider) Provide(authRequest credentialproviderapi.CredentialProviderRequest) DockerConfig {
 	d.Count++
 	return DockerConfig{}
 }
@@ -46,33 +48,35 @@ func TestCachingProvider(t *testing.T) {
 		Lifetime: 1 * time.Second,
 	}
 
-	image := "image"
+	authRequest := credentialproviderapi.CredentialProviderRequest{
+		Image: "image",
+	}
 
 	if provider.Count != 0 {
 		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
 	}
-	cache.Provide(image)
-	cache.Provide(image)
-	cache.Provide(image)
-	cache.Provide(image)
+	cache.Provide(authRequest)
+	cache.Provide(authRequest)
+	cache.Provide(authRequest)
+	cache.Provide(authRequest)
 	if provider.Count != 1 {
 		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
 	}
 
 	time.Sleep(cache.Lifetime)
-	cache.Provide(image)
-	cache.Provide(image)
-	cache.Provide(image)
-	cache.Provide(image)
+	cache.Provide(authRequest)
+	cache.Provide(authRequest)
+	cache.Provide(authRequest)
+	cache.Provide(authRequest)
 	if provider.Count != 2 {
 		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
 	}
 
 	time.Sleep(cache.Lifetime)
-	cache.Provide(image)
-	cache.Provide(image)
-	cache.Provide(image)
-	cache.Provide(image)
+	cache.Provide(authRequest)
+	cache.Provide(authRequest)
+	cache.Provide(authRequest)
+	cache.Provide(authRequest)
 	if provider.Count != 3 {
 		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
 	}

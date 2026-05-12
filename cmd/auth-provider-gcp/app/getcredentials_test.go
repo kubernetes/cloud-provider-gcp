@@ -33,6 +33,7 @@ func TestValidateAuthFlow(t *testing.T) {
 		{Name: "validate gcr auth flow", Flow: gcrAuthFlow},
 		{Name: "validate docker-cfg auth flow option", Flow: dockerConfigAuthFlow},
 		{Name: "validate docker-cfg-url auth flow option", Flow: dockerConfigURLAuthFlow},
+		{Name: "validate k8s-sa-wif auth flow option", Flow: k8sSAWIFAuthFlow},
 		{Name: "bad auth flow option", Flow: "bad-flow", Error: &AuthFlowFlagError{flagValue: "bad-flow"}},
 		{Name: "empty auth flow option", Flow: "", Error: &AuthFlowFlagError{flagValue: ""}},
 		{Name: "case-sensitive auth flow", Flow: "Gcrauthflow", Error: &AuthFlowFlagError{flagValue: "Gcrauthflow"}},
@@ -67,6 +68,7 @@ func TestProviderFromFlow(t *testing.T) {
 		{Name: "gcr auth provider selection", Flow: gcrAuthFlow, Type: "ContainerRegistryProvider"},
 		{Name: "docker-cfg auth provider selection", Flow: dockerConfigAuthFlow, Type: "DockerConfigKeyProvider"},
 		{Name: "docker-cfg-url auth provider selection", Flow: dockerConfigURLAuthFlow, Type: "DockerConfigURLKeyProvider"},
+		{Name: "k8s-sa-wif auth provider selection", Flow: k8sSAWIFAuthFlow, Type: "K8sSAWIFProvider"},
 		{Name: "non-existent auth provider request", Flow: "bad-flow", Type: "", Error: &AuthFlowTypeError{requestedFlow: "bad-flow"}},
 		{Name: "empty auth provider request", Flow: "", Type: "", Error: &AuthFlowTypeError{requestedFlow: ""}},
 	}
