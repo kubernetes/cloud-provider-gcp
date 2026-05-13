@@ -177,12 +177,12 @@ func (s *Store) AllocateIP(ctx context.Context, params AllocateIPParams) (string
 	return s.allocateIP(ctx, params)
 }
 
-// GetCIDRBlockByCIDR checks if a CIDR block already exists in the database.
-func (s *Store) GetCIDRBlockByCIDR(ctx context.Context, cidr string) (bool, error) {
+// GetCIDRBlockByCIDRAndNetwork checks if a CIDR block exists for the specific network.
+func (s *Store) GetCIDRBlockByCIDRAndNetwork(ctx context.Context, cidr, network string) (bool, error) {
 	var id int64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id FROM cidr_blocks WHERE cidr = ? LIMIT 1
-	`, cidr).Scan(&id)
+		SELECT id FROM cidr_blocks WHERE cidr = ? AND network = ? LIMIT 1
+	`, cidr, network).Scan(&id)
 
 	if err == nil {
 		return true, nil

@@ -111,6 +111,20 @@ func main() {
 		Constructor: nodeIpamController.startNodeIpamControllerWrapper,
 	}
 
+	controllerInitializers[names.CloudNodeController] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: "node-controller",
+		},
+		Constructor: startCloudNodeControllerWrapper,
+	}
+
+	controllerInitializers[names.CloudNodeLifecycleController] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: "node-controller",
+		},
+		Constructor: startCloudNodeLifecycleControllerWrapper,
+	}
+
 	controllerInitializers["gkenetworkparamset"] = app.ControllerInitFuncConstructor{
 		Constructor: startGkeNetworkParamSetControllerWrapper,
 	}

@@ -8,11 +8,13 @@ A Google Cloud Platform project with billing enabled.
 
 ## Deployment
 
-The `make kops-up` target is an end-to-end workflow that automatically:
+The `make test-cluster-up` target is an end-to-end workflow that automatically:
 - Provisions a Kubernetes cluster using kOps.
 - Builds the CCM image locally.
 - Pushes the image to your Artifact Registry.
 - Deploys the CCM (along with required RBAC) to the cluster.
+
+You'll also need to configure default credentials, using `gcloud auth application-default login`.
 
 Run the following commands to get started:
 
@@ -32,7 +34,10 @@ export KOPS_STATE_STORE=gs://${GCP_PROJECT}-kops-state
 gcloud storage buckets create ${KOPS_STATE_STORE} --location=${GCP_LOCATION} || true
 
 # Run the cluster creation target, may take several minutes
-make kops-up
+make test-cluster-up
+
+# Ensure you are configured to talk to the correct cluster.
+kubectl config use-context $KOPS_CLUSTER_NAME
 ```
 
 ## Verification
@@ -65,5 +70,5 @@ kubectl describe nodes | grep "ProviderID:"
 To tear down the cluster and clean up resources:
 
 ```sh
-make kops-down
+make test-cluster-down
 ```

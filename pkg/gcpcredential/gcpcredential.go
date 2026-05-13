@@ -18,8 +18,8 @@ package gcpcredential
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -102,7 +102,7 @@ func onGCEVM() bool {
 		}
 		name = fields[1]
 	} else {
-		data, err := ioutil.ReadFile(GCEProductNameFile)
+		data, err := os.ReadFile(GCEProductNameFile)
 		if err != nil {
 			klog.V(2).Infof("Error while reading product_name: %v", err)
 			return false

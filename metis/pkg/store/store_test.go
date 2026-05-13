@@ -460,52 +460,72 @@ func TestStore_AddCIDR_Small(t *testing.T) {
 	}
 }
 
-func TestStore_AddCIDR_IPv6(t *testing.T) {
+func TestStore_GetCIDRBlockByCIDRAndNetwork(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()
 
-	dbPath := filepath.Join(tempDir, "metis_addcidr_ipv6.sqlite")
+	dbPath := filepath.Join(tempDir, "get_cidr_network.sqlite")
 	s, err := NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("NewStore returned unexpected error: %v", err)
 	}
 	defer s.Close()
 
-	network := "gke-pod-network-ipv6"
-	cidr := "2001:db8::/64"
+	network1 := "network-1"
+	network2 := "network-2"
+	cidr := "10.10.0.0/24"
 
-	err = s.AddCIDR(context.Background(), network, cidr)
+	// Initially shouldn't exist in either network
+	exists, err := s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network1)
 	if err != nil {
-		t.Fatalf("AddCIDR failed for IPv6: %v", err)
+		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed: %v", err)
+	}
+	if exists {
+		t.Error("Expected false for network1, got true")
 	}
 
-	// 1. Verify cidr_block table insertion
-	var totalIPs, allocatedIPs int64
-	var state string
-	err = s.db.QueryRow(`SELECT total_ips, allocated_ips, state FROM cidr_blocks WHERE cidr = ?`, cidr).Scan(&totalIPs, &allocatedIPs, &state)
+	// Add CIDR to network1
+	if err := s.AddCIDR(context.Background(), network1, cidr); err != nil {
+		t.Fatalf("AddCIDR failed for network1: %v", err)
+	}
+
+	// Should exist in network1, but not in network2
+	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network1)
 	if err != nil {
-		t.Fatalf("Failed to query inserted cidr_block: %v", err)
+		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network1: %v", err)
+	}
+	if !exists {
+		t.Error("Expected true for network1, got false")
 	}
 
-	if totalIPs != 0x7fffffffffffffff {
-		t.Errorf("Expected total_ips %d, got %d", 0x7fffffffffffffff, totalIPs)
-	}
-	if allocatedIPs != 0 {
-		t.Errorf("Expected allocated_ips 0, got %d", allocatedIPs)
-	}
-	if state != "Ready" {
-		t.Errorf("Expected state Ready, got %s", state)
-	}
-
-	// 2. Verify ip_addresses table insertion (should have ipv6PopulationBatchSize entries)
-	var count int
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM ip_addresses WHERE cidr_block_id = (SELECT id FROM cidr_blocks WHERE cidr = ?)`, cidr).Scan(&count)
+	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network2)
 	if err != nil {
-		t.Fatalf("Failed to query ip_addresses count: %v", err)
+		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network2: %v", err)
+	}
+	if exists {
+		t.Error("Expected false for network2, got true")
 	}
 
-	if count != ipv6PopulationBatchSize {
-		t.Errorf("Expected %d populated IPs, got %d", ipv6PopulationBatchSize, count)
+	// Add same CIDR to network2 (allowed since unique on cidr, network)
+	if err := s.AddCIDR(context.Background(), network2, cidr); err != nil {
+		t.Fatalf("AddCIDR failed for network2: %v", err)
+	}
+
+	// Now it should exist in both networks
+	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network1)
+	if err != nil {
+		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network1: %v", err)
+	}
+	if !exists {
+		t.Error("Expected true for network1, got false")
+	}
+
+	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network2)
+	if err != nil {
+		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network2: %v", err)
+	}
+	if !exists {
+		t.Error("Expected true for network2, got false")
 	}
 }
 

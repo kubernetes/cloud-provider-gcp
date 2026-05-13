@@ -286,7 +286,7 @@ func (g *Cloud) InstanceShutdown(ctx context.Context, node *v1.Node) (bool, erro
 
 func (g *Cloud) nodeAddressesFromInstance(instance *compute.Instance) ([]v1.NodeAddress, error) {
 	if len(instance.NetworkInterfaces) < 1 {
-		return nil, fmt.Errorf("could not find network interfaces for instanceID %q", instance.Id)
+		return nil, fmt.Errorf("could not find network interfaces for instanceID %d", instance.Id)
 	}
 	nodeAddresses := []v1.NodeAddress{}
 	for _, nic := range instance.NetworkInterfaces {
