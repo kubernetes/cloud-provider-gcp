@@ -22,6 +22,7 @@ package gce
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -606,17 +607,14 @@ func TestProjectFromNodeProviderID(t *testing.T) {
 		}},
 	}
 	instanceMap[instanceFromNonDefaultProject.SelfLink] = instanceFromNonDefaultProject
+	forceNonDefaultProject := cloud.ForceProjectID(nonDefaultProject)
 
 	// Setup mock response.
 	mockGCE := gce.c.(*cloud.MockGCE)
 	mi := mockGCE.Instances().(*cloud.MockInstances)
 	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
 		projectID := defaultValues.ProjectID
-		if len(options) > 0 {
-			// In v1.34+, cloud.Option is a function closure, so reflect.DeepEqual
-			// no longer works. Since we only ever pass cloud.ForceProjectID()
-			// in this test, we assume any option means the project ID should be
-			// the non-default one.
+		if len(options) == 1 && reflect.DeepEqual(options[0], forceNonDefaultProject) {
 			projectID = nonDefaultProject
 		}
 		selfLink := fmt.Sprintf("projects/%v/zones/%v/instances/%v", projectID, key.Zone, key.Name)
@@ -657,7 +655,7 @@ func TestProjectFromNodeProviderID(t *testing.T) {
 				t.Fatalf("instanceByProviderID(%v) = %v; want nil", node.Spec.ProviderID, err)
 			}
 			if gotGCEInstance.ID != tc.wantInstance.Id {
-				t.Errorf("instanceByProviderID(%v) returned instance with ID = %v; want instance with ID = %v", node.Spec.ProviderID, gotGCEInstance.ID, tc.wantInstance.Id)
+				t.Errorf("instanceByProviderID(%v) returned instance with ID = %v; want instance with ID = %v", node.Spec.ProviderID, gotGCEInstance.ID, instanceFromDefaultProject.Id)
 			}
 		})
 
