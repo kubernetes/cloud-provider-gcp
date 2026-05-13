@@ -340,11 +340,25 @@ func k8sStartingConfig() (*clientcmdapi.Config, error) {
 
 func writeCacheFile(content string) error {
 	cacheFilePath := getCacheFilePath()
-	// File is atomically written with 0600 - the same permissions as ~/.kube/config file.
+	// File is atomically created with 0600 - the same permissions as ~/.kube/config file.
 	// ls ~/.kube/ -al
 	// -rw-------  1 username primarygroup 2836 Jan 27 08:00 config
 	// -rw-------  1 username primarygroup  327 Jan 27 08:00 gke_gcloud_auth_plugin_cache
-	return atomic.WriteFile(cacheFilePath, strings.NewReader(content))
+	//
+	// However if the file already exists, WriteFile honors the existing permissions.
+	// If the file exists we check we have permission to set permissions.
+	// We force the file permissions to 0600 after the file is written to be safe.
+	if _, err := os.Stat(cacheFilePath); err == nil { // File exists
+		err = os.Chmod(cacheFilePath, 0600)
+		if err != nil {
+			return err
+		}
+	}
+	err := atomic.WriteFile(cacheFilePath, strings.NewReader(content))
+	if err != nil {
+		return err
+	}
+	return os.Chmod(cacheFilePath, 0600)
 }
 
 func getCacheFilePath() string {
