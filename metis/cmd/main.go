@@ -38,8 +38,7 @@ func main() {
 		Use:   "metis",
 		Short: "Metis implements adaptive cluster IPAM for GKE",
 		Run: func(cmd *cobra.Command, args []string) {
-			klog.InfoS("metis started in non-daemon mode")
-			// TODO: fix me for CNI mode
+			RunCni()
 		},
 	}
 

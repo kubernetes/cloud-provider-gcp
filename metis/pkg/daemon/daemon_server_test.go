@@ -393,3 +393,73 @@ func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 		t.Errorf("Expected status message to contain '%v', got: %s", store.ErrNoAvailableIPs, st.Message())
 	}
 }
+
+func TestAdaptiveIpamServer_CheckPodIP(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_daemon_check_test.sqlite")
+
+	s, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	server := &adaptiveIpamServer{store: s}
+
+	network := "test-network"
+	cidr := "10.0.1.0/24"
+	containerID := "test-container"
+	interfaceName := "eth0"
+	podName := "test-pod"
+	podNamespace := "default"
+
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("Failed to add CIDR: %v", err)
+	}
+
+	// 1. Check before allocation (should return NotFound)
+	req := &adaptiveipam.CheckPodIPRequest{
+		Network:       network,
+		InterfaceName: interfaceName,
+		ContainerId:   containerID,
+		PodName:       podName,
+		PodNamespace:  podNamespace,
+	}
+
+	_, err = server.CheckPodIP(context.Background(), req)
+	if err == nil {
+		t.Fatal("Expected error for non-existent allocation, got nil")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("Expected gRPC status error, got: %v", err)
+	}
+	if st.Code() != codes.NotFound {
+		t.Errorf("Expected status code NotFound, got %v", st.Code())
+	}
+
+	// 2. Allocate IP
+	reqAlloc := &adaptiveipam.AllocatePodIPRequest{
+		Network:      network,
+		PodName:      podName,
+		PodNamespace: podNamespace,
+		Ipv4Config: &adaptiveipam.IPConfig{
+			InterfaceName: interfaceName,
+			ContainerId:   containerID,
+		},
+	}
+	_, err = server.AllocatePodIP(context.Background(), reqAlloc)
+	if err != nil {
+		t.Fatalf("AllocatePodIP failed: %v", err)
+	}
+
+	// 3. Check after allocation (should succeed)
+	resp, err := server.CheckPodIP(context.Background(), req)
+	if err != nil {
+		t.Fatalf("CheckPodIP failed after allocation: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("Expected non-nil response")
+	}
+}
