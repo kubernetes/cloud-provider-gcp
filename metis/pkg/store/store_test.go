@@ -1057,7 +1057,6 @@ func TestStore_AllocateIPv6_Concurrency(t *testing.T) {
 	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
 		t.Fatalf("AddCIDR failed: %v", err)
 	}
-
 	const numGoroutines = 50 // High contention
 	var wg sync.WaitGroup
 	ips := make([]string, numGoroutines)
@@ -1357,5 +1356,56 @@ func TestStore_AllocateIPv6_Concurrency_AllocateAndRelease(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("Expected 0 allocated IPs after all releases, got %d", count)
+	}
+}
+
+func TestStore_CheckAllocation(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "check_alloc_test.sqlite")
+	containerID := "test-container"
+	interfaceName := "eth0"
+
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	network := "test-network"
+	cidr := "10.0.1.0/24"
+
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	// 1. Check before allocation (should fail)
+	err = s.CheckAllocation(context.Background(), network, containerID, interfaceName)
+	if err == nil {
+		t.Error("Expected error for non-existent allocation, got nil")
+	}
+
+	// 2. Allocate IP
+	_, _, err = s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: interfaceName, ContainerID: containerID, IPFamily: IPv4})
+	if err != nil {
+		t.Fatalf("AllocateIP failed: %v", err)
+	}
+
+	// 3. Check after allocation (should succeed)
+	err = s.CheckAllocation(context.Background(), network, containerID, interfaceName)
+	if err != nil {
+		t.Errorf("CheckAllocation failed for active allocation: %v", err)
+	}
+
+	// 4. Check with wrong container ID (should fail)
+	err = s.CheckAllocation(context.Background(), network, "wrong-container", interfaceName)
+	if err == nil {
+		t.Error("Expected error for wrong container ID, got nil")
+	}
+
+	// 5. Check with wrong interface name (should fail)
+	err = s.CheckAllocation(context.Background(), network, containerID, "wrong-iface")
+	if err == nil {
+		t.Error("Expected error for wrong interface name, got nil")
 	}
 }

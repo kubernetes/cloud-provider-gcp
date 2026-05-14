@@ -720,3 +720,23 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 	s.log.Info(fmt.Sprintf("Successfully expanded IPv6 block by %d entries", ipv6PopulationBatchSize), "cidrBlockID", cidrBlockID)
 	return nil
 }
+
+// CheckAllocation verifies that an IP address is assigned to the specified container interface on a given network.
+func (s *Store) CheckAllocation(ctx context.Context, network, containerID, interfaceName string) error {
+	var id int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT i.id 
+		FROM ip_addresses i 
+		JOIN cidr_blocks c ON i.cidr_block_id = c.id 
+		WHERE c.network = ? AND i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE
+		LIMIT 1
+	`, network, containerID, interfaceName).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("no active allocation found for container %s interface %s on network %s", containerID, interfaceName, network)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check active allocation: %w", err)
+	}
+	return nil
+}

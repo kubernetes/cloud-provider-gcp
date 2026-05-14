@@ -404,6 +404,126 @@ func (*DeallocatePodIPResponse) Descriptor() ([]byte, []int) {
 	return file_metis_api_adaptiveipam_v1_adaptiveipam_proto_rawDescGZIP(), []int{5}
 }
 
+// CheckPodIPRequest contains the parameters required to check a pod IP allocation.
+type CheckPodIPRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// network is the name of the network.
+	Network string `protobuf:"bytes,1,opt,name=network,proto3" json:"network,omitempty"`
+	// interface_name is the name of the pod interface.
+	InterfaceName string `protobuf:"bytes,2,opt,name=interface_name,json=interfaceName,proto3" json:"interface_name,omitempty"`
+	// container_id is the id of the pod container.
+	ContainerId string `protobuf:"bytes,3,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
+	// pod_name is the name of the pod. This is for logging purposes.
+	PodName string `protobuf:"bytes,4,opt,name=pod_name,json=podName,proto3" json:"pod_name,omitempty"`
+	// pod_namespace is the namespace of the pod. This is for logging purposes.
+	PodNamespace  string `protobuf:"bytes,5,opt,name=pod_namespace,json=podNamespace,proto3" json:"pod_namespace,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckPodIPRequest) Reset() {
+	*x = CheckPodIPRequest{}
+	mi := &file_metis_api_adaptiveipam_v1_adaptiveipam_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckPodIPRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckPodIPRequest) ProtoMessage() {}
+
+func (x *CheckPodIPRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_metis_api_adaptiveipam_v1_adaptiveipam_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckPodIPRequest.ProtoReflect.Descriptor instead.
+func (*CheckPodIPRequest) Descriptor() ([]byte, []int) {
+	return file_metis_api_adaptiveipam_v1_adaptiveipam_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *CheckPodIPRequest) GetNetwork() string {
+	if x != nil {
+		return x.Network
+	}
+	return ""
+}
+
+func (x *CheckPodIPRequest) GetInterfaceName() string {
+	if x != nil {
+		return x.InterfaceName
+	}
+	return ""
+}
+
+func (x *CheckPodIPRequest) GetContainerId() string {
+	if x != nil {
+		return x.ContainerId
+	}
+	return ""
+}
+
+func (x *CheckPodIPRequest) GetPodName() string {
+	if x != nil {
+		return x.PodName
+	}
+	return ""
+}
+
+func (x *CheckPodIPRequest) GetPodNamespace() string {
+	if x != nil {
+		return x.PodNamespace
+	}
+	return ""
+}
+
+// CheckPodIPResponse indicates the result of the check operation.
+// An empty message is returned on success; RPC errors are used to indicate failure.
+type CheckPodIPResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckPodIPResponse) Reset() {
+	*x = CheckPodIPResponse{}
+	mi := &file_metis_api_adaptiveipam_v1_adaptiveipam_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckPodIPResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckPodIPResponse) ProtoMessage() {}
+
+func (x *CheckPodIPResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_metis_api_adaptiveipam_v1_adaptiveipam_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckPodIPResponse.ProtoReflect.Descriptor instead.
+func (*CheckPodIPResponse) Descriptor() ([]byte, []int) {
+	return file_metis_api_adaptiveipam_v1_adaptiveipam_proto_rawDescGZIP(), []int{7}
+}
+
 var File_metis_api_adaptiveipam_v1_adaptiveipam_proto protoreflect.FileDescriptor
 
 const file_metis_api_adaptiveipam_v1_adaptiveipam_proto_rawDesc = "" +
@@ -434,10 +554,19 @@ const file_metis_api_adaptiveipam_v1_adaptiveipam_proto_rawDesc = "" +
 	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerId\x12\x19\n" +
 	"\bpod_name\x18\x04 \x01(\tR\apodName\x12#\n" +
 	"\rpod_namespace\x18\x05 \x01(\tR\fpodNamespace\"\x19\n" +
-	"\x17DeallocatePodIPResponse2\xd4\x01\n" +
+	"\x17DeallocatePodIPResponse\"\xb7\x01\n" +
+	"\x11CheckPodIPRequest\x12\x18\n" +
+	"\anetwork\x18\x01 \x01(\tR\anetwork\x12%\n" +
+	"\x0einterface_name\x18\x02 \x01(\tR\rinterfaceName\x12!\n" +
+	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerId\x12\x19\n" +
+	"\bpod_name\x18\x04 \x01(\tR\apodName\x12#\n" +
+	"\rpod_namespace\x18\x05 \x01(\tR\fpodNamespace\"\x14\n" +
+	"\x12CheckPodIPResponse2\xab\x02\n" +
 	"\fAdaptiveIpam\x12^\n" +
 	"\rAllocatePodIP\x12%.adaptiveipam.v1.AllocatePodIPRequest\x1a&.adaptiveipam.v1.AllocatePodIPResponse\x12d\n" +
-	"\x0fDeallocatePodIP\x12'.adaptiveipam.v1.DeallocatePodIPRequest\x1a(.adaptiveipam.v1.DeallocatePodIPResponseB/Z-k8s.io/metis/api/adaptiveipam/v1;adaptiveipamb\x06proto3"
+	"\x0fDeallocatePodIP\x12'.adaptiveipam.v1.DeallocatePodIPRequest\x1a(.adaptiveipam.v1.DeallocatePodIPResponse\x12U\n" +
+	"\n" +
+	"CheckPodIP\x12\".adaptiveipam.v1.CheckPodIPRequest\x1a#.adaptiveipam.v1.CheckPodIPResponseB/Z-k8s.io/metis/api/adaptiveipam/v1;adaptiveipamb\x06proto3"
 
 var (
 	file_metis_api_adaptiveipam_v1_adaptiveipam_proto_rawDescOnce sync.Once
@@ -451,7 +580,7 @@ func file_metis_api_adaptiveipam_v1_adaptiveipam_proto_rawDescGZIP() []byte {
 	return file_metis_api_adaptiveipam_v1_adaptiveipam_proto_rawDescData
 }
 
-var file_metis_api_adaptiveipam_v1_adaptiveipam_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_metis_api_adaptiveipam_v1_adaptiveipam_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_metis_api_adaptiveipam_v1_adaptiveipam_proto_goTypes = []any{
 	(*IPConfig)(nil),                // 0: adaptiveipam.v1.IPConfig
 	(*AllocatePodIPRequest)(nil),    // 1: adaptiveipam.v1.AllocatePodIPRequest
@@ -459,6 +588,8 @@ var file_metis_api_adaptiveipam_v1_adaptiveipam_proto_goTypes = []any{
 	(*AllocatePodIPResponse)(nil),   // 3: adaptiveipam.v1.AllocatePodIPResponse
 	(*DeallocatePodIPRequest)(nil),  // 4: adaptiveipam.v1.DeallocatePodIPRequest
 	(*DeallocatePodIPResponse)(nil), // 5: adaptiveipam.v1.DeallocatePodIPResponse
+	(*CheckPodIPRequest)(nil),       // 6: adaptiveipam.v1.CheckPodIPRequest
+	(*CheckPodIPResponse)(nil),      // 7: adaptiveipam.v1.CheckPodIPResponse
 }
 var file_metis_api_adaptiveipam_v1_adaptiveipam_proto_depIdxs = []int32{
 	0, // 0: adaptiveipam.v1.AllocatePodIPRequest.ipv4_config:type_name -> adaptiveipam.v1.IPConfig
@@ -467,10 +598,12 @@ var file_metis_api_adaptiveipam_v1_adaptiveipam_proto_depIdxs = []int32{
 	2, // 3: adaptiveipam.v1.AllocatePodIPResponse.ipv6:type_name -> adaptiveipam.v1.PodIP
 	1, // 4: adaptiveipam.v1.AdaptiveIpam.AllocatePodIP:input_type -> adaptiveipam.v1.AllocatePodIPRequest
 	4, // 5: adaptiveipam.v1.AdaptiveIpam.DeallocatePodIP:input_type -> adaptiveipam.v1.DeallocatePodIPRequest
-	3, // 6: adaptiveipam.v1.AdaptiveIpam.AllocatePodIP:output_type -> adaptiveipam.v1.AllocatePodIPResponse
-	5, // 7: adaptiveipam.v1.AdaptiveIpam.DeallocatePodIP:output_type -> adaptiveipam.v1.DeallocatePodIPResponse
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
+	6, // 6: adaptiveipam.v1.AdaptiveIpam.CheckPodIP:input_type -> adaptiveipam.v1.CheckPodIPRequest
+	3, // 7: adaptiveipam.v1.AdaptiveIpam.AllocatePodIP:output_type -> adaptiveipam.v1.AllocatePodIPResponse
+	5, // 8: adaptiveipam.v1.AdaptiveIpam.DeallocatePodIP:output_type -> adaptiveipam.v1.DeallocatePodIPResponse
+	7, // 9: adaptiveipam.v1.AdaptiveIpam.CheckPodIP:output_type -> adaptiveipam.v1.CheckPodIPResponse
+	7, // [7:10] is the sub-list for method output_type
+	4, // [4:7] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
 	4, // [4:4] is the sub-list for extension extendee
 	0, // [0:4] is the sub-list for field type_name
@@ -487,7 +620,7 @@ func file_metis_api_adaptiveipam_v1_adaptiveipam_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_metis_api_adaptiveipam_v1_adaptiveipam_proto_rawDesc), len(file_metis_api_adaptiveipam_v1_adaptiveipam_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
