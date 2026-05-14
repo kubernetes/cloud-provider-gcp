@@ -22,6 +22,7 @@ package gce
 import (
 	"maps"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -315,5 +316,92 @@ func TestComputeNewAnnotationsIfNeeded(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGetLoadBalancerAnnotationSubnet(t *testing.T) {
+	for _, tc := range []struct {
+		desc        string
+		annotations map[string]string
+		want        string
+		wantErr     bool
+	}{
+		{
+			desc: "no annotation",
+		},
+		{
+			desc:        "empty value",
+			annotations: map[string]string{ServiceAnnotationILBSubnet: ""},
+		},
+		{
+			desc:        "valid name",
+			annotations: map[string]string{ServiceAnnotationILBSubnet: "my-subnet-123"},
+			want:        "my-subnet-123",
+		},
+		{
+			desc:        "longest valid name",
+			annotations: map[string]string{ServiceAnnotationILBSubnet: strings.Repeat("a", 63)},
+			want:        strings.Repeat("a", 63),
+		},
+		{
+			desc:        "too long",
+			annotations: map[string]string{ServiceAnnotationILBSubnet: strings.Repeat("a", 64)},
+			wantErr:     true,
+		},
+		{
+			desc:        "starts with a digit",
+			annotations: map[string]string{ServiceAnnotationILBSubnet: "1-subnet"},
+			wantErr:     true,
+		},
+		{
+			desc:        "ends with a hyphen",
+			annotations: map[string]string{ServiceAnnotationILBSubnet: "subnet-"},
+			wantErr:     true,
+		},
+		{
+			desc:        "uppercase",
+			annotations: map[string]string{ServiceAnnotationILBSubnet: "Subnet"},
+			wantErr:     true,
+		},
+		{
+			desc:        "space",
+			annotations: map[string]string{ServiceAnnotationILBSubnet: "my subnet"},
+			wantErr:     true,
+		},
+		{
+			desc:        "resource path instead of a name",
+			annotations: map[string]string{ServiceAnnotationILBSubnet: "../../../other-project/regions/us-central1/subnetworks/other-subnet"},
+			wantErr:     true,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			svc := &v1.Service{ObjectMeta: metav1.ObjectMeta{Annotations: tc.annotations}}
+
+			got, err := GetLoadBalancerAnnotationSubnet(svc)
+
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("GetLoadBalancerAnnotationSubnet() with annotations %q returned error %v, want error: %t", tc.annotations, err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Errorf("GetLoadBalancerAnnotationSubnet() with annotations %q = %q, want %q", tc.annotations, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestGetLoadBalancerAnnotationSubnetLongValue verifies that the error does
+// not repeat an arbitrarily long annotation value, as it is reported in a
+// Service event.
+func TestGetLoadBalancerAnnotationSubnetLongValue(t *testing.T) {
+	value := strings.Repeat("a", 5000)
+	svc := &v1.Service{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{ServiceAnnotationILBSubnet: value}}}
+
+	_, err := GetLoadBalancerAnnotationSubnet(svc)
+
+	if err == nil {
+		t.Fatalf("GetLoadBalancerAnnotationSubnet() with a %d character value returned nil error, want error", len(value))
+	}
+	if strings.Contains(err.Error(), value) {
+		t.Errorf("GetLoadBalancerAnnotationSubnet() with a %d character value returned an error of %d characters that repeats the whole value, want it truncated", len(value), len(err.Error()))
 	}
 }
