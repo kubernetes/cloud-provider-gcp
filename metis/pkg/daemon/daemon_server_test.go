@@ -463,3 +463,81 @@ func TestAdaptiveIpamServer_CheckPodIP(t *testing.T) {
 		t.Fatal("Expected non-nil response")
 	}
 }
+
+func TestAdaptiveIpamServer_AllocatePodIP_Validation(t *testing.T) {
+	server := &adaptiveIpamServer{}
+
+	tests := []struct {
+		name          string
+		containerID   string
+		interfaceName string
+	}{
+		{"empty both", "", ""},
+		{"empty container", "", "eth0"},
+		{"empty interface", "cont1", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &adaptiveipam.AllocatePodIPRequest{
+				Network:      "test-network",
+				PodName:      "test-pod",
+				PodNamespace: "default",
+				Ipv4Config: &adaptiveipam.IPConfig{
+					InterfaceName: tc.interfaceName,
+					ContainerId:   tc.containerID,
+				},
+			}
+
+			_, err := server.AllocatePodIP(context.Background(), req)
+			if err == nil {
+				t.Fatal("Expected error, got nil")
+			}
+			st, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Expected gRPC status error, got: %v", err)
+			}
+			if st.Code() != codes.InvalidArgument {
+				t.Errorf("Expected status code InvalidArgument, got %v", st.Code())
+			}
+		})
+	}
+}
+
+func TestAdaptiveIpamServer_DeallocatePodIP_Validation(t *testing.T) {
+	server := &adaptiveIpamServer{}
+
+	tests := []struct {
+		name          string
+		containerID   string
+		interfaceName string
+	}{
+		{"empty both", "", ""},
+		{"empty container", "", "eth0"},
+		{"empty interface", "cont1", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &adaptiveipam.DeallocatePodIPRequest{
+				Network:       "test-network",
+				InterfaceName: tc.interfaceName,
+				ContainerId:   tc.containerID,
+				PodName:       "test-pod",
+				PodNamespace:  "default",
+			}
+
+			_, err := server.DeallocatePodIP(context.Background(), req)
+			if err == nil {
+				t.Fatal("Expected error, got nil")
+			}
+			st, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("Expected gRPC status error, got: %v", err)
+			}
+			if st.Code() != codes.InvalidArgument {
+				t.Errorf("Expected status code InvalidArgument, got %v", st.Code())
+			}
+		})
+	}
+}
