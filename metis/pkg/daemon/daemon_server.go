@@ -97,7 +97,7 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 }
 
 func (s *adaptiveIpamServer) allocateIP(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest, config *adaptiveipam.IPConfig, ipFamily store.IPFamily) (*adaptiveipam.PodIP, error) {
-	if err := s.MaybeAddInitialPodCidr(ctx, req.Network, config.InitialPodCidr); err != nil {
+	if err := s.maybeAddInitialPodCidr(ctx, req.Network, config.InitialPodCidr); err != nil {
 		return nil, err
 	}
 
@@ -152,7 +152,7 @@ func (s *adaptiveIpamServer) allocateIP(ctx context.Context, req *adaptiveipam.A
 	}, nil
 }
 
-func (s *adaptiveIpamServer) MaybeAddInitialPodCidr(ctx context.Context, network string, initialPodCidr string) error {
+func (s *adaptiveIpamServer) maybeAddInitialPodCidr(ctx context.Context, network string, initialPodCidr string) error {
 	if initialPodCidr == "" {
 		return nil
 	}

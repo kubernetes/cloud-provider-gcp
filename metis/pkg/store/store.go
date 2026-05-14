@@ -55,7 +55,7 @@ var (
 	ErrNoAvailableIPs = errors.New("no available IPs in store")
 
 	// ErrCidrBlockExhausted is returned when an IPv6 CIDR block cannot be expanded further.
-	ErrCidrBlockExhausted = errors.New("cidr block exhausted and cannot be expanded")
+	ErrCidrBlockExhausted = errors.New("ipv6 cidr block exhausted and cannot be expanded")
 )
 
 // IPFamily represents the IP protocol family.
@@ -144,6 +144,49 @@ func NewStore(ctx context.Context, log logr.Logger, dbPath string) (*Store, erro
 	log.Info("Initialized or updated database schema", "path", dbPath)
 
 	return store, nil
+}
+
+// initSchema creates the necessary tables if they don't exist.
+func (s *Store) initSchema(ctx context.Context) error {
+	var currentVersion int
+	err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&currentVersion)
+	if err != nil {
+		return fmt.Errorf("failed to check schema version: %w", err)
+	}
+
+	if currentVersion == dbSchemaVersion {
+		s.log.V(4).Info("Database schema already initialized", "version", currentVersion)
+		return nil
+	}
+
+	s.log.Info("Initializing DB schema", "currentVersion", currentVersion, "expectedVersion", dbSchemaVersion)
+
+	// 1. Begin an atomic transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	// Safe to defer; Rollback does nothing if Commit() is successful
+	defer tx.Rollback()
+
+	// 2. Execute the embedded schema.sql file
+	if _, err := tx.ExecContext(ctx, schemaSQL); err != nil {
+		return fmt.Errorf("failed to execute schema.sql: %w", err)
+	}
+
+	// 3. Set User Version
+	setVersion := fmt.Sprintf("PRAGMA user_version = %d;", dbSchemaVersion)
+	if _, err := tx.ExecContext(ctx, setVersion); err != nil {
+		return fmt.Errorf("failed to set user_version: %w", err)
+	}
+
+	// 4. Commit everything atomically
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit schema transaction: %w", err)
+	}
+
+	s.log.Info("Database schema initialized or updated successfully")
+	return nil
 }
 
 // Close safely closes the database connection and releases any file locks.
@@ -411,49 +454,6 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 	return len(releases), nil
 }
 
-// initSchema creates the necessary tables if they don't exist.
-func (s *Store) initSchema(ctx context.Context) error {
-	var currentVersion int
-	err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&currentVersion)
-	if err != nil {
-		return fmt.Errorf("failed to check schema version: %w", err)
-	}
-
-	if currentVersion == dbSchemaVersion {
-		s.log.V(4).Info("Database schema already initialized", "version", currentVersion)
-		return nil
-	}
-
-	s.log.Info("Initializing DB schema", "currentVersion", currentVersion, "expectedVersion", dbSchemaVersion)
-
-	// 1. Begin an atomic transaction
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	// Safe to defer; Rollback does nothing if Commit() is successful
-	defer tx.Rollback()
-
-	// 2. Execute the embedded schema.sql file
-	if _, err := tx.ExecContext(ctx, schemaSQL); err != nil {
-		return fmt.Errorf("failed to execute schema.sql: %w", err)
-	}
-
-	// 3. Set User Version
-	setVersion := fmt.Sprintf("PRAGMA user_version = %d;", dbSchemaVersion)
-	if _, err := tx.ExecContext(ctx, setVersion); err != nil {
-		return fmt.Errorf("failed to set user_version: %w", err)
-	}
-
-	// 4. Commit everything atomically
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit schema transaction: %w", err)
-	}
-
-	s.log.Info("Database schema initialized or updated successfully")
-	return nil
-}
-
 // allocateIPTx is a helper that executes the IP allocation within an existing transaction.
 // It returns sql.ErrNoRows if the CIDR block is full or not found, allowing the caller to try another block.
 func (s *Store) allocateIPTx(ctx context.Context, tx *sql.Tx, cidrBlockID int64, interfaceName, containerID string) (string, string, error) {
@@ -623,6 +623,31 @@ func (s *Store) tryAllocateIPInBlock(ctx context.Context, params AllocateIPParam
 	return ip, cidr, nil
 }
 
+// getNextIPv6StartAddr finds the last inserted IP for a CIDR block and returns the next address to use.
+// If no entries exist, it returns the CIDR base address.
+func (s *Store) getNextIPv6StartAddr(ctx context.Context, tx *sql.Tx, cidrBlockID int64, prefix netip.Prefix) (netip.Addr, error) {
+	var lastAddressStr string
+	err := tx.QueryRowContext(ctx, `
+		SELECT address FROM ip_addresses 
+		WHERE cidr_block_id = ? 
+		ORDER BY id DESC 
+		LIMIT 1
+	`, cidrBlockID).Scan(&lastAddressStr)
+
+	switch err {
+	case nil:
+		startIP, parseErr := netip.ParseAddr(lastAddressStr)
+		if parseErr != nil {
+			return netip.Addr{}, fmt.Errorf("failed to parse last address %s: %w", lastAddressStr, parseErr)
+		}
+		return startIP.Next(), nil // Start from the next one
+	case sql.ErrNoRows:
+		return prefix.Addr(), nil // No entries yet, start from CIDR base address
+	default:
+		return netip.Addr{}, fmt.Errorf("failed to query last inserted ip: %w", err)
+	}
+}
+
 // expandIPv6Block populates ipv6PopulationBatchSize entries for a given CIDR block in a new transaction.
 func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -651,28 +676,9 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 	}
 
 	// 2. Find the last inserted IP
-	var lastAddressStr string
-	err = tx.QueryRowContext(ctx, `
-		SELECT address FROM ip_addresses 
-		WHERE cidr_block_id = ? 
-		ORDER BY id DESC 
-		LIMIT 1
-	`, cidrBlockID).Scan(&lastAddressStr)
-
-	var startIP netip.Addr
-	switch err {
-	case nil:
-		var parseErr error
-		startIP, parseErr = netip.ParseAddr(lastAddressStr)
-		if parseErr != nil {
-			return fmt.Errorf("failed to parse last address %s: %w", lastAddressStr, parseErr)
-		}
-		startIP = startIP.Next() // Start from the next one
-	case sql.ErrNoRows:
-		// No entries yet, start from CIDR base address
-		startIP = prefix.Addr()
-	default:
-		return fmt.Errorf("failed to query last inserted ip: %w", err)
+	startIP, err := s.getNextIPv6StartAddr(ctx, tx, cidrBlockID, prefix)
+	if err != nil {
+		return err
 	}
 
 	// 3. Generate ipv6PopulationBatchSize IPs
