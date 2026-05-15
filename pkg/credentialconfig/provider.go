@@ -38,6 +38,11 @@ type DockerConfigProvider interface {
 	Provide(image string) DockerConfig
 }
 
+type cacheEntry struct {
+	config     DockerConfig
+	expiration time.Time
+}
+
 // CachingDockerConfigProvider implements DockerConfigProvider by composing
 // with another DockerConfigProvider and caching the DockerConfig it provides
 // for a pre-specified lifetime.
@@ -50,9 +55,8 @@ type CachingDockerConfigProvider struct {
 	ShouldCache func(DockerConfig) bool
 
 	// cache fields
-	cacheDockerConfig DockerConfig
-	expiration        time.Time
-	mu                sync.Mutex
+	cache map[string]cacheEntry
+	mu    sync.Mutex
 }
 
 // Enabled implements dockerConfigProvider
@@ -60,21 +64,38 @@ func (d *CachingDockerConfigProvider) Enabled() bool {
 	return d.Provider.Enabled()
 }
 
+func deepCopyDockerConfig(cfg DockerConfig) DockerConfig {
+	if cfg == nil {
+		return nil
+	}
+	res := make(DockerConfig, len(cfg))
+	for k, v := range cfg {
+		res[k] = v
+	}
+	return res
+}
+
 // Provide implements dockerConfigProvider
 func (d *CachingDockerConfigProvider) Provide(image string) DockerConfig {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	// If the cache hasn't expired, return our cache
-	if time.Now().Before(d.expiration) {
-		return d.cacheDockerConfig
+	if d.cache == nil {
+		d.cache = make(map[string]cacheEntry)
+	}
+
+	// If the cache entry exists and hasn't expired, return a deep copy of our cached config
+	if entry, ok := d.cache[image]; ok && time.Now().Before(entry.expiration) {
+		return deepCopyDockerConfig(entry.config)
 	}
 
 	klog.V(2).Infof("Refreshing cache for provider: %v", reflect.TypeOf(d.Provider).String())
 	config := d.Provider.Provide(image)
 	if d.ShouldCache == nil || d.ShouldCache(config) {
-		d.cacheDockerConfig = config
-		d.expiration = time.Now().Add(d.Lifetime)
+		d.cache[image] = cacheEntry{
+			config:     deepCopyDockerConfig(config),
+			expiration: time.Now().Add(d.Lifetime),
+		}
 	}
-	return config
+	return deepCopyDockerConfig(config)
 }
