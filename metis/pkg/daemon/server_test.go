@@ -156,12 +156,14 @@ func TestAdaptiveIpamServer_AllocatePodIP_Concurrency(t *testing.T) {
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
+	cidr6 := "2001:db8::/64"
 
 	numGoroutines := 10
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)
 
 	ips := make([]string, numGoroutines)
+	ips6 := make([]string, numGoroutines)
 	errs := make([]error, numGoroutines)
 
 	for i := 0; i < numGoroutines; i++ {
@@ -176,6 +178,11 @@ func TestAdaptiveIpamServer_AllocatePodIP_Concurrency(t *testing.T) {
 					ContainerId:    fmt.Sprintf("test-container-%d", index/2),
 					InitialPodCidr: cidr,
 				},
+				Ipv6Config: &adaptiveipam.IPConfig{
+					InterfaceName:  "eth0",
+					ContainerId:    fmt.Sprintf("test-container-%d", index/2),
+					InitialPodCidr: cidr6,
+				},
 			}
 			resp, err := server.AllocatePodIP(context.Background(), req)
 			if err != nil {
@@ -184,6 +191,9 @@ func TestAdaptiveIpamServer_AllocatePodIP_Concurrency(t *testing.T) {
 			}
 			if resp.Ipv4 != nil {
 				ips[index] = resp.Ipv4.IpAddress
+			}
+			if resp.Ipv6 != nil {
+				ips6[index] = resp.Ipv6.IpAddress
 			}
 		}(i)
 	}
@@ -198,13 +208,22 @@ func TestAdaptiveIpamServer_AllocatePodIP_Concurrency(t *testing.T) {
 
 	for i, ip := range ips {
 		if ip == "" {
-			t.Errorf("Goroutine %d returned empty IP", i)
+			t.Errorf("Goroutine %d returned empty IPv4", i)
+		}
+	}
+
+	for i, ip := range ips6 {
+		if ip == "" {
+			t.Errorf("Goroutine %d returned empty IPv6", i)
 		}
 	}
 
 	for i := 0; i < numGoroutines; i += 2 {
 		if ips[i] != "" && ips[i] != ips[i+1] {
-			t.Errorf("Idempotency check failed for pair %d and %d: expected same IP, got %s and %s", i, i+1, ips[i], ips[i+1])
+			t.Errorf("IPv4 Idempotency check failed for pair %d and %d: expected same IP, got %s and %s", i, i+1, ips[i], ips[i+1])
+		}
+		if ips6[i] != "" && ips6[i] != ips6[i+1] {
+			t.Errorf("IPv6 Idempotency check failed for pair %d and %d: expected same IP, got %s and %s", i, i+1, ips6[i], ips6[i+1])
 		}
 	}
 
@@ -215,9 +234,18 @@ func TestAdaptiveIpamServer_AllocatePodIP_Concurrency(t *testing.T) {
 		}
 	}
 	if len(uniqueIpMap) != numGoroutines/2 {
-		t.Errorf("Expected %d unique IPs, got %d (ips: %v)", numGoroutines/2, len(uniqueIpMap), ips)
+		t.Errorf("Expected %d unique IPv4s, got %d (ips: %v)", numGoroutines/2, len(uniqueIpMap), ips)
 	}
 
+	uniqueIpMap6 := make(map[string]bool)
+	for _, ip := range ips6 {
+		if ip != "" {
+			uniqueIpMap6[ip] = true
+		}
+	}
+	if len(uniqueIpMap6) != numGoroutines/2 {
+		t.Errorf("Expected %d unique IPv6s, got %d (ips6: %v)", numGoroutines/2, len(uniqueIpMap6), ips6)
+	}
 }
 
 func TestAdaptiveIpamServer_DeallocatePodIP(t *testing.T) {
@@ -401,6 +429,180 @@ func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 	}
 }
 
+func TestAdaptiveIpamServer_AllocatePodIP_IPv6(t *testing.T) {
+	logger := klog.Background()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_server_ipv6_test.sqlite")
+
+	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	server := &adaptiveIpamServer{store: storeInstance}
+
+	network := "test-network"
+	cidr := "2001:db8::/64"
+
+	req := &adaptiveipam.AllocatePodIPRequest{
+		Network:      network,
+		PodName:      "test-pod",
+		PodNamespace: "default",
+		Ipv6Config: &adaptiveipam.IPConfig{
+			InterfaceName:  "eth0",
+			ContainerId:    "test-container",
+			InitialPodCidr: cidr,
+		},
+	}
+
+	resp, err := server.AllocatePodIP(context.Background(), req)
+	if err != nil {
+		t.Fatalf("AllocatePodIP failed: %v", err)
+	}
+
+	if resp.Ipv6 == nil {
+		t.Fatal("Expected Ipv6 allocation, got nil")
+	}
+
+	if resp.Ipv6.IpAddress == "" {
+		t.Fatal("Expected IP address, got empty string")
+	}
+
+	// Verify it's a valid IPv6 address
+	ip := net.ParseIP(resp.Ipv6.IpAddress)
+	if ip == nil || ip.To4() != nil {
+		t.Errorf("Expected valid IPv6 address, got %s", resp.Ipv6.IpAddress)
+	}
+}
+
+func TestAdaptiveIpamServer_AllocatePodIP_IPv6_Idempotency_Release(t *testing.T) {
+	logger := klog.Background()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_server_ipv6_idempotency_test.sqlite")
+
+	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	server := &adaptiveIpamServer{store: storeInstance}
+
+	network := "test-network"
+	cidr := "2001:db8::/64"
+	containerID := "test-container"
+	interfaceName := "eth0"
+	podName := "test-pod"
+	podNamespace := "default"
+
+	req := &adaptiveipam.AllocatePodIPRequest{
+		Network:      network,
+		PodName:      podName,
+		PodNamespace: podNamespace,
+		Ipv6Config: &adaptiveipam.IPConfig{
+			InterfaceName:  interfaceName,
+			ContainerId:    containerID,
+			InitialPodCidr: cidr,
+		},
+	}
+
+	// 1. First allocation
+	resp1, err := server.AllocatePodIP(context.Background(), req)
+	if err != nil {
+		t.Fatalf("First allocation failed: %v", err)
+	}
+	if resp1.Ipv6 == nil || resp1.Ipv6.IpAddress == "" {
+		t.Fatal("Expected Ipv6 allocation, got nil or empty")
+	}
+
+	// 2. Second allocation (idempotency)
+	resp2, err := server.AllocatePodIP(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Second allocation failed: %v", err)
+	}
+	if resp2.Ipv6 == nil || resp2.Ipv6.IpAddress != resp1.Ipv6.IpAddress {
+		t.Errorf("Idempotency failed: expected IP %s, got %v", resp1.Ipv6.IpAddress, resp2.Ipv6)
+	}
+
+	// 3. Release
+	reqDealloc := &adaptiveipam.DeallocatePodIPRequest{
+		Network:       network,
+		InterfaceName: interfaceName,
+		ContainerId:   containerID,
+		PodName:       podName,
+		PodNamespace:  podNamespace,
+	}
+	_, err = server.DeallocatePodIP(context.Background(), reqDealloc)
+	if err != nil {
+		t.Fatalf("DeallocatePodIP failed: %v", err)
+	}
+
+	// 4. Re-allocate
+	resp3, err := server.AllocatePodIP(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Re-allocation failed: %v", err)
+	}
+	// Cooldown is 0 by default in the server struct if not set, so it should reuse the IP immediately.
+	if resp3.Ipv6 == nil || resp3.Ipv6.IpAddress != resp1.Ipv6.IpAddress {
+		t.Errorf("Expected released IP %s to be reused, got %v", resp1.Ipv6.IpAddress, resp3.Ipv6)
+	}
+}
+
+func TestAdaptiveIpamServer_AllocatePodIP_DualStack(t *testing.T) {
+	logger := klog.Background()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_server_dualstack_test.sqlite")
+
+	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	server := &adaptiveIpamServer{store: storeInstance}
+
+	network := "test-network"
+	cidr4 := "10.0.1.0/24"
+	cidr6 := "2001:db8::/64"
+
+	req := &adaptiveipam.AllocatePodIPRequest{
+		Network:      network,
+		PodName:      "test-pod",
+		PodNamespace: "default",
+		Ipv4Config: &adaptiveipam.IPConfig{
+			InterfaceName:  "eth0",
+			ContainerId:    "test-container",
+			InitialPodCidr: cidr4,
+		},
+		Ipv6Config: &adaptiveipam.IPConfig{
+			InterfaceName:  "eth0",
+			ContainerId:    "test-container",
+			InitialPodCidr: cidr6,
+		},
+	}
+
+	resp, err := server.AllocatePodIP(context.Background(), req)
+	if resp.Ipv4 == nil || resp.Ipv4.IpAddress == "" {
+		t.Fatal("Expected IPv4 allocation, got nil or empty")
+	}
+
+	if resp.Ipv6 == nil || resp.Ipv6.IpAddress == "" {
+		t.Fatal("Expected IPv6 allocation, got nil or empty")
+	}
+
+	// Verify valid IPs
+	ip4 := net.ParseIP(resp.Ipv4.IpAddress)
+	if ip4 == nil || ip4.To4() == nil {
+		t.Errorf("Expected valid IPv4 address, got %s", resp.Ipv4.IpAddress)
+	}
+
+	ip6 := net.ParseIP(resp.Ipv6.IpAddress)
+	if ip6 == nil || ip6.To4() != nil {
+		t.Errorf("Expected valid IPv6 address, got %s", resp.Ipv6.IpAddress)
+	}
+}
+
 func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 	logger := klog.Background()
 	tempDir := t.TempDir()
@@ -430,7 +632,6 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 	server.monitor = monitorInstance
 
 	network := "test-network"
-
 	req := &adaptiveipam.AllocatePodIPRequest{
 		Network:      network,
 		PodName:      "test-pod",
@@ -574,5 +775,75 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation_MultipleRequests(t *
 
 	if server.getPendingRequestsCount(network) != 0 {
 		t.Errorf("Expected 0 pending requests left, got %d", server.getPendingRequestsCount(network))
+	}
+}
+
+func TestAdaptiveIpamServer_CheckPodIP(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_daemon_check_test.sqlite")
+
+	s, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	server := &adaptiveIpamServer{store: s}
+
+	network := "test-network"
+	cidr := "10.0.1.0/24"
+	containerID := "test-container"
+	interfaceName := "eth0"
+	podName := "test-pod"
+	podNamespace := "default"
+
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("Failed to add CIDR: %v", err)
+	}
+
+	// 1. Check before allocation (should return NotFound)
+	req := &adaptiveipam.CheckPodIPRequest{
+		Network:       network,
+		InterfaceName: interfaceName,
+		ContainerId:   containerID,
+		PodName:       podName,
+		PodNamespace:  podNamespace,
+	}
+
+	_, err = server.CheckPodIP(context.Background(), req)
+	if err == nil {
+		t.Fatal("Expected error for non-existent allocation, got nil")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("Expected gRPC status error, got: %v", err)
+	}
+	if st.Code() != codes.NotFound {
+		t.Errorf("Expected status code NotFound, got %v", st.Code())
+	}
+
+	// 2. Allocate IP
+	reqAlloc := &adaptiveipam.AllocatePodIPRequest{
+		Network:      network,
+		PodName:      podName,
+		PodNamespace: podNamespace,
+		Ipv4Config: &adaptiveipam.IPConfig{
+			InterfaceName: interfaceName,
+			ContainerId:   containerID,
+		},
+	}
+	_, err = server.AllocatePodIP(context.Background(), reqAlloc)
+	if err != nil {
+		t.Fatalf("AllocatePodIP failed: %v", err)
+	}
+
+	// 3. Check after allocation (should succeed)
+	resp, err := server.CheckPodIP(context.Background(), req)
+	if err != nil {
+		t.Fatalf("CheckPodIP failed after allocation: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("Expected non-nil response")
 	}
 }

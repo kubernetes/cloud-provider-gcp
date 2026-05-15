@@ -93,7 +93,7 @@ var (
 
 	baseCacheFileWithAuthzToken = `{
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
-    "access_token": "iam-ya29.gcloud_t0k3n^authz-t0k3n",
+    "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z",
     "extra_args": ""
 }`
@@ -123,7 +123,7 @@ var (
 
 	wantCacheFileWithAuthzToken = `{
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
-    "access_token": "iam-ya29.gcloud_t0k3n^authz-t0k3n",
+    "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z",
     "extra_args": ""
 }`
@@ -501,7 +501,7 @@ func TestExecCredential(t *testing.T) {
 					},
 				},
 			},
-			wantToken:     fakeExecCredential("iam-ya29.gcloud_t0k3n^authz-t0k3n", &metav1.Time{Time: newYears}),
+			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFileWithAuthzToken,
 		},
 		{
@@ -545,7 +545,7 @@ func TestExecCredential(t *testing.T) {
 					},
 				},
 			},
-			wantToken:     fakeExecCredential("iam-ya29.gcloud_t0k3n^authz-t0k3n", &metav1.Time{Time: newYears}),
+			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFileWithAuthzToken,
 		},
 		{
@@ -574,7 +574,7 @@ func TestExecCredential(t *testing.T) {
 					},
 				},
 			},
-			wantToken:     fakeExecCredential("iam-ya29.gcloud_t0k3n^authz-t0k3n", &metav1.Time{Time: newYears}),
+			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
 			wantCacheFile: wantCacheFileWithAuthzToken,
 		},
 		{

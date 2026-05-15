@@ -208,7 +208,7 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 
 			for i := 0; i < tc.cooldowns; i++ {
 				containerID := fmt.Sprintf("cooldown-container-%d", i)
-				_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", containerID)
+				_, _, err = storeInstance.AllocateIP(context.Background(), store.AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: containerID, IPFamily: store.IPv4})
 				if err != nil {
 					t.Fatalf("Failed to allocate IP for cooldown: %v", err)
 				}
@@ -219,7 +219,7 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 			}
 
 			for i := 0; i < tc.allocations; i++ {
-				_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
+				_, _, err = storeInstance.AllocateIP(context.Background(), store.AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: store.IPv4})
 				if err != nil {
 					t.Fatalf("Failed to allocate IP: %v", err)
 				}
@@ -405,7 +405,7 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 
 			for i := 0; i < tc.cooldowns; i++ {
 				containerID := fmt.Sprintf("cooldown-container-%d", i)
-				_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", containerID)
+				_, _, err = storeInstance.AllocateIP(context.Background(), store.AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: containerID, IPFamily: store.IPv4})
 				if err != nil {
 					t.Fatalf("Failed to allocate IP for cooldown: %v", err)
 				}
@@ -416,7 +416,7 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 			}
 
 			for i := 0; i < tc.allocations; i++ {
-				_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
+				_, _, err = storeInstance.AllocateIP(context.Background(), store.AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: store.IPv4})
 				if err != nil {
 					t.Fatalf("Failed to allocate IP: %v", err)
 				}
@@ -765,7 +765,7 @@ func TestMonitor_DynamicAllocation_Run(t *testing.T) {
 		t.Fatalf("Failed to add CIDR: %v", err)
 	}
 	for i := 0; i < 10; i++ {
-		_, _, err = storeInstance.AllocateIPv4(context.Background(), network, "eth0", fmt.Sprintf("container-%d", i))
+		_, _, err = storeInstance.AllocateIP(context.Background(), store.AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: store.IPv4})
 		if err != nil {
 			t.Fatalf("Failed to allocate IP: %v", err)
 		}

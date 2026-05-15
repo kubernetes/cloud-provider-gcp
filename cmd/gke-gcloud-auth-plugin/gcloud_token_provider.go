@@ -63,19 +63,7 @@ func (p *gcloudTokenProvider) token() (string, *time.Time, error) {
 		return "", nil, fmt.Errorf("gcloud config config-helper returned an empty access token")
 	}
 
-	// Authorization Token File is not commonly used. Currently, this is for specific internal debugging scenarios.
-	token := gc.Credential.AccessToken
-	var authzTokenFile string
-	var authzTokenBytes []byte
-	if authzTokenFile = gc.Configuration.Properties.Auth.AuthorizationTokenFile; authzTokenFile != "" {
-		authzTokenBytes, err = p.readFile(authzTokenFile)
-		if err != nil {
-			return "", nil, fmt.Errorf("gcloud config sets property auth/authorization_token_file, but can't read file at %s: %w", authzTokenFile, err)
-		}
-		token = fmt.Sprintf("iam-%s^%s", token, authzTokenBytes)
-	}
-
-	return token, &gc.Credential.TokenExpiry, nil
+	return gc.Credential.AccessToken, &gc.Credential.TokenExpiry, nil
 }
 
 func (p *gcloudTokenProvider) useCache() bool {
