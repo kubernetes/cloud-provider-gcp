@@ -36,7 +36,7 @@ find_files() {
         -o -wholename './release' \
         -o -wholename '*/vendor/*' \
       \) -prune \
-    \) -name '*.go'
+    \) -name '*.go' -print0
 }
 
-find_files | xargs gofmt -s -w
+find_files | xargs -0 gofmt -s -w

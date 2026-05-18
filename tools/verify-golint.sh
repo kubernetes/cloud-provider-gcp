@@ -28,10 +28,9 @@ source "${KUBE_ROOT}/tools/lib/util.sh"
 #kube::golang::verify_go_version
 
 # Ensure that we find the binaries we build before anything else.
-KUBE_ROOT_ABSOLUTE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+KUBE_ROOT_ABSOLUTE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 export GOBIN="${KUBE_ROOT_ABSOLUTE}/tools"
-PATH="${GOBIN}:${PATH}"
 
 # Install golint
 echo 'installing golint'
@@ -68,7 +67,7 @@ for p in "${all_packages[@]}"; do
   # completely.
   # Ref: https://github.com/kubernetes/kubernetes/pull/67675
   # Ref: https://github.com/golang/lint/issues/68
-  failedLint=$(find "$p"/*.go | grep -vE "(zz_generated.*.go|generated.pb.go|generated.proto|types_swagger_doc_generated.go)" | xargs -L1 golint 2>/dev/null)
+  failedLint=$(find "$p"/*.go | grep -vE "(zz_generated.*.go|generated.pb.go|generated.proto|types_swagger_doc_generated.go)" | xargs -L1 "${GOBIN}/golint" 2>/dev/null)
   kube::util::array_contains "$p" "${failing_packages[@]}" && in_failing=$? || in_failing=$?
   if [[ -n "${failedLint}" ]] && [[ "${in_failing}" -ne "0" ]]; then
     errors+=( "${failedLint}" )
