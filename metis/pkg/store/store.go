@@ -117,7 +117,9 @@ func NewStore(ctx context.Context, log logr.Logger, dbPath string) (*Store, erro
 		// performance than FULL mode, sacrificing only a few milliseconds of
 		// un-checkpointed durability.
 		// See: https://www.sqlite.org/pragma.html#pragma_synchronous
-		"&_synchronous=1"
+		"&_synchronous=1" +
+		// Force UTC timezone location for standard time.Time mappings.
+		"&_loc=UTC"
 
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
@@ -396,7 +398,7 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 
 	var releaseAt interface{}
 	if releaseCooldown > 0 {
-		releaseAt = time.Now().Add(releaseCooldown)
+		releaseAt = time.Now().UTC().Add(releaseCooldown)
 	} else {
 		releaseAt = nil
 	}

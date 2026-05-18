@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -1409,3 +1410,99 @@ func TestStore_CheckAllocation(t *testing.T) {
 		t.Error("Expected error for wrong interface name, got nil")
 	}
 }
+
+func TestStore_ReleaseIP_TimezoneRobustness(t *testing.T) {
+	// 1. Save original TZ and local location
+	origTZ := os.Getenv("TZ")
+	origLocal := time.Local
+	defer func() {
+		os.Setenv("TZ", origTZ)
+		time.Local = origLocal
+	}()
+
+	// 2. Force timezone to be America/Los_Angeles (UTC-7 / UTC-8, i.e., behind UTC)
+	os.Setenv("TZ", "America/Los_Angeles")
+	time.Local = nil // Force Go to reload timezone location from TZ env
+
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "timezone_test.sqlite")
+
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	network := "timezone-network"
+	cidr := "10.0.1.0/24"
+
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	containerID := "tz-container"
+	interfaceName := "eth0"
+
+	// Allocate first (should get 10.0.1.2)
+	ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{
+		Network:       network,
+		InterfaceName: interfaceName,
+		ContainerID:   containerID,
+		IPFamily:      IPv4,
+	})
+	if err != nil {
+		t.Fatalf("AllocateIP failed: %v", err)
+	}
+
+	// Release IP with 2-second cooldown.
+	// Since TZ is America/Los_Angeles, the local time is 7-8 hours behind UTC.
+	// If there is a timezone bug, SQLite's raw CURRENT_TIMESTAMP will compare
+	// a future local time string against a larger current UTC time string,
+	// causing the cooldown to be immediately bypassed!
+	cooldownDuration := 2 * time.Second
+	count, err := s.ReleaseIPByOwner(context.Background(), network, containerID, interfaceName, cooldownDuration)
+	if err != nil {
+		t.Fatalf("ReleaseIPByOwner failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Expected 1 released IP, got %d", count)
+	}
+
+	// Attempt to immediately allocate for a NEW container.
+	// It should NOT pick the same IP because it's under active cooldown.
+	// Since we have other IPs in the block, it should allocate the next one (10.0.1.3).
+	ipNew, _, err := s.AllocateIP(context.Background(), AllocateIPParams{
+		Network:       network,
+		InterfaceName: interfaceName,
+		ContainerID:   "tz-new-container",
+		IPFamily:      IPv4,
+	})
+	if err != nil {
+		t.Fatalf("AllocateIP failed for new container: %v", err)
+	}
+
+	if ipNew == ip {
+		t.Errorf("BUG: Cooldown was bypassed! Allocated same IP %s immediately while still in cooldown.", ip)
+	}
+
+	// Wait for cooldown to expire
+	time.Sleep(cooldownDuration + 500*time.Millisecond)
+
+	// Now allocate again for another container. Since the first IP has finished its cooldown,
+	// and SQLite query uses ORDER BY id ASC, it should reuse the cooled-down IP (10.0.1.2)!
+	ipReuse, _, err := s.AllocateIP(context.Background(), AllocateIPParams{
+		Network:       network,
+		InterfaceName: interfaceName,
+		ContainerID:   "tz-reuse-container",
+		IPFamily:      IPv4,
+	})
+	if err != nil {
+		t.Fatalf("AllocateIP failed after cooldown: %v", err)
+	}
+
+	if ipReuse != ip {
+		t.Errorf("Expected IP to be reused after cooldown expired, got %s instead of %s", ipReuse, ip)
+	}
+}
+
