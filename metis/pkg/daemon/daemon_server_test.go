@@ -673,10 +673,14 @@ func TestAdaptiveIpamServer_AllocatePodIP_Validation(t *testing.T) {
 		name          string
 		containerID   string
 		interfaceName string
+		testIPv6      bool
 	}{
-		{"empty both", "", ""},
-		{"empty container", "", "eth0"},
-		{"empty interface", "cont1", ""},
+		{"ipv4 empty both", "", "", false},
+		{"ipv4 empty container", "", "eth0", false},
+		{"ipv4 empty interface", "cont1", "", false},
+		{"ipv6 empty both", "", "", true},
+		{"ipv6 empty container", "", "eth0", true},
+		{"ipv6 empty interface", "cont1", "", true},
 	}
 
 	for _, tc := range tests {
@@ -685,10 +689,17 @@ func TestAdaptiveIpamServer_AllocatePodIP_Validation(t *testing.T) {
 				Network:      "test-network",
 				PodName:      "test-pod",
 				PodNamespace: "default",
-				Ipv4Config: &adaptiveipam.IPConfig{
+			}
+			if tc.testIPv6 {
+				req.Ipv6Config = &adaptiveipam.IPConfig{
 					InterfaceName: tc.interfaceName,
 					ContainerId:   tc.containerID,
-				},
+				}
+			} else {
+				req.Ipv4Config = &adaptiveipam.IPConfig{
+					InterfaceName: tc.interfaceName,
+					ContainerId:   tc.containerID,
+				}
 			}
 
 			_, err := server.AllocatePodIP(context.Background(), req)
