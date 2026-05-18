@@ -1455,12 +1455,12 @@ func TestStore_ReleaseIP_TimezoneRobustness(t *testing.T) {
 		t.Fatalf("AllocateIP failed: %v", err)
 	}
 
-	// Release IP with 2-second cooldown.
+	// Release IP with 1-second cooldown.
 	// Since TZ is America/Los_Angeles, the local time is 7-8 hours behind UTC.
 	// If there is a timezone bug, SQLite's raw CURRENT_TIMESTAMP will compare
 	// a future local time string against a larger current UTC time string,
 	// causing the cooldown to be immediately bypassed!
-	cooldownDuration := 2 * time.Second
+	cooldownDuration := 1 * time.Second
 	count, err := s.ReleaseIPByOwner(context.Background(), network, containerID, interfaceName, cooldownDuration)
 	if err != nil {
 		t.Fatalf("ReleaseIPByOwner failed: %v", err)
