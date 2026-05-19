@@ -121,7 +121,8 @@ func getCredentials(authFlow string) error {
 	if err != nil {
 		return fmt.Errorf("error unmarshaling auth credential request: %w", err)
 	}
-	authCredentials, err := provider.GetResponse(authRequest.Image, authProvider)
+	// Pass the full authRequest instead of just the image string
+	authCredentials, err := provider.GetResponse(authRequest, authProvider)
 	if err != nil {
 		return fmt.Errorf("error getting authentication response from provider: %w", err)
 	}
