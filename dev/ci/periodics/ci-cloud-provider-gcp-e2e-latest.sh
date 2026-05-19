@@ -9,6 +9,9 @@ set -o xtrace
 REPO_ROOT=$GOPATH/src/k8s.io/cloud-provider-gcp
 cd
 export GO111MODULE=on
+# Optional Features
+ENABLE_GCEPD=${ENABLE_GCEPD:-"false"}
+USE_KUBERNETES_MASTER=${USE_KUBERNETES_MASTER:-"false"}
 
 go install sigs.k8s.io/kubetest2@latest
 go install sigs.k8s.io/kubetest2/kubetest2-gce@latest
@@ -20,4 +23,14 @@ else
   export TEST_PACKAGE_VERSION="v1.25.0"
   echo "TEST_PACKAGE_VERSION - Falling back to v1.25.0"
 fi
-kubetest2 gce -v 2 --repo-root $REPO_ROOT --build --up --down --test=ginkgo --node-size e2-standard-4 --master-size e2-standard-8 -- --test-package-version="${TEST_PACKAGE_VERSION}" --parallel=30 --test-args='--minStartupPods=8' --skip-regex='\[Slow\]|\[Serial\]|\[Disruptive\]|\[Flaky\]|\[Feature:.+\]'
+TEST_ARGS="--minStartupPods=8"
+if [[ "${ENABLE_GCEPD}" == "true" ]]; then
+  TEST_ARGS="${TEST_ARGS} --enabled-volume-drivers=gcepd"
+fi
+
+if [[ "${USE_KUBERNETES_MASTER}" == "true" ]]; then
+  cd $GOPATH/src/k8s.io/cloud-provider-gcp
+  e2e/add-kubernetes-to-workspace.sh
+fi
+
+kubetest2 gce -v 2 --repo-root $REPO_ROOT --build --up --down --test=ginkgo --node-size e2-standard-4 --master-size e2-standard-8 -- --test-package-version="${TEST_PACKAGE_VERSION}" --parallel=30 --test-args="${TEST_ARGS}" --skip-regex='\[Slow\]|\[Serial\]|\[Disruptive\]|\[Flaky\]|\[Feature:.+\]'
