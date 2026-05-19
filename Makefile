@@ -286,6 +286,8 @@ IMAGE_TAG ?= $(shell git rev-parse --short HEAD)
 # Defaults for kOps E2E tests
 KOPS_FOCUS_REGEX ?= "\[Conformance\]"
 KOPS_SKIP_REGEX ?= "\[Serial\]"
+TEST_ARGS ?=
+
 
 .PHONY: test-cluster-simple
 test-cluster-simple: ## Run test cluster simple E2E test scenario.
@@ -353,5 +355,7 @@ test-cluster-e2e-test: test-cluster-tool ## Run E2E tests on test cluster.
 		--parallel=30 \
 		--test-package-version="${K8S_VERSION}" \
 		--skip-regex="$(KOPS_SKIP_REGEX)" \
-		--focus-regex="$(KOPS_FOCUS_REGEX)"
+		--focus-regex="$(KOPS_FOCUS_REGEX)" \
+		$(if $(TEST_ARGS),--test-args="$(TEST_ARGS)")
+
 
