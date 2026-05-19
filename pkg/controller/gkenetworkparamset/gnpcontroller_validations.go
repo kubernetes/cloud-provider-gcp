@@ -35,7 +35,7 @@ import (
 var (
 	// networkAttachmentRE enforces the network attachment format to match
 	// projects/PROJECT_ID/regions/REGION/networkAttachments/NETWORK_ATTACHMENT
-	networkAttachmentRE = regexp.MustCompile(`projects/([^/]+)/regions/([^/]+)/networkAttachments/([^/]+)`)
+	networkAttachmentRE = regexp.MustCompile(`^projects/([^/]+)/regions/([^/]+)/networkAttachments/([^/]+)$`)
 )
 
 type gnpValidation struct {
