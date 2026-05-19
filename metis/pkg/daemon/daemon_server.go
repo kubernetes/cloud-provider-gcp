@@ -233,6 +233,12 @@ func (s *adaptiveIpamServer) start() error {
 	}
 	defer listener.Close()
 
+	// Explicitly restrict socket permissions to owner-only (0600) to prevent
+	// unauthorized local processes from interacting with the daemon.
+	if err := os.Chmod(sockPath, 0600); err != nil {
+		return fmt.Errorf("failed to set permissions on socket %s: %w", sockPath, err)
+	}
+
 	s.grpcServer = grpc.NewServer()
 	adaptiveipam.RegisterAdaptiveIpamServer(s.grpcServer, s)
 
