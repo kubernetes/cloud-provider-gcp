@@ -709,8 +709,8 @@ func TestStore_ReleaseIPByOwner(t *testing.T) {
 	if isAlloc {
 		t.Error("Expected IP to be unallocated")
 	}
-	if !releaseAt.Valid {
-		t.Error("Expected release_at to be valid")
+	if !releaseAt.Valid || releaseAt.Time.IsZero() {
+		t.Error("Expected release_at to be valid and non-zero")
 	}
 }
 

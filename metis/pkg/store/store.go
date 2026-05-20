@@ -480,7 +480,7 @@ func (s *Store) allocateIPTx(ctx context.Context, tx *sql.Tx, cidrBlockID int64,
 		SET is_allocated = TRUE, container_id = ?, interface_name = ?, allocated_at = CURRENT_TIMESTAMP 
 		WHERE id = (
 			SELECT id FROM ip_addresses 
-			WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= CURRENT_TIMESTAMP)
+			WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR julianday(release_at) <= julianday('now'))
 			ORDER BY id ASC
 			LIMIT 1
 		)
