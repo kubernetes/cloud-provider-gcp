@@ -71,7 +71,7 @@ func EnsureStateStore(c *Config) error {
 		}
 
 		if actualProjNum != "" && actualProjNum != expectedProjNum {
-			return fmt.Errorf("bucket %s exists but is owned by another project (project number: %s, expected: %s). This may be a bucket squatting attack.", c.StateStore, actualProjNum, expectedProjNum)
+			return fmt.Errorf("bucket %s exists but is owned by another project (project number: %s, expected: %s): this may be a bucket squatting attack", c.StateStore, actualProjNum, expectedProjNum)
 		}
 	}
 
