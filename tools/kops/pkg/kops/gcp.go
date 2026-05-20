@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -34,16 +35,43 @@ func EnsureStateStore(c *Config) error {
 
 	fmt.Printf("Ensuring KOPS_STATE_STORE exists: %s\n", c.StateStore)
 
-	// Check if bucket exists
-	lsCmd := exec.Command("gsutil", "ls", "-p", c.GCPProject, c.StateStore)
-	if err := lsCmd.Run(); err != nil {
-		// Assume it doesn't exist, try to create it
+	// Get expected project number for ownership verification
+	var expectedProjNum string
+	if c.GCPProject != "" {
+		var err error
+		expectedProjNum, err = getProjectNumber(c.GCPProject)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Check if bucket exists and verify ownership
+	lsCmd := exec.Command("gsutil", "ls", "-L", "-b", c.StateStore)
+	lsOutput, err := lsCmd.CombinedOutput()
+	if err != nil {
+		// Assume it doesn't exist (or is not accessible), try to create it
 		fmt.Printf("Bucket %s does not exist, creating...\n", c.StateStore)
 		mbCmd := exec.Command("gsutil", "mb", "-p", c.GCPProject, "-l", c.GCPLocation, c.StateStore)
 		mbCmd.Stdout = os.Stdout
 		mbCmd.Stderr = os.Stderr
 		if err := mbCmd.Run(); err != nil {
 			return fmt.Errorf("failed to create bucket: %v", err)
+		}
+	} else if expectedProjNum != "" {
+		// Bucket exists, verify ownership
+		actualProjNum := ""
+		for _, line := range strings.Split(string(lsOutput), "\n") {
+			if strings.Contains(line, "Project number:") {
+				parts := strings.Split(line, ":")
+				if len(parts) > 1 {
+					actualProjNum = strings.TrimSpace(parts[1])
+					break
+				}
+			}
+		}
+
+		if actualProjNum != "" && actualProjNum != expectedProjNum {
+			return fmt.Errorf("bucket %s exists but is owned by another project (project number: %s, expected: %s). This may be a bucket squatting attack.", c.StateStore, actualProjNum, expectedProjNum)
 		}
 	}
 
@@ -80,6 +108,19 @@ func EnsureStateStore(c *Config) error {
 	}
 
 	return nil
+}
+
+// getProjectNumber returns the project number for a given project ID or number.
+func getProjectNumber(projectID string) (string, error) {
+	if _, err := strconv.ParseUint(projectID, 10, 64); err == nil {
+		return projectID, nil
+	}
+	projNumCmd := exec.Command("gcloud", "projects", "describe", projectID, "--format", "value(projectNumber)")
+	projNumBytes, err := projNumCmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get project number for %s: %v", projectID, err)
+	}
+	return strings.TrimSpace(string(projNumBytes)), nil
 }
 
 // EnsureSSHKey ensures that an SSH key exists for kOps.
