@@ -20,7 +20,7 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-cd $GOPATH/src/cloud-provider-gcp
+cd $GOPATH/src/k8s.io/cloud-provider-gcp
 e2e/add-kubernetes-to-workspace.sh
 
 export KOPS_FOCUS_REGEX='\[Conformance\]'
