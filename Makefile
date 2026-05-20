@@ -16,7 +16,7 @@ PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 LOCAL_BIN := $(PROJECT_DIR)/bin
 GCP_PROJECT ?= $(shell gcloud config get-value project)
 
-GIT_VERSION := $(shell git describe --tags --always --dirty | sed 's|.*/||')
+GIT_VERSION := $(shell git describe --tags --always --dirty | sed 's|.*/||' | tr -cd '[:alnum:].-')
 GIT_COMMIT := $(shell git rev-parse HEAD)
 BUILD_DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUCKET_NAME ?= k8s-staging-cloud-provider-gcp
