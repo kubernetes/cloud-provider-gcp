@@ -76,6 +76,9 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 	var ipv4Alloc *adaptiveipam.PodIP
 	var err error
 	if req.Ipv4Config != nil {
+		if req.Ipv4Config.ContainerId == "" || req.Ipv4Config.InterfaceName == "" {
+			return nil, status.Error(codes.InvalidArgument, "container_id and interface_name must not be empty")
+		}
 		ipv4Alloc, err = s.allocateIP(ctx, req, req.Ipv4Config, store.IPv4)
 		if err != nil {
 			return nil, err
@@ -84,6 +87,9 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 
 	var ipv6Alloc *adaptiveipam.PodIP
 	if req.Ipv6Config != nil {
+		if req.Ipv6Config.ContainerId == "" || req.Ipv6Config.InterfaceName == "" {
+			return nil, status.Error(codes.InvalidArgument, "container_id and interface_name must not be empty")
+		}
 		ipv6Alloc, err = s.allocateIP(ctx, req, req.Ipv6Config, store.IPv6)
 		if err != nil {
 			return nil, err
@@ -183,6 +189,10 @@ func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptivei
 		"interfaceName", req.InterfaceName,
 		"podName", req.PodName,
 		"podNamespace", req.PodNamespace)
+
+	if req.ContainerId == "" || req.InterfaceName == "" {
+		return nil, status.Error(codes.InvalidArgument, "container_id and interface_name must not be empty")
+	}
 
 	count, err := s.store.ReleaseIPByOwner(ctx, req.Network, req.ContainerId, req.InterfaceName, s.releaseCooldown)
 	if err != nil {
