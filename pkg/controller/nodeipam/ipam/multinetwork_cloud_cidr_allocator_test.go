@@ -5,11 +5,13 @@ import (
 	"testing"
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
+	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/cloud-provider-gcp/pkg/controller/testutil"
+	"k8s.io/cloud-provider-gcp/providers/gce"
 )
 
 const (
@@ -414,5 +416,30 @@ func TestGetUpNetworks(t *testing.T) {
 				t.Errorf("expected %v, but got %v", test.expected, result)
 			}
 		})
+	}
+}
+
+func TestExtractDefaultNwCIDRs(t *testing.T) {
+	ca := &cloudCIDRAllocator{
+		cloud: &gce.Cloud{},
+	}
+	interfaces := []*compute.NetworkInterface{
+		{
+			Subnetwork: "invalid-subnetwork-url",
+		},
+		{
+			Subnetwork: "projects/testProject/regions/us-central1/subnetworks/default",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					SubnetworkRangeName: "RangeA",
+					IpCidrRange:         "10.0.0.0/24",
+				},
+			},
+		},
+	}
+	// This should not panic and should successfully ignore the invalid subnetwork URL and extract default CIDR
+	res := ca.extractDefaultNwCIDRs(interfaces, "default", "RangeA")
+	if len(res) != 1 || res[0] != "10.0.0.0/24" {
+		t.Errorf("Expected [10.0.0.0/24], got %v", res)
 	}
 }
