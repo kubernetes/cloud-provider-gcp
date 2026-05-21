@@ -37,7 +37,7 @@ var schemaSQL string
 const (
 	// dbSchemaVersion tracks the SQLite schema version to allow safe local
 	// migrations and prevent state corruption across daemon restarts.
-	dbSchemaVersion = 4
+	dbSchemaVersion = 1
 	maxOpenConns    = 10
 	maxIdleConns    = 10
 	// DefaultBusyTimeout is the default timeout for SQLite busy handler.
@@ -117,9 +117,7 @@ func NewStore(ctx context.Context, log logr.Logger, dbPath string) (*Store, erro
 		// performance than FULL mode, sacrificing only a few milliseconds of
 		// un-checkpointed durability.
 		// See: https://www.sqlite.org/pragma.html#pragma_synchronous
-		"&_synchronous=1" +
-		// Force UTC timezone location for standard time.Time mappings.
-		"&_loc=UTC"
+		"&_synchronous=1"
 
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
