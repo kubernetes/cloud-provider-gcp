@@ -701,7 +701,7 @@ func TestStore_ReleaseIPByOwner(t *testing.T) {
 	}
 
 	var isAlloc bool
-	var releaseAt sql.NullTime
+	var releaseAt sql.NullInt64
 	err = s.db.QueryRow("SELECT is_allocated, release_at FROM ip_addresses WHERE address = ?", ip).Scan(&isAlloc, &releaseAt)
 	if err != nil {
 		t.Fatalf("QueryRow failed for IP status: %v", err)
@@ -709,7 +709,7 @@ func TestStore_ReleaseIPByOwner(t *testing.T) {
 	if isAlloc {
 		t.Error("Expected IP to be unallocated")
 	}
-	if !releaseAt.Valid || releaseAt.Time.IsZero() {
+	if !releaseAt.Valid || releaseAt.Int64 == 0 {
 		t.Error("Expected release_at to be valid and non-zero")
 	}
 }
