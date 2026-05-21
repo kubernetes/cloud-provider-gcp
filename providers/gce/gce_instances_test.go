@@ -22,7 +22,6 @@ package gce
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -607,14 +606,13 @@ func TestProjectFromNodeProviderID(t *testing.T) {
 		}},
 	}
 	instanceMap[instanceFromNonDefaultProject.SelfLink] = instanceFromNonDefaultProject
-	forceNonDefaultProject := cloud.ForceProjectID(nonDefaultProject)
 
 	// Setup mock response.
 	mockGCE := gce.c.(*cloud.MockGCE)
 	mi := mockGCE.Instances().(*cloud.MockInstances)
 	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
 		projectID := defaultValues.ProjectID
-		if len(options) == 1 && reflect.DeepEqual(options[0], forceNonDefaultProject) {
+		if len(options) == 1 && gce.projectFromNodeProviderID {
 			projectID = nonDefaultProject
 		}
 		selfLink := fmt.Sprintf("projects/%v/zones/%v/instances/%v", projectID, key.Zone, key.Name)
