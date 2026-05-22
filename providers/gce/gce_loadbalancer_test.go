@@ -318,10 +318,6 @@ func TestUpdateLoadBalancerMixedProtocols(t *testing.T) {
 	require.NoError(t, err)
 
 	apiService := fakeLoadbalancerService("")
-	apiService.Spec.Ports = append(apiService.Spec.Ports, v1.ServicePort{
-		Protocol: v1.ProtocolUDP,
-		Port:     int32(8080),
-	})
 	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
 	require.NoError(t, err)
 
@@ -329,6 +325,13 @@ func TestUpdateLoadBalancerMixedProtocols(t *testing.T) {
 	// before the new controller is running and later the Service is updated
 	_, err = createExternalLoadBalancer(gce, apiService, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	assert.NoError(t, err)
+
+	apiService.Spec.Ports = append(apiService.Spec.Ports, v1.ServicePort{
+		Protocol: v1.ProtocolUDP,
+		Port:     int32(8080),
+	})
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Update(context.TODO(), apiService, metav1.UpdateOptions{})
+	require.NoError(t, err)
 
 	err = gce.UpdateLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
 	if err != nil {

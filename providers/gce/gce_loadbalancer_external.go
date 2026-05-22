@@ -67,6 +67,10 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		return nil, cloudprovider.ImplementedElsewhere
 	}
 
+	if err := g.processMixedProtocolCheck(context.TODO(), apiService, false); err != nil {
+		return nil, err
+	}
+
 	nm := types.NamespacedName{Namespace: apiService.Namespace, Name: apiService.Name}
 	metricsState := L4NetLBServiceState{
 		Status:       StatusError,
@@ -320,6 +324,10 @@ func (g *Cloud) updateExternalLoadBalancer(clusterName string, service *v1.Servi
 	// Skip service handling if it uses Regional Backend Services and handled by other controllers
 	if !shouldProcessNetLB(service, nil, g.enableRBSDefaultForL4NetLB) {
 		return cloudprovider.ImplementedElsewhere
+	}
+
+	if err := g.processMixedProtocolCheck(context.TODO(), service, true); err != nil {
+		return err
 	}
 
 	if err := addFinalizer(service, g.client.CoreV1(), NetLBFinalizerV1); err != nil {
