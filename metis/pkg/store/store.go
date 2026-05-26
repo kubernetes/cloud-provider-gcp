@@ -396,7 +396,7 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 
 	var releaseAt interface{}
 	if releaseCooldown > 0 {
-		releaseAt = time.Now().Add(releaseCooldown)
+		releaseAt = time.Now().UTC().Add(releaseCooldown).UnixMilli()
 	} else {
 		releaseAt = nil
 	}
@@ -473,17 +473,18 @@ func (s *Store) allocateIPTx(ctx context.Context, tx *sql.Tx, cidrBlockID int64,
 
 	// 2. Find the first available entry and mark it as allocated
 	var address string
+	nowMilli := time.Now().UTC().UnixMilli()
 	err = tx.QueryRowContext(ctx, `
 		UPDATE ip_addresses 
-		SET is_allocated = TRUE, container_id = ?, interface_name = ?, allocated_at = CURRENT_TIMESTAMP 
+		SET is_allocated = TRUE, container_id = ?, interface_name = ?, allocated_at = ? 
 		WHERE id = (
 			SELECT id FROM ip_addresses 
-			WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= CURRENT_TIMESTAMP)
+			WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= ?)
 			ORDER BY id ASC
 			LIMIT 1
 		)
 		RETURNING address
-	`, containerID, interfaceName, cidrBlockID).Scan(&address)
+	`, containerID, interfaceName, nowMilli, cidrBlockID, nowMilli).Scan(&address)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
