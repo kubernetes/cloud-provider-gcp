@@ -144,9 +144,13 @@ type Cloud struct {
 	region           string
 	regional         bool
 	localZone        string // The zone in which we are running
-	// managedZones will be set to the 1 zone if running a single zone cluster
-	// it will be set to ALL zones in region for any multi-zone cluster
-	// Use GetAllCurrentZones to get only zones that contain nodes
+	// Lock for access to managedZones
+	managedZonesLock sync.RWMutex
+	// managedZones represents GCE zones CCM can manage (dynamically
+	// refreshed). Used to scan GCE for project resources to avoid
+	// bootstrap (finding first node) and scale-to-zero (cleaning
+	// volumes in empty zones) issues. For scheduling/placement,
+	// use GetAllCurrentZones() (active nodes) instead.
 	managedZones []string
 	networkURL   string
 	// unsafeIsLegacyNetwork should be used only via IsLegacyNetwork() accessor,
@@ -169,8 +173,10 @@ type Cloud struct {
 	manager                  diskServiceManager
 	// Lock for access to nodeZones
 	nodeZonesLock sync.Mutex
-	// nodeZones is a mapping from Zone to a sets.String of Node's names in the Zone
-	// it is updated by the nodeInformer
+	// nodeZones maps GCE zones to active K8s Node names, dynamically
+	// updated by nodeInformer. Used via GetAllCurrentZones() for
+	// scheduling and topology-aware volume placement to ensure
+	// resources are only created in zones with active node capacity.
 	nodeZones          map[string]sets.String
 	nodeInformerSynced cache.InformerSynced
 	// sharedResourceLock is used to serialize GCE operations that may mutate shared state to
@@ -834,7 +840,6 @@ func (g *Cloud) SetInformers(informerFactory informers.SharedInformerFactory) {
 
 func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
 	g.nodeZonesLock.Lock()
-	defer g.nodeZonesLock.Unlock()
 	if prevNode != nil {
 		prevZone := getZone(prevNode)
 		if prevZone != emptyZone {
@@ -844,18 +849,40 @@ func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
 			}
 		}
 	}
+	var newZone string
 	if newNode != nil {
-		newZone := getZone(newNode)
+		newZone = getZone(newNode)
 		if newZone != emptyZone {
 			if g.nodeZones[newZone] == nil {
 				g.nodeZones[newZone] = sets.NewString()
 			}
 			g.nodeZones[newZone].Insert(newNode.ObjectMeta.Name)
-			if !slices.Contains(g.managedZones, newZone) {
-				klog.Warningf("Initializing node %s in an unmanaged zone %s. Managed zones: %v", newNode.ObjectMeta.Name, newZone, g.managedZones)
-			}
 		}
 	}
+	g.nodeZonesLock.Unlock()
+
+	if newNode == nil || newZone == emptyZone {
+		return
+	}
+
+	if slices.Contains(g.getManagedZones(), newZone) {
+		return
+	}
+
+	klog.Infof("Node %s in unmanaged zone %s; triggering GCE zone refresh.",
+		newNode.ObjectMeta.Name, newZone)
+	if err := g.refreshManagedZones(); err != nil {
+		klog.Errorf("Failed to refresh GCE managed zones: %v", err)
+		return
+	}
+
+	if !slices.Contains(g.getManagedZones(), newZone) {
+		klog.Warningf("Node %s in unmanaged zone %s even after refresh. Managed: %v",
+			newNode.ObjectMeta.Name, newZone, g.getManagedZones())
+		return
+	}
+
+	klog.Infof("Successfully verified and added zone %s to CCM managed scope.", newZone)
 }
 
 // HasClusterID returns true if the cluster has a clusterID
@@ -1009,3 +1036,40 @@ func (manager *gceServiceManager) getProjectsAPIEndpoint() string {
 
 	return projectsAPIEndpoint
 }
+
+// getManagedZones returns a thread-safe copy of the GCE managed zones list.
+func (g *Cloud) getManagedZones() []string {
+	g.managedZonesLock.RLock()
+	defer g.managedZonesLock.RUnlock()
+
+	cp := make([]string, len(g.managedZones))
+	copy(cp, g.managedZones)
+	return cp
+}
+
+// refreshManagedZones queries the GCE API to update the managed zones list.
+func (g *Cloud) refreshManagedZones() error {
+	zones, err := g.ListZonesInRegion(g.region)
+	if err != nil {
+		return fmt.Errorf("failed to refresh managed zones: %v", err)
+	}
+
+	var zoneNames []string
+	for _, zone := range zones {
+		zoneNames = append(zoneNames, zone.Name)
+	}
+
+	g.managedZonesLock.Lock()
+	defer g.managedZonesLock.Unlock()
+
+	oldZones := sets.NewString(g.managedZones...)
+	newZones := sets.NewString(zoneNames...)
+
+	if !oldZones.Equal(newZones) {
+		klog.Infof("Managed zones updated. Old: %v, New: %v", g.managedZones, zoneNames)
+		g.managedZones = zoneNames
+	}
+
+	return nil
+}
+
