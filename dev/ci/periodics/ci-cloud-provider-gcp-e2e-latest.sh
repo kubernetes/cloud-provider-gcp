@@ -24,7 +24,7 @@ cd $GOPATH/src/k8s.io/cloud-provider-gcp
 e2e/add-kubernetes-to-workspace.sh
 
 export KOPS_FOCUS_REGEX="" # Run all non-skipped tests
-export KOPS_SKIP_REGEX='\[Slow\]|\[Serial\]|\[Disruptive\]|\[Flaky\]|\[Feature:.+\]|\[Driver: nfs\]|\[Driver: nfs3\]|NFS|Flexvolumes'
+source "$(git rev-parse --show-toplevel)/dev/ci/periodics/common.sh"
 export CLUSTER_NAME="kops-e2e-latest.k8s.local"
 
 e2e/scenarios/kops-simple
