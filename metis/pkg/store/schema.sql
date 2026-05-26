@@ -32,11 +32,11 @@ CREATE TABLE IF NOT EXISTS cidr_blocks (
     -- Expected values: 'Ready', 'Draining', 'Deleting'
     state TEXT NOT NULL DEFAULT 'Ready',
 
-    -- Timestamp of when this block was successfully pulled from the CRD.
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- Unix epoch timestamp in milliseconds when this block was successfully pulled from the CRD.
+    created_at INTEGER DEFAULT (CAST(unixepoch('subsec') * 1000 AS INTEGER)),
 
-    -- Timestamp of the last mutation to this block's state or capacity.
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- Unix epoch timestamp in milliseconds of the last mutation to this block's state or capacity.
+    updated_at INTEGER DEFAULT (CAST(unixepoch('subsec') * 1000 AS INTEGER)),
 
     UNIQUE(cidr, network)
 );
@@ -72,15 +72,15 @@ CREATE TABLE IF NOT EXISTS ip_addresses (
     -- Represents whether the IP is currently held by an active pod.
     is_allocated BOOLEAN DEFAULT FALSE,
 
-    -- Timestamp indicating when a released IP has finished its "cool-down" 
-    -- period and is safe to be reassigned without risking NEG routing collisions.
-    release_at TIMESTAMP, 
+    -- Unix epoch timestamp in milliseconds indicating when a released IP has 
+    -- finished its "cool-down" period and is safe to be reassigned.
+    release_at INTEGER, 
 
-    -- Timestamp of when the IP was assigned to its current container_id.
-    allocated_at TIMESTAMP,
+    -- Unix epoch timestamp in milliseconds when the IP was assigned to its current container_id.
+    allocated_at INTEGER,
 
-    -- Timestamp of the last mutation to this IP record.
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- Unix epoch timestamp in milliseconds of the last mutation to this IP record.
+    updated_at INTEGER DEFAULT (CAST(unixepoch('subsec') * 1000 AS INTEGER)),
 
     FOREIGN KEY (cidr_block_id) REFERENCES cidr_blocks(id) ON DELETE CASCADE,
     UNIQUE(address, cidr_block_id)
@@ -98,11 +98,11 @@ CREATE INDEX IF NOT EXISTS idx_ip_idempotency
 -- Automatically update the updated_at timestamp on cidr_blocks mutations.
 CREATE TRIGGER IF NOT EXISTS update_cidr_blocks_updated_at
     AFTER UPDATE ON cidr_blocks FOR EACH ROW BEGIN
-    UPDATE cidr_blocks SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+    UPDATE cidr_blocks SET updated_at = CAST(unixepoch('subsec') * 1000 AS INTEGER) WHERE id = OLD.id;
     END;
 
 -- Automatically update the updated_at timestamp on ip_addresses mutations.
 CREATE TRIGGER IF NOT EXISTS update_ip_addresses_updated_at
     AFTER UPDATE ON ip_addresses FOR EACH ROW BEGIN
-        UPDATE ip_addresses SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+        UPDATE ip_addresses SET updated_at = CAST(unixepoch('subsec') * 1000 AS INTEGER) WHERE id = OLD.id;
     END;
