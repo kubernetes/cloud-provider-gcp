@@ -77,3 +77,39 @@ func TestCachingProvider(t *testing.T) {
 		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
 	}
 }
+
+func TestCachingProviderPerImage(t *testing.T) {
+	provider := &testProvider{
+		Count: 0,
+	}
+
+	cache := &CachingDockerConfigProvider{
+		Provider: provider,
+		Lifetime: 1 * time.Second,
+	}
+
+	cfg1 := cache.Provide("image1")
+	if provider.Count != 1 {
+		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
+	}
+	_ = cache.Provide("image2")
+	if provider.Count != 2 {
+		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
+	}
+	cache.Provide("image1")
+	cache.Provide("image2")
+	if provider.Count != 2 {
+		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
+	}
+
+	// Test that caller mutations don't affect the cache
+	if cfg1 != nil {
+		cfg1["mutated"] = DockerConfigEntry{Username: "hacker"}
+	} else {
+		cfg1 = DockerConfig{"mutated": DockerConfigEntry{Username: "hacker"}}
+	}
+	cfg1Cached := cache.Provide("image1")
+	if _, ok := cfg1Cached["mutated"]; ok {
+		t.Errorf("Cache was mutated by caller!")
+	}
+}
