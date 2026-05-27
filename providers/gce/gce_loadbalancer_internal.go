@@ -80,6 +80,10 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 		}
 	}
 
+	if err := g.processMixedProtocolCheck(context.TODO(), svc, false); err != nil {
+		return nil, err
+	}
+
 	nm := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
 
 	var serviceState L4ILBServiceState
@@ -353,6 +357,10 @@ func (g *Cloud) updateInternalLoadBalancer(clusterName, clusterID string, svc *v
 	if svc.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
 		klog.V(2).Infof("Skipped updateInternalLoadBalancer for service %s/%s as service contains %q loadBalancerClass.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
 		return cloudprovider.ImplementedElsewhere
+	}
+
+	if err := g.processMixedProtocolCheck(context.TODO(), svc, true); err != nil {
+		return err
 	}
 	g.sharedResourceLock.Lock()
 	defer g.sharedResourceLock.Unlock()
