@@ -1072,4 +1072,3 @@ func (g *Cloud) refreshManagedZones() error {
 
 	return nil
 }
-
