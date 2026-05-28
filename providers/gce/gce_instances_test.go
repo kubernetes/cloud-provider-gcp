@@ -721,4 +721,3 @@ func TestUpdateNodeZonesDynamicRefresh(t *testing.T) {
 	expectedZones := []string{"us-central1-b", "us-central1-c"}
 	assert.ElementsMatch(t, expectedZones, gce.getManagedZones())
 }
-
