@@ -71,7 +71,7 @@ func TestLoadBalancerNames(t *testing.T) {
 				DenyFirewallName: gce.MakeFirewallDenyName(lbName),
 			}
 			if diff := cmp.Diff(tC.want, got); diff != "" {
-				t.Errorf("got != want, (-want, +got):/n%s", diff)
+				t.Errorf("got != want, (-want, +got):\n%s", diff)
 			}
 
 			// https://docs.cloud.google.com/compute/docs/naming-resources#resource-name-format
