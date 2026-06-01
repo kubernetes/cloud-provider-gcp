@@ -1013,7 +1013,6 @@ func getProjectID(svc *compute.Service, projectNumberOrID string) (string, error
 	return proj.Name, nil
 }
 
-
 func findSubnetForRegion(subnetURLs []string, region string) string {
 	for _, url := range subnetURLs {
 		if thisRegion := getRegionInURL(url); thisRegion == region {
