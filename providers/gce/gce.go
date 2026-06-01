@@ -596,15 +596,9 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 	gce.c = cloud.NewGCE(gce.s)
 
 	if len(config.ManagedZones) == 0 {
-		zones, err := gce.ListZonesInRegion(gce.region)
-		if err != nil {
+		if err := gce.refreshManagedZones(); err != nil {
 			return nil, err
 		}
-		var zoneNames []string
-		for _, z := range zones {
-			zoneNames = append(zoneNames, z.Name)
-		}
-		gce.managedZones = zoneNames
 	} else {
 		gce.managedZones = config.ManagedZones
 	}
@@ -847,8 +841,8 @@ func (g *Cloud) SetInformers(informerFactory informers.SharedInformerFactory) {
 	g.nodeInformerSynced = nodeInformer.HasSynced
 }
 
-// recordNodeZoneChange updates the active node footprint in nodeZones under lock and returns the node's zone.
-func (g *Cloud) recordNodeZoneChange(prevNode, newNode *v1.Node) string {
+// updateNodeZonesMap updates the active node footprint in nodeZones under lock and returns the node's zone.
+func (g *Cloud) updateNodeZonesMap(prevNode, newNode *v1.Node) string {
 	g.nodeZonesLock.Lock()
 	defer g.nodeZonesLock.Unlock()
 	if prevNode != nil {
@@ -874,7 +868,7 @@ func (g *Cloud) recordNodeZoneChange(prevNode, newNode *v1.Node) string {
 }
 
 func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
-	newZone := g.recordNodeZoneChange(prevNode, newNode)
+	newZone := g.updateNodeZonesMap(prevNode, newNode)
 
 	if !g.dynamicZones {
 		return
