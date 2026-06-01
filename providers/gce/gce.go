@@ -143,6 +143,7 @@ type Cloud struct {
 	projectID        string
 	region           string
 	regional         bool
+	dynamicZones     bool
 	localZone        string // The zone in which we are running
 	// Lock for access to managedZones
 	managedZonesLock sync.RWMutex
@@ -464,6 +465,10 @@ func GenerateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 // If no tokenSource is specified, uses oauth2.DefaultTokenSource.
 // If managedZones is nil / empty all zones in the region will be managed.
 func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
+	// If ManagedZones was empty at startup, it means the cluster was configured
+	// as a Regional or Multi-zone cluster and should dynamically refresh zones.
+	dynamicZones := len(config.ManagedZones) == 0
+
 	// Remove any pre-release version and build metadata from the semver,
 	// leaving only the MAJOR.MINOR.PATCH portion. See http://semver.org/.
 	version := strings.TrimLeft(strings.Split(strings.Split(version.Get().GitVersion, "-")[0], "+")[0], "v")
@@ -550,16 +555,6 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 	// the provider is initialized also for Kubelets (and there can be thousands
 	// of them) we defer to lazy initialization here.
 
-	if len(config.ManagedZones) == 0 {
-		config.ManagedZones, err = getZonesForRegion(service, config.ProjectID, config.Region)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if len(config.ManagedZones) > 1 {
-		klog.Infof("managing multiple zones: %v", config.ManagedZones)
-	}
-
 	operationPollRateLimiter := flowcontrol.NewTokenBucketRateLimiter(5, 5) // 5 qps, 5 burst.
 
 	gce := &Cloud{
@@ -574,7 +569,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		region:                   config.Region,
 		regional:                 config.Regional,
 		localZone:                config.Zone,
-		managedZones:             config.ManagedZones,
+		dynamicZones:             dynamicZones,
 		networkURL:               networkURL,
 		unsafeIsLegacyNetwork:    isLegacyNetwork,
 		unsafeSubnetworkURL:      subnetURL,
@@ -599,6 +594,20 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		RateLimiter:   &gceRateLimiter{gce},
 	}
 	gce.c = cloud.NewGCE(gce.s)
+
+	if len(config.ManagedZones) == 0 {
+		zones, err := gce.ListZonesInRegion(gce.region)
+		if err != nil {
+			return nil, err
+		}
+		var zoneNames []string
+		for _, z := range zones {
+			zoneNames = append(zoneNames, z.Name)
+		}
+		gce.managedZones = zoneNames
+	} else {
+		gce.managedZones = config.ManagedZones
+	}
 
 	return gce, nil
 }
@@ -838,8 +847,10 @@ func (g *Cloud) SetInformers(informerFactory informers.SharedInformerFactory) {
 	g.nodeInformerSynced = nodeInformer.HasSynced
 }
 
-func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
+// recordNodeZoneChange updates the active node footprint in nodeZones under lock and returns the node's zone.
+func (g *Cloud) recordNodeZoneChange(prevNode, newNode *v1.Node) string {
 	g.nodeZonesLock.Lock()
+	defer g.nodeZonesLock.Unlock()
 	if prevNode != nil {
 		prevZone := getZone(prevNode)
 		if prevZone != emptyZone {
@@ -859,7 +870,15 @@ func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
 			g.nodeZones[newZone].Insert(newNode.ObjectMeta.Name)
 		}
 	}
-	g.nodeZonesLock.Unlock()
+	return newZone
+}
+
+func (g *Cloud) updateNodeZones(prevNode, newNode *v1.Node) {
+	newZone := g.recordNodeZoneChange(prevNode, newNode)
+
+	if !g.dynamicZones {
+		return
+	}
 
 	if newNode == nil || newZone == emptyZone {
 		return
@@ -994,30 +1013,6 @@ func getProjectID(svc *compute.Service, projectNumberOrID string) (string, error
 	return proj.Name, nil
 }
 
-func getZonesForRegion(svc *compute.Service, projectID, region string) ([]string, error) {
-	// TODO: use PageToken to list all not just the first 500
-	listCall := svc.Zones.List(projectID)
-
-	// Filtering by region doesn't seem to work
-	// (tested in https://cloud.google.com/compute/docs/reference/latest/zones/list)
-	// listCall = listCall.Filter("region eq " + region)
-
-	var zones []string
-	accumulator := func(response *compute.ZoneList) error {
-		for _, zone := range response.Items {
-			regionName := lastComponent(zone.Region)
-			if regionName == region {
-				zones = append(zones, zone.Name)
-			}
-		}
-		return nil
-	}
-	err := listCall.Pages(context.TODO(), accumulator)
-	if err != nil {
-		return nil, fmt.Errorf("unexpected response listing zones: %v", err)
-	}
-	return zones, nil
-}
 
 func findSubnetForRegion(subnetURLs []string, region string) string {
 	for _, url := range subnetURLs {
@@ -1037,7 +1032,7 @@ func (manager *gceServiceManager) getProjectsAPIEndpoint() string {
 	return projectsAPIEndpoint
 }
 
-// getManagedZones returns a thread-safe copy of the GCE managed zones list.
+// getManagedZones returns a goroutine-safe copy of the GCE managed zones list.
 func (g *Cloud) getManagedZones() []string {
 	g.managedZonesLock.RLock()
 	defer g.managedZonesLock.RUnlock()

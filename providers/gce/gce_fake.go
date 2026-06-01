@@ -87,6 +87,7 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 		metricsCollector:    newLoadBalancerMetrics(),
 		projectsBasePath:    getProjectsBasePath(service.BasePath),
 		regional:            vals.Regional,
+		dynamicZones:        vals.Regional,
 		networkURL:          vals.NetworkURL,
 		unsafeSubnetworkURL: vals.SubnetworkURL,
 		stackType:           vals.StackType,
