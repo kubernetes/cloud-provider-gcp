@@ -55,6 +55,11 @@ func runInstallWithOptions(opts *installOptions) error {
 	}
 	klog.Infof("Resolved current executable path: %q", sourcePath)
 
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to stat source binary %q: %w", sourcePath, err)
+	}
+
 	src, err := os.Open(sourcePath)
 	if err != nil {
 		return fmt.Errorf("failed to open source binary %q: %w", sourcePath, err)
@@ -63,7 +68,8 @@ func runInstallWithOptions(opts *installOptions) error {
 
 	// Resolve the installation paths based on target CNI directory.
 	destDir := filepath.Join(opts.CniDir, "bin")
-	destPath := filepath.Join(destDir, "metis")
+	binaryName := filepath.Base(sourcePath)
+	destPath := filepath.Join(destDir, binaryName)
 
 	// Ensure the target host directory structure exists.
 	klog.Infof("Creating destination directory %q...", destDir)
@@ -77,7 +83,7 @@ func runInstallWithOptions(opts *installOptions) error {
 	destTempPath := destPath + ".tmp"
 	_ = os.Remove(destTempPath)
 
-	dst, err := os.OpenFile(destTempPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	dst, err := os.OpenFile(destTempPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, sourceInfo.Mode().Perm())
 	if err != nil {
 		return fmt.Errorf("failed to open destination temp file %q: %w", destTempPath, err)
 	}
@@ -105,7 +111,7 @@ func runInstallWithOptions(opts *installOptions) error {
 	// Set executable permissions on the temp binary BEFORE swapping it into place.
 	// This ensures the CNI plugin is immediately usable by Kubelet the exact
 	// microsecond it appears at the target path, avoiding any unexecutable windows.
-	if err := os.Chmod(destTempPath, 0755); err != nil {
+	if err := os.Chmod(destTempPath, sourceInfo.Mode().Perm()); err != nil {
 		return fmt.Errorf("failed to set permissions on temp file %q: %w", destTempPath, err)
 	}
 
