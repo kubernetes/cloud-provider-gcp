@@ -591,7 +591,7 @@ func (g *Cloud) ensureTargetPoolAndHealthCheck(tpExists, tpNeedsRecreation bool,
 				return fmt.Errorf("failed to ensure health check for %v port %d path %v: %v", loadBalancerName, hcToCreate.Port, hcToCreate.RequestPath, err)
 			}
 			// Check whether it is nodes health check, which has different name from the load-balancer.
-			isNodesHealthCheck := hcToCreate.Name != serviceName.Name
+			isNodesHealthCheck := hcToCreate.Name != loadBalancerName
 			if isNodesHealthCheck {
 				// Lock to prevent necessary nodes health check / firewall gets deleted.
 				g.sharedResourceLock.Lock()
