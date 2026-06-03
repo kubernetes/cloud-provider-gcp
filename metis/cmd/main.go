@@ -34,19 +34,24 @@ func main() {
 	flag.Set("stderrthreshold", "INFO")                   //nolint:errcheck
 	logs.InitLogs()
 
+	// Base command (defaults to CNI plugin mode)
 	rootCmd := &cobra.Command{
 		Use:   "metis",
 		Short: "Metis implements adaptive cluster IPAM for GKE",
 		Run: func(cmd *cobra.Command, args []string) {
-			RunCni()
+			runCni()
 		},
 	}
 
+	// Register subcommands
 	rootCmd.AddCommand(newDaemonCommand())
+	rootCmd.AddCommand(newInstallCommand())
 
-	flag.Parse()
+	// Register standard/logging flags globally
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	rootCmd.PersistentFlags().AddFlagSet(pflag.CommandLine)
 
+	// Execute parses flags and routes to the matching command
 	if err := rootCmd.Execute(); err != nil {
 		klog.ErrorS(err, "metis command failed")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
