@@ -26,6 +26,9 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// newInstallCommand returns a command to install the CNI plugin.
+// The daemon image uses a distroless base image that lacks a shell, making a
+// standard shell script CNI installer unusable.
 func newInstallCommand() *cobra.Command {
 	opts := newInstallOptions()
 
@@ -104,6 +107,9 @@ func runInstallWithOptions(opts *installOptions) error {
 		return fmt.Errorf("failed to sync destination temp file %q: %w", destTempPath, err)
 	}
 
+	// Close the file explicitly before rename to avoid ETXTBSY (Text file busy)
+	// if Kubelet executes it immediately. It is safe to call Close() twice
+	// (the deferred Close() will run when returning, returning an ignorable error).
 	if err := dst.Close(); err != nil {
 		return fmt.Errorf("failed to close destination temp file %q: %w", destTempPath, err)
 	}

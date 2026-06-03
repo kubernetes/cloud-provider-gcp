@@ -45,6 +45,8 @@ func (o *installOptions) addFlags(fs *pflag.FlagSet) {
 // validate verifies the parsed options.
 func (o *installOptions) validate() error {
 	if o.CniDir == "" {
+		// Default to /host/opt/cni. When running inside a DaemonSet container,
+		// the host's CNI directory (/opt/cni) is mounted at /host/opt/cni.
 		o.CniDir = "/host/opt/cni"
 	}
 	return nil
