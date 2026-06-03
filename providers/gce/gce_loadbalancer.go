@@ -166,29 +166,6 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 		return nil, err
 	}
 
-	// Services with multiples protocols are not supported by this controller, warn the users and sets
-	// the corresponding Service Status Condition.
-	// https://github.com/kubernetes/enhancements/tree/master/keps/sig-network/1435-mixed-protocol-lb
-	if err := checkMixedProtocol(svc.Spec.Ports); err != nil {
-		if hasLoadBalancerPortsError(svc) {
-			return nil, err
-		}
-		klog.Warningf("Ignoring service %s/%s using different ports protocols", svc.Namespace, svc.Name)
-		g.eventRecorder.Event(svc, v1.EventTypeWarning, v1.LoadBalancerPortsErrorReason, "LoadBalancers with multiple protocols are not supported.")
-		svcApplyStatus := corev1apply.ServiceStatus().WithConditions(
-			metav1apply.Condition().
-				WithType(v1.LoadBalancerPortsError).
-				WithStatus(metav1.ConditionTrue).
-				WithReason(v1.LoadBalancerPortsErrorReason).
-				WithLastTransitionTime(metav1.Now()).
-				WithMessage("LoadBalancer with multiple protocols are not supported"))
-		svcApply := corev1apply.Service(svc.Name, svc.Namespace).WithStatus(svcApplyStatus)
-		if _, errApply := g.client.CoreV1().Services(svc.Namespace).ApplyStatus(ctx, svcApply, metav1.ApplyOptions{FieldManager: "gce-cloud-controller", Force: true}); errApply != nil {
-			return nil, errApply
-		}
-		return nil, err
-	}
-
 	klog.V(4).Infof("EnsureLoadBalancer(%v, %v, %v, %v, %v): ensure %v loadbalancer", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, desiredScheme)
 
 	existingFwdRule, err := g.GetRegionForwardingRule(loadBalancerName, g.region)
@@ -282,7 +259,6 @@ func servicePatchBytes(oldSvc, newSvc *v1.Service) ([]byte, error) {
 		return nil, fmt.Errorf("failed to CreateTwoWayMergePatch for svc %s/%s: %v", oldSvc.Namespace, oldSvc.Name, err)
 	}
 	return patchBytes, nil
-
 }
 
 // UpdateLoadBalancer is an implementation of LoadBalancer.UpdateLoadBalancer.
@@ -300,26 +276,6 @@ func (g *Cloud) UpdateLoadBalancer(ctx context.Context, clusterName string, svc 
 	clusterID, err := g.ClusterID.GetID()
 	if err != nil {
 		return err
-	}
-
-	// Services with multiples protocols are not supported by this controller, warn the users and sets
-	// the corresponding Service Status Condition, but keep processing the Update to not break upgrades.
-	// https://github.com/kubernetes/enhancements/tree/master/keps/sig-network/1435-mixed-protocol-lb
-	if err := checkMixedProtocol(svc.Spec.Ports); err != nil && !hasLoadBalancerPortsError(svc) {
-		klog.Warningf("Ignoring update for service %s/%s using different ports protocols", svc.Namespace, svc.Name)
-		g.eventRecorder.Event(svc, v1.EventTypeWarning, v1.LoadBalancerPortsErrorReason, "LoadBalancer with multiple protocols are not supported.")
-		svcApplyStatus := corev1apply.ServiceStatus().WithConditions(
-			metav1apply.Condition().
-				WithType(v1.LoadBalancerPortsError).
-				WithStatus(metav1.ConditionTrue).
-				WithReason(v1.LoadBalancerPortsErrorReason).
-				WithLastTransitionTime(metav1.Now()).
-				WithMessage("LoadBalancer with multiple protocols are not supported"))
-		svcApply := corev1apply.Service(svc.Name, svc.Namespace).WithStatus(svcApplyStatus)
-		if _, errApply := g.client.CoreV1().Services(svc.Namespace).ApplyStatus(ctx, svcApply, metav1.ApplyOptions{FieldManager: "gce-cloud-controller", Force: true}); errApply != nil {
-			// the error is retried by the controller loop
-			return errApply
-		}
 	}
 
 	klog.V(4).Infof("UpdateLoadBalancer(%v, %v, %v, %v, %v): updating with %v nodes [node names limited, total number of nodes: %d]", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, loggableNodeNames(nodes), len(nodes))
@@ -410,4 +366,51 @@ func computeNewAnnotationsIfNeeded(svc *v1.Service, newAnnotations map[string]st
 		return nil, false
 	}
 	return newObjectMeta, true
+}
+
+// processMixedProtocolCheck checks if the Service Ports use different protocols and updates
+// the corresponding Service Status Condition.
+//
+// Services with multiples protocols are not supported by this controller, warn the users and sets
+// the corresponding Service Status Condition.
+// https://github.com/kubernetes/enhancements/tree/master/keps/sig-network/1435-mixed-protocol-lb
+//
+// For updates we want to keep processing to not break them.
+//
+// Originally introduced in https://github.com/kubernetes/cloud-provider-gcp/pull/475
+func (g *Cloud) processMixedProtocolCheck(ctx context.Context, svc *v1.Service, isUpdate bool) error {
+	err := checkMixedProtocol(svc.Spec.Ports)
+	if err == nil {
+		return nil
+	}
+	if hasLoadBalancerPortsError(svc) {
+		if isUpdate {
+			return nil
+		}
+		return err
+	}
+
+	klog.Warningf("Ignoring %s/%s using different ports protocols, isUpdate: %t", svc.Namespace, svc.Name, isUpdate)
+
+	if g.eventRecorder != nil {
+		g.eventRecorder.Event(svc, v1.EventTypeWarning, v1.LoadBalancerPortsErrorReason, "LoadBalancer with multiple protocols are not supported.")
+	}
+
+	svcApplyStatus := corev1apply.ServiceStatus().WithConditions(
+		metav1apply.Condition().
+			WithType(v1.LoadBalancerPortsError).
+			WithStatus(metav1.ConditionTrue).
+			WithReason(v1.LoadBalancerPortsErrorReason).
+			WithLastTransitionTime(metav1.Now()).
+			WithMessage("LoadBalancer with multiple protocols are not supported"))
+	svcApply := corev1apply.Service(svc.Name, svc.Namespace).WithStatus(svcApplyStatus)
+
+	if _, errApply := g.client.CoreV1().Services(svc.Namespace).ApplyStatus(ctx, svcApply, metav1.ApplyOptions{FieldManager: "gce-cloud-controller", Force: true}); errApply != nil {
+		return errApply
+	}
+
+	if isUpdate {
+		return nil
+	}
+	return err
 }
