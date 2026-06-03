@@ -114,13 +114,6 @@ func runInstallWithOptions(opts *installOptions) error {
 		return fmt.Errorf("failed to close destination temp file %q: %w", destTempPath, err)
 	}
 
-	// Set executable permissions on the temp binary BEFORE swapping it into place.
-	// This ensures the CNI plugin is immediately usable by Kubelet the exact
-	// microsecond it appears at the target path, avoiding any unexecutable windows.
-	if err := os.Chmod(destTempPath, sourceInfo.Mode().Perm()); err != nil {
-		return fmt.Errorf("failed to set permissions on temp file %q: %w", destTempPath, err)
-	}
-
 	// Execute an atomic swap via rename(2). In Linux, rename(2) is an atomic
 	// directory metadata operation. If the CNI is actively executing, rename(2)
 	// successfully unlinks the old inode without throwing ETXTBSY (Text file busy).
