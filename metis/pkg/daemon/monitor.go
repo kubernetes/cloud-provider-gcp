@@ -27,6 +27,8 @@ import (
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
+	nncinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions/nodenetworkconfig/v1"
+	nnclisters "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/listers/nodenetworkconfig/v1"
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -87,6 +89,7 @@ const (
 type Monitor struct {
 	queue                   workqueue.TypedRateLimitingInterface[string]
 	nncClient               nncclientset.Interface
+	nncLister               nnclisters.NodeNetworkConfigLister
 	nodeName                string
 	store                   *store.Store
 	logger                  logr.Logger
@@ -121,6 +124,7 @@ type Monitor struct {
 type MonitorConfig struct {
 	Logger                          logr.Logger
 	NNCClient                       nncclientset.Interface
+	NNCInformer                     nncinformers.NodeNetworkConfigInformer
 	Store                           *store.Store
 	NodeName                        string
 	GetPendingRequestsCount         func(network string) int
@@ -158,9 +162,15 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 		monitorInterval = DefaultMonitorInterval
 	}
 
+	var nncLister nnclisters.NodeNetworkConfigLister
+	if cfg.NNCInformer != nil {
+		nncLister = cfg.NNCInformer.Lister()
+	}
+
 	return &Monitor{
 		queue:                           queue,
 		nncClient:                       cfg.NNCClient,
+		nncLister:                       nncLister,
 		nodeName:                        cfg.NodeName,
 		store:                           cfg.Store,
 		logger:                          cfg.Logger,
@@ -393,6 +403,13 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*Util
 }
 
 func (m *Monitor) getNodeNetworkConfig(ctx context.Context) (*nncv1.NodeNetworkConfig, error) {
+	if m.nncLister != nil {
+		nnc, err := m.nncLister.Get(m.nodeName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get NodeNetworkConfig from lister: %w", err)
+		}
+		return nnc, nil
+	}
 	if m.nncClient != nil {
 		nnc, err := m.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, m.nodeName, metav1.GetOptions{})
 		if err != nil {
@@ -400,7 +417,7 @@ func (m *Monitor) getNodeNetworkConfig(ctx context.Context) (*nncv1.NodeNetworkC
 		}
 		return nnc, nil
 	}
-	return nil, fmt.Errorf("no client available to fetch NodeNetworkConfig")
+	return nil, fmt.Errorf("no client or lister available to fetch NodeNetworkConfig")
 }
 
 func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) (bool, error) {

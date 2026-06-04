@@ -107,13 +107,18 @@ func (d *Daemon) Run(ctx context.Context) error {
 			return err
 		}
 
-		nncInformerFactory := externalversions.NewSharedInformerFactory(nncClient, 0)
+		nncInformerFactory := externalversions.NewSharedInformerFactoryWithOptions(nncClient, 0,
+			externalversions.WithTweakListOptions(func(options *metav1.ListOptions) {
+				options.FieldSelector = "metadata.name=" + nodeName
+			}),
+		)
 		nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
 
 		watcher := NewWatcher(logger, nncClient, nncInformer, storeInstance, nodeName, server.onCIDRAdded)
 		monitorInstance := NewMonitor(MonitorConfig{
 			Logger:                          logger,
 			NNCClient:                       nncClient,
+			NNCInformer:                     nncInformer,
 			Store:                           storeInstance,
 			NodeName:                        nodeName,
 			GetPendingRequestsCount:         server.getPendingRequestsCount,
@@ -154,35 +159,42 @@ func ensureNodeNetworkConfig(ctx context.Context, nncClient nncclientset.Interfa
 		return nil
 	}
 	_, err := nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, nodeName, metav1.GetOptions{})
-	if errors.IsNotFound(err) {
-		node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to get node %s for owner reference: %w", nodeName, err)
-		}
-
-		isController := true
-		nnc := &nncv1.NodeNetworkConfig{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: nodeName,
-				OwnerReferences: []metav1.OwnerReference{
-					{
-						APIVersion: "v1",
-						Kind:       "Node",
-						Name:       nodeName,
-						UID:        node.UID,
-						Controller: &isController,
-					},
-				},
-			},
-			Spec: nncv1.NodeNetworkConfigSpec{},
-		}
-		_, err = nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to create NodeNetworkConfig: %w", err)
-		}
-		logger.Info("Successfully created NodeNetworkConfig CR with owner reference to Node", "name", nodeName)
-	} else if err != nil {
+	if err == nil {
+		return nil // Already exists
+	}
+	if !errors.IsNotFound(err) {
 		return fmt.Errorf("failed to get NodeNetworkConfig: %w", err)
 	}
+
+	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get node %s for owner reference: %w", nodeName, err)
+	}
+
+	isController := true
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nodeName,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "v1",
+					Kind:       "Node",
+					Name:       nodeName,
+					UID:        node.UID,
+					Controller: &isController,
+				},
+			},
+		},
+		Spec: nncv1.NodeNetworkConfigSpec{},
+	}
+	_, err = nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			logger.Info("NodeNetworkConfig was created concurrently", "nodeName", nodeName)
+			return nil
+		}
+		return fmt.Errorf("failed to create NodeNetworkConfig: %w", err)
+	}
+	logger.Info("Successfully created NodeNetworkConfig CR with owner reference to Node", "name", nodeName)
 	return nil
 }
