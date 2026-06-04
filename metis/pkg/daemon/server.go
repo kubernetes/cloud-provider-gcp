@@ -35,7 +35,10 @@ import (
 	"k8s.io/metis/pkg/store"
 )
 
-const defaultPollInterval = 50 * time.Millisecond
+const (
+	defaultPollInterval = 50 * time.Millisecond
+	scaleUpWaitTimeout  = 15 * time.Second
+)
 
 type cniClient struct {
 	containerID  string
@@ -58,6 +61,9 @@ type adaptiveIpamServer struct {
 }
 
 func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socketPath string, releaseCooldown time.Duration, busyTimeout time.Duration) *adaptiveIpamServer {
+	if releaseCooldown <= 0 {
+		releaseCooldown = DefaultReleaseCooldown
+	}
 	server := &adaptiveIpamServer{
 		store:           storeInstance,
 		sockPath:        socketPath,

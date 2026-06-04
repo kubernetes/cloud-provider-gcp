@@ -615,7 +615,7 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.2.0/28")
 				id, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.2.0/28", network)
-				s.MarkCIDRBlockAsDeleting(ctx, id) // Mark as deleting directly
+				s.MarkCIDRBlockAsDeletingForTest(ctx, id) // Mark as deleting directly
 				time.Sleep(100 * time.Millisecond) // Give DB a moment
 			},
 			initialNNC: &nncv1.NodeNetworkConfig{
@@ -639,7 +639,7 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 				// Missed deleting
 				s.AddCIDR(ctx, network, "10.0.4.0/28")
 				id4, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.4.0/28", network)
-				s.MarkCIDRBlockAsDeleting(ctx, id4)
+				s.MarkCIDRBlockAsDeletingForTest(ctx, id4)
 
 				time.Sleep(1100 * time.Millisecond) // Wait for expiration
 			},

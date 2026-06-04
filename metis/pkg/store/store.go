@@ -471,8 +471,8 @@ func (s *Store) UndrainCIDRBlocks(ctx context.Context, network string) (int64, e
 	return res.RowsAffected()
 }
 
-// DeletingCIDRBlock holds the metadata for a CIDR block currently scheduled for deletion.
-type DeletingCIDRBlock struct {
+// CIDRBlock holds the metadata for a CIDR block.
+type CIDRBlock struct {
 	ID       int64
 	TotalIPs int
 	CIDR     string
@@ -480,16 +480,16 @@ type DeletingCIDRBlock struct {
 }
 
 // GetDeletingCIDRBlocks fetches all CIDR blocks in Deleting state for a specific network.
-func (s *Store) GetDeletingCIDRBlocks(ctx context.Context, network string) ([]DeletingCIDRBlock, error) {
+func (s *Store) GetDeletingCIDRBlocks(ctx context.Context, network string) ([]CIDRBlock, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT id, total_ips, cidr, network FROM cidr_blocks WHERE state = ? AND network = ?", StateDeleting, network)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var result []DeletingCIDRBlock
+	var result []CIDRBlock
 	for rows.Next() {
-		var r DeletingCIDRBlock
+		var r CIDRBlock
 		if err := rows.Scan(&r.ID, &r.TotalIPs, &r.CIDR, &r.Network); err != nil {
 			return nil, err
 		}
@@ -509,7 +509,8 @@ func (s *Store) DeleteCIDRBlock(ctx context.Context, id int64) error {
 		return err
 	}
 	if rows == 0 {
-		return fmt.Errorf("cannot delete CIDR block %d: block is not in Deleting status", id)
+		s.log.Error(nil, "cannot delete CIDR block: block is not in Deleting status or already deleted", "id", id)
+		return nil
 	}
 	return nil
 }
@@ -849,8 +850,8 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 	return nil
 }
 
-// MarkCIDRBlockAsDeleting transitions a CIDR block to the Deleting state.
-func (s *Store) MarkCIDRBlockAsDeleting(ctx context.Context, id int64) error {
+// MarkCIDRBlockAsDeletingForTest transitions a CIDR block to the Deleting state.
+func (s *Store) MarkCIDRBlockAsDeletingForTest(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", StateDeleting, id)
 	return err
 }

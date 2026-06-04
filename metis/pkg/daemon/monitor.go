@@ -50,6 +50,40 @@ const (
 	defaultMonitorWorkers = 4
 )
 
+// Monitor manages the dynamic scaling (up and down) of IP CIDR block capacity
+// for each network on a node.
+//
+// The Monitor runs a periodic control loop to evaluate capacity, while also
+// supporting on-demand triggers from the gRPC server when local IP exhaustion occurs.
+//
+// Key Behaviors:
+//
+// 1. Dynamic Scale-Up (Prefetching):
+//    - Calculates utilization as: (AllocatedIPs + PendingRequests) / TotalCapacity.
+//    - If utilization exceeds the target, it increases requested pod capacity in the
+//      NodeNetworkConfig (NNC) CRD (modifying Spec.Allocations[].Pods) aiming for a
+//      target utilization (default 75%).
+//    - Pushes back and defers new requests if the number of IPs currently in a release
+//      cooldown state exceeds a pushback threshold (default 10), preventing premature
+//      capacity requests.
+//
+// 2. Scale-Down (Draining & Releasing):
+//    - Draining: If utilization remains below a low threshold (default 50%) for a
+//      sustained period (default 8 hours), it marks non-initial ready CIDR blocks as
+//      'Draining' one by one until simulated utilization of remaining ready blocks
+//      recovers above the threshold.
+//    - Draining blocks are excluded from new allocations, but can be transitioned
+//      back to 'Ready' by the gRPC server to quickly reclaim capacity during sudden
+//      allocation bursts.
+//    - Releasing: Periodically scans 'Draining' blocks. Once they have spent at least
+//      the expiration duration (default 5 hours) in the draining state AND have zero
+//      active allocations, the Monitor marks them as 'Deleting', appends them to
+//      Spec.ReleasableCIDRs in the NNC CRD, and reduces the target NNC Pods allocation.
+//      These 'Deleting' blocks are fully deleted from the local store once the CCM
+//      Dynamic IPAM controller removes them from the NNC Status.
+//
+// The Monitor uses a rate-limiting workqueue to coordinate and serialize network
+// sync requests, benefiting from deduplication and automatic backoff retries.
 type Monitor struct {
 	queue                   workqueue.TypedRateLimitingInterface[string]
 	nncClient               nncclientset.Interface
@@ -166,10 +200,13 @@ func (m *Monitor) Run(ctx context.Context, workers int) {
 	// cleanup operation. Putting it in the queue could delay the processing of higher-priority
 	// items (like on-demand scaling) when the queue is backed up, as our queue does not
 	// support priorities.
+	// TODO: Use JitterUntilWithContext to distribute CRD update calls randomly over time,
+	// preventing multiple worker instances or the expired block handler from triggering
+	// concurrent conflicting updates.
 	go wait.UntilWithContext(ctx, m.processExpiredDrainingBlocks, m.monitorInterval)
 
 	for i := 0; i < workers; i++ {
-		go wait.UntilWithContext(ctx, m.runWorker, time.Second)
+		go wait.UntilWithContext(ctx, m.runWorker, m.monitorInterval)
 	}
 
 	<-ctx.Done()
@@ -191,13 +228,7 @@ func (m *Monitor) processExpiredDrainingBlocks(ctx context.Context) {
 	anyUpdated := false
 
 	for _, network := range networks {
-		var currentAllocation *nncv1.Allocation
-		for i := range nncCopy.Spec.Allocations {
-			if nncCopy.Spec.Allocations[i].Network == network {
-				currentAllocation = &nncCopy.Spec.Allocations[i]
-				break
-			}
-		}
+		currentAllocation := getAllocationForNetwork(nncCopy, network)
 
 		updated, err := m.handleExpiredDrainingBlocksPerNetwork(ctx, network, nncCopy, currentAllocation)
 		if err != nil {
@@ -387,13 +418,7 @@ func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) (bool, err
 		return false, nil
 	}
 
-	var currentAllocation *nncv1.Allocation
-	for i := range info.NncCopy.Spec.Allocations {
-		if info.NncCopy.Spec.Allocations[i].Network == network {
-			currentAllocation = &info.NncCopy.Spec.Allocations[i]
-			break
-		}
-	}
+	currentAllocation := getAllocationForNetwork(info.NncCopy, network)
 
 	// Base line is total local IPs + pending requests
 	baseLine := localTotal + pendingRequests
@@ -458,10 +483,7 @@ func (m *Monitor) drainExcessive(ctx context.Context, network string, info *Util
 			m.logger.Info("Target simulated used IPs reached, stopping marking blocks", "target", targetUsedIPs, "running", simulatedUsedIPs)
 			break
 		}
-		availableIPs := block.TotalIPs - block.AllocatedIPs
-		if availableIPs < 0 {
-			availableIPs = 0
-		}
+		availableIPs := max(0, block.TotalIPs-block.AllocatedIPs)
 
 		err = m.store.DrainCIDRBlock(ctx, block.ID)
 		if err != nil {
@@ -574,4 +596,13 @@ func (m *Monitor) handleExpiredDrainingBlocksPerNetwork(ctx context.Context, net
 	}
 
 	return updated, nil
+}
+
+func getAllocationForNetwork(nnc *nncv1.NodeNetworkConfig, network string) *nncv1.Allocation {
+	for i := range nnc.Spec.Allocations {
+		if nnc.Spec.Allocations[i].Network == network {
+			return &nnc.Spec.Allocations[i]
+		}
+	}
+	return nil
 }

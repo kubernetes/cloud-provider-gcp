@@ -35,12 +35,12 @@ func (o *DaemonOptions) AddFlags() cliflag.NamedFlagSets {
 	}
 
 	fs := fss.FlagSet("daemon")
-	fs.DurationVar(&o.MonitorInterval, "monitor-interval", daemon.DefaultMonitorInterval, "Monitor interval (e.g., 5s, 1m)")
-	fs.DurationVar(&o.ReleaseCooldown, "release-cooldown", daemon.DefaultReleaseCooldown, "Release cooldown duration (e.g., 5m)")
+	fs.DurationVar(&o.MonitorInterval, "monitor-interval", daemon.DefaultMonitorInterval, "Monitor interval (e.g., 5s, 1m). 0 or negative values will be interpreted as the default value.")
+	fs.DurationVar(&o.ReleaseCooldown, "release-cooldown", daemon.DefaultReleaseCooldown, "Release cooldown duration (e.g., 5m). 0 or negative values will be interpreted as the default value.")
 	fs.StringVar(&o.DBPath, "db-path", pkg.DefaultDBPath, "Path to the SQLite database file")
 	fs.StringVar(&o.SocketPath, "socket-path", pkg.DefaultSockPath, "Path to the Unix domain socket")
-	fs.DurationVar(&o.DrainingExpiration, "draining-expiration", daemon.DefaultDrainingExpiration, "Draining expiration duration (e.g., 5h)")
-	fs.DurationVar(&o.SustainedLowUtilizationDuration, "sustained-low-utilization-duration", daemon.DefaultSustainedLowUtilizationDuration, "Sustained low utilization duration (e.g., 8h)")
+	fs.DurationVar(&o.DrainingExpiration, "draining-expiration", daemon.DefaultDrainingExpiration, "Draining expiration duration (e.g., 5h). 0 or negative values will be interpreted as the default value.")
+	fs.DurationVar(&o.SustainedLowUtilizationDuration, "sustained-low-utilization-duration", daemon.DefaultSustainedLowUtilizationDuration, "Sustained low utilization duration (e.g., 8h). 0 or negative values will be interpreted as the default value.")
 
 	return fss
 }

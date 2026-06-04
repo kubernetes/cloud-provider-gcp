@@ -259,7 +259,7 @@ func (w *Watcher) maybeDeleteCIDRs(ctx context.Context, nnc *nncv1.NodeNetworkCo
 		}
 	}
 
-	var blocksToDelete []store.DeletingCIDRBlock
+	var blocksToDelete []store.CIDRBlock
 	for _, block := range toBeDeletedBlocks {
 		if !statusCIDRs[block.CIDR] {
 			blocksToDelete = append(blocksToDelete, block)

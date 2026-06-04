@@ -1410,3 +1410,56 @@ func TestStore_CheckAllocation(t *testing.T) {
 		t.Error("Expected error for wrong interface name, got nil")
 	}
 }
+
+func TestStore_DeleteCIDRBlock(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "delete_cidr_test.sqlite")
+
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	network := "test-network"
+	cidr := "10.0.1.0/24"
+
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	blocks, err := s.GetReadyCIDRBlocksSorted(context.Background(), network)
+	if err != nil || len(blocks) == 0 {
+		t.Fatalf("Failed to get ready blocks: %v", err)
+	}
+	blockID := blocks[0].ID
+
+	// 1. Trying to delete a CIDR block that is in 'Ready' state should return nil (no error), but log error.
+	err = s.DeleteCIDRBlock(context.Background(), blockID)
+	if err != nil {
+		t.Errorf("Expected nil error when deleting Ready CIDR block, got: %v", err)
+	}
+
+	// 2. Mark block as Deleting and delete it. It should succeed.
+	if err := s.MarkCIDRBlockAsDeletingForTest(context.Background(), blockID); err != nil {
+		t.Fatalf("Failed to mark block as Deleting: %v", err)
+	}
+
+	err = s.DeleteCIDRBlock(context.Background(), blockID)
+	if err != nil {
+		t.Errorf("DeleteCIDRBlock failed for Deleting CIDR block: %v", err)
+	}
+
+	// 3. Trying to delete it again (already deleted) should return nil (no error).
+	err = s.DeleteCIDRBlock(context.Background(), blockID)
+	if err != nil {
+		t.Errorf("Expected nil error when deleting already deleted block, got: %v", err)
+	}
+
+	// 4. Trying to delete a non-existent block ID should also return nil (no error).
+	err = s.DeleteCIDRBlock(context.Background(), 99999)
+	if err != nil {
+		t.Errorf("Expected nil error when deleting non-existent block, got: %v", err)
+	}
+}

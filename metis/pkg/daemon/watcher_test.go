@@ -317,7 +317,7 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 					if err != nil || len(blocks) == 0 {
 						t.Fatalf("Failed to get block ID: %v", err)
 					}
-					err = storeInstance.MarkCIDRBlockAsDeleting(context.Background(), blocks[0].ID)
+					err = storeInstance.MarkCIDRBlockAsDeletingForTest(context.Background(), blocks[0].ID)
 					if err != nil {
 						t.Fatalf("Failed to mark block as Deleting: %v", err)
 					}
