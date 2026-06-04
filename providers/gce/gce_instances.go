@@ -529,7 +529,7 @@ func (g *Cloud) GetAllZonesFromCloudProvider() (sets.String, error) {
 	defer cancel()
 
 	zones := sets.NewString()
-	for _, zone := range g.managedZones {
+	for _, zone := range g.getManagedZones() {
 		instances, err := g.c.Instances().List(ctx, zone, filter.None)
 		if err != nil {
 			return sets.NewString(), err
@@ -715,7 +715,7 @@ func (g *Cloud) getFoundInstanceByNames(names []string) ([]*gceInstance, error) 
 		found[name] = nil
 	}
 
-	for _, zone := range g.managedZones {
+	for _, zone := range g.getManagedZones() {
 		if remaining == 0 {
 			break
 		}
@@ -763,10 +763,10 @@ func (g *Cloud) getFoundInstanceByNames(names []string) ([]*gceInstance, error) 
 
 // Gets the named instance, returning cloudprovider.InstanceNotFound if the instance is not found
 func (g *Cloud) getInstanceByName(name string) (*gceInstance, error) {
-	klog.Infof("Searching node %s in managed zones %v", name, g.managedZones)
+	klog.Infof("Searching node %s in managed zones %v", name, g.getManagedZones())
 
 	// Avoid changing behaviour when not managing multiple zones
-	for _, zone := range g.managedZones {
+	for _, zone := range g.getManagedZones() {
 		instance, err := g.getInstanceFromProjectInZoneByName(g.projectID, zone, name)
 		if err != nil {
 			if isHTTPErrorCode(err, http.StatusNotFound) {

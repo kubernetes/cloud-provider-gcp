@@ -30,12 +30,10 @@ import (
 
 func newDaemonCommand() *cobra.Command {
 
-	opts := &DaemonOptions{
-		Config: &daemon.Config{},
-	}
+	opts := newDaemonOptions()
 
 	// Define command-line flags to configure the daemon
-	fss := opts.AddFlags()
+	fss := opts.addFlags()
 
 	cmd := &cobra.Command{
 		Use:   "daemon",
@@ -43,7 +41,7 @@ func newDaemonCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			cliflag.PrintFlags(cmd.Flags())
 			var cfg daemon.Config
-			_ = opts.ApplyTo(&cfg)
+			_ = opts.applyTo(&cfg)
 			d := daemon.NewDaemon(cfg)
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

@@ -22,7 +22,6 @@ package gce
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -607,14 +606,13 @@ func TestProjectFromNodeProviderID(t *testing.T) {
 		}},
 	}
 	instanceMap[instanceFromNonDefaultProject.SelfLink] = instanceFromNonDefaultProject
-	forceNonDefaultProject := cloud.ForceProjectID(nonDefaultProject)
 
 	// Setup mock response.
 	mockGCE := gce.c.(*cloud.MockGCE)
 	mi := mockGCE.Instances().(*cloud.MockInstances)
 	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
 		projectID := defaultValues.ProjectID
-		if len(options) == 1 && reflect.DeepEqual(options[0], forceNonDefaultProject) {
+		if len(options) == 1 && gce.projectFromNodeProviderID {
 			projectID = nonDefaultProject
 		}
 		selfLink := fmt.Sprintf("projects/%v/zones/%v/instances/%v", projectID, key.Zone, key.Name)
@@ -688,4 +686,39 @@ func TestProjectFromNodeProviderID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdateNodeZonesDynamicRefresh(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	gce.dynamicZones = true
+
+	// Initial managed zones should only contain the default zone
+	assert.Equal(t, []string{"us-central1-b"}, gce.getManagedZones())
+
+	mockGCE := gce.c.(*cloud.MockGCE)
+
+	// Mock GCE zones.List call via MockZones to return us-central1-c in addition to the default us-central1-b
+	keyC := meta.GlobalKey("key-c")
+	mockGCE.MockZones.Objects[*keyC] = &cloud.MockZonesObj{
+		Obj: &ga.Zone{Name: "us-central1-c", Region: gce.getRegionLink("us-central1")},
+	}
+
+	// Create a node registering in "us-central1-c"
+	nodeInNewZone := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-in-c",
+			Labels: map[string]string{
+				v1.LabelTopologyZone: "us-central1-c",
+			},
+		},
+	}
+
+	// Trigger node informer addition event
+	gce.updateNodeZones(nil, nodeInNewZone)
+
+	// Verify that managedZones has dynamically updated to include both zones
+	expectedZones := []string{"us-central1-b", "us-central1-c"}
+	assert.ElementsMatch(t, expectedZones, gce.getManagedZones())
 }

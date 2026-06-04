@@ -616,7 +616,7 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 				s.AddCIDR(ctx, network, "10.0.2.0/28")
 				id, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.2.0/28", network)
 				s.MarkCIDRBlockAsDeletingForTest(ctx, id) // Mark as deleting directly
-				time.Sleep(100 * time.Millisecond) // Give DB a moment
+				time.Sleep(100 * time.Millisecond)        // Give DB a moment
 			},
 			initialNNC: &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},

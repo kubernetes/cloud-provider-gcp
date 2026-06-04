@@ -638,6 +638,22 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			},
 		},
 		{
+			name: "GNP with NetworkAttachment - malformed identifier (unanchored bypass attempt)",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					NetworkAttachment: "malicious-prefix/projects/test-project/regions/test-region/networkAttachments/testAttachment/malicious-suffix",
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionFalse,
+				Reason: "NetworkAttachmentInvalid",
+			},
+		},
+		{
 			name: "GNP with NetworkAttachment - bad format",
 			paramSet: &networkv1.GKENetworkParamSet{
 				ObjectMeta: metav1.ObjectMeta{

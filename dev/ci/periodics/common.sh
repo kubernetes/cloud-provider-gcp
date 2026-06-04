@@ -14,16 +14,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -o errexit
-set -o nounset
-set -o pipefail
-set -o xtrace
-
-cd $GOPATH/src/cloud-provider-gcp
-e2e/add-kubernetes-to-workspace.sh
-
-export KOPS_FOCUS_REGEX="" # Run all non-skipped tests
-export KOPS_SKIP_REGEX='\[Slow\]|\[Serial\]|\[Disruptive\]|\[Flaky\]|\[Feature:.+\]'
-export CLUSTER_NAME="kops-e2e-latest.k8s.local"
-
-e2e/scenarios/kops-simple
+# Common E2E test skip regex to avoid duplication across periodic scripts.
+export KOPS_SKIP_REGEX='\[Slow\]|\[Serial\]|\[Disruptive\]|\[Flaky\]|\[Feature:.+\]|\[Driver: nfs\]|\[Driver: nfs3\]|NFS|Flexvolumes|Services should function for service endpoints using hostNetwork|RuntimeClass should run a Pod requesting a RuntimeClass with scheduling without taints'

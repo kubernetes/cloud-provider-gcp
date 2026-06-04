@@ -1,6 +1,6 @@
 module k8s.io/metis
 
-go 1.26.0
+go 1.26.3
 
 require (
 	github.com/GoogleCloudPlatform/gke-networking-api v0.2.1-0.20260327205951-1d0cb5d74c02

@@ -402,9 +402,10 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 	}
 	defer tx.Rollback()
 
+	nowMilli := time.Now().UTC().UnixMilli()
 	var releaseAt interface{}
 	if releaseCooldown > 0 {
-		releaseAt = time.Now().Add(releaseCooldown)
+		releaseAt = nowMilli + releaseCooldown.Milliseconds()
 	} else {
 		releaseAt = nil
 	}
@@ -438,18 +439,18 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 	for _, r := range releases {
 		_, err = tx.ExecContext(ctx, `
 			UPDATE ip_addresses 
-			SET is_allocated = FALSE, release_at = ?, updated_at = CURRENT_TIMESTAMP 
+			SET is_allocated = FALSE, release_at = ?, updated_at = ? 
 			WHERE id = ?
-		`, releaseAt, r.id)
+		`, releaseAt, nowMilli, r.id)
 		if err != nil {
 			return 0, fmt.Errorf("failed to release IP %d: %w", r.id, err)
 		}
 
 		_, err = tx.ExecContext(ctx, `
 			UPDATE cidr_blocks 
-			SET allocated_ips = allocated_ips - 1, updated_at = CURRENT_TIMESTAMP 
+			SET allocated_ips = allocated_ips - 1, updated_at = ? 
 			WHERE id = ?
-		`, r.cidrBlockID)
+		`, nowMilli, r.cidrBlockID)
 		if err != nil {
 			return 0, fmt.Errorf("failed to update cidr_block %d count: %w", r.cidrBlockID, err)
 		}
@@ -464,7 +465,8 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 
 // UndrainCIDRBlocks changes the state of any Draining CIDR blocks for a network back to Ready.
 func (s *Store) UndrainCIDRBlocks(ctx context.Context, network string) (int64, error) {
-	res, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE network = ? AND state = ?", StateReady, network, StateDraining)
+	nowMilli := time.Now().UTC().UnixMilli()
+	res, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = ?, updated_at = ? WHERE network = ? AND state = ?", StateReady, nowMilli, network, StateDraining)
 	if err != nil {
 		return 0, err
 	}
@@ -518,11 +520,12 @@ func (s *Store) DeleteCIDRBlock(ctx context.Context, id int64) error {
 // GetCooldownIPCount queries the number of IPs currently in cooldown for a network.
 func (s *Store) GetCooldownIPCount(ctx context.Context, network string) (int, error) {
 	var cooldownCount int
+	nowMilli := time.Now().UTC().UnixMilli()
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(i.id) FROM ip_addresses i 
 		JOIN cidr_blocks c ON i.cidr_block_id = c.id 
-		WHERE c.network = ? AND i.is_allocated = FALSE AND i.release_at > CURRENT_TIMESTAMP
-	`, network).Scan(&cooldownCount)
+		WHERE c.network = ? AND i.is_allocated = FALSE AND i.release_at > ?
+	`, network, nowMilli).Scan(&cooldownCount)
 	if err != nil {
 		return 0, err
 	}
@@ -531,7 +534,8 @@ func (s *Store) GetCooldownIPCount(ctx context.Context, network string) (int, er
 
 // DrainCIDRBlock transitions a CIDR block to the Draining state.
 func (s *Store) DrainCIDRBlock(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = 'Draining', updated_at = CURRENT_TIMESTAMP WHERE id = ?", id)
+	nowMilli := time.Now().UTC().UnixMilli()
+	_, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = 'Draining', updated_at = ? WHERE id = ?", nowMilli, id)
 	return err
 }
 
@@ -550,11 +554,12 @@ func (s *Store) FindAndMarkExpiredDrainingCIDRBlocks(ctx context.Context, networ
 	}
 	defer tx.Rollback()
 
-	expStr := fmt.Sprintf("+%d seconds", int(expiration.Seconds()))
+	expMs := expiration.Milliseconds()
+	nowMilli := time.Now().UTC().UnixMilli()
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, total_ips, cidr FROM cidr_blocks 
-		WHERE network = ? AND state = ? AND allocated_ips = 0 AND datetime(updated_at, ?) <= CURRENT_TIMESTAMP
-	`, network, StateDraining, expStr)
+		WHERE network = ? AND state = ? AND allocated_ips = 0 AND updated_at + ? <= ?
+	`, network, StateDraining, expMs, nowMilli)
 	if err != nil {
 		return nil, err
 	}
@@ -570,7 +575,7 @@ func (s *Store) FindAndMarkExpiredDrainingCIDRBlocks(ctx context.Context, networ
 	}
 
 	for _, r := range result {
-		_, err = tx.ExecContext(ctx, "UPDATE cidr_blocks SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", StateDeleting, r.ID)
+		_, err = tx.ExecContext(ctx, "UPDATE cidr_blocks SET state = ?, updated_at = ? WHERE id = ?", StateDeleting, nowMilli, r.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -602,17 +607,18 @@ func (s *Store) allocateIPTx(ctx context.Context, tx *sql.Tx, cidrBlockID int64,
 
 	// 2. Find the first available entry and mark it as allocated
 	var address string
+	nowMilli := time.Now().UTC().UnixMilli()
 	err = tx.QueryRowContext(ctx, `
 		UPDATE ip_addresses 
-		SET is_allocated = TRUE, container_id = ?, interface_name = ?, allocated_at = CURRENT_TIMESTAMP 
+		SET is_allocated = TRUE, container_id = ?, interface_name = ?, allocated_at = ? 
 		WHERE id = (
 			SELECT id FROM ip_addresses 
-			WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= CURRENT_TIMESTAMP)
+			WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= ?)
 			ORDER BY id ASC
 			LIMIT 1
 		)
 		RETURNING address
-	`, containerID, interfaceName, cidrBlockID).Scan(&address)
+	`, containerID, interfaceName, nowMilli, cidrBlockID, nowMilli).Scan(&address)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -852,7 +858,8 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 
 // MarkCIDRBlockAsDeletingForTest transitions a CIDR block to the Deleting state.
 func (s *Store) MarkCIDRBlockAsDeletingForTest(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", StateDeleting, id)
+	nowMilli := time.Now().UTC().UnixMilli()
+	_, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = ?, updated_at = ? WHERE id = ?", StateDeleting, nowMilli, id)
 	return err
 }
 
@@ -878,6 +885,7 @@ type NetworkIPUsage struct {
 // CIDR blocks marked as Deleting are excluded from all counts since they are scheduled for removal by GCE.
 func (s *Store) GetIPUsageByNetwork(ctx context.Context, network string) (NetworkIPUsage, error) {
 	var usage NetworkIPUsage
+	nowMilli := time.Now().UTC().UnixMilli()
 	err := s.db.QueryRowContext(ctx, `
 		SELECT 
 			IFNULL(SUM(allocated_ips), 0) AS allocated,
@@ -885,13 +893,13 @@ func (s *Store) GetIPUsageByNetwork(ctx context.Context, network string) (Networ
 				SELECT COUNT(i.id) 
 				FROM ip_addresses i 
 				JOIN cidr_blocks cb ON i.cidr_block_id = cb.id 
-				WHERE cb.network = ? AND cb.state != ? AND i.is_allocated = FALSE AND i.release_at > CURRENT_TIMESTAMP
+				WHERE cb.network = ? AND cb.state != ? AND i.is_allocated = FALSE AND i.release_at > ?
 			) AS cooldown,
 			IFNULL(SUM(total_ips), 0) AS total_ips,
 			IFNULL(SUM(CASE WHEN state = ? THEN total_ips ELSE 0 END), 0) AS draining_ips
 		FROM cidr_blocks c
 		WHERE network = ? AND c.state != ?
-	`, network, StateDeleting, StateDraining, network, StateDeleting).Scan(&usage.Allocated, &usage.Cooldown, &usage.Total, &usage.Draining)
+	`, network, StateDeleting, nowMilli, StateDraining, network, StateDeleting).Scan(&usage.Allocated, &usage.Cooldown, &usage.Total, &usage.Draining)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

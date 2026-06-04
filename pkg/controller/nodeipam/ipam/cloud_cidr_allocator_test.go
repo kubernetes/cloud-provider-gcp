@@ -334,6 +334,16 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 	defer close(stopCh)
 	fakeInformerFactory.Start(stopCh)
 	go cloudAllocator.Run(stopCh)
+
+	// Wait for default node to be processed and default subnet to be added to CR.
+	// This avoids race condition with adding mscnode concurrently.
+	if err := wait.PollImmediate(time.Millisecond*500, wait.ForeverTestTimeout, func() (bool, error) {
+		ok, _ := verifySubnetsInCR(t, []string{"subnet-def"}, nodeTopologyClient)
+		return ok, nil
+	}); err != nil {
+		t.Fatalf("Failed to wait for default subnet in CR: %v", err)
+	}
+
 	mscnode := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "testNode",

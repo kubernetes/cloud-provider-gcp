@@ -22,13 +22,20 @@ import (
 	"k8s.io/metis/pkg/daemon"
 )
 
-// DaemonOptions holds the metis daemon options.
-type DaemonOptions struct {
+// daemonOptions holds the metis daemon options.
+type daemonOptions struct {
 	*daemon.Config
 }
 
-// AddFlags returns flags for the metis daemon options by section name.
-func (o *DaemonOptions) AddFlags() cliflag.NamedFlagSets {
+// newDaemonOptions returns a new daemonOptions instance with default configurations.
+func newDaemonOptions() *daemonOptions {
+	return &daemonOptions{
+		Config: &daemon.Config{},
+	}
+}
+
+// addFlags returns flags for the metis daemon options by section name.
+func (o *daemonOptions) addFlags() cliflag.NamedFlagSets {
 	fss := cliflag.NamedFlagSets{}
 	if o == nil {
 		return fss
@@ -45,8 +52,8 @@ func (o *DaemonOptions) AddFlags() cliflag.NamedFlagSets {
 	return fss
 }
 
-// ApplyTo fills up the daemon config with options.
-func (o *DaemonOptions) ApplyTo(cfg *daemon.Config) error {
+// applyTo fills up the daemon config with options.
+func (o *daemonOptions) applyTo(cfg *daemon.Config) error {
 	if o == nil || cfg == nil {
 		return nil
 	}

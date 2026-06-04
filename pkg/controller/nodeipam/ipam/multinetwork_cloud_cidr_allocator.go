@@ -170,7 +170,7 @@ out:
 	for _, inf := range interfaces {
 		// extra the subnetwork name from the URL
 		parts := strings.Split(inf.Subnetwork, "/subnetworks/")
-		if parts[1] != defaultSubnet {
+		if len(parts) < 2 || parts[1] != defaultSubnet {
 			continue
 		}
 		for _, ipRange := range inf.AliasIpRanges {

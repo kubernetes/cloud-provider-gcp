@@ -59,28 +59,28 @@ const (
 // Key Behaviors:
 //
 // 1. Dynamic Scale-Up (Prefetching):
-//    - Calculates utilization as: (AllocatedIPs + PendingRequests) / TotalCapacity.
-//    - If utilization exceeds the target, it increases requested pod capacity in the
-//      NodeNetworkConfig (NNC) CRD (modifying Spec.Allocations[].Pods) aiming for a
-//      target utilization (default 75%).
-//    - Pushes back and defers new requests if the number of IPs currently in a release
-//      cooldown state exceeds a pushback threshold (default 10), preventing premature
-//      capacity requests.
+//   - Calculates utilization as: (AllocatedIPs + PendingRequests) / TotalCapacity.
+//   - If utilization exceeds the target, it increases requested pod capacity in the
+//     NodeNetworkConfig (NNC) CRD (modifying Spec.Allocations[].Pods) aiming for a
+//     target utilization (default 75%).
+//   - Pushes back and defers new requests if the number of IPs currently in a release
+//     cooldown state exceeds a pushback threshold (default 10), preventing premature
+//     capacity requests.
 //
 // 2. Scale-Down (Draining & Releasing):
-//    - Draining: If utilization remains below a low threshold (default 50%) for a
-//      sustained period (default 8 hours), it marks non-initial ready CIDR blocks as
-//      'Draining' one by one until simulated utilization of remaining ready blocks
-//      recovers above the threshold.
-//    - Draining blocks are excluded from new allocations, but can be transitioned
-//      back to 'Ready' by the gRPC server to quickly reclaim capacity during sudden
-//      allocation bursts.
-//    - Releasing: Periodically scans 'Draining' blocks. Once they have spent at least
-//      the expiration duration (default 5 hours) in the draining state AND have zero
-//      active allocations, the Monitor marks them as 'Deleting', appends them to
-//      Spec.ReleasableCIDRs in the NNC CRD, and reduces the target NNC Pods allocation.
-//      These 'Deleting' blocks are fully deleted from the local store once the CCM
-//      Dynamic IPAM controller removes them from the NNC Status.
+//   - Draining: If utilization remains below a low threshold (default 50%) for a
+//     sustained period (default 8 hours), it marks non-initial ready CIDR blocks as
+//     'Draining' one by one until simulated utilization of remaining ready blocks
+//     recovers above the threshold.
+//   - Draining blocks are excluded from new allocations, but can be transitioned
+//     back to 'Ready' by the gRPC server to quickly reclaim capacity during sudden
+//     allocation bursts.
+//   - Releasing: Periodically scans 'Draining' blocks. Once they have spent at least
+//     the expiration duration (default 5 hours) in the draining state AND have zero
+//     active allocations, the Monitor marks them as 'Deleting', appends them to
+//     Spec.ReleasableCIDRs in the NNC CRD, and reduces the target NNC Pods allocation.
+//     These 'Deleting' blocks are fully deleted from the local store once the CCM
+//     Dynamic IPAM controller removes them from the NNC Status.
 //
 // The Monitor uses a rate-limiting workqueue to coordinate and serialize network
 // sync requests, benefiting from deduplication and automatic backoff retries.

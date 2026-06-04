@@ -1,4 +1,4 @@
-FROM --platform=${BUILDPLATFORM} golang:1.26.0 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.26.3 AS builder
 
 # Install cross-compilers for amd64 and arm64
 RUN apt-get update && apt-get install -y \

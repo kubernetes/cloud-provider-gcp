@@ -10,7 +10,7 @@ OCI_TARBALL_PATH ?= metis.tar
 ADDITIONAL_IMAGE_TAGS ?=
 
 # Version metadata strictly computed by the internal repository state
-GIT_VERSION := $(shell git describe --tags --always --dirty | sed 's|.*/||')
+GIT_VERSION := $(shell git describe --tags --always --dirty | sed 's|.*/||' | tr -cd '[:alnum:].-')
 GIT_COMMIT  := $(shell git rev-parse HEAD)
 BUILD_DATE  := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 
@@ -97,7 +97,6 @@ build-tarball: init-buildx ## Build the multi-arch image as an OCI tarball.
 	@echo "Building OCI tarball for multi-arch image: $(IMAGE_NAME)..."
 	docker buildx build --platform $(ALL_PLATFORMS) \
 		$(DOCKER_BUILD_ARGS) \
-		$(DOCKER_TAG_ARGS) \
 		--output=type=oci,dest=$(OCI_TARBALL_PATH) \
 		--provenance=false \
 		--sbom=false .
