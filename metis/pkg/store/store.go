@@ -862,16 +862,6 @@ func (s *Store) MarkCIDRBlockAsDeletingForTest(ctx context.Context, id int64) er
 	return err
 }
 
-// GetInitialIPCount queries the total number of IPs in the first CIDR block for a network.
-func (s *Store) GetInitialIPCount(ctx context.Context, network string) (int, error) {
-	var initialIPs int
-	err := s.db.QueryRowContext(ctx, "SELECT total_ips FROM cidr_blocks WHERE network = ? ORDER BY id ASC LIMIT 1", network).Scan(&initialIPs)
-	if err != nil {
-		return 0, err
-	}
-	return initialIPs, nil
-}
-
 // NetworkIPUsage holds the allocated, cooldown, total, and draining IP counts for a network.
 type NetworkIPUsage struct {
 	Allocated int

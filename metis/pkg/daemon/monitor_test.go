@@ -71,17 +71,20 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 					Allocations: []nncv1.Allocation{{Network: network, Pods: 32}},
 				},
 				Status: nncv1.NodeNetworkConfigStatus{
-					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.2.0/27", Network: network}},
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.1.0/28", Network: network},
+						{CIDR: "10.0.2.0/27", Network: network},
+					},
 				},
 			},
 			expectedPatchCalled: true,
 			// Expected pods calculation:
 			// used = 42 (allocations) + 3 (reserved) = 45.
-			// pending = 10, initial = 16, total = 48.
-			// desired = ceil((45+10)/0.75) - 16 = ceil(73.33) - 16 = 58.
-			// min = 48 + 10 - 16 = 42.
-			// max(58, 42) = 58.
-			expectedPatchedPods: 58,
+			// pending = 10, total = 48.
+			// desired = ceil((45+10)/0.75) = ceil(73.33) = 74.
+			// min = 48 + 10 = 58.
+			// max(74, 58) = 74.
+			expectedPatchedPods: 74,
 		},
 		{
 			desc:            "No-op when zero initial IPs",
@@ -116,6 +119,7 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 				},
 				Status: nncv1.NodeNetworkConfigStatus{
 					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.1.0/28", Network: network},
 						{CIDR: "10.0.2.0/27", Network: network},
 						{CIDR: "10.0.3.0/27", Network: network},
 					},
@@ -124,11 +128,11 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 			expectedPatchCalled: true,
 			// Expected pods calculation:
 			// used = 40 (allocations) + 3 (reserved) = 43.
-			// pending = 10, initial = 16, total = 80 (includes draining block).
-			// desired = ceil((43+10)/0.75) - 16 = ceil(70.66) - 16 = 55.
-			// min = 80 + 10 - 16 = 74.
-			// max(55, 74) = 74.
-			expectedPatchedPods: 74,
+			// pending = 10, total = 80 (includes draining block).
+			// desired = ceil((43+10)/0.75) = ceil(70.66) = 71.
+			// min = 80 + 10 = 90.
+			// max(71, 90) = 90.
+			expectedPatchedPods: 90,
 		},
 		{
 			desc: "Cooldown pushback",
@@ -148,7 +152,10 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 					Allocations: []nncv1.Allocation{{Network: network, Pods: 64}},
 				},
 				Status: nncv1.NodeNetworkConfigStatus{
-					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.2.0/25", Network: network}},
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.1.0/28", Network: network},
+						{CIDR: "10.0.2.0/25", Network: network},
+					},
 				},
 			},
 			expectedPatchCalled: false,
@@ -168,6 +175,11 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
 				Spec: nncv1.NodeNetworkConfigSpec{
 					Allocations: []nncv1.Allocation{{Network: network, Pods: 16}},
+				},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.1.0/28", Network: network},
+					},
 				},
 			},
 			injectPatchErr:      fmt.Errorf("patch failed"),
@@ -473,7 +485,6 @@ func TestMonitor_MaybeDrainExcessive(t *testing.T) {
 		setTimer               bool
 		timerDuration          time.Duration
 		utilization            float64
-		initialIPs             int
 		targetPods             int
 		usage                  store.NetworkIPUsage
 		blocksToAdd            []string
@@ -513,7 +524,6 @@ func TestMonitor_MaybeDrainExcessive(t *testing.T) {
 			setTimer:            true,
 			timerDuration:       -9 * time.Hour,
 			utilization:         DefaultLowUtilizationThreshold - 0.1,
-			initialIPs:          16,
 			targetPods:          16,
 			usage:               store.NetworkIPUsage{Total: 32},
 			blocksToAdd:         []string{"10.0.1.0/28", "10.0.2.0/28"},
@@ -557,7 +567,6 @@ func TestMonitor_MaybeDrainExcessive(t *testing.T) {
 
 			info := &UtilizationInfo{
 				Utilization: tc.utilization,
-				InitialIPs:  tc.initialIPs,
 				Usage:       tc.usage,
 			}
 
@@ -813,7 +822,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 	}
 }
 
-func TestMonitor_DynamicAllocation_Run(t *testing.T) {
+func TestMonitorRun(t *testing.T) {
 	logger := logr.Discard()
 	network := "test-network"
 	nodeName := "test-node"
@@ -826,6 +835,7 @@ func TestMonitor_DynamicAllocation_Run(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
+	// Initial block (16 IPs)
 	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/28")
 	if err != nil {
 		t.Fatalf("Failed to add CIDR: %v", err)
@@ -837,33 +847,69 @@ func TestMonitor_DynamicAllocation_Run(t *testing.T) {
 		}
 	}
 
+	// Deleting block (16 IPs)
+	err = storeInstance.AddCIDR(context.Background(), network, "10.0.2.0/28")
+	if err != nil {
+		t.Fatalf("Failed to add CIDR: %v", err)
+	}
+	id, _, _ := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), "10.0.2.0/28", network)
+	err = storeInstance.MarkCIDRBlockAsDeletingForTest(context.Background(), id)
+	if err != nil {
+		t.Fatalf("Failed to mark CIDR as deleting: %v", err)
+	}
+
 	mockNNC := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{Name: nodeName},
 		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{{Network: network, Pods: 0}},
+			Allocations: []nncv1.Allocation{{Network: network, Pods: 16}},
 		},
 		Status: nncv1.NodeNetworkConfigStatus{
-			PodCIDRs: []nncv1.PodCIDR{},
+			PodCIDRs: []nncv1.PodCIDR{
+				{CIDR: "10.0.1.0/28", Network: network},
+				{CIDR: "10.0.2.0/28", Network: network},
+			},
 		},
 	}
 
 	var patchCount int
-	var patchedData []byte
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(1)
+	doneSignaled := make(chan struct{})
 
 	mockInterface := &mockNodeNetworkConfigInterface{
 		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+			mu.Lock()
+			defer mu.Unlock()
 			return mockNNC, nil
 		},
 		patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			patchCount++
-			patchedData = data
-			if patchCount == 1 {
-				wg.Done()
+
+			var patch struct {
+				Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
+			}
+			json.Unmarshal(data, &patch)
+			if patch.Spec.Allocations != nil {
+				mockNNC.Spec.Allocations = patch.Spec.Allocations
+			}
+			if patch.Spec.ReleasableCIDRs != nil {
+				mockNNC.Spec.ReleasableCIDRs = patch.Spec.ReleasableCIDRs
+			}
+
+			// Verify that both scale up (desired 24 - 16 released = 8) and releasing CIDR are patched.
+			if len(mockNNC.Spec.ReleasableCIDRs) == 1 &&
+				mockNNC.Spec.ReleasableCIDRs[0].CIDR == "10.0.2.0/28" &&
+				len(mockNNC.Spec.Allocations) == 1 &&
+				mockNNC.Spec.Allocations[0].Pods == 8 {
+				select {
+				case <-doneSignaled:
+				default:
+					close(doneSignaled)
+					wg.Done()
+				}
 			}
 			return mockNNC, nil
 		},
@@ -877,13 +923,18 @@ func TestMonitor_DynamicAllocation_Run(t *testing.T) {
 		Store:                   storeInstance,
 		NodeName:                nodeName,
 		MonitorInterval:         100 * time.Millisecond,
+		DrainingExpiration:      1 * time.Second, // Draining expiration for deleting blocks
 		GetPendingRequestsCount: func(net string) int { return 5 },
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	go m.Run(ctx, 1)
+	runFinished := make(chan struct{})
+	go func() {
+		m.Run(ctx, 1)
+		close(runFinished)
+	}()
 
 	done := make(chan struct{})
 	go func() {
@@ -893,19 +944,17 @@ func TestMonitor_DynamicAllocation_Run(t *testing.T) {
 
 	select {
 	case <-done:
-		// Success!
-		var patch struct {
-			Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
-		}
-		json.Unmarshal(patchedData, &patch)
-		if len(patch.Spec.Allocations) == 0 {
-			t.Fatal("Expected allocations to be non-empty in patch")
-		}
-		if patch.Spec.Allocations[0].Pods != 8 {
-			t.Errorf("Expected new target pods to be 8, got %d", patch.Spec.Allocations[0].Pods)
-		}
+		// Success! Monitor successfully reached desired state.
 	case <-ctx.Done():
-		t.Errorf("Timed out waiting for Monitor to process queue and patch NNC. Patch count: %d", patchCount)
+		t.Errorf("Timed out waiting for Monitor to process queue and reach desired allocations/releasables. Patch count: %d", patchCount)
+	}
+
+	cancel() // Shut down monitor
+	<-runFinished
+
+	// Verify that the queue is shut down
+	if !m.queue.ShuttingDown() {
+		t.Error("Expected workqueue to be shutting down or shut down")
 	}
 }
 

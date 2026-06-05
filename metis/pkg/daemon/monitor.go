@@ -18,9 +18,7 @@ package daemon
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -331,8 +329,8 @@ func (m *Monitor) syncNetwork(ctx context.Context, network string) error {
 		return err
 	}
 
-	if info.InitialIPs == 0 {
-		m.logger.Info("Initial IPs is 0, skipping dynamic allocation", "network", network)
+	if info.Usage.Total == 0 {
+		m.logger.Info("Total IPs is 0, skipping dynamic allocation", "network", network)
 		return nil
 	}
 
@@ -361,7 +359,7 @@ func (m *Monitor) patchNNC(ctx context.Context, nncCopy *nncv1.NodeNetworkConfig
 		return fmt.Errorf("failed to marshal patch: %w", err)
 	}
 
-	_, err = m.nncClient.NetworkingV1().NodeNetworkConfigs().Patch(ctx, m.nodeName, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{})
+	_, err = m.nncClient.NetworkingV1().NodeNetworkConfigs().Patch(ctx, m.nodeName, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to patch NodeNetworkConfig: %w", err)
 	}
@@ -384,7 +382,6 @@ type UtilizationInfo struct {
 	Utilization     float64
 	Usage           store.NetworkIPUsage
 	PendingRequests int
-	InitialIPs      int
 	NncCopy         *nncv1.NodeNetworkConfig
 }
 
@@ -407,15 +404,6 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*Util
 	nncCopy := nnc.DeepCopy()
 	usedIPs := usage.Allocated // Only allocated, not in cooldown
 
-	initialIPs, err := m.store.GetInitialIPCount(ctx, network)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			initialIPs = 0
-		} else {
-			return nil, fmt.Errorf("failed to query initial IPs for network %s: %w", network, err)
-		}
-	}
-
 	pendingRequests := 0
 	if m.GetPendingRequestsCount != nil {
 		pendingRequests = m.GetPendingRequestsCount(network)
@@ -429,7 +417,6 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*Util
 		Utilization:     utilization,
 		Usage:           usage,
 		PendingRequests: pendingRequests,
-		InitialIPs:      initialIPs,
 		NncCopy:         nncCopy,
 	}, nil
 }
@@ -437,7 +424,6 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*Util
 func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) (bool, error) {
 	usedIPs := info.Usage.Allocated
 	pendingRequests := info.PendingRequests
-	initialIPs := info.InitialIPs
 	localTotal := info.Usage.Total
 
 	// TODO: In a burst of release immediately after dynamic allocation is triggered,
@@ -453,14 +439,9 @@ func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) (bool, err
 
 	// Base line is total local IPs + pending requests
 	baseLine := localTotal + pendingRequests
-	podsWithBuffer := int(math.Ceil(float64(usedIPs+pendingRequests)/m.targetUtilizationAfterScaleUp)) - initialIPs
-	podsWithBuffer = max(0, podsWithBuffer)
+	podsWithBuffer := int(math.Ceil(float64(usedIPs+pendingRequests)/m.targetUtilizationAfterScaleUp))
 
-	// Ensure CRD pods + initial IPs is strictly larger than base line
-	minPods := baseLine - initialIPs
-	minPods = max(0, minPods)
-
-	newPods := max(podsWithBuffer, minPods)
+	newPods := max(podsWithBuffer, baseLine)
 
 	currentPods := 0
 	if currentAllocation != nil {
