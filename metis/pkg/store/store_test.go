@@ -1146,6 +1146,92 @@ func TestStore_AllocateIPv6_Exhaustion(t *testing.T) {
 	}
 }
 
+func TestStore_ExpandIPv6Block_NoRedundantExpansion(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+
+	dbPath := filepath.Join(tempDir, "metis_no_redundant_expansion_test.sqlite")
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore returned unexpected error: %v", err)
+	}
+	defer s.Close()
+
+	network := "gke-pod-network-redundant"
+	cidr := "2001:db8::/112" // 65536 IPs, plenty of space for multiple expansions
+
+	// 1. Add the CIDR. For IPv6, this automatically populates the first batch of 64 IPs.
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	var cidrBlockID int64
+	err = s.DB().QueryRow("SELECT id FROM cidr_blocks WHERE cidr = ? AND network = ?", cidr, network).Scan(&cidrBlockID)
+	if err != nil {
+		t.Fatalf("Failed to get CIDR block ID from DB: %v", err)
+	}
+
+	// Helper to count IPs in db
+	countIPs := func() int {
+		var count int
+		err := s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE cidr_block_id = ?", cidrBlockID).Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to query IP count: %v", err)
+		}
+		return count
+	}
+
+	// Assert we have exactly 64 IPs populated from the AddCIDR call.
+	initialCount := countIPs()
+	if initialCount != 64 {
+		t.Errorf("Expected initial count to be 64, got %d", initialCount)
+	}
+
+	// 2. Call expandIPv6Block. Since all 64 IPs are currently available (unallocated),
+	// this call should see the available IPs and return early without adding more.
+	err = s.expandIPv6Block(context.Background(), cidrBlockID)
+	if err != nil {
+		t.Fatalf("expandIPv6Block failed: %v", err)
+	}
+
+	// Assert count is still 64 (no redundant expansion happened).
+	afterEarlyReturnCount := countIPs()
+	if afterEarlyReturnCount != 64 {
+		t.Errorf("Expected count to remain 64 after early return check, got %d", afterEarlyReturnCount)
+	}
+
+	// 3. Allocate all 64 IPs to exhaust the current batch.
+	for i := 0; i < 64; i++ {
+		_, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: IPv6})
+		if err != nil {
+			t.Fatalf("Allocation failed at index %d: %v", i, err)
+		}
+	}
+
+	// 4. Release 1 IP with a long cooldown (10 seconds).
+	// This IP is unallocated but is in active cooldown, so it should NOT be considered "available".
+	count, err := s.ReleaseIPByOwner(context.Background(), network, "container-0", "eth0", 10*time.Second)
+	if err != nil {
+		t.Fatalf("ReleaseIPByOwner failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Expected 1 IP to be released, got %d", count)
+	}
+
+	// 5. Calling expandIPv6Block should still trigger expansion because the only unallocated IP is in cooldown.
+	err = s.expandIPv6Block(context.Background(), cidrBlockID)
+	if err != nil {
+		t.Fatalf("expandIPv6Block failed: %v", err)
+	}
+
+	// Assert count has increased by another 64 entries (now 128 total).
+	afterExpansionCount := countIPs()
+	if afterExpansionCount != 128 {
+		t.Errorf("Expected count to be 128 after actual expansion, got %d", afterExpansionCount)
+	}
+}
+
+
 func TestStore_AllocateIPv6_MultiCIDRExpansion(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()
