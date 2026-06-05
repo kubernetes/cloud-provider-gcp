@@ -161,7 +161,7 @@ func (w *Watcher) processNextWorkItem(ctx context.Context) bool {
 func (w *Watcher) syncCIDR(ctx context.Context, network string) error {
 	w.logger.Info("Syncing NodeNetworkConfig status", "node", w.nodeName, "network", network)
 
-	nnc, err := w.getNodeNetworkConfig(ctx)
+	nnc, err := getNodeNetworkConfig(ctx, w.nncLister, w.nncClient, w.nodeName)
 	if err != nil {
 		return err
 	}
@@ -171,28 +171,6 @@ func (w *Watcher) syncCIDR(ctx context.Context, network string) error {
 	}
 
 	return w.maybeDeleteCIDRs(ctx, nnc, network)
-}
-
-// getNodeNetworkConfig fetches the NodeNetworkConfig CR.
-// It prefers using the lister (cache) for efficiency, but falls back to the API client
-// if the lister is not available. This fallback is primarily to support unit tests
-// that do not initialize the full informer stack.
-func (w *Watcher) getNodeNetworkConfig(ctx context.Context) (*nncv1.NodeNetworkConfig, error) {
-	if w.nncLister != nil {
-		nnc, err := w.nncLister.Get(w.nodeName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get NodeNetworkConfig from lister: %w", err)
-		}
-		return nnc, nil
-	}
-	if w.nncClient != nil {
-		nnc, err := w.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, w.nodeName, metav1.GetOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get NodeNetworkConfig from API: %w", err)
-		}
-		return nnc, nil
-	}
-	return nil, fmt.Errorf("no client or lister available to fetch NodeNetworkConfig")
 }
 
 func (w *Watcher) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkConfig, network string) error {

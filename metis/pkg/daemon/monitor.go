@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"time"
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
@@ -134,8 +135,26 @@ type MonitorConfig struct {
 	SustainedLowUtilizationDuration time.Duration
 }
 
+// SetDefaults applies default values to the MonitorConfig fields if they are unset (<= 0).
+func (c *MonitorConfig) SetDefaults() {
+	if c.CooldownPushbackInterval <= 0 {
+		c.CooldownPushbackInterval = DefaultCooldownPushbackInterval
+	}
+	if c.DrainingExpiration <= 0 {
+		c.DrainingExpiration = DefaultDrainingExpiration
+	}
+	if c.SustainedLowUtilizationDuration <= 0 {
+		c.SustainedLowUtilizationDuration = DefaultSustainedLowUtilizationDuration
+	}
+	if c.MonitorInterval <= 0 {
+		c.MonitorInterval = DefaultMonitorInterval
+	}
+}
+
 // NewMonitor creates a new Monitor.
 func NewMonitor(cfg MonitorConfig) *Monitor {
+	cfg.SetDefaults()
+
 	rl := workqueue.DefaultTypedControllerRateLimiter[string]()
 	// We use a rate-limiting queue to:
 	// 1. Deduplicate requests from the daemon server and the periodic monitor loop.
@@ -144,23 +163,6 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 	queue := workqueue.NewTypedRateLimitingQueueWithConfig(rl, workqueue.TypedRateLimitingQueueConfig[string]{
 		Name: "metis-daemon-monitor",
 	})
-
-	cooldownPushbackInterval := cfg.CooldownPushbackInterval
-	if cooldownPushbackInterval <= 0 {
-		cooldownPushbackInterval = DefaultCooldownPushbackInterval
-	}
-	drainingExpiration := cfg.DrainingExpiration
-	if drainingExpiration <= 0 {
-		drainingExpiration = DefaultDrainingExpiration
-	}
-	sustainedLowUtilizationDuration := cfg.SustainedLowUtilizationDuration
-	if sustainedLowUtilizationDuration <= 0 {
-		sustainedLowUtilizationDuration = DefaultSustainedLowUtilizationDuration
-	}
-	monitorInterval := cfg.MonitorInterval
-	if monitorInterval <= 0 {
-		monitorInterval = DefaultMonitorInterval
-	}
 
 	var nncLister nnclisters.NodeNetworkConfigLister
 	if cfg.NNCInformer != nil {
@@ -176,13 +178,13 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 		logger:                          cfg.Logger,
 		lowUtilizationTimers:            make(map[string]time.Time),
 		GetPendingRequestsCount:         cfg.GetPendingRequestsCount,
-		cooldownPushbackInterval:        cooldownPushbackInterval,
-		drainingExpiration:              drainingExpiration,
-		monitorInterval:                 monitorInterval,
+		cooldownPushbackInterval:        cfg.CooldownPushbackInterval,
+		drainingExpiration:              cfg.DrainingExpiration,
+		monitorInterval:                 cfg.MonitorInterval,
 		lowUtilizationThreshold:         DefaultLowUtilizationThreshold,
 		targetUtilizationAfterScaleUp:   DefaultTargetUtilizationAfterScaleUp,
 		cooldownPushbackThreshold:       DefaultCooldownPushbackThreshold,
-		sustainedLowUtilizationDuration: sustainedLowUtilizationDuration,
+		sustainedLowUtilizationDuration: cfg.SustainedLowUtilizationDuration,
 	}
 }
 
@@ -213,7 +215,7 @@ func (m *Monitor) Run(ctx context.Context, workers int) {
 	// TODO: Use JitterUntilWithContext to distribute CRD update calls randomly over time,
 	// preventing multiple worker instances or the expired block handler from triggering
 	// concurrent conflicting updates.
-	go wait.UntilWithContext(ctx, m.processExpiredDrainingBlocks, m.monitorInterval)
+	go wait.UntilWithContext(ctx, m.syncDeletingBlocks, m.monitorInterval)
 
 	for i := 0; i < workers; i++ {
 		go wait.UntilWithContext(ctx, m.runWorker, m.monitorInterval)
@@ -222,35 +224,65 @@ func (m *Monitor) Run(ctx context.Context, workers int) {
 	<-ctx.Done()
 }
 
-func (m *Monitor) processExpiredDrainingBlocks(ctx context.Context) {
+func (m *Monitor) syncDeletingBlocks(ctx context.Context) {
 	networks, err := m.store.GetAllNetworks(ctx)
 	if err != nil {
 		m.logger.Error(err, "failed to get networks for expired draining blocks check")
 		return
 	}
 
-	nnc, err := m.getNodeNetworkConfig(ctx)
+	nnc, err := getNodeNetworkConfig(ctx, m.nncLister, m.nncClient, m.nodeName)
 	if err != nil {
 		m.logger.Error(err, "failed to get NodeNetworkConfig")
 		return
 	}
 	nncCopy := nnc.DeepCopy()
-	anyUpdated := false
+
+	// Group existing releasable CIDRs by network
+	networkReleasables := make(map[string][]nncv1.PodCIDR)
+	for _, r := range nncCopy.Spec.ReleasableCIDRs {
+		networkReleasables[r.Network] = append(networkReleasables[r.Network], r)
+	}
+
+	// Group status CIDRs by network
+	networkStatus := make(map[string][]nncv1.PodCIDR)
+	for _, s := range nncCopy.Status.PodCIDRs {
+		networkStatus[s.Network] = append(networkStatus[s.Network], s)
+	}
 
 	for _, network := range networks {
 		currentAllocation := getAllocationForNetwork(nncCopy, network)
+		if currentAllocation == nil {
+			m.logger.V(4).Info("allocation not exist yet, skip the network", "network", network)
+			continue
+		}
+		currentReleasables := networkReleasables[network]
+		currentStatus := networkStatus[network]
 
-		updated, err := m.handleExpiredDrainingBlocksPerNetwork(ctx, network, nncCopy, currentAllocation)
+		newReleasables, reducePods, err := m.syncDeletingBlocksPerNetwork(ctx, network, currentReleasables, currentStatus)
 		if err != nil {
 			m.logger.Error(err, "failed to handle expired draining blocks", "network", network)
 			continue
 		}
-		if updated {
-			anyUpdated = true
+		networkReleasables[network] = newReleasables
+
+		if reducePods > 0 {
+			newTargetPods := max(0, int(currentAllocation.Pods)-reducePods)
+			currentAllocation.Pods = int32(newTargetPods)
+			m.logger.Info("Reduced target allocation Pods", "network", network, "reduceBy", reducePods, "newTarget", newTargetPods)
 		}
 	}
 
-	if anyUpdated {
+	// Rebuild the final Spec.ReleasableCIDRs from the map
+	var finalReleasables []nncv1.PodCIDR
+	for _, releasables := range networkReleasables {
+		finalReleasables = append(finalReleasables, releasables...)
+	}
+	nncCopy.Spec.ReleasableCIDRs = finalReleasables
+
+	// Check if there is an actual change in Spec compared to the original CRD
+	if !reflect.DeepEqual(nnc.Spec.Allocations, nncCopy.Spec.Allocations) ||
+		!reflect.DeepEqual(nnc.Spec.ReleasableCIDRs, nncCopy.Spec.ReleasableCIDRs) {
 		if err := m.patchNNC(ctx, nncCopy); err != nil {
 			m.logger.Error(err, "failed to patch NNC for expired draining blocks")
 		}
@@ -367,7 +399,7 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*Util
 		return nil, fmt.Errorf("failed to query IP usage: %w", err)
 	}
 
-	nnc, err := m.getNodeNetworkConfig(ctx)
+	nnc, err := getNodeNetworkConfig(ctx, m.nncLister, m.nncClient, m.nodeName)
 	if err != nil {
 		return nil, err
 	}
@@ -400,24 +432,6 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string) (*Util
 		InitialIPs:      initialIPs,
 		NncCopy:         nncCopy,
 	}, nil
-}
-
-func (m *Monitor) getNodeNetworkConfig(ctx context.Context) (*nncv1.NodeNetworkConfig, error) {
-	if m.nncLister != nil {
-		nnc, err := m.nncLister.Get(m.nodeName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get NodeNetworkConfig from lister: %w", err)
-		}
-		return nnc, nil
-	}
-	if m.nncClient != nil {
-		nnc, err := m.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, m.nodeName, metav1.GetOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get NodeNetworkConfig from API: %w", err)
-		}
-		return nnc, nil
-	}
-	return nil, fmt.Errorf("no client or lister available to fetch NodeNetworkConfig")
 }
 
 func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) (bool, error) {
@@ -542,77 +556,62 @@ func (m *Monitor) maybeDrainExcessive(ctx context.Context, network string, info 
 	return false
 }
 
-func (m *Monitor) handleExpiredDrainingBlocksPerNetwork(ctx context.Context, network string, nncCopy *nncv1.NodeNetworkConfig, currentAllocation *nncv1.Allocation) (bool, error) {
+func (m *Monitor) syncDeletingBlocksPerNetwork(
+	ctx context.Context,
+	network string,
+	currentReleasables []nncv1.PodCIDR,
+	currentStatus []nncv1.PodCIDR,
+) ([]nncv1.PodCIDR, int, error) {
+	// 1. Update local DB to mark expired draining blocks as deleting
+	_, err := m.store.FindAndMarkExpiredDrainingCIDRBlocks(ctx, network, m.drainingExpiration)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to find and mark expired draining blocks: %w", err)
+	}
+
+	// 2. Read all deleting CIDR blocks from local DB for this network
 	deletingBlocks, err := m.store.GetDeletingCIDRBlocks(ctx, network)
 	if err != nil {
-		return false, fmt.Errorf("failed to query deleting cidr blocks: %w", err)
+		return nil, 0, fmt.Errorf("failed to query deleting blocks: %w", err)
 	}
 
-	expiredBlocks, err := m.store.FindAndMarkExpiredDrainingCIDRBlocks(ctx, network, m.drainingExpiration)
-	if err != nil {
-		return false, fmt.Errorf("failed to query and mark draining cidr blocks: %w", err)
-	}
-
-	var reducePods int
-	updated := false
-
+	// Map status CIDRs for quick lookup
 	statusMap := make(map[string]nncv1.PodCIDR)
-	for _, podCIDR := range nncCopy.Status.PodCIDRs {
-		if podCIDR.Network == network {
-			statusMap[podCIDR.CIDR] = podCIDR
-		}
+	for _, podCIDR := range currentStatus {
+		statusMap[podCIDR.CIDR] = podCIDR
 	}
 
-	releasableSet := make(map[string]bool)
-	for _, releasable := range nncCopy.Spec.ReleasableCIDRs {
-		releasableSet[releasable.CIDR] = true
+	releasableMap := make(map[string]bool)
+	for _, releasable := range currentReleasables {
+		releasableMap[releasable.CIDR] = true
 	}
 
-	for _, block := range expiredBlocks {
-		reducePods += block.TotalIPs
+	var newReleasables []nncv1.PodCIDR
+	var reducePods int
 
-		if !releasableSet[block.CIDR] {
-			// We need to find the podCIDR ID.
-			// TODO: Maybe add podCIDR ID to local store.
-			podCIDR, inStatus := statusMap[block.CIDR]
-			if !inStatus {
-				m.logger.Error(nil, "failed to find CIDR in CR status for draining block", "cidr", block.CIDR)
-				continue
-			}
-
-			nncCopy.Spec.ReleasableCIDRs = append(nncCopy.Spec.ReleasableCIDRs, podCIDR)
-			releasableSet[block.CIDR] = true
-			updated = true
-		}
-	}
-
-	// Reconcile blocks that are in Deleting state in the local DB but failed to be added
-	// to the CRD's Spec.ReleasableCIDRs in a previous iteration.
-	// Removing entry from status and releasableset is atomic, this is atomically done by other controllers.
 	for _, block := range deletingBlocks {
 		podCIDR, inStatus := statusMap[block.CIDR]
-		if inStatus && !releasableSet[block.CIDR] {
-			m.logger.Info("Re-adding deleting block to ReleasableCIDRs for reconciliation", "cidr", block.CIDR)
-			nncCopy.Spec.ReleasableCIDRs = append(nncCopy.Spec.ReleasableCIDRs, podCIDR)
-			releasableSet[block.CIDR] = true
-			reducePods += block.TotalIPs
-			updated = true
-		}
-	}
-
-	if updated {
-		m.logger.Info("Marked CIDR blocks as Deleting and added to ReleasableCIDRs", "network", network)
-
-		if currentAllocation != nil {
-			newTargetPods := int(currentAllocation.Pods) - reducePods
-			if newTargetPods < 0 {
-				newTargetPods = 0
+		if !inStatus {
+			// Case A: Not in CR status anymore -> delete from DB (Reconciliation fallback)
+			err = m.store.DeleteCIDRBlock(ctx, block.ID)
+			if err != nil {
+				return nil, 0, fmt.Errorf("failed to delete released CIDR block %d from store: %w", block.ID, err)
 			}
-			currentAllocation.Pods = int32(newTargetPods)
+			m.logger.Info("Deleted CIDR block from local DB as it was released by GCE (reconciliation)", "cidrBlockID", block.ID, "cidr", block.CIDR, "network", network)
+		} else {
+			// Case B: Still in CR status -> keep it in ReleasableCIDRs
+			newReleasables = append(newReleasables, podCIDR)
+
+			if !releasableMap[block.CIDR] {
+				// Case B.1: Not in release section yet -> add to release section
+				reducePods += block.TotalIPs
+				releasableMap[block.CIDR] = true
+			}
 		}
 	}
 
-	return updated, nil
+	// TODO: detect out of sync that the items in currentReleasable but no longer in current status or in  deletingBlocks  in local DB, emit metrics or log. This should never happen.
+
+	return newReleasables, reducePods, nil
 }
 
 func getAllocationForNetwork(nnc *nncv1.NodeNetworkConfig, network string) *nncv1.Allocation {

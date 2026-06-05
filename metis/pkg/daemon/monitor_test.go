@@ -579,7 +579,7 @@ func TestMonitor_MaybeDrainExcessive(t *testing.T) {
 	}
 }
 
-func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
+func TestMonitor_syncDeletingBlocks(t *testing.T) {
 	logger := logr.Discard()
 	network := "test-network"
 	nodeName := "test-node"
@@ -589,6 +589,7 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 		setup                   func(t *testing.T, ctx context.Context, s *store.Store)
 		initialNNC              *nncv1.NodeNetworkConfig
 		expectedReleasableCIDRs []string
+		expectedPods            *int32
 		expectedPatchCount      int
 	}{
 		{
@@ -602,11 +603,17 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 			},
 			initialNNC: &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{
+						{Network: network, Pods: 32},
+					},
+				},
 				Status: nncv1.NodeNetworkConfigStatus{
 					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.1.0/28", Network: network}},
 				},
 			},
 			expectedReleasableCIDRs: []string{"10.0.1.0/28"},
+			expectedPods:            ptrInt32(16), // 32 - 16 = 16
 			expectedPatchCount:      1,
 		},
 		{
@@ -620,11 +627,17 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 			},
 			initialNNC: &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{
+						{Network: network, Pods: 32},
+					},
+				},
 				Status: nncv1.NodeNetworkConfigStatus{
 					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.2.0/28", Network: network}},
 				},
 			},
 			expectedReleasableCIDRs: []string{"10.0.2.0/28"},
+			expectedPods:            ptrInt32(16), // 32 - 16 = 16
 			expectedPatchCount:      1,
 		},
 		{
@@ -645,6 +658,11 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 			},
 			initialNNC: &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{
+						{Network: network, Pods: 48},
+					},
+				},
 				Status: nncv1.NodeNetworkConfigStatus{
 					PodCIDRs: []nncv1.PodCIDR{
 						{CIDR: "10.0.3.0/28", Network: network},
@@ -653,6 +671,7 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 				},
 			},
 			expectedReleasableCIDRs: []string{"10.0.3.0/28", "10.0.4.0/28"},
+			expectedPods:            ptrInt32(16), // 48 - 16 - 16 = 16
 			expectedPatchCount:      1,
 		},
 		{
@@ -666,11 +685,42 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 			},
 			initialNNC: &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{
+						{Network: network, Pods: 32},
+					},
+				},
 				Status: nncv1.NodeNetworkConfigStatus{
 					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.5.0/28", Network: network}},
 				},
 			},
 			expectedReleasableCIDRs: []string{},
+			expectedPods:            ptrInt32(32),
+			expectedPatchCount:      0,
+		},
+		{
+			desc: "Deleting block already in ReleasableCIDRs does not reduce pods again",
+			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
+				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
+				s.AddCIDR(ctx, network, "10.0.6.0/28")
+				id, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.6.0/28", network)
+				s.MarkCIDRBlockAsDeletingForTest(ctx, id)
+				time.Sleep(100 * time.Millisecond)
+			},
+			initialNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{
+						{Network: network, Pods: 16},
+					},
+					ReleasableCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.6.0/28", Network: network}},
+				},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.6.0/28", Network: network}},
+				},
+			},
+			expectedReleasableCIDRs: []string{"10.0.6.0/28"},
+			expectedPods:            ptrInt32(16),
 			expectedPatchCount:      0,
 		},
 	}
@@ -714,7 +764,7 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 				DrainingExpiration: 1 * time.Second,
 			})
 
-			m.processExpiredDrainingBlocks(context.Background())
+			m.syncDeletingBlocks(context.Background())
 
 			if patchCount != tc.expectedPatchCount {
 				t.Errorf("Expected patch count %d, got %d", tc.expectedPatchCount, patchCount)
@@ -740,6 +790,22 @@ func TestMonitor_processExpiredDrainingBlocks(t *testing.T) {
 					}
 					if !found {
 						t.Errorf("Expected CIDR %s to be in ReleasableCIDRs", expected)
+					}
+				}
+
+				if tc.expectedPods != nil {
+					foundAlloc := false
+					for _, a := range patch.Spec.Allocations {
+						if a.Network == network {
+							foundAlloc = true
+							if a.Pods != *tc.expectedPods {
+								t.Errorf("Expected allocations pods to be %d, got %d", *tc.expectedPods, a.Pods)
+							}
+							break
+						}
+					}
+					if !foundAlloc {
+						t.Errorf("Expected to find allocation for network %s in patch", network)
 					}
 				}
 			}
@@ -841,4 +907,8 @@ func TestMonitor_DynamicAllocation_Run(t *testing.T) {
 	case <-ctx.Done():
 		t.Errorf("Timed out waiting for Monitor to process queue and patch NNC. Patch count: %d", patchCount)
 	}
+}
+
+func ptrInt32(v int32) *int32 {
+	return &v
 }

@@ -402,10 +402,9 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 	}
 	defer tx.Rollback()
 
-	nowMilli := time.Now().UTC().UnixMilli()
 	var releaseAt interface{}
 	if releaseCooldown > 0 {
-		releaseAt = nowMilli + releaseCooldown.Milliseconds()
+		releaseAt = time.Now().UTC().Add(releaseCooldown).UnixMilli()
 	} else {
 		releaseAt = nil
 	}
@@ -439,18 +438,18 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 	for _, r := range releases {
 		_, err = tx.ExecContext(ctx, `
 			UPDATE ip_addresses 
-			SET is_allocated = FALSE, release_at = ?, updated_at = ? 
+			SET is_allocated = FALSE, release_at = ? 
 			WHERE id = ?
-		`, releaseAt, nowMilli, r.id)
+		`, releaseAt, r.id)
 		if err != nil {
 			return 0, fmt.Errorf("failed to release IP %d: %w", r.id, err)
 		}
 
 		_, err = tx.ExecContext(ctx, `
 			UPDATE cidr_blocks 
-			SET allocated_ips = allocated_ips - 1, updated_at = ? 
+			SET allocated_ips = allocated_ips - 1 
 			WHERE id = ?
-		`, nowMilli, r.cidrBlockID)
+		`, r.cidrBlockID)
 		if err != nil {
 			return 0, fmt.Errorf("failed to update cidr_block %d count: %w", r.cidrBlockID, err)
 		}
