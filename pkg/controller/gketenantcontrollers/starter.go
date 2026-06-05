@@ -57,14 +57,16 @@ type ControllerStartFunc func(cfg *ControllerConfig) error
 
 // ControllersStarter implements the framework.ControllerStarter interface.
 type ControllersStarter struct {
-	clientBuilder       cloudprovider.ControllerClientBuilder
-	kubeClient          clientset.Interface
-	dynamicClient       dynamic.Interface
-	mainInformerFactory informers.SharedInformerFactory
-	config              *cloudcontrollerconfig.CompletedConfig
-	controllerCtx       controllermanagerapp.ControllerContext
-	controllers         map[string]ControllerStartFunc
-	recorder            record.EventRecorder
+	clientBuilder         cloudprovider.ControllerClientBuilder
+	kubeClient            clientset.Interface
+	dynamicClient         dynamic.Interface
+	mainInformerFactory   informers.SharedInformerFactory
+	config                *cloudcontrollerconfig.CompletedConfig
+	controllerCtx         controllermanagerapp.ControllerContext
+	controllers           map[string]ControllerStartFunc
+	createCloudFn         func(config *cloudcontrollerconfig.CompletedConfig, pc *v1.ProviderConfig) (cloudprovider.Interface, error)
+	clientCreationTimeout time.Duration
+	recorder              record.EventRecorder
 }
 
 // NewControllersStarter creates a new ControllersStarter.
@@ -85,14 +87,16 @@ func NewControllersStarter(
 	recorder := eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: tenantComponentName})
 
 	return &ControllersStarter{
-		clientBuilder:       clientBuilder,
-		kubeClient:          kubeClient,
-		dynamicClient:       dynamicClient,
-		mainInformerFactory: mainInformerFactory,
-		config:              config,
-		controllerCtx:       controllerCtx,
-		controllers:         controllers,
-		recorder:            recorder,
+		clientBuilder:         clientBuilder,
+		kubeClient:            kubeClient,
+		dynamicClient:         dynamicClient,
+		mainInformerFactory:   mainInformerFactory,
+		config:                config,
+		controllerCtx:         controllerCtx,
+		controllers:           controllers,
+		createCloudFn:         CreateTenantScopedGCECloud,
+		clientCreationTimeout: 5 * time.Minute,
+		recorder:              recorder,
 	}
 }
 
@@ -131,14 +135,32 @@ func (s *ControllersStarter) StartController(pc *v1.ProviderConfig) (chan<- stru
 			}
 		}()
 
-		// Create the new, scoped GCECloud object
-		klog.V(2).Infof("[%s] Creating tenant-scoped GCE cloud object...", pcKey)
-		scopedCloud, err := CreateTenantScopedGCECloud(s.config, pc)
+		// Create a customizable timeout context for the GCE Cloud Client initialization retry
+		initializationCtx, cancelInitialization := context.WithTimeout(ctx, s.clientCreationTimeout)
+		defer cancelInitialization()
+
+		// Create the new, scoped GCECloud object with retry for transient errors
+		klog.V(2).Infof("[%s] Creating tenant-scoped GCE cloud object with timeout %v...", pcKey, s.clientCreationTimeout)
+		var scopedCloud cloudprovider.Interface
+
+		// Retry client creation indefinitely with shared backoff until initializationCtx times out (5m)
+		err := s.runWithBackoff(initializationCtx, 2*time.Minute, func(ctx context.Context) (bool, error) {
+			var err error
+			scopedCloud, err = s.createCloudFn(s.config, pc)
+			if err != nil {
+				klog.Errorf("[%s] Failed to create scoped cloud: %v. Retrying...", pcKey, err)
+				s.recorder.Eventf(pc, corev1.EventTypeWarning, conditionReasonFailed, "Failed to create scoped cloud: %v. Retrying...", err)
+				return false, nil // returning (false, nil) triggers retry
+			}
+			return true, nil // success, stops retry
+		})
+
 		if err != nil {
-			klog.Errorf("[%s] Failed to create scoped cloud: %v. Aborting controller startup.", pcKey, err)
+			klog.Errorf("[%s] Aborting scoped cloud creation (initialization timed out or canceled): %v", pcKey, err)
+			s.recorder.Eventf(pc, corev1.EventTypeWarning, conditionReasonFailed, "Aborted scoped cloud creation (initialization timed out): %v", err)
 			return
 		}
-		klog.Infof("[%s] Created scoped cloud successfully: %+v", pcKey, scopedCloud)
+		klog.Infof("[%s] Created scoped cloud successfully", pcKey)
 
 		// Create filtered informer factory for the tenant
 		klog.V(2).Infof("[%s] Creating filtered informer factory...", pcKey)
@@ -177,18 +199,7 @@ func (s *ControllersStarter) StartController(pc *v1.ProviderConfig) (chan<- stru
 			klog.Infof("[%s] Starting controller: %s", pcKey, name)
 			// Launch each controller in a separate goroutine
 			go func(controllerName string, fn ControllerStartFunc) {
-				// Create an exponential backoff manager
-				// Starts at 1s, doubles each time, up to a max of 5 minutes.
-				backoff := wait.Backoff{
-					Duration: 1 * time.Second,
-					Factor:   2.0,
-					Jitter:   0.0,
-					Steps:    1000000, // Effectively infinite steps as we don't want to stop retrying
-					Cap:      5 * time.Minute,
-				}
-				delayFn := backoff.DelayWithReset(clock.RealClock{}, 2*time.Minute)
-				// Use DelayFunc.Until which handles the timer internally
-				delayFn.Until(ctx, true, true, func(ctx context.Context) (bool, error) {
+				_ = s.runWithBackoff(ctx, 2*time.Minute, func(ctx context.Context) (bool, error) {
 					return s.runControllerWithRecovery(pc, controllerName, fn, cfg)
 				})
 			}(name, startFunc)
@@ -221,4 +232,19 @@ func (s *ControllersStarter) runControllerWithRecovery(pc *v1.ProviderConfig, co
 	}
 	// Return false, nil to emulate BackoffUntil's infinite loop behavior (until context cancelled)
 	return false, nil
+}
+
+// runWithBackoff executes a function with the shared backoff configuration.
+// It blocks until the function returns true (success) or the context is canceled.
+func (s *ControllersStarter) runWithBackoff(ctx context.Context, resetDuration time.Duration, fn func(context.Context) (bool, error)) error {
+	// Shared backoff configuration (keeps original controller values: 1s start, 5m cap)
+	backoff := wait.Backoff{
+		Duration: 1 * time.Second,
+		Factor:   2.0,
+		Jitter:   0.5,
+		Steps:    1000000, // Effectively infinite
+		Cap:      5 * time.Minute,
+	}
+	delayFn := backoff.DelayWithReset(clock.RealClock{}, resetDuration)
+	return delayFn.Until(ctx, true, true, fn)
 }
