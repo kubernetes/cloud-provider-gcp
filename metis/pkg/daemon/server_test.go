@@ -632,9 +632,11 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 			},
 		},
 		{
-			name:         "Context Cancelled Path",
-			cancelCtx:    true,
-			action:       func(ctx context.Context, server *adaptiveIpamServer, storeInstance *store.Store, network string) error { return nil },
+			name:      "Context Cancelled Path",
+			cancelCtx: true,
+			action: func(ctx context.Context, server *adaptiveIpamServer, storeInstance *store.Store, network string) error {
+				return nil
+			},
 			wantErr:      true,
 			errSubstring: "timed out",
 			checkResp: func(t *testing.T, resp *adaptiveipam.AllocatePodIPResponse) {
@@ -1006,4 +1008,3 @@ func TestAdaptiveIpamServer_DeallocatePodIP_Validation(t *testing.T) {
 		})
 	}
 }
-

@@ -186,6 +186,31 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 			expectedPatchCalled: true,
 			expectedErr:         true,
 		},
+		{
+			desc: "No scale up needed because current allocation is already equal to desired",
+			blocks: []struct {
+				cidr  string
+				drain bool
+			}{
+				{"10.0.1.0/28", false},
+				{"10.0.2.0/27", false},
+			},
+			allocations:     10,
+			pendingRequests: 0,
+			mockNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{{Network: network, Pods: 48}},
+				},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.1.0/28", Network: network},
+						{CIDR: "10.0.2.0/27", Network: network},
+					},
+				},
+			},
+			expectedPatchCalled: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -266,15 +291,15 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 				CooldownPushbackInterval: 1 * time.Millisecond,
 			})
 
-			err = m.syncNetwork(context.Background(), network)
+			err = m.syncAll(context.Background())
 			if tc.expectedErr {
 				if err == nil {
-					t.Errorf("Expected syncNetwork to fail, but it succeeded")
+					t.Errorf("Expected syncAll to fail, but it succeeded")
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("syncNetwork failed: %v", err)
+				t.Fatalf("syncAll failed: %v", err)
 			}
 
 			if patchCalled != tc.expectedPatchCalled {
@@ -457,9 +482,9 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 
 			m.lowUtilizationTimers[network] = time.Now().Add(-9 * time.Hour)
 
-			err = m.syncNetwork(context.Background(), network)
+			err = m.syncAll(context.Background())
 			if err != nil {
-				t.Fatalf("syncNetwork failed: %v", err)
+				t.Fatalf("syncAll failed: %v", err)
 			}
 
 			readyBlocks, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network)
@@ -773,7 +798,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 				DrainingExpiration: 1 * time.Second,
 			})
 
-			m.syncDeletingBlocks(context.Background())
+			m.syncAll(context.Background())
 
 			if patchCount != tc.expectedPatchCount {
 				t.Errorf("Expected patch count %d, got %d", tc.expectedPatchCount, patchCount)
@@ -899,11 +924,11 @@ func TestMonitorRun(t *testing.T) {
 				mockNNC.Spec.ReleasableCIDRs = patch.Spec.ReleasableCIDRs
 			}
 
-			// Verify that both scale up (desired 24 - 16 released = 8) and releasing CIDR are patched.
+			// Verify that both scale up (desired 24) and releasing CIDR are patched and stable.
 			if len(mockNNC.Spec.ReleasableCIDRs) == 1 &&
 				mockNNC.Spec.ReleasableCIDRs[0].CIDR == "10.0.2.0/28" &&
 				len(mockNNC.Spec.Allocations) == 1 &&
-				mockNNC.Spec.Allocations[0].Pods == 8 {
+				mockNNC.Spec.Allocations[0].Pods == 24 {
 				select {
 				case <-doneSignaled:
 				default:

@@ -225,7 +225,7 @@ func (s *adaptiveIpamServer) handleDynamicAllocation(ctx context.Context, req *a
 	if !ok {
 		s.logger.Info("Local store IP exhaustion detected, requesting scale up", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		// Enqueue the request to trigger the controller sync for dynamic allocation.
-		s.monitor.Enqueue(req.Network)
+		s.monitor.Enqueue()
 	} else {
 		s.logger.Info("Dynamic allocation request already pending, waiting on existing request", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 	}
@@ -260,7 +260,6 @@ func (s *adaptiveIpamServer) maybeDynamicAllocation(ctx context.Context, req *ad
 
 	return true, nil
 }
-
 
 func (s *adaptiveIpamServer) maybeAddInitialPodCidr(ctx context.Context, network string, initialPodCidr string) error {
 	if initialPodCidr == "" {
