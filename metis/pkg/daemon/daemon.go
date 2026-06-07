@@ -49,6 +49,10 @@ type Config struct {
 // Daemon represents the metis daemon process.
 type Daemon struct {
 	Config Config
+	// NNCClient and KubeClient can be pre-populated for unit testing. If nil,
+	// they will be initialized using in-cluster config during Run.
+	NNCClient  nncclientset.Interface
+	KubeClient kubernetes.Interface
 }
 
 // NewDaemon creates a new Daemon instance with the given configuration.
@@ -83,57 +87,45 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	defer storeInstance.Close()
 
-	// Initialize clients
-	config, err := rest.InClusterConfig()
-	var nncClient nncclientset.Interface
-	var kubeClient kubernetes.Interface
-	if err != nil {
-		logger.Info("Failed to get in-cluster config, clients will not be initialized")
-	} else {
-		nncClient, err = nncclientset.NewForConfig(config)
-		if err != nil {
-			return fmt.Errorf("failed to create nodenetworkconfig clientset: %w", err)
-		}
-		kubeClient, err = kubernetes.NewForConfig(config)
-		if err != nil {
-			return fmt.Errorf("failed to create kubernetes clientset: %w", err)
-		}
-	}
-
 	server := newAdaptiveIpamServer(logger, storeInstance, d.Config.SocketPath, d.Config.ReleaseCooldown, store.DefaultBusyTimeout)
 
-	if nncClient != nil {
-		if err := ensureNodeNetworkConfig(ctx, nncClient, kubeClient, nodeName, logger); err != nil {
-			return err
+	if d.NNCClient == nil {
+		var err error
+		d.NNCClient, d.KubeClient, err = initClients()
+		if err != nil {
+			klog.Fatalf("failed to initialize clients: %v", err)
 		}
-
-		nncInformerFactory := externalversions.NewSharedInformerFactoryWithOptions(nncClient, 0,
-			externalversions.WithTweakListOptions(func(options *metav1.ListOptions) {
-				options.FieldSelector = "metadata.name=" + nodeName
-			}),
-		)
-		nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
-
-		watcher := NewWatcher(logger, nncClient, nncInformer, storeInstance, nodeName, server.onCIDRAdded)
-		monitorInstance := NewMonitor(MonitorConfig{
-			Logger:                          logger,
-			NNCClient:                       nncClient,
-			NNCInformer:                     nncInformer,
-			Store:                           storeInstance,
-			NodeName:                        nodeName,
-			GetPendingRequestsCount:         server.getPendingRequestsCount,
-			CooldownPushbackInterval:        DefaultCooldownPushbackInterval,
-			DrainingExpiration:              d.Config.DrainingExpiration,
-			MonitorInterval:                 d.Config.MonitorInterval,
-			SustainedLowUtilizationDuration: d.Config.SustainedLowUtilizationDuration,
-		})
-
-		server.monitor = monitorInstance
-
-		go watcher.Run(ctx, defaultWatcherWorkers)
-		go monitorInstance.Run(ctx, defaultMonitorWorkers)
-		nncInformerFactory.Start(ctx.Done())
 	}
+	if err := d.ensureNodeNetworkConfig(ctx, nodeName, logger); err != nil {
+		return err
+	}
+
+	nncInformerFactory := externalversions.NewSharedInformerFactoryWithOptions(d.NNCClient, 0,
+		externalversions.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.FieldSelector = "metadata.name=" + nodeName
+		}),
+	)
+	nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
+
+	watcher := NewWatcher(logger, d.NNCClient, nncInformer, storeInstance, nodeName, server.onCIDRAdded)
+	monitorInstance := NewMonitor(MonitorConfig{
+		Logger:                          logger,
+		NNCClient:                       d.NNCClient,
+		NNCInformer:                     nncInformer,
+		Store:                           storeInstance,
+		NodeName:                        nodeName,
+		GetPendingRequestsCount:         server.getPendingRequestsCount,
+		CooldownPushbackInterval:        DefaultCooldownPushbackInterval,
+		DrainingExpiration:              d.Config.DrainingExpiration,
+		MonitorInterval:                 d.Config.MonitorInterval,
+		SustainedLowUtilizationDuration: d.Config.SustainedLowUtilizationDuration,
+	})
+
+	server.monitor = monitorInstance
+
+	nncInformerFactory.Start(ctx.Done())
+	go watcher.Run(ctx, defaultWatcherWorkers)
+	go monitorInstance.Run(ctx, defaultMonitorWorkers)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -154,11 +146,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 }
 
 // ensureNodeNetworkConfig creates the NodeNetworkConfig CR if it does not exist.
-func ensureNodeNetworkConfig(ctx context.Context, nncClient nncclientset.Interface, kubeClient kubernetes.Interface, nodeName string, logger logr.Logger) error {
-	if nncClient == nil {
-		return nil
-	}
-	_, err := nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, nodeName, metav1.GetOptions{})
+func (d *Daemon) ensureNodeNetworkConfig(ctx context.Context, nodeName string, logger logr.Logger) error {
+	_, err := d.NNCClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, nodeName, metav1.GetOptions{})
 	if err == nil {
 		return nil // Already exists
 	}
@@ -166,7 +155,7 @@ func ensureNodeNetworkConfig(ctx context.Context, nncClient nncclientset.Interfa
 		return fmt.Errorf("failed to get NodeNetworkConfig: %w", err)
 	}
 
-	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	node, err := d.KubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to get node %s for owner reference: %w", nodeName, err)
 	}
@@ -187,7 +176,7 @@ func ensureNodeNetworkConfig(ctx context.Context, nncClient nncclientset.Interfa
 		},
 		Spec: nncv1.NodeNetworkConfigSpec{},
 	}
-	_, err = nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
+	_, err = d.NNCClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
 			logger.Info("NodeNetworkConfig was created concurrently", "nodeName", nodeName)
@@ -197,4 +186,21 @@ func ensureNodeNetworkConfig(ctx context.Context, nncClient nncclientset.Interfa
 	}
 	logger.Info("Successfully created NodeNetworkConfig CR with owner reference to Node", "name", nodeName)
 	return nil
+}
+
+// initClients initializes the nodenetworkconfig and kubernetes clients.
+func initClients() (nncclientset.Interface, kubernetes.Interface, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get in-cluster config: %w", err)
+	}
+	nncClient, err := nncclientset.NewForConfig(config)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create nodenetworkconfig clientset: %w", err)
+	}
+	kubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create kubernetes clientset: %w", err)
+	}
+	return nncClient, kubeClient, nil
 }

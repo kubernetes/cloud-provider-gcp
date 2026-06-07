@@ -209,8 +209,6 @@ func (m *Monitor) Run(ctx context.Context, workers int) {
 	<-ctx.Done()
 }
 
-// applyDeletingBlocks is removed because its logic is integrated into syncAll
-
 func (m *Monitor) runWorker(ctx context.Context) {
 	for m.processNextWorkItem(ctx) {
 	}

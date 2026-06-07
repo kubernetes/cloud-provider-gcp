@@ -18,17 +18,24 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
+	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	kubefake "k8s.io/client-go/kubernetes/fake"
+	clienttesting "k8s.io/client-go/testing"
 )
 
 func TestDaemon_Run(t *testing.T) {
@@ -43,7 +50,19 @@ func TestDaemon_Run(t *testing.T) {
 		SocketPath:      sockPath,
 	}
 
+	t.Setenv("NODE_NAME", "test-node")
+
 	d := NewDaemon(cfg)
+	d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-node",
+		},
+	})
+	d.KubeClient = kubefake.NewSimpleClientset(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-node",
+		},
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // Clean up after test
@@ -83,49 +102,126 @@ func TestEnsureNodeNetworkConfig(t *testing.T) {
 	nodeName := "test-node"
 	nodeUID := types.UID("test-node-uid")
 
-	// Create fake clients
-	kubeClient := kubefake.NewSimpleClientset(&corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-			UID:  nodeUID,
+	tests := []struct {
+		desc          string
+		initNode      *corev1.Node
+		initNNC       *nncv1.NodeNetworkConfig
+		createReactor func(action clienttesting.Action) (handled bool, ret runtime.Object, err error)
+		wantErr       bool
+		verifyNNC     func(t *testing.T, nncClient nncclientset.Interface)
+	}{
+		{
+			desc: "Successful creation",
+			initNode: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+					UID:  nodeUID,
+				},
+			},
+			verifyNNC: func(t *testing.T, nncClient nncclientset.Interface) {
+				nnc, err := nncClient.NetworkingV1().NodeNetworkConfigs().Get(context.Background(), nodeName, metav1.GetOptions{})
+				if err != nil {
+					t.Fatalf("Failed to get NodeNetworkConfig: %v", err)
+				}
+				if nnc.Name != nodeName {
+					t.Errorf("Expected NNC name %s, got %s", nodeName, nnc.Name)
+				}
+				if len(nnc.OwnerReferences) != 1 {
+					t.Fatalf("Expected 1 owner reference, got %d", len(nnc.OwnerReferences))
+				}
+				owner := nnc.OwnerReferences[0]
+				if owner.Kind != "Node" || owner.Name != nodeName || owner.UID != nodeUID || owner.Controller == nil || !*owner.Controller {
+					t.Errorf("Unexpected owner reference: %+v", owner)
+				}
+			},
 		},
-	})
-	nncClient := nncfake.NewSimpleClientset()
-
-	logger := logr.Discard()
-
-	// Run ensureNodeNetworkConfig
-	err := ensureNodeNetworkConfig(context.Background(), nncClient, kubeClient, nodeName, logger)
-	if err != nil {
-		t.Fatalf("ensureNodeNetworkConfig failed: %v", err)
+		{
+			desc: "Already exists initially",
+			initNode: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+					UID:  nodeUID,
+				},
+			},
+			initNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+				},
+			},
+			verifyNNC: func(t *testing.T, nncClient nncclientset.Interface) {
+				nnc, err := nncClient.NetworkingV1().NodeNetworkConfigs().Get(context.Background(), nodeName, metav1.GetOptions{})
+				if err != nil {
+					t.Fatalf("Failed to get NodeNetworkConfig: %v", err)
+				}
+				if len(nnc.OwnerReferences) != 0 {
+					t.Errorf("Expected owner reference to remain empty, got %+v", nnc.OwnerReferences)
+				}
+			},
+		},
+		{
+			desc: "Concurrent creation (AlreadyExists on Create)",
+			initNode: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+					UID:  nodeUID,
+				},
+			},
+			createReactor: func(action clienttesting.Action) (handled bool, ret runtime.Object, err error) {
+				return true, nil, apierrors.NewAlreadyExists(schema.GroupResource{Group: "networking.gke.io", Resource: "nodenetworkconfigs"}, nodeName)
+			},
+		},
+		{
+			desc:     "Node lookup failure",
+			initNode: nil, // Node doesn't exist
+			wantErr:  true,
+		},
+		{
+			desc: "Create returns general error",
+			initNode: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeName,
+					UID:  nodeUID,
+				},
+			},
+			createReactor: func(action clienttesting.Action) (handled bool, ret runtime.Object, err error) {
+				return true, nil, fmt.Errorf("general API error")
+			},
+			wantErr: true,
+		},
 	}
 
-	// Verify NNC was created
-	nnc, err := nncClient.NetworkingV1().NodeNetworkConfigs().Get(context.Background(), nodeName, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Failed to get NodeNetworkConfig: %v", err)
-	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			var kubeObjects []runtime.Object
+			if tc.initNode != nil {
+				kubeObjects = append(kubeObjects, tc.initNode)
+			}
+			kubeClient := kubefake.NewSimpleClientset(kubeObjects...)
 
-	if nnc.Name != nodeName {
-		t.Errorf("Expected NNC name %s, got %s", nodeName, nnc.Name)
-	}
+			var nncObjects []runtime.Object
+			if tc.initNNC != nil {
+				nncObjects = append(nncObjects, tc.initNNC)
+			}
+			nncClient := nncfake.NewSimpleClientset(nncObjects...)
 
-	// Verify Owner Reference
-	if len(nnc.OwnerReferences) != 1 {
-		t.Fatalf("Expected 1 owner reference, got %d", len(nnc.OwnerReferences))
-	}
+			if tc.createReactor != nil {
+				nncClient.PrependReactor("create", "nodenetworkconfigs", tc.createReactor)
+			}
 
-	owner := nnc.OwnerReferences[0]
-	if owner.Kind != "Node" {
-		t.Errorf("Expected owner kind Node, got %s", owner.Kind)
-	}
-	if owner.Name != nodeName {
-		t.Errorf("Expected owner name %s, got %s", nodeName, owner.Name)
-	}
-	if owner.UID != nodeUID {
-		t.Errorf("Expected owner UID %s, got %s", nodeUID, owner.UID)
-	}
-	if owner.Controller == nil || !*owner.Controller {
-		t.Errorf("Expected owner to be controller")
+			logger := logr.Discard()
+
+			d := &Daemon{
+				NNCClient:  nncClient,
+				KubeClient: kubeClient,
+			}
+			err := d.ensureNodeNetworkConfig(context.Background(), nodeName, logger)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("ensureNodeNetworkConfig() error = %v, wantErr = %v", err, tc.wantErr)
+			}
+
+			if tc.verifyNNC != nil {
+				tc.verifyNNC(t, nncClient)
+			}
+		})
 	}
 }
