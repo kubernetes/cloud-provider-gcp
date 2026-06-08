@@ -58,7 +58,12 @@ type adaptiveIpamServer struct {
 	busyTimeout     time.Duration
 	grpcServer      *grpc.Server
 	logger          logr.Logger
-	requestsMap     map[cniClient]chan struct{}
+	// requestsMap tracks pending CNI IP allocation requests waiting for a new CIDR
+	// to be dynamically allocated. It is organized per-network (outer map key is network name)
+	// to optimize lookups and avoid iterating over all waiting clients from other networks.
+	// The inner map associates each blocked cniClient to a channel that is closed to wake
+	// it up when new IPs become available.
+	requestsMap     map[string]map[cniClient]chan struct{}
 	requestsMu      sync.RWMutex
 	monitor         *Monitor
 }
@@ -73,7 +78,7 @@ func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socke
 		releaseCooldown: releaseCooldown,
 		busyTimeout:     busyTimeout,
 		logger:          logger,
-		requestsMap:     make(map[cniClient]chan struct{}),
+		requestsMap:     make(map[string]map[cniClient]chan struct{}),
 	}
 
 	return server
@@ -92,6 +97,12 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 		s.logger.Error(err, "AllocatePodIP validation failed", "podName", req.PodName, "podNamespace", req.PodNamespace)
 		return nil, err
 	}
+
+	// Enforce a server-side safety timeout ceiling for the entire allocation attempt.
+	// This must be shorter than the client CNI plugin's timeout to ensure the server
+	// fails gracefully and returns a structured gRPC error before the client gives up.
+	ctx, cancel := context.WithTimeout(ctx, scaleUpWaitTimeout)
+	defer cancel()
 
 	var ipv4Alloc *adaptiveipam.PodIP
 	var err error
@@ -126,12 +137,6 @@ func (s *adaptiveIpamServer) allocateIP(ctx context.Context, req *adaptiveipam.A
 	if err := s.maybeAddInitialPodCidr(ctx, req.Network, config.InitialPodCidr); err != nil {
 		return nil, err
 	}
-
-	// Enforce a server-side safety timeout ceiling for the entire allocation attempt.
-	// This must be shorter than the client CNI plugin's timeout to ensure the server
-	// fails gracefully and returns a structured gRPC error before the client gives up.
-	ctx, cancel := context.WithTimeout(ctx, scaleUpWaitTimeout)
-	defer cancel()
 
 	timeout := s.busyTimeout
 	if timeout == 0 {
@@ -214,27 +219,19 @@ func (s *adaptiveIpamServer) handleDynamicAllocation(ctx context.Context, req *a
 		return fmt.Errorf("failed to allocate ipv4 for pod %s/%s: %w", req.PodNamespace, req.PodName, store.ErrNoAvailableIPs)
 	}
 
-	s.requestsMu.Lock()
-	ch, ok := s.requestsMap[clientKey]
-	if !ok {
-		ch = make(chan struct{})
-		s.requestsMap[clientKey] = ch
-	}
-	s.requestsMu.Unlock()
+	ch, ok := s.getOrCreatePendingRequest(clientKey, req.Network)
 
 	if !ok {
 		s.logger.Info("Local store IP exhaustion detected, requesting scale up", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		// Enqueue the request to trigger the controller sync for dynamic allocation.
-		s.monitor.Enqueue()
+		s.monitor.enqueue()
 	} else {
 		s.logger.Info("Dynamic allocation request already pending, waiting on existing request", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 	}
 
 	select {
 	case <-ctx.Done():
-		s.requestsMu.Lock()
-		delete(s.requestsMap, clientKey)
-		s.requestsMu.Unlock()
+		s.removePendingRequest(clientKey, req.Network)
 		s.logger.Error(ctx.Err(), "Dynamic allocation wait timed out or cancelled", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		return fmt.Errorf("failed to allocate ipv4 for pod %s/%s (timed out): %w", req.PodNamespace, req.PodName, store.ErrNoAvailableIPs)
 	case <-ch:
@@ -316,13 +313,7 @@ func (s *adaptiveIpamServer) getPendingRequestsCount(network string) int {
 	s.requestsMu.RLock()
 	defer s.requestsMu.RUnlock()
 
-	count := 0
-	for client := range s.requestsMap {
-		if client.network == network {
-			count++
-		}
-	}
-	return count
+	return len(s.requestsMap[network])
 }
 
 func (s *adaptiveIpamServer) onCIDRAdded(network string, availableIPs int) {
@@ -331,16 +322,23 @@ func (s *adaptiveIpamServer) onCIDRAdded(network string, availableIPs int) {
 
 	s.logger.Info("CIDR added, checking for waiting CNI requests to wake up", "network", network, "availableIPs", availableIPs)
 
+	netMap := s.requestsMap[network]
+	if len(netMap) == 0 {
+		return
+	}
+
 	count := 0
-	for client, ch := range s.requestsMap {
-		if client.network == network {
-			close(ch)
-			delete(s.requestsMap, client)
-			count++
-			if count >= availableIPs {
-				break
-			}
+	for client, ch := range netMap {
+		close(ch)
+		delete(netMap, client)
+		count++
+		if count >= availableIPs {
+			break
 		}
+	}
+
+	if len(netMap) == 0 {
+		delete(s.requestsMap, network)
 	}
 
 	if count > 0 {
@@ -401,3 +399,38 @@ func (s *adaptiveIpamServer) stop() {
 		s.grpcServer.GracefulStop()
 	}
 }
+
+// getOrCreatePendingRequest retrieves the wakeup channel for a pending CNI client request,
+// creating it if it does not already exist. It returns the channel and a boolean indicating
+// whether the channel already existed.
+func (s *adaptiveIpamServer) getOrCreatePendingRequest(clientKey cniClient, network string) (chan struct{}, bool) {
+	s.requestsMu.Lock()
+	defer s.requestsMu.Unlock()
+
+	netMap, netOk := s.requestsMap[network]
+	if !netOk {
+		netMap = make(map[cniClient]chan struct{})
+		s.requestsMap[network] = netMap
+	}
+	ch, ok := netMap[clientKey]
+	if !ok {
+		ch = make(chan struct{})
+		netMap[clientKey] = ch
+	}
+	return ch, ok
+}
+
+// removePendingRequest removes a CNI client request from the pending map once it has completed
+// or timed out.
+func (s *adaptiveIpamServer) removePendingRequest(clientKey cniClient, network string) {
+	s.requestsMu.Lock()
+	defer s.requestsMu.Unlock()
+
+	if netMap, ok := s.requestsMap[network]; ok {
+		delete(netMap, clientKey)
+		if len(netMap) == 0 {
+			delete(s.requestsMap, network)
+		}
+	}
+}
+

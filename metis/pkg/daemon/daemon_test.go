@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,64 +40,115 @@ import (
 )
 
 func TestDaemon_Run(t *testing.T) {
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_daemon_test.sqlite")
-	sockPath := filepath.Join(tempDir, "metis_test.sock")
-
-	cfg := Config{
-		MonitorInterval: 5 * time.Second,
-		ReleaseCooldown: 1 * time.Minute,
-		DBPath:          dbPath,
-		SocketPath:      sockPath,
-	}
-
-	t.Setenv("NODE_NAME", "test-node")
-
-	d := NewDaemon(cfg)
-	d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-node",
+	tests := []struct {
+		name        string
+		setupDaemon func(d *Daemon)
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "successful run",
+			setupDaemon: func(d *Daemon) {
+				d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-node",
+					},
+				})
+				d.KubeClient = kubefake.NewSimpleClientset(&corev1.Node{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-node",
+					},
+				})
+			},
+			wantErr: false,
 		},
-	})
-	d.KubeClient = kubefake.NewSimpleClientset(&corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-node",
+		{
+			name:        "both clients nil (initClients fails)",
+			setupDaemon: func(d *Daemon) {},
+			wantErr:     true,
+			errContains: "failed to initialize clients",
 		},
-	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // Clean up after test
-
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- d.Run(ctx)
-	}()
-
-	// Wait for server to start and create socket
-	time.Sleep(500 * time.Millisecond)
-
-	if _, err := os.Stat(sockPath); os.IsNotExist(err) {
-		t.Errorf("Expected socket to be created at %s, but doesn't exist", sockPath)
+		{
+			name: "only NNCClient set (initClients fails)",
+			setupDaemon: func(d *Daemon) {
+				d.NNCClient = nncfake.NewSimpleClientset()
+			},
+			wantErr:     true,
+			errContains: "failed to initialize clients",
+		},
+		{
+			name: "only KubeClient set (initClients fails)",
+			setupDaemon: func(d *Daemon) {
+				d.KubeClient = kubefake.NewSimpleClientset()
+			},
+			wantErr:     true,
+			errContains: "failed to initialize clients",
+		},
 	}
 
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		t.Errorf("Expected database to be created at %s, but doesn't exist", dbPath)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			dbPath := filepath.Join(tempDir, "metis_daemon_test.sqlite")
+			sockPath := filepath.Join(tempDir, "metis_test.sock")
+
+			cfg := Config{
+				MonitorInterval: 5 * time.Second,
+				ReleaseCooldown: 1 * time.Minute,
+				DBPath:          dbPath,
+				SocketPath:      sockPath,
+			}
+
+			t.Setenv("NODE_NAME", "test-node")
+
+			d := NewDaemon(cfg)
+			tc.setupDaemon(d)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- d.Run(ctx)
+			}()
+
+			if !tc.wantErr {
+				// Wait for server to start and create socket
+				time.Sleep(500 * time.Millisecond)
+
+				if _, err := os.Stat(sockPath); os.IsNotExist(err) {
+					t.Errorf("Expected socket to be created at %s, but doesn't exist", sockPath)
+				}
+
+				if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+					t.Errorf("Expected database to be created at %s, but doesn't exist", dbPath)
+				}
+
+				// Trigger clean shutdown
+				cancel()
+			}
+
+			select {
+			case err := <-errCh:
+				if tc.wantErr {
+					if err == nil {
+						t.Fatal("Expected error, got nil")
+					}
+					if !strings.Contains(err.Error(), tc.errContains) {
+						t.Errorf("Expected error to contain %q, got: %v", tc.errContains, err)
+					}
+				} else {
+					if err != nil {
+						t.Errorf("Daemon exited with error: %v", err)
+					}
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatalf("Daemon failed to complete run or shut down within timeout")
+			}
+		})
 	}
-
-	// Trigger exit path!
-	cancel()
-
-	select {
-	case err := <-errCh:
-		if err != nil {
-			t.Errorf("Daemon exited with error: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatalf("Daemon failed to shut down within timeout")
-	}
-
-	// If select completes without timing out, Run() exited, meaning `defer storeInstance.Close()` was executed!
 }
+
 
 func TestEnsureNodeNetworkConfig(t *testing.T) {
 	nodeName := "test-node"

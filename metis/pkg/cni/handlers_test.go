@@ -337,6 +337,9 @@ func TestCniWithActualDaemon(t *testing.T) {
 		DBPath:     dbPath,
 		SocketPath: socketPath,
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	d := daemon.NewDaemon(cfg)
 	// Pre-populate with fake clients to satisfy the initialization requirements in Run() (they are not actually used by this test).
 	d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
@@ -349,9 +352,6 @@ func TestCniWithActualDaemon(t *testing.T) {
 			Name: "test-node",
 		},
 	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	errCh := make(chan error, 1)
 	go func() {

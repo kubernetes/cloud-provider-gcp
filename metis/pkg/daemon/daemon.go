@@ -89,11 +89,11 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	server := newAdaptiveIpamServer(logger, storeInstance, d.Config.SocketPath, d.Config.ReleaseCooldown, store.DefaultBusyTimeout)
 
-	if d.NNCClient == nil {
+	if d.NNCClient == nil || d.KubeClient == nil {
 		var err error
 		d.NNCClient, d.KubeClient, err = initClients()
 		if err != nil {
-			klog.Fatalf("failed to initialize clients: %v", err)
+			return fmt.Errorf("failed to initialize clients: %w", err)
 		}
 	}
 	if err := d.ensureNodeNetworkConfig(ctx, nodeName, logger); err != nil {
@@ -123,6 +123,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	server.monitor = monitorInstance
 
+	// TODO: Replace with nncInformerFactory.StartWithContext(ctx) once the
+	// gke-networking-api library is updated to generate StartWithContext.
 	nncInformerFactory.Start(ctx.Done())
 	go watcher.Run(ctx, defaultWatcherWorkers)
 	go monitorInstance.Run(ctx, defaultMonitorWorkers)

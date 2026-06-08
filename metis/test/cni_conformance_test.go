@@ -66,6 +66,9 @@ func TestLibcniConformance(t *testing.T) {
 		MonitorInterval: 2 * time.Second,
 		ReleaseCooldown: 1 * time.Minute,
 	}
+	daemonCtx, daemonCancel := context.WithCancel(context.Background())
+	defer daemonCancel()
+
 	d := daemon.NewDaemon(daemonConfig)
 	// Pre-populate with fake clients to satisfy the initialization requirements in Run() (they are not actually used by this test).
 	d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
@@ -78,9 +81,6 @@ func TestLibcniConformance(t *testing.T) {
 			Name: "test-node",
 		},
 	})
-
-	daemonCtx, daemonCancel := context.WithCancel(context.Background())
-	defer daemonCancel()
 
 	go func() {
 		if err := d.Run(daemonCtx); err != nil {

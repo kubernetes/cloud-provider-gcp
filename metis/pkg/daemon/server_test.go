@@ -711,10 +711,10 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 
 			// Verify that there is a pending request in map
 			server.requestsMu.RLock()
-			mapLen := len(server.requestsMap)
+			mapLen := len(server.requestsMap[network])
 			server.requestsMu.RUnlock()
 			if mapLen != 1 {
-				t.Errorf("Expected 1 pending request in requestsMap, got %d", mapLen)
+				t.Errorf("Expected 1 pending request in requestsMap for network %s, got %d", network, mapLen)
 			}
 
 			if tc.cancelCtx {

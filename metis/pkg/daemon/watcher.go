@@ -37,8 +37,17 @@ import (
 
 const defaultWatcherWorkers = 4
 
+// Watcher monitors the NodeNetworkConfig (NNC) resource for the local node where this daemon runs.
+// It synchronizes the local database with the control plane's CIDR allocations:
+// 1. Adds newly allocated CIDRs to the local database, triggering the OnCIDRAdded callback to wake up
+//    blocked CNI requests.
+// 2. Safely deletes CIDR blocks from the local database once they are successfully released by GCE/controller
+//    and removed from the NNC Status.
 type Watcher struct {
 	queue       workqueue.TypedRateLimitingInterface[string]
+	// syncHandler is the function called to sync a network work item. Decoupling this
+	// via a field function pointer allows unit tests to easily mock/override the sync
+	// logic without requiring full clients, informers, or stores.
 	syncHandler func(ctx context.Context, network string) error
 	nncClient   nncclientset.Interface
 	nodeName    string

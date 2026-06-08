@@ -199,7 +199,7 @@ func (m *Monitor) Run(ctx context.Context, workers int) {
 
 	// Periodic enqueuer
 	go wait.UntilWithContext(ctx, func(ctx context.Context) {
-		m.Enqueue()
+		m.enqueue()
 	}, m.monitorInterval)
 
 	for i := 0; i < workers; i++ {
@@ -238,9 +238,8 @@ func (m *Monitor) processNextWorkItem(ctx context.Context) bool {
 	return true
 }
 
-// Enqueue adds a network to the queue.
-// Enqueue adds a sync request to the queue.
-func (m *Monitor) Enqueue() {
+// enqueue adds a sync request to the queue.
+func (m *Monitor) enqueue() {
 	m.queue.Add("sync")
 }
 
@@ -458,13 +457,13 @@ func (m *Monitor) drainExcessive(ctx context.Context, network string, info *Util
 
 	blocksToMark := readyBlocks[:len(readyBlocks)-1]
 	totalPods := info.Usage.Total + info.PendingRequests
-	simulatedUsedIPs := usedIPs + info.PendingRequests
+	totalUsedIPs := usedIPs + info.PendingRequests
 	targetUsedIPs := int(m.lowUtilizationThreshold * float64(totalPods))
 
 	updated := false
 	for _, block := range blocksToMark {
-		if simulatedUsedIPs >= targetUsedIPs {
-			m.logger.Info("Target simulated used IPs reached, stopping marking blocks", "target", targetUsedIPs, "running", simulatedUsedIPs)
+		if totalUsedIPs >= targetUsedIPs {
+			m.logger.Info("Target total used IPs reached, stopping marking blocks", "target", targetUsedIPs, "running", totalUsedIPs)
 			break
 		}
 		availableIPs := max(0, block.TotalIPs-block.AllocatedIPs)
@@ -475,7 +474,7 @@ func (m *Monitor) drainExcessive(ctx context.Context, network string, info *Util
 		}
 		m.logger.Info("Marked CIDR block as Draining due to prolonged low utilization", "cidr", block.CIDR)
 
-		simulatedUsedIPs += availableIPs
+		totalUsedIPs += availableIPs
 		updated = true
 	}
 	return updated, nil

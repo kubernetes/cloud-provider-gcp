@@ -47,33 +47,6 @@ const (
 	ipv6PopulationBatchSize = 64
 )
 
-var (
-	// ErrCidrAlreadyExists is returned when a CIDR block already exists in the store.
-	ErrCidrAlreadyExists = errors.New("cidr block already exists")
-
-	// ErrNoAvailableIPs is returned when no available IPs can be found in any CIDR block.
-	ErrNoAvailableIPs = errors.New("no available IPs in store")
-
-	// ErrCidrBlockExhausted is returned when an IPv6 CIDR block cannot be expanded further.
-	ErrCidrBlockExhausted = errors.New("ipv6 cidr block exhausted and cannot be expanded")
-)
-
-// IPFamily represents the IP protocol family.
-type IPFamily string
-
-const (
-	IPv4 IPFamily = "ipv4"
-	IPv6 IPFamily = "ipv6"
-)
-
-type CidrBlockState string
-
-const (
-	StateReady    CidrBlockState = "Ready"
-	StateDraining CidrBlockState = "Draining"
-	StateDeleting CidrBlockState = "Deleting"
-)
-
 // Store manages database operations for IPAM.
 type Store struct {
 	db  *sql.DB
@@ -434,6 +407,9 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 		}
 		releases = append(releases, r)
 	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("failed to iterate rows: %w", err)
+	}
 
 	for _, r := range releases {
 		_, err = tx.ExecContext(ctx, `
@@ -495,6 +471,9 @@ func (s *Store) GetDeletingCIDRBlocks(ctx context.Context, network string) ([]CI
 			return nil, err
 		}
 		result = append(result, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate rows: %w", err)
 	}
 	return result, nil
 }
@@ -571,6 +550,9 @@ func (s *Store) FindAndMarkExpiredDrainingCIDRBlocks(ctx context.Context, networ
 			return nil, err
 		}
 		result = append(result, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate rows: %w", err)
 	}
 
 	for _, r := range result {
@@ -678,6 +660,9 @@ func (s *Store) allocateIP(ctx context.Context, params AllocateIPParams) (string
 			return "", "", fmt.Errorf("failed to scan cidr block id: %w", err)
 		}
 		cidrBlockIDs = append(cidrBlockIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return "", "", fmt.Errorf("failed to iterate rows: %w", err)
 	}
 
 	if len(cidrBlockIDs) == 0 {
@@ -923,6 +908,9 @@ func (s *Store) GetReadyCIDRBlocksSorted(ctx context.Context, network string) ([
 		}
 		result = append(result, r)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate rows: %w", err)
+	}
 	return result, nil
 }
 
@@ -941,6 +929,9 @@ func (s *Store) GetAllNetworks(ctx context.Context) ([]string, error) {
 			return nil, err
 		}
 		result = append(result, network)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate rows: %w", err)
 	}
 	return result, nil
 }
