@@ -63,7 +63,8 @@ func TestAdaptiveIpamServer_withGrpcClient(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, err := grpc.DialContext(ctx, sockPath, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+	conn, err := grpc.NewClient("unix://"+sockPath, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(_ context.Context, addr string) (net.Conn, error) {
+		addr = strings.TrimPrefix(addr, "unix://")
 		return net.Dial("unix", addr)
 	}))
 	if err != nil {
@@ -224,24 +225,24 @@ func TestAdaptiveIpamServer_AllocatePodIP_Concurrency(t *testing.T) {
 		}
 	}
 
-	uniqueIpMap := make(map[string]bool)
+	uniqueIPMap := map[string]bool{}
 	for _, ip := range ips {
 		if ip != "" {
-			uniqueIpMap[ip] = true
+			uniqueIPMap[ip] = true
 		}
 	}
-	if len(uniqueIpMap) != numGoroutines/2 {
-		t.Errorf("Expected %d unique IPv4s, got %d (ips: %v)", numGoroutines/2, len(uniqueIpMap), ips)
+	if len(uniqueIPMap) != numGoroutines/2 {
+		t.Errorf("Expected %d unique IPv4s, got %d (ips: %v)", numGoroutines/2, len(uniqueIPMap), ips)
 	}
 
-	uniqueIpMap6 := make(map[string]bool)
+	uniqueIPMap6 := map[string]bool{}
 	for _, ip := range ips6 {
 		if ip != "" {
-			uniqueIpMap6[ip] = true
+			uniqueIPMap6[ip] = true
 		}
 	}
-	if len(uniqueIpMap6) != numGoroutines/2 {
-		t.Errorf("Expected %d unique IPv6s, got %d (ips6: %v)", numGoroutines/2, len(uniqueIpMap6), ips6)
+	if len(uniqueIPMap6) != numGoroutines/2 {
+		t.Errorf("Expected %d unique IPv6s, got %d (ips6: %v)", numGoroutines/2, len(uniqueIPMap6), ips6)
 	}
 }
 
@@ -576,6 +577,9 @@ func TestAdaptiveIpamServer_AllocatePodIP_DualStack(t *testing.T) {
 	}
 
 	resp, err := server.AllocatePodIP(context.Background(), req)
+	if err != nil {
+		t.Fatalf("AllocatePodIP failed: %v", err)
+	}
 	if resp.Ipv4 == nil || resp.Ipv4.IpAddress == "" {
 		t.Fatal("Expected IPv4 allocation, got nil or empty")
 	}

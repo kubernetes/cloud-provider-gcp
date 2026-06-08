@@ -21,7 +21,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -91,7 +90,9 @@ func TestNewStore_Idempotency(t *testing.T) {
 	if _, err := db.Exec("DROP INDEX idx_ip_idempotency;"); err != nil {
 		t.Fatalf("Failed to manually drop index: %v", err)
 	}
-	db.Close()
+	if err := db.Close(); err != nil {
+		t.Fatalf("Failed to close DB: %v", err)
+	}
 
 	// If the short-circuit works, it will see user_version=1 and return early,
 	// meaning it will NOT execute the CREATE statements to fix the missing index.
@@ -194,7 +195,7 @@ func TestStore_Concurrency(t *testing.T) {
 
 			// Simulate an Insert.
 			cidr := fmt.Sprintf("10.0.%d.0/24", id)
-			insertQuery := `INSERT INTO cidr_blocks (cidr, network, ip_family, total_ips, allocated_ips, state) 
+			insertQuery := `INSERT INTO cidr_blocks (cidr, network, ip_family, total_ips, allocated_ips, state)
 							VALUES (?, 'test-network', 'ipv4', 256, 0, 'Ready')`
 
 			_, err := s.db.Exec(insertQuery, cidr)
@@ -884,7 +885,7 @@ func TestStore_AllocateIPv4_Concurrency_DifferentContainers(t *testing.T) {
 	wg.Wait()
 
 	// Verify all succeeded and IPs are unique
-	uniqueIPs := make(map[string]bool)
+	uniqueIPs := map[string]bool{}
 	for i := 0; i < numGoroutines; i++ {
 		if errs[i] != nil {
 			t.Errorf("Goroutine %d failed: %v", i, errs[i])
@@ -1018,7 +1019,7 @@ func TestStore_AllocateIPv6_ExceedBatch(t *testing.T) {
 	}
 
 	// Verify we got unique IPs
-	uniqueIPs := make(map[string]bool)
+	uniqueIPs := map[string]bool{}
 	for _, ip := range ips {
 		if uniqueIPs[ip] {
 			t.Errorf("Duplicate IP allocated: %s", ip)
@@ -1076,7 +1077,7 @@ func TestStore_AllocateIPv6_Concurrency(t *testing.T) {
 	wg.Wait()
 
 	// Verify all succeeded and IPs are unique
-	uniqueIPs := make(map[string]bool)
+	uniqueIPs := map[string]bool{}
 	for i := 0; i < numGoroutines; i++ {
 		if errs[i] != nil {
 			t.Errorf("Goroutine %d failed: %v", i, errs[i])
@@ -1412,16 +1413,13 @@ func TestStore_CheckAllocation(t *testing.T) {
 }
 
 func TestStore_ReleaseIP_TimezoneRobustness(t *testing.T) {
-	// 1. Save original TZ and local location
-	origTZ := os.Getenv("TZ")
+	// 1. Force timezone to be America/Los_Angeles (UTC-7 / UTC-8, i.e., behind UTC)
+	t.Setenv("TZ", "America/Los_Angeles")
 	origLocal := time.Local
 	defer func() {
-		os.Setenv("TZ", origTZ)
 		time.Local = origLocal
 	}()
 
-	// 2. Force timezone to be America/Los_Angeles (UTC-7 / UTC-8, i.e., behind UTC)
-	os.Setenv("TZ", "America/Los_Angeles")
 	time.Local = nil // Force Go to reload timezone location from TZ env
 
 	logger := logr.Discard()

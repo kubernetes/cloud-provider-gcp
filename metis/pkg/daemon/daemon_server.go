@@ -140,7 +140,7 @@ func (s *adaptiveIpamServer) allocateIP(ctx context.Context, req *adaptiveipam.A
 	})
 
 	if err != nil {
-		if (errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded)) && lastErr != nil {
+		if wait.Interrupted(err) && lastErr != nil {
 			err = lastErr // Use last error if timed out
 		}
 		s.logger.Error(err, fmt.Sprintf("failed to allocate %s", ipFamily), "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
