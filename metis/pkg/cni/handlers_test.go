@@ -28,11 +28,16 @@ import (
 	"testing"
 	"time"
 
+	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
+	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
 	"github.com/containernetworking/cni/pkg/skel"
 	current "github.com/containernetworking/cni/pkg/types/100"
 	"google.golang.org/grpc"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/util/wait"
+	kubefake "k8s.io/client-go/kubernetes/fake"
 	pb "k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg/daemon"
 )
@@ -326,11 +331,24 @@ func TestCniWithActualDaemon(t *testing.T) {
 		WithLogFile(logFile),
 	)
 
+	t.Setenv("NODE_NAME", "test-node")
+
 	cfg := daemon.Config{
 		DBPath:     dbPath,
 		SocketPath: socketPath,
 	}
 	d := daemon.NewDaemon(cfg)
+	// Pre-populate with fake clients to satisfy the initialization requirements in Run() (they are not actually used by this test).
+	d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-node",
+		},
+	})
+	d.KubeClient = kubefake.NewSimpleClientset(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-node",
+		},
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
