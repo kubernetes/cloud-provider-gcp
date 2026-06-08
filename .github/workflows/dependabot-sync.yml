@@ -31,6 +31,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          shopt -s globstar
           git add go.work go.work.sum **/go.mod **/go.sum vendor/
           # Only commit if there are actual changes
           git diff --quiet && git diff --staged --quiet || git commit -m "chore: sync go workspace and vendor"
