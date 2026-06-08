@@ -1231,7 +1231,6 @@ func TestStore_ExpandIPv6Block_NoRedundantExpansion(t *testing.T) {
 	}
 }
 
-
 func TestStore_AllocateIPv6_MultiCIDRExpansion(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()
