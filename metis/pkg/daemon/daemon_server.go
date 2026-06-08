@@ -76,26 +76,34 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 	var ipv4Alloc *adaptiveipam.PodIP
 	var err error
 	if req.Ipv4Config != nil {
-		ipv4Alloc, err = s.allocateIPv4(ctx, req)
+		if req.Ipv4Config.ContainerId == "" || req.Ipv4Config.InterfaceName == "" {
+			return nil, status.Error(codes.InvalidArgument, "container_id and interface_name must not be empty")
+		}
+		ipv4Alloc, err = s.allocateIP(ctx, req, req.Ipv4Config, store.IPv4)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	var ipv6Alloc *adaptiveipam.PodIP
 	if req.Ipv6Config != nil {
-		return nil, status.Error(codes.Unimplemented, "IPv6 allocation is not implemented yet")
+		if req.Ipv6Config.ContainerId == "" || req.Ipv6Config.InterfaceName == "" {
+			return nil, status.Error(codes.InvalidArgument, "container_id and interface_name must not be empty")
+		}
+		ipv6Alloc, err = s.allocateIP(ctx, req, req.Ipv6Config, store.IPv6)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &adaptiveipam.AllocatePodIPResponse{
 		Ipv4: ipv4Alloc,
+		Ipv6: ipv6Alloc,
 	}, nil
 }
 
-func (s *adaptiveIpamServer) allocateIPv4(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest) (*adaptiveipam.PodIP, error) {
-	config := req.Ipv4Config
-	network := req.Network
-
-	if err := s.MaybeAddInitialPodCidr(ctx, network, config.InitialPodCidr); err != nil {
+func (s *adaptiveIpamServer) allocateIP(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest, config *adaptiveipam.IPConfig, ipFamily store.IPFamily) (*adaptiveipam.PodIP, error) {
+	if err := s.maybeAddInitialPodCidr(ctx, req.Network, config.InitialPodCidr); err != nil {
 		return nil, err
 	}
 
@@ -106,11 +114,18 @@ func (s *adaptiveIpamServer) allocateIPv4(ctx context.Context, req *adaptiveipam
 		timeout = store.DefaultBusyTimeout
 	}
 
+	params := store.AllocateIPParams{
+		Network:       req.Network,
+		InterfaceName: config.InterfaceName,
+		ContainerID:   config.ContainerId,
+		IPFamily:      ipFamily,
+	}
+
 	// The total timeout is set to align with the SQLite busy_timeout configured in the DSN.
 	// PollUntilContextTimeout creates a derived context with this timeout, but also respects
 	// the parent gRPC context (ctx) cancellation.
 	err := wait.PollUntilContextTimeout(ctx, defaultPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
-		ip, cidr, lastErr = s.store.AllocateIPv4(ctx, network, config.InterfaceName, config.ContainerId)
+		ip, cidr, lastErr = s.store.AllocateIP(ctx, params)
 		if lastErr == nil {
 			return true, nil // Success
 		}
@@ -120,7 +135,7 @@ func (s *adaptiveIpamServer) allocateIPv4(ctx context.Context, req *adaptiveipam
 		if ctx.Err() != nil {
 			return true, ctx.Err() // Stop immediately if context is done
 		}
-		s.logger.V(4).Info("Retrying AllocateIPv4 due to transient error", "err", lastErr, "network", network)
+		s.logger.V(4).Info(fmt.Sprintf("Retrying %s allocation due to transient error", ipFamily), "err", lastErr, "network", req.Network)
 		return false, nil // Retry
 	})
 
@@ -128,13 +143,13 @@ func (s *adaptiveIpamServer) allocateIPv4(ctx context.Context, req *adaptiveipam
 		if (errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded)) && lastErr != nil {
 			err = lastErr // Use last error if timed out
 		}
-		s.logger.Error(err, "failed to allocate ipv4", "network", network, "podName", req.PodName, "podNamespace", req.PodNamespace)
+		s.logger.Error(err, fmt.Sprintf("failed to allocate %s", ipFamily), "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 
 		if errors.Is(err, store.ErrNoAvailableIPs) {
-			return nil, status.Errorf(codes.ResourceExhausted, "failed to allocate ipv4 for pod %s/%s: %v", req.PodNamespace, req.PodName, err)
+			return nil, status.Errorf(codes.ResourceExhausted, "failed to allocate %s for pod %s/%s: %v", ipFamily, req.PodNamespace, req.PodName, err)
 		}
 		// TODO: Refine status code to return a more specific code based on the error type instead of a fallback Unavailable.
-		return nil, status.Errorf(codes.Unavailable, "failed to allocate ipv4 for pod %s/%s: %v", req.PodNamespace, req.PodName, err)
+		return nil, status.Errorf(codes.Unavailable, "failed to allocate %s for pod %s/%s: %v", ipFamily, req.PodNamespace, req.PodName, err)
 	}
 
 	return &adaptiveipam.PodIP{
@@ -143,12 +158,13 @@ func (s *adaptiveIpamServer) allocateIPv4(ctx context.Context, req *adaptiveipam
 	}, nil
 }
 
-func (s *adaptiveIpamServer) MaybeAddInitialPodCidr(ctx context.Context, network string, initialPodCidr string) error {
+func (s *adaptiveIpamServer) maybeAddInitialPodCidr(ctx context.Context, network string, initialPodCidr string) error {
 	if initialPodCidr == "" {
 		return nil
 	}
 
-	exists, err := s.store.GetCIDRBlockByCIDR(ctx, initialPodCidr)
+	// TODO: save a bool flag about whether we added the initial CIDR to the store to avoid calling store everytime to check if initial cidr is added
+	exists, err := s.store.GetCIDRBlockByCIDRAndNetwork(ctx, initialPodCidr, network)
 	if err != nil {
 		s.logger.Error(err, "failed to check if initial cidr block exists", "network", network, "cidr", initialPodCidr)
 		return status.Errorf(codes.Unavailable, "failed to check if initial cidr block %s exists for network %s: %v", initialPodCidr, network, err)
@@ -174,6 +190,10 @@ func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptivei
 		"podName", req.PodName,
 		"podNamespace", req.PodNamespace)
 
+	if req.ContainerId == "" || req.InterfaceName == "" {
+		return nil, status.Error(codes.InvalidArgument, "container_id and interface_name must not be empty")
+	}
+
 	count, err := s.store.ReleaseIPByOwner(ctx, req.Network, req.ContainerId, req.InterfaceName, s.releaseCooldown)
 	if err != nil {
 		s.logger.Error(err, "failed to deallocate ips", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
@@ -187,6 +207,24 @@ func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptivei
 	}
 
 	return &adaptiveipam.DeallocatePodIPResponse{}, nil
+}
+
+func (s *adaptiveIpamServer) CheckPodIP(ctx context.Context, req *adaptiveipam.CheckPodIPRequest) (*adaptiveipam.CheckPodIPResponse, error) {
+	s.logger.Info("CheckPodIP request received",
+		"network", req.Network,
+		"containerID", req.ContainerId,
+		"interfaceName", req.InterfaceName,
+		"podName", req.PodName,
+		"podNamespace", req.PodNamespace)
+
+	err := s.store.CheckAllocation(ctx, req.Network, req.ContainerId, req.InterfaceName)
+	if err != nil {
+		s.logger.Error(err, "CheckPodIP failed", "network", req.Network, "containerID", req.ContainerId, "podName", req.PodName, "podNamespace", req.PodNamespace)
+		return nil, status.Errorf(codes.NotFound, "allocation check failed: %v", err)
+	}
+
+	s.logger.Info("CheckPodIP succeeded", "network", req.Network, "containerID", req.ContainerId, "podName", req.PodName, "podNamespace", req.PodNamespace)
+	return &adaptiveipam.CheckPodIPResponse{}, nil
 }
 
 func (s *adaptiveIpamServer) start() error {
@@ -204,6 +242,12 @@ func (s *adaptiveIpamServer) start() error {
 		return fmt.Errorf("failed to listen on uds %s: %w", sockPath, err)
 	}
 	defer listener.Close()
+
+	// Explicitly restrict socket permissions to owner-only (0600) to prevent
+	// unauthorized local processes from interacting with the daemon.
+	if err := os.Chmod(sockPath, 0600); err != nil {
+		return fmt.Errorf("failed to set permissions on socket %s: %w", sockPath, err)
+	}
 
 	s.grpcServer = grpc.NewServer()
 	adaptiveipam.RegisterAdaptiveIpamServer(s.grpcServer, s)
