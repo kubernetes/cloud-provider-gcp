@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC.
+// Copyright 2026 Google LLC.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -57,11 +57,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/googleapis/gax-go/v2/internallog"
 	googleapi "google.golang.org/api/googleapi"
 	internal "google.golang.org/api/internal"
 	gensupport "google.golang.org/api/internal/gensupport"
@@ -85,6 +87,7 @@ var _ = strings.Replace
 var _ = context.Canceled
 var _ = internaloption.WithDefaultEndpoint
 var _ = internal.Version
+var _ = internallog.New
 
 const apiId = "networkservices:v1"
 const apiName = "networkservices"
@@ -115,10 +118,8 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	if err != nil {
 		return nil, err
 	}
-	s, err := New(client)
-	if err != nil {
-		return nil, err
-	}
+	s := &Service{client: client, BasePath: basePath, logger: internaloption.GetLogger(opts)}
+	s.Projects = NewProjectsService(s)
 	if endpoint != "" {
 		s.BasePath = endpoint
 	}
@@ -134,13 +135,12 @@ func New(client *http.Client) (*Service, error) {
 	if client == nil {
 		return nil, errors.New("client is nil")
 	}
-	s := &Service{client: client, BasePath: basePath}
-	s.Projects = NewProjectsService(s)
-	return s, nil
+	return NewService(context.TODO(), option.WithHTTPClient(client))
 }
 
 type Service struct {
 	client    *http.Client
+	logger    *slog.Logger
 	BasePath  string // API endpoint base URL
 	UserAgent string // optional additional User-Agent fragment
 
@@ -168,6 +168,8 @@ type ProjectsService struct {
 
 func NewProjectsLocationsService(s *Service) *ProjectsLocationsService {
 	rs := &ProjectsLocationsService{s: s}
+	rs.AgentGateways = NewProjectsLocationsAgentGatewaysService(s)
+	rs.AuthzExtensions = NewProjectsLocationsAuthzExtensionsService(s)
 	rs.EdgeCacheKeysets = NewProjectsLocationsEdgeCacheKeysetsService(s)
 	rs.EdgeCacheOrigins = NewProjectsLocationsEdgeCacheOriginsService(s)
 	rs.EdgeCacheServices = NewProjectsLocationsEdgeCacheServicesService(s)
@@ -175,19 +177,27 @@ func NewProjectsLocationsService(s *Service) *ProjectsLocationsService {
 	rs.Gateways = NewProjectsLocationsGatewaysService(s)
 	rs.GrpcRoutes = NewProjectsLocationsGrpcRoutesService(s)
 	rs.HttpRoutes = NewProjectsLocationsHttpRoutesService(s)
+	rs.LbEdgeExtensions = NewProjectsLocationsLbEdgeExtensionsService(s)
 	rs.LbRouteExtensions = NewProjectsLocationsLbRouteExtensionsService(s)
 	rs.LbTrafficExtensions = NewProjectsLocationsLbTrafficExtensionsService(s)
 	rs.Meshes = NewProjectsLocationsMeshesService(s)
+	rs.MulticastConsumerAssociations = NewProjectsLocationsMulticastConsumerAssociationsService(s)
+	rs.MulticastGroupConsumerActivations = NewProjectsLocationsMulticastGroupConsumerActivationsService(s)
 	rs.Operations = NewProjectsLocationsOperationsService(s)
 	rs.ServiceBindings = NewProjectsLocationsServiceBindingsService(s)
 	rs.ServiceLbPolicies = NewProjectsLocationsServiceLbPoliciesService(s)
 	rs.TcpRoutes = NewProjectsLocationsTcpRoutesService(s)
 	rs.TlsRoutes = NewProjectsLocationsTlsRoutesService(s)
+	rs.WasmPlugins = NewProjectsLocationsWasmPluginsService(s)
 	return rs
 }
 
 type ProjectsLocationsService struct {
 	s *Service
+
+	AgentGateways *ProjectsLocationsAgentGatewaysService
+
+	AuthzExtensions *ProjectsLocationsAuthzExtensionsService
 
 	EdgeCacheKeysets *ProjectsLocationsEdgeCacheKeysetsService
 
@@ -203,11 +213,17 @@ type ProjectsLocationsService struct {
 
 	HttpRoutes *ProjectsLocationsHttpRoutesService
 
+	LbEdgeExtensions *ProjectsLocationsLbEdgeExtensionsService
+
 	LbRouteExtensions *ProjectsLocationsLbRouteExtensionsService
 
 	LbTrafficExtensions *ProjectsLocationsLbTrafficExtensionsService
 
 	Meshes *ProjectsLocationsMeshesService
+
+	MulticastConsumerAssociations *ProjectsLocationsMulticastConsumerAssociationsService
+
+	MulticastGroupConsumerActivations *ProjectsLocationsMulticastGroupConsumerActivationsService
 
 	Operations *ProjectsLocationsOperationsService
 
@@ -218,6 +234,26 @@ type ProjectsLocationsService struct {
 	TcpRoutes *ProjectsLocationsTcpRoutesService
 
 	TlsRoutes *ProjectsLocationsTlsRoutesService
+
+	WasmPlugins *ProjectsLocationsWasmPluginsService
+}
+
+func NewProjectsLocationsAgentGatewaysService(s *Service) *ProjectsLocationsAgentGatewaysService {
+	rs := &ProjectsLocationsAgentGatewaysService{s: s}
+	return rs
+}
+
+type ProjectsLocationsAgentGatewaysService struct {
+	s *Service
+}
+
+func NewProjectsLocationsAuthzExtensionsService(s *Service) *ProjectsLocationsAuthzExtensionsService {
+	rs := &ProjectsLocationsAuthzExtensionsService{s: s}
+	return rs
+}
+
+type ProjectsLocationsAuthzExtensionsService struct {
+	s *Service
 }
 
 func NewProjectsLocationsEdgeCacheKeysetsService(s *Service) *ProjectsLocationsEdgeCacheKeysetsService {
@@ -258,10 +294,22 @@ type ProjectsLocationsEndpointPoliciesService struct {
 
 func NewProjectsLocationsGatewaysService(s *Service) *ProjectsLocationsGatewaysService {
 	rs := &ProjectsLocationsGatewaysService{s: s}
+	rs.RouteViews = NewProjectsLocationsGatewaysRouteViewsService(s)
 	return rs
 }
 
 type ProjectsLocationsGatewaysService struct {
+	s *Service
+
+	RouteViews *ProjectsLocationsGatewaysRouteViewsService
+}
+
+func NewProjectsLocationsGatewaysRouteViewsService(s *Service) *ProjectsLocationsGatewaysRouteViewsService {
+	rs := &ProjectsLocationsGatewaysRouteViewsService{s: s}
+	return rs
+}
+
+type ProjectsLocationsGatewaysRouteViewsService struct {
 	s *Service
 }
 
@@ -280,6 +328,15 @@ func NewProjectsLocationsHttpRoutesService(s *Service) *ProjectsLocationsHttpRou
 }
 
 type ProjectsLocationsHttpRoutesService struct {
+	s *Service
+}
+
+func NewProjectsLocationsLbEdgeExtensionsService(s *Service) *ProjectsLocationsLbEdgeExtensionsService {
+	rs := &ProjectsLocationsLbEdgeExtensionsService{s: s}
+	return rs
+}
+
+type ProjectsLocationsLbEdgeExtensionsService struct {
 	s *Service
 }
 
@@ -303,10 +360,40 @@ type ProjectsLocationsLbTrafficExtensionsService struct {
 
 func NewProjectsLocationsMeshesService(s *Service) *ProjectsLocationsMeshesService {
 	rs := &ProjectsLocationsMeshesService{s: s}
+	rs.RouteViews = NewProjectsLocationsMeshesRouteViewsService(s)
 	return rs
 }
 
 type ProjectsLocationsMeshesService struct {
+	s *Service
+
+	RouteViews *ProjectsLocationsMeshesRouteViewsService
+}
+
+func NewProjectsLocationsMeshesRouteViewsService(s *Service) *ProjectsLocationsMeshesRouteViewsService {
+	rs := &ProjectsLocationsMeshesRouteViewsService{s: s}
+	return rs
+}
+
+type ProjectsLocationsMeshesRouteViewsService struct {
+	s *Service
+}
+
+func NewProjectsLocationsMulticastConsumerAssociationsService(s *Service) *ProjectsLocationsMulticastConsumerAssociationsService {
+	rs := &ProjectsLocationsMulticastConsumerAssociationsService{s: s}
+	return rs
+}
+
+type ProjectsLocationsMulticastConsumerAssociationsService struct {
+	s *Service
+}
+
+func NewProjectsLocationsMulticastGroupConsumerActivationsService(s *Service) *ProjectsLocationsMulticastGroupConsumerActivationsService {
+	rs := &ProjectsLocationsMulticastGroupConsumerActivationsService{s: s}
+	return rs
+}
+
+type ProjectsLocationsMulticastGroupConsumerActivationsService struct {
 	s *Service
 }
 
@@ -353,6 +440,251 @@ func NewProjectsLocationsTlsRoutesService(s *Service) *ProjectsLocationsTlsRoute
 
 type ProjectsLocationsTlsRoutesService struct {
 	s *Service
+}
+
+func NewProjectsLocationsWasmPluginsService(s *Service) *ProjectsLocationsWasmPluginsService {
+	rs := &ProjectsLocationsWasmPluginsService{s: s}
+	rs.Versions = NewProjectsLocationsWasmPluginsVersionsService(s)
+	return rs
+}
+
+type ProjectsLocationsWasmPluginsService struct {
+	s *Service
+
+	Versions *ProjectsLocationsWasmPluginsVersionsService
+}
+
+func NewProjectsLocationsWasmPluginsVersionsService(s *Service) *ProjectsLocationsWasmPluginsVersionsService {
+	rs := &ProjectsLocationsWasmPluginsVersionsService{s: s}
+	return rs
+}
+
+type ProjectsLocationsWasmPluginsVersionsService struct {
+	s *Service
+}
+
+// AgentGateway: AgentGateway represents the agent gateway resource.
+type AgentGateway struct {
+	// AgentGatewayCard: Output only. Field for populated AgentGateway card.
+	AgentGatewayCard *AgentGatewayAgentGatewayOutputCard `json:"agentGatewayCard,omitempty"`
+	// CreateTime: Output only. The timestamp when the resource was created.
+	CreateTime string `json:"createTime,omitempty"`
+	// Description: Optional. A free-text description of the resource. Max length
+	// 1024 characters.
+	Description string `json:"description,omitempty"`
+	// Etag: Optional. Etag of the resource. If this is provided, it must match the
+	// server's etag. If the provided etag does not match the server's etag, the
+	// request will fail with a 409 ABORTED error.
+	Etag string `json:"etag,omitempty"`
+	// GoogleManaged: Optional. Proxy is orchestrated and managed by GoogleCloud in
+	// a tenant project.
+	GoogleManaged *AgentGatewayGoogleManaged `json:"googleManaged,omitempty"`
+	// Labels: Optional. Set of label tags associated with the AgentGateway
+	// resource.
+	Labels map[string]string `json:"labels,omitempty"`
+	// Name: Identifier. Name of the AgentGateway resource. It matches pattern
+	// `projects/*/locations/*/agentGateways/`.
+	Name string `json:"name,omitempty"`
+	// NetworkConfig: Optional. Network configuration for the AgentGateway.
+	NetworkConfig *AgentGatewayNetworkConfig `json:"networkConfig,omitempty"`
+	// Protocols: Required. List of protocols supported by an Agent Gateway
+	//
+	// Possible values:
+	//   "PROTOCOL_UNSPECIFIED" - Unspecified protocol.
+	//   "MCP" - Message Control Plane protocol.
+	Protocols []string `json:"protocols,omitempty"`
+	// Registries: Optional. A list of Agent registries containing the agents, MCP
+	// servers and tools governed by the Agent Gateway. Note: Currently limited to
+	// project-scoped registries Must be of format
+	// `//agentregistry.googleapis.com/projects/{project}/locations/{location}/
+	Registries []string `json:"registries,omitempty"`
+	// SelfManaged: Optional. Attach to existing Application Load Balancers or
+	// Secure Web Proxies.
+	SelfManaged *AgentGatewaySelfManaged `json:"selfManaged,omitempty"`
+	// UpdateTime: Output only. The timestamp when the resource was updated.
+	UpdateTime string `json:"updateTime,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "AgentGatewayCard") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AgentGatewayCard") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AgentGateway) MarshalJSON() ([]byte, error) {
+	type NoMethod AgentGateway
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AgentGatewayAgentGatewayOutputCard: AgentGatewayOutputCard contains
+// informational output-only fields
+type AgentGatewayAgentGatewayOutputCard struct {
+	// MtlsEndpoint: Output only. mTLS Endpoint associated with this AgentGateway
+	MtlsEndpoint string `json:"mtlsEndpoint,omitempty"`
+	// RootCertificates: Output only. Root Certificates for Agents to validate this
+	// AgentGateway
+	RootCertificates []string `json:"rootCertificates,omitempty"`
+	// ServiceExtensionsServiceAccount: Output only. Service Account used by
+	// Service Extensions to operate.
+	ServiceExtensionsServiceAccount string `json:"serviceExtensionsServiceAccount,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "MtlsEndpoint") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "MtlsEndpoint") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AgentGatewayAgentGatewayOutputCard) MarshalJSON() ([]byte, error) {
+	type NoMethod AgentGatewayAgentGatewayOutputCard
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AgentGatewayGoogleManaged: Configuration for Google Managed deployment mode.
+// Proxy is orchestrated and managed by GoogleCloud in a tenant project.
+type AgentGatewayGoogleManaged struct {
+	// GovernedAccessPath: Optional. Operating Mode of Agent Gateway.
+	//
+	// Possible values:
+	//   "GOVERNED_ACCESS_PATH_UNSPECIFIED" - Governed access path is not
+	// specified.
+	//   "AGENT_TO_ANYWHERE" - Govern agent conections to destinations.
+	//   "CLIENT_TO_AGENT" - Protect connection to Agent or Tool.
+	GovernedAccessPath string `json:"governedAccessPath,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "GovernedAccessPath") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "GovernedAccessPath") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AgentGatewayGoogleManaged) MarshalJSON() ([]byte, error) {
+	type NoMethod AgentGatewayGoogleManaged
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AgentGatewayNetworkConfig: NetworkConfig contains network configurations for
+// the AgentGateway.
+type AgentGatewayNetworkConfig struct {
+	// DnsPeeringConfig: Optional. Optional DNS peering configuration for
+	// connectivity to your private VPC network.
+	DnsPeeringConfig *AgentGatewayNetworkConfigDnsPeeringConfig `json:"dnsPeeringConfig,omitempty"`
+	// Egress: Optional. Optional PSC-Interface network attachment for connectivity
+	// to your private VPCs network.
+	Egress *AgentGatewayNetworkConfigEgress `json:"egress,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "DnsPeeringConfig") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "DnsPeeringConfig") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AgentGatewayNetworkConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod AgentGatewayNetworkConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AgentGatewayNetworkConfigDnsPeeringConfig: DNS peering config for the user
+// VPC network.
+type AgentGatewayNetworkConfigDnsPeeringConfig struct {
+	// Domains: Required. Domain names for which DNS queries should be forwarded to
+	// the target network.
+	Domains []string `json:"domains,omitempty"`
+	// TargetNetwork: Required. Target network in 'target project' to which DNS
+	// queries should be forwarded to. Must be in format of
+	// `projects/{project}/global/networks/{network}`.
+	TargetNetwork string `json:"targetNetwork,omitempty"`
+	// TargetProject: Required. Target project ID to which DNS queries should be
+	// forwarded to. This can be the same project that contains the AgentGateway or
+	// a different project.
+	TargetProject string `json:"targetProject,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Domains") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Domains") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AgentGatewayNetworkConfigDnsPeeringConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod AgentGatewayNetworkConfigDnsPeeringConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AgentGatewayNetworkConfigEgress: Configuration for Egress
+type AgentGatewayNetworkConfigEgress struct {
+	// NetworkAttachment: Optional. The URI of the Network Attachment resource.
+	NetworkAttachment string `json:"networkAttachment,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "NetworkAttachment") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "NetworkAttachment") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AgentGatewayNetworkConfigEgress) MarshalJSON() ([]byte, error) {
+	type NoMethod AgentGatewayNetworkConfigEgress
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AgentGatewaySelfManaged: Configuration for Self Managed deployment mode.
+// Attach to existing Application Load Balancers or Secure Web Proxies.
+type AgentGatewaySelfManaged struct {
+	// ResourceUri: Optional. A supported Google Cloud networking proxy in the
+	// Project and Location
+	ResourceUri string `json:"resourceUri,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "ResourceUri") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "ResourceUri") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AgentGatewaySelfManaged) MarshalJSON() ([]byte, error) {
+	type NoMethod AgentGatewaySelfManaged
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // AuditConfig: Specifies the audit configuration for a service. The
@@ -428,6 +760,122 @@ type AuditLogConfig struct {
 
 func (s AuditLogConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod AuditLogConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AuthzExtension: `AuthzExtension` is a resource that allows traffic
+// forwarding to a callout backend service to make an authorization decision.
+type AuthzExtension struct {
+	// Authority: Optional. The `:authority` header in the gRPC request sent from
+	// Envoy to the extension service. It is required when the `service` field
+	// points to a backend service or a wasm plugin.
+	Authority string `json:"authority,omitempty"`
+	// CreateTime: Output only. The timestamp when the resource was created.
+	CreateTime string `json:"createTime,omitempty"`
+	// Description: Optional. A human-readable description of the resource.
+	Description string `json:"description,omitempty"`
+	// FailOpen: Optional. Determines how the proxy behaves if the call to the
+	// extension fails or times out. When set to `TRUE`, request or response
+	// processing continues without error. Any subsequent extensions in the
+	// extension chain are also executed. When set to `FALSE` or the default
+	// setting of `FALSE` is used, one of the following happens: * If response
+	// headers have not been delivered to the downstream client, a generic 500
+	// error is returned to the client. The error response can be tailored by
+	// configuring a custom error response in the load balancer. * If response
+	// headers have been delivered, then the HTTP stream to the downstream client
+	// is reset.
+	FailOpen bool `json:"failOpen,omitempty"`
+	// ForwardAttributes: Optional. List of the Envoy attributes to forward to the
+	// extension server. The attributes provided here are included as part of the
+	// `ProcessingRequest.attributes` field (of type `map`), where the keys are the
+	// attribute names. Refer to the documentation
+	// (https://cloud.google.com/service-extensions/docs/cel-matcher-language-reference#attributes)
+	// for the names of attributes that can be forwarded. If omitted, no attributes
+	// are sent. Each element is a string indicating the attribute name.
+	ForwardAttributes []string `json:"forwardAttributes,omitempty"`
+	// ForwardHeaders: Optional. List of the HTTP headers to forward to the
+	// extension (from the client). If omitted, all headers are sent. Each element
+	// is a string indicating the header name.
+	ForwardHeaders []string `json:"forwardHeaders,omitempty"`
+	// Labels: Optional. Set of labels associated with the `AuthzExtension`
+	// resource. The format must comply with the requirements for labels
+	// (/compute/docs/labeling-resources#requirements) for Google Cloud resources.
+	Labels map[string]string `json:"labels,omitempty"`
+	// LoadBalancingScheme: Optional. All backend services and forwarding rules
+	// referenced by this extension must share the same load balancing scheme.
+	// Supported values: `INTERNAL_MANAGED`, `EXTERNAL_MANAGED`. Can be omitted for
+	// AuthzExtensions that do not reference a backend service. For more
+	// information, refer to Backend services overview
+	// (https://cloud.google.com/load-balancing/docs/backend-service).
+	//
+	// Possible values:
+	//   "LOAD_BALANCING_SCHEME_UNSPECIFIED" - Default value. Do not use.
+	//   "INTERNAL_MANAGED" - Signifies that this is used for Internal HTTP(S) Load
+	// Balancing.
+	//   "EXTERNAL_MANAGED" - Signifies that this is used for External Managed
+	// HTTP(S) Load Balancing.
+	LoadBalancingScheme string `json:"loadBalancingScheme,omitempty"`
+	// Metadata: Optional. The metadata provided here is included as part of the
+	// `metadata_context` (of type `google.protobuf.Struct`) in the
+	// `ProcessingRequest` message sent to the extension server. The metadata is
+	// available under the namespace `com.google.authz_extension.`. The following
+	// variables are supported in the metadata Struct: `{forwarding_rule_id}` -
+	// substituted with the forwarding rule's fully qualified resource name.
+	Metadata googleapi.RawMessage `json:"metadata,omitempty"`
+	// Name: Required. Identifier. Name of the `AuthzExtension` resource in the
+	// following format:
+	// `projects/{project}/locations/{location}/authzExtensions/{authz_extension}`.
+	Name string `json:"name,omitempty"`
+	// Service: Required. The reference to the service that runs the extension. To
+	// configure a callout extension, `service` must be a fully-qualified reference
+	// to a backend service
+	// (https://cloud.google.com/compute/docs/reference/rest/v1/backendServices) in
+	// the format:
+	// `https://www.googleapis.com/compute/v1/projects/{project}/regions/{region}/ba
+	// ckendServices/{backendService}` or
+	// `https://www.googleapis.com/compute/v1/projects/{project}/global/backendServi
+	// ces/{backendService}`.
+	Service string `json:"service,omitempty"`
+	// Timeout: Required. Specifies the timeout for each individual message on the
+	// stream. The timeout must be between 10-10000 milliseconds.
+	Timeout string `json:"timeout,omitempty"`
+	// UpdateTime: Output only. The timestamp when the resource was updated.
+	UpdateTime string `json:"updateTime,omitempty"`
+	// WireFormat: Optional. The format of communication supported by the callout
+	// extension. This field is supported only for regional `AuthzExtension`
+	// resources. If not specified, the default value `EXT_PROC_GRPC` is used.
+	// Global `AuthzExtension` resources use the `EXT_PROC_GRPC` wire format.
+	//
+	// Possible values:
+	//   "WIRE_FORMAT_UNSPECIFIED" - Not specified.
+	//   "EXT_PROC_GRPC" - The extension service uses ext_proc gRPC API over a gRPC
+	// stream. This is the default value if the wire format is not specified. The
+	// backend service for the extension must use HTTP2 or H2C as the protocol. All
+	// `supported_events` for a client request are sent as part of the same gRPC
+	// stream.
+	//   "EXT_AUTHZ_GRPC" - The extension service uses Envoy's `ext_authz` gRPC
+	// API. The backend service for the extension must use HTTP2 or H2C as the
+	// protocol. `EXT_AUTHZ_GRPC` is only supported for regional `AuthzExtension`
+	// resources.
+	WireFormat string `json:"wireFormat,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Authority") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Authority") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AuthzExtension) MarshalJSON() ([]byte, error) {
+	type NoMethod AuthzExtension
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -672,7 +1120,7 @@ type EndpointPolicy struct {
 	// resource.
 	Labels map[string]string `json:"labels,omitempty"`
 	// Name: Identifier. Name of the EndpointPolicy resource. It matches pattern
-	// `projects/{project}/locations/global/endpointPolicies/{endpoint_policy}`.
+	// `projects/{project}/locations/*/endpointPolicies/{endpoint_policy}`.
 	Name string `json:"name,omitempty"`
 	// ServerTlsPolicy: Optional. A URL referring to ServerTlsPolicy resource.
 	// ServerTlsPolicy is used to determine the authentication policy to be applied
@@ -767,7 +1215,8 @@ type ExtensionChain struct {
 	// Extensions: Required. A set of extensions to execute for the matching
 	// request. At least one extension is required. Up to 3 extensions can be
 	// defined for each extension chain for `LbTrafficExtension` resource.
-	// `LbRouteExtension` chains are limited to 1 extension per extension chain.
+	// `LbRouteExtension` and `LbEdgeExtension` chains are limited to 1 extension
+	// per extension chain.
 	Extensions []*ExtensionChainExtension `json:"extensions,omitempty"`
 	// MatchCondition: Required. Conditions under which this chain is invoked for a
 	// request.
@@ -800,7 +1249,9 @@ func (s ExtensionChain) MarshalJSON() ([]byte, error) {
 // matching request.
 type ExtensionChainExtension struct {
 	// Authority: Optional. The `:authority` header in the gRPC request sent from
-	// Envoy to the extension service. Required for Callout extensions.
+	// Envoy to the extension service. Required for Callout extensions. This field
+	// is not supported for plugin extensions. Setting it results in a validation
+	// error.
 	Authority string `json:"authority,omitempty"`
 	// FailOpen: Optional. Determines how the proxy behaves if the call to the
 	// extension fails or times out. When set to `TRUE`, request or response
@@ -813,31 +1264,123 @@ type ExtensionChainExtension struct {
 	// headers have been delivered, then the HTTP stream to the downstream client
 	// is reset.
 	FailOpen bool `json:"failOpen,omitempty"`
+	// ForwardAttributes: Optional. List of the Envoy attributes to forward to the
+	// extension server. The attributes provided here are included as part of the
+	// `ProcessingRequest.attributes` field (of type `map`), where the keys are the
+	// attribute names. Refer to the documentation
+	// (https://cloud.google.com/service-extensions/docs/cel-matcher-language-reference#attributes)
+	// for the names of attributes that can be forwarded. If omitted, no attributes
+	// are sent. Each element is a string indicating the attribute name.
+	ForwardAttributes []string `json:"forwardAttributes,omitempty"`
 	// ForwardHeaders: Optional. List of the HTTP headers to forward to the
 	// extension (from the client or backend). If omitted, all headers are sent.
 	// Each element is a string indicating the header name.
 	ForwardHeaders []string `json:"forwardHeaders,omitempty"`
-	// Name: Required. The name for this extension. The name is logged as part of
+	// Metadata: Optional. The metadata provided here is included as part of the
+	// `metadata_context` (of type `google.protobuf.Struct`) in the
+	// `ProcessingRequest` message sent to the extension server. For
+	// `AuthzExtension` resources, the metadata is available under the namespace
+	// `com.google.authz_extension.`. For other types of extensions, the metadata
+	// is available under the namespace `com.google....`. For example:
+	// `com.google.lb_traffic_extension.lbtrafficextension1.chain1.ext1`. The
+	// following variables are supported in the metadata: `{forwarding_rule_id}` -
+	// substituted with the forwarding rule's fully qualified resource name. This
+	// field must not be set for plugin extensions. Setting it results in a
+	// validation error. You can set metadata at either the resource level or the
+	// extension level. The extension level metadata is recommended because you can
+	// pass a different set of metadata through each extension to the backend. This
+	// field is subject to following limitations: * The total size of the metadata
+	// must be less than 1KiB. * The total number of keys in the metadata must be
+	// less than 16. * The length of each key must be less than 64 characters. *
+	// The length of each value must be less than 1024 characters. * All values
+	// must be strings.
+	Metadata googleapi.RawMessage `json:"metadata,omitempty"`
+	// Name: Optional. The name for this extension. The name is logged as part of
 	// the HTTP request logs. The name must conform with RFC-1034, is restricted to
 	// lower-cased letters, numbers and hyphens, and can have a maximum length of
 	// 63 characters. Additionally, the first character must be a letter and the
-	// last a letter or a number.
+	// last a letter or a number. This field is required except for AuthzExtension.
 	Name string `json:"name,omitempty"`
-	// Service: Required. The reference to the service that runs the extension.
-	// Currently only callout extensions are supported here. To configure a callout
-	// extension, `service` must be a fully-qualified reference to a backend
-	// service
+	// ObservabilityMode: Optional. When set to `true`, the calls to the extension
+	// backend are performed asynchronously, without pausing the processing of the
+	// ongoing request. In this mode, only `STREAMED` (default) body processing is
+	// supported. Responses, if any, are ignored. Supported by regional
+	// `LbTrafficExtension` and `LbRouteExtension` resources.
+	ObservabilityMode bool `json:"observabilityMode,omitempty"`
+	// RequestBodySendMode: Optional. Configures the send mode for request body
+	// processing. The field can only be set if `supported_events` includes
+	// `REQUEST_BODY`. If `supported_events` includes `REQUEST_BODY`, but
+	// `request_body_send_mode` is unset, the default value `STREAMED` is used.
+	// When this field is set to `FULL_DUPLEX_STREAMED`, `supported_events` must
+	// include both `REQUEST_BODY` and `REQUEST_TRAILERS`. This field can be set
+	// only for `LbTrafficExtension` and `LbRouteExtension` resources, and only
+	// when the `service` field of the extension points to a `BackendService`. Only
+	// `FULL_DUPLEX_STREAMED` mode is supported for `LbRouteExtension` resources.
+	//
+	// Possible values:
+	//   "BODY_SEND_MODE_UNSPECIFIED" - Default value. Do not use.
+	//   "BODY_SEND_MODE_STREAMED" - Calls to the extension are executed in the
+	// streamed mode. Subsequent chunks will be sent only after the previous chunks
+	// have been processed. The content of the body chunks is sent one way to the
+	// extension. Extension may send modified chunks back. This is the default
+	// value if the processing mode is not specified.
+	//   "BODY_SEND_MODE_FULL_DUPLEX_STREAMED" - Calls are executed in the full
+	// duplex mode. Subsequent chunks will be sent for processing without waiting
+	// for the response for the previous chunk or for the response for
+	// `REQUEST_HEADERS` event. Extension can freely modify or chunk the body
+	// contents. If the extension doesn't send the body contents back, the next
+	// extension in the chain or the upstream will receive an empty body.
+	RequestBodySendMode string `json:"requestBodySendMode,omitempty"`
+	// ResponseBodySendMode: Optional. Configures the send mode for response
+	// processing. If unspecified, the default value `STREAMED` is used. The field
+	// can only be set if `supported_events` includes `RESPONSE_BODY`. If
+	// `supported_events` includes `RESPONSE_BODY`, but `response_body_send_mode`
+	// is unset, the default value `STREAMED` is used. When this field is set to
+	// `FULL_DUPLEX_STREAMED`, `supported_events` must include both `RESPONSE_BODY`
+	// and `RESPONSE_TRAILERS`. This field can be set only for `LbTrafficExtension`
+	// resources, and only when the `service` field of the extension points to a
+	// `BackendService`.
+	//
+	// Possible values:
+	//   "BODY_SEND_MODE_UNSPECIFIED" - Default value. Do not use.
+	//   "BODY_SEND_MODE_STREAMED" - Calls to the extension are executed in the
+	// streamed mode. Subsequent chunks will be sent only after the previous chunks
+	// have been processed. The content of the body chunks is sent one way to the
+	// extension. Extension may send modified chunks back. This is the default
+	// value if the processing mode is not specified.
+	//   "BODY_SEND_MODE_FULL_DUPLEX_STREAMED" - Calls are executed in the full
+	// duplex mode. Subsequent chunks will be sent for processing without waiting
+	// for the response for the previous chunk or for the response for
+	// `REQUEST_HEADERS` event. Extension can freely modify or chunk the body
+	// contents. If the extension doesn't send the body contents back, the next
+	// extension in the chain or the upstream will receive an empty body.
+	ResponseBodySendMode string `json:"responseBodySendMode,omitempty"`
+	// Service: Required. The reference to the service that runs the extension. To
+	// configure a callout extension, `service` must be a fully-qualified reference
+	// to a backend service
 	// (https://cloud.google.com/compute/docs/reference/rest/v1/backendServices) in
 	// the format:
 	// `https://www.googleapis.com/compute/v1/projects/{project}/regions/{region}/ba
 	// ckendServices/{backendService}` or
 	// `https://www.googleapis.com/compute/v1/projects/{project}/global/backendServi
-	// ces/{backendService}`.
+	// ces/{backendService}`. To configure a plugin extension, `service` must be a
+	// reference to a `WasmPlugin` resource
+	// (https://cloud.google.com/service-extensions/docs/reference/rest/v1beta1/projects.locations.wasmPlugins)
+	// in the format:
+	// `projects/{project}/locations/{location}/wasmPlugins/{plugin}` or
+	// `//networkservices.googleapis.com/projects/{project}/locations/{location}/was
+	// mPlugins/{wasmPlugin}`. Plugin extensions are currently supported for the
+	// `LbTrafficExtension`, the `LbRouteExtension`, and the `LbEdgeExtension`
+	// resources.
 	Service string `json:"service,omitempty"`
 	// SupportedEvents: Optional. A set of events during request or response
-	// processing for which this extension is called. This field is required for
-	// the `LbTrafficExtension` resource. It must not be set for the
-	// `LbRouteExtension` resource.
+	// processing for which this extension is called. For the `LbTrafficExtension`
+	// resource, this field is required. For the `LbRouteExtension` resource, this
+	// field is optional. If unspecified, `REQUEST_HEADERS` event is assumed as
+	// supported. For the `LbEdgeExtension` resource, this field is required and
+	// must only contain `REQUEST_HEADERS` event. For the `AuthzExtension`
+	// resource, this field is optional. `REQUEST_HEADERS` is the only supported
+	// event. If unspecified, `REQUEST_HEADERS` event is assumed as supported.
 	//
 	// Possible values:
 	//   "EVENT_TYPE_UNSPECIFIED" - Unspecified value. Do not use.
@@ -855,8 +1398,9 @@ type ExtensionChainExtension struct {
 	// called when the HTTP response trailers arrives.
 	SupportedEvents []string `json:"supportedEvents,omitempty"`
 	// Timeout: Optional. Specifies the timeout for each individual message on the
-	// stream. The timeout must be between 10-1000 milliseconds. Required for
-	// Callout extensions.
+	// stream. The timeout must be between `10`-`10000` milliseconds. Required for
+	// callout extensions. This field is not supported for plugin extensions.
+	// Setting it results in a validation error.
 	Timeout string `json:"timeout,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Authority") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -905,8 +1449,7 @@ func (s ExtensionChainMatchCondition) MarshalJSON() ([]byte, error) {
 // Gateway: Gateway represents the configuration for a proxy, typically a load
 // balancer. It captures the ip:port over which the services are exposed by the
 // proxy, along with any policy configurations. Routes have reference to to
-// Gateways to dictate how requests should be routed by this Gateway. Next id:
-// 33
+// Gateways to dictate how requests should be routed by this Gateway.
 type Gateway struct {
 	// Addresses: Optional. Zero or one IPv4 or IPv6 address on which the Gateway
 	// will receive the traffic. When no address is provided, an IP from the
@@ -914,6 +1457,14 @@ type Gateway struct {
 	// 'SECURE_WEB_GATEWAY'. Gateways of type 'OPEN_MESH' listen on 0.0.0.0 for
 	// IPv4 and :: for IPv6.
 	Addresses []string `json:"addresses,omitempty"`
+	// AllPorts: Optional. If true, the Gateway will listen on all ports. This is
+	// mutually exclusive with the `ports` field. This field only applies to
+	// gateways of type 'SECURE_WEB_GATEWAY'.
+	AllPorts bool `json:"allPorts,omitempty"`
+	// AllowGlobalAccess: Optional. If true, the gateway will allow traffic from
+	// clients outside of the region where the gateway is located. This field is
+	// configurable only for gateways of type SECURE_WEB_GATEWAY.
+	AllowGlobalAccess bool `json:"allowGlobalAccess,omitempty"`
 	// CertificateUrls: Optional. A fully-qualified Certificates URL reference. The
 	// proxy presents a Certificate (selected based on SNI) when establishing a TLS
 	// connection. This feature only applies to gateways of type
@@ -932,8 +1483,8 @@ type Gateway struct {
 	//   "ENVOY_HEADERS_UNSPECIFIED" - Defaults to NONE.
 	//   "NONE" - Suppress envoy debug headers.
 	//   "DEBUG_HEADERS" - Envoy will insert default internal debug headers into
-	// upstream requests: x-envoy-attempt-count x-envoy-is-timeout-retry
-	// x-envoy-expected-rq-timeout-ms x-envoy-original-path
+	// upstream requests: x-envoy-attempt-count, x-envoy-is-timeout-retry,
+	// x-envoy-expected-rq-timeout-ms, x-envoy-original-path,
 	// x-envoy-upstream-stream-duration-ms
 	EnvoyHeaders string `json:"envoyHeaders,omitempty"`
 	// GatewaySecurityPolicy: Optional. A fully-qualified GatewaySecurityPolicy URL
@@ -963,7 +1514,7 @@ type Gateway struct {
 	Network string `json:"network,omitempty"`
 	// Ports: Required. One or more port numbers (1-65535), on which the Gateway
 	// will receive traffic. The proxy binds to the specified ports. Gateways of
-	// type 'SECURE_WEB_GATEWAY' are limited to 1 port. Gateways of type
+	// type 'SECURE_WEB_GATEWAY' are limited to 5 ports. Gateways of type
 	// 'OPEN_MESH' listen on 0.0.0.0 for IPv4 and :: for IPv6 and support multiple
 	// ports.
 	Ports []int64 `json:"ports,omitempty"`
@@ -982,7 +1533,7 @@ type Gateway struct {
 	RoutingMode string `json:"routingMode,omitempty"`
 	// Scope: Optional. Scope determines how configuration across multiple Gateway
 	// instances are merged. The configuration for multiple Gateway instances with
-	// the same scope will be merged as presented as a single coniguration to the
+	// the same scope will be merged as presented as a single configuration to the
 	// proxy/load balancer. Max length 64 characters. Scope should start with a
 	// letter and can only have letters, numbers, hyphens.
 	Scope string `json:"scope,omitempty"`
@@ -1031,6 +1582,44 @@ func (s Gateway) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// GatewayRouteView: GatewayRouteView defines view-only resource for Routes to
+// a Gateway
+type GatewayRouteView struct {
+	// Name: Output only. Identifier. Full path name of the GatewayRouteView
+	// resource. Format:
+	// projects/{project_number}/locations/{location}/gateways/{gateway}/routeViews/
+	// {route_view}
+	Name string `json:"name,omitempty"`
+	// RouteId: Output only. The resource id for the route.
+	RouteId string `json:"routeId,omitempty"`
+	// RouteLocation: Output only. Location where the route exists.
+	RouteLocation string `json:"routeLocation,omitempty"`
+	// RouteProjectNumber: Output only. Project number where the route exists.
+	RouteProjectNumber int64 `json:"routeProjectNumber,omitempty,string"`
+	// RouteType: Output only. Type of the route: HttpRoute,GrpcRoute,TcpRoute, or
+	// TlsRoute
+	RouteType string `json:"routeType,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Name") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Name") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s GatewayRouteView) MarshalJSON() ([]byte, error) {
+	type NoMethod GatewayRouteView
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // GrpcRoute: GrpcRoute is the resource defining how gRPC traffic routed by a
 // Mesh or Gateway resource is routed.
 type GrpcRoute struct {
@@ -1042,7 +1631,7 @@ type GrpcRoute struct {
 	// Gateways: Optional. Gateways defines a list of gateways this GrpcRoute is
 	// attached to, as one of the routing rules to route the requests served by the
 	// gateway. Each gateway reference should match the pattern:
-	// `projects/*/locations/global/gateways/`
+	// `projects/*/locations/*/gateways/`
 	Gateways []string `json:"gateways,omitempty"`
 	// Hostnames: Required. Service hostnames with an optional port for which this
 	// route describes traffic. Format: [:] Hostname is the fully qualified domain
@@ -1069,10 +1658,10 @@ type GrpcRoute struct {
 	// Meshes: Optional. Meshes defines a list of meshes this GrpcRoute is attached
 	// to, as one of the routing rules to route the requests served by the mesh.
 	// Each mesh reference should match the pattern:
-	// `projects/*/locations/global/meshes/`
+	// `projects/*/locations/*/meshes/`
 	Meshes []string `json:"meshes,omitempty"`
 	// Name: Identifier. Name of the GrpcRoute resource. It matches pattern
-	// `projects/*/locations/global/grpcRoutes/`
+	// `projects/*/locations/*/grpcRoutes/`
 	Name string `json:"name,omitempty"`
 	// Rules: Required. A list of detailed rules defining how to route traffic.
 	// Within a single GrpcRoute, the GrpcRoute.RouteAction associated with the
@@ -1441,7 +2030,8 @@ func (s GrpcRouteRouteRule) MarshalJSON() ([]byte, error) {
 type GrpcRouteStatefulSessionAffinityPolicy struct {
 	// CookieTtl: Required. The cookie TTL value for the Set-Cookie header
 	// generated by the data plane. The lifetime of the cookie may be set to a
-	// value from 1 to 86400 seconds (24 hours) inclusive.
+	// value from 0 to 86400 seconds (24 hours) inclusive. Set this to 0s to use a
+	// session cookie and disable cookie expiration.
 	CookieTtl string `json:"cookieTtl,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "CookieTtl") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -1472,7 +2062,7 @@ type HttpRoute struct {
 	// Gateways: Optional. Gateways defines a list of gateways this HttpRoute is
 	// attached to, as one of the routing rules to route the requests served by the
 	// gateway. Each gateway reference should match the pattern:
-	// `projects/*/locations/global/gateways/`
+	// `projects/*/locations/*/gateways/`
 	Gateways []string `json:"gateways,omitempty"`
 	// Hostnames: Required. Hostnames define a set of hosts that should match
 	// against the HTTP host header to select a HttpRoute to process the request.
@@ -1497,11 +2087,11 @@ type HttpRoute struct {
 	// Meshes: Optional. Meshes defines a list of meshes this HttpRoute is attached
 	// to, as one of the routing rules to route the requests served by the mesh.
 	// Each mesh reference should match the pattern:
-	// `projects/*/locations/global/meshes/` The attached Mesh should be of a type
+	// `projects/*/locations/*/meshes/` The attached Mesh should be of a type
 	// SIDECAR
 	Meshes []string `json:"meshes,omitempty"`
 	// Name: Identifier. Name of the HttpRoute resource. It matches pattern
-	// `projects/*/locations/global/httpRoutes/http_route_name>`.
+	// `projects/*/locations/*/httpRoutes/http_route_name>`.
 	Name string `json:"name,omitempty"`
 	// Rules: Required. Rules that define how traffic is routed and handled. Rules
 	// will be matched sequentially based on the RouteMatch specified for the rule.
@@ -1926,6 +2516,7 @@ func (s HttpRouteRedirect) MarshalJSON() ([]byte, error) {
 // shadowed to a separate mirrored destination service. The proxy does not wait
 // for responses from the shadow service. Prior to sending traffic to the
 // shadow service, the host/authority header is suffixed with -shadow.
+// Mirroring is currently not supported for Cloud Run destinations.
 type HttpRouteRequestMirrorPolicy struct {
 	// Destination: The destination the requests will be mirrored to. The weight of
 	// the destination will be ignored.
@@ -2163,7 +2754,8 @@ func (s HttpRouteRouteRule) MarshalJSON() ([]byte, error) {
 type HttpRouteStatefulSessionAffinityPolicy struct {
 	// CookieTtl: Required. The cookie TTL value for the Set-Cookie header
 	// generated by the data plane. The lifetime of the cookie may be set to a
-	// value from 1 to 86400 seconds (24 hours) inclusive.
+	// value from 0 to 86400 seconds (24 hours) inclusive. Set this to 0s to use a
+	// session cookie and disable cookie expiration.
 	CookieTtl string `json:"cookieTtl,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "CookieTtl") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -2211,6 +2803,70 @@ func (s HttpRouteURLRewrite) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// LbEdgeExtension: `LbEdgeExtension` is a resource that lets the extension
+// service influence the selection of backend services and Cloud CDN cache keys
+// by modifying request headers.
+type LbEdgeExtension struct {
+	// CreateTime: Output only. The timestamp when the resource was created.
+	CreateTime string `json:"createTime,omitempty"`
+	// Description: Optional. A human-readable description of the resource.
+	Description string `json:"description,omitempty"`
+	// ExtensionChains: Required. A set of ordered extension chains that contain
+	// the match conditions and extensions to execute. Match conditions for each
+	// extension chain are evaluated in sequence for a given request. The first
+	// extension chain that has a condition that matches the request is executed.
+	// Any subsequent extension chains do not execute. Limited to 5 extension
+	// chains per resource.
+	ExtensionChains []*ExtensionChain `json:"extensionChains,omitempty"`
+	// ForwardingRules: Required. A list of references to the forwarding rules to
+	// which this service extension is attached. At least one forwarding rule is
+	// required. Only one `LbEdgeExtension` resource can be associated with a
+	// forwarding rule.
+	ForwardingRules []string `json:"forwardingRules,omitempty"`
+	// Labels: Optional. Set of labels associated with the `LbEdgeExtension`
+	// resource. The format must comply with the requirements for labels
+	// (https://cloud.google.com/compute/docs/labeling-resources#requirements) for
+	// Google Cloud resources.
+	Labels map[string]string `json:"labels,omitempty"`
+	// LoadBalancingScheme: Required. All forwarding rules referenced by this
+	// extension must share the same load balancing scheme. Supported values:
+	// `EXTERNAL_MANAGED`.
+	//
+	// Possible values:
+	//   "LOAD_BALANCING_SCHEME_UNSPECIFIED" - Default value. Do not use.
+	//   "INTERNAL_MANAGED" - Signifies that this is used for Internal HTTP(S) Load
+	// Balancing.
+	//   "EXTERNAL_MANAGED" - Signifies that this is used for External Managed
+	// HTTP(S) Load Balancing.
+	LoadBalancingScheme string `json:"loadBalancingScheme,omitempty"`
+	// Name: Required. Identifier. Name of the `LbEdgeExtension` resource in the
+	// following format:
+	// `projects/{project}/locations/{location}/lbEdgeExtensions/{lb_edge_extension}
+	// `.
+	Name string `json:"name,omitempty"`
+	// UpdateTime: Output only. The timestamp when the resource was updated.
+	UpdateTime string `json:"updateTime,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "CreateTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CreateTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s LbEdgeExtension) MarshalJSON() ([]byte, error) {
+	type NoMethod LbEdgeExtension
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // LbRouteExtension: `LbRouteExtension` is a resource that lets you control
 // where traffic is routed to for a given request.
 type LbRouteExtension struct {
@@ -2226,9 +2882,9 @@ type LbRouteExtension struct {
 	// chains per resource.
 	ExtensionChains []*ExtensionChain `json:"extensionChains,omitempty"`
 	// ForwardingRules: Required. A list of references to the forwarding rules to
-	// which this service extension is attached to. At least one forwarding rule is
-	// required. There can be only one `LbRouteExtension` resource per forwarding
-	// rule.
+	// which this service extension is attached. At least one forwarding rule is
+	// required. Only one `LbRouteExtension` resource can be associated with a
+	// forwarding rule.
 	ForwardingRules []string `json:"forwardingRules,omitempty"`
 	// Labels: Optional. Set of labels associated with the `LbRouteExtension`
 	// resource. The format must comply with the requirements for labels
@@ -2238,7 +2894,7 @@ type LbRouteExtension struct {
 	// LoadBalancingScheme: Required. All backend services and forwarding rules
 	// referenced by this extension must share the same load balancing scheme.
 	// Supported values: `INTERNAL_MANAGED`, `EXTERNAL_MANAGED`. For more
-	// information, refer to Choosing a load balancer
+	// information, refer to Backend services overview
 	// (https://cloud.google.com/load-balancing/docs/backend-service).
 	//
 	// Possible values:
@@ -2250,12 +2906,16 @@ type LbRouteExtension struct {
 	LoadBalancingScheme string `json:"loadBalancingScheme,omitempty"`
 	// Metadata: Optional. The metadata provided here is included as part of the
 	// `metadata_context` (of type `google.protobuf.Struct`) in the
-	// `ProcessingRequest` message sent to the extension server. The metadata is
-	// available under the namespace `com.google.lb_route_extension.`. The
-	// following variables are supported in the metadata Struct:
-	// `{forwarding_rule_id}` - substituted with the forwarding rule's fully
-	// qualified resource name. Only one of the resource level metadata and
-	// extension level metadata can be set.
+	// `ProcessingRequest` message sent to the extension server. The metadata
+	// applies to all extensions in all extensions chains in this resource. The
+	// metadata is available under the key `com.google.lb_route_extension.`. The
+	// following variables are supported in the metadata: `{forwarding_rule_id}` -
+	// substituted with the forwarding rule's fully qualified resource name. This
+	// field must not be set if at least one of the extension chains contains
+	// plugin extensions. Setting it results in a validation error. You can set
+	// metadata at either the resource level or the extension level. The extension
+	// level metadata is recommended because you can pass a different set of
+	// metadata through each extension to the backend.
 	Metadata googleapi.RawMessage `json:"metadata,omitempty"`
 	// Name: Required. Identifier. Name of the `LbRouteExtension` resource in the
 	// following format:
@@ -2301,10 +2961,10 @@ type LbTrafficExtension struct {
 	// Any subsequent extension chains do not execute. Limited to 5 extension
 	// chains per resource.
 	ExtensionChains []*ExtensionChain `json:"extensionChains,omitempty"`
-	// ForwardingRules: Required. A list of references to the forwarding rules to
-	// which this service extension is attached to. At least one forwarding rule is
-	// required. There can be only one `LBTrafficExtension` resource per forwarding
-	// rule.
+	// ForwardingRules: Optional. A list of references to the forwarding rules to
+	// which this service extension is attached. At least one forwarding rule is
+	// required. Only one `LbTrafficExtension` resource can be associated with a
+	// forwarding rule.
 	ForwardingRules []string `json:"forwardingRules,omitempty"`
 	// Labels: Optional. Set of labels associated with the `LbTrafficExtension`
 	// resource. The format must comply with the requirements for labels
@@ -2313,8 +2973,8 @@ type LbTrafficExtension struct {
 	Labels map[string]string `json:"labels,omitempty"`
 	// LoadBalancingScheme: Required. All backend services and forwarding rules
 	// referenced by this extension must share the same load balancing scheme.
-	// Supported values: `INTERNAL_MANAGED`, `EXTERNAL_MANAGED`. For more
-	// information, refer to Choosing a load balancer
+	// Supported values: `INTERNAL_MANAGED` and `EXTERNAL_MANAGED`. For more
+	// information, refer to Backend services overview
 	// (https://cloud.google.com/load-balancing/docs/backend-service).
 	//
 	// Possible values:
@@ -2324,12 +2984,18 @@ type LbTrafficExtension struct {
 	//   "EXTERNAL_MANAGED" - Signifies that this is used for External Managed
 	// HTTP(S) Load Balancing.
 	LoadBalancingScheme string `json:"loadBalancingScheme,omitempty"`
-	// Metadata: Optional. The metadata provided here is included in the
-	// `ProcessingRequest.metadata_context.filter_metadata` map field. The metadata
-	// is available under the key `com.google.lb_traffic_extension.`. The following
-	// variables are supported in the metadata: `{forwarding_rule_id}` -
-	// substituted with the forwarding rule's fully qualified resource name. Only
-	// one of the resource level metadata and extension level metadata can be set.
+	// Metadata: Optional. The metadata provided here is included as part of the
+	// `metadata_context` (of type `google.protobuf.Struct`) in the
+	// `ProcessingRequest` message sent to the extension server. The metadata
+	// applies to all extensions in all extensions chains in this resource. The
+	// metadata is available under the key `com.google.lb_traffic_extension.`. The
+	// following variables are supported in the metadata: `{forwarding_rule_id}` -
+	// substituted with the forwarding rule's fully qualified resource name. This
+	// field must not be set if at least one of the extension chains contains
+	// plugin extensions. Setting it results in a validation error. You can set
+	// metadata at either the resource level or the extension level. The extension
+	// level metadata is recommended because you can pass a different set of
+	// metadata through each extension to the backend.
 	Metadata googleapi.RawMessage `json:"metadata,omitempty"`
 	// Name: Required. Identifier. Name of the `LbTrafficExtension` resource in the
 	// following format:
@@ -2359,6 +3025,72 @@ func (s LbTrafficExtension) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// ListAgentGatewaysResponse: Response returned by the ListAgentGateways
+// method.
+type ListAgentGatewaysResponse struct {
+	// AgentGateways: List of AgentGateway resources.
+	AgentGateways []*AgentGateway `json:"agentGateways,omitempty"`
+	// NextPageToken: If there might be more results than those appearing in this
+	// response, then `next_page_token` is included. To get the next set of
+	// results, call this method again using the value of `next_page_token` as
+	// `page_token`.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request attempts to
+	// list all resources across all supported locations, while some locations are
+	// temporarily unavailable.
+	Unreachable []string `json:"unreachable,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "AgentGateways") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AgentGateways") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ListAgentGatewaysResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod ListAgentGatewaysResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ListAuthzExtensionsResponse: Message for response to listing
+// `AuthzExtension` resources.
+type ListAuthzExtensionsResponse struct {
+	// AuthzExtensions: The list of `AuthzExtension` resources.
+	AuthzExtensions []*AuthzExtension `json:"authzExtensions,omitempty"`
+	// NextPageToken: A token identifying a page of results that the server
+	// returns.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Locations that could not be reached.
+	Unreachable []string `json:"unreachable,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "AuthzExtensions") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AuthzExtensions") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ListAuthzExtensionsResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod ListAuthzExtensionsResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // ListEndpointPoliciesResponse: Response returned by the ListEndpointPolicies
 // method.
 type ListEndpointPoliciesResponse struct {
@@ -2369,6 +3101,10 @@ type ListEndpointPoliciesResponse struct {
 	// results, call this method again using the value of `next_page_token` as
 	// `page_token`.
 	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request opts into
+	// return_partial_success and reading across collections e.g. when attempting
+	// to list all resources across all supported locations.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -2387,6 +3123,39 @@ type ListEndpointPoliciesResponse struct {
 
 func (s ListEndpointPoliciesResponse) MarshalJSON() ([]byte, error) {
 	type NoMethod ListEndpointPoliciesResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ListGatewayRouteViewsResponse: Response returned by the
+// ListGatewayRouteViews method.
+type ListGatewayRouteViewsResponse struct {
+	// GatewayRouteViews: List of GatewayRouteView resources.
+	GatewayRouteViews []*GatewayRouteView `json:"gatewayRouteViews,omitempty"`
+	// NextPageToken: A token, which can be sent as `page_token` to retrieve the
+	// next page. If this field is omitted, there are no subsequent pages.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request attempts to
+	// list all resources across all supported locations, while some locations are
+	// temporarily unavailable.
+	Unreachable []string `json:"unreachable,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "GatewayRouteViews") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "GatewayRouteViews") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ListGatewayRouteViewsResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod ListGatewayRouteViewsResponse
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -2431,6 +3200,10 @@ type ListGrpcRoutesResponse struct {
 	// results, call this method again using the value of `next_page_token` as
 	// `page_token`.
 	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request opts into
+	// return_partial_success and reading across collections e.g. when attempting
+	// to list all resources across all supported locations.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -2461,6 +3234,10 @@ type ListHttpRoutesResponse struct {
 	// results, call this method again using the value of `next_page_token` as
 	// `page_token`.
 	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request opts into
+	// return_partial_success and reading across collections e.g. when attempting
+	// to list all resources across all supported locations.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -2479,6 +3256,37 @@ type ListHttpRoutesResponse struct {
 
 func (s ListHttpRoutesResponse) MarshalJSON() ([]byte, error) {
 	type NoMethod ListHttpRoutesResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ListLbEdgeExtensionsResponse: Message for response to listing
+// `LbEdgeExtension` resources.
+type ListLbEdgeExtensionsResponse struct {
+	// LbEdgeExtensions: The list of `LbEdgeExtension` resources.
+	LbEdgeExtensions []*LbEdgeExtension `json:"lbEdgeExtensions,omitempty"`
+	// NextPageToken: A token identifying a page of results that the server
+	// returns.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Locations that could not be reached.
+	Unreachable []string `json:"unreachable,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "LbEdgeExtensions") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "LbEdgeExtensions") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ListLbEdgeExtensionsResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod ListLbEdgeExtensionsResponse
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -2572,6 +3380,39 @@ func (s ListLocationsResponse) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// ListMeshRouteViewsResponse: Response returned by the ListMeshRouteViews
+// method.
+type ListMeshRouteViewsResponse struct {
+	// MeshRouteViews: List of MeshRouteView resources.
+	MeshRouteViews []*MeshRouteView `json:"meshRouteViews,omitempty"`
+	// NextPageToken: A token, which can be sent as `page_token` to retrieve the
+	// next page. If this field is omitted, there are no subsequent pages.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request attempts to
+	// list all resources across all supported locations, while some locations are
+	// temporarily unavailable.
+	Unreachable []string `json:"unreachable,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "MeshRouteViews") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "MeshRouteViews") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ListMeshRouteViewsResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod ListMeshRouteViewsResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // ListMeshesResponse: Response returned by the ListMeshes method.
 type ListMeshesResponse struct {
 	// Meshes: List of Mesh resources.
@@ -2581,6 +3422,10 @@ type ListMeshesResponse struct {
 	// results, call this method again using the value of `next_page_token` as
 	// `page_token`.
 	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request opts into
+	// `return_partial_success` and reading across collections e.g. when attempting
+	// to list all resources across all supported locations.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -2602,6 +3447,71 @@ func (s ListMeshesResponse) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// ListMulticastConsumerAssociationsResponse: Response message for
+// ListMulticastConsumerAssociations.
+type ListMulticastConsumerAssociationsResponse struct {
+	// MulticastConsumerAssociations: The list of multicast consumer associations.
+	MulticastConsumerAssociations []*MulticastConsumerAssociation `json:"multicastConsumerAssociations,omitempty"`
+	// NextPageToken: A page token from an earlier query, as returned in
+	// `next_page_token`.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Locations that could not be reached.
+	Unreachable []string `json:"unreachable,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g.
+	// "MulticastConsumerAssociations") to unconditionally include in API requests.
+	// By default, fields with empty or default values are omitted from API
+	// requests. See https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields
+	// for more details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "MulticastConsumerAssociations")
+	// to include in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ListMulticastConsumerAssociationsResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod ListMulticastConsumerAssociationsResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ListMulticastGroupConsumerActivationsResponse: Response message for
+// ListMulticastGroupConsumerActivations.
+type ListMulticastGroupConsumerActivationsResponse struct {
+	// MulticastGroupConsumerActivations: The list of multicast group consumer
+	// activations.
+	MulticastGroupConsumerActivations []*MulticastGroupConsumerActivation `json:"multicastGroupConsumerActivations,omitempty"`
+	// NextPageToken: A page token from an earlier query, as returned in
+	// `next_page_token`.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Locations that could not be reached.
+	Unreachable []string `json:"unreachable,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g.
+	// "MulticastGroupConsumerActivations") to unconditionally include in API
+	// requests. By default, fields with empty or default values are omitted from
+	// API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g.
+	// "MulticastGroupConsumerActivations") to include in API requests with the
+	// JSON null value. By default, fields with empty values are omitted from API
+	// requests. See https://pkg.go.dev/google.golang.org/api#hdr-NullFields for
+	// more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ListMulticastGroupConsumerActivationsResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod ListMulticastGroupConsumerActivationsResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // ListOperationsResponse: The response message for Operations.ListOperations.
 type ListOperationsResponse struct {
 	// NextPageToken: The standard List next-page token.
@@ -2609,6 +3519,11 @@ type ListOperationsResponse struct {
 	// Operations: A list of operations that matches the specified filter in the
 	// request.
 	Operations []*Operation `json:"operations,omitempty"`
+	// Unreachable: Unordered list. Unreachable resources. Populated when the
+	// request sets `ListOperationsRequest.return_partial_success` and reads across
+	// collections. For example, when attempting to list all resources across all
+	// supported locations.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -2640,6 +3555,10 @@ type ListServiceBindingsResponse struct {
 	NextPageToken string `json:"nextPageToken,omitempty"`
 	// ServiceBindings: List of ServiceBinding resources.
 	ServiceBindings []*ServiceBinding `json:"serviceBindings,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request attempts to
+	// list all resources across all supported locations, while some locations are
+	// temporarily unavailable.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -2671,6 +3590,10 @@ type ListServiceLbPoliciesResponse struct {
 	NextPageToken string `json:"nextPageToken,omitempty"`
 	// ServiceLbPolicies: List of ServiceLbPolicy resources.
 	ServiceLbPolicies []*ServiceLbPolicy `json:"serviceLbPolicies,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request attempts to
+	// list all resources across all supported locations, while some locations are
+	// temporarily unavailable.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -2701,6 +3624,10 @@ type ListTcpRoutesResponse struct {
 	NextPageToken string `json:"nextPageToken,omitempty"`
 	// TcpRoutes: List of TcpRoute resources.
 	TcpRoutes []*TcpRoute `json:"tcpRoutes,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request opts into
+	// return_partial_success and reading across collections e.g. when attempting
+	// to list all resources across all supported locations.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -2731,6 +3658,10 @@ type ListTlsRoutesResponse struct {
 	NextPageToken string `json:"nextPageToken,omitempty"`
 	// TlsRoutes: List of TlsRoute resources.
 	TlsRoutes []*TlsRoute `json:"tlsRoutes,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request opts into
+	// return_partial_success and reading across collections e.g. when attempting
+	// to list all resources across all supported locations.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -2749,6 +3680,75 @@ type ListTlsRoutesResponse struct {
 
 func (s ListTlsRoutesResponse) MarshalJSON() ([]byte, error) {
 	type NoMethod ListTlsRoutesResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ListWasmPluginVersionsResponse: Response returned by the
+// `ListWasmPluginVersions` method.
+type ListWasmPluginVersionsResponse struct {
+	// NextPageToken: If there might be more results than those appearing in this
+	// response, then `next_page_token` is included. To get the next set of
+	// results, call this method again using the value of `next_page_token` as
+	// `page_token`.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request attempts to
+	// list all resources across all supported locations, while some locations are
+	// temporarily unavailable.
+	Unreachable []string `json:"unreachable,omitempty"`
+	// WasmPluginVersions: List of `WasmPluginVersion` resources.
+	WasmPluginVersions []*WasmPluginVersion `json:"wasmPluginVersions,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "NextPageToken") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "NextPageToken") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ListWasmPluginVersionsResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod ListWasmPluginVersionsResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ListWasmPluginsResponse: Response returned by the `ListWasmPlugins` method.
+type ListWasmPluginsResponse struct {
+	// NextPageToken: If there might be more results than those appearing in this
+	// response, then `next_page_token` is included. To get the next set of
+	// results, call this method again using the value of `next_page_token` as
+	// `page_token`.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: Unreachable resources. Populated when the request attempts to
+	// list all resources across all supported locations, while some locations are
+	// temporarily unavailable.
+	Unreachable []string `json:"unreachable,omitempty"`
+	// WasmPlugins: List of `WasmPlugin` resources.
+	WasmPlugins []*WasmPlugin `json:"wasmPlugins,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "NextPageToken") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "NextPageToken") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ListWasmPluginsResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod ListWasmPluginsResponse
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -2791,7 +3791,7 @@ func (s Location) MarshalJSON() ([]byte, error) {
 }
 
 // LoggingConfig: The configuration for Platform Telemetry logging for Eventarc
-// Avdvanced resources.
+// Advanced resources.
 type LoggingConfig struct {
 	// LogSeverity: Optional. The minimum severity of logs that will be sent to
 	// Stackdriver/Platform Telemetry. Logs at severitiy ≥ this value will be
@@ -2848,8 +3848,8 @@ type Mesh struct {
 	//   "ENVOY_HEADERS_UNSPECIFIED" - Defaults to NONE.
 	//   "NONE" - Suppress envoy debug headers.
 	//   "DEBUG_HEADERS" - Envoy will insert default internal debug headers into
-	// upstream requests: x-envoy-attempt-count x-envoy-is-timeout-retry
-	// x-envoy-expected-rq-timeout-ms x-envoy-original-path
+	// upstream requests: x-envoy-attempt-count, x-envoy-is-timeout-retry,
+	// x-envoy-expected-rq-timeout-ms, x-envoy-original-path,
 	// x-envoy-upstream-stream-duration-ms
 	EnvoyHeaders string `json:"envoyHeaders,omitempty"`
 	// InterceptionPort: Optional. If set to a valid TCP port (1-65535), instructs
@@ -2862,7 +3862,7 @@ type Mesh struct {
 	// Labels: Optional. Set of label tags associated with the Mesh resource.
 	Labels map[string]string `json:"labels,omitempty"`
 	// Name: Identifier. Name of the Mesh resource. It matches pattern
-	// `projects/*/locations/global/meshes/`.
+	// `projects/*/locations/*/meshes/`.
 	Name string `json:"name,omitempty"`
 	// SelfLink: Output only. Server-defined URL of this resource
 	SelfLink string `json:"selfLink,omitempty"`
@@ -2886,6 +3886,247 @@ type Mesh struct {
 
 func (s Mesh) MarshalJSON() ([]byte, error) {
 	type NoMethod Mesh
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// MeshRouteView: MeshRouteView defines view-only resource for Routes to a Mesh
+type MeshRouteView struct {
+	// Name: Output only. Identifier. Full path name of the MeshRouteView resource.
+	// Format:
+	// projects/{project_number}/locations/{location}/meshes/{mesh}/routeViews/{rout
+	// e_view}
+	Name string `json:"name,omitempty"`
+	// RouteId: Output only. The resource id for the route.
+	RouteId string `json:"routeId,omitempty"`
+	// RouteLocation: Output only. Location where the route exists.
+	RouteLocation string `json:"routeLocation,omitempty"`
+	// RouteProjectNumber: Output only. Project number where the route exists.
+	RouteProjectNumber int64 `json:"routeProjectNumber,omitempty,string"`
+	// RouteType: Output only. Type of the route: HttpRoute,GrpcRoute,TcpRoute, or
+	// TlsRoute
+	RouteType string `json:"routeType,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Name") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Name") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s MeshRouteView) MarshalJSON() ([]byte, error) {
+	type NoMethod MeshRouteView
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// MulticastConsumerAssociation: Multicast consumer association resource.
+type MulticastConsumerAssociation struct {
+	// CreateTime: Output only. [Output only] The timestamp when the multicast
+	// consumer association was created.
+	CreateTime string `json:"createTime,omitempty"`
+	// Description: Optional. An optional text description of the multicast
+	// consumer association.
+	Description string `json:"description,omitempty"`
+	// Labels: Optional. Labels as key-value pairs
+	Labels map[string]string `json:"labels,omitempty"`
+	// MulticastDomainActivation: Optional. The resource name of the multicast
+	// domain activation that is in the same zone as this multicast consumer
+	// association. Use the following format:
+	// `projects/*/locations/*/multicastDomainActivations/*`.
+	MulticastDomainActivation string `json:"multicastDomainActivation,omitempty"`
+	// Name: Identifier. The resource name of the multicast consumer association.
+	// Use the following format:
+	// `projects/*/locations/*/multicastConsumerAssociations/*`.
+	Name string `json:"name,omitempty"`
+	// Network: Required. The resource name of the multicast consumer VPC network.
+	// Use following format:
+	// `projects/{project}/locations/global/networks/{network}`.
+	Network string `json:"network,omitempty"`
+	// PlacementPolicy: Output only. [Output only] A Compute Engine (placement
+	// policy)[https://cloud.google.com/compute/docs/instances/placement-policies-ov
+	// erview] that can be used to place virtual machine (VM) instances as
+	// multicast consumers close to the multicast infrastructure created for this
+	// domain, on a best effort basis.
+	PlacementPolicy string `json:"placementPolicy,omitempty"`
+	// ResourceState: Output only. [Deprecated] The resource state of the multicast
+	// consumer association. Use the state field instead.
+	//
+	// Possible values:
+	//   "CONSUMER_RESOURCE_STATE_UNSPECIFIED" - The consumer resource state is not
+	// specified.
+	//   "ACTIVE" - The consumer resource state is active.
+	//   "OBSOLETE" - The associated admin resource has been deleted. The consumer
+	// resource state becomes obsolete.
+	ResourceState string `json:"resourceState,omitempty"`
+	// State: Output only. [Output only] The state of the resource.
+	State *MulticastResourceState `json:"state,omitempty"`
+	// UniqueId: Output only. [Output only] The Google-generated UUID for the
+	// resource. This value is unique across all multicast consumer association
+	// resources. If a consumer association is deleted and another with the same
+	// name is created, the new consumer association is assigned a different
+	// unique_id.
+	UniqueId string `json:"uniqueId,omitempty"`
+	// UpdateTime: Output only. [Output only] The timestamp when the Multicast
+	// Consumer Association was most recently updated.
+	UpdateTime string `json:"updateTime,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "CreateTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CreateTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s MulticastConsumerAssociation) MarshalJSON() ([]byte, error) {
+	type NoMethod MulticastConsumerAssociation
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// MulticastGroupConsumerActivation: Multicast group consumer activation
+// resource.
+type MulticastGroupConsumerActivation struct {
+	// CreateTime: Output only. [Output only] The timestamp when the multicast
+	// group consumer activation was created.
+	CreateTime string `json:"createTime,omitempty"`
+	// Description: Optional. An optional text description of the multicast group
+	// consumer activation.
+	Description string `json:"description,omitempty"`
+	// Labels: Optional. Labels as key-value pairs
+	Labels map[string]string `json:"labels,omitempty"`
+	// LogConfig: Optional. Specifies the logging options for the activities
+	// performed related to the multicast group consumer activation. Defaults to
+	// false. If logging is enabled, logs are exported to Cloud Logging.
+	LogConfig *MulticastLogConfig `json:"logConfig,omitempty"`
+	// MulticastConsumerAssociation: Required. The resource name of the multicast
+	// consumer association that is in the same zone as this multicast group
+	// consumer activation. Use the following format:
+	// `projects/*/locations/*/multicastConsumerAssociations/*`.
+	MulticastConsumerAssociation string `json:"multicastConsumerAssociation,omitempty"`
+	// MulticastGroup: Optional. The resource name of the multicast group created
+	// by the admin in the same zone as this multicast group consumer activation.
+	// Use the following format: // `projects/*/locations/*/multicastGroups/*`.
+	// This field is deprecated. Use multicast_group_range_activation instead.
+	MulticastGroup string `json:"multicastGroup,omitempty"`
+	// MulticastGroupRangeActivation: Required. The resource name of the multicast
+	// group range activation created by the admin in the same zone as this
+	// multicast group consumer activation. Use the following format: //
+	// `projects/*/locations/*/multicastGroupRangeActivations/*`.
+	MulticastGroupRangeActivation string `json:"multicastGroupRangeActivation,omitempty"`
+	// Name: Identifier. The resource name of the multicast group consumer
+	// activation. Use the following format:
+	// `projects/*/locations/*/multicastGroupConsumerActivations/*`.
+	Name string `json:"name,omitempty"`
+	// ResourceState: Output only. [Deprecated] The resource state of the multicast
+	// group consumer activation. Use the state field instead.
+	//
+	// Possible values:
+	//   "CONSUMER_RESOURCE_STATE_UNSPECIFIED" - The consumer resource state is not
+	// specified.
+	//   "ACTIVE" - The consumer resource state is active.
+	//   "OBSOLETE" - The associated admin resource has been deleted. The consumer
+	// resource state becomes obsolete.
+	ResourceState string `json:"resourceState,omitempty"`
+	// State: Output only. [Output only] The state of the resource.
+	State *MulticastResourceState `json:"state,omitempty"`
+	// UniqueId: Output only. [Output only] The Google-generated UUID for the
+	// resource. This value is unique across all multicast group consumer
+	// activation resources. If a group consumer activation is deleted and another
+	// with the same name is created, the new group consumer activation is assigned
+	// a different unique_id.
+	UniqueId string `json:"uniqueId,omitempty"`
+	// UpdateTime: Output only. [Output only] The timestamp when the multicast
+	// group consumer activation was most recently updated.
+	UpdateTime string `json:"updateTime,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "CreateTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CreateTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s MulticastGroupConsumerActivation) MarshalJSON() ([]byte, error) {
+	type NoMethod MulticastGroupConsumerActivation
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// MulticastLogConfig: The logging configuration.
+type MulticastLogConfig struct {
+	// Enabled: Optional. Whether to enable logging or not.
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s MulticastLogConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod MulticastLogConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// MulticastResourceState: The multicast resource's state.
+type MulticastResourceState struct {
+	// State: Optional. The state of the multicast resource.
+	//
+	// Possible values:
+	//   "STATE_ENUM_UNSPECIFIED" - The resource is in unspecified state.
+	//   "CREATING" - The resource is being created.
+	//   "ACTIVE" - The resource is in a normal state and ready to use.
+	//   "DELETING" - The resource is being deleted.
+	//   "DELETE_FAILED" - The resource is failed to be deleted.
+	//   "UPDATING" - The resource is being updated.
+	//   "UPDATE_FAILED" - The resource is failed to be updated.
+	//   "INACTIVE" - The multicast consumer resource that is deactivated by the
+	// multicast administrator based on permission.
+	//   "OBSOLETE" - The multicast consumer resource that is obsoleted due to
+	// multicast admin setup teardown.
+	State string `json:"state,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "State") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "State") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s MulticastResourceState) MarshalJSON() ([]byte, error) {
+	type NoMethod MulticastResourceState
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -3087,8 +4328,12 @@ func (s RetryFilterPerRouteConfig) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// ServiceBinding: ServiceBinding is the resource that defines a Service
-// Directory Service to be used in a BackendService resource.
+// ServiceBinding: ServiceBinding can be used to: - Bind a Service Directory
+// Service to be used in a BackendService resource. This feature will be
+// deprecated soon. - Bind a Private Service Connect producer service to be
+// used in consumer Cloud Service Mesh or Application Load Balancers. - Bind a
+// Cloud Run service to be used in consumer Cloud Service Mesh or Application
+// Load Balancers.
 type ServiceBinding struct {
 	// CreateTime: Output only. The timestamp when the resource was created.
 	CreateTime string `json:"createTime,omitempty"`
@@ -3099,15 +4344,17 @@ type ServiceBinding struct {
 	// resource.
 	Labels map[string]string `json:"labels,omitempty"`
 	// Name: Identifier. Name of the ServiceBinding resource. It matches pattern
-	// `projects/*/locations/global/serviceBindings/service_binding_name`.
+	// `projects/*/locations/*/serviceBindings/`.
 	Name string `json:"name,omitempty"`
-	// Service: Required. The full Service Directory Service name of the format
-	// projects/*/locations/*/namespaces/*/services/*
+	// Service: Optional. The full Service Directory Service name of the format
+	// `projects/*/locations/*/namespaces/*/services/*`. This field is for Service
+	// Directory integration which will be deprecated soon.
 	Service string `json:"service,omitempty"`
 	// ServiceId: Output only. The unique identifier of the Service Directory
-	// Service against which the Service Binding resource is validated. This is
+	// Service against which the ServiceBinding resource is validated. This is
 	// populated when the Service Binding resource is used in another resource
-	// (like Backend Service). This is of the UUID4 format.
+	// (like Backend Service). This is of the UUID4 format. This field is for
+	// Service Directory integration which will be deprecated soon.
 	ServiceId string `json:"serviceId,omitempty"`
 	// UpdateTime: Output only. The timestamp when the resource was updated.
 	UpdateTime string `json:"updateTime,omitempty"`
@@ -3145,6 +4392,9 @@ type ServiceLbPolicy struct {
 	Description string `json:"description,omitempty"`
 	// FailoverConfig: Optional. Configuration related to health based failover.
 	FailoverConfig *ServiceLbPolicyFailoverConfig `json:"failoverConfig,omitempty"`
+	// IsolationConfig: Optional. Configuration to provide isolation support for
+	// the associated Backend Service.
+	IsolationConfig *ServiceLbPolicyIsolationConfig `json:"isolationConfig,omitempty"`
 	// Labels: Optional. Set of label tags associated with the ServiceLbPolicy
 	// resource.
 	Labels map[string]string `json:"labels,omitempty"`
@@ -3166,7 +4416,7 @@ type ServiceLbPolicy struct {
 	//   "WATERFALL_BY_ZONE" - Attempt to keep traffic in a single zone closest to
 	// the client, before spilling over to other zones.
 	LoadBalancingAlgorithm string `json:"loadBalancingAlgorithm,omitempty"`
-	// Name: Required. Name of the ServiceLbPolicy resource. It matches pattern
+	// Name: Identifier. Name of the ServiceLbPolicy resource. It matches pattern
 	// `projects/{project}/locations/{location}/serviceLbPolicies/{service_lb_policy
 	// _name}`.
 	Name string `json:"name,omitempty"`
@@ -3248,6 +4498,45 @@ func (s ServiceLbPolicyFailoverConfig) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// ServiceLbPolicyIsolationConfig: Configuration to provide isolation support
+// for the associated Backend Service.
+type ServiceLbPolicyIsolationConfig struct {
+	// IsolationGranularity: Optional. The isolation granularity of the load
+	// balancer.
+	//
+	// Possible values:
+	//   "ISOLATION_GRANULARITY_UNSPECIFIED" - No isolation is configured for the
+	// backend service. Traffic can overflow based on the load balancing algorithm.
+	//   "REGION" - Traffic for this service will be isolated at the cloud region
+	// level.
+	IsolationGranularity string `json:"isolationGranularity,omitempty"`
+	// IsolationMode: Optional. The isolation mode of the load balancer.
+	//
+	// Possible values:
+	//   "ISOLATION_MODE_UNSPECIFIED" - No isolation mode is configured for the
+	// backend service.
+	//   "NEAREST" - Traffic will be sent to the nearest region.
+	//   "STRICT" - Traffic will fail if no serving backends are available in the
+	// same region as the load balancer.
+	IsolationMode string `json:"isolationMode,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "IsolationGranularity") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "IsolationGranularity") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ServiceLbPolicyIsolationConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod ServiceLbPolicyIsolationConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // SetIamPolicyRequest: Request message for `SetIamPolicy` method.
 type SetIamPolicyRequest struct {
 	// Policy: REQUIRED: The complete policy to be applied to the `resource`. The
@@ -3322,18 +4611,18 @@ type TcpRoute struct {
 	// Gateways: Optional. Gateways defines a list of gateways this TcpRoute is
 	// attached to, as one of the routing rules to route the requests served by the
 	// gateway. Each gateway reference should match the pattern:
-	// `projects/*/locations/global/gateways/`
+	// `projects/*/locations/*/gateways/`
 	Gateways []string `json:"gateways,omitempty"`
 	// Labels: Optional. Set of label tags associated with the TcpRoute resource.
 	Labels map[string]string `json:"labels,omitempty"`
 	// Meshes: Optional. Meshes defines a list of meshes this TcpRoute is attached
 	// to, as one of the routing rules to route the requests served by the mesh.
 	// Each mesh reference should match the pattern:
-	// `projects/*/locations/global/meshes/` The attached Mesh should be of a type
+	// `projects/*/locations/*/meshes/` The attached Mesh should be of a type
 	// SIDECAR
 	Meshes []string `json:"meshes,omitempty"`
 	// Name: Identifier. Name of the TcpRoute resource. It matches pattern
-	// `projects/*/locations/global/tcpRoutes/tcp_route_name>`.
+	// `projects/*/locations/*/tcpRoutes/tcp_route_name>`.
 	Name string `json:"name,omitempty"`
 	// Rules: Required. Rules that define how traffic is routed and handled. At
 	// least one RouteRule must be supplied. If there are multiple rules then the
@@ -3555,18 +4844,18 @@ type TlsRoute struct {
 	// Gateways: Optional. Gateways defines a list of gateways this TlsRoute is
 	// attached to, as one of the routing rules to route the requests served by the
 	// gateway. Each gateway reference should match the pattern:
-	// `projects/*/locations/global/gateways/`
+	// `projects/*/locations/*/gateways/`
 	Gateways []string `json:"gateways,omitempty"`
 	// Labels: Optional. Set of label tags associated with the TlsRoute resource.
 	Labels map[string]string `json:"labels,omitempty"`
 	// Meshes: Optional. Meshes defines a list of meshes this TlsRoute is attached
 	// to, as one of the routing rules to route the requests served by the mesh.
 	// Each mesh reference should match the pattern:
-	// `projects/*/locations/global/meshes/` The attached Mesh should be of a type
+	// `projects/*/locations/*/meshes/` The attached Mesh should be of a type
 	// SIDECAR
 	Meshes []string `json:"meshes,omitempty"`
 	// Name: Identifier. Name of the TlsRoute resource. It matches pattern
-	// `projects/*/locations/global/tlsRoutes/tls_route_name>`.
+	// `projects/*/locations/*/tlsRoutes/tls_route_name>`.
 	Name string `json:"name,omitempty"`
 	// Rules: Required. Rules that define how traffic is routed and handled. At
 	// least one RouteRule must be supplied. If there are multiple rules then the
@@ -3574,6 +4863,11 @@ type TlsRoute struct {
 	Rules []*TlsRouteRouteRule `json:"rules,omitempty"`
 	// SelfLink: Output only. Server-defined URL of this resource
 	SelfLink string `json:"selfLink,omitempty"`
+	// TargetProxies: Optional. TargetProxies defines a list of TargetTcpProxies
+	// this TlsRoute is attached to, as one of the routing rules to route the
+	// requests served by the TargetTcpProxy. Each TargetTcpProxy reference should
+	// match the pattern: `projects/*/locations/*/targetTcpProxies/`
+	TargetProxies []string `json:"targetProxies,omitempty"`
 	// UpdateTime: Output only. The timestamp when the resource was updated.
 	UpdateTime string `json:"updateTime,omitempty"`
 
@@ -3631,7 +4925,7 @@ func (s TlsRouteRouteAction) MarshalJSON() ([]byte, error) {
 type TlsRouteRouteDestination struct {
 	// ServiceName: Required. The URL of a BackendService to route traffic to.
 	ServiceName string `json:"serviceName,omitempty"`
-	// Weight: Optional. Specifies the proportion of requests forwareded to the
+	// Weight: Optional. Specifies the proportion of requests forwarded to the
 	// backend referenced by the service_name field. This is computed as: -
 	// weight/Sum(weights in destinations) Weights in all destinations does not
 	// need to sum up to 100.
@@ -3655,8 +4949,7 @@ func (s TlsRouteRouteDestination) MarshalJSON() ([]byte, error) {
 }
 
 // TlsRouteRouteMatch: RouteMatch defines the predicate used to match requests
-// to a given action. Multiple match types are "AND"ed for evaluation. If no
-// routeMatch field is specified, this rule will unconditionally match traffic.
+// to a given action. Multiple match types are "AND"ed for evaluation.
 type TlsRouteRouteMatch struct {
 	// Alpn: Optional. ALPN (Application-Layer Protocol Negotiation) to match
 	// against. Examples: "http/1.1", "h2". At least one of sni_host and alpn is
@@ -3693,7 +4986,8 @@ type TlsRouteRouteRule struct {
 	// Action: Required. The detailed rule defining how to route matched traffic.
 	Action *TlsRouteRouteAction `json:"action,omitempty"`
 	// Matches: Required. RouteMatch defines the predicate used to match requests
-	// to a given action. Multiple match types are "OR"ed for evaluation.
+	// to a given action. Multiple match types are "OR"ed for evaluation. Atleast
+	// one RouteMatch must be supplied.
 	Matches []*TlsRouteRouteMatch `json:"matches,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Action") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
@@ -3735,6 +5029,314 @@ type TrafficPortSelector struct {
 
 func (s TrafficPortSelector) MarshalJSON() ([]byte, error) {
 	type NoMethod TrafficPortSelector
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// WasmPlugin: `WasmPlugin` is a resource representing a service executing a
+// customer-provided Wasm module.
+type WasmPlugin struct {
+	// CreateTime: Output only. The timestamp when the resource was created.
+	CreateTime string `json:"createTime,omitempty"`
+	// Description: Optional. A human-readable description of the resource.
+	Description string `json:"description,omitempty"`
+	// Labels: Optional. Set of labels associated with the `WasmPlugin` resource.
+	// The format must comply with the following requirements
+	// (/compute/docs/labeling-resources#requirements).
+	Labels map[string]string `json:"labels,omitempty"`
+	// LogConfig: Optional. Specifies the logging options for the activity
+	// performed by this plugin. If logging is enabled, plugin logs are exported to
+	// Cloud Logging. Note that the settings relate to the logs generated by using
+	// logging statements in your Wasm code.
+	LogConfig *WasmPluginLogConfig `json:"logConfig,omitempty"`
+	// MainVersionId: Optional. The ID of the `WasmPluginVersion` resource that is
+	// the currently serving one. The version referred to must be a child of this
+	// `WasmPlugin` resource.
+	MainVersionId string `json:"mainVersionId,omitempty"`
+	// Name: Identifier. Name of the `WasmPlugin` resource in the following format:
+	// `projects/{project}/locations/{location}/wasmPlugins/{wasm_plugin}`.
+	Name string `json:"name,omitempty"`
+	// UpdateTime: Output only. The timestamp when the resource was updated.
+	UpdateTime string `json:"updateTime,omitempty"`
+	// UsedBy: Output only. List of all extensions
+	// (https://cloud.google.com/service-extensions/docs/overview) that use this
+	// `WasmPlugin` resource.
+	UsedBy []*WasmPluginUsedBy `json:"usedBy,omitempty"`
+	// Versions: Optional. All versions of this `WasmPlugin` resource in the
+	// key-value format. The key is the resource ID, and the value is the
+	// `VersionDetails` object. Lets you create or update a `WasmPlugin` resource
+	// and its versions in a single request. When the `main_version_id` field is
+	// not empty, it must point to one of the `VersionDetails` objects in the map.
+	// If provided in a `PATCH` request, the new versions replace the previous set.
+	// Any version omitted from the `versions` field is removed. Because the
+	// `WasmPluginVersion` resource is immutable, if a `WasmPluginVersion` resource
+	// with the same name already exists and differs, the request fails. Note: In a
+	// `GET` request, this field is populated only if the field
+	// `GetWasmPluginRequest.view` is set to `WASM_PLUGIN_VIEW_FULL`.
+	Versions map[string]WasmPluginVersionDetails `json:"versions,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "CreateTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CreateTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s WasmPlugin) MarshalJSON() ([]byte, error) {
+	type NoMethod WasmPlugin
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// WasmPluginLogConfig: Specifies the logging options for the activity
+// performed by this plugin. If logging is enabled, plugin logs are exported to
+// Cloud Logging.
+type WasmPluginLogConfig struct {
+	// Enable: Optional. Specifies whether to enable logging for activity by this
+	// plugin. Defaults to `false`.
+	Enable bool `json:"enable,omitempty"`
+	// MinLogLevel: Non-empty default. Specifies the lowest level of the plugin
+	// logs that are exported to Cloud Logging. This setting relates to the logs
+	// generated by using logging statements in your Wasm code. This field is can
+	// be set only if logging is enabled for the plugin. If the field is not
+	// provided when logging is enabled, it is set to `INFO` by default.
+	//
+	// Possible values:
+	//   "LOG_LEVEL_UNSPECIFIED" - Unspecified value. Defaults to `LogLevel.INFO`.
+	//   "TRACE" - Report logs with TRACE level and above.
+	//   "DEBUG" - Report logs with DEBUG level and above.
+	//   "INFO" - Report logs with INFO level and above.
+	//   "WARN" - Report logs with WARN level and above.
+	//   "ERROR" - Report logs with ERROR level and above.
+	//   "CRITICAL" - Report logs with CRITICAL level only.
+	MinLogLevel string `json:"minLogLevel,omitempty"`
+	// SampleRate: Non-empty default. Configures the sampling rate of activity
+	// logs, where `1.0` means all logged activity is reported and `0.0` means no
+	// activity is reported. A floating point value between `0.0` and `1.0`
+	// indicates that a percentage of log messages is stored. The default value
+	// when logging is enabled is `1.0`. The value of the field must be between `0`
+	// and `1` (inclusive). This field can be specified only if logging is enabled
+	// for this plugin.
+	SampleRate float64 `json:"sampleRate,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Enable") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Enable") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s WasmPluginLogConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod WasmPluginLogConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+func (s *WasmPluginLogConfig) UnmarshalJSON(data []byte) error {
+	type NoMethod WasmPluginLogConfig
+	var s1 struct {
+		SampleRate gensupport.JSONFloat64 `json:"sampleRate"`
+		*NoMethod
+	}
+	s1.NoMethod = (*NoMethod)(s)
+	if err := json.Unmarshal(data, &s1); err != nil {
+		return err
+	}
+	s.SampleRate = float64(s1.SampleRate)
+	return nil
+}
+
+// WasmPluginUsedBy: Defines a resource that uses the `WasmPlugin` resource.
+type WasmPluginUsedBy struct {
+	// Name: Output only. Full name of the resource
+	// https://google.aip.dev/122#full-resource-names, for example
+	// `//networkservices.googleapis.com/projects/{project}/locations/{location}/lbR
+	// outeExtensions/{extension}`
+	Name string `json:"name,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Name") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Name") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s WasmPluginUsedBy) MarshalJSON() ([]byte, error) {
+	type NoMethod WasmPluginUsedBy
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// WasmPluginVersion: A single immutable version of a `WasmPlugin` resource.
+// Defines the Wasm module used and optionally its runtime config.
+type WasmPluginVersion struct {
+	// CreateTime: Output only. The timestamp when the resource was created.
+	CreateTime string `json:"createTime,omitempty"`
+	// Description: Optional. A human-readable description of the resource.
+	Description string `json:"description,omitempty"`
+	// ImageDigest: Output only. This field holds the digest (usually checksum)
+	// value for the plugin image. The value is calculated based on the `image_uri`
+	// field. If the `image_uri` field refers to a container image, the digest
+	// value is obtained from the container image. If the `image_uri` field refers
+	// to a generic artifact, the digest value is calculated based on the contents
+	// of the file.
+	ImageDigest string `json:"imageDigest,omitempty"`
+	// ImageUri: Optional. URI of the image containing the Wasm module, stored in
+	// Artifact Registry. The URI can refer to one of the following repository
+	// formats: * Container images: the `image_uri` must point to a container that
+	// contains a single file with the name `plugin.wasm`. When a new
+	// `WasmPluginVersion` resource is created, the digest of the image is saved in
+	// the `image_digest` field. When pulling a container image from Artifact
+	// Registry, the digest value is used instead of an image tag. * Generic
+	// artifacts: the `image_uri` must be in this format:
+	// `projects/{project}/locations/{location}/repositories/{repository}/
+	// genericArtifacts/{package}:{version}`. The specified package and version
+	// must contain a file with the name `plugin.wasm`. When a new
+	// `WasmPluginVersion` resource is created, the checksum of the contents of the
+	// file is saved in the `image_digest` field.
+	ImageUri string `json:"imageUri,omitempty"`
+	// Labels: Optional. Set of labels associated with the `WasmPluginVersion`
+	// resource.
+	Labels map[string]string `json:"labels,omitempty"`
+	// Name: Identifier. Name of the `WasmPluginVersion` resource in the following
+	// format: `projects/{project}/locations/{location}/wasmPlugins/{wasm_plugin}/
+	// versions/{wasm_plugin_version}`.
+	Name string `json:"name,omitempty"`
+	// PluginConfigData: Configuration for the plugin. The configuration is
+	// provided to the plugin at runtime through the `ON_CONFIGURE` callback. When
+	// a new `WasmPluginVersion` resource is created, the digest of the contents is
+	// saved in the `plugin_config_digest` field.
+	PluginConfigData string `json:"pluginConfigData,omitempty"`
+	// PluginConfigDigest: Output only. This field holds the digest (usually
+	// checksum) value for the plugin configuration. The value is calculated based
+	// on the contents of `plugin_config_data` field or the image defined by the
+	// `plugin_config_uri` field.
+	PluginConfigDigest string `json:"pluginConfigDigest,omitempty"`
+	// PluginConfigUri: URI of the plugin configuration stored in the Artifact
+	// Registry. The configuration is provided to the plugin at runtime through the
+	// `ON_CONFIGURE` callback. The URI can refer to one of the following
+	// repository formats: * Container images: the `plugin_config_uri` must point
+	// to a container that contains a single file with the name `plugin.config`.
+	// When a new `WasmPluginVersion` resource is created, the digest of the image
+	// is saved in the `plugin_config_digest` field. When pulling a container image
+	// from Artifact Registry, the digest value is used instead of an image tag. *
+	// Generic artifacts: the `plugin_config_uri` must be in this format:
+	// `projects/{project}/locations/{location}/repositories/{repository}/
+	// genericArtifacts/{package}:{version}`. The specified package and version
+	// must contain a file with the name `plugin.config`. When a new
+	// `WasmPluginVersion` resource is created, the checksum of the contents of the
+	// file is saved in the `plugin_config_digest` field.
+	PluginConfigUri string `json:"pluginConfigUri,omitempty"`
+	// UpdateTime: Output only. The timestamp when the resource was updated.
+	UpdateTime string `json:"updateTime,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "CreateTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CreateTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s WasmPluginVersion) MarshalJSON() ([]byte, error) {
+	type NoMethod WasmPluginVersion
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// WasmPluginVersionDetails: Details of a `WasmPluginVersion` resource to be
+// inlined in the `WasmPlugin` resource.
+type WasmPluginVersionDetails struct {
+	// CreateTime: Output only. The timestamp when the resource was created.
+	CreateTime string `json:"createTime,omitempty"`
+	// Description: Optional. A human-readable description of the resource.
+	Description string `json:"description,omitempty"`
+	// ImageDigest: Output only. This field holds the digest (usually checksum)
+	// value for the plugin image. The value is calculated based on the `image_uri`
+	// field. If the `image_uri` field refers to a container image, the digest
+	// value is obtained from the container image. If the `image_uri` field refers
+	// to a generic artifact, the digest value is calculated based on the contents
+	// of the file.
+	ImageDigest string `json:"imageDigest,omitempty"`
+	// ImageUri: Optional. URI of the image containing the Wasm module, stored in
+	// Artifact Registry. The URI can refer to one of the following repository
+	// formats: * Container images: the `image_uri` must point to a container that
+	// contains a single file with the name `plugin.wasm`. When a new
+	// `WasmPluginVersion` resource is created, the digest of the image is saved in
+	// the `image_digest` field. When pulling a container image from Artifact
+	// Registry, the digest value is used instead of an image tag. * Generic
+	// artifacts: the `image_uri` must be in this format:
+	// `projects/{project}/locations/{location}/repositories/{repository}/
+	// genericArtifacts/{package}:{version}`. The specified package and version
+	// must contain a file with the name `plugin.wasm`. When a new
+	// `WasmPluginVersion` resource is created, the checksum of the contents of the
+	// file is saved in the `image_digest` field.
+	ImageUri string `json:"imageUri,omitempty"`
+	// Labels: Optional. Set of labels associated with the `WasmPluginVersion`
+	// resource.
+	Labels map[string]string `json:"labels,omitempty"`
+	// PluginConfigData: Configuration for the plugin. The configuration is
+	// provided to the plugin at runtime through the `ON_CONFIGURE` callback. When
+	// a new `WasmPluginVersion` version is created, the digest of the contents is
+	// saved in the `plugin_config_digest` field.
+	PluginConfigData string `json:"pluginConfigData,omitempty"`
+	// PluginConfigDigest: Output only. This field holds the digest (usually
+	// checksum) value for the plugin configuration. The value is calculated based
+	// on the contents of `plugin_config_data` field or the image defined by the
+	// `plugin_config_uri` field.
+	PluginConfigDigest string `json:"pluginConfigDigest,omitempty"`
+	// PluginConfigUri: URI of the plugin configuration stored in the Artifact
+	// Registry. The configuration is provided to the plugin at runtime through the
+	// `ON_CONFIGURE` callback. The URI can refer to one of the following
+	// repository formats: * Container images: the `plugin_config_uri` must point
+	// to a container that contains a single file with the name `plugin.config`.
+	// When a new `WasmPluginVersion` resource is created, the digest of the image
+	// is saved in the `plugin_config_digest` field. When pulling a container image
+	// from Artifact Registry, the digest value is used instead of an image tag. *
+	// Generic artifacts: the `plugin_config_uri` must be in this format:
+	// `projects/{project}/locations/{location}/repositories/{repository}/
+	// genericArtifacts/{package}:{version}`. The specified package and version
+	// must contain a file with the name `plugin.config`. When a new
+	// `WasmPluginVersion` resource is created, the checksum of the contents of the
+	// file is saved in the `plugin_config_digest` field.
+	PluginConfigUri string `json:"pluginConfigUri,omitempty"`
+	// UpdateTime: Output only. The timestamp when the resource was updated.
+	UpdateTime string `json:"updateTime,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "CreateTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CreateTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s WasmPluginVersionDetails) MarshalJSON() ([]byte, error) {
+	type NoMethod WasmPluginVersionDetails
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -3792,12 +5394,11 @@ func (c *ProjectsLocationsGetCall) doRequest(alt string) (*http.Response, error)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3805,6 +5406,7 @@ func (c *ProjectsLocationsGetCall) doRequest(alt string) (*http.Response, error)
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -3839,9 +5441,11 @@ func (c *ProjectsLocationsGetCall) Do(opts ...googleapi.CallOption) (*Location, 
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -3854,12 +5458,30 @@ type ProjectsLocationsListCall struct {
 	header_      http.Header
 }
 
-// List: Lists information about the supported locations for this service.
+// List: Lists information about the supported locations for this service. This
+// method lists locations based on the resource scope provided in the
+// ListLocationsRequest.name field: * **Global locations**: If `name` is empty,
+// the method lists the public locations available to all projects. *
+// **Project-specific locations**: If `name` follows the format
+// `projects/{project}`, the method lists locations visible to that specific
+// project. This includes public, private, or other project-specific locations
+// enabled for the project. For gRPC and client library implementations, the
+// resource name is passed as the `name` field. For direct service calls, the
+// resource name is incorporated into the request path based on the specific
+// service implementation and version.
 //
 // - name: The resource that owns the locations collection, if applicable.
 func (r *ProjectsLocationsService) List(name string) *ProjectsLocationsListCall {
 	c := &ProjectsLocationsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
+	return c
+}
+
+// ExtraLocationTypes sets the optional parameter "extraLocationTypes": Do not
+// use this field unless explicitly documented otherwise. This is primarily for
+// internal usage.
+func (c *ProjectsLocationsListCall) ExtraLocationTypes(extraLocationTypes ...string) *ProjectsLocationsListCall {
+	c.urlParams_.SetMulti("extraLocationTypes", append([]string{}, extraLocationTypes...))
 	return c
 }
 
@@ -3923,12 +5545,11 @@ func (c *ProjectsLocationsListCall) doRequest(alt string) (*http.Response, error
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}/locations")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3936,6 +5557,7 @@ func (c *ProjectsLocationsListCall) doRequest(alt string) (*http.Response, error
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -3971,9 +5593,11 @@ func (c *ProjectsLocationsListCall) Do(opts ...googleapi.CallOption) (*ListLocat
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -3996,6 +5620,1250 @@ func (c *ProjectsLocationsListCall) Pages(ctx context.Context, f func(*ListLocat
 		}
 		c.PageToken(x.NextPageToken)
 	}
+}
+
+type ProjectsLocationsAgentGatewaysCreateCall struct {
+	s            *Service
+	parent       string
+	agentgateway *AgentGateway
+	urlParams_   gensupport.URLParams
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Create: Creates a new AgentGateway in a given project and location.
+//
+//   - parent: The parent resource of the AgentGateway. Must be in the format
+//     `projects/*/locations/*`.
+func (r *ProjectsLocationsAgentGatewaysService) Create(parent string, agentgateway *AgentGateway) *ProjectsLocationsAgentGatewaysCreateCall {
+	c := &ProjectsLocationsAgentGatewaysCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	c.agentgateway = agentgateway
+	return c
+}
+
+// AgentGatewayId sets the optional parameter "agentGatewayId": Required. Short
+// name of the AgentGateway resource to be created.
+func (c *ProjectsLocationsAgentGatewaysCreateCall) AgentGatewayId(agentGatewayId string) *ProjectsLocationsAgentGatewaysCreateCall {
+	c.urlParams_.Set("agentGatewayId", agentGatewayId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsAgentGatewaysCreateCall) Fields(s ...googleapi.Field) *ProjectsLocationsAgentGatewaysCreateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsAgentGatewaysCreateCall) Context(ctx context.Context) *ProjectsLocationsAgentGatewaysCreateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsAgentGatewaysCreateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsAgentGatewaysCreateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.agentgateway)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/agentGateways")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.agentGateways.create", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.agentGateways.create" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsAgentGatewaysCreateCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.agentGateways.create", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsAgentGatewaysDeleteCall struct {
+	s          *Service
+	name       string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Delete: Deletes a single AgentGateway.
+//
+//   - name: A name of the AgentGateway to delete. Must be in the format
+//     `projects/*/locations/*/agentGateways/*`.
+func (r *ProjectsLocationsAgentGatewaysService) Delete(name string) *ProjectsLocationsAgentGatewaysDeleteCall {
+	c := &ProjectsLocationsAgentGatewaysDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Etag sets the optional parameter "etag": The etag of the AgentGateway to
+// delete.
+func (c *ProjectsLocationsAgentGatewaysDeleteCall) Etag(etag string) *ProjectsLocationsAgentGatewaysDeleteCall {
+	c.urlParams_.Set("etag", etag)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsAgentGatewaysDeleteCall) Fields(s ...googleapi.Field) *ProjectsLocationsAgentGatewaysDeleteCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsAgentGatewaysDeleteCall) Context(ctx context.Context) *ProjectsLocationsAgentGatewaysDeleteCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsAgentGatewaysDeleteCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsAgentGatewaysDeleteCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("DELETE", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.agentGateways.delete", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.agentGateways.delete" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsAgentGatewaysDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.agentGateways.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsAgentGatewaysGetCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Gets details of a single AgentGateway.
+//
+//   - name: A name of the AgentGateway to get. Must be in the format
+//     `projects/*/locations/*/agentGateways/*`.
+func (r *ProjectsLocationsAgentGatewaysService) Get(name string) *ProjectsLocationsAgentGatewaysGetCall {
+	c := &ProjectsLocationsAgentGatewaysGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsAgentGatewaysGetCall) Fields(s ...googleapi.Field) *ProjectsLocationsAgentGatewaysGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsAgentGatewaysGetCall) IfNoneMatch(entityTag string) *ProjectsLocationsAgentGatewaysGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsAgentGatewaysGetCall) Context(ctx context.Context) *ProjectsLocationsAgentGatewaysGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsAgentGatewaysGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsAgentGatewaysGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.agentGateways.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.agentGateways.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *AgentGateway.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsAgentGatewaysGetCall) Do(opts ...googleapi.CallOption) (*AgentGateway, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &AgentGateway{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.agentGateways.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsAgentGatewaysListCall struct {
+	s            *Service
+	parent       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Lists AgentGateways in a given project and location.
+//
+//   - parent: The project and location from which the AgentGateways should be
+//     listed, specified in the format `projects/*/locations/*`.
+func (r *ProjectsLocationsAgentGatewaysService) List(parent string) *ProjectsLocationsAgentGatewaysListCall {
+	c := &ProjectsLocationsAgentGatewaysListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Maximum number of
+// AgentGateways to return per call.
+func (c *ProjectsLocationsAgentGatewaysListCall) PageSize(pageSize int64) *ProjectsLocationsAgentGatewaysListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": The value returned by the
+// last `ListAgentGatewaysResponse` Indicates that this is a continuation of a
+// prior `ListAgentGateways` call, and that the system should return the next
+// page of data.
+func (c *ProjectsLocationsAgentGatewaysListCall) PageToken(pageToken string) *ProjectsLocationsAgentGatewaysListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess": If
+// true, allow partial responses for multi-regional Aggregated List requests.
+// Otherwise if one of the locations is down or unreachable, the Aggregated
+// List request will fail.
+func (c *ProjectsLocationsAgentGatewaysListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ProjectsLocationsAgentGatewaysListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsAgentGatewaysListCall) Fields(s ...googleapi.Field) *ProjectsLocationsAgentGatewaysListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsAgentGatewaysListCall) IfNoneMatch(entityTag string) *ProjectsLocationsAgentGatewaysListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsAgentGatewaysListCall) Context(ctx context.Context) *ProjectsLocationsAgentGatewaysListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsAgentGatewaysListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsAgentGatewaysListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/agentGateways")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.agentGateways.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.agentGateways.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ListAgentGatewaysResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsAgentGatewaysListCall) Do(opts ...googleapi.CallOption) (*ListAgentGatewaysResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ListAgentGatewaysResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.agentGateways.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ProjectsLocationsAgentGatewaysListCall) Pages(ctx context.Context, f func(*ListAgentGatewaysResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type ProjectsLocationsAgentGatewaysPatchCall struct {
+	s            *Service
+	name         string
+	agentgateway *AgentGateway
+	urlParams_   gensupport.URLParams
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Patch: Updates the parameters of a single AgentGateway.
+//
+//   - name: Identifier. Name of the AgentGateway resource. It matches pattern
+//     `projects/*/locations/*/agentGateways/`.
+func (r *ProjectsLocationsAgentGatewaysService) Patch(name string, agentgateway *AgentGateway) *ProjectsLocationsAgentGatewaysPatchCall {
+	c := &ProjectsLocationsAgentGatewaysPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	c.agentgateway = agentgateway
+	return c
+}
+
+// UpdateMask sets the optional parameter "updateMask": Field mask is used to
+// specify the fields to be overwritten in the AgentGateway resource by the
+// update. The fields specified in the update_mask are relative to the
+// resource, not the full request. A field will be overwritten if it is in the
+// mask. If the user does not provide a mask then all fields will be
+// overwritten.
+func (c *ProjectsLocationsAgentGatewaysPatchCall) UpdateMask(updateMask string) *ProjectsLocationsAgentGatewaysPatchCall {
+	c.urlParams_.Set("updateMask", updateMask)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsAgentGatewaysPatchCall) Fields(s ...googleapi.Field) *ProjectsLocationsAgentGatewaysPatchCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsAgentGatewaysPatchCall) Context(ctx context.Context) *ProjectsLocationsAgentGatewaysPatchCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsAgentGatewaysPatchCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsAgentGatewaysPatchCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.agentgateway)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PATCH", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.agentGateways.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.agentGateways.patch" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsAgentGatewaysPatchCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.agentGateways.patch", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsAuthzExtensionsCreateCall struct {
+	s              *Service
+	parent         string
+	authzextension *AuthzExtension
+	urlParams_     gensupport.URLParams
+	ctx_           context.Context
+	header_        http.Header
+}
+
+// Create: Creates a new `AuthzExtension` resource in a given project and
+// location.
+//
+//   - parent: The parent resource of the `AuthzExtension` resource. Must be in
+//     the format `projects/{project}/locations/{location}`.
+func (r *ProjectsLocationsAuthzExtensionsService) Create(parent string, authzextension *AuthzExtension) *ProjectsLocationsAuthzExtensionsCreateCall {
+	c := &ProjectsLocationsAuthzExtensionsCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	c.authzextension = authzextension
+	return c
+}
+
+// AuthzExtensionId sets the optional parameter "authzExtensionId": Required.
+// User-provided ID of the `AuthzExtension` resource to be created.
+func (c *ProjectsLocationsAuthzExtensionsCreateCall) AuthzExtensionId(authzExtensionId string) *ProjectsLocationsAuthzExtensionsCreateCall {
+	c.urlParams_.Set("authzExtensionId", authzExtensionId)
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server can ignore the request if it has already been
+// completed. The server guarantees that for 60 minutes since the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsAuthzExtensionsCreateCall) RequestId(requestId string) *ProjectsLocationsAuthzExtensionsCreateCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsAuthzExtensionsCreateCall) Fields(s ...googleapi.Field) *ProjectsLocationsAuthzExtensionsCreateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsAuthzExtensionsCreateCall) Context(ctx context.Context) *ProjectsLocationsAuthzExtensionsCreateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsAuthzExtensionsCreateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsAuthzExtensionsCreateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.authzextension)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/authzExtensions")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.authzExtensions.create", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.authzExtensions.create" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsAuthzExtensionsCreateCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.authzExtensions.create", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsAuthzExtensionsDeleteCall struct {
+	s          *Service
+	name       string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Delete: Deletes the specified `AuthzExtension` resource.
+//
+//   - name: The name of the `AuthzExtension` resource to delete. Must be in the
+//     format
+//     `projects/{project}/locations/{location}/authzExtensions/{authz_extension}`
+//     .
+func (r *ProjectsLocationsAuthzExtensionsService) Delete(name string) *ProjectsLocationsAuthzExtensionsDeleteCall {
+	c := &ProjectsLocationsAuthzExtensionsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server can ignore the request if it has already been
+// completed. The server guarantees that for 60 minutes after the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsAuthzExtensionsDeleteCall) RequestId(requestId string) *ProjectsLocationsAuthzExtensionsDeleteCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsAuthzExtensionsDeleteCall) Fields(s ...googleapi.Field) *ProjectsLocationsAuthzExtensionsDeleteCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsAuthzExtensionsDeleteCall) Context(ctx context.Context) *ProjectsLocationsAuthzExtensionsDeleteCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsAuthzExtensionsDeleteCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsAuthzExtensionsDeleteCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("DELETE", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.authzExtensions.delete", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.authzExtensions.delete" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsAuthzExtensionsDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.authzExtensions.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsAuthzExtensionsGetCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Gets details of the specified `AuthzExtension` resource.
+//
+//   - name: A name of the `AuthzExtension` resource to get. Must be in the
+//     format
+//     `projects/{project}/locations/{location}/authzExtensions/{authz_extension}`
+//     .
+func (r *ProjectsLocationsAuthzExtensionsService) Get(name string) *ProjectsLocationsAuthzExtensionsGetCall {
+	c := &ProjectsLocationsAuthzExtensionsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsAuthzExtensionsGetCall) Fields(s ...googleapi.Field) *ProjectsLocationsAuthzExtensionsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsAuthzExtensionsGetCall) IfNoneMatch(entityTag string) *ProjectsLocationsAuthzExtensionsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsAuthzExtensionsGetCall) Context(ctx context.Context) *ProjectsLocationsAuthzExtensionsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsAuthzExtensionsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsAuthzExtensionsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.authzExtensions.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.authzExtensions.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *AuthzExtension.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsAuthzExtensionsGetCall) Do(opts ...googleapi.CallOption) (*AuthzExtension, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &AuthzExtension{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.authzExtensions.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsAuthzExtensionsListCall struct {
+	s            *Service
+	parent       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Lists `AuthzExtension` resources in a given project and location.
+//
+//   - parent: The project and location from which the `AuthzExtension` resources
+//     are listed. These values are specified in the following format:
+//     `projects/{project}/locations/{location}`.
+func (r *ProjectsLocationsAuthzExtensionsService) List(parent string) *ProjectsLocationsAuthzExtensionsListCall {
+	c := &ProjectsLocationsAuthzExtensionsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	return c
+}
+
+// Filter sets the optional parameter "filter": Filtering results.
+func (c *ProjectsLocationsAuthzExtensionsListCall) Filter(filter string) *ProjectsLocationsAuthzExtensionsListCall {
+	c.urlParams_.Set("filter", filter)
+	return c
+}
+
+// OrderBy sets the optional parameter "orderBy": Hint about how to order the
+// results.
+func (c *ProjectsLocationsAuthzExtensionsListCall) OrderBy(orderBy string) *ProjectsLocationsAuthzExtensionsListCall {
+	c.urlParams_.Set("orderBy", orderBy)
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Requested page size. The
+// server might return fewer items than requested. If unspecified, the server
+// picks an appropriate default.
+func (c *ProjectsLocationsAuthzExtensionsListCall) PageSize(pageSize int64) *ProjectsLocationsAuthzExtensionsListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": A token identifying a
+// page of results that the server returns.
+func (c *ProjectsLocationsAuthzExtensionsListCall) PageToken(pageToken string) *ProjectsLocationsAuthzExtensionsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsAuthzExtensionsListCall) Fields(s ...googleapi.Field) *ProjectsLocationsAuthzExtensionsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsAuthzExtensionsListCall) IfNoneMatch(entityTag string) *ProjectsLocationsAuthzExtensionsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsAuthzExtensionsListCall) Context(ctx context.Context) *ProjectsLocationsAuthzExtensionsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsAuthzExtensionsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsAuthzExtensionsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/authzExtensions")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.authzExtensions.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.authzExtensions.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ListAuthzExtensionsResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsAuthzExtensionsListCall) Do(opts ...googleapi.CallOption) (*ListAuthzExtensionsResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ListAuthzExtensionsResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.authzExtensions.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ProjectsLocationsAuthzExtensionsListCall) Pages(ctx context.Context, f func(*ListAuthzExtensionsResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type ProjectsLocationsAuthzExtensionsPatchCall struct {
+	s              *Service
+	name           string
+	authzextension *AuthzExtension
+	urlParams_     gensupport.URLParams
+	ctx_           context.Context
+	header_        http.Header
+}
+
+// Patch: Updates the parameters of the specified `AuthzExtension` resource.
+//
+//   - name: Identifier. Name of the `AuthzExtension` resource in the following
+//     format:
+//     `projects/{project}/locations/{location}/authzExtensions/{authz_extension}`
+//     .
+func (r *ProjectsLocationsAuthzExtensionsService) Patch(name string, authzextension *AuthzExtension) *ProjectsLocationsAuthzExtensionsPatchCall {
+	c := &ProjectsLocationsAuthzExtensionsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	c.authzextension = authzextension
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server can ignore the request if it has already been
+// completed. The server guarantees that for 60 minutes since the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsAuthzExtensionsPatchCall) RequestId(requestId string) *ProjectsLocationsAuthzExtensionsPatchCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// UpdateMask sets the optional parameter "updateMask": Required. Used to
+// specify the fields to be overwritten in the `AuthzExtension` resource by the
+// update. The fields specified in the `update_mask` are relative to the
+// resource, not the full request. A field is overwritten if it is in the mask.
+// If the user does not specify a mask, then all fields are overwritten.
+func (c *ProjectsLocationsAuthzExtensionsPatchCall) UpdateMask(updateMask string) *ProjectsLocationsAuthzExtensionsPatchCall {
+	c.urlParams_.Set("updateMask", updateMask)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsAuthzExtensionsPatchCall) Fields(s ...googleapi.Field) *ProjectsLocationsAuthzExtensionsPatchCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsAuthzExtensionsPatchCall) Context(ctx context.Context) *ProjectsLocationsAuthzExtensionsPatchCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsAuthzExtensionsPatchCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsAuthzExtensionsPatchCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.authzextension)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PATCH", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.authzExtensions.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.authzExtensions.patch" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsAuthzExtensionsPatchCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.authzExtensions.patch", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
 }
 
 type ProjectsLocationsEdgeCacheKeysetsGetIamPolicyCall struct {
@@ -4072,12 +6940,11 @@ func (c *ProjectsLocationsEdgeCacheKeysetsGetIamPolicyCall) doRequest(alt string
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+resource}:getIamPolicy")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -4085,6 +6952,7 @@ func (c *ProjectsLocationsEdgeCacheKeysetsGetIamPolicyCall) doRequest(alt string
 	googleapi.Expand(req.URL, map[string]string{
 		"resource": c.resource,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheKeysets.getIamPolicy", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -4119,9 +6987,11 @@ func (c *ProjectsLocationsEdgeCacheKeysetsGetIamPolicyCall) Do(opts ...googleapi
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheKeysets.getIamPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -4173,8 +7043,7 @@ func (c *ProjectsLocationsEdgeCacheKeysetsSetIamPolicyCall) Header() http.Header
 
 func (c *ProjectsLocationsEdgeCacheKeysetsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setiampolicyrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setiampolicyrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -4190,6 +7059,7 @@ func (c *ProjectsLocationsEdgeCacheKeysetsSetIamPolicyCall) doRequest(alt string
 	googleapi.Expand(req.URL, map[string]string{
 		"resource": c.resource,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheKeysets.setIamPolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -4224,9 +7094,11 @@ func (c *ProjectsLocationsEdgeCacheKeysetsSetIamPolicyCall) Do(opts ...googleapi
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheKeysets.setIamPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -4281,8 +7153,7 @@ func (c *ProjectsLocationsEdgeCacheKeysetsTestIamPermissionsCall) Header() http.
 
 func (c *ProjectsLocationsEdgeCacheKeysetsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.testiampermissionsrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testiampermissionsrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -4298,6 +7169,7 @@ func (c *ProjectsLocationsEdgeCacheKeysetsTestIamPermissionsCall) doRequest(alt 
 	googleapi.Expand(req.URL, map[string]string{
 		"resource": c.resource,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheKeysets.testIamPermissions", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -4333,9 +7205,11 @@ func (c *ProjectsLocationsEdgeCacheKeysetsTestIamPermissionsCall) Do(opts ...goo
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheKeysets.testIamPermissions", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -4413,12 +7287,11 @@ func (c *ProjectsLocationsEdgeCacheOriginsGetIamPolicyCall) doRequest(alt string
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+resource}:getIamPolicy")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -4426,6 +7299,7 @@ func (c *ProjectsLocationsEdgeCacheOriginsGetIamPolicyCall) doRequest(alt string
 	googleapi.Expand(req.URL, map[string]string{
 		"resource": c.resource,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheOrigins.getIamPolicy", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -4460,9 +7334,11 @@ func (c *ProjectsLocationsEdgeCacheOriginsGetIamPolicyCall) Do(opts ...googleapi
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheOrigins.getIamPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -4514,8 +7390,7 @@ func (c *ProjectsLocationsEdgeCacheOriginsSetIamPolicyCall) Header() http.Header
 
 func (c *ProjectsLocationsEdgeCacheOriginsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setiampolicyrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setiampolicyrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -4531,6 +7406,7 @@ func (c *ProjectsLocationsEdgeCacheOriginsSetIamPolicyCall) doRequest(alt string
 	googleapi.Expand(req.URL, map[string]string{
 		"resource": c.resource,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheOrigins.setIamPolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -4565,9 +7441,11 @@ func (c *ProjectsLocationsEdgeCacheOriginsSetIamPolicyCall) Do(opts ...googleapi
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheOrigins.setIamPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -4622,8 +7500,7 @@ func (c *ProjectsLocationsEdgeCacheOriginsTestIamPermissionsCall) Header() http.
 
 func (c *ProjectsLocationsEdgeCacheOriginsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.testiampermissionsrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testiampermissionsrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -4639,6 +7516,7 @@ func (c *ProjectsLocationsEdgeCacheOriginsTestIamPermissionsCall) doRequest(alt 
 	googleapi.Expand(req.URL, map[string]string{
 		"resource": c.resource,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheOrigins.testIamPermissions", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -4674,9 +7552,11 @@ func (c *ProjectsLocationsEdgeCacheOriginsTestIamPermissionsCall) Do(opts ...goo
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheOrigins.testIamPermissions", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -4754,12 +7634,11 @@ func (c *ProjectsLocationsEdgeCacheServicesGetIamPolicyCall) doRequest(alt strin
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+resource}:getIamPolicy")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -4767,6 +7646,7 @@ func (c *ProjectsLocationsEdgeCacheServicesGetIamPolicyCall) doRequest(alt strin
 	googleapi.Expand(req.URL, map[string]string{
 		"resource": c.resource,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheServices.getIamPolicy", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -4801,9 +7681,11 @@ func (c *ProjectsLocationsEdgeCacheServicesGetIamPolicyCall) Do(opts ...googleap
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheServices.getIamPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -4855,8 +7737,7 @@ func (c *ProjectsLocationsEdgeCacheServicesSetIamPolicyCall) Header() http.Heade
 
 func (c *ProjectsLocationsEdgeCacheServicesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setiampolicyrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.setiampolicyrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -4872,6 +7753,7 @@ func (c *ProjectsLocationsEdgeCacheServicesSetIamPolicyCall) doRequest(alt strin
 	googleapi.Expand(req.URL, map[string]string{
 		"resource": c.resource,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheServices.setIamPolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -4906,9 +7788,11 @@ func (c *ProjectsLocationsEdgeCacheServicesSetIamPolicyCall) Do(opts ...googleap
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheServices.setIamPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -4963,8 +7847,7 @@ func (c *ProjectsLocationsEdgeCacheServicesTestIamPermissionsCall) Header() http
 
 func (c *ProjectsLocationsEdgeCacheServicesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.testiampermissionsrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.testiampermissionsrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -4980,6 +7863,7 @@ func (c *ProjectsLocationsEdgeCacheServicesTestIamPermissionsCall) doRequest(alt
 	googleapi.Expand(req.URL, map[string]string{
 		"resource": c.resource,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheServices.testIamPermissions", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -5015,9 +7899,11 @@ func (c *ProjectsLocationsEdgeCacheServicesTestIamPermissionsCall) Do(opts ...go
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.edgeCacheServices.testIamPermissions", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -5033,7 +7919,7 @@ type ProjectsLocationsEndpointPoliciesCreateCall struct {
 // Create: Creates a new EndpointPolicy in a given project and location.
 //
 //   - parent: The parent resource of the EndpointPolicy. Must be in the format
-//     `projects/*/locations/global`.
+//     `projects/*/locations/*`.
 func (r *ProjectsLocationsEndpointPoliciesService) Create(parent string, endpointpolicy *EndpointPolicy) *ProjectsLocationsEndpointPoliciesCreateCall {
 	c := &ProjectsLocationsEndpointPoliciesCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -5073,8 +7959,7 @@ func (c *ProjectsLocationsEndpointPoliciesCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsEndpointPoliciesCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.endpointpolicy)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.endpointpolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -5090,6 +7975,7 @@ func (c *ProjectsLocationsEndpointPoliciesCreateCall) doRequest(alt string) (*ht
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.endpointPolicies.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -5124,9 +8010,11 @@ func (c *ProjectsLocationsEndpointPoliciesCreateCall) Do(opts ...googleapi.CallO
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.endpointPolicies.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -5141,7 +8029,7 @@ type ProjectsLocationsEndpointPoliciesDeleteCall struct {
 // Delete: Deletes a single EndpointPolicy.
 //
 //   - name: A name of the EndpointPolicy to delete. Must be in the format
-//     `projects/*/locations/global/endpointPolicies/*`.
+//     `projects/*/locations/*/endpointPolicies/*`.
 func (r *ProjectsLocationsEndpointPoliciesService) Delete(name string) *ProjectsLocationsEndpointPoliciesDeleteCall {
 	c := &ProjectsLocationsEndpointPoliciesDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -5173,12 +8061,11 @@ func (c *ProjectsLocationsEndpointPoliciesDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsEndpointPoliciesDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5186,6 +8073,7 @@ func (c *ProjectsLocationsEndpointPoliciesDeleteCall) doRequest(alt string) (*ht
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.endpointPolicies.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -5220,9 +8108,11 @@ func (c *ProjectsLocationsEndpointPoliciesDeleteCall) Do(opts ...googleapi.CallO
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.endpointPolicies.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -5238,7 +8128,7 @@ type ProjectsLocationsEndpointPoliciesGetCall struct {
 // Get: Gets details of a single EndpointPolicy.
 //
 //   - name: A name of the EndpointPolicy to get. Must be in the format
-//     `projects/*/locations/global/endpointPolicies/*`.
+//     `projects/*/locations/*/endpointPolicies/*`.
 func (r *ProjectsLocationsEndpointPoliciesService) Get(name string) *ProjectsLocationsEndpointPoliciesGetCall {
 	c := &ProjectsLocationsEndpointPoliciesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -5281,12 +8171,11 @@ func (c *ProjectsLocationsEndpointPoliciesGetCall) doRequest(alt string) (*http.
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5294,6 +8183,7 @@ func (c *ProjectsLocationsEndpointPoliciesGetCall) doRequest(alt string) (*http.
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.endpointPolicies.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -5328,9 +8218,11 @@ func (c *ProjectsLocationsEndpointPoliciesGetCall) Do(opts ...googleapi.CallOpti
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.endpointPolicies.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -5346,7 +8238,7 @@ type ProjectsLocationsEndpointPoliciesListCall struct {
 // List: Lists EndpointPolicies in a given project and location.
 //
 //   - parent: The project and location from which the EndpointPolicies should be
-//     listed, specified in the format `projects/*/locations/global`.
+//     listed, specified in the format `projects/*/locations/*`.
 func (r *ProjectsLocationsEndpointPoliciesService) List(parent string) *ProjectsLocationsEndpointPoliciesListCall {
 	c := &ProjectsLocationsEndpointPoliciesListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -5366,6 +8258,15 @@ func (c *ProjectsLocationsEndpointPoliciesListCall) PageSize(pageSize int64) *Pr
 // next page of data.
 func (c *ProjectsLocationsEndpointPoliciesListCall) PageToken(pageToken string) *ProjectsLocationsEndpointPoliciesListCall {
 	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess": If
+// true, allow partial responses for multi-regional Aggregated List requests.
+// Otherwise if one of the locations is down or unreachable, the Aggregated
+// List request will fail.
+func (c *ProjectsLocationsEndpointPoliciesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ProjectsLocationsEndpointPoliciesListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
 	return c
 }
 
@@ -5405,12 +8306,11 @@ func (c *ProjectsLocationsEndpointPoliciesListCall) doRequest(alt string) (*http
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/endpointPolicies")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5418,6 +8318,7 @@ func (c *ProjectsLocationsEndpointPoliciesListCall) doRequest(alt string) (*http
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.endpointPolicies.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -5453,9 +8354,11 @@ func (c *ProjectsLocationsEndpointPoliciesListCall) Do(opts ...googleapi.CallOpt
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.endpointPolicies.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -5492,7 +8395,7 @@ type ProjectsLocationsEndpointPoliciesPatchCall struct {
 // Patch: Updates the parameters of a single EndpointPolicy.
 //
 //   - name: Identifier. Name of the EndpointPolicy resource. It matches pattern
-//     `projects/{project}/locations/global/endpointPolicies/{endpoint_policy}`.
+//     `projects/{project}/locations/*/endpointPolicies/{endpoint_policy}`.
 func (r *ProjectsLocationsEndpointPoliciesService) Patch(name string, endpointpolicy *EndpointPolicy) *ProjectsLocationsEndpointPoliciesPatchCall {
 	c := &ProjectsLocationsEndpointPoliciesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -5536,8 +8439,7 @@ func (c *ProjectsLocationsEndpointPoliciesPatchCall) Header() http.Header {
 
 func (c *ProjectsLocationsEndpointPoliciesPatchCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.endpointpolicy)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.endpointpolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -5553,6 +8455,7 @@ func (c *ProjectsLocationsEndpointPoliciesPatchCall) doRequest(alt string) (*htt
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.endpointPolicies.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -5587,9 +8490,11 @@ func (c *ProjectsLocationsEndpointPoliciesPatchCall) Do(opts ...googleapi.CallOp
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.endpointPolicies.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -5645,8 +8550,7 @@ func (c *ProjectsLocationsGatewaysCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsGatewaysCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.gateway)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.gateway)
 	if err != nil {
 		return nil, err
 	}
@@ -5662,6 +8566,7 @@ func (c *ProjectsLocationsGatewaysCreateCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -5696,9 +8601,11 @@ func (c *ProjectsLocationsGatewaysCreateCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -5745,12 +8652,11 @@ func (c *ProjectsLocationsGatewaysDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsGatewaysDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5758,6 +8664,7 @@ func (c *ProjectsLocationsGatewaysDeleteCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -5792,9 +8699,11 @@ func (c *ProjectsLocationsGatewaysDeleteCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -5853,12 +8762,11 @@ func (c *ProjectsLocationsGatewaysGetCall) doRequest(alt string) (*http.Response
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5866,6 +8774,7 @@ func (c *ProjectsLocationsGatewaysGetCall) doRequest(alt string) (*http.Response
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -5900,9 +8809,11 @@ func (c *ProjectsLocationsGatewaysGetCall) Do(opts ...googleapi.CallOption) (*Ga
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -5977,12 +8888,11 @@ func (c *ProjectsLocationsGatewaysListCall) doRequest(alt string) (*http.Respons
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/gateways")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5990,6 +8900,7 @@ func (c *ProjectsLocationsGatewaysListCall) doRequest(alt string) (*http.Respons
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -6025,9 +8936,11 @@ func (c *ProjectsLocationsGatewaysListCall) Do(opts ...googleapi.CallOption) (*L
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -6107,8 +9020,7 @@ func (c *ProjectsLocationsGatewaysPatchCall) Header() http.Header {
 
 func (c *ProjectsLocationsGatewaysPatchCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.gateway)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.gateway)
 	if err != nil {
 		return nil, err
 	}
@@ -6124,6 +9036,7 @@ func (c *ProjectsLocationsGatewaysPatchCall) doRequest(alt string) (*http.Respon
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -6158,10 +9071,272 @@ func (c *ProjectsLocationsGatewaysPatchCall) Do(opts ...googleapi.CallOption) (*
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
+}
+
+type ProjectsLocationsGatewaysRouteViewsGetCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Get a single RouteView of a Gateway.
+//
+//   - name: Name of the GatewayRouteView resource. Formats:
+//     projects/{project_number}/locations/{location}/gateways/{gateway}/routeView
+//     s/{route_view}.
+func (r *ProjectsLocationsGatewaysRouteViewsService) Get(name string) *ProjectsLocationsGatewaysRouteViewsGetCall {
+	c := &ProjectsLocationsGatewaysRouteViewsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsGatewaysRouteViewsGetCall) Fields(s ...googleapi.Field) *ProjectsLocationsGatewaysRouteViewsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsGatewaysRouteViewsGetCall) IfNoneMatch(entityTag string) *ProjectsLocationsGatewaysRouteViewsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsGatewaysRouteViewsGetCall) Context(ctx context.Context) *ProjectsLocationsGatewaysRouteViewsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsGatewaysRouteViewsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsGatewaysRouteViewsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.routeViews.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.gateways.routeViews.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GatewayRouteView.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *ProjectsLocationsGatewaysRouteViewsGetCall) Do(opts ...googleapi.CallOption) (*GatewayRouteView, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GatewayRouteView{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.routeViews.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsGatewaysRouteViewsListCall struct {
+	s            *Service
+	parent       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Lists RouteViews
+//
+//   - parent: The Gateway to which a Route is associated. Formats:
+//     projects/{project_number}/locations/{location}/gateways/{gateway}.
+func (r *ProjectsLocationsGatewaysRouteViewsService) List(parent string) *ProjectsLocationsGatewaysRouteViewsListCall {
+	c := &ProjectsLocationsGatewaysRouteViewsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Maximum number of
+// GatewayRouteViews to return per call.
+func (c *ProjectsLocationsGatewaysRouteViewsListCall) PageSize(pageSize int64) *ProjectsLocationsGatewaysRouteViewsListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": The value returned by the
+// last `ListGatewayRouteViewsResponse` Indicates that this is a continuation
+// of a prior `ListGatewayRouteViews` call, and that the system should return
+// the next page of data.
+func (c *ProjectsLocationsGatewaysRouteViewsListCall) PageToken(pageToken string) *ProjectsLocationsGatewaysRouteViewsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsGatewaysRouteViewsListCall) Fields(s ...googleapi.Field) *ProjectsLocationsGatewaysRouteViewsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsGatewaysRouteViewsListCall) IfNoneMatch(entityTag string) *ProjectsLocationsGatewaysRouteViewsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsGatewaysRouteViewsListCall) Context(ctx context.Context) *ProjectsLocationsGatewaysRouteViewsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsGatewaysRouteViewsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsGatewaysRouteViewsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/routeViews")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.routeViews.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.gateways.routeViews.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ListGatewayRouteViewsResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsGatewaysRouteViewsListCall) Do(opts ...googleapi.CallOption) (*ListGatewayRouteViewsResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ListGatewayRouteViewsResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.gateways.routeViews.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ProjectsLocationsGatewaysRouteViewsListCall) Pages(ctx context.Context, f func(*ListGatewayRouteViewsResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
 }
 
 type ProjectsLocationsGrpcRoutesCreateCall struct {
@@ -6176,7 +9351,7 @@ type ProjectsLocationsGrpcRoutesCreateCall struct {
 // Create: Creates a new GrpcRoute in a given project and location.
 //
 //   - parent: The parent resource of the GrpcRoute. Must be in the format
-//     `projects/*/locations/global`.
+//     `projects/*/locations/*`.
 func (r *ProjectsLocationsGrpcRoutesService) Create(parent string, grpcroute *GrpcRoute) *ProjectsLocationsGrpcRoutesCreateCall {
 	c := &ProjectsLocationsGrpcRoutesCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -6216,8 +9391,7 @@ func (c *ProjectsLocationsGrpcRoutesCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsGrpcRoutesCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.grpcroute)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.grpcroute)
 	if err != nil {
 		return nil, err
 	}
@@ -6233,6 +9407,7 @@ func (c *ProjectsLocationsGrpcRoutesCreateCall) doRequest(alt string) (*http.Res
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.grpcRoutes.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -6267,9 +9442,11 @@ func (c *ProjectsLocationsGrpcRoutesCreateCall) Do(opts ...googleapi.CallOption)
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.grpcRoutes.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -6284,7 +9461,7 @@ type ProjectsLocationsGrpcRoutesDeleteCall struct {
 // Delete: Deletes a single GrpcRoute.
 //
 //   - name: A name of the GrpcRoute to delete. Must be in the format
-//     `projects/*/locations/global/grpcRoutes/*`.
+//     `projects/*/locations/*/grpcRoutes/*`.
 func (r *ProjectsLocationsGrpcRoutesService) Delete(name string) *ProjectsLocationsGrpcRoutesDeleteCall {
 	c := &ProjectsLocationsGrpcRoutesDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -6316,12 +9493,11 @@ func (c *ProjectsLocationsGrpcRoutesDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsGrpcRoutesDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -6329,6 +9505,7 @@ func (c *ProjectsLocationsGrpcRoutesDeleteCall) doRequest(alt string) (*http.Res
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.grpcRoutes.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -6363,9 +9540,11 @@ func (c *ProjectsLocationsGrpcRoutesDeleteCall) Do(opts ...googleapi.CallOption)
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.grpcRoutes.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -6381,7 +9560,7 @@ type ProjectsLocationsGrpcRoutesGetCall struct {
 // Get: Gets details of a single GrpcRoute.
 //
 //   - name: A name of the GrpcRoute to get. Must be in the format
-//     `projects/*/locations/global/grpcRoutes/*`.
+//     `projects/*/locations/*/grpcRoutes/*`.
 func (r *ProjectsLocationsGrpcRoutesService) Get(name string) *ProjectsLocationsGrpcRoutesGetCall {
 	c := &ProjectsLocationsGrpcRoutesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -6424,12 +9603,11 @@ func (c *ProjectsLocationsGrpcRoutesGetCall) doRequest(alt string) (*http.Respon
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -6437,6 +9615,7 @@ func (c *ProjectsLocationsGrpcRoutesGetCall) doRequest(alt string) (*http.Respon
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.grpcRoutes.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -6471,9 +9650,11 @@ func (c *ProjectsLocationsGrpcRoutesGetCall) Do(opts ...googleapi.CallOption) (*
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.grpcRoutes.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -6489,7 +9670,7 @@ type ProjectsLocationsGrpcRoutesListCall struct {
 // List: Lists GrpcRoutes in a given project and location.
 //
 //   - parent: The project and location from which the GrpcRoutes should be
-//     listed, specified in the format `projects/*/locations/global`.
+//     listed, specified in the format `projects/*/locations/*`.
 func (r *ProjectsLocationsGrpcRoutesService) List(parent string) *ProjectsLocationsGrpcRoutesListCall {
 	c := &ProjectsLocationsGrpcRoutesListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -6509,6 +9690,15 @@ func (c *ProjectsLocationsGrpcRoutesListCall) PageSize(pageSize int64) *Projects
 // of data.
 func (c *ProjectsLocationsGrpcRoutesListCall) PageToken(pageToken string) *ProjectsLocationsGrpcRoutesListCall {
 	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess": If
+// true, allow partial responses for multi-regional Aggregated List requests.
+// Otherwise if one of the locations is down or unreachable, the Aggregated
+// List request will fail.
+func (c *ProjectsLocationsGrpcRoutesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ProjectsLocationsGrpcRoutesListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
 	return c
 }
 
@@ -6548,12 +9738,11 @@ func (c *ProjectsLocationsGrpcRoutesListCall) doRequest(alt string) (*http.Respo
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/grpcRoutes")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -6561,6 +9750,7 @@ func (c *ProjectsLocationsGrpcRoutesListCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.grpcRoutes.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -6596,9 +9786,11 @@ func (c *ProjectsLocationsGrpcRoutesListCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.grpcRoutes.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -6635,7 +9827,7 @@ type ProjectsLocationsGrpcRoutesPatchCall struct {
 // Patch: Updates the parameters of a single GrpcRoute.
 //
 //   - name: Identifier. Name of the GrpcRoute resource. It matches pattern
-//     `projects/*/locations/global/grpcRoutes/`.
+//     `projects/*/locations/*/grpcRoutes/`.
 func (r *ProjectsLocationsGrpcRoutesService) Patch(name string, grpcroute *GrpcRoute) *ProjectsLocationsGrpcRoutesPatchCall {
 	c := &ProjectsLocationsGrpcRoutesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -6679,8 +9871,7 @@ func (c *ProjectsLocationsGrpcRoutesPatchCall) Header() http.Header {
 
 func (c *ProjectsLocationsGrpcRoutesPatchCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.grpcroute)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.grpcroute)
 	if err != nil {
 		return nil, err
 	}
@@ -6696,6 +9887,7 @@ func (c *ProjectsLocationsGrpcRoutesPatchCall) doRequest(alt string) (*http.Resp
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.grpcRoutes.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -6730,9 +9922,11 @@ func (c *ProjectsLocationsGrpcRoutesPatchCall) Do(opts ...googleapi.CallOption) 
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.grpcRoutes.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -6748,7 +9942,7 @@ type ProjectsLocationsHttpRoutesCreateCall struct {
 // Create: Creates a new HttpRoute in a given project and location.
 //
 //   - parent: The parent resource of the HttpRoute. Must be in the format
-//     `projects/*/locations/global`.
+//     `projects/*/locations/*`.
 func (r *ProjectsLocationsHttpRoutesService) Create(parent string, httproute *HttpRoute) *ProjectsLocationsHttpRoutesCreateCall {
 	c := &ProjectsLocationsHttpRoutesCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -6760,6 +9954,12 @@ func (r *ProjectsLocationsHttpRoutesService) Create(parent string, httproute *Ht
 // of the HttpRoute resource to be created.
 func (c *ProjectsLocationsHttpRoutesCreateCall) HttpRouteId(httpRouteId string) *ProjectsLocationsHttpRoutesCreateCall {
 	c.urlParams_.Set("httpRouteId", httpRouteId)
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": Idempotent request UUID.
+func (c *ProjectsLocationsHttpRoutesCreateCall) RequestId(requestId string) *ProjectsLocationsHttpRoutesCreateCall {
+	c.urlParams_.Set("requestId", requestId)
 	return c
 }
 
@@ -6788,8 +9988,7 @@ func (c *ProjectsLocationsHttpRoutesCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsHttpRoutesCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.httproute)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.httproute)
 	if err != nil {
 		return nil, err
 	}
@@ -6805,6 +10004,7 @@ func (c *ProjectsLocationsHttpRoutesCreateCall) doRequest(alt string) (*http.Res
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.httpRoutes.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -6839,9 +10039,11 @@ func (c *ProjectsLocationsHttpRoutesCreateCall) Do(opts ...googleapi.CallOption)
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.httpRoutes.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -6856,7 +10058,7 @@ type ProjectsLocationsHttpRoutesDeleteCall struct {
 // Delete: Deletes a single HttpRoute.
 //
 //   - name: A name of the HttpRoute to delete. Must be in the format
-//     `projects/*/locations/global/httpRoutes/*`.
+//     `projects/*/locations/*/httpRoutes/*`.
 func (r *ProjectsLocationsHttpRoutesService) Delete(name string) *ProjectsLocationsHttpRoutesDeleteCall {
 	c := &ProjectsLocationsHttpRoutesDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -6888,12 +10090,11 @@ func (c *ProjectsLocationsHttpRoutesDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsHttpRoutesDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -6901,6 +10102,7 @@ func (c *ProjectsLocationsHttpRoutesDeleteCall) doRequest(alt string) (*http.Res
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.httpRoutes.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -6935,9 +10137,11 @@ func (c *ProjectsLocationsHttpRoutesDeleteCall) Do(opts ...googleapi.CallOption)
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.httpRoutes.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -6953,7 +10157,7 @@ type ProjectsLocationsHttpRoutesGetCall struct {
 // Get: Gets details of a single HttpRoute.
 //
 //   - name: A name of the HttpRoute to get. Must be in the format
-//     `projects/*/locations/global/httpRoutes/*`.
+//     `projects/*/locations/*/httpRoutes/*`.
 func (r *ProjectsLocationsHttpRoutesService) Get(name string) *ProjectsLocationsHttpRoutesGetCall {
 	c := &ProjectsLocationsHttpRoutesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -6996,12 +10200,11 @@ func (c *ProjectsLocationsHttpRoutesGetCall) doRequest(alt string) (*http.Respon
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7009,6 +10212,7 @@ func (c *ProjectsLocationsHttpRoutesGetCall) doRequest(alt string) (*http.Respon
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.httpRoutes.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7043,9 +10247,11 @@ func (c *ProjectsLocationsHttpRoutesGetCall) Do(opts ...googleapi.CallOption) (*
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.httpRoutes.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7061,10 +10267,17 @@ type ProjectsLocationsHttpRoutesListCall struct {
 // List: Lists HttpRoute in a given project and location.
 //
 //   - parent: The project and location from which the HttpRoutes should be
-//     listed, specified in the format `projects/*/locations/global`.
+//     listed, specified in the format `projects/*/locations/*`.
 func (r *ProjectsLocationsHttpRoutesService) List(parent string) *ProjectsLocationsHttpRoutesListCall {
 	c := &ProjectsLocationsHttpRoutesListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
+	return c
+}
+
+// Filter sets the optional parameter "filter": Filter expression to restrict
+// the list.
+func (c *ProjectsLocationsHttpRoutesListCall) Filter(filter string) *ProjectsLocationsHttpRoutesListCall {
+	c.urlParams_.Set("filter", filter)
 	return c
 }
 
@@ -7081,6 +10294,15 @@ func (c *ProjectsLocationsHttpRoutesListCall) PageSize(pageSize int64) *Projects
 // of data.
 func (c *ProjectsLocationsHttpRoutesListCall) PageToken(pageToken string) *ProjectsLocationsHttpRoutesListCall {
 	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess": If
+// true, allow partial responses for multi-regional Aggregated List requests.
+// Otherwise if one of the locations is down or unreachable, the Aggregated
+// List request will fail.
+func (c *ProjectsLocationsHttpRoutesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ProjectsLocationsHttpRoutesListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
 	return c
 }
 
@@ -7120,12 +10342,11 @@ func (c *ProjectsLocationsHttpRoutesListCall) doRequest(alt string) (*http.Respo
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/httpRoutes")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7133,6 +10354,7 @@ func (c *ProjectsLocationsHttpRoutesListCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.httpRoutes.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7168,9 +10390,11 @@ func (c *ProjectsLocationsHttpRoutesListCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.httpRoutes.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7207,7 +10431,7 @@ type ProjectsLocationsHttpRoutesPatchCall struct {
 // Patch: Updates the parameters of a single HttpRoute.
 //
 //   - name: Identifier. Name of the HttpRoute resource. It matches pattern
-//     `projects/*/locations/global/httpRoutes/http_route_name>`.
+//     `projects/*/locations/*/httpRoutes/http_route_name>`.
 func (r *ProjectsLocationsHttpRoutesService) Patch(name string, httproute *HttpRoute) *ProjectsLocationsHttpRoutesPatchCall {
 	c := &ProjectsLocationsHttpRoutesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -7251,8 +10475,7 @@ func (c *ProjectsLocationsHttpRoutesPatchCall) Header() http.Header {
 
 func (c *ProjectsLocationsHttpRoutesPatchCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.httproute)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.httproute)
 	if err != nil {
 		return nil, err
 	}
@@ -7268,6 +10491,7 @@ func (c *ProjectsLocationsHttpRoutesPatchCall) doRequest(alt string) (*http.Resp
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.httpRoutes.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7302,9 +10526,658 @@ func (c *ProjectsLocationsHttpRoutesPatchCall) Do(opts ...googleapi.CallOption) 
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.httpRoutes.patch", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsLbEdgeExtensionsCreateCall struct {
+	s               *Service
+	parent          string
+	lbedgeextension *LbEdgeExtension
+	urlParams_      gensupport.URLParams
+	ctx_            context.Context
+	header_         http.Header
+}
+
+// Create: Creates a new `LbEdgeExtension` resource in a given project and
+// location.
+//
+//   - parent: The parent resource of the `LbEdgeExtension` resource. Must be in
+//     the format `projects/{project}/locations/{location}`.
+func (r *ProjectsLocationsLbEdgeExtensionsService) Create(parent string, lbedgeextension *LbEdgeExtension) *ProjectsLocationsLbEdgeExtensionsCreateCall {
+	c := &ProjectsLocationsLbEdgeExtensionsCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	c.lbedgeextension = lbedgeextension
+	return c
+}
+
+// LbEdgeExtensionId sets the optional parameter "lbEdgeExtensionId": Required.
+// User-provided ID of the `LbEdgeExtension` resource to be created.
+func (c *ProjectsLocationsLbEdgeExtensionsCreateCall) LbEdgeExtensionId(lbEdgeExtensionId string) *ProjectsLocationsLbEdgeExtensionsCreateCall {
+	c.urlParams_.Set("lbEdgeExtensionId", lbEdgeExtensionId)
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server can ignore the request if it has already been
+// completed. The server guarantees that for 60 minutes since the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsLbEdgeExtensionsCreateCall) RequestId(requestId string) *ProjectsLocationsLbEdgeExtensionsCreateCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsLbEdgeExtensionsCreateCall) Fields(s ...googleapi.Field) *ProjectsLocationsLbEdgeExtensionsCreateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsLbEdgeExtensionsCreateCall) Context(ctx context.Context) *ProjectsLocationsLbEdgeExtensionsCreateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsLbEdgeExtensionsCreateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsLbEdgeExtensionsCreateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.lbedgeextension)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/lbEdgeExtensions")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbEdgeExtensions.create", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.lbEdgeExtensions.create" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsLbEdgeExtensionsCreateCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbEdgeExtensions.create", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsLbEdgeExtensionsDeleteCall struct {
+	s          *Service
+	name       string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Delete: Deletes the specified `LbEdgeExtension` resource.
+//
+//   - name: The name of the `LbEdgeExtension` resource to delete. Must be in the
+//     format
+//     `projects/{project}/locations/{location}/lbEdgeExtensions/{lb_edge_extensio
+//     n}`.
+func (r *ProjectsLocationsLbEdgeExtensionsService) Delete(name string) *ProjectsLocationsLbEdgeExtensionsDeleteCall {
+	c := &ProjectsLocationsLbEdgeExtensionsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server can ignore the request if it has already been
+// completed. The server guarantees that for 60 minutes after the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsLbEdgeExtensionsDeleteCall) RequestId(requestId string) *ProjectsLocationsLbEdgeExtensionsDeleteCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsLbEdgeExtensionsDeleteCall) Fields(s ...googleapi.Field) *ProjectsLocationsLbEdgeExtensionsDeleteCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsLbEdgeExtensionsDeleteCall) Context(ctx context.Context) *ProjectsLocationsLbEdgeExtensionsDeleteCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsLbEdgeExtensionsDeleteCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsLbEdgeExtensionsDeleteCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("DELETE", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbEdgeExtensions.delete", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.lbEdgeExtensions.delete" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsLbEdgeExtensionsDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbEdgeExtensions.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsLbEdgeExtensionsGetCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Gets details of the specified `LbEdgeExtension` resource.
+//
+//   - name: A name of the `LbEdgeExtension` resource to get. Must be in the
+//     format
+//     `projects/{project}/locations/{location}/lbEdgeExtensions/{lb_edge_extensio
+//     n}`.
+func (r *ProjectsLocationsLbEdgeExtensionsService) Get(name string) *ProjectsLocationsLbEdgeExtensionsGetCall {
+	c := &ProjectsLocationsLbEdgeExtensionsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsLbEdgeExtensionsGetCall) Fields(s ...googleapi.Field) *ProjectsLocationsLbEdgeExtensionsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsLbEdgeExtensionsGetCall) IfNoneMatch(entityTag string) *ProjectsLocationsLbEdgeExtensionsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsLbEdgeExtensionsGetCall) Context(ctx context.Context) *ProjectsLocationsLbEdgeExtensionsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsLbEdgeExtensionsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsLbEdgeExtensionsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbEdgeExtensions.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.lbEdgeExtensions.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *LbEdgeExtension.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *ProjectsLocationsLbEdgeExtensionsGetCall) Do(opts ...googleapi.CallOption) (*LbEdgeExtension, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &LbEdgeExtension{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbEdgeExtensions.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsLbEdgeExtensionsListCall struct {
+	s            *Service
+	parent       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Lists `LbEdgeExtension` resources in a given project and location.
+//
+//   - parent: The project and location from which the `LbEdgeExtension`
+//     resources are listed. These values are specified in the following format:
+//     `projects/{project}/locations/{location}`.
+func (r *ProjectsLocationsLbEdgeExtensionsService) List(parent string) *ProjectsLocationsLbEdgeExtensionsListCall {
+	c := &ProjectsLocationsLbEdgeExtensionsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	return c
+}
+
+// Filter sets the optional parameter "filter": Filtering results.
+func (c *ProjectsLocationsLbEdgeExtensionsListCall) Filter(filter string) *ProjectsLocationsLbEdgeExtensionsListCall {
+	c.urlParams_.Set("filter", filter)
+	return c
+}
+
+// OrderBy sets the optional parameter "orderBy": Hint about how to order the
+// results.
+func (c *ProjectsLocationsLbEdgeExtensionsListCall) OrderBy(orderBy string) *ProjectsLocationsLbEdgeExtensionsListCall {
+	c.urlParams_.Set("orderBy", orderBy)
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Requested page size. The
+// server might return fewer items than requested. If unspecified, the server
+// picks an appropriate default.
+func (c *ProjectsLocationsLbEdgeExtensionsListCall) PageSize(pageSize int64) *ProjectsLocationsLbEdgeExtensionsListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": A token identifying a
+// page of results that the server returns.
+func (c *ProjectsLocationsLbEdgeExtensionsListCall) PageToken(pageToken string) *ProjectsLocationsLbEdgeExtensionsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsLbEdgeExtensionsListCall) Fields(s ...googleapi.Field) *ProjectsLocationsLbEdgeExtensionsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsLbEdgeExtensionsListCall) IfNoneMatch(entityTag string) *ProjectsLocationsLbEdgeExtensionsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsLbEdgeExtensionsListCall) Context(ctx context.Context) *ProjectsLocationsLbEdgeExtensionsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsLbEdgeExtensionsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsLbEdgeExtensionsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/lbEdgeExtensions")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbEdgeExtensions.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.lbEdgeExtensions.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ListLbEdgeExtensionsResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsLbEdgeExtensionsListCall) Do(opts ...googleapi.CallOption) (*ListLbEdgeExtensionsResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ListLbEdgeExtensionsResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbEdgeExtensions.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ProjectsLocationsLbEdgeExtensionsListCall) Pages(ctx context.Context, f func(*ListLbEdgeExtensionsResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type ProjectsLocationsLbEdgeExtensionsPatchCall struct {
+	s               *Service
+	name            string
+	lbedgeextension *LbEdgeExtension
+	urlParams_      gensupport.URLParams
+	ctx_            context.Context
+	header_         http.Header
+}
+
+// Patch: Updates the parameters of the specified `LbEdgeExtension` resource.
+//
+//   - name: Identifier. Name of the `LbEdgeExtension` resource in the following
+//     format:
+//     `projects/{project}/locations/{location}/lbEdgeExtensions/{lb_edge_extensio
+//     n}`.
+func (r *ProjectsLocationsLbEdgeExtensionsService) Patch(name string, lbedgeextension *LbEdgeExtension) *ProjectsLocationsLbEdgeExtensionsPatchCall {
+	c := &ProjectsLocationsLbEdgeExtensionsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	c.lbedgeextension = lbedgeextension
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server can ignore the request if it has already been
+// completed. The server guarantees that for 60 minutes since the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsLbEdgeExtensionsPatchCall) RequestId(requestId string) *ProjectsLocationsLbEdgeExtensionsPatchCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// UpdateMask sets the optional parameter "updateMask": Used to specify the
+// fields to be overwritten in the `LbEdgeExtension` resource by the update.
+// The fields specified in the `update_mask` are relative to the resource, not
+// the full request. A field is overwritten if it is in the mask. If the user
+// does not specify a mask, then all fields are overwritten.
+func (c *ProjectsLocationsLbEdgeExtensionsPatchCall) UpdateMask(updateMask string) *ProjectsLocationsLbEdgeExtensionsPatchCall {
+	c.urlParams_.Set("updateMask", updateMask)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsLbEdgeExtensionsPatchCall) Fields(s ...googleapi.Field) *ProjectsLocationsLbEdgeExtensionsPatchCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsLbEdgeExtensionsPatchCall) Context(ctx context.Context) *ProjectsLocationsLbEdgeExtensionsPatchCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsLbEdgeExtensionsPatchCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsLbEdgeExtensionsPatchCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.lbedgeextension)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PATCH", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbEdgeExtensions.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.lbEdgeExtensions.patch" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsLbEdgeExtensionsPatchCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbEdgeExtensions.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7339,14 +11212,13 @@ func (c *ProjectsLocationsLbRouteExtensionsCreateCall) LbRouteExtensionId(lbRout
 // RequestId sets the optional parameter "requestId": An optional request ID to
 // identify requests. Specify a unique request ID so that if you must retry
 // your request, the server can ignore the request if it has already been
-// completed. The server guarantees that for at least 60 minutes since the
-// first request. For example, consider a situation where you make an initial
-// request and the request times out. If you make the request again with the
-// same request ID, the server can check if original operation with the same
-// request ID was received, and if so, ignores the second request. This
-// prevents clients from accidentally creating duplicate commitments. The
-// request ID must be a valid UUID with the exception that zero UUID is not
-// supported (00000000-0000-0000-0000-000000000000).
+// completed. The server guarantees that for 60 minutes since the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
 func (c *ProjectsLocationsLbRouteExtensionsCreateCall) RequestId(requestId string) *ProjectsLocationsLbRouteExtensionsCreateCall {
 	c.urlParams_.Set("requestId", requestId)
 	return c
@@ -7377,8 +11249,7 @@ func (c *ProjectsLocationsLbRouteExtensionsCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsLbRouteExtensionsCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.lbrouteextension)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.lbrouteextension)
 	if err != nil {
 		return nil, err
 	}
@@ -7394,6 +11265,7 @@ func (c *ProjectsLocationsLbRouteExtensionsCreateCall) doRequest(alt string) (*h
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbRouteExtensions.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7428,9 +11300,11 @@ func (c *ProjectsLocationsLbRouteExtensionsCreateCall) Do(opts ...googleapi.Call
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbRouteExtensions.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7457,14 +11331,13 @@ func (r *ProjectsLocationsLbRouteExtensionsService) Delete(name string) *Project
 // RequestId sets the optional parameter "requestId": An optional request ID to
 // identify requests. Specify a unique request ID so that if you must retry
 // your request, the server can ignore the request if it has already been
-// completed. The server guarantees that for at least 60 minutes after the
-// first request. For example, consider a situation where you make an initial
-// request and the request times out. If you make the request again with the
-// same request ID, the server can check if original operation with the same
-// request ID was received, and if so, ignores the second request. This
-// prevents clients from accidentally creating duplicate commitments. The
-// request ID must be a valid UUID with the exception that zero UUID is not
-// supported (00000000-0000-0000-0000-000000000000).
+// completed. The server guarantees that for 60 minutes after the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
 func (c *ProjectsLocationsLbRouteExtensionsDeleteCall) RequestId(requestId string) *ProjectsLocationsLbRouteExtensionsDeleteCall {
 	c.urlParams_.Set("requestId", requestId)
 	return c
@@ -7495,12 +11368,11 @@ func (c *ProjectsLocationsLbRouteExtensionsDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsLbRouteExtensionsDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7508,6 +11380,7 @@ func (c *ProjectsLocationsLbRouteExtensionsDeleteCall) doRequest(alt string) (*h
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbRouteExtensions.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7542,9 +11415,11 @@ func (c *ProjectsLocationsLbRouteExtensionsDeleteCall) Do(opts ...googleapi.Call
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbRouteExtensions.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7605,12 +11480,11 @@ func (c *ProjectsLocationsLbRouteExtensionsGetCall) doRequest(alt string) (*http
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7618,6 +11492,7 @@ func (c *ProjectsLocationsLbRouteExtensionsGetCall) doRequest(alt string) (*http
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbRouteExtensions.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7653,9 +11528,11 @@ func (c *ProjectsLocationsLbRouteExtensionsGetCall) Do(opts ...googleapi.CallOpt
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbRouteExtensions.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7671,7 +11548,7 @@ type ProjectsLocationsLbRouteExtensionsListCall struct {
 // List: Lists `LbRouteExtension` resources in a given project and location.
 //
 //   - parent: The project and location from which the `LbRouteExtension`
-//     resources are listed, specified in the following format:
+//     resources are listed. These values are specified in the following format:
 //     `projects/{project}/locations/{location}`.
 func (r *ProjectsLocationsLbRouteExtensionsService) List(parent string) *ProjectsLocationsLbRouteExtensionsListCall {
 	c := &ProjectsLocationsLbRouteExtensionsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -7685,7 +11562,7 @@ func (c *ProjectsLocationsLbRouteExtensionsListCall) Filter(filter string) *Proj
 	return c
 }
 
-// OrderBy sets the optional parameter "orderBy": Hint for how to order the
+// OrderBy sets the optional parameter "orderBy": Hint about how to order the
 // results.
 func (c *ProjectsLocationsLbRouteExtensionsListCall) OrderBy(orderBy string) *ProjectsLocationsLbRouteExtensionsListCall {
 	c.urlParams_.Set("orderBy", orderBy)
@@ -7743,12 +11620,11 @@ func (c *ProjectsLocationsLbRouteExtensionsListCall) doRequest(alt string) (*htt
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/lbRouteExtensions")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7756,6 +11632,7 @@ func (c *ProjectsLocationsLbRouteExtensionsListCall) doRequest(alt string) (*htt
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbRouteExtensions.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7791,9 +11668,11 @@ func (c *ProjectsLocationsLbRouteExtensionsListCall) Do(opts ...googleapi.CallOp
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbRouteExtensions.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7843,14 +11722,13 @@ func (r *ProjectsLocationsLbRouteExtensionsService) Patch(name string, lbrouteex
 // RequestId sets the optional parameter "requestId": An optional request ID to
 // identify requests. Specify a unique request ID so that if you must retry
 // your request, the server can ignore the request if it has already been
-// completed. The server guarantees that for at least 60 minutes since the
-// first request. For example, consider a situation where you make an initial
-// request and the request times out. If you make the request again with the
-// same request ID, the server can check if original operation with the same
-// request ID was received, and if so, ignores the second request. This
-// prevents clients from accidentally creating duplicate commitments. The
-// request ID must be a valid UUID with the exception that zero UUID is not
-// supported (00000000-0000-0000-0000-000000000000).
+// completed. The server guarantees that for 60 minutes since the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
 func (c *ProjectsLocationsLbRouteExtensionsPatchCall) RequestId(requestId string) *ProjectsLocationsLbRouteExtensionsPatchCall {
 	c.urlParams_.Set("requestId", requestId)
 	return c
@@ -7858,7 +11736,7 @@ func (c *ProjectsLocationsLbRouteExtensionsPatchCall) RequestId(requestId string
 
 // UpdateMask sets the optional parameter "updateMask": Used to specify the
 // fields to be overwritten in the `LbRouteExtension` resource by the update.
-// The fields specified in the update_mask are relative to the resource, not
+// The fields specified in the `update_mask` are relative to the resource, not
 // the full request. A field is overwritten if it is in the mask. If the user
 // does not specify a mask, then all fields are overwritten.
 func (c *ProjectsLocationsLbRouteExtensionsPatchCall) UpdateMask(updateMask string) *ProjectsLocationsLbRouteExtensionsPatchCall {
@@ -7891,8 +11769,7 @@ func (c *ProjectsLocationsLbRouteExtensionsPatchCall) Header() http.Header {
 
 func (c *ProjectsLocationsLbRouteExtensionsPatchCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.lbrouteextension)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.lbrouteextension)
 	if err != nil {
 		return nil, err
 	}
@@ -7908,6 +11785,7 @@ func (c *ProjectsLocationsLbRouteExtensionsPatchCall) doRequest(alt string) (*ht
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbRouteExtensions.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7942,9 +11820,11 @@ func (c *ProjectsLocationsLbRouteExtensionsPatchCall) Do(opts ...googleapi.CallO
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbRouteExtensions.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -7980,14 +11860,13 @@ func (c *ProjectsLocationsLbTrafficExtensionsCreateCall) LbTrafficExtensionId(lb
 // RequestId sets the optional parameter "requestId": An optional request ID to
 // identify requests. Specify a unique request ID so that if you must retry
 // your request, the server can ignore the request if it has already been
-// completed. The server guarantees that for at least 60 minutes since the
-// first request. For example, consider a situation where you make an initial
-// request and the request times out. If you make the request again with the
-// same request ID, the server can check if original operation with the same
-// request ID was received, and if so, ignores the second request. This
-// prevents clients from accidentally creating duplicate commitments. The
-// request ID must be a valid UUID with the exception that zero UUID is not
-// supported (00000000-0000-0000-0000-000000000000).
+// completed. The server guarantees that for 60 minutes since the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
 func (c *ProjectsLocationsLbTrafficExtensionsCreateCall) RequestId(requestId string) *ProjectsLocationsLbTrafficExtensionsCreateCall {
 	c.urlParams_.Set("requestId", requestId)
 	return c
@@ -8018,8 +11897,7 @@ func (c *ProjectsLocationsLbTrafficExtensionsCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsLbTrafficExtensionsCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.lbtrafficextension)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.lbtrafficextension)
 	if err != nil {
 		return nil, err
 	}
@@ -8035,6 +11913,7 @@ func (c *ProjectsLocationsLbTrafficExtensionsCreateCall) doRequest(alt string) (
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbTrafficExtensions.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8069,9 +11948,11 @@ func (c *ProjectsLocationsLbTrafficExtensionsCreateCall) Do(opts ...googleapi.Ca
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbTrafficExtensions.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8098,14 +11979,13 @@ func (r *ProjectsLocationsLbTrafficExtensionsService) Delete(name string) *Proje
 // RequestId sets the optional parameter "requestId": An optional request ID to
 // identify requests. Specify a unique request ID so that if you must retry
 // your request, the server can ignore the request if it has already been
-// completed. The server guarantees that for at least 60 minutes after the
-// first request. For example, consider a situation where you make an initial
-// request and the request times out. If you make the request again with the
-// same request ID, the server can check if original operation with the same
-// request ID was received, and if so, ignores the second request. This
-// prevents clients from accidentally creating duplicate commitments. The
-// request ID must be a valid UUID with the exception that zero UUID is not
-// supported (00000000-0000-0000-0000-000000000000).
+// completed. The server guarantees that for 60 minutes after the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
 func (c *ProjectsLocationsLbTrafficExtensionsDeleteCall) RequestId(requestId string) *ProjectsLocationsLbTrafficExtensionsDeleteCall {
 	c.urlParams_.Set("requestId", requestId)
 	return c
@@ -8136,12 +12016,11 @@ func (c *ProjectsLocationsLbTrafficExtensionsDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsLbTrafficExtensionsDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -8149,6 +12028,7 @@ func (c *ProjectsLocationsLbTrafficExtensionsDeleteCall) doRequest(alt string) (
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbTrafficExtensions.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8183,9 +12063,11 @@ func (c *ProjectsLocationsLbTrafficExtensionsDeleteCall) Do(opts ...googleapi.Ca
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbTrafficExtensions.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8246,12 +12128,11 @@ func (c *ProjectsLocationsLbTrafficExtensionsGetCall) doRequest(alt string) (*ht
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -8259,6 +12140,7 @@ func (c *ProjectsLocationsLbTrafficExtensionsGetCall) doRequest(alt string) (*ht
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbTrafficExtensions.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8294,9 +12176,11 @@ func (c *ProjectsLocationsLbTrafficExtensionsGetCall) Do(opts ...googleapi.CallO
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbTrafficExtensions.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8312,7 +12196,7 @@ type ProjectsLocationsLbTrafficExtensionsListCall struct {
 // List: Lists `LbTrafficExtension` resources in a given project and location.
 //
 //   - parent: The project and location from which the `LbTrafficExtension`
-//     resources are listed, specified in the following format:
+//     resources are listed. These values are specified in the following format:
 //     `projects/{project}/locations/{location}`.
 func (r *ProjectsLocationsLbTrafficExtensionsService) List(parent string) *ProjectsLocationsLbTrafficExtensionsListCall {
 	c := &ProjectsLocationsLbTrafficExtensionsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -8326,7 +12210,7 @@ func (c *ProjectsLocationsLbTrafficExtensionsListCall) Filter(filter string) *Pr
 	return c
 }
 
-// OrderBy sets the optional parameter "orderBy": Hint for how to order the
+// OrderBy sets the optional parameter "orderBy": Hint about how to order the
 // results.
 func (c *ProjectsLocationsLbTrafficExtensionsListCall) OrderBy(orderBy string) *ProjectsLocationsLbTrafficExtensionsListCall {
 	c.urlParams_.Set("orderBy", orderBy)
@@ -8384,12 +12268,11 @@ func (c *ProjectsLocationsLbTrafficExtensionsListCall) doRequest(alt string) (*h
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/lbTrafficExtensions")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -8397,6 +12280,7 @@ func (c *ProjectsLocationsLbTrafficExtensionsListCall) doRequest(alt string) (*h
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbTrafficExtensions.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8432,9 +12316,11 @@ func (c *ProjectsLocationsLbTrafficExtensionsListCall) Do(opts ...googleapi.Call
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbTrafficExtensions.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8485,14 +12371,13 @@ func (r *ProjectsLocationsLbTrafficExtensionsService) Patch(name string, lbtraff
 // RequestId sets the optional parameter "requestId": An optional request ID to
 // identify requests. Specify a unique request ID so that if you must retry
 // your request, the server can ignore the request if it has already been
-// completed. The server guarantees that for at least 60 minutes since the
-// first request. For example, consider a situation where you make an initial
-// request and the request times out. If you make the request again with the
-// same request ID, the server can check if original operation with the same
-// request ID was received, and if so, ignores the second request. This
-// prevents clients from accidentally creating duplicate commitments. The
-// request ID must be a valid UUID with the exception that zero UUID is not
-// supported (00000000-0000-0000-0000-000000000000).
+// completed. The server guarantees that for 60 minutes since the first
+// request. For example, consider a situation where you make an initial request
+// and the request times out. If you make the request again with the same
+// request ID, the server ignores the second request This prevents clients from
+// accidentally creating duplicate commitments. The request ID must be a valid
+// UUID with the exception that zero UUID is not supported
+// (00000000-0000-0000-0000-000000000000).
 func (c *ProjectsLocationsLbTrafficExtensionsPatchCall) RequestId(requestId string) *ProjectsLocationsLbTrafficExtensionsPatchCall {
 	c.urlParams_.Set("requestId", requestId)
 	return c
@@ -8500,7 +12385,7 @@ func (c *ProjectsLocationsLbTrafficExtensionsPatchCall) RequestId(requestId stri
 
 // UpdateMask sets the optional parameter "updateMask": Used to specify the
 // fields to be overwritten in the `LbTrafficExtension` resource by the update.
-// The fields specified in the update_mask are relative to the resource, not
+// The fields specified in the `update_mask` are relative to the resource, not
 // the full request. A field is overwritten if it is in the mask. If the user
 // does not specify a mask, then all fields are overwritten.
 func (c *ProjectsLocationsLbTrafficExtensionsPatchCall) UpdateMask(updateMask string) *ProjectsLocationsLbTrafficExtensionsPatchCall {
@@ -8533,8 +12418,7 @@ func (c *ProjectsLocationsLbTrafficExtensionsPatchCall) Header() http.Header {
 
 func (c *ProjectsLocationsLbTrafficExtensionsPatchCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.lbtrafficextension)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.lbtrafficextension)
 	if err != nil {
 		return nil, err
 	}
@@ -8550,6 +12434,7 @@ func (c *ProjectsLocationsLbTrafficExtensionsPatchCall) doRequest(alt string) (*
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbTrafficExtensions.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8584,9 +12469,11 @@ func (c *ProjectsLocationsLbTrafficExtensionsPatchCall) Do(opts ...googleapi.Cal
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.lbTrafficExtensions.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8602,7 +12489,7 @@ type ProjectsLocationsMeshesCreateCall struct {
 // Create: Creates a new Mesh in a given project and location.
 //
 //   - parent: The parent resource of the Mesh. Must be in the format
-//     `projects/*/locations/global`.
+//     `projects/*/locations/*`.
 func (r *ProjectsLocationsMeshesService) Create(parent string, mesh *Mesh) *ProjectsLocationsMeshesCreateCall {
 	c := &ProjectsLocationsMeshesCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -8642,8 +12529,7 @@ func (c *ProjectsLocationsMeshesCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsMeshesCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.mesh)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.mesh)
 	if err != nil {
 		return nil, err
 	}
@@ -8659,6 +12545,7 @@ func (c *ProjectsLocationsMeshesCreateCall) doRequest(alt string) (*http.Respons
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8693,9 +12580,11 @@ func (c *ProjectsLocationsMeshesCreateCall) Do(opts ...googleapi.CallOption) (*O
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8710,7 +12599,7 @@ type ProjectsLocationsMeshesDeleteCall struct {
 // Delete: Deletes a single Mesh.
 //
 //   - name: A name of the Mesh to delete. Must be in the format
-//     `projects/*/locations/global/meshes/*`.
+//     `projects/*/locations/*/meshes/*`.
 func (r *ProjectsLocationsMeshesService) Delete(name string) *ProjectsLocationsMeshesDeleteCall {
 	c := &ProjectsLocationsMeshesDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -8742,12 +12631,11 @@ func (c *ProjectsLocationsMeshesDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsMeshesDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -8755,6 +12643,7 @@ func (c *ProjectsLocationsMeshesDeleteCall) doRequest(alt string) (*http.Respons
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8789,9 +12678,11 @@ func (c *ProjectsLocationsMeshesDeleteCall) Do(opts ...googleapi.CallOption) (*O
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8807,7 +12698,7 @@ type ProjectsLocationsMeshesGetCall struct {
 // Get: Gets details of a single Mesh.
 //
 //   - name: A name of the Mesh to get. Must be in the format
-//     `projects/*/locations/global/meshes/*`.
+//     `projects/*/locations/*/meshes/*`.
 func (r *ProjectsLocationsMeshesService) Get(name string) *ProjectsLocationsMeshesGetCall {
 	c := &ProjectsLocationsMeshesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -8850,12 +12741,11 @@ func (c *ProjectsLocationsMeshesGetCall) doRequest(alt string) (*http.Response, 
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -8863,6 +12753,7 @@ func (c *ProjectsLocationsMeshesGetCall) doRequest(alt string) (*http.Response, 
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -8897,9 +12788,11 @@ func (c *ProjectsLocationsMeshesGetCall) Do(opts ...googleapi.CallOption) (*Mesh
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -8915,7 +12808,7 @@ type ProjectsLocationsMeshesListCall struct {
 // List: Lists Meshes in a given project and location.
 //
 //   - parent: The project and location from which the Meshes should be listed,
-//     specified in the format `projects/*/locations/global`.
+//     specified in the format `projects/*/locations/*`.
 func (r *ProjectsLocationsMeshesService) List(parent string) *ProjectsLocationsMeshesListCall {
 	c := &ProjectsLocationsMeshesListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -8934,6 +12827,15 @@ func (c *ProjectsLocationsMeshesListCall) PageSize(pageSize int64) *ProjectsLoca
 // `ListMeshes` call, and that the system should return the next page of data.
 func (c *ProjectsLocationsMeshesListCall) PageToken(pageToken string) *ProjectsLocationsMeshesListCall {
 	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess": If
+// true, allow partial responses for multi-regional Aggregated List requests.
+// Otherwise if one of the locations is down or unreachable, the Aggregated
+// List request will fail.
+func (c *ProjectsLocationsMeshesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ProjectsLocationsMeshesListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
 	return c
 }
 
@@ -8973,12 +12875,11 @@ func (c *ProjectsLocationsMeshesListCall) doRequest(alt string) (*http.Response,
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/meshes")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -8986,6 +12887,7 @@ func (c *ProjectsLocationsMeshesListCall) doRequest(alt string) (*http.Response,
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9021,9 +12923,11 @@ func (c *ProjectsLocationsMeshesListCall) Do(opts ...googleapi.CallOption) (*Lis
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9060,7 +12964,7 @@ type ProjectsLocationsMeshesPatchCall struct {
 // Patch: Updates the parameters of a single Mesh.
 //
 //   - name: Identifier. Name of the Mesh resource. It matches pattern
-//     `projects/*/locations/global/meshes/`.
+//     `projects/*/locations/*/meshes/`.
 func (r *ProjectsLocationsMeshesService) Patch(name string, mesh *Mesh) *ProjectsLocationsMeshesPatchCall {
 	c := &ProjectsLocationsMeshesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -9103,8 +13007,7 @@ func (c *ProjectsLocationsMeshesPatchCall) Header() http.Header {
 
 func (c *ProjectsLocationsMeshesPatchCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.mesh)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.mesh)
 	if err != nil {
 		return nil, err
 	}
@@ -9120,6 +13023,7 @@ func (c *ProjectsLocationsMeshesPatchCall) doRequest(alt string) (*http.Response
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9154,9 +13058,1586 @@ func (c *ProjectsLocationsMeshesPatchCall) Do(opts ...googleapi.CallOption) (*Op
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.patch", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsMeshesRouteViewsGetCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Get a single RouteView of a Mesh.
+//
+//   - name: Name of the MeshRouteView resource. Format:
+//     projects/{project_number}/locations/{location}/meshes/{mesh}/routeViews/{ro
+//     ute_view}.
+func (r *ProjectsLocationsMeshesRouteViewsService) Get(name string) *ProjectsLocationsMeshesRouteViewsGetCall {
+	c := &ProjectsLocationsMeshesRouteViewsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMeshesRouteViewsGetCall) Fields(s ...googleapi.Field) *ProjectsLocationsMeshesRouteViewsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsMeshesRouteViewsGetCall) IfNoneMatch(entityTag string) *ProjectsLocationsMeshesRouteViewsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMeshesRouteViewsGetCall) Context(ctx context.Context) *ProjectsLocationsMeshesRouteViewsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMeshesRouteViewsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMeshesRouteViewsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.routeViews.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.meshes.routeViews.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *MeshRouteView.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsMeshesRouteViewsGetCall) Do(opts ...googleapi.CallOption) (*MeshRouteView, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &MeshRouteView{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.routeViews.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsMeshesRouteViewsListCall struct {
+	s            *Service
+	parent       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Lists RouteViews
+//
+//   - parent: The Mesh to which a Route is associated. Format:
+//     projects/{project_number}/locations/{location}/meshes/{mesh}.
+func (r *ProjectsLocationsMeshesRouteViewsService) List(parent string) *ProjectsLocationsMeshesRouteViewsListCall {
+	c := &ProjectsLocationsMeshesRouteViewsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Maximum number of
+// MeshRouteViews to return per call.
+func (c *ProjectsLocationsMeshesRouteViewsListCall) PageSize(pageSize int64) *ProjectsLocationsMeshesRouteViewsListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": The value returned by the
+// last `ListMeshRouteViewsResponse` Indicates that this is a continuation of a
+// prior `ListMeshRouteViews` call, and that the system should return the next
+// page of data.
+func (c *ProjectsLocationsMeshesRouteViewsListCall) PageToken(pageToken string) *ProjectsLocationsMeshesRouteViewsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMeshesRouteViewsListCall) Fields(s ...googleapi.Field) *ProjectsLocationsMeshesRouteViewsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsMeshesRouteViewsListCall) IfNoneMatch(entityTag string) *ProjectsLocationsMeshesRouteViewsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMeshesRouteViewsListCall) Context(ctx context.Context) *ProjectsLocationsMeshesRouteViewsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMeshesRouteViewsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMeshesRouteViewsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/routeViews")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.routeViews.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.meshes.routeViews.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ListMeshRouteViewsResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsMeshesRouteViewsListCall) Do(opts ...googleapi.CallOption) (*ListMeshRouteViewsResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ListMeshRouteViewsResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.meshes.routeViews.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ProjectsLocationsMeshesRouteViewsListCall) Pages(ctx context.Context, f func(*ListMeshRouteViewsResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type ProjectsLocationsMulticastConsumerAssociationsCreateCall struct {
+	s                            *Service
+	parent                       string
+	multicastconsumerassociation *MulticastConsumerAssociation
+	urlParams_                   gensupport.URLParams
+	ctx_                         context.Context
+	header_                      http.Header
+}
+
+// Create: Creates a new multicast consumer association in a given project and
+// location.
+//
+//   - parent: The parent resource of the multicast consumer association. Use the
+//     following format: `projects/*/locations/*`.
+func (r *ProjectsLocationsMulticastConsumerAssociationsService) Create(parent string, multicastconsumerassociation *MulticastConsumerAssociation) *ProjectsLocationsMulticastConsumerAssociationsCreateCall {
+	c := &ProjectsLocationsMulticastConsumerAssociationsCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	c.multicastconsumerassociation = multicastconsumerassociation
+	return c
+}
+
+// MulticastConsumerAssociationId sets the optional parameter
+// "multicastConsumerAssociationId": Required. A unique name for the multicast
+// consumer association. The name is restricted to lower-case letters, numbers,
+// and hyphen, with the first character a lower-case letter, and the last a
+// letter or a number. The name must not exceed 48 characters.
+func (c *ProjectsLocationsMulticastConsumerAssociationsCreateCall) MulticastConsumerAssociationId(multicastConsumerAssociationId string) *ProjectsLocationsMulticastConsumerAssociationsCreateCall {
+	c.urlParams_.Set("multicastConsumerAssociationId", multicastConsumerAssociationId)
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. The server will guarantee that for at least 60 minutes after
+// the first request. For example, consider a situation where you make an
+// initial request and the request times out. If you make the request again
+// with the same request ID, the server can check if original operation with
+// the same request ID was received, and if so, will ignore the second request.
+// This prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsMulticastConsumerAssociationsCreateCall) RequestId(requestId string) *ProjectsLocationsMulticastConsumerAssociationsCreateCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMulticastConsumerAssociationsCreateCall) Fields(s ...googleapi.Field) *ProjectsLocationsMulticastConsumerAssociationsCreateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMulticastConsumerAssociationsCreateCall) Context(ctx context.Context) *ProjectsLocationsMulticastConsumerAssociationsCreateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMulticastConsumerAssociationsCreateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMulticastConsumerAssociationsCreateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.multicastconsumerassociation)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/multicastConsumerAssociations")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastConsumerAssociations.create", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.multicastConsumerAssociations.create" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsMulticastConsumerAssociationsCreateCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastConsumerAssociations.create", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsMulticastConsumerAssociationsDeleteCall struct {
+	s          *Service
+	name       string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Delete: Deletes a single multicast consumer association.
+//
+//   - name: The resource name of the multicast consumer association to delete.
+//     Use the following format:
+//     `projects/*/locations/*/multicastConsumerAssociations/*`.
+func (r *ProjectsLocationsMulticastConsumerAssociationsService) Delete(name string) *ProjectsLocationsMulticastConsumerAssociationsDeleteCall {
+	c := &ProjectsLocationsMulticastConsumerAssociationsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. The server will guarantee that for at least 60 minutes after
+// the first request. For example, consider a situation where you make an
+// initial request and the request times out. If you make the request again
+// with the same request ID, the server can check if original operation with
+// the same request ID was received, and if so, will ignore the second request.
+// This prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsMulticastConsumerAssociationsDeleteCall) RequestId(requestId string) *ProjectsLocationsMulticastConsumerAssociationsDeleteCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMulticastConsumerAssociationsDeleteCall) Fields(s ...googleapi.Field) *ProjectsLocationsMulticastConsumerAssociationsDeleteCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMulticastConsumerAssociationsDeleteCall) Context(ctx context.Context) *ProjectsLocationsMulticastConsumerAssociationsDeleteCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMulticastConsumerAssociationsDeleteCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMulticastConsumerAssociationsDeleteCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("DELETE", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastConsumerAssociations.delete", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.multicastConsumerAssociations.delete" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsMulticastConsumerAssociationsDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastConsumerAssociations.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsMulticastConsumerAssociationsGetCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Gets details of a single multicast consumer association.
+//
+//   - name: The resource name of the multicast consumer association to get. Use
+//     the following format:
+//     `projects/*/locations/*/multicastConsumerAssociations/*`.
+func (r *ProjectsLocationsMulticastConsumerAssociationsService) Get(name string) *ProjectsLocationsMulticastConsumerAssociationsGetCall {
+	c := &ProjectsLocationsMulticastConsumerAssociationsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMulticastConsumerAssociationsGetCall) Fields(s ...googleapi.Field) *ProjectsLocationsMulticastConsumerAssociationsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsMulticastConsumerAssociationsGetCall) IfNoneMatch(entityTag string) *ProjectsLocationsMulticastConsumerAssociationsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMulticastConsumerAssociationsGetCall) Context(ctx context.Context) *ProjectsLocationsMulticastConsumerAssociationsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMulticastConsumerAssociationsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMulticastConsumerAssociationsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastConsumerAssociations.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.multicastConsumerAssociations.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *MulticastConsumerAssociation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsMulticastConsumerAssociationsGetCall) Do(opts ...googleapi.CallOption) (*MulticastConsumerAssociation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &MulticastConsumerAssociation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastConsumerAssociations.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsMulticastConsumerAssociationsListCall struct {
+	s            *Service
+	parent       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Lists multicast consumer associations in a given project and location.
+//
+//   - parent: The parent resource for which to list multicast consumer
+//     associations. Use the following format: `projects/*/locations/*`.
+func (r *ProjectsLocationsMulticastConsumerAssociationsService) List(parent string) *ProjectsLocationsMulticastConsumerAssociationsListCall {
+	c := &ProjectsLocationsMulticastConsumerAssociationsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	return c
+}
+
+// Filter sets the optional parameter "filter": A filter expression that
+// filters the resources listed in the response. The expression must be of the
+// form ` ` where operators: `<`, `>`, `<=`, `>=`, `!=`, `=`, `:` are supported
+// (colon `:` represents a HAS operator which is roughly synonymous with
+// equality). can refer to a proto or JSON field, or a synthetic field. Field
+// names can be camelCase or snake_case. Examples: * Filter by name: name =
+// "RESOURCE_NAME" * Filter by labels: * Resources that have a key named `foo`
+// labels.foo:* * Resources that have a key named `foo` whose value is `bar`
+// labels.foo = bar
+func (c *ProjectsLocationsMulticastConsumerAssociationsListCall) Filter(filter string) *ProjectsLocationsMulticastConsumerAssociationsListCall {
+	c.urlParams_.Set("filter", filter)
+	return c
+}
+
+// OrderBy sets the optional parameter "orderBy": A field used to sort the
+// results by a certain order.
+func (c *ProjectsLocationsMulticastConsumerAssociationsListCall) OrderBy(orderBy string) *ProjectsLocationsMulticastConsumerAssociationsListCall {
+	c.urlParams_.Set("orderBy", orderBy)
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": The maximum number of
+// multicast consumer associations to return per call.
+func (c *ProjectsLocationsMulticastConsumerAssociationsListCall) PageSize(pageSize int64) *ProjectsLocationsMulticastConsumerAssociationsListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": A page token from an
+// earlier query, as returned in `next_page_token`.
+func (c *ProjectsLocationsMulticastConsumerAssociationsListCall) PageToken(pageToken string) *ProjectsLocationsMulticastConsumerAssociationsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMulticastConsumerAssociationsListCall) Fields(s ...googleapi.Field) *ProjectsLocationsMulticastConsumerAssociationsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsMulticastConsumerAssociationsListCall) IfNoneMatch(entityTag string) *ProjectsLocationsMulticastConsumerAssociationsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMulticastConsumerAssociationsListCall) Context(ctx context.Context) *ProjectsLocationsMulticastConsumerAssociationsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMulticastConsumerAssociationsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMulticastConsumerAssociationsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/multicastConsumerAssociations")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastConsumerAssociations.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.multicastConsumerAssociations.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ListMulticastConsumerAssociationsResponse.ServerResponse.Header or (if a
+// response was returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsMulticastConsumerAssociationsListCall) Do(opts ...googleapi.CallOption) (*ListMulticastConsumerAssociationsResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ListMulticastConsumerAssociationsResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastConsumerAssociations.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ProjectsLocationsMulticastConsumerAssociationsListCall) Pages(ctx context.Context, f func(*ListMulticastConsumerAssociationsResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type ProjectsLocationsMulticastConsumerAssociationsPatchCall struct {
+	s                            *Service
+	name                         string
+	multicastconsumerassociation *MulticastConsumerAssociation
+	urlParams_                   gensupport.URLParams
+	ctx_                         context.Context
+	header_                      http.Header
+}
+
+// Patch: Updates the parameters of a single multicast consumer association.
+//
+//   - name: Identifier. The resource name of the multicast consumer association.
+//     Use the following format:
+//     `projects/*/locations/*/multicastConsumerAssociations/*`.
+func (r *ProjectsLocationsMulticastConsumerAssociationsService) Patch(name string, multicastconsumerassociation *MulticastConsumerAssociation) *ProjectsLocationsMulticastConsumerAssociationsPatchCall {
+	c := &ProjectsLocationsMulticastConsumerAssociationsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	c.multicastconsumerassociation = multicastconsumerassociation
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. The server will guarantee that for at least 60 minutes after
+// the first request. For example, consider a situation where you make an
+// initial request and the request times out. If you make the request again
+// with the same request ID, the server can check if original operation with
+// the same request ID was received, and if so, will ignore the second request.
+// This prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsMulticastConsumerAssociationsPatchCall) RequestId(requestId string) *ProjectsLocationsMulticastConsumerAssociationsPatchCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// UpdateMask sets the optional parameter "updateMask": Field mask is used to
+// specify the fields to be overwritten in the MulticastConsumerAssociation
+// resource by the update. The fields specified in the `update_mask` are
+// relative to the resource, not the full request. A field will be overwritten
+// if it is in the mask. If the user does not provide a mask then all mutable
+// fields present in the request will be overwritten.
+func (c *ProjectsLocationsMulticastConsumerAssociationsPatchCall) UpdateMask(updateMask string) *ProjectsLocationsMulticastConsumerAssociationsPatchCall {
+	c.urlParams_.Set("updateMask", updateMask)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMulticastConsumerAssociationsPatchCall) Fields(s ...googleapi.Field) *ProjectsLocationsMulticastConsumerAssociationsPatchCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMulticastConsumerAssociationsPatchCall) Context(ctx context.Context) *ProjectsLocationsMulticastConsumerAssociationsPatchCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMulticastConsumerAssociationsPatchCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMulticastConsumerAssociationsPatchCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.multicastconsumerassociation)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PATCH", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastConsumerAssociations.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.multicastConsumerAssociations.patch" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsMulticastConsumerAssociationsPatchCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastConsumerAssociations.patch", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsMulticastGroupConsumerActivationsCreateCall struct {
+	s                                *Service
+	parent                           string
+	multicastgroupconsumeractivation *MulticastGroupConsumerActivation
+	urlParams_                       gensupport.URLParams
+	ctx_                             context.Context
+	header_                          http.Header
+}
+
+// Create: Creates a new multicast group consumer activation in a given project
+// and location.
+//
+//   - parent: The parent resource of the multicast group consumer activation.
+//     Use the following format: `projects/*/locations/*`.
+func (r *ProjectsLocationsMulticastGroupConsumerActivationsService) Create(parent string, multicastgroupconsumeractivation *MulticastGroupConsumerActivation) *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall {
+	c := &ProjectsLocationsMulticastGroupConsumerActivationsCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	c.multicastgroupconsumeractivation = multicastgroupconsumeractivation
+	return c
+}
+
+// MulticastGroupConsumerActivationId sets the optional parameter
+// "multicastGroupConsumerActivationId": Required. A unique name for the
+// multicast group consumer activation. The name is restricted to lower-case
+// letters, numbers, and hyphen, with the first character a lower-case letter,
+// and the last a letter or a number. The name must not exceed 48 characters.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall) MulticastGroupConsumerActivationId(multicastGroupConsumerActivationId string) *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall {
+	c.urlParams_.Set("multicastGroupConsumerActivationId", multicastGroupConsumerActivationId)
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. The server will guarantee that for at least 60 minutes after
+// the first request. For example, consider a situation where you make an
+// initial request and the request times out. If you make the request again
+// with the same request ID, the server can check if original operation with
+// the same request ID was received, and if so, will ignore the second request.
+// This prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall) RequestId(requestId string) *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall) Fields(s ...googleapi.Field) *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall) Context(ctx context.Context) *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.multicastgroupconsumeractivation)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/multicastGroupConsumerActivations")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastGroupConsumerActivations.create", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.multicastGroupConsumerActivations.create" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsCreateCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastGroupConsumerActivations.create", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall struct {
+	s          *Service
+	name       string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Delete: Deletes a single multicast group consumer activation.
+//
+//   - name: The resource name of the multicast group consumer activation to
+//     delete. Use the following format:
+//     `projects/*/locations/*/multicastGroupConsumerActivations/*`.
+func (r *ProjectsLocationsMulticastGroupConsumerActivationsService) Delete(name string) *ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall {
+	c := &ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. The server will guarantee that for at least 60 minutes after
+// the first request. For example, consider a situation where you make an
+// initial request and the request times out. If you make the request again
+// with the same request ID, the server can check if original operation with
+// the same request ID was received, and if so, will ignore the second request.
+// This prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall) RequestId(requestId string) *ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall) Fields(s ...googleapi.Field) *ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall) Context(ctx context.Context) *ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("DELETE", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastGroupConsumerActivations.delete", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.multicastGroupConsumerActivations.delete" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastGroupConsumerActivations.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsMulticastGroupConsumerActivationsGetCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Gets details of a single multicast group consumer activation.
+//
+//   - name: The resource name of the multicast group consumer activation to get.
+//     Use the following format:
+//     `projects/*/locations/*/multicastGroupConsumerActivations/*`.
+func (r *ProjectsLocationsMulticastGroupConsumerActivationsService) Get(name string) *ProjectsLocationsMulticastGroupConsumerActivationsGetCall {
+	c := &ProjectsLocationsMulticastGroupConsumerActivationsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsGetCall) Fields(s ...googleapi.Field) *ProjectsLocationsMulticastGroupConsumerActivationsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsGetCall) IfNoneMatch(entityTag string) *ProjectsLocationsMulticastGroupConsumerActivationsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsGetCall) Context(ctx context.Context) *ProjectsLocationsMulticastGroupConsumerActivationsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastGroupConsumerActivations.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.multicastGroupConsumerActivations.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *MulticastGroupConsumerActivation.ServerResponse.Header or (if a response
+// was returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsGetCall) Do(opts ...googleapi.CallOption) (*MulticastGroupConsumerActivation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &MulticastGroupConsumerActivation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastGroupConsumerActivations.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsMulticastGroupConsumerActivationsListCall struct {
+	s            *Service
+	parent       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Lists multicast group consumer activations in a given project and
+// location.
+//
+//   - parent: The parent resource for which to list multicast group consumer
+//     activations. Use the following format: `projects/*/locations/*`.
+func (r *ProjectsLocationsMulticastGroupConsumerActivationsService) List(parent string) *ProjectsLocationsMulticastGroupConsumerActivationsListCall {
+	c := &ProjectsLocationsMulticastGroupConsumerActivationsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	return c
+}
+
+// Filter sets the optional parameter "filter": A filter expression that
+// filters the resources listed in the response. The expression must be of the
+// form ` ` where operators: `<`, `>`, `<=`, `>=`, `!=`, `=`, `:` are supported
+// (colon `:` represents a HAS operator which is roughly synonymous with
+// equality). can refer to a proto or JSON field, or a synthetic field. Field
+// names can be camelCase or snake_case. Examples: * Filter by name: name =
+// "RESOURCE_NAME" * Filter by labels: * Resources that have a key named `foo`
+// labels.foo:* * Resources that have a key named `foo` whose value is `bar`
+// labels.foo = bar
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsListCall) Filter(filter string) *ProjectsLocationsMulticastGroupConsumerActivationsListCall {
+	c.urlParams_.Set("filter", filter)
+	return c
+}
+
+// OrderBy sets the optional parameter "orderBy": A field used to sort the
+// results by a certain order.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsListCall) OrderBy(orderBy string) *ProjectsLocationsMulticastGroupConsumerActivationsListCall {
+	c.urlParams_.Set("orderBy", orderBy)
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": The maximum number of
+// multicast group consumer activations to return per call.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsListCall) PageSize(pageSize int64) *ProjectsLocationsMulticastGroupConsumerActivationsListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": A page token from an
+// earlier query, as returned in `next_page_token`.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsListCall) PageToken(pageToken string) *ProjectsLocationsMulticastGroupConsumerActivationsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsListCall) Fields(s ...googleapi.Field) *ProjectsLocationsMulticastGroupConsumerActivationsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsListCall) IfNoneMatch(entityTag string) *ProjectsLocationsMulticastGroupConsumerActivationsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsListCall) Context(ctx context.Context) *ProjectsLocationsMulticastGroupConsumerActivationsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/multicastGroupConsumerActivations")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastGroupConsumerActivations.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.multicastGroupConsumerActivations.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ListMulticastGroupConsumerActivationsResponse.ServerResponse.Header or (if
+// a response was returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsListCall) Do(opts ...googleapi.CallOption) (*ListMulticastGroupConsumerActivationsResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ListMulticastGroupConsumerActivationsResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastGroupConsumerActivations.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsListCall) Pages(ctx context.Context, f func(*ListMulticastGroupConsumerActivationsResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type ProjectsLocationsMulticastGroupConsumerActivationsPatchCall struct {
+	s                                *Service
+	name                             string
+	multicastgroupconsumeractivation *MulticastGroupConsumerActivation
+	urlParams_                       gensupport.URLParams
+	ctx_                             context.Context
+	header_                          http.Header
+}
+
+// Patch: Updates the parameters of a single multicast group consumer
+// activation.
+//
+//   - name: Identifier. The resource name of the multicast group consumer
+//     activation. Use the following format:
+//     `projects/*/locations/*/multicastGroupConsumerActivations/*`.
+func (r *ProjectsLocationsMulticastGroupConsumerActivationsService) Patch(name string, multicastgroupconsumeractivation *MulticastGroupConsumerActivation) *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall {
+	c := &ProjectsLocationsMulticastGroupConsumerActivationsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	c.multicastgroupconsumeractivation = multicastgroupconsumeractivation
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. The server will guarantee that for at least 60 minutes after
+// the first request. For example, consider a situation where you make an
+// initial request and the request times out. If you make the request again
+// with the same request ID, the server can check if original operation with
+// the same request ID was received, and if so, will ignore the second request.
+// This prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported (00000000-0000-0000-0000-000000000000).
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall) RequestId(requestId string) *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// UpdateMask sets the optional parameter "updateMask": Field mask is used to
+// specify the fields to be overwritten in the MulticastGroupConsumerActivation
+// resource by the update. The fields specified in the `update_mask` are
+// relative to the resource, not the full request. A field will be overwritten
+// if it is in the mask. If the user does not provide a mask then all mutable
+// fields present in the request will be overwritten.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall) UpdateMask(updateMask string) *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall {
+	c.urlParams_.Set("updateMask", updateMask)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall) Fields(s ...googleapi.Field) *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall) Context(ctx context.Context) *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.multicastgroupconsumeractivation)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PATCH", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastGroupConsumerActivations.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.multicastGroupConsumerActivations.patch" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsMulticastGroupConsumerActivationsPatchCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.multicastGroupConsumerActivations.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9176,7 +14657,7 @@ type ProjectsLocationsOperationsCancelCall struct {
 // other methods to check whether the cancellation succeeded or whether the
 // operation completed despite cancellation. On successful cancellation, the
 // operation is not deleted; instead, it becomes an operation with an
-// Operation.error value with a google.rpc.Status.code of 1, corresponding to
+// Operation.error value with a google.rpc.Status.code of `1`, corresponding to
 // `Code.CANCELLED`.
 //
 // - name: The name of the operation resource to be cancelled.
@@ -9212,8 +14693,7 @@ func (c *ProjectsLocationsOperationsCancelCall) Header() http.Header {
 
 func (c *ProjectsLocationsOperationsCancelCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.canceloperationrequest)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.canceloperationrequest)
 	if err != nil {
 		return nil, err
 	}
@@ -9229,6 +14709,7 @@ func (c *ProjectsLocationsOperationsCancelCall) doRequest(alt string) (*http.Res
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.operations.cancel", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9263,9 +14744,11 @@ func (c *ProjectsLocationsOperationsCancelCall) Do(opts ...googleapi.CallOption)
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.operations.cancel", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9314,12 +14797,11 @@ func (c *ProjectsLocationsOperationsDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsOperationsDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -9327,6 +14809,7 @@ func (c *ProjectsLocationsOperationsDeleteCall) doRequest(alt string) (*http.Res
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.operations.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9361,9 +14844,11 @@ func (c *ProjectsLocationsOperationsDeleteCall) Do(opts ...googleapi.CallOption)
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.operations.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9423,12 +14908,11 @@ func (c *ProjectsLocationsOperationsGetCall) doRequest(alt string) (*http.Respon
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -9436,6 +14920,7 @@ func (c *ProjectsLocationsOperationsGetCall) doRequest(alt string) (*http.Respon
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.operations.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9470,9 +14955,11 @@ func (c *ProjectsLocationsOperationsGetCall) Do(opts ...googleapi.CallOption) (*
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.operations.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9515,6 +15002,19 @@ func (c *ProjectsLocationsOperationsListCall) PageToken(pageToken string) *Proje
 	return c
 }
 
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
+// When set to `true`, operations that are reachable are returned as normal,
+// and those that are unreachable are returned in the
+// ListOperationsResponse.unreachable field. This can only be `true` when
+// reading across collections. For example, when `parent` is set to
+// "projects/example/locations/-". This field is not supported by default and
+// will result in an `UNIMPLEMENTED` error if set unless explicitly documented
+// otherwise in service or product specific documentation.
+func (c *ProjectsLocationsOperationsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ProjectsLocationsOperationsListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
+	return c
+}
+
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -9551,12 +15051,11 @@ func (c *ProjectsLocationsOperationsListCall) doRequest(alt string) (*http.Respo
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}/operations")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -9564,6 +15063,7 @@ func (c *ProjectsLocationsOperationsListCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.operations.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9599,9 +15099,11 @@ func (c *ProjectsLocationsOperationsListCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.operations.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9638,7 +15140,7 @@ type ProjectsLocationsServiceBindingsCreateCall struct {
 // Create: Creates a new ServiceBinding in a given project and location.
 //
 //   - parent: The parent resource of the ServiceBinding. Must be in the format
-//     `projects/*/locations/global`.
+//     `projects/*/locations/*`.
 func (r *ProjectsLocationsServiceBindingsService) Create(parent string, servicebinding *ServiceBinding) *ProjectsLocationsServiceBindingsCreateCall {
 	c := &ProjectsLocationsServiceBindingsCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -9678,8 +15180,7 @@ func (c *ProjectsLocationsServiceBindingsCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsServiceBindingsCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.servicebinding)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.servicebinding)
 	if err != nil {
 		return nil, err
 	}
@@ -9695,6 +15196,7 @@ func (c *ProjectsLocationsServiceBindingsCreateCall) doRequest(alt string) (*htt
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceBindings.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9729,9 +15231,11 @@ func (c *ProjectsLocationsServiceBindingsCreateCall) Do(opts ...googleapi.CallOp
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceBindings.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9746,7 +15250,7 @@ type ProjectsLocationsServiceBindingsDeleteCall struct {
 // Delete: Deletes a single ServiceBinding.
 //
 //   - name: A name of the ServiceBinding to delete. Must be in the format
-//     `projects/*/locations/global/serviceBindings/*`.
+//     `projects/*/locations/*/serviceBindings/*`.
 func (r *ProjectsLocationsServiceBindingsService) Delete(name string) *ProjectsLocationsServiceBindingsDeleteCall {
 	c := &ProjectsLocationsServiceBindingsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -9778,12 +15282,11 @@ func (c *ProjectsLocationsServiceBindingsDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsServiceBindingsDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -9791,6 +15294,7 @@ func (c *ProjectsLocationsServiceBindingsDeleteCall) doRequest(alt string) (*htt
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceBindings.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9825,9 +15329,11 @@ func (c *ProjectsLocationsServiceBindingsDeleteCall) Do(opts ...googleapi.CallOp
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceBindings.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9843,7 +15349,7 @@ type ProjectsLocationsServiceBindingsGetCall struct {
 // Get: Gets details of a single ServiceBinding.
 //
 //   - name: A name of the ServiceBinding to get. Must be in the format
-//     `projects/*/locations/global/serviceBindings/*`.
+//     `projects/*/locations/*/serviceBindings/*`.
 func (r *ProjectsLocationsServiceBindingsService) Get(name string) *ProjectsLocationsServiceBindingsGetCall {
 	c := &ProjectsLocationsServiceBindingsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -9886,12 +15392,11 @@ func (c *ProjectsLocationsServiceBindingsGetCall) doRequest(alt string) (*http.R
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -9899,6 +15404,7 @@ func (c *ProjectsLocationsServiceBindingsGetCall) doRequest(alt string) (*http.R
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceBindings.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9933,9 +15439,11 @@ func (c *ProjectsLocationsServiceBindingsGetCall) Do(opts ...googleapi.CallOptio
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceBindings.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -9951,7 +15459,7 @@ type ProjectsLocationsServiceBindingsListCall struct {
 // List: Lists ServiceBinding in a given project and location.
 //
 //   - parent: The project and location from which the ServiceBindings should be
-//     listed, specified in the format `projects/*/locations/global`.
+//     listed, specified in the format `projects/*/locations/*`.
 func (r *ProjectsLocationsServiceBindingsService) List(parent string) *ProjectsLocationsServiceBindingsListCall {
 	c := &ProjectsLocationsServiceBindingsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -10010,12 +15518,11 @@ func (c *ProjectsLocationsServiceBindingsListCall) doRequest(alt string) (*http.
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/serviceBindings")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -10023,6 +15530,7 @@ func (c *ProjectsLocationsServiceBindingsListCall) doRequest(alt string) (*http.
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceBindings.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10058,9 +15566,11 @@ func (c *ProjectsLocationsServiceBindingsListCall) Do(opts ...googleapi.CallOpti
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceBindings.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10083,6 +15593,121 @@ func (c *ProjectsLocationsServiceBindingsListCall) Pages(ctx context.Context, f 
 		}
 		c.PageToken(x.NextPageToken)
 	}
+}
+
+type ProjectsLocationsServiceBindingsPatchCall struct {
+	s              *Service
+	name           string
+	servicebinding *ServiceBinding
+	urlParams_     gensupport.URLParams
+	ctx_           context.Context
+	header_        http.Header
+}
+
+// Patch: Updates the parameters of a single ServiceBinding.
+//
+//   - name: Identifier. Name of the ServiceBinding resource. It matches pattern
+//     `projects/*/locations/*/serviceBindings/`.
+func (r *ProjectsLocationsServiceBindingsService) Patch(name string, servicebinding *ServiceBinding) *ProjectsLocationsServiceBindingsPatchCall {
+	c := &ProjectsLocationsServiceBindingsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	c.servicebinding = servicebinding
+	return c
+}
+
+// UpdateMask sets the optional parameter "updateMask": Field mask is used to
+// specify the fields to be overwritten in the ServiceBinding resource by the
+// update. The fields specified in the update_mask are relative to the
+// resource, not the full request. A field will be overwritten if it is in the
+// mask. If the user does not provide a mask then all fields will be
+// overwritten.
+func (c *ProjectsLocationsServiceBindingsPatchCall) UpdateMask(updateMask string) *ProjectsLocationsServiceBindingsPatchCall {
+	c.urlParams_.Set("updateMask", updateMask)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsServiceBindingsPatchCall) Fields(s ...googleapi.Field) *ProjectsLocationsServiceBindingsPatchCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsServiceBindingsPatchCall) Context(ctx context.Context) *ProjectsLocationsServiceBindingsPatchCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsServiceBindingsPatchCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsServiceBindingsPatchCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.servicebinding)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PATCH", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceBindings.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.serviceBindings.patch" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsServiceBindingsPatchCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceBindings.patch", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
 }
 
 type ProjectsLocationsServiceLbPoliciesCreateCall struct {
@@ -10140,8 +15765,7 @@ func (c *ProjectsLocationsServiceLbPoliciesCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsServiceLbPoliciesCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.servicelbpolicy)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.servicelbpolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -10157,6 +15781,7 @@ func (c *ProjectsLocationsServiceLbPoliciesCreateCall) doRequest(alt string) (*h
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceLbPolicies.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10191,9 +15816,11 @@ func (c *ProjectsLocationsServiceLbPoliciesCreateCall) Do(opts ...googleapi.Call
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceLbPolicies.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10240,12 +15867,11 @@ func (c *ProjectsLocationsServiceLbPoliciesDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsServiceLbPoliciesDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -10253,6 +15879,7 @@ func (c *ProjectsLocationsServiceLbPoliciesDeleteCall) doRequest(alt string) (*h
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceLbPolicies.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10287,9 +15914,11 @@ func (c *ProjectsLocationsServiceLbPoliciesDeleteCall) Do(opts ...googleapi.Call
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceLbPolicies.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10348,12 +15977,11 @@ func (c *ProjectsLocationsServiceLbPoliciesGetCall) doRequest(alt string) (*http
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -10361,6 +15989,7 @@ func (c *ProjectsLocationsServiceLbPoliciesGetCall) doRequest(alt string) (*http
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceLbPolicies.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10396,136 +16025,11 @@ func (c *ProjectsLocationsServiceLbPoliciesGetCall) Do(opts ...googleapi.CallOpt
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
-type ProjectsLocationsServiceLbPoliciesGetIamPolicyCall struct {
-	s            *Service
-	resource     string
-	urlParams_   gensupport.URLParams
-	ifNoneMatch_ string
-	ctx_         context.Context
-	header_      http.Header
-}
-
-// GetIamPolicy: Gets the access control policy for a resource. Returns an
-// empty policy if the resource exists and does not have a policy set.
-//
-//   - resource: REQUIRED: The resource for which the policy is being requested.
-//     See Resource names (https://cloud.google.com/apis/design/resource_names)
-//     for the appropriate value for this field.
-func (r *ProjectsLocationsServiceLbPoliciesService) GetIamPolicy(resource string) *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall {
-	c := &ProjectsLocationsServiceLbPoliciesGetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.resource = resource
-	return c
-}
-
-// OptionsRequestedPolicyVersion sets the optional parameter
-// "options.requestedPolicyVersion": The maximum policy version that will be
-// used to format the policy. Valid values are 0, 1, and 3. Requests specifying
-// an invalid value will be rejected. Requests for policies with any
-// conditional role bindings must specify version 3. Policies with no
-// conditional role bindings may specify any valid value or leave the field
-// unset. The policy in the response might use the policy version that you
-// specified, or it might use a lower policy version. For example, if you
-// specify version 3, but the policy has no conditional role bindings, the
-// response uses version 1. To learn which resources support conditions in
-// their IAM policies, see the IAM documentation
-// (https://cloud.google.com/iam/help/conditions/resource-policies).
-func (c *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall) OptionsRequestedPolicyVersion(optionsRequestedPolicyVersion int64) *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall {
-	c.urlParams_.Set("options.requestedPolicyVersion", fmt.Sprint(optionsRequestedPolicyVersion))
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall) Fields(s ...googleapi.Field) *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall) IfNoneMatch(entityTag string) *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall) Context(ctx context.Context) *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	var body io.Reader = nil
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+resource}:getIamPolicy")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	b, err := gensupport.DecodeResponseBytes(target, res)
 	if err != nil {
 		return nil, err
 	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"resource": c.resource,
-	})
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "networkservices.projects.locations.serviceLbPolicies.getIamPolicy" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Policy.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *ProjectsLocationsServiceLbPoliciesGetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Policy{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceLbPolicies.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10601,12 +16105,11 @@ func (c *ProjectsLocationsServiceLbPoliciesListCall) doRequest(alt string) (*htt
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/serviceLbPolicies")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -10614,6 +16117,7 @@ func (c *ProjectsLocationsServiceLbPoliciesListCall) doRequest(alt string) (*htt
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceLbPolicies.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10649,9 +16153,11 @@ func (c *ProjectsLocationsServiceLbPoliciesListCall) Do(opts ...googleapi.CallOp
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceLbPolicies.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -10687,7 +16193,7 @@ type ProjectsLocationsServiceLbPoliciesPatchCall struct {
 
 // Patch: Updates the parameters of a single ServiceLbPolicy.
 //
-//   - name: Name of the ServiceLbPolicy resource. It matches pattern
+//   - name: Identifier. Name of the ServiceLbPolicy resource. It matches pattern
 //     `projects/{project}/locations/{location}/serviceLbPolicies/{service_lb_poli
 //     cy_name}`.
 func (r *ProjectsLocationsServiceLbPoliciesService) Patch(name string, servicelbpolicy *ServiceLbPolicy) *ProjectsLocationsServiceLbPoliciesPatchCall {
@@ -10733,8 +16239,7 @@ func (c *ProjectsLocationsServiceLbPoliciesPatchCall) Header() http.Header {
 
 func (c *ProjectsLocationsServiceLbPoliciesPatchCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.servicelbpolicy)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.servicelbpolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -10750,6 +16255,7 @@ func (c *ProjectsLocationsServiceLbPoliciesPatchCall) doRequest(alt string) (*ht
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceLbPolicies.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -10784,223 +16290,11 @@ func (c *ProjectsLocationsServiceLbPoliciesPatchCall) Do(opts ...googleapi.CallO
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
-type ProjectsLocationsServiceLbPoliciesSetIamPolicyCall struct {
-	s                   *Service
-	resource            string
-	setiampolicyrequest *SetIamPolicyRequest
-	urlParams_          gensupport.URLParams
-	ctx_                context.Context
-	header_             http.Header
-}
-
-// SetIamPolicy: Sets the access control policy on the specified resource.
-// Replaces any existing policy. Can return `NOT_FOUND`, `INVALID_ARGUMENT`,
-// and `PERMISSION_DENIED` errors.
-//
-//   - resource: REQUIRED: The resource for which the policy is being specified.
-//     See Resource names (https://cloud.google.com/apis/design/resource_names)
-//     for the appropriate value for this field.
-func (r *ProjectsLocationsServiceLbPoliciesService) SetIamPolicy(resource string, setiampolicyrequest *SetIamPolicyRequest) *ProjectsLocationsServiceLbPoliciesSetIamPolicyCall {
-	c := &ProjectsLocationsServiceLbPoliciesSetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.resource = resource
-	c.setiampolicyrequest = setiampolicyrequest
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *ProjectsLocationsServiceLbPoliciesSetIamPolicyCall) Fields(s ...googleapi.Field) *ProjectsLocationsServiceLbPoliciesSetIamPolicyCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *ProjectsLocationsServiceLbPoliciesSetIamPolicyCall) Context(ctx context.Context) *ProjectsLocationsServiceLbPoliciesSetIamPolicyCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *ProjectsLocationsServiceLbPoliciesSetIamPolicyCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *ProjectsLocationsServiceLbPoliciesSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.setiampolicyrequest)
+	b, err := gensupport.DecodeResponseBytes(target, res)
 	if err != nil {
 		return nil, err
 	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+resource}:setIamPolicy")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"resource": c.resource,
-	})
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "networkservices.projects.locations.serviceLbPolicies.setIamPolicy" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Policy.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *ProjectsLocationsServiceLbPoliciesSetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Policy{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
-type ProjectsLocationsServiceLbPoliciesTestIamPermissionsCall struct {
-	s                         *Service
-	resource                  string
-	testiampermissionsrequest *TestIamPermissionsRequest
-	urlParams_                gensupport.URLParams
-	ctx_                      context.Context
-	header_                   http.Header
-}
-
-// TestIamPermissions: Returns permissions that a caller has on the specified
-// resource. If the resource does not exist, this will return an empty set of
-// permissions, not a `NOT_FOUND` error. Note: This operation is designed to be
-// used for building permission-aware UIs and command-line tools, not for
-// authorization checking. This operation may "fail open" without warning.
-//
-//   - resource: REQUIRED: The resource for which the policy detail is being
-//     requested. See Resource names
-//     (https://cloud.google.com/apis/design/resource_names) for the appropriate
-//     value for this field.
-func (r *ProjectsLocationsServiceLbPoliciesService) TestIamPermissions(resource string, testiampermissionsrequest *TestIamPermissionsRequest) *ProjectsLocationsServiceLbPoliciesTestIamPermissionsCall {
-	c := &ProjectsLocationsServiceLbPoliciesTestIamPermissionsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.resource = resource
-	c.testiampermissionsrequest = testiampermissionsrequest
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *ProjectsLocationsServiceLbPoliciesTestIamPermissionsCall) Fields(s ...googleapi.Field) *ProjectsLocationsServiceLbPoliciesTestIamPermissionsCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *ProjectsLocationsServiceLbPoliciesTestIamPermissionsCall) Context(ctx context.Context) *ProjectsLocationsServiceLbPoliciesTestIamPermissionsCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *ProjectsLocationsServiceLbPoliciesTestIamPermissionsCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *ProjectsLocationsServiceLbPoliciesTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.testiampermissionsrequest)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+resource}:testIamPermissions")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"resource": c.resource,
-	})
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "networkservices.projects.locations.serviceLbPolicies.testIamPermissions" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *TestIamPermissionsResponse.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was because
-// http.StatusNotModified was returned.
-func (c *ProjectsLocationsServiceLbPoliciesTestIamPermissionsCall) Do(opts ...googleapi.CallOption) (*TestIamPermissionsResponse, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &TestIamPermissionsResponse{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.serviceLbPolicies.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11016,7 +16310,7 @@ type ProjectsLocationsTcpRoutesCreateCall struct {
 // Create: Creates a new TcpRoute in a given project and location.
 //
 //   - parent: The parent resource of the TcpRoute. Must be in the format
-//     `projects/*/locations/global`.
+//     `projects/*/locations/*`.
 func (r *ProjectsLocationsTcpRoutesService) Create(parent string, tcproute *TcpRoute) *ProjectsLocationsTcpRoutesCreateCall {
 	c := &ProjectsLocationsTcpRoutesCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -11056,8 +16350,7 @@ func (c *ProjectsLocationsTcpRoutesCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsTcpRoutesCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.tcproute)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.tcproute)
 	if err != nil {
 		return nil, err
 	}
@@ -11073,6 +16366,7 @@ func (c *ProjectsLocationsTcpRoutesCreateCall) doRequest(alt string) (*http.Resp
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tcpRoutes.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11107,9 +16401,11 @@ func (c *ProjectsLocationsTcpRoutesCreateCall) Do(opts ...googleapi.CallOption) 
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tcpRoutes.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11124,7 +16420,7 @@ type ProjectsLocationsTcpRoutesDeleteCall struct {
 // Delete: Deletes a single TcpRoute.
 //
 //   - name: A name of the TcpRoute to delete. Must be in the format
-//     `projects/*/locations/global/tcpRoutes/*`.
+//     `projects/*/locations/*/tcpRoutes/*`.
 func (r *ProjectsLocationsTcpRoutesService) Delete(name string) *ProjectsLocationsTcpRoutesDeleteCall {
 	c := &ProjectsLocationsTcpRoutesDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -11156,12 +16452,11 @@ func (c *ProjectsLocationsTcpRoutesDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsTcpRoutesDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11169,6 +16464,7 @@ func (c *ProjectsLocationsTcpRoutesDeleteCall) doRequest(alt string) (*http.Resp
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tcpRoutes.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11203,9 +16499,11 @@ func (c *ProjectsLocationsTcpRoutesDeleteCall) Do(opts ...googleapi.CallOption) 
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tcpRoutes.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11221,7 +16519,7 @@ type ProjectsLocationsTcpRoutesGetCall struct {
 // Get: Gets details of a single TcpRoute.
 //
 //   - name: A name of the TcpRoute to get. Must be in the format
-//     `projects/*/locations/global/tcpRoutes/*`.
+//     `projects/*/locations/*/tcpRoutes/*`.
 func (r *ProjectsLocationsTcpRoutesService) Get(name string) *ProjectsLocationsTcpRoutesGetCall {
 	c := &ProjectsLocationsTcpRoutesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -11264,12 +16562,11 @@ func (c *ProjectsLocationsTcpRoutesGetCall) doRequest(alt string) (*http.Respons
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11277,6 +16574,7 @@ func (c *ProjectsLocationsTcpRoutesGetCall) doRequest(alt string) (*http.Respons
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tcpRoutes.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11311,9 +16609,11 @@ func (c *ProjectsLocationsTcpRoutesGetCall) Do(opts ...googleapi.CallOption) (*T
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tcpRoutes.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11329,7 +16629,7 @@ type ProjectsLocationsTcpRoutesListCall struct {
 // List: Lists TcpRoute in a given project and location.
 //
 //   - parent: The project and location from which the TcpRoutes should be
-//     listed, specified in the format `projects/*/locations/global`.
+//     listed, specified in the format `projects/*/locations/*`.
 func (r *ProjectsLocationsTcpRoutesService) List(parent string) *ProjectsLocationsTcpRoutesListCall {
 	c := &ProjectsLocationsTcpRoutesListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -11349,6 +16649,15 @@ func (c *ProjectsLocationsTcpRoutesListCall) PageSize(pageSize int64) *ProjectsL
 // of data.
 func (c *ProjectsLocationsTcpRoutesListCall) PageToken(pageToken string) *ProjectsLocationsTcpRoutesListCall {
 	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess": If
+// true, allow partial responses for multi-regional Aggregated List requests.
+// Otherwise if one of the locations is down or unreachable, the Aggregated
+// List request will fail.
+func (c *ProjectsLocationsTcpRoutesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ProjectsLocationsTcpRoutesListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
 	return c
 }
 
@@ -11388,12 +16697,11 @@ func (c *ProjectsLocationsTcpRoutesListCall) doRequest(alt string) (*http.Respon
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/tcpRoutes")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11401,6 +16709,7 @@ func (c *ProjectsLocationsTcpRoutesListCall) doRequest(alt string) (*http.Respon
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tcpRoutes.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11436,9 +16745,11 @@ func (c *ProjectsLocationsTcpRoutesListCall) Do(opts ...googleapi.CallOption) (*
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tcpRoutes.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11475,7 +16786,7 @@ type ProjectsLocationsTcpRoutesPatchCall struct {
 // Patch: Updates the parameters of a single TcpRoute.
 //
 //   - name: Identifier. Name of the TcpRoute resource. It matches pattern
-//     `projects/*/locations/global/tcpRoutes/tcp_route_name>`.
+//     `projects/*/locations/*/tcpRoutes/tcp_route_name>`.
 func (r *ProjectsLocationsTcpRoutesService) Patch(name string, tcproute *TcpRoute) *ProjectsLocationsTcpRoutesPatchCall {
 	c := &ProjectsLocationsTcpRoutesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -11518,8 +16829,7 @@ func (c *ProjectsLocationsTcpRoutesPatchCall) Header() http.Header {
 
 func (c *ProjectsLocationsTcpRoutesPatchCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.tcproute)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.tcproute)
 	if err != nil {
 		return nil, err
 	}
@@ -11535,6 +16845,7 @@ func (c *ProjectsLocationsTcpRoutesPatchCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tcpRoutes.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11569,9 +16880,11 @@ func (c *ProjectsLocationsTcpRoutesPatchCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tcpRoutes.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11587,7 +16900,7 @@ type ProjectsLocationsTlsRoutesCreateCall struct {
 // Create: Creates a new TlsRoute in a given project and location.
 //
 //   - parent: The parent resource of the TlsRoute. Must be in the format
-//     `projects/*/locations/global`.
+//     `projects/*/locations/*`.
 func (r *ProjectsLocationsTlsRoutesService) Create(parent string, tlsroute *TlsRoute) *ProjectsLocationsTlsRoutesCreateCall {
 	c := &ProjectsLocationsTlsRoutesCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -11627,8 +16940,7 @@ func (c *ProjectsLocationsTlsRoutesCreateCall) Header() http.Header {
 
 func (c *ProjectsLocationsTlsRoutesCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.tlsroute)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.tlsroute)
 	if err != nil {
 		return nil, err
 	}
@@ -11644,6 +16956,7 @@ func (c *ProjectsLocationsTlsRoutesCreateCall) doRequest(alt string) (*http.Resp
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tlsRoutes.create", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11678,9 +16991,11 @@ func (c *ProjectsLocationsTlsRoutesCreateCall) Do(opts ...googleapi.CallOption) 
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tlsRoutes.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11695,7 +17010,7 @@ type ProjectsLocationsTlsRoutesDeleteCall struct {
 // Delete: Deletes a single TlsRoute.
 //
 //   - name: A name of the TlsRoute to delete. Must be in the format
-//     `projects/*/locations/global/tlsRoutes/*`.
+//     `projects/*/locations/*/tlsRoutes/*`.
 func (r *ProjectsLocationsTlsRoutesService) Delete(name string) *ProjectsLocationsTlsRoutesDeleteCall {
 	c := &ProjectsLocationsTlsRoutesDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -11727,12 +17042,11 @@ func (c *ProjectsLocationsTlsRoutesDeleteCall) Header() http.Header {
 
 func (c *ProjectsLocationsTlsRoutesDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11740,6 +17054,7 @@ func (c *ProjectsLocationsTlsRoutesDeleteCall) doRequest(alt string) (*http.Resp
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tlsRoutes.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11774,9 +17089,11 @@ func (c *ProjectsLocationsTlsRoutesDeleteCall) Do(opts ...googleapi.CallOption) 
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tlsRoutes.delete", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11792,7 +17109,7 @@ type ProjectsLocationsTlsRoutesGetCall struct {
 // Get: Gets details of a single TlsRoute.
 //
 //   - name: A name of the TlsRoute to get. Must be in the format
-//     `projects/*/locations/global/tlsRoutes/*`.
+//     `projects/*/locations/*/tlsRoutes/*`.
 func (r *ProjectsLocationsTlsRoutesService) Get(name string) *ProjectsLocationsTlsRoutesGetCall {
 	c := &ProjectsLocationsTlsRoutesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -11835,12 +17152,11 @@ func (c *ProjectsLocationsTlsRoutesGetCall) doRequest(alt string) (*http.Respons
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11848,6 +17164,7 @@ func (c *ProjectsLocationsTlsRoutesGetCall) doRequest(alt string) (*http.Respons
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tlsRoutes.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -11882,9 +17199,11 @@ func (c *ProjectsLocationsTlsRoutesGetCall) Do(opts ...googleapi.CallOption) (*T
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tlsRoutes.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -11900,7 +17219,7 @@ type ProjectsLocationsTlsRoutesListCall struct {
 // List: Lists TlsRoute in a given project and location.
 //
 //   - parent: The project and location from which the TlsRoutes should be
-//     listed, specified in the format `projects/*/locations/global`.
+//     listed, specified in the format `projects/*/locations/*`.
 func (r *ProjectsLocationsTlsRoutesService) List(parent string) *ProjectsLocationsTlsRoutesListCall {
 	c := &ProjectsLocationsTlsRoutesListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.parent = parent
@@ -11920,6 +17239,15 @@ func (c *ProjectsLocationsTlsRoutesListCall) PageSize(pageSize int64) *ProjectsL
 // of data.
 func (c *ProjectsLocationsTlsRoutesListCall) PageToken(pageToken string) *ProjectsLocationsTlsRoutesListCall {
 	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess": If
+// true, allow partial responses for multi-regional Aggregated List requests.
+// Otherwise if one of the locations is down or unreachable, the Aggregated
+// List request will fail.
+func (c *ProjectsLocationsTlsRoutesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *ProjectsLocationsTlsRoutesListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
 	return c
 }
 
@@ -11959,12 +17287,11 @@ func (c *ProjectsLocationsTlsRoutesListCall) doRequest(alt string) (*http.Respon
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/tlsRoutes")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11972,6 +17299,7 @@ func (c *ProjectsLocationsTlsRoutesListCall) doRequest(alt string) (*http.Respon
 	googleapi.Expand(req.URL, map[string]string{
 		"parent": c.parent,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tlsRoutes.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12007,9 +17335,11 @@ func (c *ProjectsLocationsTlsRoutesListCall) Do(opts ...googleapi.CallOption) (*
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tlsRoutes.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
 }
 
@@ -12046,7 +17376,7 @@ type ProjectsLocationsTlsRoutesPatchCall struct {
 // Patch: Updates the parameters of a single TlsRoute.
 //
 //   - name: Identifier. Name of the TlsRoute resource. It matches pattern
-//     `projects/*/locations/global/tlsRoutes/tls_route_name>`.
+//     `projects/*/locations/*/tlsRoutes/tls_route_name>`.
 func (r *ProjectsLocationsTlsRoutesService) Patch(name string, tlsroute *TlsRoute) *ProjectsLocationsTlsRoutesPatchCall {
 	c := &ProjectsLocationsTlsRoutesPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -12089,8 +17419,7 @@ func (c *ProjectsLocationsTlsRoutesPatchCall) Header() http.Header {
 
 func (c *ProjectsLocationsTlsRoutesPatchCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.tlsroute)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.tlsroute)
 	if err != nil {
 		return nil, err
 	}
@@ -12106,6 +17435,7 @@ func (c *ProjectsLocationsTlsRoutesPatchCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tlsRoutes.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12140,8 +17470,1096 @@ func (c *ProjectsLocationsTlsRoutesPatchCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.tlsRoutes.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
+}
+
+type ProjectsLocationsWasmPluginsCreateCall struct {
+	s          *Service
+	parent     string
+	wasmplugin *WasmPlugin
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Create: Creates a new `WasmPlugin` resource in a given project and location.
+//
+//   - parent: The parent resource of the `WasmPlugin` resource. Must be in the
+//     format `projects/{project}/locations/global`.
+func (r *ProjectsLocationsWasmPluginsService) Create(parent string, wasmplugin *WasmPlugin) *ProjectsLocationsWasmPluginsCreateCall {
+	c := &ProjectsLocationsWasmPluginsCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	c.wasmplugin = wasmplugin
+	return c
+}
+
+// WasmPluginId sets the optional parameter "wasmPluginId": Required.
+// User-provided ID of the `WasmPlugin` resource to be created.
+func (c *ProjectsLocationsWasmPluginsCreateCall) WasmPluginId(wasmPluginId string) *ProjectsLocationsWasmPluginsCreateCall {
+	c.urlParams_.Set("wasmPluginId", wasmPluginId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsWasmPluginsCreateCall) Fields(s ...googleapi.Field) *ProjectsLocationsWasmPluginsCreateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsWasmPluginsCreateCall) Context(ctx context.Context) *ProjectsLocationsWasmPluginsCreateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsWasmPluginsCreateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsWasmPluginsCreateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.wasmplugin)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/wasmPlugins")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.create", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.wasmPlugins.create" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsWasmPluginsCreateCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.create", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsWasmPluginsDeleteCall struct {
+	s          *Service
+	name       string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Delete: Deletes the specified `WasmPlugin` resource.
+//
+//   - name: A name of the `WasmPlugin` resource to delete. Must be in the format
+//     `projects/{project}/locations/global/wasmPlugins/{wasm_plugin}`.
+func (r *ProjectsLocationsWasmPluginsService) Delete(name string) *ProjectsLocationsWasmPluginsDeleteCall {
+	c := &ProjectsLocationsWasmPluginsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsWasmPluginsDeleteCall) Fields(s ...googleapi.Field) *ProjectsLocationsWasmPluginsDeleteCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsWasmPluginsDeleteCall) Context(ctx context.Context) *ProjectsLocationsWasmPluginsDeleteCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsWasmPluginsDeleteCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsWasmPluginsDeleteCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("DELETE", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.delete", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.wasmPlugins.delete" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsWasmPluginsDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsWasmPluginsGetCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Gets details of the specified `WasmPlugin` resource.
+//
+//   - name: A name of the `WasmPlugin` resource to get. Must be in the format
+//     `projects/{project}/locations/global/wasmPlugins/{wasm_plugin}`.
+func (r *ProjectsLocationsWasmPluginsService) Get(name string) *ProjectsLocationsWasmPluginsGetCall {
+	c := &ProjectsLocationsWasmPluginsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// View sets the optional parameter "view": Determines how much data must be
+// returned in the response. See AIP-157 (https://google.aip.dev/157).
+//
+// Possible values:
+//
+//	"WASM_PLUGIN_VIEW_UNSPECIFIED" - Unspecified value. Do not use.
+//	"WASM_PLUGIN_VIEW_BASIC" - If specified in the `GET` request for a
+//
+// `WasmPlugin` resource, the server's response includes just the `WasmPlugin`
+// resource.
+//
+//	"WASM_PLUGIN_VIEW_FULL" - If specified in the `GET` request for a
+//
+// `WasmPlugin` resource, the server's response includes the `WasmPlugin`
+// resource with all its versions.
+func (c *ProjectsLocationsWasmPluginsGetCall) View(view string) *ProjectsLocationsWasmPluginsGetCall {
+	c.urlParams_.Set("view", view)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsWasmPluginsGetCall) Fields(s ...googleapi.Field) *ProjectsLocationsWasmPluginsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsWasmPluginsGetCall) IfNoneMatch(entityTag string) *ProjectsLocationsWasmPluginsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsWasmPluginsGetCall) Context(ctx context.Context) *ProjectsLocationsWasmPluginsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsWasmPluginsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsWasmPluginsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.wasmPlugins.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *WasmPlugin.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsWasmPluginsGetCall) Do(opts ...googleapi.CallOption) (*WasmPlugin, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &WasmPlugin{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsWasmPluginsListCall struct {
+	s            *Service
+	parent       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Lists `WasmPlugin` resources in a given project and location.
+//
+//   - parent: The project and location from which the `WasmPlugin` resources are
+//     listed, specified in the following format:
+//     `projects/{project}/locations/global`.
+func (r *ProjectsLocationsWasmPluginsService) List(parent string) *ProjectsLocationsWasmPluginsListCall {
+	c := &ProjectsLocationsWasmPluginsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Maximum number of
+// `WasmPlugin` resources to return per call. If not specified, at most 50
+// `WasmPlugin` resources are returned. The maximum value is 1000; values above
+// 1000 are coerced to 1000.
+func (c *ProjectsLocationsWasmPluginsListCall) PageSize(pageSize int64) *ProjectsLocationsWasmPluginsListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": The value returned by the
+// last `ListWasmPluginsResponse` call. Indicates that this is a continuation
+// of a prior `ListWasmPlugins` call, and that the next page of data is to be
+// returned.
+func (c *ProjectsLocationsWasmPluginsListCall) PageToken(pageToken string) *ProjectsLocationsWasmPluginsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsWasmPluginsListCall) Fields(s ...googleapi.Field) *ProjectsLocationsWasmPluginsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsWasmPluginsListCall) IfNoneMatch(entityTag string) *ProjectsLocationsWasmPluginsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsWasmPluginsListCall) Context(ctx context.Context) *ProjectsLocationsWasmPluginsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsWasmPluginsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsWasmPluginsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/wasmPlugins")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.wasmPlugins.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ListWasmPluginsResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsWasmPluginsListCall) Do(opts ...googleapi.CallOption) (*ListWasmPluginsResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ListWasmPluginsResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ProjectsLocationsWasmPluginsListCall) Pages(ctx context.Context, f func(*ListWasmPluginsResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type ProjectsLocationsWasmPluginsPatchCall struct {
+	s          *Service
+	name       string
+	wasmplugin *WasmPlugin
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Patch: Updates the parameters of the specified `WasmPlugin` resource.
+//
+//   - name: Identifier. Name of the `WasmPlugin` resource in the following
+//     format:
+//     `projects/{project}/locations/{location}/wasmPlugins/{wasm_plugin}`.
+func (r *ProjectsLocationsWasmPluginsService) Patch(name string, wasmplugin *WasmPlugin) *ProjectsLocationsWasmPluginsPatchCall {
+	c := &ProjectsLocationsWasmPluginsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	c.wasmplugin = wasmplugin
+	return c
+}
+
+// UpdateMask sets the optional parameter "updateMask": Used to specify the
+// fields to be overwritten in the `WasmPlugin` resource by the update. The
+// fields specified in the `update_mask` field are relative to the resource,
+// not the full request. An omitted `update_mask` field is treated as an
+// implied `update_mask` field equivalent to all fields that are populated
+// (that have a non-empty value). The `update_mask` field supports a special
+// value `*`, which means that each field in the given `WasmPlugin` resource
+// (including the empty ones) replaces the current value.
+func (c *ProjectsLocationsWasmPluginsPatchCall) UpdateMask(updateMask string) *ProjectsLocationsWasmPluginsPatchCall {
+	c.urlParams_.Set("updateMask", updateMask)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsWasmPluginsPatchCall) Fields(s ...googleapi.Field) *ProjectsLocationsWasmPluginsPatchCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsWasmPluginsPatchCall) Context(ctx context.Context) *ProjectsLocationsWasmPluginsPatchCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsWasmPluginsPatchCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsWasmPluginsPatchCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.wasmplugin)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PATCH", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.wasmPlugins.patch" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsWasmPluginsPatchCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.patch", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsWasmPluginsVersionsCreateCall struct {
+	s                 *Service
+	parent            string
+	wasmpluginversion *WasmPluginVersion
+	urlParams_        gensupport.URLParams
+	ctx_              context.Context
+	header_           http.Header
+}
+
+// Create: Creates a new `WasmPluginVersion` resource in a given project and
+// location.
+//
+//   - parent: The parent resource of the `WasmPluginVersion` resource. Must be
+//     in the format
+//     `projects/{project}/locations/global/wasmPlugins/{wasm_plugin}`.
+func (r *ProjectsLocationsWasmPluginsVersionsService) Create(parent string, wasmpluginversion *WasmPluginVersion) *ProjectsLocationsWasmPluginsVersionsCreateCall {
+	c := &ProjectsLocationsWasmPluginsVersionsCreateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	c.wasmpluginversion = wasmpluginversion
+	return c
+}
+
+// WasmPluginVersionId sets the optional parameter "wasmPluginVersionId":
+// Required. User-provided ID of the `WasmPluginVersion` resource to be
+// created.
+func (c *ProjectsLocationsWasmPluginsVersionsCreateCall) WasmPluginVersionId(wasmPluginVersionId string) *ProjectsLocationsWasmPluginsVersionsCreateCall {
+	c.urlParams_.Set("wasmPluginVersionId", wasmPluginVersionId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsWasmPluginsVersionsCreateCall) Fields(s ...googleapi.Field) *ProjectsLocationsWasmPluginsVersionsCreateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsWasmPluginsVersionsCreateCall) Context(ctx context.Context) *ProjectsLocationsWasmPluginsVersionsCreateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsWasmPluginsVersionsCreateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsWasmPluginsVersionsCreateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.wasmpluginversion)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/versions")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.versions.create", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.wasmPlugins.versions.create" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsWasmPluginsVersionsCreateCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.versions.create", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsWasmPluginsVersionsDeleteCall struct {
+	s          *Service
+	name       string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Delete: Deletes the specified `WasmPluginVersion` resource.
+//
+//   - name: A name of the `WasmPluginVersion` resource to delete. Must be in the
+//     format
+//     `projects/{project}/locations/global/wasmPlugins/{wasm_plugin}/versions/{wa
+//     sm_plugin_version}`.
+func (r *ProjectsLocationsWasmPluginsVersionsService) Delete(name string) *ProjectsLocationsWasmPluginsVersionsDeleteCall {
+	c := &ProjectsLocationsWasmPluginsVersionsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsWasmPluginsVersionsDeleteCall) Fields(s ...googleapi.Field) *ProjectsLocationsWasmPluginsVersionsDeleteCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsWasmPluginsVersionsDeleteCall) Context(ctx context.Context) *ProjectsLocationsWasmPluginsVersionsDeleteCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsWasmPluginsVersionsDeleteCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsWasmPluginsVersionsDeleteCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("DELETE", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.versions.delete", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.wasmPlugins.versions.delete" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ProjectsLocationsWasmPluginsVersionsDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.versions.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsWasmPluginsVersionsGetCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Gets details of the specified `WasmPluginVersion` resource.
+//
+//   - name: A name of the `WasmPluginVersion` resource to get. Must be in the
+//     format
+//     `projects/{project}/locations/global/wasmPlugins/{wasm_plugin}/versions/{wa
+//     sm_plugin_version}`.
+func (r *ProjectsLocationsWasmPluginsVersionsService) Get(name string) *ProjectsLocationsWasmPluginsVersionsGetCall {
+	c := &ProjectsLocationsWasmPluginsVersionsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsWasmPluginsVersionsGetCall) Fields(s ...googleapi.Field) *ProjectsLocationsWasmPluginsVersionsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsWasmPluginsVersionsGetCall) IfNoneMatch(entityTag string) *ProjectsLocationsWasmPluginsVersionsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsWasmPluginsVersionsGetCall) Context(ctx context.Context) *ProjectsLocationsWasmPluginsVersionsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsWasmPluginsVersionsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsWasmPluginsVersionsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.versions.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.wasmPlugins.versions.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *WasmPluginVersion.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *ProjectsLocationsWasmPluginsVersionsGetCall) Do(opts ...googleapi.CallOption) (*WasmPluginVersion, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &WasmPluginVersion{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.versions.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsWasmPluginsVersionsListCall struct {
+	s            *Service
+	parent       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Lists `WasmPluginVersion` resources in a given project and location.
+//
+//   - parent: The `WasmPlugin` resource whose `WasmPluginVersion`s are listed,
+//     specified in the following format:
+//     `projects/{project}/locations/global/wasmPlugins/{wasm_plugin}`.
+func (r *ProjectsLocationsWasmPluginsVersionsService) List(parent string) *ProjectsLocationsWasmPluginsVersionsListCall {
+	c := &ProjectsLocationsWasmPluginsVersionsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.parent = parent
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Maximum number of
+// `WasmPluginVersion` resources to return per call. If not specified, at most
+// 50 `WasmPluginVersion` resources are returned. The maximum value is 1000;
+// values above 1000 are coerced to 1000.
+func (c *ProjectsLocationsWasmPluginsVersionsListCall) PageSize(pageSize int64) *ProjectsLocationsWasmPluginsVersionsListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": The value returned by the
+// last `ListWasmPluginVersionsResponse` call. Indicates that this is a
+// continuation of a prior `ListWasmPluginVersions` call, and that the next
+// page of data is to be returned.
+func (c *ProjectsLocationsWasmPluginsVersionsListCall) PageToken(pageToken string) *ProjectsLocationsWasmPluginsVersionsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsWasmPluginsVersionsListCall) Fields(s ...googleapi.Field) *ProjectsLocationsWasmPluginsVersionsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsWasmPluginsVersionsListCall) IfNoneMatch(entityTag string) *ProjectsLocationsWasmPluginsVersionsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsWasmPluginsVersionsListCall) Context(ctx context.Context) *ProjectsLocationsWasmPluginsVersionsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsWasmPluginsVersionsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsWasmPluginsVersionsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+parent}/versions")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"parent": c.parent,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.versions.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "networkservices.projects.locations.wasmPlugins.versions.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ListWasmPluginVersionsResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsWasmPluginsVersionsListCall) Do(opts ...googleapi.CallOption) (*ListWasmPluginVersionsResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ListWasmPluginVersionsResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "networkservices.projects.locations.wasmPlugins.versions.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ProjectsLocationsWasmPluginsVersionsListCall) Pages(ctx context.Context, f func(*ListWasmPluginVersionsResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
 }
