@@ -6,3 +6,5 @@ github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1/go.mod h1:Zanoh4+gvIgluNqcfMVT
 github.com/onsi/gomega v1.38.2/go.mod h1:W2MJcYxRGV63b418Ai34Ud0hEdTVXq9NW9+Sx6uXf3k=
 go.opentelemetry.io/proto/otlp v1.7.1/go.mod h1:b2rVh6rfI/s2pHWNlB7ILJcRALpcNDzKhACevjI+ZnE=
 google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217/go.mod h1:+rXWjjaukWZun3mLfjmVnQi18E1AsFbDN9QdJ5YXLto=
+k8s.io/pod-security-admission v0.36.0 h1:YgVsB5KFiUtZfHgcLf/GPGGR9KgoXN4/loadBLCRvhY=
+k8s.io/pod-security-admission v0.36.0/go.mod h1:Brj/48uHTUApss1AaehnCw0dgI1Pxk/RAOo1oSNLqhI=
