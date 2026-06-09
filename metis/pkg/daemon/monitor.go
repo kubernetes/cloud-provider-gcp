@@ -49,9 +49,20 @@ const (
 
 	updateMaxRetries = 10
 
-	// defaultMonitorWorkers is set to 1 because the monitor does read-modify-write updates on
-	// the NodeNetworkConfig (NNC) custom resource. Running multiple workers concurrently could
-	// cause race conditions where one worker overwrites updates from another.
+	// syncKey is the single workqueue key used to trigger a monitor evaluation.
+	// We deliberately use a single key for all networks and a single worker (defaultMonitorWorkers = 1).
+	// Because the workqueue guarantees that a single key is processed by at most one worker at a time,
+	// having multiple workers would just lead to idle goroutines.
+	// This design ensures that all networks on the node are reconciled sequentially in a single pass of syncAll(),
+	// allowing us to perform a single read-modify-write operation on the NodeNetworkConfig (NNC) custom resource,
+	// which avoids API write conflicts and drastically reduces Kubernetes API server I/O overhead.
+	syncKey = "sync"
+
+	// defaultMonitorWorkers is set to 1 because the Monitor uses a single queue key (syncKey)
+	// to process all networks on the node sequentially. Since the workqueue ensures a key
+	// is processed by only one worker at a time, having more workers would just result in
+	// idle goroutines. This single-threaded execution avoids race conditions and write conflicts
+	// during read-modify-write updates of the NodeNetworkConfig (NNC) custom resource.
 	defaultMonitorWorkers = 1
 )
 
@@ -240,19 +251,27 @@ func (m *Monitor) processNextWorkItem(ctx context.Context) bool {
 
 // enqueue adds a sync request to the queue.
 func (m *Monitor) enqueue() {
-	m.queue.Add("sync")
+	m.queue.Add(syncKey)
 }
 
+// syncAll evaluates and reconciles IP capacity and release states across all networks
+// on the node. It calculates target pod allocations (scaling up or down), marks excess
+// CIDRs for draining, and transitions fully drained CIDRs to the releasable state.
+// If any modifications are made to the allocations or releasable CIDRs, it patches
+// the NodeNetworkConfig (NNC) custom resource.
 func (m *Monitor) syncAll(ctx context.Context) error {
 	m.logger.Info("Evaluating IP usage for dynamic allocation on node", "node", m.nodeName)
 
+	// Retrieve the latest NodeNetworkConfig (NNC) resource for this node.
 	nnc, err := getNodeNetworkConfig(ctx, m.nncLister, m.nncClient, m.nodeName)
 	if err != nil {
 		m.logger.Error(err, "failed to get NodeNetworkConfig")
 		return err
 	}
+	// Deep copy the NNC to prepare for local modifications and eventual patching.
 	nncCopy := nnc.DeepCopy()
 
+	// Get all networks managed by the daemon from the local store.
 	networks, err := m.store.GetAllNetworks(ctx)
 	if err != nil {
 		m.logger.Error(err, "failed to get networks from store")
@@ -262,45 +281,52 @@ func (m *Monitor) syncAll(ctx context.Context) error {
 	updated := false
 	var allNewReleasables []nncv1.PodCIDR
 
+	// Reconcile capacity and release state for each network individually.
 	for _, network := range networks {
 		info, err := m.getUtilizationInfo(ctx, network, nncCopy)
 		if err != nil {
 			return err
 		}
 
+		// If the total IP capacity is 0, the initial CIDR has not yet been allocated
+		// or the network is not initialized. Skip dynamic allocation.
 		if info.Usage.Total == 0 {
 			m.logger.Info("Total IPs is 0, skipping dynamic allocation", "network", network)
 			continue
 		}
 
-		// 1. Calculate desired scale-up target
+		// Scale-Up: Calculate desired pod capacity based on current utilization and target threshold.
 		desiredPods := m.maybeScaleUp(network, info)
 
-		// 2. Trigger draining if needed
+		// Scale-Down (Draining): Mark excess CIDR blocks as draining if utilization is low.
 		m.maybeDrainExcessive(ctx, network, info)
 
-		// 3. Reconcile deleting blocks
+		// Releasing: Reconcile CIDRs that are deleting/releasing. This returns the updated
+		// list of releasable CIDRs for this network and the reduction in pod capacity (reducePods)
+		// resulting from the blocks being released.
 		newReleasables, reducePods, err := m.reconcileDeletingBlocks(ctx, network, info.CurrentReleasables, info.CurrentStatus)
 		if err != nil {
 			return err
 		}
 		allNewReleasables = append(allNewReleasables, newReleasables...)
 
-		// 4. Compute final target pods size
+		// Adjust the desired pod allocation by subtracting the capacity of released blocks.
 		finalTargetPods := max(0, desiredPods-reducePods)
 
-		// 5. Apply target allocation changes
+		// Update the NNC allocations spec for this network if the target pod count changed.
 		if m.updateAllocationPods(nncCopy, network, info.CurrentAllocation, finalTargetPods) {
 			updated = true
 		}
 	}
 
-	// 6. Apply releasable updates
+	// If the global list of releasable CIDRs has changed, update the NNC spec.
 	if !reflect.DeepEqual(nncCopy.Spec.ReleasableCIDRs, allNewReleasables) {
 		nncCopy.Spec.ReleasableCIDRs = allNewReleasables
 		updated = true
 	}
 
+	// If any spec changes (allocations or releasable CIDRs) were made, patch the NNC resource on the API server.
+	// We perform this update once per sync loop to minimize API calls.
 	if updated {
 		return m.patchNNC(ctx, nncCopy)
 	}
@@ -426,7 +452,7 @@ func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) int {
 	// So we need to callback onCIDR when we check there are enough available IPs.
 	if info.Usage.Cooldown > m.cooldownPushbackThreshold {
 		m.logger.Info("Too many IPs in cooldown, holding on sending outgoing requests", "network", network, "cooldownCount", info.Usage.Cooldown)
-		m.queue.AddAfter("sync", m.cooldownPushbackInterval)
+		m.queue.AddAfter(syncKey, m.cooldownPushbackInterval)
 		return currentPods
 	}
 

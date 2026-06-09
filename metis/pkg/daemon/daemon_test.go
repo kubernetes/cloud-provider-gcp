@@ -149,7 +149,6 @@ func TestDaemon_Run(t *testing.T) {
 	}
 }
 
-
 func TestEnsureNodeNetworkConfig(t *testing.T) {
 	nodeName := "test-node"
 	nodeUID := types.UID("test-node-uid")

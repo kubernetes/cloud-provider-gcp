@@ -63,9 +63,9 @@ type adaptiveIpamServer struct {
 	// to optimize lookups and avoid iterating over all waiting clients from other networks.
 	// The inner map associates each blocked cniClient to a channel that is closed to wake
 	// it up when new IPs become available.
-	requestsMap     map[string]map[cniClient]chan struct{}
-	requestsMu      sync.RWMutex
-	monitor         *Monitor
+	requestsMap map[string]map[cniClient]chan struct{}
+	requestsMu  sync.RWMutex
+	monitor     *Monitor
 }
 
 func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socketPath string, releaseCooldown time.Duration, busyTimeout time.Duration) *adaptiveIpamServer {
@@ -433,4 +433,3 @@ func (s *adaptiveIpamServer) removePendingRequest(clientKey cniClient, network s
 		}
 	}
 }
-
