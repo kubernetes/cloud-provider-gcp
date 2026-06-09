@@ -1,1 +1,3 @@
-cloud.google.com/go v0.115.1 h1:Jo0SM9cQnSkYfp44+v+NQXHpcHqlnRJk2qxh6yvxxxQ=
+cloud.google.com/go v0.112.2 h1:ZaGT6LiG7dBzi6zNOvVZwacaXlmf3lRqnC4DQzqyRQw=
+k8s.io/pod-security-admission v0.36.0 h1:YgVsB5KFiUtZfHgcLf/GPGGR9KgoXN4/loadBLCRvhY=
+k8s.io/pod-security-admission v0.36.0/go.mod h1:Brj/48uHTUApss1AaehnCw0dgI1Pxk/RAOo1oSNLqhI=

@@ -45,13 +45,8 @@ RUN if [ "${TARGETARCH}" = "amd64" ]; then \
 # Always verify any base image upgrades by running `make test-glibc-floor`.
 #
 # See metis/Makefile for the full historical context and version baseline.
-FROM ubuntu:22.04
-RUN apt-get update && apt-get install -y \
-    sqlite3 \
-    && rm -rf /var/lib/apt/lists/*
+FROM gcr.io/distroless/cc-debian12
 WORKDIR /
 COPY --from=builder /app/metis /bin/metis
-COPY --from=builder /app/install-plugin.sh /install-plugin.sh
-RUN chmod +x /install-plugin.sh
 ENTRYPOINT ["/bin/metis"]
 
