@@ -53,7 +53,7 @@ const (
 	// We deliberately use a single key for all networks and a single worker (defaultMonitorWorkers = 1).
 	// Because the workqueue guarantees that a single key is processed by at most one worker at a time,
 	// having multiple workers would just lead to idle goroutines.
-	// This design ensures that all networks on the node are reconciled sequentially in a single pass of syncAll(),
+	// This ensures that all networks on the node are reconciled sequentially in a single pass of syncAll(),
 	// allowing us to perform a single read-modify-write operation on the NodeNetworkConfig (NNC) custom resource,
 	// which avoids API write conflicts and drastically reduces Kubernetes API server I/O overhead.
 	syncKey = "sync"
@@ -334,7 +334,14 @@ func (m *Monitor) syncAll(ctx context.Context) error {
 }
 
 func (m *Monitor) patchNNC(ctx context.Context, nncCopy *nncv1.NodeNetworkConfig) error {
+	// Include resourceVersion in the metadata of the patch payload to enforce
+	// optimistic concurrency control. This causes the patch to fail with a
+	// 409 Conflict if another controller (e.g. GCE) updated the NNC since we
+	// fetched it. The monitor's workqueue will automatically retry.
 	patchData := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"resourceVersion": nncCopy.ResourceVersion,
+		},
 		"spec": map[string]interface{}{
 			"allocations":     nncCopy.Spec.Allocations,
 			"releasableCIDRs": nncCopy.Spec.ReleasableCIDRs,

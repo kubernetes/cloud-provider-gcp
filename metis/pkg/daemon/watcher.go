@@ -67,6 +67,7 @@ func NewWatcher(logger logr.Logger, nncClient nncclientset.Interface, nncInforme
 
 	var nncLister nnclisters.NodeNetworkConfigLister
 	var nncSynced cache.InformerSynced
+	// nncInformer is is never nil. This is for UT.
 	if nncInformer != nil {
 		nncLister = nncInformer.Lister()
 		nncSynced = nncInformer.Informer().HasSynced
@@ -84,6 +85,7 @@ func NewWatcher(logger logr.Logger, nncClient nncclientset.Interface, nncInforme
 	}
 	w.syncHandler = w.syncCIDR
 
+	// nncInformer is never nil. This is for UT.
 	if nncInformer != nil {
 		nncInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {

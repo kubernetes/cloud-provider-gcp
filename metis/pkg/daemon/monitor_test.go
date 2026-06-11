@@ -884,7 +884,10 @@ func TestMonitorRun(t *testing.T) {
 	}
 
 	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            nodeName,
+			ResourceVersion: "424242",
+		},
 		Spec: nncv1.NodeNetworkConfigSpec{
 			Allocations: []nncv1.Allocation{{Network: network, Pods: 16}},
 		},
@@ -914,9 +917,18 @@ func TestMonitorRun(t *testing.T) {
 			patchCount++
 
 			var patch struct {
+				Metadata struct {
+					ResourceVersion string `json:"resourceVersion"`
+				} `json:"metadata"`
 				Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
 			}
-			json.Unmarshal(data, &patch)
+			if err := json.Unmarshal(data, &patch); err != nil {
+				t.Errorf("Failed to unmarshal patch: %v", err)
+			}
+			if patch.Metadata.ResourceVersion != "424242" {
+				t.Errorf("Expected resourceVersion in patch to be '424242', got %q", patch.Metadata.ResourceVersion)
+			}
+
 			if patch.Spec.Allocations != nil {
 				mockNNC.Spec.Allocations = patch.Spec.Allocations
 			}
@@ -986,3 +998,77 @@ func TestMonitorRun(t *testing.T) {
 func ptrInt32(v int32) *int32 {
 	return &v
 }
+
+func TestMonitor_Retry(t *testing.T) {
+	logger := logr.Discard()
+	nodeName := "test-node"
+
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_monitor_retry_test.sqlite")
+	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	mockNNC := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            nodeName,
+			ResourceVersion: "111",
+		},
+	}
+
+	getCallCount := 0
+	var mu sync.Mutex
+
+	mockInterface := &mockNodeNetworkConfigInterface{
+		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			getCallCount++
+			if getCallCount == 1 {
+				return nil, fmt.Errorf("temporary get error")
+			}
+			return mockNNC, nil
+		},
+	}
+
+	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
+	mockClient := &mockClientset{networkingV1: mockNetV1}
+
+	m := NewMonitor(MonitorConfig{
+		Logger:                  logger,
+		NNCClient:               mockClient,
+		Store:                   storeInstance,
+		NodeName:                nodeName,
+		MonitorInterval:         10 * time.Millisecond,
+		GetPendingRequestsCount: func(net string) int { return 0 },
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	runFinished := make(chan struct{})
+	go func() {
+		m.Run(ctx, 1)
+		close(runFinished)
+	}()
+
+	m.enqueue()
+
+	// Wait for processing and retry
+	time.Sleep(500 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if getCallCount < 2 {
+		t.Errorf("Expected at least 2 attempts due to retry, got %d", getCallCount)
+	}
+
+	cancel() // Shut down monitor
+	<-runFinished
+}
+
+
+
+
