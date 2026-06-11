@@ -35,23 +35,35 @@ const (
 	cacheDurationKey          = "KUBE_SIDECAR_CACHE_DURATION"
 	cacheTypeKey              = "KUBE_SIDECAR_CACHE_TYPE"
 	metadataHTTPClientTimeout = time.Second * 10
+	stsHTTPClientTimeout      = time.Second * 30
 	apiKind                   = "CredentialProviderResponse"
 	apiVersion                = "credentialprovider.kubelet.k8s.io/v1"
 )
 
 // MakeRegistryProvider returns a ContainerRegistryProvider with the given transport.
-func MakeRegistryProvider(transport *http.Transport) *gcpcredential.ContainerRegistryProvider {
-	httpClient := makeHTTPClient(transport)
+func MakeRegistryProvider(transport *http.Transport, token string, annotations map[string]string, identityProvider string, projectID string) *gcpcredential.ContainerRegistryProvider {
+	isAnnotated := annotations[gcpcredential.EnableWIImagePullAnnotation] == "true"
+
+	timeout := metadataHTTPClientTimeout
+	if identityProvider != "" && isAnnotated && token != "" {
+		timeout = stsHTTPClientTimeout
+	}
+
+	httpClient := makeHTTPClient(transport, timeout)
 	provider := &gcpcredential.ContainerRegistryProvider{
-		MetadataProvider:     gcpcredential.MetadataProvider{Client: httpClient},
-		UseRegistryFromImage: true,
+		MetadataProvider:          gcpcredential.MetadataProvider{Client: httpClient},
+		UseRegistryFromImage:      true,
+		KSAToken:                  token,
+		ServiceAccountAnnotations: annotations,
+		IdentityProvider:          identityProvider,
+		ProjectID:                 projectID,
 	}
 	return provider
 }
 
 // MakeDockerConfigProvider returns a DockerConfigKeyProvider with the given transport.
 func MakeDockerConfigProvider(transport *http.Transport) *gcpcredential.DockerConfigKeyProvider {
-	httpClient := makeHTTPClient(transport)
+	httpClient := makeHTTPClient(transport, metadataHTTPClientTimeout)
 	provider := &gcpcredential.DockerConfigKeyProvider{
 		MetadataProvider: gcpcredential.MetadataProvider{Client: httpClient},
 	}
@@ -60,17 +72,17 @@ func MakeDockerConfigProvider(transport *http.Transport) *gcpcredential.DockerCo
 
 // MakeDockerConfigURLProvider returns a DockerConfigURLKeyProvider with the given transport.
 func MakeDockerConfigURLProvider(transport *http.Transport) *gcpcredential.DockerConfigURLKeyProvider {
-	httpClient := makeHTTPClient(transport)
+	httpClient := makeHTTPClient(transport, metadataHTTPClientTimeout)
 	provider := &gcpcredential.DockerConfigURLKeyProvider{
 		MetadataProvider: gcpcredential.MetadataProvider{Client: httpClient},
 	}
 	return provider
 }
 
-func makeHTTPClient(transport *http.Transport) *http.Client {
+func makeHTTPClient(transport *http.Transport, timeout time.Duration) *http.Client {
 	return &http.Client{
 		Transport: transport,
-		Timeout:   metadataHTTPClientTimeout,
+		Timeout:   timeout,
 	}
 }
 
@@ -109,8 +121,8 @@ func getCacheKeyType() (credentialproviderapi.PluginCacheKeyType, error) {
 }
 
 // GetResponse queries the given provider for credentials.
-func GetResponse(image string, provider credentialconfig.DockerConfigProvider) (*credentialproviderapi.CredentialProviderResponse, error) {
-	cfg := provider.Provide(image)
+func GetResponse(req credentialproviderapi.CredentialProviderRequest, provider credentialconfig.DockerConfigProvider) (*credentialproviderapi.CredentialProviderResponse, error) {
+	cfg := provider.Provide(req.Image)
 	response := &credentialproviderapi.CredentialProviderResponse{Auth: make(map[string]credentialproviderapi.AuthConfig)}
 	for url, dockerConfig := range cfg {
 		response.Auth[url] = credentialproviderapi.AuthConfig{Username: dockerConfig.Username, Password: dockerConfig.Password}
