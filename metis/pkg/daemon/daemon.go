@@ -30,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/pkg"
 
@@ -192,9 +193,9 @@ func (d *Daemon) ensureNodeNetworkConfig(ctx context.Context, nodeName string, l
 
 // initClients initializes the nodenetworkconfig and kubernetes clients.
 func initClients() (nncclientset.Interface, kubernetes.Interface, error) {
-	config, err := rest.InClusterConfig()
+	config, err := getClusterConfig()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get in-cluster config: %w", err)
+		return nil, nil, fmt.Errorf("failed to get cluster config: %w", err)
 	}
 	nncClient, err := nncclientset.NewForConfig(config)
 	if err != nil {
@@ -205,4 +206,18 @@ func initClients() (nncclientset.Interface, kubernetes.Interface, error) {
 		return nil, nil, fmt.Errorf("failed to create kubernetes clientset: %w", err)
 	}
 	return nncClient, kubeClient, nil
+}
+
+func getClusterConfig() (*rest.Config, error) {
+	// 1. Try KUBECONFIG environment variable first
+	kubeconfigPath := os.Getenv("KUBECONFIG")
+	if kubeconfigPath != "" {
+		return clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	}
+	// 2. Fallback to standard in-cluster config (expects token at /var/run/secrets/...)
+	config, err := rest.InClusterConfig()
+	if err == nil {
+		return config, nil
+	}
+	return nil, err
 }
