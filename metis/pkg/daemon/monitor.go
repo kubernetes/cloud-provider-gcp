@@ -32,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/metis/pkg/store"
 )
@@ -104,6 +105,7 @@ type Monitor struct {
 	queue                   workqueue.TypedRateLimitingInterface[string]
 	nncClient               nncclientset.Interface
 	nncLister               nnclisters.NodeNetworkConfigLister
+	nncSynced               cache.InformerSynced
 	nodeName                string
 	store                   *store.Store
 	logger                  logr.Logger
@@ -146,6 +148,9 @@ type MonitorConfig struct {
 	DrainingExpiration              time.Duration
 	MonitorInterval                 time.Duration
 	SustainedLowUtilizationDuration time.Duration
+	LowUtilizationThreshold         float64
+	TargetUtilizationAfterScaleUp   float64
+	CooldownPushbackThreshold       int
 }
 
 // SetDefaults applies default values to the MonitorConfig fields if they are unset (<= 0).
@@ -161,6 +166,15 @@ func (c *MonitorConfig) SetDefaults() {
 	}
 	if c.MonitorInterval <= 0 {
 		c.MonitorInterval = DefaultMonitorInterval
+	}
+	if c.LowUtilizationThreshold <= 0 {
+		c.LowUtilizationThreshold = DefaultLowUtilizationThreshold
+	}
+	if c.TargetUtilizationAfterScaleUp <= 0 {
+		c.TargetUtilizationAfterScaleUp = DefaultTargetUtilizationAfterScaleUp
+	}
+	if c.CooldownPushbackThreshold <= 0 {
+		c.CooldownPushbackThreshold = DefaultCooldownPushbackThreshold
 	}
 }
 
@@ -178,14 +192,17 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 	})
 
 	var nncLister nnclisters.NodeNetworkConfigLister
+	var nncSynced cache.InformerSynced
 	if cfg.NNCInformer != nil {
 		nncLister = cfg.NNCInformer.Lister()
+		nncSynced = cfg.NNCInformer.Informer().HasSynced
 	}
 
 	return &Monitor{
 		queue:                           queue,
 		nncClient:                       cfg.NNCClient,
 		nncLister:                       nncLister,
+		nncSynced:                       nncSynced,
 		nodeName:                        cfg.NodeName,
 		store:                           cfg.Store,
 		logger:                          cfg.Logger,
@@ -194,28 +211,36 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 		cooldownPushbackInterval:        cfg.CooldownPushbackInterval,
 		drainingExpiration:              cfg.DrainingExpiration,
 		monitorInterval:                 cfg.MonitorInterval,
-		lowUtilizationThreshold:         DefaultLowUtilizationThreshold,
-		targetUtilizationAfterScaleUp:   DefaultTargetUtilizationAfterScaleUp,
-		cooldownPushbackThreshold:       DefaultCooldownPushbackThreshold,
+		lowUtilizationThreshold:         cfg.LowUtilizationThreshold,
+		targetUtilizationAfterScaleUp:   cfg.TargetUtilizationAfterScaleUp,
+		cooldownPushbackThreshold:       cfg.CooldownPushbackThreshold,
 		sustainedLowUtilizationDuration: cfg.SustainedLowUtilizationDuration,
 	}
 }
 
 // Run starts the workers and periodic enqueuer.
-func (m *Monitor) Run(ctx context.Context, workers int) {
+func (m *Monitor) Run(ctx context.Context) {
 	defer m.queue.ShutDown()
 
-	m.logger.Info("Starting Metis Daemon Monitor", "node", m.nodeName, "workers", workers, "interval", m.monitorInterval)
+	m.logger.Info("Starting Metis Daemon Monitor", "node", m.nodeName, "interval", m.monitorInterval)
 	defer m.logger.Info("Stopping Metis Daemon Monitor")
+
+	if m.nncSynced != nil {
+		if !cache.WaitForNamedCacheSync("MetisNNCMonitor", ctx.Done(), m.nncSynced) {
+			return
+		}
+	}
 
 	// Periodic enqueuer
 	go wait.UntilWithContext(ctx, func(ctx context.Context) {
 		m.enqueue()
 	}, m.monitorInterval)
 
-	for i := 0; i < workers; i++ {
-		go wait.UntilWithContext(ctx, m.runWorker, m.monitorInterval)
-	}
+	// We lock the monitor worker count to 1 internally because the monitor reconciles all
+	// networks sequentially using a single queue key ("sync"). Running multiple workers is
+	// redundant and would lead to idle goroutines, as the workqueue serializes execution
+	// to prevent concurrent NNC API updates.
+	go wait.UntilWithContext(ctx, m.runWorker, m.monitorInterval)
 
 	<-ctx.Done()
 }
@@ -260,7 +285,7 @@ func (m *Monitor) enqueue() {
 // If any modifications are made to the allocations or releasable CIDRs, it patches
 // the NodeNetworkConfig (NNC) custom resource.
 func (m *Monitor) syncAll(ctx context.Context) error {
-	m.logger.Info("Evaluating IP usage for dynamic allocation on node", "node", m.nodeName)
+	m.logger.Info("Daemon monitor starting synchronization: evaluating IP usage and reconciling capacity for dynamic allocation on node", "node", m.nodeName)
 
 	// Retrieve the latest NodeNetworkConfig (NNC) resource for this node.
 	nnc, err := getNodeNetworkConfig(ctx, m.nncLister, m.nncClient, m.nodeName)
@@ -295,11 +320,28 @@ func (m *Monitor) syncAll(ctx context.Context) error {
 			continue
 		}
 
+		currentPods := 0
+		if info.CurrentAllocation != nil {
+			currentPods = int(info.CurrentAllocation.Pods)
+		}
+
+		m.logger.Info("Reconciling network capacity",
+			"network", network,
+			"currentPods", currentPods,
+			"allocatedIPs", info.Usage.Allocated,
+			"cooldownIPs", info.Usage.Cooldown,
+			"totalIPs", info.Usage.Total,
+			"pendingRequests", info.PendingRequests,
+			"utilization", fmt.Sprintf("%.2f%%", info.Utilization*100),
+		)
+
 		// Scale-Up: Calculate desired pod capacity based on current utilization and target threshold.
 		desiredPods := m.maybeScaleUp(network, info)
 
 		// Scale-Down (Draining): Mark excess CIDR blocks as draining if utilization is low.
-		m.maybeDrainExcessive(ctx, network, info)
+		if m.maybeDrainExcessive(ctx, network, info) {
+			m.logger.Info("Scale-down triggered: one or more blocks are marked for draining", "network", network)
+		}
 
 		// Releasing: Reconcile CIDRs that are deleting/releasing. This returns the updated
 		// list of releasable CIDRs for this network and the reduction in pod capacity (reducePods)
@@ -328,8 +370,11 @@ func (m *Monitor) syncAll(ctx context.Context) error {
 	// If any spec changes (allocations or releasable CIDRs) were made, patch the NNC resource on the API server.
 	// We perform this update once per sync loop to minimize API calls.
 	if updated {
-		return m.patchNNC(ctx, nncCopy)
+		if err := m.patchNNC(ctx, nncCopy); err != nil {
+			return err
+		}
 	}
+	m.logger.Info("Daemon monitor synchronization done", "node", m.nodeName)
 	return nil
 }
 
@@ -468,7 +513,11 @@ func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) int {
 	podsWithBuffer := int(math.Ceil(float64(usedIPs+pendingRequests) / m.targetUtilizationAfterScaleUp))
 
 	newPods := max(podsWithBuffer, baseLine)
-	return max(newPods, currentPods)
+	desiredPods := max(newPods, currentPods)
+	if desiredPods > currentPods {
+		m.logger.Info("Scale-up triggered: capacity expansion requested", "network", network, "currentPods", currentPods, "desiredPods", desiredPods)
+	}
+	return desiredPods
 }
 
 // Note that utilization stats and store CIDR blocks might already be changed by the time we attempt to drain.
@@ -588,6 +637,7 @@ func (m *Monitor) reconcileDeletingBlocks(
 
 			if !releasableMap[block.CIDR] {
 				// Case B.1: Not in release section yet -> add to release section
+				m.logger.Info("CIDR block is fully drained; requesting release by adding to releasableCIDRs list", "network", network, "cidr", block.CIDR, "totalIPs", block.TotalIPs)
 				reducePods += block.TotalIPs
 				releasableMap[block.CIDR] = true
 			}
@@ -595,6 +645,10 @@ func (m *Monitor) reconcileDeletingBlocks(
 	}
 
 	// TODO: detect out of sync that the items in currentReleasable but no longer in current status or in  deletingBlocks  in local DB, emit metrics or log. This should never happen.
+
+	if reducePods > 0 {
+		m.logger.Info("Releasing capacity: blocks are fully drained and marked as releasable", "network", network, "capacityReducedBy", reducePods)
+	}
 
 	return newReleasables, reducePods, nil
 }

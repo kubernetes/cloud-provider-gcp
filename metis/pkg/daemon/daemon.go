@@ -45,11 +45,15 @@ type Config struct {
 	ReleaseCooldown                 time.Duration
 	DrainingExpiration              time.Duration
 	SustainedLowUtilizationDuration time.Duration
+	LowUtilizationThreshold         float64
+	TargetUtilizationAfterScaleUp   float64
+	CooldownPushbackThreshold       int
 }
 
 // Daemon represents the metis daemon process.
 type Daemon struct {
 	Config Config
+	Logger logr.Logger
 	// NNCClient and KubeClient can be pre-populated for unit testing. If nil,
 	// they will be initialized using in-cluster config during Run.
 	NNCClient  nncclientset.Interface
@@ -58,24 +62,20 @@ type Daemon struct {
 
 // NewDaemon creates a new Daemon instance with the given configuration.
 func NewDaemon(cfg Config) *Daemon {
+	// Initialize logr.Logger here using klog.Background(). We use klog at the
+	// entry point to configure the concrete logging backend and flags. We pass the logr interface
+	// to sub-components to decouple them from the implementation, improve testability, and
+	// preserve the "metis.daemon" name context across all logs.
 	return &Daemon{
 		Config: cfg,
+		Logger: klog.Background().WithName("metis").WithName("daemon"),
 	}
 }
 
 // Run starts the daemon process and listens for gRPC requests on a domain socket.
 func (d *Daemon) Run(ctx context.Context) error {
-	// Initialize logr.Logger here at the entry point using klog.Background(). We use klog at the
-	// entry point to configure the concrete logging backend and flags. We pass the logr interface
-	// to sub-components to decouple them from the implementation, improve testability, and
-	// preserve the "metis.daemon" name context across all logs.
-	logger := klog.Background().WithName("metis").WithName("daemon") // klog/v2 provides a logr.Logger
+	logger := d.Logger
 	logger.Info("metis daemon is starting", "config", fmt.Sprintf("%+v", d.Config))
-
-	nodeName := os.Getenv("NODE_NAME")
-	if nodeName == "" {
-		logger.Info("NODE_NAME environment variable not set")
-	}
 
 	dbPath := d.Config.DBPath
 	if dbPath == "" {
@@ -97,6 +97,12 @@ func (d *Daemon) Run(ctx context.Context) error {
 			return fmt.Errorf("failed to initialize clients: %w", err)
 		}
 	}
+
+	nodeName, err := getNodeName(logger)
+	if err != nil {
+		return err
+	}
+
 	if err := d.ensureNodeNetworkConfig(ctx, nodeName, logger); err != nil {
 		return err
 	}
@@ -120,6 +126,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 		DrainingExpiration:              d.Config.DrainingExpiration,
 		MonitorInterval:                 d.Config.MonitorInterval,
 		SustainedLowUtilizationDuration: d.Config.SustainedLowUtilizationDuration,
+		LowUtilizationThreshold:         d.Config.LowUtilizationThreshold,
+		TargetUtilizationAfterScaleUp:   d.Config.TargetUtilizationAfterScaleUp,
+		CooldownPushbackThreshold:       d.Config.CooldownPushbackThreshold,
 	})
 
 	server.monitor = monitorInstance
@@ -128,7 +137,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	// gke-networking-api library is updated to generate StartWithContext.
 	nncInformerFactory.Start(ctx.Done())
 	go watcher.Run(ctx, defaultWatcherWorkers)
-	go monitorInstance.Run(ctx, defaultMonitorWorkers)
+	go monitorInstance.Run(ctx)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -191,6 +200,7 @@ func (d *Daemon) ensureNodeNetworkConfig(ctx context.Context, nodeName string, l
 	return nil
 }
 
+// TODO: Support degraded mode: maybe allow the daemon server to run even if the clients cannot be created, and retry client initialization in the background.
 // initClients initializes the nodenetworkconfig and kubernetes clients.
 func initClients() (nncclientset.Interface, kubernetes.Interface, error) {
 	config, err := getClusterConfig()
@@ -209,15 +219,33 @@ func initClients() (nncclientset.Interface, kubernetes.Interface, error) {
 }
 
 func getClusterConfig() (*rest.Config, error) {
-	// 1. Try KUBECONFIG environment variable first
+	// Try KUBECONFIG environment variable first. Prioritizing KUBECONFIG is a security
+	// best practice, allowing the daemon to run with explicit, least-privilege credentials
+	// (e.g., from a custom mounted secret or configuration) rather than defaulting to the
+	// auto-mounted service account token which might have broader access.
 	kubeconfigPath := os.Getenv("KUBECONFIG")
 	if kubeconfigPath != "" {
 		return clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	}
-	// 2. Fallback to standard in-cluster config (expects token at /var/run/secrets/...)
+	// Fallback to standard in-cluster config (expects token at /var/run/secrets/...)
 	config, err := rest.InClusterConfig()
 	if err == nil {
 		return config, nil
 	}
 	return nil, err
+}
+
+// getNodeName returns the name of the Kubernetes node the daemon is running on.
+// It tries the NODE_NAME environment variable first, falling back to os.Hostname() if not set.
+func getNodeName(logger logr.Logger) (string, error) {
+	nodeName := os.Getenv("NODE_NAME")
+	if nodeName != "" {
+		return nodeName, nil
+	}
+	logger.Info("NODE_NAME environment variable not set, falling back to os.Hostname")
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", fmt.Errorf("failed to get hostname: %w", err)
+	}
+	return hostname, nil
 }

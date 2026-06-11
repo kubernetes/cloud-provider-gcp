@@ -27,7 +27,9 @@ import (
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	"github.com/go-logr/logr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 
 	"k8s.io/metis/pkg/store"
@@ -847,107 +849,113 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 	}
 }
 
-func TestMonitorRun(t *testing.T) {
+type monitorTestParams struct {
+	name             string
+	dbSetup          func(t *testing.T, storeInstance *store.Store, network string)
+	initialNNC       func(nodeName, rv string, network string) *nncv1.NodeNetworkConfig
+	getPendingCount  func(network string) int
+	injectGetError   func(callCount int) error
+	injectPatchError func(callCount int) error
+	onGetCalled      func(callCount int, done func())
+	onPatchCalled    func(callCount int, nnc *nncv1.NodeNetworkConfig, done func())
+	verify           func(t *testing.T, getCount, patchCount int, patches [][]byte, expectedRV string)
+}
+
+func runMonitorTestHelper(t *testing.T, tc monitorTestParams) {
 	logger := logr.Discard()
 	network := "test-network"
 	nodeName := "test-node"
+	randomResourceVersion := fmt.Sprintf("rv-%d", time.Now().UnixNano())
 
+	// 1. Setup DB
 	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_monitor_run_test.sqlite")
+	dbPath := filepath.Join(tempDir, fmt.Sprintf("metis_monitor_test_%s.sqlite", filepath.Base(t.Name())))
 	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
 	defer storeInstance.Close()
 
-	// Initial block (16 IPs)
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/28")
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-	for i := 0; i < 10; i++ {
-		_, _, err = storeInstance.AllocateIP(context.Background(), store.AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: store.IPv4})
-		if err != nil {
-			t.Fatalf("Failed to allocate IP: %v", err)
-		}
+	if tc.dbSetup != nil {
+		tc.dbSetup(t, storeInstance, network)
 	}
 
-	// Deleting block (16 IPs)
-	err = storeInstance.AddCIDR(context.Background(), network, "10.0.2.0/28")
-	if err != nil {
-		t.Fatalf("Failed to add CIDR: %v", err)
-	}
-	id, _, _ := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), "10.0.2.0/28", network)
-	err = storeInstance.MarkCIDRBlockAsDeletingForTest(context.Background(), id)
-	if err != nil {
-		t.Fatalf("Failed to mark CIDR as deleting: %v", err)
-	}
+	// 2. Setup mock objects & clients
+	mockNNC := tc.initialNNC(nodeName, randomResourceVersion, network)
 
-	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            nodeName,
-			ResourceVersion: "424242",
-		},
-		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{{Network: network, Pods: 16}},
-		},
-		Status: nncv1.NodeNetworkConfigStatus{
-			PodCIDRs: []nncv1.PodCIDR{
-				{CIDR: "10.0.1.0/28", Network: network},
-				{CIDR: "10.0.2.0/28", Network: network},
-			},
-		},
-	}
-
-	var patchCount int
+	var getCount, patchCount int
+	var capturedPatches [][]byte
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(1)
-	doneSignaled := make(chan struct{})
+	var once sync.Once
+	done := func() {
+		once.Do(func() {
+			wg.Done()
+		})
+	}
 
 	mockInterface := &mockNodeNetworkConfigInterface{
 		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+			mu.Lock()
+			getCount++
+			count := getCount
+			mu.Unlock()
+
+			if tc.injectGetError != nil {
+				if err := tc.injectGetError(count); err != nil {
+					return nil, err
+				}
+			}
+
+			if tc.onGetCalled != nil {
+				tc.onGetCalled(count, done)
+			}
+
 			mu.Lock()
 			defer mu.Unlock()
 			return mockNNC, nil
 		},
 		patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
 			mu.Lock()
-			defer mu.Unlock()
 			patchCount++
+			count := patchCount
+			mu.Unlock()
 
-			var patch struct {
-				Metadata struct {
-					ResourceVersion string `json:"resourceVersion"`
-				} `json:"metadata"`
-				Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
-			}
-			if err := json.Unmarshal(data, &patch); err != nil {
-				t.Errorf("Failed to unmarshal patch: %v", err)
-			}
-			if patch.Metadata.ResourceVersion != "424242" {
-				t.Errorf("Expected resourceVersion in patch to be '424242', got %q", patch.Metadata.ResourceVersion)
-			}
-
-			if patch.Spec.Allocations != nil {
-				mockNNC.Spec.Allocations = patch.Spec.Allocations
-			}
-			if patch.Spec.ReleasableCIDRs != nil {
-				mockNNC.Spec.ReleasableCIDRs = patch.Spec.ReleasableCIDRs
-			}
-
-			// Verify that both scale up (desired 24) and releasing CIDR are patched and stable.
-			if len(mockNNC.Spec.ReleasableCIDRs) == 1 &&
-				mockNNC.Spec.ReleasableCIDRs[0].CIDR == "10.0.2.0/28" &&
-				len(mockNNC.Spec.Allocations) == 1 &&
-				mockNNC.Spec.Allocations[0].Pods == 24 {
-				select {
-				case <-doneSignaled:
-				default:
-					close(doneSignaled)
-					wg.Done()
+			if tc.injectPatchError != nil {
+				if err := tc.injectPatchError(count); err != nil {
+					return nil, err
 				}
 			}
+
+			// Capture patch
+			patchBytes := make([]byte, len(data))
+			copy(patchBytes, data)
+			mu.Lock()
+			capturedPatches = append(capturedPatches, patchBytes)
+			mu.Unlock()
+
+			// Update mockNNC spec to simulate api server update
+			var patch struct {
+				Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
+			}
+			if err := json.Unmarshal(data, &patch); err == nil {
+				mu.Lock()
+				if patch.Spec.Allocations != nil {
+					mockNNC.Spec.Allocations = patch.Spec.Allocations
+				}
+				if patch.Spec.ReleasableCIDRs != nil {
+					mockNNC.Spec.ReleasableCIDRs = patch.Spec.ReleasableCIDRs
+				}
+				mu.Unlock()
+			}
+
+			if tc.onPatchCalled != nil {
+				tc.onPatchCalled(count, mockNNC, done)
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
 			return mockNNC, nil
 		},
 	}
@@ -959,9 +967,9 @@ func TestMonitorRun(t *testing.T) {
 		NNCClient:               mockClient,
 		Store:                   storeInstance,
 		NodeName:                nodeName,
-		MonitorInterval:         100 * time.Millisecond,
-		DrainingExpiration:      1 * time.Second, // Draining expiration for deleting blocks
-		GetPendingRequestsCount: func(net string) int { return 5 },
+		MonitorInterval:         10 * time.Millisecond,  // Fast interval for tests
+		DrainingExpiration:      100 * time.Millisecond, // Fast draining for tests
+		GetPendingRequestsCount: tc.getPendingCount,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -969,106 +977,244 @@ func TestMonitorRun(t *testing.T) {
 
 	runFinished := make(chan struct{})
 	go func() {
-		m.Run(ctx, 1)
+		m.Run(ctx)
 		close(runFinished)
 	}()
 
-	done := make(chan struct{})
+	m.enqueue()
+
+	waitFinished := make(chan struct{})
 	go func() {
 		wg.Wait()
-		close(done)
+		close(waitFinished)
 	}()
 
 	select {
-	case <-done:
-		// Success! Monitor successfully reached desired state.
+	case <-waitFinished:
+		// Success
 	case <-ctx.Done():
-		t.Errorf("Timed out waiting for Monitor to process queue and reach desired allocations/releasables. Patch count: %d", patchCount)
+		mu.Lock()
+		gCount, pCount := getCount, patchCount
+		mu.Unlock()
+		t.Fatalf("Timed out waiting for Monitor to reach target state. GetCount: %d, PatchCount: %d", gCount, pCount)
 	}
 
-	cancel() // Shut down monitor
+	cancel()
 	<-runFinished
 
-	// Verify that the queue is shut down
 	if !m.queue.ShuttingDown() {
 		t.Error("Expected workqueue to be shutting down or shut down")
+	}
+
+	mu.Lock()
+	gCount, pCount := getCount, patchCount
+	patches := capturedPatches
+	mu.Unlock()
+
+	if tc.verify != nil {
+		tc.verify(t, gCount, pCount, patches, randomResourceVersion)
+	}
+}
+
+func TestMonitorRun(t *testing.T) {
+	tests := []monitorTestParams{
+		{
+			name: "Success (Happy Path)",
+			dbSetup: func(t *testing.T, storeInstance *store.Store, network string) {
+				// Initial block (16 IPs)
+				err := storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/28")
+				if err != nil {
+					t.Fatalf("Failed to add CIDR: %v", err)
+				}
+				for i := 0; i < 10; i++ {
+					_, _, err = storeInstance.AllocateIP(context.Background(), store.AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: store.IPv4})
+					if err != nil {
+						t.Fatalf("Failed to allocate IP: %v", err)
+					}
+				}
+
+				// Deleting block (16 IPs)
+				err = storeInstance.AddCIDR(context.Background(), network, "10.0.2.0/28")
+				if err != nil {
+					t.Fatalf("Failed to add CIDR: %v", err)
+				}
+				id, _, _ := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), "10.0.2.0/28", network)
+				err = storeInstance.MarkCIDRBlockAsDeletingForTest(context.Background(), id)
+				if err != nil {
+					t.Fatalf("Failed to mark CIDR as deleting: %v", err)
+				}
+			},
+			initialNNC: func(nodeName, rv string, network string) *nncv1.NodeNetworkConfig {
+				return &nncv1.NodeNetworkConfig{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            nodeName,
+						ResourceVersion: rv,
+					},
+					Spec: nncv1.NodeNetworkConfigSpec{
+						Allocations: []nncv1.Allocation{{Network: network, Pods: 16}},
+					},
+					Status: nncv1.NodeNetworkConfigStatus{
+						PodCIDRs: []nncv1.PodCIDR{
+							{CIDR: "10.0.1.0/28", Network: network},
+							{CIDR: "10.0.2.0/28", Network: network},
+						},
+					},
+				}
+			},
+			getPendingCount: func(net string) int { return 5 },
+			onPatchCalled: func(callCount int, nnc *nncv1.NodeNetworkConfig, done func()) {
+				if len(nnc.Spec.ReleasableCIDRs) == 1 &&
+					nnc.Spec.ReleasableCIDRs[0].CIDR == "10.0.2.0/28" &&
+					len(nnc.Spec.Allocations) == 1 &&
+					nnc.Spec.Allocations[0].Pods == 24 {
+					done()
+				}
+			},
+			verify: func(t *testing.T, getCount, patchCount int, patches [][]byte, expectedRV string) {
+				if len(patches) == 0 {
+					t.Fatal("Expected at least one patch, got none")
+				}
+				lastPatchBytes := patches[len(patches)-1]
+				var patch struct {
+					Metadata struct {
+						ResourceVersion string `json:"resourceVersion"`
+					} `json:"metadata"`
+					Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
+				}
+				if err := json.Unmarshal(lastPatchBytes, &patch); err != nil {
+					t.Fatalf("Failed to unmarshal final patch: %v", err)
+				}
+
+				if patch.Metadata.ResourceVersion != expectedRV {
+					t.Errorf("Expected resourceVersion %q, got %q", expectedRV, patch.Metadata.ResourceVersion)
+				}
+
+				if len(patch.Spec.Allocations) != 1 || patch.Spec.Allocations[0].Pods != 24 {
+					t.Errorf("Expected allocations of 24 pods, got %+v", patch.Spec.Allocations)
+				}
+
+				if len(patch.Spec.ReleasableCIDRs) != 1 || patch.Spec.ReleasableCIDRs[0].CIDR != "10.0.2.0/28" {
+					t.Errorf("Expected releasable CIDR '10.0.2.0/28', got %+v", patch.Spec.ReleasableCIDRs)
+				}
+			},
+		},
+		{
+			name: "Transient Get Failure",
+			initialNNC: func(nodeName, rv string, network string) *nncv1.NodeNetworkConfig {
+				return &nncv1.NodeNetworkConfig{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            nodeName,
+						ResourceVersion: rv,
+					},
+				}
+			},
+			injectGetError: func(callCount int) error {
+				if callCount == 1 {
+					return fmt.Errorf("temporary get error")
+				}
+				return nil
+			},
+			onGetCalled: func(callCount int, done func()) {
+				if callCount == 2 {
+					done()
+				}
+			},
+			verify: func(t *testing.T, getCount, patchCount int, patches [][]byte, expectedRV string) {
+				if getCount < 2 {
+					t.Errorf("Expected at least 2 attempts due to retry, got %d", getCount)
+				}
+			},
+		},
+		{
+			name: "Transient Patch Conflict Retry",
+			dbSetup: func(t *testing.T, storeInstance *store.Store, network string) {
+				// Initial block (16 IPs)
+				err := storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/28")
+				if err != nil {
+					t.Fatalf("Failed to add CIDR: %v", err)
+				}
+				for i := 0; i < 10; i++ {
+					_, _, err = storeInstance.AllocateIP(context.Background(), store.AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: fmt.Sprintf("container-%d", i), IPFamily: store.IPv4})
+					if err != nil {
+						t.Fatalf("Failed to allocate IP: %v", err)
+					}
+				}
+
+				// Deleting block (16 IPs)
+				err = storeInstance.AddCIDR(context.Background(), network, "10.0.2.0/28")
+				if err != nil {
+					t.Fatalf("Failed to add CIDR: %v", err)
+				}
+				id, _, _ := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), "10.0.2.0/28", network)
+				err = storeInstance.MarkCIDRBlockAsDeletingForTest(context.Background(), id)
+				if err != nil {
+					t.Fatalf("Failed to mark CIDR as deleting: %v", err)
+				}
+			},
+			initialNNC: func(nodeName, rv string, network string) *nncv1.NodeNetworkConfig {
+				return &nncv1.NodeNetworkConfig{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            nodeName,
+						ResourceVersion: rv,
+					},
+					Spec: nncv1.NodeNetworkConfigSpec{
+						Allocations: []nncv1.Allocation{{Network: network, Pods: 16}},
+					},
+					Status: nncv1.NodeNetworkConfigStatus{
+						PodCIDRs: []nncv1.PodCIDR{
+							{CIDR: "10.0.1.0/28", Network: network},
+							{CIDR: "10.0.2.0/28", Network: network},
+						},
+					},
+				}
+			},
+			getPendingCount: func(net string) int { return 5 },
+			injectPatchError: func(callCount int) error {
+				if callCount == 1 {
+					return apierrors.NewConflict(schema.GroupResource{Group: "networking.gke.io", Resource: "nodenetworkconfigs"}, "test-node", fmt.Errorf("conflict"))
+				}
+				return nil
+			},
+			onPatchCalled: func(callCount int, nnc *nncv1.NodeNetworkConfig, done func()) {
+				if len(nnc.Spec.ReleasableCIDRs) == 1 &&
+					nnc.Spec.ReleasableCIDRs[0].CIDR == "10.0.2.0/28" &&
+					len(nnc.Spec.Allocations) == 1 &&
+					nnc.Spec.Allocations[0].Pods == 24 {
+					done()
+				}
+			},
+			verify: func(t *testing.T, getCount, patchCount int, patches [][]byte, expectedRV string) {
+				if patchCount < 2 {
+					t.Errorf("Expected at least 2 patch calls due to retry after conflict, got %d", patchCount)
+				}
+				if len(patches) == 0 {
+					t.Fatal("Expected at least one patch, got none")
+				}
+				lastPatchBytes := patches[len(patches)-1]
+				var patch struct {
+					Metadata struct {
+						ResourceVersion string `json:"resourceVersion"`
+					} `json:"metadata"`
+					Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
+				}
+				if err := json.Unmarshal(lastPatchBytes, &patch); err != nil {
+					t.Fatalf("Failed to unmarshal final patch: %v", err)
+				}
+
+				if patch.Metadata.ResourceVersion != expectedRV {
+					t.Errorf("Expected resourceVersion %q in patch, got %q", expectedRV, patch.Metadata.ResourceVersion)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runMonitorTestHelper(t, tc)
+		})
 	}
 }
 
 func ptrInt32(v int32) *int32 {
 	return &v
 }
-
-func TestMonitor_Retry(t *testing.T) {
-	logger := logr.Discard()
-	nodeName := "test-node"
-
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_monitor_retry_test.sqlite")
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer storeInstance.Close()
-
-	mockNNC := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            nodeName,
-			ResourceVersion: "111",
-		},
-	}
-
-	getCallCount := 0
-	var mu sync.Mutex
-
-	mockInterface := &mockNodeNetworkConfigInterface{
-		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
-			mu.Lock()
-			defer mu.Unlock()
-			getCallCount++
-			if getCallCount == 1 {
-				return nil, fmt.Errorf("temporary get error")
-			}
-			return mockNNC, nil
-		},
-	}
-
-	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
-	mockClient := &mockClientset{networkingV1: mockNetV1}
-
-	m := NewMonitor(MonitorConfig{
-		Logger:                  logger,
-		NNCClient:               mockClient,
-		Store:                   storeInstance,
-		NodeName:                nodeName,
-		MonitorInterval:         10 * time.Millisecond,
-		GetPendingRequestsCount: func(net string) int { return 0 },
-	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	runFinished := make(chan struct{})
-	go func() {
-		m.Run(ctx, 1)
-		close(runFinished)
-	}()
-
-	m.enqueue()
-
-	// Wait for processing and retry
-	time.Sleep(500 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if getCallCount < 2 {
-		t.Errorf("Expected at least 2 attempts due to retry, got %d", getCallCount)
-	}
-
-	cancel() // Shut down monitor
-	<-runFinished
-}
-
-
-
-

@@ -124,8 +124,8 @@ func NewWatcher(logger logr.Logger, nncClient nncclientset.Interface, nncInforme
 func (w *Watcher) Run(ctx context.Context, workers int) {
 	defer w.queue.ShutDown()
 
-	w.logger.Info("Starting Metis Daemon NodeNetworkConfig CRD watcher", "workers", workers)
-	defer w.logger.Info("Stopping Metis Daemon NodeNetworkConfig CRD watcher")
+	w.logger.Info("Starting Metis Daemon watcher", "node", w.nodeName, "workers", workers)
+	defer w.logger.Info("Stopping Metis Daemon watcher")
 
 	if w.nncSynced != nil {
 		if !cache.WaitForNamedCacheSync("MetisNNCWatcher", ctx.Done(), w.nncSynced) {
@@ -170,7 +170,7 @@ func (w *Watcher) processNextWorkItem(ctx context.Context) bool {
 }
 
 func (w *Watcher) syncCIDR(ctx context.Context, network string) error {
-	w.logger.Info("Syncing NodeNetworkConfig status", "node", w.nodeName, "network", network)
+	w.logger.Info("Daemon watcher starting synchronization: reconciling CIDR blocks with NodeNetworkConfig status", "node", w.nodeName, "network", network)
 
 	nnc, err := getNodeNetworkConfig(ctx, w.nncLister, w.nncClient, w.nodeName)
 	if err != nil {
@@ -181,7 +181,12 @@ func (w *Watcher) syncCIDR(ctx context.Context, network string) error {
 		return err
 	}
 
-	return w.maybeDeleteCIDRs(ctx, nnc, network)
+	if err := w.maybeDeleteCIDRs(ctx, nnc, network); err != nil {
+		return err
+	}
+
+	w.logger.Info("Daemon watcher synchronization done", "node", w.nodeName, "network", network)
+	return nil
 }
 
 func (w *Watcher) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkConfig, network string) error {
@@ -205,7 +210,6 @@ func (w *Watcher) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkConfig, net
 			continue
 		}
 
-		w.logger.Info("Adding podCIDR to local DB", "cidr", podCIDR.CIDR, "network", podCIDR.Network)
 		bits := prefix.Bits()
 		availableIPs := 1 << (32 - bits)
 
@@ -218,6 +222,7 @@ func (w *Watcher) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkConfig, net
 			continue
 		}
 
+		w.logger.Info("Watcher adding new ready podCIDR to local DB", "cidr", podCIDR.CIDR, "network", podCIDR.Network, "availableIPs", availableIPs)
 		err = w.store.AddCIDR(ctx, podCIDR.Network, podCIDR.CIDR)
 		if err == nil {
 			if w.OnCIDRAdded != nil {
@@ -260,7 +265,7 @@ func (w *Watcher) maybeDeleteCIDRs(ctx context.Context, nnc *nncv1.NodeNetworkCo
 		if err != nil {
 			return fmt.Errorf("failed to delete cidr block %d from store: %w", block.ID, err)
 		}
-		w.logger.Info("Deleted CIDR block from local DB as it was released by GCE", "cidrBlockID", block.ID, "cidr", block.CIDR, "network", network)
+		w.logger.Info("Watcher deleted CIDR block from local DB as GCE has released it", "cidrBlockID", block.ID, "cidr", block.CIDR, "network", network)
 	}
 
 	return nil

@@ -42,13 +42,13 @@ import (
 func TestDaemon_Run(t *testing.T) {
 	tests := []struct {
 		name        string
-		setupDaemon func(d *Daemon)
+		setupDaemon func(t *testing.T, d *Daemon)
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name: "successful run",
-			setupDaemon: func(d *Daemon) {
+			setupDaemon: func(t *testing.T, d *Daemon) {
 				d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "test-node",
@@ -63,14 +63,35 @@ func TestDaemon_Run(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "successful run falling back to os.Hostname",
+			setupDaemon: func(t *testing.T, d *Daemon) {
+				t.Setenv("NODE_NAME", "")
+				hostname, err := os.Hostname()
+				if err != nil {
+					t.Fatalf("Failed to get hostname: %v", err)
+				}
+				d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: hostname,
+					},
+				})
+				d.KubeClient = kubefake.NewSimpleClientset(&corev1.Node{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: hostname,
+					},
+				})
+			},
+			wantErr: false,
+		},
+		{
 			name:        "both clients nil (initClients fails)",
-			setupDaemon: func(d *Daemon) {},
+			setupDaemon: func(t *testing.T, d *Daemon) {},
 			wantErr:     true,
 			errContains: "failed to initialize clients",
 		},
 		{
 			name: "only NNCClient set (initClients fails)",
-			setupDaemon: func(d *Daemon) {
+			setupDaemon: func(t *testing.T, d *Daemon) {
 				d.NNCClient = nncfake.NewSimpleClientset()
 			},
 			wantErr:     true,
@@ -78,7 +99,7 @@ func TestDaemon_Run(t *testing.T) {
 		},
 		{
 			name: "only KubeClient set (initClients fails)",
-			setupDaemon: func(d *Daemon) {
+			setupDaemon: func(t *testing.T, d *Daemon) {
 				d.KubeClient = kubefake.NewSimpleClientset()
 			},
 			wantErr:     true,
@@ -102,7 +123,7 @@ func TestDaemon_Run(t *testing.T) {
 			t.Setenv("NODE_NAME", "test-node")
 
 			d := NewDaemon(cfg)
-			tc.setupDaemon(d)
+			tc.setupDaemon(t, d)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
