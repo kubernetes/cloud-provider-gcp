@@ -1590,3 +1590,96 @@ func TestStore_ReleaseIP_TimezoneRobustness(t *testing.T) {
 		t.Errorf("Expected IP to be reused after cooldown expired, got %s instead of %s", ipReuse, ip)
 	}
 }
+
+func TestStore_AllocateIPv6_Concurrency_TriggerExpansion(t *testing.T) {
+	logger := logr.Discard()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "concurrency_trigger_expansion.sqlite")
+
+	s, err := NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	network := "test-network"
+	cidr := "2001:db8::/64"
+
+	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	var cidrBlockID int64
+	err = s.DB().QueryRow("SELECT id FROM cidr_blocks WHERE cidr = ? AND network = ?", cidr, network).Scan(&cidrBlockID)
+	if err != nil {
+		t.Fatalf("Failed to get CIDR block ID: %v", err)
+	}
+
+	// 1. Exhaust the initial 64 IPs
+	for i := 0; i < 64; i++ {
+		_, _, err := s.AllocateIP(context.Background(), AllocateIPParams{
+			Network:       network,
+			InterfaceName: "eth0",
+			ContainerID:   fmt.Sprintf("container-init-%d", i),
+			IPFamily:      IPv6,
+		})
+		if err != nil {
+			t.Fatalf("Pre-allocation failed at %d: %v", i, err)
+		}
+	}
+
+	// Verify we have 64 IPs in DB
+	var count int
+	err = s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE cidr_block_id = ?", cidrBlockID).Scan(&count)
+	if err != nil || count != 64 {
+		t.Fatalf("Expected 64 IPs in DB, got %d (err: %v)", count, err)
+	}
+
+	// 2. Launch 2 concurrent allocations. Both should trigger expansion because 0 IPs are available.
+	// Only ONE expansion should actually happen.
+	const numConcurrent = 2
+	var wg sync.WaitGroup
+	errs := make([]error, numConcurrent)
+	ips := make([]string, numConcurrent)
+	startLine := make(chan struct{})
+
+	wg.Add(numConcurrent)
+	for i := 0; i < numConcurrent; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			<-startLine // Wait for the starting gun
+			ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{
+				Network:       network,
+				InterfaceName: "eth0",
+				ContainerID:   fmt.Sprintf("container-concurrent-%d", idx),
+				IPFamily:      IPv6,
+			})
+			ips[idx] = ip
+			errs[idx] = err
+		}(i)
+	}
+	close(startLine) // Fire the starting gun!
+	wg.Wait()
+
+	// Verify both succeeded
+	for i := 0; i < numConcurrent; i++ {
+		if errs[i] != nil {
+			t.Errorf("Concurrent allocation %d failed: %v", i, errs[i])
+		}
+		if ips[i] == "" {
+			t.Errorf("Concurrent allocation %d returned empty IP", i)
+		}
+	}
+
+	// Verify that the database was expanded exactly once.
+	// Initial: 64.
+	// Expansion adds 64.
+	// Total should be 128.
+	err = s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE cidr_block_id = ?", cidrBlockID).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query IP count: %v", err)
+	}
+	if count != 128 {
+		t.Errorf("Expected exactly 128 IPs in DB (1 expansion), got %d", count)
+	}
+}
