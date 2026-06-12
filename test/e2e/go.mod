@@ -4,8 +4,8 @@ go 1.26.3
 
 require (
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.34.0
-	github.com/onsi/ginkgo/v2 v2.29.0
-	github.com/onsi/gomega v1.40.0
+	github.com/onsi/ginkgo/v2 v2.30.0
+	github.com/onsi/gomega v1.41.0
 	google.golang.org/api v0.284.0
 	k8s.io/api v0.36.1
 	k8s.io/apimachinery v0.36.1
