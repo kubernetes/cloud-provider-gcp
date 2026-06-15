@@ -32,6 +32,7 @@ import (
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -79,7 +80,13 @@ func TestWatcher_Success(t *testing.T) {
 	nncInformerFactory := externalversions.NewSharedInformerFactory(nncClient, 0)
 	nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
 
-	w := NewWatcher(logger, nncClient, nncInformer, storeInstance, nodeName, nil)
+	w := NewWatcher(WatcherConfig{
+		Logger:      logger,
+		NNCClient:   nncClient,
+		NNCInformer: nncInformer,
+		Store:       storeInstance,
+		NodeName:    nodeName,
+	})
 	w.syncHandler = syncHandler
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -129,44 +136,112 @@ func TestWatcher_Success(t *testing.T) {
 }
 
 func TestWatcher_Retry(t *testing.T) {
-	processCount := 0
-	var mu sync.Mutex
-
-	syncHandler := func(ctx context.Context, network string) error {
-		mu.Lock()
-		defer mu.Unlock()
-		processCount++
-		if processCount == 1 {
-			return errors.New("temporary error")
-		}
-		return nil
-	}
-
 	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_watcher_retry_test.sqlite")
-	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
+
+	tests := []struct {
+		name        string
+		targetCount int
+		syncHandler func(ctx context.Context, network string, count int) error
+		waitAfter   time.Duration
+		verify      func(t *testing.T, count int)
+	}{
+		{
+			name:        "Transient failure is retried",
+			targetCount: 2,
+			syncHandler: func(ctx context.Context, network string, count int) error {
+				if count == 1 {
+					return errors.New("temporary error")
+				}
+				return nil
+			},
+			verify: func(t *testing.T, count int) {
+				if count < 2 {
+					t.Errorf("Expected at least 2 attempts, got %d", count)
+				}
+			},
+		},
+		{
+			name:        "Permanent failure is dropped after max retries",
+			targetCount: 11,
+			syncHandler: func(ctx context.Context, network string, count int) error {
+				return errors.New("permanent error")
+			},
+			waitAfter: 30 * time.Millisecond,
+			verify: func(t *testing.T, count int) {
+				if count != 11 {
+					t.Errorf("Expected exactly 11 attempts (1 initial + 10 retries), got %d", count)
+				}
+			},
+		},
 	}
-	defer storeInstance.Close()
 
-	w := NewWatcher(logger, nil, nil, storeInstance, "test-node", nil)
-	w.syncHandler = syncHandler
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			dbPath := filepath.Join(tempDir, fmt.Sprintf("metis_watcher_retry_%s.sqlite", filepath.Base(t.Name())))
+			storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+			if err != nil {
+				t.Fatalf("Failed to create store: %v", err)
+			}
+			defer storeInstance.Close()
 
-	go w.Run(ctx, 1)
+			w := NewWatcher(WatcherConfig{
+				Logger:      logger,
+				Store:       storeInstance,
+				NodeName:    "test-node",
+				RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[string](1*time.Millisecond, 10*time.Millisecond),
+			})
 
-	w.queue.Add("test-network")
+			var processCount int
+			var mu sync.Mutex
+			var wg sync.WaitGroup
+			wg.Add(1)
 
-	// Wait for processing and retry
-	time.Sleep(500 * time.Millisecond)
+			w.syncHandler = func(ctx context.Context, network string) error {
+				mu.Lock()
+				processCount++
+				count := processCount
+				mu.Unlock()
 
-	mu.Lock()
-	defer mu.Unlock()
-	if processCount < 2 {
-		t.Errorf("Expected at least 2 attempts, got %d", processCount)
+				err := tc.syncHandler(ctx, network, count)
+				if count == tc.targetCount {
+					wg.Done()
+				}
+				return err
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			go w.Run(ctx, 1)
+			w.queue.Add("test-network")
+
+			waitFinished := make(chan struct{})
+			go func() {
+				wg.Wait()
+				close(waitFinished)
+			}()
+
+			select {
+			case <-waitFinished:
+				// Target count reached
+			case <-ctx.Done():
+				mu.Lock()
+				count := processCount
+				mu.Unlock()
+				t.Fatalf("Timed out waiting for target attempt %d. Reached: %d", tc.targetCount, count)
+			}
+
+			if tc.waitAfter > 0 {
+				time.Sleep(tc.waitAfter)
+			}
+
+			mu.Lock()
+			count := processCount
+			mu.Unlock()
+
+			tc.verify(t, count)
+		})
 	}
 }
 
@@ -313,7 +388,7 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 					t.Fatalf("Failed to add CIDR: %v", err)
 				}
 				if b.state == "Deleting" {
-					blocks, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network)
+					blocks, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network, store.IPv4)
 					if err != nil || len(blocks) == 0 {
 						t.Fatalf("Failed to get block ID: %v", err)
 					}
@@ -336,8 +411,14 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 			mockClient := &mockClientset{networkingV1: mockNetV1}
 
 			onCIDRAddedCalled := false
-			w := NewWatcher(logger, mockClient, nil, storeInstance, nodeName, func(net string, availableIPs int) {
-				onCIDRAddedCalled = true
+			w := NewWatcher(WatcherConfig{
+				Logger:    logger,
+				NNCClient: mockClient,
+				Store:     storeInstance,
+				NodeName:  nodeName,
+				OnCIDRAdded: func(net string, availableIPs int) {
+					onCIDRAddedCalled = true
+				},
 			})
 
 			if tc.closeDB {
@@ -377,9 +458,9 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 				t.Fatalf("syncCIDR failed: %v", err)
 			}
 
-			_, exists, err := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), tc.cidrToCheck, network)
+			_, exists, err := storeInstance.GetCIDRBlock(context.Background(), tc.cidrToCheck, network)
 			if err != nil {
-				t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed: %v", err)
+				t.Fatalf("GetCIDRBlock failed: %v", err)
 			}
 			if exists != tc.expectedExists {
 				t.Errorf("Expected exists %v, got %v for CIDR %s", tc.expectedExists, exists, tc.cidrToCheck)

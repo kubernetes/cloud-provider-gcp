@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 
 	"k8s.io/metis/pkg/store"
 )
@@ -231,9 +232,9 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 					t.Fatalf("Failed to add CIDR: %v", err)
 				}
 				if b.drain {
-					id, exists, err := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), b.cidr, network)
+					id, exists, err := storeInstance.GetCIDRBlock(context.Background(), b.cidr, network)
 					if err != nil {
-						t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed: %v", err)
+						t.Fatalf("GetCIDRBlock failed: %v", err)
 					}
 					if !exists {
 						t.Fatalf("Failed to find CIDR block for %s in store", b.cidr)
@@ -428,9 +429,9 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 					t.Fatalf("Failed to add CIDR: %v", err)
 				}
 				if b.drain {
-					id, exists, err := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), b.cidr, network)
+					id, exists, err := storeInstance.GetCIDRBlock(context.Background(), b.cidr, network)
 					if err != nil {
-						t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed: %v", err)
+						t.Fatalf("GetCIDRBlock failed: %v", err)
 					}
 					if !exists {
 						t.Fatalf("Failed to find CIDR block for %s in store", b.cidr)
@@ -489,7 +490,7 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 				t.Fatalf("syncAll failed: %v", err)
 			}
 
-			readyBlocks, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network)
+			readyBlocks, err := storeInstance.GetReadyCIDRBlocksSorted(context.Background(), network, store.IPv4)
 			if err != nil {
 				t.Fatalf("GetReadyCIDRBlocksSorted failed: %v", err)
 			}
@@ -633,7 +634,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.1.0/28")
-				id, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.1.0/28", network)
+				id, _, _ := s.GetCIDRBlock(ctx, "10.0.1.0/28", network)
 				s.DrainCIDRBlock(ctx, id)
 				time.Sleep(1100 * time.Millisecond) // Wait for expiration (1s)
 			},
@@ -657,7 +658,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.2.0/28")
-				id, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.2.0/28", network)
+				id, _, _ := s.GetCIDRBlock(ctx, "10.0.2.0/28", network)
 				s.MarkCIDRBlockAsDeletingForTest(ctx, id) // Mark as deleting directly
 				time.Sleep(100 * time.Millisecond)        // Give DB a moment
 			},
@@ -682,12 +683,12 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 				// Expired draining
 				s.AddCIDR(ctx, network, "10.0.2.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.3.0/28")
-				id3, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.3.0/28", network)
+				id3, _, _ := s.GetCIDRBlock(ctx, "10.0.3.0/28", network)
 				s.DrainCIDRBlock(ctx, id3)
 
 				// Missed deleting
 				s.AddCIDR(ctx, network, "10.0.4.0/28")
-				id4, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.4.0/28", network)
+				id4, _, _ := s.GetCIDRBlock(ctx, "10.0.4.0/28", network)
 				s.MarkCIDRBlockAsDeletingForTest(ctx, id4)
 
 				time.Sleep(1100 * time.Millisecond) // Wait for expiration
@@ -715,7 +716,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.5.0/28")
-				id, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.5.0/28", network)
+				id, _, _ := s.GetCIDRBlock(ctx, "10.0.5.0/28", network)
 				s.DrainCIDRBlock(ctx, id)
 				// Do not sleep, so it is not expired (expiration is 1s)
 			},
@@ -739,7 +740,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.6.0/28")
-				id, _, _ := s.GetCIDRBlockByCIDRAndNetwork(ctx, "10.0.6.0/28", network)
+				id, _, _ := s.GetCIDRBlock(ctx, "10.0.6.0/28", network)
 				s.MarkCIDRBlockAsDeletingForTest(ctx, id)
 				time.Sleep(100 * time.Millisecond)
 			},
@@ -859,6 +860,8 @@ type monitorTestParams struct {
 	onGetCalled      func(callCount int, done func())
 	onPatchCalled    func(callCount int, nnc *nncv1.NodeNetworkConfig, done func())
 	verify           func(t *testing.T, getCount, patchCount int, patches [][]byte, expectedRV string)
+	rateLimiter      workqueue.TypedRateLimiter[string]
+	monitorInterval  time.Duration
 }
 
 func runMonitorTestHelper(t *testing.T, tc monitorTestParams) {
@@ -902,14 +905,14 @@ func runMonitorTestHelper(t *testing.T, tc monitorTestParams) {
 			count := getCount
 			mu.Unlock()
 
+			if tc.onGetCalled != nil {
+				tc.onGetCalled(count, done)
+			}
+
 			if tc.injectGetError != nil {
 				if err := tc.injectGetError(count); err != nil {
 					return nil, err
 				}
-			}
-
-			if tc.onGetCalled != nil {
-				tc.onGetCalled(count, done)
 			}
 
 			mu.Lock()
@@ -962,14 +965,20 @@ func runMonitorTestHelper(t *testing.T, tc monitorTestParams) {
 	mockNetV1 := &mockNetworkingV1{nncInterface: mockInterface}
 	mockClient := &mockClientset{networkingV1: mockNetV1}
 
+	interval := tc.monitorInterval
+	if interval <= 0 {
+		interval = 10 * time.Millisecond
+	}
+
 	m := NewMonitor(MonitorConfig{
 		Logger:                  logger,
 		NNCClient:               mockClient,
 		Store:                   storeInstance,
 		NodeName:                nodeName,
-		MonitorInterval:         10 * time.Millisecond,  // Fast interval for tests
+		MonitorInterval:         interval,
 		DrainingExpiration:      100 * time.Millisecond, // Fast draining for tests
 		GetPendingRequestsCount: tc.getPendingCount,
+		RateLimiter:             tc.rateLimiter,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1038,7 +1047,7 @@ func TestMonitorRun(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Failed to add CIDR: %v", err)
 				}
-				id, _, _ := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), "10.0.2.0/28", network)
+				id, _, _ := storeInstance.GetCIDRBlock(context.Background(), "10.0.2.0/28", network)
 				err = storeInstance.MarkCIDRBlockAsDeletingForTest(context.Background(), id)
 				if err != nil {
 					t.Fatalf("Failed to mark CIDR as deleting: %v", err)
@@ -1145,7 +1154,7 @@ func TestMonitorRun(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Failed to add CIDR: %v", err)
 				}
-				id, _, _ := storeInstance.GetCIDRBlockByCIDRAndNetwork(context.Background(), "10.0.2.0/28", network)
+				id, _, _ := storeInstance.GetCIDRBlock(context.Background(), "10.0.2.0/28", network)
 				err = storeInstance.MarkCIDRBlockAsDeletingForTest(context.Background(), id)
 				if err != nil {
 					t.Fatalf("Failed to mark CIDR as deleting: %v", err)
@@ -1203,6 +1212,32 @@ func TestMonitorRun(t *testing.T) {
 
 				if patch.Metadata.ResourceVersion != expectedRV {
 					t.Errorf("Expected resourceVersion %q in patch, got %q", expectedRV, patch.Metadata.ResourceVersion)
+				}
+			},
+		},
+		{
+			name: "Permanent Failure - Drop After 10 Retries",
+			initialNNC: func(nodeName, rv string, network string) *nncv1.NodeNetworkConfig {
+				return &nncv1.NodeNetworkConfig{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            nodeName,
+						ResourceVersion: rv,
+					},
+				}
+			},
+			injectGetError: func(callCount int) error {
+				return fmt.Errorf("permanent get error")
+			},
+			onGetCalled: func(callCount int, done func()) {
+				if callCount == 11 {
+					done()
+				}
+			},
+			rateLimiter:     workqueue.NewTypedItemExponentialFailureRateLimiter[string](1*time.Millisecond, 10*time.Millisecond),
+			monitorInterval: 1 * time.Hour,
+			verify: func(t *testing.T, getCount, patchCount int, patches [][]byte, expectedRV string) {
+				if getCount != 11 {
+					t.Errorf("Expected exactly 11 attempts (1 initial + 10 retries), got %d", getCount)
 				}
 			},
 		},

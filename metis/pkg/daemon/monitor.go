@@ -151,6 +151,8 @@ type MonitorConfig struct {
 	LowUtilizationThreshold         float64
 	TargetUtilizationAfterScaleUp   float64
 	CooldownPushbackThreshold       int
+	// RateLimiter is optional and primarily used to override the queue's rate limiter for testing.
+	RateLimiter workqueue.TypedRateLimiter[string]
 }
 
 // SetDefaults applies default values to the MonitorConfig fields if they are unset (<= 0).
@@ -182,7 +184,10 @@ func (c *MonitorConfig) SetDefaults() {
 func NewMonitor(cfg MonitorConfig) *Monitor {
 	cfg.SetDefaults()
 
-	rl := workqueue.DefaultTypedControllerRateLimiter[string]()
+	rl := cfg.RateLimiter
+	if rl == nil {
+		rl = workqueue.DefaultTypedControllerRateLimiter[string]()
+	}
 	// We use a rate-limiting queue to:
 	// 1. Deduplicate requests from the daemon server and the periodic monitor loop.
 	// 2. Decouple the daemon server from processing inline, allowing it to just enqueue items.
@@ -444,12 +449,12 @@ type UtilizationInfo struct {
 }
 
 func (m *Monitor) getUtilizationInfo(ctx context.Context, network string, nncCopy *nncv1.NodeNetworkConfig) (*UtilizationInfo, error) {
-	// GetIPUsageByNetwork returns IP usage details including allocated and cooldown counts,
+	// GetIPUsage returns IP usage details including allocated and cooldown counts,
 	// while ignoring CIDR blocks that are marked as Deleting.
 	// Note that this includes CIDR blocks in Draining status in both used and total counts.
 	// This ensures that processing prefetch (dynamic allocation) is not interfered with
 	// (triggered unnecessarily) while we are trying to remove excessive capacity by draining blocks.
-	usage, err := m.store.GetIPUsageByNetwork(ctx, network)
+	usage, err := m.store.GetIPUsage(ctx, network, store.IPv4)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query IP usage: %w", err)
 	}
@@ -525,9 +530,9 @@ func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) int {
 // or less blocks than strictly necessary, and that is still fine. The system will self-correct in subsequent cycles.
 func (m *Monitor) drainExcessive(ctx context.Context, network string, info *UtilizationInfo) (bool, error) {
 	usedIPs := info.Usage.Allocated // Only allocated, not in cooldown
-	m.logger.Info(fmt.Sprintf("Utilization falls below %d%% for 8h, evaluating CIDR blocks to drain", int(m.lowUtilizationThreshold*100)), "network", network)
+	m.logger.Info(fmt.Sprintf("Utilization falls below %d%% for %s, evaluating CIDR blocks to drain", int(m.lowUtilizationThreshold*100), m.sustainedLowUtilizationDuration), "network", network)
 
-	readyBlocks, err := m.store.GetReadyCIDRBlocksSorted(ctx, network)
+	readyBlocks, err := m.store.GetReadyCIDRBlocksSorted(ctx, network, store.IPv4)
 	if err != nil {
 		return false, fmt.Errorf("failed to get ready blocks: %w", err)
 	}
@@ -554,7 +559,7 @@ func (m *Monitor) drainExcessive(ctx context.Context, network string, info *Util
 		if err != nil {
 			return false, fmt.Errorf("failed to drain block %d: %w", block.ID, err)
 		}
-		m.logger.Info("Marked CIDR block as Draining due to prolonged low utilization", "cidr", block.CIDR)
+		m.logger.Info("Marked CIDR block as Draining due to prolonged low utilization", "network", network, "cidr", block.CIDR)
 
 		totalUsedIPs += availableIPs
 		updated = true
@@ -597,13 +602,13 @@ func (m *Monitor) reconcileDeletingBlocks(
 	currentStatus []nncv1.PodCIDR,
 ) ([]nncv1.PodCIDR, int, error) {
 	// 1. Update local DB to mark expired draining blocks as deleting
-	_, err := m.store.FindAndMarkExpiredDrainingCIDRBlocks(ctx, network, m.drainingExpiration)
+	_, err := m.store.ExpireDrainingCIDRBlocks(ctx, network, store.IPv4, m.drainingExpiration)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to find and mark expired draining blocks: %w", err)
+		return nil, 0, fmt.Errorf("failed to expire draining CIDRs: %w", err)
 	}
 
 	// 2. Read all deleting CIDR blocks from local DB for this network
-	deletingBlocks, err := m.store.GetDeletingCIDRBlocks(ctx, network)
+	deletingBlocks, err := m.store.GetDeletingCIDRBlocks(ctx, network, store.IPv4)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to query deleting blocks: %w", err)
 	}
@@ -644,7 +649,7 @@ func (m *Monitor) reconcileDeletingBlocks(
 		}
 	}
 
-	// TODO: detect out of sync that the items in currentReleasable but no longer in current status or in  deletingBlocks  in local DB, emit metrics or log. This should never happen.
+	// TODO: detect out of sync items that does not exist in status but exist in local DB. Emit metrics or log. This should never happen. If this happens, consider add another CIDR block state "unknown" so it won't be reused.
 
 	if reducePods > 0 {
 		m.logger.Info("Releasing capacity: blocks are fully drained and marked as releasable", "network", network, "capacityReducedBy", reducePods)

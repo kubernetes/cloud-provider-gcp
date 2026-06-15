@@ -114,7 +114,14 @@ func (d *Daemon) Run(ctx context.Context) error {
 	)
 	nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
 
-	watcher := NewWatcher(logger, d.NNCClient, nncInformer, storeInstance, nodeName, server.onCIDRAdded)
+	watcher := NewWatcher(WatcherConfig{
+		Logger:      logger,
+		NNCClient:   d.NNCClient,
+		NNCInformer: nncInformer,
+		Store:       storeInstance,
+		NodeName:    nodeName,
+		OnCIDRAdded: server.onCIDRAdded,
+	})
 	monitorInstance := NewMonitor(MonitorConfig{
 		Logger:                          logger,
 		NNCClient:                       d.NNCClient,

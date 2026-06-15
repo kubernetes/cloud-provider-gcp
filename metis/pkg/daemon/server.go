@@ -245,9 +245,9 @@ func (s *adaptiveIpamServer) maybeDynamicAllocation(ctx context.Context, req *ad
 		return false, nil
 	}
 
-	undrainedCount, undrainErr := s.store.UndrainCIDRBlocks(ctx, req.Network)
-	if undrainErr == nil && undrainedCount > 0 {
-		s.logger.Info("Successfully undrained CIDR blocks, retrying local allocation", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace, "undrainedCount", undrainedCount)
+	undrained, undrainErr := s.store.UndrainOneCIDRBlock(ctx, req.Network, store.IPv4)
+	if undrainErr == nil && undrained {
+		s.logger.Info("Successfully undrained one CIDR block, retrying local allocation", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		return true, nil
 	}
 
@@ -263,7 +263,7 @@ func (s *adaptiveIpamServer) maybeAddInitialPodCidr(ctx context.Context, network
 		return nil
 	}
 	// TODO: save a bool flag about whether we added the initial CIDR to the store to avoid calling store everytime to check if initial cidr is added
-	_, exists, err := s.store.GetCIDRBlockByCIDRAndNetwork(ctx, initialPodCidr, network)
+	_, exists, err := s.store.GetCIDRBlock(ctx, initialPodCidr, network)
 
 	if err != nil {
 		s.logger.Error(err, "failed to check if initial cidr block exists", "network", network, "cidr", initialPodCidr)

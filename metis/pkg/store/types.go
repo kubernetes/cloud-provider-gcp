@@ -39,10 +39,21 @@ const (
 	IPv6 IPFamily = "ipv6"
 )
 
+// CidrBlockState represents the operational state of a CIDR block in the store.
 type CidrBlockState string
 
 const (
-	StateReady    CidrBlockState = "Ready"
+	// StateReady indicates the CIDR block is active and available for IP allocations.
+	// This applies to both IPv4 and IPv6 families.
+	StateReady CidrBlockState = "Ready"
+
+	// StateDraining indicates the CIDR block is marked for scale-down. No new allocations
+	// are allowed, but existing allocations remain active.
+	// This state is part of the dynamic allocation lifecycle and is only applicable to IPv4.
 	StateDraining CidrBlockState = "Draining"
+
+	// StateDeleting indicates the CIDR block has no active allocations and is waiting
+	// to be removed from the local store once it is removed from the NodeNetworkConfig CRD status.
+	// This state is part of the dynamic allocation lifecycle and is only applicable to IPv4.
 	StateDeleting CidrBlockState = "Deleting"
 )

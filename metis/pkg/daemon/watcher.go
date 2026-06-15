@@ -58,9 +58,24 @@ type Watcher struct {
 	OnCIDRAdded func(network string, availableIPs int)
 }
 
+// WatcherConfig holds the configuration for the Watcher.
+type WatcherConfig struct {
+	Logger      logr.Logger
+	NNCClient   nncclientset.Interface
+	NNCInformer nncinformers.NodeNetworkConfigInformer
+	Store       *store.Store
+	NodeName    string
+	OnCIDRAdded func(network string, availableIPs int)
+	// RateLimiter is optional and primarily used to override the queue's rate limiter for testing.
+	RateLimiter workqueue.TypedRateLimiter[string]
+}
+
 // NewWatcher creates a new Watcher.
-func NewWatcher(logger logr.Logger, nncClient nncclientset.Interface, nncInformer nncinformers.NodeNetworkConfigInformer, store *store.Store, nodeName string, onCIDRAdded func(network string, availableIPs int)) *Watcher {
-	rl := workqueue.DefaultTypedControllerRateLimiter[string]()
+func NewWatcher(cfg WatcherConfig) *Watcher {
+	rl := cfg.RateLimiter
+	if rl == nil {
+		rl = workqueue.DefaultTypedControllerRateLimiter[string]()
+	}
 	queue := workqueue.NewTypedRateLimitingQueueWithConfig(rl, workqueue.TypedRateLimitingQueueConfig[string]{
 		Name: "metis-nnc-watcher",
 	})
@@ -68,32 +83,32 @@ func NewWatcher(logger logr.Logger, nncClient nncclientset.Interface, nncInforme
 	var nncLister nnclisters.NodeNetworkConfigLister
 	var nncSynced cache.InformerSynced
 	// nncInformer is is never nil. This is for UT.
-	if nncInformer != nil {
-		nncLister = nncInformer.Lister()
-		nncSynced = nncInformer.Informer().HasSynced
+	if cfg.NNCInformer != nil {
+		nncLister = cfg.NNCInformer.Lister()
+		nncSynced = cfg.NNCInformer.Informer().HasSynced
 	}
 
 	w := &Watcher{
 		queue:       queue,
-		nncClient:   nncClient,
-		nodeName:    nodeName,
+		nncClient:   cfg.NNCClient,
+		nodeName:    cfg.NodeName,
 		nncLister:   nncLister,
 		nncSynced:   nncSynced,
-		store:       store,
-		logger:      logger,
-		OnCIDRAdded: onCIDRAdded,
+		store:       cfg.Store,
+		logger:      cfg.Logger,
+		OnCIDRAdded: cfg.OnCIDRAdded,
 	}
 	w.syncHandler = w.syncCIDR
 
 	// nncInformer is never nil. This is for UT.
-	if nncInformer != nil {
-		nncInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if cfg.NNCInformer != nil {
+		cfg.NNCInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				nnc, ok := obj.(*nncv1.NodeNetworkConfig)
 				if !ok {
 					return
 				}
-				if nnc.Name == nodeName {
+				if nnc.Name == cfg.NodeName {
 					for _, alloc := range nnc.Spec.Allocations {
 						w.queue.Add(alloc.Network)
 					}
@@ -108,7 +123,7 @@ func NewWatcher(logger logr.Logger, nncClient nncclientset.Interface, nncInforme
 				if oldNNC.ResourceVersion == newNNC.ResourceVersion {
 					return
 				}
-				if newNNC.Name == nodeName {
+				if newNNC.Name == cfg.NodeName {
 					for _, alloc := range newNNC.Spec.Allocations {
 						w.queue.Add(alloc.Network)
 					}
@@ -124,8 +139,8 @@ func NewWatcher(logger logr.Logger, nncClient nncclientset.Interface, nncInforme
 func (w *Watcher) Run(ctx context.Context, workers int) {
 	defer w.queue.ShutDown()
 
-	w.logger.Info("Starting Metis Daemon watcher", "node", w.nodeName, "workers", workers)
-	defer w.logger.Info("Stopping Metis Daemon watcher")
+	w.logger.Info("Starting Metis Daemon NodeNetworkConfig CRD watcher", "workers", workers)
+	defer w.logger.Info("Stopping Metis Daemon NodeNetworkConfig CRD watcher")
 
 	if w.nncSynced != nil {
 		if !cache.WaitForNamedCacheSync("MetisNNCWatcher", ctx.Done(), w.nncSynced) {
@@ -213,7 +228,7 @@ func (w *Watcher) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkConfig, net
 		bits := prefix.Bits()
 		availableIPs := 1 << (32 - bits)
 
-		_, exists, err := w.store.GetCIDRBlockByCIDRAndNetwork(ctx, podCIDR.CIDR, network)
+		_, exists, err := w.store.GetCIDRBlock(ctx, podCIDR.CIDR, network)
 		if err != nil {
 			return fmt.Errorf("failed to check if CIDR exists in store: %w", err)
 		}
@@ -240,7 +255,7 @@ func (w *Watcher) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkConfig, net
 }
 
 func (w *Watcher) maybeDeleteCIDRs(ctx context.Context, nnc *nncv1.NodeNetworkConfig, network string) error {
-	toBeDeletedBlocks, err := w.store.GetDeletingCIDRBlocks(ctx, network)
+	toBeDeletedBlocks, err := w.store.GetDeletingCIDRBlocks(ctx, network, store.IPv4)
 	if err != nil {
 		return fmt.Errorf("failed to query deleting cidr blocks: %w", err)
 	}
