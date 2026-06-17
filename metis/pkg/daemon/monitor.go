@@ -178,21 +178,20 @@ func (c *MonitorConfig) SetDefaults() {
 	if c.CooldownPushbackThreshold <= 0 {
 		c.CooldownPushbackThreshold = DefaultCooldownPushbackThreshold
 	}
+	if c.RateLimiter == nil {
+		c.RateLimiter = workqueue.DefaultTypedControllerRateLimiter[string]()
+	}
 }
 
 // NewMonitor creates a new Monitor.
 func NewMonitor(cfg MonitorConfig) *Monitor {
 	cfg.SetDefaults()
 
-	rl := cfg.RateLimiter
-	if rl == nil {
-		rl = workqueue.DefaultTypedControllerRateLimiter[string]()
-	}
 	// We use a rate-limiting queue to:
 	// 1. Deduplicate requests from the daemon server and the periodic monitor loop.
 	// 2. Decouple the daemon server from processing inline, allowing it to just enqueue items.
 	// 3. Benefit from automatic exponential backoff for retries on failure.
-	queue := workqueue.NewTypedRateLimitingQueueWithConfig(rl, workqueue.TypedRateLimitingQueueConfig[string]{
+	queue := workqueue.NewTypedRateLimitingQueueWithConfig(cfg.RateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{
 		Name: "metis-daemon-monitor",
 	})
 
@@ -245,7 +244,9 @@ func (m *Monitor) Run(ctx context.Context) {
 	// networks sequentially using a single queue key ("sync"). Running multiple workers is
 	// redundant and would lead to idle goroutines, as the workqueue serializes execution
 	// to prevent concurrent NNC API updates.
-	go wait.UntilWithContext(ctx, m.runWorker, m.monitorInterval)
+	// The 100ms period acts as a restart backoff/heartbeat delay to recover quickly from crashes
+	// rather than a polling interval for the worker (which runs continuously and blocks on the queue).
+	go wait.UntilWithContext(ctx, m.runWorker, 100*time.Millisecond)
 
 	<-ctx.Done()
 }

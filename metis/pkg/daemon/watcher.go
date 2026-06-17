@@ -149,6 +149,8 @@ func (w *Watcher) Run(ctx context.Context, workers int) {
 	}
 
 	for i := 0; i < workers; i++ {
+		// The 1s period acts as a restart backoff/heartbeat delay to recover from crashes
+		// rather than a polling interval for the worker (which runs continuously and blocks on the queue).
 		go wait.UntilWithContext(ctx, w.runWorker, time.Second)
 	}
 

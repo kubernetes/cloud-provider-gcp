@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
 	"github.com/go-logr/logr"
@@ -940,7 +941,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_Validation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			req := &adaptiveipam.AllocatePodIPRequest{
-				Network:      "test-network",
+				Network:      "", // Empty network to test defaulting
 				PodName:      "test-pod",
 				PodNamespace: "default",
 			}
@@ -967,6 +968,9 @@ func TestAdaptiveIpamServer_AllocatePodIP_Validation(t *testing.T) {
 			if st.Code() != codes.InvalidArgument {
 				t.Errorf("Expected status code InvalidArgument, got %v", st.Code())
 			}
+			if req.Network != networkv1.DefaultPodNetworkName {
+				t.Errorf("Expected Network to be defaulted to %q, got %q", networkv1.DefaultPodNetworkName, req.Network)
+			}
 		})
 	}
 }
@@ -987,7 +991,7 @@ func TestAdaptiveIpamServer_DeallocatePodIP_Validation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			req := &adaptiveipam.DeallocatePodIPRequest{
-				Network:       "test-network",
+				Network:       "", // Empty network to test defaulting
 				InterfaceName: tc.interfaceName,
 				ContainerId:   tc.containerID,
 				PodName:       "test-pod",
@@ -1004,6 +1008,9 @@ func TestAdaptiveIpamServer_DeallocatePodIP_Validation(t *testing.T) {
 			}
 			if st.Code() != codes.InvalidArgument {
 				t.Errorf("Expected status code InvalidArgument, got %v", st.Code())
+			}
+			if req.Network != networkv1.DefaultPodNetworkName {
+				t.Errorf("Expected Network to be defaulted to %q, got %q", networkv1.DefaultPodNetworkName, req.Network)
 			}
 		})
 	}

@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	"github.com/go-logr/logr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -85,6 +86,10 @@ func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socke
 }
 
 func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest) (*adaptiveipam.AllocatePodIPResponse, error) {
+	if req.Network == "" {
+		req.Network = networkv1.DefaultPodNetworkName
+	}
+
 	s.logger.Info("AllocatePodIP request received",
 		"network", req.Network,
 		"podName", req.PodName,
@@ -283,6 +288,10 @@ func (s *adaptiveIpamServer) maybeAddInitialPodCidr(ctx context.Context, network
 }
 
 func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptiveipam.DeallocatePodIPRequest) (*adaptiveipam.DeallocatePodIPResponse, error) {
+	if req.Network == "" {
+		req.Network = networkv1.DefaultPodNetworkName
+	}
+
 	s.logger.Info("DeallocatePodIP request received",
 		"network", req.Network,
 		"containerID", req.ContainerId,
@@ -347,6 +356,10 @@ func (s *adaptiveIpamServer) onCIDRAdded(network string, availableIPs int) {
 }
 
 func (s *adaptiveIpamServer) CheckPodIP(ctx context.Context, req *adaptiveipam.CheckPodIPRequest) (*adaptiveipam.CheckPodIPResponse, error) {
+	if req.Network == "" {
+		req.Network = networkv1.DefaultPodNetworkName
+	}
+
 	s.logger.Info("CheckPodIP request received",
 		"network", req.Network,
 		"containerID", req.ContainerId,
