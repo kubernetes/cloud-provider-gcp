@@ -1220,11 +1220,10 @@ func TestStore_DeleteCIDRBlock(t *testing.T) {
 	cidr := "10.0.1.0/24"
 	s := setupStoreWithCIDRs(t, network, cidr)
 
-	blocks, err := s.GetReadyCIDRBlocksSorted(context.Background(), network, IPv4)
-	if err != nil || len(blocks) == 0 {
-		t.Fatalf("Failed to get ready blocks: %v", err)
+	blockID, _, err := s.GetCIDRBlock(context.Background(), cidr, network)
+	if err != nil {
+		t.Fatalf("Failed to get block ID: %v", err)
 	}
-	blockID := blocks[0].ID
 
 	// 1. Trying to delete a CIDR block that is in 'Ready' state should return nil (no error), but log error.
 	err = s.DeleteCIDRBlock(context.Background(), blockID)
@@ -1252,6 +1251,216 @@ func TestStore_DeleteCIDRBlock(t *testing.T) {
 	err = s.DeleteCIDRBlock(context.Background(), 99999)
 	if err != nil {
 		t.Errorf("Expected nil error when deleting non-existent block, got: %v", err)
+	}
+
+	// 5. Test cascading deletes (ensure ON DELETE CASCADE works on ip_addresses)
+	cidr2 := "10.0.2.0/24"
+	err = s.AddCIDR(context.Background(), network, cidr2)
+	if err != nil {
+		t.Fatalf("Failed to add cidr2: %v", err)
+	}
+
+	// Allocate an IP, it should go to cidr2 since it's the only one ready
+	ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "test-iface-del", ContainerID: "test-container-del", IPFamily: IPv4})
+	if err != nil {
+		t.Fatalf("Failed to allocate IP: %v", err)
+	}
+
+	block2ID, _, err := s.GetCIDRBlock(context.Background(), cidr2, network)
+	if err != nil {
+		t.Fatalf("Failed to get block2 ID: %v", err)
+	}
+
+	if err := s.MarkCIDRBlockAsDeletingForTest(context.Background(), block2ID); err != nil {
+		t.Fatalf("Failed to mark block2 as Deleting: %v", err)
+	}
+
+	if err := s.DeleteCIDRBlock(context.Background(), block2ID); err != nil {
+		t.Fatalf("DeleteCIDRBlock failed for block2: %v", err)
+	}
+
+	var count int
+	err = s.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM ip_addresses WHERE address = ?", ip).Scan(&count)
+	if err != nil {
+		t.Fatalf("Query failed: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Expected associated IP to be cascade deleted, but found %d", count)
+	}
+}
+
+func TestStore_DrainCIDRBlock(t *testing.T) {
+	network := "test-network"
+	cidr := "10.0.1.0/24"
+	s := setupStoreWithCIDRs(t, network, cidr)
+
+	blockID, _, err := s.GetCIDRBlock(context.Background(), cidr, network)
+	if err != nil {
+		t.Fatalf("Failed to get block ID: %v", err)
+	}
+
+	// Get initial updated_at
+	var initialUpdatedAt int64
+	err = s.db.QueryRowContext(context.Background(), "SELECT updated_at FROM cidr_blocks WHERE id = ?", blockID).Scan(&initialUpdatedAt)
+	if err != nil {
+		t.Fatalf("Failed to get initial updated_at: %v", err)
+	}
+
+	// Add a slight delay so updated_at actually changes
+	time.Sleep(10 * time.Millisecond)
+
+	err = s.DrainCIDRBlock(context.Background(), blockID)
+	if err != nil {
+		t.Fatalf("DrainCIDRBlock failed: %v", err)
+	}
+
+	var state string
+	var newUpdatedAt int64
+	err = s.db.QueryRowContext(context.Background(), "SELECT state, updated_at FROM cidr_blocks WHERE id = ?", blockID).Scan(&state, &newUpdatedAt)
+	if err != nil {
+		t.Fatalf("Failed to query block state: %v", err)
+	}
+	if state != string(StateDraining) {
+		t.Errorf("Expected state to be Draining, got %s", state)
+	}
+	if newUpdatedAt <= initialUpdatedAt {
+		t.Errorf("Expected updated_at to increase. initial: %d, new: %d", initialUpdatedAt, newUpdatedAt)
+	}
+
+	// Try draining non-existent block (should not error, just do nothing)
+	err = s.DrainCIDRBlock(context.Background(), 99999)
+	if err != nil {
+		t.Errorf("Expected no error when draining non-existent block, got: %v", err)
+	}
+}
+
+func TestStore_UndrainOneCIDRBlock(t *testing.T) {
+	network := "test-network"
+	s := setupStoreWithCIDRs(t, network, "10.0.1.0/24", "10.0.2.0/24", "2001:db8::/64")
+
+	// Get the blocks and mark as draining
+	var ids []int64
+	for _, cidr := range []string{"10.0.1.0/24", "10.0.2.0/24", "2001:db8::/64"} {
+		id, _, err := s.GetCIDRBlock(context.Background(), cidr, network)
+		if err != nil {
+			t.Fatalf("Failed to get block %s: %v", cidr, err)
+		}
+		ids = append(ids, id)
+		_ = s.DrainCIDRBlock(context.Background(), id)
+	}
+	id1, id2, id6 := ids[0], ids[1], ids[2]
+
+	// Add a slight delay
+	time.Sleep(10 * time.Millisecond)
+
+	// Undrain one IPv4
+	undrained, err := s.UndrainOneCIDRBlock(context.Background(), network, IPv4)
+	if err != nil {
+		t.Fatalf("UndrainOneCIDRBlock failed: %v", err)
+	}
+	if !undrained {
+		t.Error("Expected to undrain a block, got false")
+	}
+
+	// Check states: exactly one of id1 or id2 should be Ready, the other Draining. id6 should be Draining.
+	var state1, state2, state6 string
+	s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id1).Scan(&state1)
+	s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id2).Scan(&state2)
+	s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id6).Scan(&state6)
+
+	if (state1 == string(StateReady) && state2 == string(StateReady)) || (state1 == string(StateDraining) && state2 == string(StateDraining)) {
+		t.Errorf("Expected exactly one IPv4 block to be Ready, got id1:%s id2:%s", state1, state2)
+	}
+	if state6 != string(StateDraining) {
+		t.Errorf("Expected IPv6 block to remain Draining, got %s", state6)
+	}
+
+	// Undrain second IPv4
+	undrained, err = s.UndrainOneCIDRBlock(context.Background(), network, IPv4)
+	if err != nil {
+		t.Fatalf("UndrainOneCIDRBlock failed: %v", err)
+	}
+	if !undrained {
+		t.Error("Expected to undrain a block, got false")
+	}
+
+	// Third attempt for IPv4 should return false
+	undrained, err = s.UndrainOneCIDRBlock(context.Background(), network, IPv4)
+	if err != nil {
+		t.Fatalf("UndrainOneCIDRBlock failed: %v", err)
+	}
+	if undrained {
+		t.Error("Expected false when no more blocks to undrain, got true")
+	}
+}
+
+func TestStore_ExpireDrainingCIDRBlocks(t *testing.T) {
+	network := "test-network"
+	s := setupStoreWithCIDRs(t, network, "10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24")
+
+	// Get IDs
+	var ids []int64
+	for _, cidr := range []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"} {
+		id, _, err := s.GetCIDRBlock(context.Background(), cidr, network)
+		if err != nil {
+			t.Fatalf("Failed to get block %s: %v", cidr, err)
+		}
+		ids = append(ids, id)
+	}
+	id1, id2, id3 := ids[0], ids[1], ids[2]
+
+	// 1. Drain id1. It has 3 reserved IPs (allocated_ips > 0), so it won't expire.
+	_ = s.DrainCIDRBlock(context.Background(), id1)
+
+	// 2. Allocate an IP. Since id1 is drained, it will allocate from id2.
+	allocParams := AllocateIPParams{Network: network, InterfaceName: "iface", ContainerID: "cont", IPFamily: IPv4}
+	_, _, err := s.AllocateIP(context.Background(), allocParams)
+	if err != nil {
+		t.Fatalf("Failed to allocate IP: %v", err)
+	}
+
+	// 3. Drain id2. It now has 1 allocated IP, so it wouldn't expire yet.
+	_ = s.DrainCIDRBlock(context.Background(), id2)
+
+	// 4. Release the IP. This drops id2's allocated_ips to 0 and naturally triggers the updated_at timestamp.
+	_, err = s.ReleaseIPByOwner(context.Background(), network, "cont", "iface", 0)
+	if err != nil {
+		t.Fatalf("Failed to release IP: %v", err)
+	}
+
+	// 5. Sleep to ensure id2's updated_at is older than the 1s expiration
+	time.Sleep(1100 * time.Millisecond)
+
+	// 6. Drain id3. Its updated_at will be exactly now.
+	_ = s.DrainCIDRBlock(context.Background(), id3)
+
+	// 7. Call ExpireDrainingCIDRBlocks with 1 second expiration
+	expiredBlocks, err := s.ExpireDrainingCIDRBlocks(context.Background(), network, IPv4, 1*time.Second)
+	if err != nil {
+		t.Fatalf("ExpireDrainingCIDRBlocks failed: %v", err)
+	}
+
+	// Assertions
+	if len(expiredBlocks) != 1 {
+		t.Fatalf("Expected exactly 1 block to expire, got %d", len(expiredBlocks))
+	}
+	if expiredBlocks[0].ID != id2 {
+		t.Errorf("Expected id2 to expire, got %d", expiredBlocks[0].ID)
+	}
+
+	// Check DB states using a map
+	expectedStates := map[int64]string{
+		id1: string(StateDraining),
+		id2: string(StateDeleting),
+		id3: string(StateDraining),
+	}
+
+	for id, expected := range expectedStates {
+		var state string
+		s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id).Scan(&state)
+		if state != expected {
+			t.Errorf("Expected id %d state to be %s, got %s", id, expected, state)
+		}
 	}
 }
 

@@ -486,21 +486,6 @@ func (s *Store) DeleteCIDRBlock(ctx context.Context, id int64) error {
 	return nil
 }
 
-// GetCooldownIPCount queries the number of IPs currently in cooldown for a network.
-func (s *Store) GetCooldownIPCount(ctx context.Context, network string) (int, error) {
-	var cooldownCount int
-	nowMilli := time.Now().UTC().UnixMilli()
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(i.id) FROM ip_addresses i 
-		JOIN cidr_blocks c ON i.cidr_block_id = c.id 
-		WHERE c.network = ? AND i.is_allocated = FALSE AND i.release_at > ?
-	`, network, nowMilli).Scan(&cooldownCount)
-	if err != nil {
-		return 0, err
-	}
-	return cooldownCount, nil
-}
-
 // DrainCIDRBlock transitions a CIDR block to the Draining state.
 func (s *Store) DrainCIDRBlock(ctx context.Context, id int64) error {
 	nowMilli := time.Now().UTC().UnixMilli()
