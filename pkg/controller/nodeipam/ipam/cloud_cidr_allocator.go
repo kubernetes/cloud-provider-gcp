@@ -156,6 +156,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		queue: workqueue.NewRateLimitingQueueWithConfig(
 			workqueue.NewMaxOfRateLimiter(
 				workqueue.NewItemExponentialFailureRateLimiter(updateRetryTimeout, maxUpdateRetryTimeout),
+				// This is the default BucketRatelimiter used by DefaultControllerRateLimiter.
 				&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 			),
 			workqueue.RateLimitingQueueConfig{Name: workqueueName},
