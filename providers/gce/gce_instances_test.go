@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -721,4 +722,33 @@ func TestUpdateNodeZonesDynamicRefresh(t *testing.T) {
 	// Verify that managedZones has dynamically updated to include both zones
 	expectedZones := []string{"us-central1-b", "us-central1-c"}
 	assert.ElementsMatch(t, expectedZones, gce.getManagedZones())
+}
+
+func TestGetInstanceFromProjectInZoneByNameTimeout(t *testing.T) {
+	gce, err := fakeGCECloud(DefaultTestClusterValues())
+	require.NoError(t, err)
+
+	mockGCE := gce.c.(*cloud.MockGCE)
+	mi := mockGCE.Instances().(*cloud.MockInstances)
+
+	var ctxDeadline time.Time
+	var hasDeadline bool
+
+	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
+		ctxDeadline, hasDeadline = ctx.Deadline()
+		return true, &ga.Instance{
+			Name: "test-instance",
+			Zone: "us-central1-c",
+		}, nil
+	}
+
+	startTime := time.Now()
+	_, err = gce.getInstanceFromProjectInZoneByName("test-project", "us-central1-c", "test-instance")
+	require.NoError(t, err)
+
+	require.True(t, hasDeadline, "Context should have a deadline")
+
+	timeoutDuration := ctxDeadline.Sub(startTime)
+	// The timeout should be roughly 6 seconds, use InDelta to allow for some execution time variance
+	assert.InDelta(t, 6*time.Second, timeoutDuration, float64(1*time.Second))
 }
