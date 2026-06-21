@@ -214,7 +214,7 @@ func TestNetworkToNodes(t *testing.T) {
 			ca := &cloudCIDRAllocator{
 				nodeLister:  fakeNodeInformer.Lister(),
 				nodesSynced: fakeNodeInformer.Informer().HasSynced,
-				queue:       workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "cloudCIDRAllocator"}),
+				queue:       workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "cloudCIDRAllocator"}),
 			}
 
 			// test
@@ -232,7 +232,7 @@ func TestNetworkToNodes(t *testing.T) {
 				if sh {
 					t.Fatalf("got preemtive queue shutdown")
 				}
-				_, ok := tc.expectNodes[val.(string)]
+				_, ok := tc.expectNodes[val]
 				if !ok {
 					t.Fatalf("unexpected node %s in processing", val)
 				}
