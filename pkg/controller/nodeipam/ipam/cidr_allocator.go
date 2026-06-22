@@ -72,10 +72,10 @@ const (
 	updateRetryTimeout = 250 * time.Millisecond
 
 	// maxUpdateRetryTimeout is the maximum amount of time between timeouts.
-	maxUpdateRetryTimeout = 5 * time.Second
+	maxUpdateRetryTimeout = 15 * time.Second
 
 	// updateMaxRetries is the max retries for a failed node
-	updateMaxRetries = 10
+	updateMaxRetries = 20
 
 	// The no. of workers in parallel to update nodetopology CR
 	nodeTopologyWorkers = 30
