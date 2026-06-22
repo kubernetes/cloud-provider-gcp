@@ -30,11 +30,11 @@ import (
 	"k8s.io/metis/pkg"
 )
 
-func newHealthzCommand() *cobra.Command {
+func newHealthCommand() *cobra.Command {
 	var socketPath string
 
 	cmd := &cobra.Command{
-		Use:   "healthz",
+		Use:   "health",
 		Short: "Run a gRPC health check against the Metis daemon UDS",
 		Run: func(cmd *cobra.Command, args []string) {
 			os.Exit(RunGRPCHealthCheck(socketPath))

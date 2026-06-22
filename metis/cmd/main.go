@@ -46,7 +46,7 @@ func main() {
 	// Register subcommands
 	rootCmd.AddCommand(newDaemonCommand())
 	rootCmd.AddCommand(newInstallCommand())
-	rootCmd.AddCommand(newHealthzCommand())
+	rootCmd.AddCommand(newHealthCommand())
 
 	// Register standard/logging flags globally
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
