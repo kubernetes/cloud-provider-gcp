@@ -57,8 +57,8 @@ github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/scheme
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/typed/nodetopology/v1
 github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/typed/nodetopology/v1/fake
-# github.com/GoogleCloudPlatform/k8s-cloud-provider v1.34.0
-## explicit; go 1.21
+# github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0
+## explicit; go 1.26
 github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud
 github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/filter
 github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta
