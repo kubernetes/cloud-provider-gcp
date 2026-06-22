@@ -28,6 +28,7 @@ import (
 	"time"
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
+	"golang.org/x/time/rate"
 	"google.golang.org/api/compute/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -143,16 +144,23 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 	}
 
 	ca := &cloudCIDRAllocator{
-		client:                client,
-		cloud:                 gceCloud,
-		networksLister:        nwInformer.Lister(),
-		gnpLister:             gnpInformer.Lister(),
-		nodeLister:            nodeInformer.Lister(),
-		nodesSynced:           nodeInformer.Informer().HasSynced,
-		networksSynced:        nwInformer.Informer().HasSynced,
-		gnpsSynced:            gnpInformer.Informer().HasSynced,
-		recorder:              recorder,
-		queue:                 workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: workqueueName}),
+		client:         client,
+		cloud:          gceCloud,
+		networksLister: nwInformer.Lister(),
+		gnpLister:      gnpInformer.Lister(),
+		nodeLister:     nodeInformer.Lister(),
+		nodesSynced:    nodeInformer.Informer().HasSynced,
+		networksSynced: nwInformer.Informer().HasSynced,
+		gnpsSynced:     gnpInformer.Informer().HasSynced,
+		recorder:       recorder,
+		queue: workqueue.NewRateLimitingQueueWithConfig(
+			workqueue.NewMaxOfRateLimiter(
+				workqueue.NewItemExponentialFailureRateLimiter(updateRetryTimeout, maxUpdateRetryTimeout),
+				// This is the default BucketRatelimiter used by DefaultControllerRateLimiter.
+				&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+			),
+			workqueue.RateLimitingQueueConfig{Name: workqueueName},
+		),
 		stackType:             stackType,
 		enableMultiNetworking: enableMultiNetworking,
 	}
