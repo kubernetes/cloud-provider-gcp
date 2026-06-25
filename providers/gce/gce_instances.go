@@ -962,3 +962,124 @@ func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, 
 	}
 	return res, nil
 }
+
+// UpdateInstanceAliasIPRanges updates the alias IP ranges for a specific network interface of an instance.
+// It returns the list of all alias IP CIDRs currently provisioned on the interface after the update.
+func (g *Cloud) UpdateInstanceAliasIPRanges(
+	ctx context.Context,
+	nodeName string,
+	networkName string,
+	additions []string, // e.g. ["/28", "/28"]
+	removals []string,  // e.g. ["10.100.0.0/28"]
+) ([]string, error) {
+	klog.V(2).Infof("UpdateInstanceAliasIPRanges: nodeName=%q, networkName=%q, additions=%v, removals=%v", nodeName, networkName, additions, removals)
+
+	// 1. Get GCE Instance Zone using the existing helper
+	gceInst, err := g.getInstanceByName(nodeName)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Get the full computebeta.Instance object to get network interfaces and fingerprint
+	var instance *computebeta.Instance
+	if g.projectFromNodeProviderID {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone), cloud.ForceProjectID(g.projectID))
+	} else {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GCE instance %q in zone %q: %w", gceInst.Name, gceInst.Zone, err)
+	}
+
+	// 3. Find the target network interface.
+	var targetIface *computebeta.NetworkInterface
+	if networkName == "" || networkName == "default" || networkName == "gke-pod-network" {
+		if len(instance.NetworkInterfaces) > 0 {
+			targetIface = instance.NetworkInterfaces[0]
+		}
+	} else {
+		// Try to match by subnetwork name or network name in the URL
+		for _, iface := range instance.NetworkInterfaces {
+			subnetworkName := lastComponent(iface.Subnetwork)
+			networkNameFromURL := lastComponent(iface.Network)
+			if subnetworkName == networkName || networkNameFromURL == networkName {
+				targetIface = iface
+				break
+			}
+		}
+	}
+
+	if targetIface == nil {
+		return nil, fmt.Errorf("network interface for network %q not found on instance %q", networkName, nodeName)
+	}
+
+	// 4. Construct the new AliasIpRanges list
+	newRanges := []*computebeta.AliasIpRange{}
+
+	// Filter out removals
+	removalSet := sets.NewString(removals...)
+	for _, r := range targetIface.AliasIpRanges {
+		if removalSet.Has(r.IpCidrRange) {
+			klog.V(4).Infof("Removing alias IP range %q from interface %q", r.IpCidrRange, targetIface.Name)
+			continue
+		}
+		newRanges = append(newRanges, r)
+	}
+
+	// Add additions
+	for _, add := range additions {
+		klog.V(4).Infof("Adding alias IP range size %q to interface %q", add, targetIface.Name)
+		newRanges = append(newRanges, &computebeta.AliasIpRange{
+			IpCidrRange:         add,
+			SubnetworkRangeName: g.secondaryRangeName, // Use the configured secondary range name
+		})
+	}
+
+	// 5. Prepare the update body. We only need to send the Name, Fingerprint, and AliasIpRanges.
+	ifaceUpdate := &computebeta.NetworkInterface{
+		Name:          targetIface.Name,
+		Fingerprint:   targetIface.Fingerprint,
+		AliasIpRanges: newRanges,
+	}
+
+	// 6. Call UpdateNetworkInterface
+	mc := newInstancesMetricContext("update_network_interface", gceInst.Zone)
+	if g.projectFromNodeProviderID {
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone), targetIface.Name, ifaceUpdate, cloud.ForceProjectID(g.projectID))
+	} else {
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone), targetIface.Name, ifaceUpdate)
+	}
+	if err = mc.Observe(err); err != nil {
+		return nil, fmt.Errorf("failed to update network interface %q on instance %q: %w", targetIface.Name, nodeName, err)
+	}
+
+	// 7. Retrieve the updated instance to return the actual allocated CIDRs.
+	var updatedInstance *computebeta.Instance
+	if g.projectFromNodeProviderID {
+		updatedInstance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone), cloud.ForceProjectID(g.projectID))
+	} else {
+		updatedInstance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get updated GCE instance %q after mutation: %w", gceInst.Name, err)
+	}
+
+	// Find the interface again and extract the CIDRs
+	var updatedIface *computebeta.NetworkInterface
+	for _, iface := range updatedInstance.NetworkInterfaces {
+		if iface.Name == targetIface.Name {
+			updatedIface = iface
+			break
+		}
+	}
+	if updatedIface == nil {
+		return nil, fmt.Errorf("updated network interface %q not found on instance %q", targetIface.Name, nodeName)
+	}
+
+	actualCIDRs := []string{}
+	for _, r := range updatedIface.AliasIpRanges {
+		actualCIDRs = append(actualCIDRs, r.IpCidrRange)
+	}
+
+	return actualCIDRs, nil
+}
