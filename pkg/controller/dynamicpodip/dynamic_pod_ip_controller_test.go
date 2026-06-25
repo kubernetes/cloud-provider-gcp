@@ -29,6 +29,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 )
@@ -37,6 +38,11 @@ const (
 	testNodeName = "test-node"
 	testZone     = "us-central1-a"
 	testProject  = "test-project"
+)
+
+var (
+	testProviderID = fmt.Sprintf("gce://%s/%s/%s", testProject, testZone, testNodeName)
+	testNetworkURL = fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", testProject, "default")
 )
 
 type testFixture struct {
@@ -54,9 +60,14 @@ func newTestFixture(t *testing.T) *testFixture {
 	informerFactory := nncinformers.NewSharedInformerFactory(nncClient, 0)
 	nncInformer := informerFactory.Networking().V1().NodeNetworkConfigs()
 
+	// Create fake Node informer
+	fakeInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	nodeInformer := fakeInformerFactory.Core().V1().Nodes()
+
 	testClusterValues := gce.DefaultTestClusterValues()
 	testClusterValues.ProjectID = testProject
 	testClusterValues.ZoneName = testZone
+	testClusterValues.NetworkURL = testNetworkURL
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
 
 	// Register the UpdateNetworkInterface hook to simulate GCE mutation and allocation
@@ -70,6 +81,7 @@ func newTestFixture(t *testing.T) *testFixture {
 		kubeClient,
 		nncClient,
 		nncInformer,
+		nodeInformer,
 		fakeGCE,
 	)
 
@@ -104,7 +116,7 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 		NetworkInterfaces: []*compute.NetworkInterface{
 			{
 				Name:  "nic0",
-				Network: "default",
+				Network: testNetworkURL,
 				Subnetwork: "default",
 			},
 		},
@@ -138,7 +150,7 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 	f.informerFactory.WaitForCacheSync(stopCh)
 
 	// 3. Run reconcile
-	err = f.controller.reconcile(ctx, nnc)
+	err = f.controller.reconcile(ctx, nnc, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
@@ -204,7 +216,7 @@ func TestReconcile_RemoveAliasIP(t *testing.T) {
 		NetworkInterfaces: []*compute.NetworkInterface{
 			{
 				Name:  "nic0",
-				Network: "default",
+				Network: testNetworkURL,
 				Subnetwork: "default",
 				AliasIpRanges: []*compute.AliasIpRange{
 					{IpCidrRange: cidrToRemove},
@@ -257,7 +269,7 @@ func TestReconcile_RemoveAliasIP(t *testing.T) {
 	f.informerFactory.WaitForCacheSync(stopCh)
 
 	// 3. Run reconcile
-	err = f.controller.reconcile(ctx, nnc)
+	err = f.controller.reconcile(ctx, nnc, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
@@ -307,7 +319,7 @@ func TestReconcile_NoOp(t *testing.T) {
 		NetworkInterfaces: []*compute.NetworkInterface{
 			{
 				Name:  "nic0",
-				Network: "default",
+				Network: testNetworkURL,
 				Subnetwork: "default",
 				AliasIpRanges: []*compute.AliasIpRange{
 					{IpCidrRange: cidr},
@@ -360,7 +372,7 @@ func TestReconcile_NoOp(t *testing.T) {
 	// We can just verify that the instance in fake GCE remains unchanged.
 	
 	// 3. Run reconcile
-	err = f.controller.reconcile(ctx, nnc)
+	err = f.controller.reconcile(ctx, nnc, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
@@ -408,7 +420,7 @@ func TestReconcile_GCEError(t *testing.T) {
 	f.informerFactory.WaitForCacheSync(stopCh)
 
 	// 2. Run reconcile. It should fail because the instance doesn't exist in GCE.
-	err = f.controller.reconcile(ctx, nnc)
+	err = f.controller.reconcile(ctx, nnc, testProviderID)
 	if err == nil {
 		t.Fatal("Expected reconcile to fail, but it succeeded")
 	}

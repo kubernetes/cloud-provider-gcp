@@ -65,6 +65,7 @@ func startDynamicPodIPController(
 		ctx,
 		ccmConfig.ClientBuilder.ClientOrDie("dynamic-pod-ip-controller"),
 		nncClient,
+		ccmConfig.SharedInformers.Core().V1().Nodes(), // Pass the Node Informer from CCM config
 		gceCloud,
 	)
 }

@@ -964,53 +964,46 @@ func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, 
 }
 
 // UpdateInstanceAliasIPRanges updates the alias IP ranges for a specific network interface of an instance.
-// It returns the list of all alias IP CIDRs currently provisioned on the interface after the update.
+// It takes the providerID, the target network URL, and the additions/removals.
+// It returns the list of all active alias IP CIDRs on that network interface after the update.
 func (g *Cloud) UpdateInstanceAliasIPRanges(
 	ctx context.Context,
-	nodeName string,
-	networkName string,
-	additions []string, // e.g. ["/28", "/28"]
+	providerID string,
+	networkURL string,
+	additions []string, // e.g. ["/28"]
 	removals []string,  // e.g. ["10.100.0.0/28"]
 ) ([]string, error) {
-	klog.V(2).Infof("UpdateInstanceAliasIPRanges: nodeName=%q, networkName=%q, additions=%v, removals=%v", nodeName, networkName, additions, removals)
+	klog.V(2).Infof("UpdateInstanceAliasIPRanges: providerID=%q, networkURL=%q, additions=%v, removals=%v", providerID, networkURL, additions, removals)
 
-	// 1. Get GCE Instance Zone using the existing helper
-	gceInst, err := g.getInstanceByName(nodeName)
+	// 1. Split providerID to get project, zone, name
+	project, zone, name, err := splitProviderID(providerID)
 	if err != nil {
 		return nil, err
 	}
+	name = canonicalizeInstanceName(name)
 
-	// 2. Get the full computebeta.Instance object to get network interfaces and fingerprint
+	// 2. Get the GCE Instance to get current interfaces and fingerprints
 	var instance *computebeta.Instance
 	if g.projectFromNodeProviderID {
-		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone), cloud.ForceProjectID(g.projectID))
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
 	} else {
-		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone))
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone))
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get GCE instance %q in zone %q: %w", gceInst.Name, gceInst.Zone, err)
+		return nil, fmt.Errorf("failed to get GCE instance %q in zone %q: %w", name, zone, err)
 	}
 
-	// 3. Find the target network interface.
+	// 3. Find the target network interface by Network URL
 	var targetIface *computebeta.NetworkInterface
-	if networkName == "" || networkName == "default" || networkName == "gke-pod-network" {
-		if len(instance.NetworkInterfaces) > 0 {
-			targetIface = instance.NetworkInterfaces[0]
-		}
-	} else {
-		// Try to match by subnetwork name or network name in the URL
-		for _, iface := range instance.NetworkInterfaces {
-			subnetworkName := lastComponent(iface.Subnetwork)
-			networkNameFromURL := lastComponent(iface.Network)
-			if subnetworkName == networkName || networkNameFromURL == networkName {
-				targetIface = iface
-				break
-			}
+	for _, iface := range instance.NetworkInterfaces {
+		if iface.Network == networkURL {
+			targetIface = iface
+			break
 		}
 	}
 
 	if targetIface == nil {
-		return nil, fmt.Errorf("network interface for network %q not found on instance %q", networkName, nodeName)
+		return nil, fmt.Errorf("network interface for network %q not found on instance %q", networkURL, name)
 	}
 
 	// 4. Construct the new AliasIpRanges list
@@ -1035,33 +1028,33 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 		})
 	}
 
-	// 5. Prepare the update body. We only need to send the Name, Fingerprint, and AliasIpRanges.
+	// 5. Prepare the update body
 	ifaceUpdate := &computebeta.NetworkInterface{
 		Name:          targetIface.Name,
 		Fingerprint:   targetIface.Fingerprint,
 		AliasIpRanges: newRanges,
 	}
 
-	// 6. Call UpdateNetworkInterface
-	mc := newInstancesMetricContext("update_network_interface", gceInst.Zone)
+	// 6. Call UpdateNetworkInterface (blocks until LRO completes)
+	mc := newInstancesMetricContext("update_instance_alias_ip_ranges", zone)
 	if g.projectFromNodeProviderID {
-		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone), targetIface.Name, ifaceUpdate, cloud.ForceProjectID(g.projectID))
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate, cloud.ForceProjectID(project))
 	} else {
-		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone), targetIface.Name, ifaceUpdate)
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate)
 	}
 	if err = mc.Observe(err); err != nil {
-		return nil, fmt.Errorf("failed to update network interface %q on instance %q: %w", targetIface.Name, nodeName, err)
+		return nil, fmt.Errorf("failed to update network interface %q on instance %q: %w", targetIface.Name, name, err)
 	}
 
-	// 7. Retrieve the updated instance to return the actual allocated CIDRs.
+	// 7. Retrieve the updated instance to return the actual allocated CIDRs
 	var updatedInstance *computebeta.Instance
 	if g.projectFromNodeProviderID {
-		updatedInstance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone), cloud.ForceProjectID(g.projectID))
+		updatedInstance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
 	} else {
-		updatedInstance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(gceInst.Name, gceInst.Zone))
+		updatedInstance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone))
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get updated GCE instance %q after mutation: %w", gceInst.Name, err)
+		return nil, fmt.Errorf("failed to get updated GCE instance %q after mutation: %w", name, err)
 	}
 
 	// Find the interface again and extract the CIDRs
@@ -1073,7 +1066,7 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 		}
 	}
 	if updatedIface == nil {
-		return nil, fmt.Errorf("updated network interface %q not found on instance %q", targetIface.Name, nodeName)
+		return nil, fmt.Errorf("updated network interface %q not found on instance %q", targetIface.Name, name)
 	}
 
 	actualCIDRs := []string{}

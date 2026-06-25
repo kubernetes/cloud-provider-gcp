@@ -21,6 +21,7 @@ import (
 
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nncinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/controller-manager/controller"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
@@ -32,12 +33,11 @@ func StartDynamicPodIPController(
 	ctx context.Context,
 	kubeClient kubernetes.Interface,
 	nncClient nncclientset.Interface,
+	nodeInformer coreinformers.NodeInformer,
 	gceCloud *gce.Cloud,
 ) (controller.Interface, bool, error) {
 	klog.Info("Initializing Dynamic Pod IP Controller")
 
-	// Create the shared informer factory for NodeNetworkConfig
-	// We use a resync period of 0 (no periodic resync) as we rely on event-driven reconciliation
 	nncInformerFactory := nncinformers.NewSharedInformerFactory(nncClient, 0)
 	nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
 
@@ -45,6 +45,7 @@ func StartDynamicPodIPController(
 		kubeClient,
 		nncClient,
 		nncInformer,
+		nodeInformer,
 		gceCloud,
 	)
 
@@ -52,17 +53,7 @@ func StartDynamicPodIPController(
 	go nncInformerFactory.Start(ctx.Done())
 
 	// Run the controller with 1 worker (sequential processing per node)
-	// We run it in a goroutine because Run is blocking
 	go ctrl.Run(1, ctx.Done())
 
 	return ctrl, true, nil
 }
-
-// Controller wrapper to satisfy controller.Interface if needed,
-// but since our Controller has Run(int, <-chan struct{}), it should match.
-// If controller.Interface requires other methods, we can implement them here.
-// In k8s.io/controller-manager/controller, Interface is:
-// type Interface interface {
-//     Run(workers int, stopCh <-chan struct{})
-// }
-// Our Controller matches this signature.
