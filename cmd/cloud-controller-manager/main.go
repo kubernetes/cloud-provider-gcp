@@ -81,6 +81,9 @@ var (
 
 	// enableGKETenantController enables the gke-tenant-controller-manager.
 	enableGKETenantController bool
+
+	// enableL4ILBFineGrainedLocks enables resource-specific locking for L4 ILB.
+	enableL4ILBFineGrainedLocks bool
 )
 
 func main() {
@@ -102,6 +105,7 @@ func main() {
 	cloudProviderFS.BoolVar(&enableL4DenyFirewall, "enable-l4-deny-firewall", false, "Enable creation and updates of Deny VPC Firewall Rules for L4 external load balancers. Requires --enable-pinhole and --enable-l4-deny-firewall-rollback-cleanup to be true.")
 	cloudProviderFS.BoolVar(&enableL4DenyFirewallRollbackCleanup, "enable-l4-deny-firewall-rollback-cleanup", false, "Enable cleanup codepath of the deny firewalls for rollback. The reason for it not being enabled by default is the additional GCE API calls that are made for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.")
 	cloudProviderFS.BoolVar(&enableGKETenantController, "enable-gke-tenant-controller", false, "Enables the GKE Tenant Controller Manager for Multi-Tenancy.")
+	cloudProviderFS.BoolVar(&enableL4ILBFineGrainedLocks, "enable-l4-ilb-fine-grained-lock", false, "Enable resource-specific locking for L4 ILB")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
@@ -226,6 +230,17 @@ func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovid
 		}
 		gceCloud.SetEnableL4DenyFirewallRule(enableL4DenyFirewall, enableL4DenyFirewallRollbackCleanup)
 	}
+
+	if enableL4ILBFineGrainedLocks {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			klog.Fatalf("enable-l4-ilb-fine-grained-lock requires GCE cloud provider, but got %T", cloud)
+		}
+		gceCloud.SetEnableL4ILBFineGrainedLocks(true)
+	}
+
+	// Record feature gate metrics
+	gce.RecordFeatureGateMetrics(enableL4ILBFineGrainedLocks)
 
 	return cloud
 }
