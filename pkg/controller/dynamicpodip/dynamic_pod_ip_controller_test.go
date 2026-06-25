@@ -19,6 +19,7 @@ package dynamicpodip
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
@@ -28,6 +29,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	compute "google.golang.org/api/compute/v1"
 	computebeta "google.golang.org/api/compute/v0.beta"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
@@ -127,7 +129,7 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// 2. Create a NodeNetworkConfig with a request for 32 pods
+	// 2. Create a NodeNetworkConfig with a request for 48 pods
 	nnc := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -136,7 +138,7 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 			Allocations: []nncv1.Allocation{
 				{
 					Network: "default",
-					Pods:    32, // Requests 32 pods -> should result in 2x /28 blocks (32 IPs)
+					Pods:    48, // Requests 48 pods -> should result in 2x /27 blocks (64 IPs)
 				},
 			},
 		},
@@ -162,14 +164,14 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 	}
 
 	iface := updatedInstance.NetworkInterfaces[0]
-	// We expect 2 alias IP ranges added (each of size /28, GCE fake auto-allocates IPs)
+	// We expect 2 alias IP ranges added (each of size /27)
 	if len(iface.AliasIpRanges) != 2 {
 		t.Errorf("Expected 2 alias IP ranges, got %d: %v", len(iface.AliasIpRanges), iface.AliasIpRanges)
 	}
-	for _, r := range iface.AliasIpRanges {
-		// GCE fake assigns IPs like "10.0.0.0/28" etc. We just check if it is not empty.
-		if r.IpCidrRange == "" {
-			t.Error("Expected non-empty IpCidrRange")
+	expectedCIDRs := []string{"10.100.0.0/27", "10.100.1.0/27"}
+	for i, r := range iface.AliasIpRanges {
+		if i < len(expectedCIDRs) && r.IpCidrRange != expectedCIDRs[i] {
+			t.Errorf("Expected alias IP range %q, got %q", expectedCIDRs[i], r.IpCidrRange)
 		}
 	}
 
@@ -182,7 +184,10 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 	if len(updatedNNC.Status.PodCIDRs) != 2 {
 		t.Errorf("Expected 2 PodCIDRs in status, got %d: %v", len(updatedNNC.Status.PodCIDRs), updatedNNC.Status.PodCIDRs)
 	}
-	for _, pc := range updatedNNC.Status.PodCIDRs {
+	for i, pc := range updatedNNC.Status.PodCIDRs {
+		if i < len(expectedCIDRs) && pc.CIDR != expectedCIDRs[i] {
+			t.Errorf("Expected PodCIDR %q, got %q", expectedCIDRs[i], pc.CIDR)
+		}
 		if pc.Network != "default" {
 			t.Errorf("Expected network 'default', got %q", pc.Network)
 		}
@@ -205,8 +210,8 @@ func TestReconcile_RemoveAliasIP(t *testing.T) {
 	defer close(stopCh)
 	f.run(ctx, stopCh)
 
-	cidrToRemove := "10.100.0.0/28"
-	cidrToKeep := "10.100.1.0/28"
+	cidrToRemove := "10.100.0.0/27"
+	cidrToKeep := "10.100.1.0/27"
 
 	// 1. Create a fake GCE instance with 2 alias IPs
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
@@ -309,7 +314,7 @@ func TestReconcile_NoOp(t *testing.T) {
 	defer close(stopCh)
 	f.run(ctx, stopCh)
 
-	cidr := "10.100.0.0/28" // 16 IPs
+	cidr := "10.100.0.0/27" // 32 IPs
 
 	// 1. Create GCE instance with 1 alias IP
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
@@ -332,7 +337,7 @@ func TestReconcile_NoOp(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// 2. Create NodeNetworkConfig where Spec matches Status capacity (16 desired, 16 actual)
+	// 2. Create NodeNetworkConfig where Spec matches Status capacity (32 desired, 32 actual)
 	nnc := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -341,7 +346,7 @@ func TestReconcile_NoOp(t *testing.T) {
 			Allocations: []nncv1.Allocation{
 				{
 					Network: "default",
-					Pods:    16, // Matches current capacity of 16
+					Pods:    32, // Matches current capacity of 32
 				},
 			},
 		},
@@ -406,7 +411,7 @@ func TestReconcile_GCEError(t *testing.T) {
 			Allocations: []nncv1.Allocation{
 				{
 					Network: "default",
-					Pods:    16,
+					Pods:    32,
 				},
 			},
 		},
@@ -529,4 +534,114 @@ func updateNetworkInterfaceHook(
 	// Write back to mock store
 	mock.Objects[*key] = &gcloud.MockInstancesObj{Obj: instance}
 	return nil
+}
+
+func TestReconcile_InvalidStatusCIDR(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	// 1. Create NNC with an invalid CIDR in Status
+	nncInvalid := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNodeName,
+		},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{Network: "default", Pods: 32},
+			},
+		},
+		Status: nncv1.NodeNetworkConfigStatus{
+			PodCIDRs: []nncv1.PodCIDR{
+				{Id: "invalid-cidr", Network: "default", CIDR: "invalid-cidr"},
+			},
+		},
+	}
+	_, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nncInvalid, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create NNC: %v", err)
+	}
+
+	// Sync informer cache
+	f.informerFactory.WaitForCacheSync(stopCh)
+
+	// Run reconcile. It should succeed by writing the error condition to status (terminal error).
+	err = f.controller.reconcile(ctx, nncInvalid, testProviderID)
+	if err != nil {
+		t.Fatalf("Expected reconcile to succeed (return nil) by writing error status, got: %v", err)
+	}
+
+	// Verify status has False Ready condition with InvalidParameters reason
+	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get updated NodeNetworkConfig: %v", err)
+	}
+	readyCond := getCondition(updatedNNC.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
+	if readyCond == nil {
+		t.Fatal("Expected Ready condition to be present")
+	}
+	if readyCond.Status != metav1.ConditionFalse {
+		t.Errorf("Expected Ready condition to be False, got %s", readyCond.Status)
+	}
+	if readyCond.Reason != string(nncv1.NodeNetworkConfigInvalidParametersReason) {
+		t.Errorf("Expected reason %q, got %q", nncv1.NodeNetworkConfigInvalidParametersReason, readyCond.Reason)
+	}
+
+	// 2. Create NNC with an IPv6 CIDR in Status (should be rejected by our new IPv4-only check)
+	nncIPv6 := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNodeName,
+		},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{Network: "default", Pods: 32},
+			},
+		},
+		Status: nncv1.NodeNetworkConfigStatus{
+			PodCIDRs: []nncv1.PodCIDR{
+				{Id: "2001:db8::/64", Network: "default", CIDR: "2001:db8::/64"},
+			},
+		},
+	}
+
+	// Reset client for next test by deleting the old one
+	err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Delete(ctx, testNodeName, metav1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		t.Fatalf("Failed to clean up NNC: %v", err)
+	}
+	// Re-create it with IPv6
+	_, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nncIPv6, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create NNC: %v", err)
+	}
+
+	// Sync informer cache
+	f.informerFactory.WaitForCacheSync(stopCh)
+
+	// Run reconcile. It should succeed by writing the error condition to status (terminal error).
+	err = f.controller.reconcile(ctx, nncIPv6, testProviderID)
+	if err != nil {
+		t.Fatalf("Expected reconcile to succeed (return nil) by writing error status, got: %v", err)
+	}
+
+	// Verify status has False Ready condition with InvalidParameters reason
+	updatedNNC, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get updated NodeNetworkConfig: %v", err)
+	}
+	readyCond = getCondition(updatedNNC.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
+	if readyCond == nil {
+		t.Fatal("Expected Ready condition to be present")
+	}
+	if readyCond.Status != metav1.ConditionFalse {
+		t.Errorf("Expected Ready condition to be False, got %s", readyCond.Status)
+	}
+	if readyCond.Reason != string(nncv1.NodeNetworkConfigInvalidParametersReason) {
+		t.Errorf("Expected reason %q, got %q", nncv1.NodeNetworkConfigInvalidParametersReason, readyCond.Reason)
+	}
+	if !strings.Contains(readyCond.Message, "only IPv4 is supported") {
+		t.Errorf("Expected message to contain 'only IPv4 is supported', got %q", readyCond.Message)
+	}
 }

@@ -19,15 +19,14 @@ package dynamicpodip
 import (
 	"context"
 	"fmt"
-	"math"
 	"net"
-	"strings"
 	"time"
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nncinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions/nodenetworkconfig/v1"
 	nnclisters "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/listers/nodenetworkconfig/v1"
+	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,11 +43,24 @@ import (
 )
 
 const (
-	// DefaultBlockSize is the default CIDR block size we request from GCE (16 IPs).
-	DefaultBlockSize = "/28"
-	// DefaultCapacity is the capacity of the default block size.
-	DefaultCapacity = 16
+	// DefaultBlockSizeMask is the default CIDR mask we request from GCE.
+	DefaultBlockSizeMask = 28
+
+	// reconcileTimeout is the maximum time allowed for a single node reconciliation.
+	reconcileTimeout = 60 * time.Second
 )
+
+var (
+	// DefaultBlockSize is the string representation of the default block size (derived from DefaultBlockSizeMask).
+	DefaultBlockSize string
+	// DefaultCapacity is the number of IPs in the default block size (derived from DefaultBlockSizeMask).
+	DefaultCapacity int
+)
+
+func init() {
+	DefaultCapacity = 1 << (32 - DefaultBlockSizeMask)
+	DefaultBlockSize = fmt.Sprintf("/%d", DefaultBlockSizeMask)
+}
 
 // Controller manages NodeNetworkConfig resources and mutates GCE VM alias IPs.
 type Controller struct {
@@ -59,7 +71,7 @@ type Controller struct {
 	nodeLister corelisters.NodeLister
 	nodeSynced cache.InformerSynced
 	gceCloud   *gce.Cloud
-	queue      workqueue.RateLimitingInterface
+	queue      workqueue.TypedRateLimitingInterface[string]
 }
 
 // NewController creates a new DynamicPodIPController.
@@ -70,6 +82,12 @@ func NewController(
 	nodeInformer coreinformers.NodeInformer,
 	gceCloud *gce.Cloud,
 ) *Controller {
+	// Explicitly construct the rate limiter for the workqueue
+	rateLimiter := workqueue.NewTypedMaxOfRateLimiter[string](
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](5*time.Millisecond, 1000*time.Second),
+		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+	)
+
 	c := &Controller{
 		kubeClient: kubeClient,
 		nncClient:  nncClient,
@@ -78,13 +96,13 @@ func NewController(
 		nodeLister: nodeInformer.Lister(),
 		nodeSynced: nodeInformer.Informer().HasSynced,
 		gceCloud:   gceCloud,
-		queue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "dynamic-pod-ip"),
+		queue:      workqueue.NewTypedRateLimitingQueueWithConfig[string](rateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{Name: "dynamic-pod-ip"}),
 	}
 
 	nncInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: c.enqueueNodeNetworkConfig,
-		UpdateFunc: func(old, new interface{}) {
-			c.enqueueNodeNetworkConfig(new)
+		UpdateFunc: func(old, newObj interface{}) {
+			c.enqueueNodeNetworkConfig(newObj)
 		},
 		DeleteFunc: c.enqueueNodeNetworkConfig,
 	})
@@ -99,7 +117,7 @@ func (c *Controller) Name() string {
 
 // Run starts the controller workers.
 func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
-	runtime.HandleCrash()
+	defer runtime.HandleCrash()
 	defer c.queue.ShutDown()
 
 	klog.Info("Starting Dynamic Pod IP Controller")
@@ -129,12 +147,12 @@ func (c *Controller) processNextWorkItem() bool {
 	}
 	defer c.queue.Done(key)
 
-	err := c.syncNode(key.(string))
+	err := c.syncNode(key)
 	c.handleErr(err, key)
 	return true
 }
 
-func (c *Controller) handleErr(err error, key interface{}) {
+func (c *Controller) handleErr(err error, key string) {
 	if err == nil {
 		c.queue.Forget(key)
 		return
@@ -162,7 +180,7 @@ func (c *Controller) enqueueNodeNetworkConfig(obj interface{}) {
 }
 
 func (c *Controller) syncNode(key string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), reconcileTimeout)
 	defer cancel()
 
 	nnc, err := c.nncLister.Get(key)
@@ -290,29 +308,30 @@ func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig) (map[string]
 	additions := make(map[string][]string)
 	removals := make(map[string][]string)
 
-	// 1. Calculate Additions
+	// Precalculate current capacity per network from Status.
+	currentCapacity := make(map[string]int)
+	// Build a set of active CIDRs for fast $O(1)$ removal verification.
+	activeCIDRs := sets.NewString()
+
+	for _, pc := range nnc.Status.PodCIDRs {
+		cap, err := cidrCapacity(pc.CIDR)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to parse CIDR %q in status: %w", pc.CIDR, err)
+		}
+		currentCapacity[pc.Network] += cap
+		activeCIDRs.Insert(fmt.Sprintf("%s/%s", pc.Network, pc.CIDR))
+	}
+
+	// 1. Calculate Additions (Growth)
 	for _, alloc := range nnc.Spec.Allocations {
 		network := alloc.Network
-		if network == "" {
-			network = "default"
-		}
-
-		// Calculate current capacity for this network from Status
-		currentCapacity := 0
-		for _, pc := range nnc.Status.PodCIDRs {
-			if pc.Network == network {
-				cap, err := cidrCapacity(pc.CIDR)
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to parse CIDR %q in status: %w", pc.CIDR, err)
-				}
-				currentCapacity += cap
-			}
-		}
-
+		currentCap := currentCapacity[network]
 		desiredPods := int(alloc.Pods)
-		if desiredPods > currentCapacity {
-			neededIPs := desiredPods - currentCapacity
-			blocksNeeded := int(math.Ceil(float64(neededIPs) / float64(DefaultCapacity)))
+
+		if desiredPods > currentCap {
+			neededIPs := desiredPods - currentCap
+			// Integer arithmetic equivalent to ceil(neededIPs / DefaultCapacity)
+			blocksNeeded := (neededIPs + DefaultCapacity - 1) / DefaultCapacity
 			
 			for i := 0; i < blocksNeeded; i++ {
 				additions[network] = append(additions[network], DefaultBlockSize)
@@ -321,23 +340,13 @@ func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig) (map[string]
 		}
 	}
 
-	// 2. Calculate Removals
+	// 2. Calculate Removals (Shrink)
 	for _, rel := range nnc.Spec.ReleasableCIDRs {
 		network := rel.Network
-		if network == "" {
-			network = "default"
-		}
+		key := fmt.Sprintf("%s/%s", network, rel.CIDR)
 
-		// Verify it exists in status before removing
-		exists := false
-		for _, pc := range nnc.Status.PodCIDRs {
-			if pc.Network == network && pc.CIDR == rel.CIDR {
-				exists = true
-				break
-			}
-		}
-
-		if exists {
+		// O(1) verification using precalculated set
+		if activeCIDRs.Has(key) {
 			removals[network] = append(removals[network], rel.CIDR)
 			klog.V(3).Infof("Node %q network %q: flagging %q for removal", nnc.Name, network, rel.CIDR)
 		}
@@ -381,21 +390,16 @@ func (c *Controller) setCondition(nnc *nncv1.NodeNetworkConfig, cType string, st
 	return true
 }
 
+// cidrCapacity calculates the number of IP addresses in a CIDR block.
+// It returns an error if the CIDR is invalid or is not an IPv4 block.
 func cidrCapacity(cidrStr string) (int, error) {
 	_, ipNet, err := net.ParseCIDR(cidrStr)
 	if err != nil {
 		return 0, err
 	}
 	ones, bits := ipNet.Mask.Size()
-	if bits == 32 { // IPv4
-		return 1 << (32 - ones), nil
+	if bits != 32 {
+		return 0, fmt.Errorf("CIDR %q is not IPv4 (bits=%d), only IPv4 is supported", cidrStr, bits)
 	}
-	return 0, nil
-}
-
-func lastComponent(s string) string {
-	if parts := strings.Split(s, "/"); len(parts) > 0 {
-		return parts[len(parts)-1]
-	}
-	return s
+	return 1 << (32 - ones), nil
 }
