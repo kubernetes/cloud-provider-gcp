@@ -28609,22 +28609,23 @@ func (s InstanceGroupManagerInstanceFlexibilityPolicyInstanceSelection) MarshalJ
 }
 
 type InstanceGroupManagerInstanceLifecyclePolicy struct {
-	// DefaultActionOnFailure: The action that a MIG performs on a failed or an
-	// unhealthy VM.
-	// A VM is marked as unhealthy when the application running on that
-	// VM fails a health check.
+	// DefaultActionOnFailure: The action that a MIG performs on a failed VM. If
+	// the value of the
+	// onFailedHealthCheck field is `DEFAULT_ACTION`, then the same action
+	// also
+	// applies to the VMs on which your application fails a health check.
 	// Valid values are
 	//
-	//    - REPAIR (default): MIG automatically repairs a failed or
-	//    an unhealthy VM by recreating it. For more information, see About
+	//    - REPAIR (default): MIG automatically repairs a failed VM
+	//    by recreating it. For more information, see About
 	//    repairing VMs in a MIG.
-	//    - DO_NOTHING: MIG does not repair a failed or an unhealthy
-	//    VM.
+	//    - DO_NOTHING: MIG does not repair a failed VM.
 	//
 	// Possible values:
-	//   "DO_NOTHING" - MIG does not repair a failed or an unhealthy VM.
-	//   "REPAIR" - (Default) MIG automatically repairs a failed or an unhealthy
-	// VM by recreating it. For more information, see About
+	//   "DO_NOTHING" - MIG does not repair a failed VM.
+	//   "REPAIR" - (default): MIG automatically repairs a failed VM by recreating
+	// it.
+	// For more information, see About
 	// repairing VMs in a MIG.
 	DefaultActionOnFailure string `json:"defaultActionOnFailure,omitempty"`
 	// ForceUpdateOnRepair: A bit indicating whether to forcefully apply the
@@ -28665,6 +28666,8 @@ type InstanceGroupManagerInstanceLifecyclePolicy struct {
 	//   "DO_NOTHING" - MIG doesn't repair an unhealthy VM.
 	//   "REPAIR" - MIG automatically repairs an unhealthy VM by recreating it.
 	OnFailedHealthCheck string `json:"onFailedHealthCheck,omitempty"`
+	// OnRepair: Configuration for VM repairs in the MIG.
+	OnRepair *InstanceGroupManagerInstanceLifecyclePolicyOnRepair `json:"onRepair,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "DefaultActionOnFailure") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -28680,6 +28683,40 @@ type InstanceGroupManagerInstanceLifecyclePolicy struct {
 
 func (s InstanceGroupManagerInstanceLifecyclePolicy) MarshalJSON() ([]byte, error) {
 	type NoMethod InstanceGroupManagerInstanceLifecyclePolicy
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// InstanceGroupManagerInstanceLifecyclePolicyOnRepair: Configuration for VM
+// repairs in the MIG.
+type InstanceGroupManagerInstanceLifecyclePolicyOnRepair struct {
+	// AllowChangingZone: Specifies whether the MIG can change a VM's zone during a
+	// repair.
+	// Valid values are:
+	//
+	//    - NO (default): MIG cannot change a VM's zone during a
+	//    repair.
+	//    - YES: MIG can select a different zone for the VM during
+	//    a repair.
+	//
+	// Possible values:
+	//   "NO" - [Default] MIG cannot change a VM's zone during a repair.
+	//   "YES" - MIG can select a different zone for the VM during a repair.
+	AllowChangingZone string `json:"allowChangingZone,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "AllowChangingZone") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AllowChangingZone") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s InstanceGroupManagerInstanceLifecyclePolicyOnRepair) MarshalJSON() ([]byte, error) {
+	type NoMethod InstanceGroupManagerInstanceLifecyclePolicyOnRepair
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -34576,6 +34613,12 @@ type Interconnect struct {
 	// when you
 	// create the resource.
 	Description string `json:"description,omitempty"`
+	// EffectiveLocation: Output only. URL of the InterconnectLocation object that
+	// represents where
+	// this connection is to be provisioned. By default it will be the same as
+	// the
+	// location field.
+	EffectiveLocation string `json:"effectiveLocation,omitempty"`
 	// ExpectedOutages: Output only. [Output Only] A list of outages expected for
 	// this Interconnect.
 	ExpectedOutages []*InterconnectOutageNotification `json:"expectedOutages,omitempty"`
@@ -44686,6 +44729,10 @@ type NetworkInterface struct {
 	// AliasIpRanges: An array of alias IP ranges for this network interface.
 	// You can only specify this field for network interfaces in VPC networks.
 	AliasIpRanges []*AliasIpRange `json:"aliasIpRanges,omitempty"`
+	// AliasIpv6Ranges: An array of alias IPv6 ranges for this network
+	// interface.
+	// You can only specify this field for network interfaces in VPC networks.
+	AliasIpv6Ranges []*AliasIpRange `json:"aliasIpv6Ranges,omitempty"`
 	// EnableVpcScopedDns: Optional. If true, DNS resolution will be enabled over
 	// this interface. Only valid
 	// with network_attachment.
@@ -57219,6 +57266,9 @@ func (s ReservationAggregatedListWarningData) MarshalJSON() ([]byte, error) {
 
 // ReservationBlock: Represents a reservation block resource.
 type ReservationBlock struct {
+	// BlockHealthInfo: Output only. [Output Only] Health information for the
+	// reservation block.
+	BlockHealthInfo *ReservationBlockHealthInfo `json:"blockHealthInfo,omitempty"`
 	// Count: Output only. [Output Only] The number of resources that are allocated
 	// in this
 	// reservation block.
@@ -57226,9 +57276,6 @@ type ReservationBlock struct {
 	// CreationTimestamp: Output only. [Output Only] Creation timestamp inRFC3339
 	// text format.
 	CreationTimestamp string `json:"creationTimestamp,omitempty"`
-	// HealthInfo: Output only. [Output Only] Health information for the
-	// reservation block.
-	HealthInfo *ReservationBlockHealthInfo `json:"healthInfo,omitempty"`
 	// Id: Output only. [Output Only] The unique identifier for the resource. This
 	// identifier is
 	// defined by the server.
@@ -57283,15 +57330,15 @@ type ReservationBlock struct {
 	// Zone: Output only. [Output Only] Zone in which the reservation block
 	// resides.
 	Zone string `json:"zone,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "Count") to unconditionally
-	// include in API requests. By default, fields with empty or default values are
-	// omitted from API requests. See
+	// ForceSendFields is a list of field names (e.g. "BlockHealthInfo") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "Count") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
+	// NullFields is a list of field names (e.g. "BlockHealthInfo") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
@@ -58191,9 +58238,6 @@ type ReservationSubBlock struct {
 	// CreationTimestamp: Output only. [Output Only] Creation timestamp inRFC3339
 	// text format.
 	CreationTimestamp string `json:"creationTimestamp,omitempty"`
-	// HealthInfo: Output only. [Output Only] Health information for the
-	// reservation subBlock.
-	HealthInfo *ReservationSubBlockHealthInfo `json:"healthInfo,omitempty"`
 	// Id: Output only. [Output Only] The unique identifier for the resource. This
 	// identifier is
 	// defined by the server.
@@ -58235,6 +58279,9 @@ type ReservationSubBlock struct {
 	//   "INVALID"
 	//   "READY" - Reservation subBlock has allocated all its resources.
 	Status string `json:"status,omitempty"`
+	// SubBlockHealthInfo: Output only. [Output Only] Health information for the
+	// reservation subBlock.
+	SubBlockHealthInfo *ReservationSubBlockHealthInfo `json:"subBlockHealthInfo,omitempty"`
 	// Zone: Output only. [Output Only] Zone in which the reservation subBlock
 	// resides.
 	Zone string `json:"zone,omitempty"`
@@ -62964,6 +63011,13 @@ type RouterNat struct {
 	// must be valid static external IPs that have been assigned to the NAT.
 	// These IPs should be used for updating/patching a NAT only.
 	DrainNatIps []string `json:"drainNatIps,omitempty"`
+	// EffectiveTcpTimeWaitTimeoutSec: Output only. Effective timeout (in seconds)
+	// for TCP connections that are in TIME_WAIT
+	// state. This value is equal to tcp_time_wait_timeout_sec.
+	// If tcp_time_wait_timeout_sec isn't set, the effective timeout is 30s
+	// or
+	// 120s. The field is output only.
+	EffectiveTcpTimeWaitTimeoutSec int64 `json:"effectiveTcpTimeWaitTimeoutSec,omitempty"`
 	// EnableDynamicPortAllocation: Enable Dynamic Port Allocation.
 	//
 	//
@@ -65577,19 +65631,49 @@ func (s SecurityPolicyAssociation) MarshalJSON() ([]byte, error) {
 
 type SecurityPolicyDdosProtectionConfig struct {
 	// Possible values:
+	//   "DDOS_ADAPTIVE_PROTECTION_UNSPECIFIED"
+	//   "DISABLED"
+	//   "ENABLED"
+	//   "PREVIEW"
+	//   "UNSPECIFIED_ADAPTIVE_PROTECTION"
+	DdosAdaptiveProtection string `json:"ddosAdaptiveProtection,omitempty"`
+	// DdosImpactedBaselineThreshold: DDoS Protection for Network Load Balancers
+	// (and VMs with public IPs)
+	// builds DDoS mitigations that minimize collateral damage. It quantifies
+	// this as the fraction of a non-abuse baseline that's
+	// inadvertently
+	// blocked.
+	//
+	// Rules whose collateral damage exceeds ddosImpactedBaselineThreshold will
+	// not be deployed. Using a lower value will prioritize keeping
+	// collateral
+	// damage low, possibly at the cost of its effectiveness in rate limiting
+	// some or all of the attack. It should typically be unset, so Advanced
+	// DDoS
+	// (and Adaptive Protection) uses the best mitigation it can find. Setting
+	// the threshold is advised if there are logs for false positive
+	// detections
+	// with high collateral damage, and will cause Advanced DDoS to attempt to
+	// find a less aggressive rule that satisfies the constraint. If a
+	// suitable
+	// rule cannot be found, the system falls back to either no mitigation
+	// for
+	// smaller attacks or broader network throttles for larger ones.
+	DdosImpactedBaselineThreshold float64 `json:"ddosImpactedBaselineThreshold,omitempty"`
+	// Possible values:
 	//   "ADVANCED"
 	//   "ADVANCED_PREVIEW"
 	//   "STANDARD"
 	DdosProtection string `json:"ddosProtection,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "DdosProtection") to
+	// ForceSendFields is a list of field names (e.g. "DdosAdaptiveProtection") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "DdosProtection") to include in
-	// API requests with the JSON null value. By default, fields with empty values
-	// are omitted from API requests. See
+	// NullFields is a list of field names (e.g. "DdosAdaptiveProtection") to
+	// include in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
@@ -65597,6 +65681,20 @@ type SecurityPolicyDdosProtectionConfig struct {
 func (s SecurityPolicyDdosProtectionConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod SecurityPolicyDdosProtectionConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+func (s *SecurityPolicyDdosProtectionConfig) UnmarshalJSON(data []byte) error {
+	type NoMethod SecurityPolicyDdosProtectionConfig
+	var s1 struct {
+		DdosImpactedBaselineThreshold gensupport.JSONFloat64 `json:"ddosImpactedBaselineThreshold"`
+		*NoMethod
+	}
+	s1.NoMethod = (*NoMethod)(s)
+	if err := json.Unmarshal(data, &s1); err != nil {
+		return err
+	}
+	s.DdosImpactedBaselineThreshold = float64(s1.DdosImpactedBaselineThreshold)
+	return nil
 }
 
 type SecurityPolicyList struct {
@@ -66912,6 +67010,10 @@ type ServiceAttachment struct {
 	// which
 	// cannot be a dash.
 	Name string `json:"name,omitempty"`
+	// NatIpsPerEndpoint: The number of NAT IP addresses to be allocated per
+	// connected endpoint.
+	// If not specified, the default value is 1.
+	NatIpsPerEndpoint int64 `json:"natIpsPerEndpoint,omitempty"`
 	// NatSubnets: An array of URLs where each entry is the URL of a subnet
 	// provided
 	// by the service producer to use for NAT in this service attachment.
@@ -68108,13 +68210,15 @@ type Snapshot struct {
 	// snapshot
 	// creation/deletion.
 	StorageBytes int64 `json:"storageBytes,omitempty,string"`
-	// StorageBytesStatus: Output only. [Output Only] An indicator whether
-	// storageBytes is in a
+	// StorageBytesStatus: Output only. [Deprecated] Instead, check the
+	// storageBytes field. After
+	// snapshot creation, the storageBytesStatus field is alwaysUP_TO_DATE.
+	// [Output Only] An indicator whether storageBytes is in a
 	// stable state or it is being adjusted as a result of shared
 	// storage
-	// reallocation. This status can either be UPDATING, meaning
-	// the size of the snapshot is being updated, or UP_TO_DATE,
-	// meaning the size of the snapshot is up-to-date.
+	// reallocation. This status can either be unset, meaning the snapshot is
+	// being created, or UP_TO_DATE, meaning the size of the snapshot
+	// is up-to-date.
 	//
 	// Possible values:
 	//   "UPDATING"
@@ -77412,6 +77516,15 @@ type TargetTcpProxy struct {
 	// Kind: Output only. [Output Only] Type of the resource.
 	// Alwayscompute#targetTcpProxy for target TCP proxies.
 	Kind string `json:"kind,omitempty"`
+	// LoadBalancingScheme: Specifies the type of load balancing scheme used by
+	// this target proxy.
+	//
+	// Possible values:
+	//   "EXTERNAL"
+	//   "EXTERNAL_MANAGED"
+	//   "INTERNAL_MANAGED"
+	//   "LOAD_BALANCING_SCHEME_UNSPECIFIED"
+	LoadBalancingScheme string `json:"loadBalancingScheme,omitempty"`
 	// Name: Name of the resource. Provided by the client when the resource is
 	// created.
 	// The name must be 1-63 characters long, and comply withRFC1035.
