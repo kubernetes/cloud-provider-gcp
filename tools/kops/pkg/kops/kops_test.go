@@ -16,6 +16,7 @@ limitations under the License.
 package kops
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,5 +106,86 @@ func TestConfigFinalize(t *testing.T) {
 	}
 	if c.SSHPublicKey != c.SSHPrivateKey+".pub" {
 		t.Errorf("expected SSHPublicKey to be SSHPrivateKey + .pub, got %s", c.SSHPublicKey)
+	}
+}
+
+func TestPrepareLocalCCMManifest(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "kops-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tests := []struct {
+		name      string
+		imageRepo string
+		imageTag  string
+		wantErr   bool
+		errSubstr string
+	}{
+		{
+			name:      "valid tag and repo",
+			imageRepo: "gcr.io/k8s-staging-cloud-provider-gcp",
+			imageTag:  "v1.0.0",
+			wantErr:   false,
+		},
+		{
+			name:      "invalid tag with newline",
+			imageRepo: "gcr.io/k8s-staging-cloud-provider-gcp",
+			imageTag:  "v1.0.0\nunexpected-key: value",
+			wantErr:   true,
+			errSubstr: "invalid characters in image tag",
+		},
+		{
+			name:      "invalid tag with carriage return",
+			imageRepo: "gcr.io/k8s-staging-cloud-provider-gcp",
+			imageTag:  "v1.0.0\runexpected-key: value",
+			wantErr:   true,
+			errSubstr: "invalid characters in image tag",
+		},
+		{
+			name:      "invalid repo with newline",
+			imageRepo: "gcr.io/k8s-staging-cloud-provider-gcp\nunexpected-key: value",
+			imageTag:  "v1.0.0",
+			wantErr:   true,
+			errSubstr: "invalid characters in image repo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Config{
+				ImageRepo:    tt.imageRepo,
+				ImageTag:     tt.imageTag,
+				TemplatePath: filepath.Join(tmpDir, "kops-cluster.yaml"),
+			}
+
+			gotPath, err := prepareLocalCCMManifest(c)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("prepareLocalCCMManifest() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.wantErr {
+				if !strings.Contains(err.Error(), tt.errSubstr) {
+					t.Errorf("expected error to contain %q, got %q", tt.errSubstr, err.Error())
+				}
+				return
+			}
+
+			if gotPath == "" {
+				t.Error("expected a valid path for manifest, got empty string")
+			}
+
+			// Verify the file was created and doesn't contain injection
+			manifestContent, err := os.ReadFile(gotPath)
+			if err != nil {
+				t.Fatalf("failed to read generated manifest: %v", err)
+			}
+
+			expectedImageStr := fmt.Sprintf("%s/cloud-controller-manager:%s", tt.imageRepo, tt.imageTag)
+			if !strings.Contains(string(manifestContent), expectedImageStr) {
+				t.Errorf("expected manifest to contain %q, got manifest:\n%s", expectedImageStr, string(manifestContent))
+			}
+		})
 	}
 }
