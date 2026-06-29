@@ -21,6 +21,7 @@ package gce
 
 import (
 	"fmt"
+	"regexp"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -106,10 +107,15 @@ const (
 	targetPoolKey = serviceStatusPrefix + "/" + targetPoolResource
 )
 
-var l4ResourceAnnotationKeys = []string{
-	backendServiceKey,
-	targetPoolKey,
-}
+var (
+	l4ResourceAnnotationKeys = []string{
+		backendServiceKey,
+		targetPoolKey,
+	}
+
+	// subnetworkRegexp validates that a subnetwork name follows standard GCP naming conventions.
+	subnetworkRegexp = regexp.MustCompile(`^[a-z]([-a-z0-9]*[a-z0-9])?$`)
+)
 
 // GetLoadBalancerAnnotationType returns the type of GCP load balancer which should be assembled.
 func GetLoadBalancerAnnotationType(service *v1.Service) LoadBalancerType {
@@ -192,6 +198,10 @@ func GetLoadBalancerAnnotationAllowGlobalAccess(service *v1.Service) bool {
 // GetLoadBalancerAnnotationSubnet returns the configured subnet to assign LoadBalancer IP from.
 func GetLoadBalancerAnnotationSubnet(service *v1.Service) string {
 	if val, exists := service.Annotations[ServiceAnnotationILBSubnet]; exists {
+		if len(val) > 63 || !subnetworkRegexp.MatchString(val) {
+			klog.Warningf("Annotation %q value %q contains invalid characters or exceeds 63 characters for a subnetwork name", ServiceAnnotationILBSubnet, val)
+			return ""
+		}
 		return val
 	}
 	return ""
