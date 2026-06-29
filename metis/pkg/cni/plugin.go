@@ -149,7 +149,7 @@ func (p *Plugin) setupLogging(args *skel.CmdArgs, command string, logFile string
 	logger.Info("Received CNI request", "netns", args.Netns, "ifName", args.IfName, "args", args.Args, "path", args.Path, "stdinData", string(args.StdinData))
 
 	cleanup = func() {
-		f.Close()
+		_ = f.Close()
 		klog.Flush()
 	}
 

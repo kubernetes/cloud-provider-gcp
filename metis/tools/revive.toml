@@ -1,0 +1,74 @@
+# Configuration to align with Google Go Style Guide (go/go-style)
+# For details, see https://github.com/mgechev/revive
+
+# Warns on naked (bare) returns.
+[rule.bare-return]
+
+# Enforces context.Context to be the first argument in functions.
+[rule.context-as-argument]
+
+# Enforces context keys to be of a custom type to avoid collisions.
+[rule.context-keys-type]
+
+# Disallows dot imports.
+[rule.dot-imports]
+
+# Enforces map literal initialization.
+[rule.enforce-map-style]
+    arguments = ["literal"]
+
+# Enforces correct usage of fmt.Errorf.
+[rule.errorf]
+
+# Enforces that errors are returned as the last argument.
+[rule.error-return]
+
+# Enforces standard error string formatting (no capitalization, no punctuation).
+[rule.error-strings]
+
+# Enforces standard error variable naming (usually starts with err or Err).
+[rule.error-naming]
+
+# Enforces mixedCaps for variables and initialisms (e.g., URL, API).
+[rule.var-naming]
+
+# Enforces receiver names to be consistent and short.
+[rule.receiver-naming]
+
+# Enforces simplified structures to reduce nesting.
+[rule.indent-error-flow]
+    arguments = ["preserveScope"]
+[rule.superfluous-else]
+    arguments = ["preserveScope"]
+
+# Enforces that time variables use standard naming suffixes if needed.
+[rule.time-naming]
+
+# Enforces 'any' instead of 'interface{}'.
+[rule.use-any]
+
+# Warns when returned errors are not handled.
+[rule.unhandled-error]
+    arguments = [
+        "^fmt\\.Print",
+        "^fmt\\.Printf",
+        "^fmt\\.Println",
+        "^fmt\\.Fprintf",
+        "^\\(\\*bytes\\.Buffer\\)\\.Write(String)?$"
+    ]
+
+# Checks for unreachable code.
+[rule.unreachable-code]
+
+# Checks for unused parameters.
+[rule.unused-parameter]
+
+# Disabled rules (explicitly documented)
+[rule.empty-block] # Disabled to allow intentional no-op blocks.
+    Disabled = true
+
+[rule.import-shadowing] # Disabled to allow intentional reuse of variable names that are the same as package imports.
+    Disabled = true
+
+[rule.redefines-builtin-id] # Disabled to allow intentional reuse of variable names that are the same as built-in functions.
+    Disabled = true
