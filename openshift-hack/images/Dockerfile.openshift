@@ -7,10 +7,15 @@ RUN CGO_ENABLED=0 GOOS=${GOOS} GOPROXY=${GOPROXY} go build \
 	-o=gcp-cloud-controller-manager \
 	./cmd/cloud-controller-manager
 
+RUN cd openshift-tests && \
+	GOPROXY=${GOPROXY} make build && \
+	gzip /build/openshift-tests/bin/cloud-controller-manager-gcp-tests-ext
+
 FROM registry.ci.openshift.org/ocp/5.0:base-rhel9
 
 LABEL description="GCP Cloud Controller Manager"
 
 COPY --from=builder /build/gcp-cloud-controller-manager /bin/gcp-cloud-controller-manager
+COPY --from=builder /build/openshift-tests/bin/cloud-controller-manager-gcp-tests-ext.gz /usr/bin/cloud-controller-manager-gcp-tests-ext.gz
 
 ENTRYPOINT [ "/bin/gcp-cloud-controller-manager" ]
