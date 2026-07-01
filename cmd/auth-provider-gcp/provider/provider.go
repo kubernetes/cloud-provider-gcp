@@ -109,8 +109,14 @@ func getCacheKeyType() (credentialproviderapi.PluginCacheKeyType, error) {
 }
 
 // GetResponse queries the given provider for credentials.
-func GetResponse(image string, provider credentialconfig.DockerConfigProvider) (*credentialproviderapi.CredentialProviderResponse, error) {
-	cfg := provider.Provide(image)
+func GetResponse(req credentialproviderapi.CredentialProviderRequest, provider credentialconfig.DockerConfigProvider) (*credentialproviderapi.CredentialProviderResponse, error) {
+	// Inject Workload Identity token and annotations context if using ContainerRegistryProvider
+	if registryProvider, ok := provider.(*gcpcredential.ContainerRegistryProvider); ok {
+		registryProvider.ServiceAccountToken = req.ServiceAccountToken
+		registryProvider.ServiceAccountAnnotations = req.ServiceAccountAnnotations
+	}
+
+	cfg := provider.Provide(req.Image)
 	response := &credentialproviderapi.CredentialProviderResponse{Auth: make(map[string]credentialproviderapi.AuthConfig)}
 	for url, dockerConfig := range cfg {
 		response.Auth[url] = credentialproviderapi.AuthConfig{Username: dockerConfig.Username, Password: dockerConfig.Password}
