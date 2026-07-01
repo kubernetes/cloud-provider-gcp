@@ -8,6 +8,7 @@ build: cloud-controller-manager-gcp-tests-ext
 
 .PHONY: vendor
 vendor:
+	./sync-openshift-tests-k8s-deps.py
 	GOWORK=$(GOWORK) go mod tidy
 	GOWORK=$(GOWORK) go mod vendor
 
@@ -19,6 +20,7 @@ check:
 		exit 1; \
 	fi
 	GOWORK=$(GOWORK) go vet .
+	python3 -m unittest ./test_sync_openshift_tests_k8s_deps.py
 
 .PHONY: cloud-controller-manager-gcp-tests-ext
 cloud-controller-manager-gcp-tests-ext:
