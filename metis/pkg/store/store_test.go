@@ -170,12 +170,7 @@ func TestNewStore_SchemaVerification(t *testing.T) {
 // using a broadcast channel as a "starting gun" to release them at the exact
 // same logical moment.
 func TestStore_Concurrency(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "ipam-concurrency.db")
-	s, err := NewStore(context.Background(), logr.Discard(), dbPath)
-	if err != nil {
-		t.Fatalf("Failed to initialize store: %v", err)
-	}
-	defer s.Close()
+	s := setupTestStore(t)
 
 	var wg sync.WaitGroup
 	numGoroutines := 10
@@ -227,12 +222,7 @@ func TestStore_Concurrency(t *testing.T) {
 // (maxOpenConns - 1) read connections hostage and ensuring the final allowed
 // concurrent query can still execute successfully without hitting a pool bottleneck.
 func TestStore_MaxOpenConns_Limit(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "ipam-pool-limit.db")
-	s, err := NewStore(context.Background(), logr.Discard(), dbPath)
-	if err != nil {
-		t.Fatalf("Failed to initialize store: %v", err)
-	}
-	defer s.Close()
+	s := setupTestStore(t)
 
 	// Dynamically scale the test based on the Store's configuration
 	hostageCount := s.db.Stats().MaxOpenConnections - 1
@@ -276,7 +266,7 @@ func TestStore_MaxOpenConns_Limit(t *testing.T) {
 	defer cancel()
 
 	var state string
-	err = s.db.QueryRowContext(ctx, `SELECT state FROM cidr_blocks LIMIT 1`).Scan(&state)
+	err := s.db.QueryRowContext(ctx, `SELECT state FROM cidr_blocks LIMIT 1`).Scan(&state)
 
 	if err != nil && err != sql.ErrNoRows {
 		t.Fatalf("Final concurrent query failed (pool limit reached prematurely): %v", err)
@@ -288,22 +278,12 @@ func TestStore_MaxOpenConns_Limit(t *testing.T) {
 }
 
 func TestStore_AddCIDR(t *testing.T) {
-	logger := logr.Discard() // Use discard logger to avoid klog dependency in tests
-
-	// Use testing.T.TempDir() which is standard in modern Go and cleans up automatically!
-	tempDir := t.TempDir()
-
-	dbPath := filepath.Join(tempDir, "metis.sqlite")
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore returned unexpected error: %v", err)
-	}
-	defer s.Close()
+	s := setupTestStore(t)
 
 	network := "gke-pod-network-addcidr"
 	cidr := "10.0.1.0/29" // 8 IPs: 10.0.1.0 to 10.0.1.7
 
-	err = s.AddCIDR(context.Background(), network, cidr)
+	err := s.AddCIDR(context.Background(), network, cidr)
 	if err != nil {
 		t.Fatalf("AddCIDR failed: %v", err)
 	}
@@ -414,21 +394,13 @@ func TestStore_AddCIDR(t *testing.T) {
 }
 
 func TestStore_AddCIDR_Small(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-
-	dbPath := filepath.Join(tempDir, "metis_small.sqlite")
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore returned unexpected error: %v", err)
-	}
-	defer s.Close()
+	s := setupTestStore(t)
 
 	// Test /31 (2 IPs)
 	network31 := "gke-pod-network-31"
 	cidr31 := "10.0.2.0/31" // 2 IPs: 10.0.2.0, 10.0.2.1
 
-	err = s.AddCIDR(context.Background(), network31, cidr31)
+	err := s.AddCIDR(context.Background(), network31, cidr31)
 	if err != nil {
 		t.Fatalf("AddCIDR failed for /31: %v", err)
 	}
@@ -461,25 +433,17 @@ func TestStore_AddCIDR_Small(t *testing.T) {
 	}
 }
 
-func TestStore_GetCIDRBlockByCIDRAndNetwork(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-
-	dbPath := filepath.Join(tempDir, "get_cidr_network.sqlite")
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore returned unexpected error: %v", err)
-	}
-	defer s.Close()
+func TestStore_GetCIDRBlock(t *testing.T) {
+	s := setupTestStore(t)
 
 	network1 := "network-1"
 	network2 := "network-2"
 	cidr := "10.10.0.0/24"
 
 	// Initially shouldn't exist in either network
-	exists, err := s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network1)
+	_, exists, err := s.GetCIDRBlock(context.Background(), cidr, network1)
 	if err != nil {
-		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed: %v", err)
+		t.Fatalf("GetCIDRBlock failed: %v", err)
 	}
 	if exists {
 		t.Error("Expected false for network1, got true")
@@ -491,17 +455,17 @@ func TestStore_GetCIDRBlockByCIDRAndNetwork(t *testing.T) {
 	}
 
 	// Should exist in network1, but not in network2
-	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network1)
+	_, exists, err = s.GetCIDRBlock(context.Background(), cidr, network1)
 	if err != nil {
-		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network1: %v", err)
+		t.Fatalf("GetCIDRBlock failed for network1: %v", err)
 	}
 	if !exists {
 		t.Error("Expected true for network1, got false")
 	}
 
-	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network2)
+	_, exists, err = s.GetCIDRBlock(context.Background(), cidr, network2)
 	if err != nil {
-		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network2: %v", err)
+		t.Fatalf("GetCIDRBlock failed for network2: %v", err)
 	}
 	if exists {
 		t.Error("Expected false for network2, got true")
@@ -513,17 +477,17 @@ func TestStore_GetCIDRBlockByCIDRAndNetwork(t *testing.T) {
 	}
 
 	// Now it should exist in both networks
-	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network1)
+	_, exists, err = s.GetCIDRBlock(context.Background(), cidr, network1)
 	if err != nil {
-		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network1: %v", err)
+		t.Fatalf("GetCIDRBlock failed for network1: %v", err)
 	}
 	if !exists {
 		t.Error("Expected true for network1, got false")
 	}
 
-	exists, err = s.GetCIDRBlockByCIDRAndNetwork(context.Background(), cidr, network2)
+	_, exists, err = s.GetCIDRBlock(context.Background(), cidr, network2)
 	if err != nil {
-		t.Fatalf("GetCIDRBlockByCIDRAndNetwork failed for network2: %v", err)
+		t.Fatalf("GetCIDRBlock failed for network2: %v", err)
 	}
 	if !exists {
 		t.Error("Expected true for network2, got false")
@@ -531,21 +495,13 @@ func TestStore_GetCIDRBlockByCIDRAndNetwork(t *testing.T) {
 }
 
 func TestStore_AllocateIPv4_SingleCIDR(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-
-	dbPath := filepath.Join(tempDir, "metis_allocate_network_single.sqlite")
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore returned unexpected error: %v", err)
-	}
-	defer s.Close()
+	s := setupTestStore(t)
 
 	network := "gke-pod-network-allocate"
 	cidr := "10.0.2.0/29" // 8 IPs: .0 to .7. Reserved: .0, .1, .7. Available: .2, .3, .4, .5, .6.
 
 	// Test Case 1: Error - No CIDR blocks found (DB empty)
-	_, _, err = s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-1", IPFamily: IPv4})
+	_, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-1", IPFamily: IPv4})
 	if err == nil {
 		t.Error("Expected error for no CIDR blocks, got nil")
 	} else if !errors.Is(err, ErrNoAvailableIPs) {
@@ -643,25 +599,12 @@ func TestStore_AllocateIPv4_SingleCIDR(t *testing.T) {
 }
 
 func TestStore_ReleaseIPByOwner(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_release_test.sqlite")
-
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore failed: %v", err)
-	}
-	defer s.Close()
-
 	network := "test-network"
 	cidr := "10.0.1.0/24"
-
-	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
-		t.Fatalf("AddCIDR failed: %v", err)
-	}
+	s := setupStoreWithCIDRs(t, network, cidr)
 
 	var cidrBlockID int64
-	err = s.db.QueryRow("SELECT id FROM cidr_blocks WHERE cidr = ?", cidr).Scan(&cidrBlockID)
+	err := s.db.QueryRow("SELECT id FROM cidr_blocks WHERE cidr = ?", cidr).Scan(&cidrBlockID)
 	if err != nil {
 		t.Fatalf("Failed to query cidr_block_id: %v", err)
 	}
@@ -715,22 +658,9 @@ func TestStore_ReleaseIPByOwner(t *testing.T) {
 }
 
 func TestStore_AllocateIPv4_FallbackAndCooldown(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "fallback_test.sqlite")
-
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore failed: %v", err)
-	}
-	defer s.Close()
-
 	network := "test-network"
 	cidr1 := "10.0.1.0/29" // 5 available addresses (.2 to .6)
-
-	if err := s.AddCIDR(context.Background(), network, cidr1); err != nil {
-		t.Fatalf("AddCIDR failed: %v", err)
-	}
+	s := setupStoreWithCIDRs(t, network, cidr1)
 
 	// 1. Allocate 5 IPs to exhaust the first CIDR
 	for i := 1; i <= 5; i++ {
@@ -741,7 +671,7 @@ func TestStore_AllocateIPv4_FallbackAndCooldown(t *testing.T) {
 	}
 
 	// 2. Attempting to allocate another should FAIL because the first CIDR is full
-	_, _, err = s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-6", IPFamily: IPv4})
+	_, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-6", IPFamily: IPv4})
 	if err == nil {
 		t.Error("Expected AllocateIPv4 to fail when first CIDR is full, got nil")
 	}
@@ -784,22 +714,9 @@ func TestStore_AllocateIPv4_FallbackAndCooldown(t *testing.T) {
 }
 
 func TestStore_AllocateIPv4_Idempotency_Concurrency(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "idempotency_concurrency_test.sqlite")
-
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore failed: %v", err)
-	}
-	defer s.Close()
-
 	network := "test-network"
 	cidr := "10.0.1.0/24"
-
-	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
-		t.Fatalf("AddCIDR failed: %v", err)
-	}
+	s := setupStoreWithCIDRs(t, network, cidr)
 
 	containerID := "test-concurrent-container"
 	interfaceName := "eth0"
@@ -839,7 +756,7 @@ func TestStore_AllocateIPv4_Idempotency_Concurrency(t *testing.T) {
 
 	// Double check the DB to ensure only 1 row was created
 	var count int
-	err = s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE container_id = ? AND interface_name = ?", containerID, interfaceName).Scan(&count)
+	err := s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE container_id = ? AND interface_name = ?", containerID, interfaceName).Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to query DB for count: %v", err)
 	}
@@ -849,22 +766,9 @@ func TestStore_AllocateIPv4_Idempotency_Concurrency(t *testing.T) {
 }
 
 func TestStore_AllocateIPv4_Concurrency_DifferentContainers(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "concurrency_diff_containers.sqlite")
-
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore failed: %v", err)
-	}
-	defer s.Close()
-
 	network := "test-network"
 	cidr := "10.0.1.0/24" // 253 available IPs
-
-	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
-		t.Fatalf("AddCIDR failed: %v", err)
-	}
+	s := setupStoreWithCIDRs(t, network, cidr)
 
 	const numGoroutines = 50 // High contention
 	var wg sync.WaitGroup
@@ -905,7 +809,7 @@ func TestStore_AllocateIPv4_Concurrency_DifferentContainers(t *testing.T) {
 
 	// Verify DB stats
 	var count int
-	err = s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE is_allocated = TRUE AND container_id LIKE 'container-%'").Scan(&count)
+	err := s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE is_allocated = TRUE AND container_id LIKE 'container-%'").Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to query DB for count: %v", err)
 	}
@@ -915,23 +819,9 @@ func TestStore_AllocateIPv4_Concurrency_DifferentContainers(t *testing.T) {
 }
 
 func TestStore_AllocateIPv6(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-
-	dbPath := filepath.Join(tempDir, "metis_allocate_ipv6_test.sqlite")
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore returned unexpected error: %v", err)
-	}
-	defer s.Close()
-
 	network := "gke-pod-network-allocate-ipv6"
 	cidr := "2001:db8::/64"
-
-	// Add the CIDR
-	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
-		t.Fatalf("AddCIDR failed: %v", err)
-	}
+	s := setupStoreWithCIDRs(t, network, cidr)
 
 	// Test Case 1: Happy path - First allocation
 	ip1, cidrRange1, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-1", IPFamily: IPv6})
@@ -988,23 +878,9 @@ func TestStore_AllocateIPv6(t *testing.T) {
 }
 
 func TestStore_AllocateIPv6_ExceedBatch(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-
-	dbPath := filepath.Join(tempDir, "metis_allocate_ipv6_batch_test.sqlite")
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore returned unexpected error: %v", err)
-	}
-	defer s.Close()
-
 	network := "gke-pod-network-batch"
 	cidr := "2001:db8::/64"
-
-	// Add the CIDR
-	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
-		t.Fatalf("AddCIDR failed: %v", err)
-	}
+	s := setupStoreWithCIDRs(t, network, cidr)
 
 	// Allocate 65 IPs
 	// The constant is 64, so 65 will trigger the second batch population.
@@ -1032,7 +908,7 @@ func TestStore_AllocateIPv6_ExceedBatch(t *testing.T) {
 
 	// Verify that the number of entries in ip_addresses is at least 128 (2 batches)
 	var count int
-	err = s.db.QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE cidr_block_id = (SELECT id FROM cidr_blocks WHERE cidr = ?)", cidr).Scan(&count)
+	err := s.db.QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE cidr_block_id = (SELECT id FROM cidr_blocks WHERE cidr = ?)", cidr).Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to query DB for count: %v", err)
 	}
@@ -1042,22 +918,9 @@ func TestStore_AllocateIPv6_ExceedBatch(t *testing.T) {
 }
 
 func TestStore_AllocateIPv6_Concurrency(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "concurrency_ipv6.sqlite")
-
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore failed: %v", err)
-	}
-	defer s.Close()
-
 	network := "test-network"
 	cidr := "2001:db8::/64"
-
-	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
-		t.Fatalf("AddCIDR failed: %v", err)
-	}
+	s := setupStoreWithCIDRs(t, network, cidr)
 	const numGoroutines = 50 // High contention
 	var wg sync.WaitGroup
 	ips := make([]string, numGoroutines)
@@ -1097,7 +960,7 @@ func TestStore_AllocateIPv6_Concurrency(t *testing.T) {
 
 	// Verify DB stats
 	var count int
-	err = s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE is_allocated = TRUE AND container_id LIKE 'container-%'").Scan(&count)
+	err := s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE is_allocated = TRUE AND container_id LIKE 'container-%'").Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to query DB for count: %v", err)
 	}
@@ -1107,15 +970,7 @@ func TestStore_AllocateIPv6_Concurrency(t *testing.T) {
 }
 
 func TestStore_AllocateIPv6_ExpansionScenarios(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_expansion_scenarios.sqlite")
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore returned unexpected error: %v", err)
-	}
-	defer s.Close()
-
+	s := setupTestStore(t)
 	ctx := context.Background()
 
 	allocateIPs := func(ctx context.Context, network string, count int) {
@@ -1153,7 +1008,7 @@ func TestStore_AllocateIPv6_ExpansionScenarios(t *testing.T) {
 
 		// The 5th allocation should trigger expansion, which should fail with ErrCidrBlockExhausted
 		// and then allocateIP should return ErrNoAvailableIPs because no blocks could be expanded.
-		_, _, err = s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-5", IPFamily: IPv6})
+		_, _, err := s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-5", IPFamily: IPv6})
 
 		if err == nil {
 			t.Fatal("Expected allocation to fail, but it succeeded")
@@ -1173,7 +1028,7 @@ func TestStore_AllocateIPv6_ExpansionScenarios(t *testing.T) {
 		}
 
 		var cidrBlockID int64
-		err = s.DB().QueryRow("SELECT id FROM cidr_blocks WHERE cidr = ? AND network = ?", cidr, network).Scan(&cidrBlockID)
+		err := s.DB().QueryRow("SELECT id FROM cidr_blocks WHERE cidr = ? AND network = ?", cidr, network).Scan(&cidrBlockID)
 		if err != nil {
 			t.Fatalf("Failed to get CIDR block ID from DB: %v", err)
 		}
@@ -1222,7 +1077,7 @@ func TestStore_AllocateIPv6_ExpansionScenarios(t *testing.T) {
 		}
 
 		var cidrBlockID int64
-		err = s.DB().QueryRow("SELECT id FROM cidr_blocks WHERE cidr = ? AND network = ?", cidr, network).Scan(&cidrBlockID)
+		err := s.DB().QueryRow("SELECT id FROM cidr_blocks WHERE cidr = ? AND network = ?", cidr, network).Scan(&cidrBlockID)
 		if err != nil {
 			t.Fatalf("Failed to get CIDR block ID: %v", err)
 		}
@@ -1273,27 +1128,10 @@ func TestStore_AllocateIPv6_ExpansionScenarios(t *testing.T) {
 }
 
 func TestStore_AllocateIPv6_MultiCIDRExpansion(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-
-	dbPath := filepath.Join(tempDir, "metis_fallback_expand.sqlite")
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore returned unexpected error: %v", err)
-	}
-	defer s.Close()
-
 	network := "gke-pod-network-fallback"
 	cidr1 := "2001:db8:1::/126" // 4 IPs
 	cidr2 := "2001:db8:2::/64"  // Large
-
-	// Add CIDRs
-	if err := s.AddCIDR(context.Background(), network, cidr1); err != nil {
-		t.Fatalf("AddCIDR failed for cidr1: %v", err)
-	}
-	if err := s.AddCIDR(context.Background(), network, cidr2); err != nil {
-		t.Fatalf("AddCIDR failed for cidr2: %v", err)
-	}
+	s := setupStoreWithCIDRs(t, network, cidr1, cidr2)
 
 	// Exhaust both initial populations
 	// CIDR 1 has 4 IPs. CIDR 2 has 64 IPs (batch size).
@@ -1321,28 +1159,12 @@ func TestStore_AllocateIPv6_MultiCIDRExpansion(t *testing.T) {
 }
 
 func TestStore_AllocateIPv6_Concurrency_AllocateAndRelease(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "concurrency_alloc_release_ipv6.sqlite")
-
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore failed: %v", err)
-	}
-	defer s.Close()
-
 	network := "test-network"
 	// CIDR 1: Max capacity = 4 IPs. Initial population = 4.
 	cidr1 := "2001:db8:1::/126"
 	// CIDR 2: Max capacity = 64 IPs. Initial population = 64.
 	cidr2 := "2001:db8:2::/122"
-
-	if err := s.AddCIDR(context.Background(), network, cidr1); err != nil {
-		t.Fatalf("AddCIDR failed for cidr1: %v", err)
-	}
-	if err := s.AddCIDR(context.Background(), network, cidr2); err != nil {
-		t.Fatalf("AddCIDR failed for cidr2: %v", err)
-	}
+	s := setupStoreWithCIDRs(t, network, cidr1, cidr2)
 
 	// Step 1: Pre-allocate exactly 60 IPs to bring it close to exhaustion and trigger initial expansion.
 	// Total capacity across both blocks = 4 + 64 = 68 IPs.
@@ -1477,7 +1299,7 @@ func TestStore_AllocateIPv6_Concurrency_AllocateAndRelease(t *testing.T) {
 
 	// At the end, all IPs should be released.
 	var count int
-	err = s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE is_allocated = TRUE").Scan(&count)
+	err := s.DB().QueryRow("SELECT COUNT(*) FROM ip_addresses WHERE is_allocated = TRUE").Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to query DB for count: %v", err)
 	}
@@ -1487,27 +1309,15 @@ func TestStore_AllocateIPv6_Concurrency_AllocateAndRelease(t *testing.T) {
 }
 
 func TestStore_CheckAllocation(t *testing.T) {
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "check_alloc_test.sqlite")
+	network := "test-network"
+	cidr := "10.0.1.0/24"
+	s := setupStoreWithCIDRs(t, network, cidr)
+
 	containerID := "test-container"
 	interfaceName := "eth0"
 
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore failed: %v", err)
-	}
-	defer s.Close()
-
-	network := "test-network"
-	cidr := "10.0.1.0/24"
-
-	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
-		t.Fatalf("AddCIDR failed: %v", err)
-	}
-
 	// 1. Check before allocation (should fail)
-	err = s.CheckAllocation(context.Background(), network, containerID, interfaceName)
+	err := s.CheckAllocation(context.Background(), network, containerID, interfaceName)
 	if err == nil {
 		t.Error("Expected error for non-existent allocation, got nil")
 	}
@@ -1537,6 +1347,255 @@ func TestStore_CheckAllocation(t *testing.T) {
 	}
 }
 
+func TestStore_DeleteCIDRBlock(t *testing.T) {
+	network := "test-network"
+	cidr := "10.0.1.0/24"
+	s := setupStoreWithCIDRs(t, network, cidr)
+
+	blockID, _, err := s.GetCIDRBlock(context.Background(), cidr, network)
+	if err != nil {
+		t.Fatalf("Failed to get block ID: %v", err)
+	}
+
+	// 1. Trying to delete a CIDR block that is in 'Ready' state should return nil (no error), but log error.
+	err = s.DeleteCIDRBlock(context.Background(), blockID)
+	if err != nil {
+		t.Errorf("Expected nil error when deleting Ready CIDR block, got: %v", err)
+	}
+
+	// 2. Mark block as Deleting and delete it. It should succeed.
+	if err := s.MarkCIDRBlockAsDeletingForTest(context.Background(), blockID); err != nil {
+		t.Fatalf("Failed to mark block as Deleting: %v", err)
+	}
+
+	err = s.DeleteCIDRBlock(context.Background(), blockID)
+	if err != nil {
+		t.Errorf("DeleteCIDRBlock failed for Deleting CIDR block: %v", err)
+	}
+
+	// 3. Trying to delete it again (already deleted) should return nil (no error).
+	err = s.DeleteCIDRBlock(context.Background(), blockID)
+	if err != nil {
+		t.Errorf("Expected nil error when deleting already deleted block, got: %v", err)
+	}
+
+	// 4. Trying to delete a non-existent block ID should also return nil (no error).
+	err = s.DeleteCIDRBlock(context.Background(), 99999)
+	if err != nil {
+		t.Errorf("Expected nil error when deleting non-existent block, got: %v", err)
+	}
+
+	// 5. Test cascading deletes (ensure ON DELETE CASCADE works on ip_addresses)
+	cidr2 := "10.0.2.0/24"
+	err = s.AddCIDR(context.Background(), network, cidr2)
+	if err != nil {
+		t.Fatalf("Failed to add cidr2: %v", err)
+	}
+
+	// Allocate an IP, it should go to cidr2 since it's the only one ready
+	ip, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "test-iface-del", ContainerID: "test-container-del", IPFamily: IPv4})
+	if err != nil {
+		t.Fatalf("Failed to allocate IP: %v", err)
+	}
+
+	block2ID, _, err := s.GetCIDRBlock(context.Background(), cidr2, network)
+	if err != nil {
+		t.Fatalf("Failed to get block2 ID: %v", err)
+	}
+
+	if err := s.MarkCIDRBlockAsDeletingForTest(context.Background(), block2ID); err != nil {
+		t.Fatalf("Failed to mark block2 as Deleting: %v", err)
+	}
+
+	if err := s.DeleteCIDRBlock(context.Background(), block2ID); err != nil {
+		t.Fatalf("DeleteCIDRBlock failed for block2: %v", err)
+	}
+
+	var count int
+	err = s.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM ip_addresses WHERE address = ?", ip).Scan(&count)
+	if err != nil {
+		t.Fatalf("Query failed: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Expected associated IP to be cascade deleted, but found %d", count)
+	}
+}
+
+func TestStore_DrainCIDRBlock(t *testing.T) {
+	network := "test-network"
+	cidr := "10.0.1.0/24"
+	s := setupStoreWithCIDRs(t, network, cidr)
+
+	blockID, _, err := s.GetCIDRBlock(context.Background(), cidr, network)
+	if err != nil {
+		t.Fatalf("Failed to get block ID: %v", err)
+	}
+
+	// Get initial updated_at
+	var initialUpdatedAt int64
+	err = s.db.QueryRowContext(context.Background(), "SELECT updated_at FROM cidr_blocks WHERE id = ?", blockID).Scan(&initialUpdatedAt)
+	if err != nil {
+		t.Fatalf("Failed to get initial updated_at: %v", err)
+	}
+
+	// Add a slight delay so updated_at actually changes
+	time.Sleep(10 * time.Millisecond)
+
+	err = s.DrainCIDRBlock(context.Background(), blockID)
+	if err != nil {
+		t.Fatalf("DrainCIDRBlock failed: %v", err)
+	}
+
+	var state string
+	var newUpdatedAt int64
+	err = s.db.QueryRowContext(context.Background(), "SELECT state, updated_at FROM cidr_blocks WHERE id = ?", blockID).Scan(&state, &newUpdatedAt)
+	if err != nil {
+		t.Fatalf("Failed to query block state: %v", err)
+	}
+	if state != string(StateDraining) {
+		t.Errorf("Expected state to be Draining, got %s", state)
+	}
+	if newUpdatedAt <= initialUpdatedAt {
+		t.Errorf("Expected updated_at to increase. initial: %d, new: %d", initialUpdatedAt, newUpdatedAt)
+	}
+
+	// Try draining non-existent block (should not error, just do nothing)
+	err = s.DrainCIDRBlock(context.Background(), 99999)
+	if err != nil {
+		t.Errorf("Expected no error when draining non-existent block, got: %v", err)
+	}
+}
+
+func TestStore_UndrainOneCIDRBlock(t *testing.T) {
+	network := "test-network"
+	s := setupStoreWithCIDRs(t, network, "10.0.1.0/24", "10.0.2.0/24", "2001:db8::/64")
+
+	// Get the blocks and mark as draining
+	var ids []int64
+	for _, cidr := range []string{"10.0.1.0/24", "10.0.2.0/24", "2001:db8::/64"} {
+		id, _, err := s.GetCIDRBlock(context.Background(), cidr, network)
+		if err != nil {
+			t.Fatalf("Failed to get block %s: %v", cidr, err)
+		}
+		ids = append(ids, id)
+		_ = s.DrainCIDRBlock(context.Background(), id)
+	}
+	id1, id2, id6 := ids[0], ids[1], ids[2]
+
+	// Add a slight delay
+	time.Sleep(10 * time.Millisecond)
+
+	// Undrain one IPv4
+	undrained, err := s.UndrainOneCIDRBlock(context.Background(), network, IPv4)
+	if err != nil {
+		t.Fatalf("UndrainOneCIDRBlock failed: %v", err)
+	}
+	if !undrained {
+		t.Error("Expected to undrain a block, got false")
+	}
+
+	// Check states: exactly one of id1 or id2 should be Ready, the other Draining. id6 should be Draining.
+	var state1, state2, state6 string
+	s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id1).Scan(&state1)
+	s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id2).Scan(&state2)
+	s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id6).Scan(&state6)
+
+	if (state1 == string(StateReady) && state2 == string(StateReady)) || (state1 == string(StateDraining) && state2 == string(StateDraining)) {
+		t.Errorf("Expected exactly one IPv4 block to be Ready, got id1:%s id2:%s", state1, state2)
+	}
+	if state6 != string(StateDraining) {
+		t.Errorf("Expected IPv6 block to remain Draining, got %s", state6)
+	}
+
+	// Undrain second IPv4
+	undrained, err = s.UndrainOneCIDRBlock(context.Background(), network, IPv4)
+	if err != nil {
+		t.Fatalf("UndrainOneCIDRBlock failed: %v", err)
+	}
+	if !undrained {
+		t.Error("Expected to undrain a block, got false")
+	}
+
+	// Third attempt for IPv4 should return false
+	undrained, err = s.UndrainOneCIDRBlock(context.Background(), network, IPv4)
+	if err != nil {
+		t.Fatalf("UndrainOneCIDRBlock failed: %v", err)
+	}
+	if undrained {
+		t.Error("Expected false when no more blocks to undrain, got true")
+	}
+}
+
+func TestStore_ExpireDrainingCIDRBlocks(t *testing.T) {
+	network := "test-network"
+	s := setupStoreWithCIDRs(t, network, "10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24")
+
+	// Get IDs
+	var ids []int64
+	for _, cidr := range []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"} {
+		id, _, err := s.GetCIDRBlock(context.Background(), cidr, network)
+		if err != nil {
+			t.Fatalf("Failed to get block %s: %v", cidr, err)
+		}
+		ids = append(ids, id)
+	}
+	id1, id2, id3 := ids[0], ids[1], ids[2]
+
+	// 1. Drain id1. It has 3 reserved IPs (allocated_ips > 0), so it won't expire.
+	_ = s.DrainCIDRBlock(context.Background(), id1)
+
+	// 2. Allocate an IP. Since id1 is drained, it will allocate from id2.
+	allocParams := AllocateIPParams{Network: network, InterfaceName: "iface", ContainerID: "cont", IPFamily: IPv4}
+	_, _, err := s.AllocateIP(context.Background(), allocParams)
+	if err != nil {
+		t.Fatalf("Failed to allocate IP: %v", err)
+	}
+
+	// 3. Drain id2. It now has 1 allocated IP, so it wouldn't expire yet.
+	_ = s.DrainCIDRBlock(context.Background(), id2)
+
+	// 4. Release the IP. This drops id2's allocated_ips to 0 and naturally triggers the updated_at timestamp.
+	_, err = s.ReleaseIPByOwner(context.Background(), network, "cont", "iface", 0)
+	if err != nil {
+		t.Fatalf("Failed to release IP: %v", err)
+	}
+
+	// 5. Sleep to ensure id2's updated_at is older than the 1s expiration
+	time.Sleep(1100 * time.Millisecond)
+
+	// 6. Drain id3. Its updated_at will be exactly now.
+	_ = s.DrainCIDRBlock(context.Background(), id3)
+
+	// 7. Call ExpireDrainingCIDRBlocks with 1 second expiration
+	expiredBlocks, err := s.ExpireDrainingCIDRBlocks(context.Background(), network, IPv4, 1*time.Second)
+	if err != nil {
+		t.Fatalf("ExpireDrainingCIDRBlocks failed: %v", err)
+	}
+
+	// Assertions
+	if len(expiredBlocks) != 1 {
+		t.Fatalf("Expected exactly 1 block to expire, got %d", len(expiredBlocks))
+	}
+	if expiredBlocks[0].ID != id2 {
+		t.Errorf("Expected id2 to expire, got %d", expiredBlocks[0].ID)
+	}
+
+	// Check DB states using a map
+	expectedStates := map[int64]string{
+		id1: string(StateDraining),
+		id2: string(StateDeleting),
+		id3: string(StateDraining),
+	}
+
+	for id, expected := range expectedStates {
+		var state string
+		s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id).Scan(&state)
+		if state != expected {
+			t.Errorf("Expected id %d state to be %s, got %s", id, expected, state)
+		}
+	}
+}
+
 func TestStore_ReleaseIP_TimezoneRobustness(t *testing.T) {
 	// 1. Save original TZ and local location
 	origTZ := os.Getenv("TZ")
@@ -1550,22 +1609,9 @@ func TestStore_ReleaseIP_TimezoneRobustness(t *testing.T) {
 	os.Setenv("TZ", "America/Los_Angeles")
 	time.Local = nil // Force Go to reload timezone location from TZ env
 
-	logger := logr.Discard()
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "timezone_test.sqlite")
-
-	s, err := NewStore(context.Background(), logger, dbPath)
-	if err != nil {
-		t.Fatalf("NewStore failed: %v", err)
-	}
-	defer s.Close()
-
 	network := "timezone-network"
-	cidr := "10.0.1.0/24"
-
-	if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
-		t.Fatalf("AddCIDR failed: %v", err)
-	}
+	cidr := "10.0.1.0/29" // 8 IPs
+	s := setupStoreWithCIDRs(t, network, cidr)
 
 	containerID := "tz-container"
 	interfaceName := "eth0"
@@ -1630,4 +1676,174 @@ func TestStore_ReleaseIP_TimezoneRobustness(t *testing.T) {
 	if ipReuse != ip {
 		t.Errorf("Expected IP to be reused after cooldown expired, got %s instead of %s", ipReuse, ip)
 	}
+}
+
+func TestStore_GetIPUsage(t *testing.T) {
+	network := "test-net"
+	ctx := context.Background()
+
+	// 1. Add CIDRs
+	ipv4Cidr1 := "10.0.0.0/29"      // 8 IPs
+	ipv4Cidr2 := "10.0.1.0/29"      // 8 IPs
+	ipv6Cidr1 := "2001:db8:1::/120" // 256 IPs
+	ipv6Cidr2 := "2001:db8:2::/120" // 256 IPs
+
+	s := setupStoreWithCIDRs(t, network, ipv4Cidr1, ipv4Cidr2, ipv6Cidr1, ipv6Cidr2)
+
+	// 2. Perform IPv4 Allocations & Releases
+	// Allocate 2 IPv4 IPs from ipv4Cidr1
+	_, _, err := s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "c4-1", IPFamily: IPv4})
+	if err != nil {
+		t.Fatalf("IPv4 allocate 1 failed: %v", err)
+	}
+	_, _, err = s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "c4-2", IPFamily: IPv4})
+	if err != nil {
+		t.Fatalf("IPv4 allocate 2 failed: %v", err)
+	}
+	// Release c4-2 with 10s cooldown -> Cooldown count 1, Allocated count 1
+	if _, err := s.ReleaseIPByOwner(ctx, network, "c4-2", "eth0", 10*time.Second); err != nil {
+		t.Fatalf("IPv4 release failed: %v", err)
+	}
+
+	// 3. Perform IPv6 Allocations & Releases
+	// Allocate 3 IPv6 IPs from ipv6Cidr1
+	_, _, err = s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "c6-1", IPFamily: IPv6})
+	if err != nil {
+		t.Fatalf("IPv6 allocate 1 failed: %v", err)
+	}
+	_, _, err = s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "c6-2", IPFamily: IPv6})
+	if err != nil {
+		t.Fatalf("IPv6 allocate 2 failed: %v", err)
+	}
+	_, _, err = s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "c6-3", IPFamily: IPv6})
+	if err != nil {
+		t.Fatalf("IPv6 allocate 3 failed: %v", err)
+	}
+	// Release c6-3 with 10s cooldown -> Cooldown count 1, Allocated count 2
+	if _, err := s.ReleaseIPByOwner(ctx, network, "c6-3", "eth0", 10*time.Second); err != nil {
+		t.Fatalf("IPv6 release failed: %v", err)
+	}
+
+	// 4. Mark ipv4Cidr2 and ipv6Cidr2 as Draining
+	id4_2, exists, err := s.GetCIDRBlock(ctx, ipv4Cidr2, network)
+	if err != nil || !exists {
+		t.Fatalf("GetCIDRBlock failed for %s: %v, exists: %v", ipv4Cidr2, err, exists)
+	}
+	if err := s.DrainCIDRBlock(ctx, id4_2); err != nil {
+		t.Fatalf("DrainCIDRBlock failed for %s: %v", ipv4Cidr2, err)
+	}
+
+	id6_2, exists, err := s.GetCIDRBlock(ctx, ipv6Cidr2, network)
+	if err != nil || !exists {
+		t.Fatalf("GetCIDRBlock failed for %s: %v, exists: %v", ipv6Cidr2, err, exists)
+	}
+	if err := s.DrainCIDRBlock(ctx, id6_2); err != nil {
+		t.Fatalf("DrainCIDRBlock failed for %s: %v", ipv6Cidr2, err)
+	}
+
+	// 5. Query IPv4 Usage
+	ipv4Usage, err := s.GetIPUsage(ctx, network, IPv4)
+	if err != nil {
+		t.Fatalf("GetIPUsage IPv4 failed: %v", err)
+	}
+	// Expected: Allocated: 4 (3 reserved + 1 active (c4-1)), Cooldown: 1 (c4-2), Total: 16 (8 + 8), Draining: 8
+	if ipv4Usage.Allocated != 4 {
+		t.Errorf("Expected IPv4 Allocated to be 4, got %d", ipv4Usage.Allocated)
+	}
+	if ipv4Usage.Cooldown != 1 {
+		t.Errorf("Expected IPv4 Cooldown to be 1, got %d", ipv4Usage.Cooldown)
+	}
+	if ipv4Usage.Total != 16 {
+		t.Errorf("Expected IPv4 Total to be 16, got %d", ipv4Usage.Total)
+	}
+	if ipv4Usage.Draining != 8 {
+		t.Errorf("Expected IPv4 Draining to be 8, got %d", ipv4Usage.Draining)
+	}
+
+	// 6. Query IPv6 Usage
+	ipv6Usage, err := s.GetIPUsage(ctx, network, IPv6)
+	if err != nil {
+		t.Fatalf("GetIPUsage IPv6 failed: %v", err)
+	}
+	// Expected: Allocated: 2, Cooldown: 1, Total: 512 (256 + 256), Draining: 256
+	if ipv6Usage.Allocated != 2 {
+		t.Errorf("Expected IPv6 Allocated to be 2, got %d", ipv6Usage.Allocated)
+	}
+	if ipv6Usage.Cooldown != 1 {
+		t.Errorf("Expected IPv6 Cooldown to be 1, got %d", ipv6Usage.Cooldown)
+	}
+	if ipv6Usage.Total != 512 {
+		t.Errorf("Expected IPv6 Total to be 512, got %d", ipv6Usage.Total)
+	}
+	if ipv6Usage.Draining != 256 {
+	}
+
+	// 7. Test UndrainOneCIDRBlock
+	// 7.1. Undrain IPv4 block
+	undrained, err := s.UndrainOneCIDRBlock(ctx, network, IPv4)
+	if err != nil {
+		t.Fatalf("UndrainOneCIDRBlock IPv4 failed: %v", err)
+	}
+	if !undrained {
+		t.Error("Expected UndrainOneCIDRBlock IPv4 to return true, got false")
+	}
+
+	// Verify in DB that ipv4Cidr2 is now Ready, but ipv6Cidr2 is STILL Draining
+	var state1, state2 string
+	err = s.db.QueryRow("SELECT state FROM cidr_blocks WHERE id = ?", id4_2).Scan(&state1)
+	if err != nil || state1 != string(StateReady) {
+		t.Errorf("Expected ipv4Cidr2 to be Ready, got %q (err: %v)", state1, err)
+	}
+	err = s.db.QueryRow("SELECT state FROM cidr_blocks WHERE id = ?", id6_2).Scan(&state2)
+	if err != nil || state2 != string(StateDraining) {
+		t.Errorf("Expected ipv6Cidr2 to remain Draining, got %q (err: %v)", state2, err)
+	}
+
+	// 7.2. Try to undrain IPv4 again (should be false since no more draining IPv4 blocks)
+	undrained, err = s.UndrainOneCIDRBlock(ctx, network, IPv4)
+	if err != nil {
+		t.Fatalf("UndrainOneCIDRBlock IPv4 second call failed: %v", err)
+	}
+	if undrained {
+		t.Error("Expected second UndrainOneCIDRBlock IPv4 call to return false, got true")
+	}
+
+	// 7.3. Undrain IPv6 block
+	undrained, err = s.UndrainOneCIDRBlock(ctx, network, IPv6)
+	if err != nil {
+		t.Fatalf("UndrainOneCIDRBlock IPv6 failed: %v", err)
+	}
+	if !undrained {
+		t.Error("Expected UndrainOneCIDRBlock IPv6 to return true, got false")
+	}
+
+	// Verify in DB that ipv6Cidr2 is now Ready
+	err = s.db.QueryRow("SELECT state FROM cidr_blocks WHERE id = ?", id6_2).Scan(&state2)
+	if err != nil || state2 != string(StateReady) {
+		t.Errorf("Expected ipv6Cidr2 to be Ready, got %q (err: %v)", state2, err)
+	}
+}
+
+func setupTestStore(t *testing.T) *Store {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "test.sqlite")
+	s, err := NewStore(context.Background(), logr.Discard(), dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize test store: %v", err)
+	}
+	t.Cleanup(func() {
+		s.Close()
+	})
+	return s
+}
+
+func setupStoreWithCIDRs(t *testing.T, network string, cidrs ...string) *Store {
+	t.Helper()
+	s := setupTestStore(t)
+	for _, cidr := range cidrs {
+		if err := s.AddCIDR(context.Background(), network, cidr); err != nil {
+			t.Fatalf("Failed to add CIDR %s in setup: %v", cidr, err)
+		}
+	}
+	return s
 }

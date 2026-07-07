@@ -26,11 +26,15 @@ import (
 	"testing"
 	"time"
 
+	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
+	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
+	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
 	"github.com/go-logr/logr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg/store"
@@ -108,7 +112,7 @@ func TestAdaptiveIpamServer_AllocatePodIP(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	server := &adaptiveIpamServer{store: storeInstance}
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -149,7 +153,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_Concurrency(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	server := &adaptiveIpamServer{store: storeInstance}
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -256,7 +260,7 @@ func TestAdaptiveIpamServer_DeallocatePodIP(t *testing.T) {
 	}
 	defer s.Close()
 
-	server := &adaptiveIpamServer{store: s, sockPath: "", releaseCooldown: 1 * time.Minute}
+	server := newAdaptiveIpamServer(logger, s, "", 1*time.Minute, 0)
 
 	network := "gke-pod-network"
 	cidr := "10.0.1.0/24"
@@ -325,7 +329,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_RetryOnDBError(t *testing.T) {
 		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	server := &adaptiveIpamServer{store: storeInstance, busyTimeout: 500 * time.Millisecond}
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 500*time.Millisecond)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -348,7 +352,9 @@ func TestAdaptiveIpamServer_AllocatePodIP_RetryOnDBError(t *testing.T) {
 	storeInstance.Close()
 
 	startTime := time.Now()
-	_, err = server.AllocatePodIP(context.Background(), req)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err = server.AllocatePodIP(ctx, req)
 	duration := time.Since(startTime)
 
 	if err == nil {
@@ -383,7 +389,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	server := &adaptiveIpamServer{store: storeInstance}
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
 
 	network := "test-network"
 
@@ -398,7 +404,9 @@ func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 	}
 
 	startTime := time.Now()
-	_, err = server.AllocatePodIP(context.Background(), req)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	_, err = server.AllocatePodIP(ctx, req)
 	duration := time.Since(startTime)
 
 	if err == nil {
@@ -596,6 +604,253 @@ func TestAdaptiveIpamServer_AllocatePodIP_DualStack(t *testing.T) {
 	}
 }
 
+func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
+	logger := klog.Background()
+
+	tests := []struct {
+		name         string
+		cancelCtx    bool
+		action       func(ctx context.Context, server *adaptiveIpamServer, storeInstance *store.Store, network string) error
+		wantErr      bool
+		errSubstring string
+		checkResp    func(t *testing.T, resp *adaptiveipam.AllocatePodIPResponse)
+	}{
+		{
+			name:      "Success (Regular Path)",
+			cancelCtx: false,
+			action: func(ctx context.Context, server *adaptiveIpamServer, storeInstance *store.Store, network string) error {
+				if err := storeInstance.AddCIDR(ctx, network, "10.0.1.0/24"); err != nil {
+					return err
+				}
+				server.onCIDRAdded(network, 256)
+				return nil
+			},
+			wantErr: false,
+			checkResp: func(t *testing.T, resp *adaptiveipam.AllocatePodIPResponse) {
+				if resp.Ipv4 == nil || resp.Ipv4.IpAddress == "" {
+					t.Errorf("Expected valid IP address, got response: %v", resp)
+				}
+			},
+		},
+		{
+			name:      "Context Cancelled Path",
+			cancelCtx: true,
+			action: func(ctx context.Context, server *adaptiveIpamServer, storeInstance *store.Store, network string) error {
+				return nil
+			},
+			wantErr:      true,
+			errSubstring: "timed out",
+			checkResp: func(t *testing.T, resp *adaptiveipam.AllocatePodIPResponse) {
+				if resp != nil {
+					t.Errorf("Expected nil response on cancellation, got: %v", resp)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			dbPath := filepath.Join(tempDir, "metis_server_dynamic_test.sqlite")
+
+			storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+			if err != nil {
+				t.Fatalf("Failed to create store: %v", err)
+			}
+			defer storeInstance.Close()
+
+			server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
+
+			nodeName := "test-node"
+			mockNNC := &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+			}
+			nncClient := nncfake.NewSimpleClientset(mockNNC)
+
+			monitorInstance := NewMonitor(MonitorConfig{
+				Logger:          logger,
+				NNCClient:       nncClient,
+				Store:           storeInstance,
+				NodeName:        nodeName,
+				MonitorInterval: 1 * time.Second,
+			})
+			server.monitor = monitorInstance
+
+			network := "test-network"
+			req := &adaptiveipam.AllocatePodIPRequest{
+				Network:      network,
+				PodName:      "test-pod",
+				PodNamespace: "default",
+				Ipv4Config: &adaptiveipam.IPConfig{
+					InterfaceName: "eth0",
+					ContainerId:   "test-container",
+				},
+			}
+
+			var ctx context.Context
+			var cancel context.CancelFunc
+
+			if tc.cancelCtx {
+				ctx, cancel = context.WithCancel(context.Background())
+			} else {
+				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+			}
+			defer cancel()
+
+			var wg sync.WaitGroup
+			wg.Add(1)
+			var resp *adaptiveipam.AllocatePodIPResponse
+			var allocErr error
+
+			go func() {
+				defer wg.Done()
+				resp, allocErr = server.AllocatePodIP(ctx, req)
+			}()
+
+			// Wait for the request to be enqueued and waiting in map
+			time.Sleep(100 * time.Millisecond)
+
+			// Verify that there is a pending request in map
+			server.requestsMu.RLock()
+			mapLen := len(server.requestsMap[network])
+			server.requestsMu.RUnlock()
+			if mapLen != 1 {
+				t.Errorf("Expected 1 pending request in requestsMap for network %s, got %d", network, mapLen)
+			}
+
+			if tc.cancelCtx {
+				cancel()
+			} else {
+				if err := tc.action(ctx, server, storeInstance, network); err != nil {
+					t.Fatalf("Test case action failed: %v", err)
+				}
+			}
+
+			// Wait for the goroutine to finish
+			wg.Wait()
+
+			if tc.wantErr {
+				if allocErr == nil {
+					t.Fatal("Expected AllocatePodIP to fail, but it succeeded")
+				}
+				if tc.errSubstring != "" && !strings.Contains(allocErr.Error(), tc.errSubstring) {
+					t.Errorf("Expected error to contain %q, got: %v", tc.errSubstring, allocErr)
+				}
+			} else {
+				if allocErr != nil {
+					t.Fatalf("AllocatePodIP failed: %v", allocErr)
+				}
+			}
+
+			if tc.checkResp != nil {
+				tc.checkResp(t, resp)
+			}
+
+			// Verify requestsMap is empty
+			server.requestsMu.RLock()
+			finalMapLen := len(server.requestsMap)
+			server.requestsMu.RUnlock()
+			if finalMapLen != 0 {
+				t.Errorf("Expected requestsMap to be empty (0 entries), but got %d entries", finalMapLen)
+			}
+		})
+	}
+}
+
+func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation_MultipleRequests(t *testing.T) {
+	logger := klog.Background()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_server_dynamic_multi_test.sqlite")
+
+	storeInstance, err := store.NewStore(context.Background(), logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 10*time.Second)
+
+	nodeName := "test-node"
+	mockNNC := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+	}
+	nncClient := nncfake.NewSimpleClientset(mockNNC)
+
+	monitorInstance := NewMonitor(MonitorConfig{
+		Logger:          logger,
+		NNCClient:       nncClient,
+		Store:           storeInstance,
+		NodeName:        nodeName,
+		MonitorInterval: 1 * time.Second,
+	})
+	server.monitor = monitorInstance
+
+	network := "test-network"
+	numRequests := 10
+
+	var wg sync.WaitGroup
+	wg.Add(numRequests)
+
+	resps := make([]*adaptiveipam.AllocatePodIPResponse, numRequests)
+	errs := make([]error, numRequests)
+
+	for i := 0; i < numRequests; i++ {
+		go func(index int) {
+			defer wg.Done()
+			req := &adaptiveipam.AllocatePodIPRequest{
+				Network:      network,
+				PodName:      fmt.Sprintf("test-pod-%d", index),
+				PodNamespace: "default",
+				Ipv4Config: &adaptiveipam.IPConfig{
+					InterfaceName:  "eth0",
+					ContainerId:    fmt.Sprintf("test-container-%d", index),
+					InitialPodCidr: "10.0.0.0/29",
+				},
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			resps[index], errs[index] = server.AllocatePodIP(ctx, req)
+		}(i)
+	}
+
+	// Wait for all requests to be enqueued and waiting in map
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify that there are pending requests in map (5 should be pending as 5 succeeded from initial block)
+	if server.getPendingRequestsCount(network) != 5 {
+		t.Errorf("Expected 5 pending requests, got %d", server.getPendingRequestsCount(network))
+	}
+
+	// Now simulate the controller adding a CIDR (/29 has 8 IPs)
+	err = storeInstance.AddCIDR(context.Background(), network, "10.0.1.0/29")
+	if err != nil {
+		t.Fatalf("Failed to add CIDR: %v", err)
+	}
+
+	// Wake up first 8 requests (matching the block size)
+	server.onCIDRAdded(network, 8)
+
+	// Wait for all to finish
+	wg.Wait()
+
+	successCount := 0
+	for i := 0; i < numRequests; i++ {
+		if errs[i] == nil && resps[i] != nil && resps[i].Ipv4 != nil && resps[i].Ipv4.IpAddress != "" {
+			successCount++
+		} else if errs[i] != nil {
+			t.Errorf("Request %d failed: %v", i, errs[i])
+		}
+	}
+
+	if successCount != numRequests {
+		t.Errorf("Expected %d successful allocations at the end, got %d", numRequests, successCount)
+	}
+
+	if server.getPendingRequestsCount(network) != 0 {
+		t.Errorf("Expected 0 pending requests left, got %d", server.getPendingRequestsCount(network))
+	}
+}
+
 func TestAdaptiveIpamServer_CheckPodIP(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()
@@ -686,7 +941,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_Validation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			req := &adaptiveipam.AllocatePodIPRequest{
-				Network:      "test-network",
+				Network:      "", // Empty network to test defaulting
 				PodName:      "test-pod",
 				PodNamespace: "default",
 			}
@@ -713,6 +968,9 @@ func TestAdaptiveIpamServer_AllocatePodIP_Validation(t *testing.T) {
 			if st.Code() != codes.InvalidArgument {
 				t.Errorf("Expected status code InvalidArgument, got %v", st.Code())
 			}
+			if req.Network != networkv1.DefaultPodNetworkName {
+				t.Errorf("Expected Network to be defaulted to %q, got %q", networkv1.DefaultPodNetworkName, req.Network)
+			}
 		})
 	}
 }
@@ -733,7 +991,7 @@ func TestAdaptiveIpamServer_DeallocatePodIP_Validation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			req := &adaptiveipam.DeallocatePodIPRequest{
-				Network:       "test-network",
+				Network:       "", // Empty network to test defaulting
 				InterfaceName: tc.interfaceName,
 				ContainerId:   tc.containerID,
 				PodName:       "test-pod",
@@ -750,6 +1008,9 @@ func TestAdaptiveIpamServer_DeallocatePodIP_Validation(t *testing.T) {
 			}
 			if st.Code() != codes.InvalidArgument {
 				t.Errorf("Expected status code InvalidArgument, got %v", st.Code())
+			}
+			if req.Network != networkv1.DefaultPodNetworkName {
+				t.Errorf("Expected Network to be defaulted to %q, got %q", networkv1.DefaultPodNetworkName, req.Network)
 			}
 		})
 	}
