@@ -1272,7 +1272,6 @@ func TestStore_AllocateIPv6_ExpansionScenarios(t *testing.T) {
 	})
 }
 
-
 func TestStore_AllocateIPv6_MultiCIDRExpansion(t *testing.T) {
 	logger := logr.Discard()
 	tempDir := t.TempDir()
@@ -1632,4 +1631,3 @@ func TestStore_ReleaseIP_TimezoneRobustness(t *testing.T) {
 		t.Errorf("Expected IP to be reused after cooldown expired, got %s instead of %s", ipReuse, ip)
 	}
 }
-
