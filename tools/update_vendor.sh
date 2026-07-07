@@ -38,11 +38,11 @@ echo -e ")" >> go.work
 # sync go.md of providers
 go work sync
 
-# update vendor/
-go work vendor
-
 # clean up unused dependencies
 (cd providers && go mod tidy)
 (cd test/e2e && go mod tidy)
 (cd metis && go mod tidy)
 go mod tidy
+
+# update vendor/
+go work vendor

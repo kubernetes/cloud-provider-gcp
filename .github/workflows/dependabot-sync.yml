@@ -15,7 +15,7 @@ jobs:
     if: github.actor == 'dependabot[bot]'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           
@@ -31,6 +31,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          shopt -s globstar
           git add go.work go.work.sum **/go.mod **/go.sum vendor/
           # Only commit if there are actual changes
           git diff --quiet && git diff --staged --quiet || git commit -m "chore: sync go workspace and vendor"

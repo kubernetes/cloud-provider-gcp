@@ -20,6 +20,7 @@ limitations under the License.
 package gce
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
@@ -50,6 +51,14 @@ var (
 		},
 		[]string{"status", "deny_firewall"},
 	)
+	ccmFeatureGateInfo = metrics.NewGaugeVec(
+		&metrics.GaugeOpts{
+			Name:           "ccm_feature_gate_info",
+			Help:           "Information about GKE Cloud Controller Manager feature gates.",
+			StabilityLevel: metrics.ALPHA,
+		},
+		[]string{"name", "enabled"},
+	)
 )
 
 // init registers L4 internal loadbalancer usage metrics.
@@ -58,6 +67,13 @@ func init() {
 	legacyregistry.MustRegister(l4ILBCount)
 	klog.V(3).Infof("Registering Service Controller loadbalancer usage metrics %v", l4NetLBCount)
 	legacyregistry.MustRegister(l4NetLBCount)
+	klog.V(3).Infof("Registering CCM feature gate info metrics %v", ccmFeatureGateInfo)
+	legacyregistry.MustRegister(ccmFeatureGateInfo)
+}
+
+// RecordFeatureGateMetrics records the status of feature gates at CCM startup.
+func RecordFeatureGateMetrics(enableFineGrainedLocks bool) {
+	ccmFeatureGateInfo.WithLabelValues("finegrainedlock", strconv.FormatBool(enableFineGrainedLocks)).Set(1.0)
 }
 
 // LoadBalancerMetrics is a cache that contains loadbalancer service resource
