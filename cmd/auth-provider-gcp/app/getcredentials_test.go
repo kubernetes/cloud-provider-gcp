@@ -21,36 +21,44 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1"
 )
 
 func TestValidateAuthFlow(t *testing.T) {
 	type FlagResult struct {
-		Name  string
-		Flow  string
-		Error error
+		Name    string
+		Options CredentialOptions
+		Error   error
 	}
 	tests := []FlagResult{
-		{Name: "validate gcr auth flow", Flow: gcrAuthFlow},
-		{Name: "validate docker-cfg auth flow option", Flow: dockerConfigAuthFlow},
-		{Name: "validate docker-cfg-url auth flow option", Flow: dockerConfigURLAuthFlow},
-		{Name: "bad auth flow option", Flow: "bad-flow", Error: &AuthFlowFlagError{flagValue: "bad-flow"}},
-		{Name: "empty auth flow option", Flow: "", Error: &AuthFlowFlagError{flagValue: ""}},
-		{Name: "case-sensitive auth flow", Flow: "Gcrauthflow", Error: &AuthFlowFlagError{flagValue: "Gcrauthflow"}},
+		{Name: "validate gcr auth flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow}},
+		{Name: "validate docker-cfg auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow}},
+		{Name: "validate docker-cfg-url auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow}},
+		{Name: "bad auth flow option", Options: CredentialOptions{AuthFlow: "bad-flow"}, Error: &AuthFlowFlagError{flagValue: "bad-flow"}},
+		{Name: "empty auth flow option", Options: CredentialOptions{AuthFlow: ""}, Error: &AuthFlowFlagError{flagValue: ""}},
+		{Name: "case-sensitive auth flow", Options: CredentialOptions{AuthFlow: "Gcrauthflow"}, Error: &AuthFlowFlagError{flagValue: "Gcrauthflow"}},
+		{Name: "identity-provider and project-id with gcr flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}},
+		{Name: "identity-provider and project-id with dockercfg flow", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}},
+		{Name: "identity-provider and project-id with dockercfg-url flow", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}},
+		{Name: "identity-provider without project-id with gcr flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, IdentityProvider: "https://container.googleapis.com/..."}, Error: ErrProjectIDRequired},
+		{Name: "identity-provider without project-id with dockercfg flow", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, IdentityProvider: "https://container.googleapis.com/..."}, Error: ErrProjectIDRequired},
+		{Name: "identity-provider without project-id with dockercfg-url flow", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, IdentityProvider: "https://container.googleapis.com/..."}, Error: ErrProjectIDRequired},
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			err := validateFlags(&CredentialOptions{AuthFlow: tc.Flow})
+			err := validateFlags(&tc.Options)
 			if tc.Error != nil {
 				if err == nil {
-					t.Fatalf("with flow %q did not get expected error %q", tc.Flow, err)
+					t.Fatalf("with options %+v did not get expected error %q", tc.Options, tc.Error)
 				}
 				if !errors.Is(err, tc.Error) {
-					t.Fatalf("with flow %q got unexpected error type %q (expected %q)", tc.Flow, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
+					t.Fatalf("with options %+v got unexpected error type %q (expected %q)", tc.Options, reflect.TypeOf(err), reflect.TypeOf(tc.Error))
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("with flow %q unexpected error %q", tc.Flow, err)
+				t.Fatalf("with options %+v unexpected error %q", tc.Options, err)
 			}
 		})
 	}
@@ -72,7 +80,7 @@ func TestProviderFromFlow(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			provider, err := providerFromFlow(tc.Flow)
+			provider, err := providerFromFlow(tc.Flow, credentialproviderapi.CredentialProviderRequest{}, CredentialOptions{AuthFlow: tc.Flow})
 			if tc.Error != nil {
 				if err == nil {
 					t.Fatalf("with flow %q did not get expected error %q", tc.Flow, err)
@@ -130,7 +138,7 @@ func TestFlowError(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			_, err := providerFromFlow(tc.Flow)
+			_, err := providerFromFlow(tc.Flow, credentialproviderapi.CredentialProviderRequest{}, CredentialOptions{AuthFlow: tc.Flow})
 			if !errors.Is(err, &tc.ExpectedError) {
 				t.Fatalf("did not get expected error %q (got %q instead", &tc.ExpectedError, err)
 			}
