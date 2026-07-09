@@ -90,27 +90,12 @@ func EnsureStateStore(c *Config) error {
 	}
 
 	// Grant storage.admin to the current account
-	var sa string
-	if metadata.OnGCE() {
-		sa, err = metadata.Email("default")
+	sa := os.Getenv("GCP_ACCOUNT")
+	if sa == "" {
+		var err error
+		sa, err = discoverAccount(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to get current account from metadata: %v", err)
-		}
-	} else {
-		// Fallback to gcloud if not on GCE, as a transition measure or for local dev
-		// But the goal is to remove gcloud. Let's try to get it from environment.
-		sa = os.Getenv("GCP_ACCOUNT")
-		if sa == "" {
-			// If we still can't find it, we might have to use gcloud as a last resort
-			// or just fail if that's the requirement.
-			// The issue says "Replace gcloud ... with client libraries"
-			// Let's try to get it from gcloud if we must, but the instruction is to replace it.
-			// Actually, if we are using GCP client libraries, the user might have set up ADC.
-			// Let's use a helper that tries to be smart.
-			sa, err = discoverAccount(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to discover current account: %v", err)
-			}
+			return fmt.Errorf("failed to discover current account: %v", err)
 		}
 	}
 
@@ -139,11 +124,9 @@ func EnsureStateStore(c *Config) error {
 }
 
 func discoverAccount(ctx context.Context) (string, error) {
-	if metadata.OnGCE() {
-		return metadata.Email("default")
-	}
-
-	// Try to get from Application Default Credentials
+	// 1. Try to get from Application Default Credentials (ADC) file first
+	// This ensures we get the real service account if GOOGLE_APPLICATION_CREDENTIALS is set,
+	// even when running on GCE (like GKE pods in CI/CD).
 	creds, err := google.FindDefaultCredentials(ctx)
 	if err == nil && len(creds.JSON) > 0 {
 		var config struct {
@@ -154,7 +137,27 @@ func discoverAccount(ctx context.Context) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("could not determine current account without gcloud or being on GCE (tried metadata and ADC)")
+	// 2. Try to get from GCE metadata server
+	if metadata.OnGCE() {
+		email, err := metadata.Email("default")
+		if err == nil && email != "" && strings.Contains(email, "@") {
+			return email, nil
+		}
+	}
+
+	// 3. Fallback to parsing GOOGLE_APPLICATION_CREDENTIALS environment variable directly
+	if credsFile := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); credsFile != "" {
+		if data, err := os.ReadFile(credsFile); err == nil {
+			var config struct {
+				ClientEmail string `json:"client_email"`
+			}
+			if err := json.Unmarshal(data, &config); err == nil && config.ClientEmail != "" {
+				return config.ClientEmail, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("could not determine current account (tried ADC, metadata, and GOOGLE_APPLICATION_CREDENTIALS)")
 }
 
 // EnsureSSHKey ensures that an SSH key exists for kOps.

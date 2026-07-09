@@ -17,6 +17,8 @@ limitations under the License.
 package kops
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,3 +66,37 @@ func TestGenerateSSHKey(t *testing.T) {
 		t.Errorf("public key missing comment: %s", string(pubBytes))
 	}
 }
+
+func TestDiscoverAccount(t *testing.T) {
+	// Create a temporary JSON file representing a service account key
+	tmpFile, err := os.CreateTemp("", "dummy-creds-*.json")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	dummySA := "test-discover-sa@dummy-project.iam.gserviceaccount.com"
+	jsonContent := fmt.Sprintf(`{"type": "service_account", "client_email": "%s"}`, dummySA)
+	if _, err := tmpFile.Write([]byte(jsonContent)); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	// Backup existing env var
+	origEnv := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+	defer os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", origEnv)
+
+	// Set env var to point to our dummy file
+	os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", tmpFile.Name())
+
+	ctx := context.Background()
+	sa, err := discoverAccount(ctx)
+	if err != nil {
+		t.Fatalf("discoverAccount failed: %v", err)
+	}
+
+	if sa != dummySA {
+		t.Errorf("expected discovered account to be %s, got %s", dummySA, sa)
+	}
+}
+
