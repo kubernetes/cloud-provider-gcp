@@ -627,12 +627,12 @@ func TestStore_ReleaseIPByOwner(t *testing.T) {
 	}
 
 	cooloff := 1 * time.Minute
-	count, err := s.ReleaseIPByOwner(context.Background(), network, containerID, interfaceName, cooloff)
+	releasedIPs, err := s.ReleaseIPByOwner(context.Background(), network, containerID, interfaceName, cooloff)
 	if err != nil {
 		t.Fatalf("ReleaseIPByOwner failed: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("Expected 1 IP to be released, got %d", count)
+	if len(releasedIPs) != 1 {
+		t.Errorf("Expected 1 IP to be released, got %d", len(releasedIPs))
 	}
 
 	err = s.db.QueryRow("SELECT allocated_ips FROM cidr_blocks WHERE id = ?", cidrBlockID).Scan(&allocatedIPs)
@@ -850,12 +850,12 @@ func TestStore_AllocateIPv6(t *testing.T) {
 	}
 
 	// Test Case 2: Release path
-	count, err := s.ReleaseIPByOwner(context.Background(), network, "container-1", "eth0", 0)
+	releasedIPs, err := s.ReleaseIPByOwner(context.Background(), network, "container-1", "eth0", 0)
 	if err != nil {
 		t.Fatalf("ReleaseIPByOwner failed: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("Expected 1 IP to be released, got %d", count)
+	if len(releasedIPs) != 1 {
+		t.Errorf("Expected 1 IP to be released, got %d", len(releasedIPs))
 	}
 
 	// Verify DB state after release
@@ -1095,8 +1095,8 @@ func TestStore_AllocateIPv6_Concurrency_AllocateAndRelease(t *testing.T) {
 			if err != nil {
 				t.Errorf("Releaser %d failed: %v", workerID, err)
 			}
-			if released != 1 {
-				t.Errorf("Releaser %d expected 1 released IP, got %d", workerID, released)
+			if len(released) != 1 {
+				t.Errorf("Releaser %d expected 1 released IP, got %d", workerID, len(released))
 			}
 		}(i)
 	}
@@ -1141,8 +1141,8 @@ func TestStore_AllocateIPv6_Concurrency_AllocateAndRelease(t *testing.T) {
 			if err != nil {
 				t.Errorf("Clean release for container-init-%d failed: %v", wID, err)
 			}
-			if released != 1 {
-				t.Errorf("Clean release for container-init-%d expected 1 released IP, got %d", wID, released)
+			if len(released) != 1 {
+				t.Errorf("Clean release for container-init-%d expected 1 released IP, got %d", wID, len(released))
 			}
 		}(i)
 	}
@@ -1157,8 +1157,8 @@ func TestStore_AllocateIPv6_Concurrency_AllocateAndRelease(t *testing.T) {
 			if err != nil {
 				t.Errorf("Clean release for container-new-%d failed: %v", wID, err)
 			}
-			if released != 1 {
-				t.Errorf("Clean release for container-new-%d expected 1 released IP, got %d", wID, released)
+			if len(released) != 1 {
+				t.Errorf("Clean release for container-new-%d expected 1 released IP, got %d", wID, len(released))
 			}
 		}(wID)
 	}
@@ -1501,12 +1501,12 @@ func TestStore_ReleaseIP_TimezoneRobustness(t *testing.T) {
 	// a future local time string against a larger current UTC time string,
 	// causing the cooldown to be immediately bypassed!
 	cooldownDuration := 1 * time.Second
-	count, err := s.ReleaseIPByOwner(context.Background(), network, containerID, interfaceName, cooldownDuration)
+	releasedIPs, err := s.ReleaseIPByOwner(context.Background(), network, containerID, interfaceName, cooldownDuration)
 	if err != nil {
 		t.Fatalf("ReleaseIPByOwner failed: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("Expected 1 released IP, got %d", count)
+	if len(releasedIPs) != 1 {
+		t.Fatalf("Expected 1 released IP, got %d", len(releasedIPs))
 	}
 
 	// Attempt to immediately allocate for a NEW container.
