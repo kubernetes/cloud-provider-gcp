@@ -38,7 +38,7 @@ github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/mtcontext
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/taskqueue
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfigcr
-# github.com/GoogleCloudPlatform/gke-networking-api v0.2.1-0.20260327205951-1d0cb5d74c02
+# github.com/GoogleCloudPlatform/gke-networking-api v0.2.1
 ## explicit; go 1.25.0
 github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1
 github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1
@@ -588,7 +588,7 @@ golang.org/x/oauth2/google/internal/stsexchange
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sync v0.21.0
+# golang.org/x/sync v0.22.0
 ## explicit; go 1.25.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/singleflight
@@ -662,7 +662,7 @@ golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
-# google.golang.org/api v0.287.1
+# google.golang.org/api v0.288.0
 ## explicit; go 1.25.0
 google.golang.org/api/compute/v0.alpha
 google.golang.org/api/compute/v0.beta
