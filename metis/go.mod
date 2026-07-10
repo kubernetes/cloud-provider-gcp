@@ -1,6 +1,6 @@
 module k8s.io/metis
 
-go 1.26.3
+go 1.26.5
 
 require (
 	github.com/containernetworking/cni v1.3.0

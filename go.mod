@@ -1,6 +1,6 @@
 module k8s.io/cloud-provider-gcp
 
-go 1.26.3
+go 1.26.5
 
 require (
 	github.com/evanphx/json-patch v5.9.0+incompatible
