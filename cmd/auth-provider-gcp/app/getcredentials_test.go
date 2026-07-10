@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
 	credentialproviderapi "k8s.io/kubelet/pkg/apis/credentialprovider/v1"
 )
 
@@ -32,18 +33,21 @@ func TestValidateAuthFlow(t *testing.T) {
 		Error   error
 	}
 	tests := []FlagResult{
-		{Name: "validate gcr auth flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow}},
-		{Name: "validate docker-cfg auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow}},
-		{Name: "validate docker-cfg-url auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow}},
+		{Name: "validate gcr auth flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, K8sType: gcpcredential.K8sTypeGKE}},
+		{Name: "validate docker-cfg auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, K8sType: gcpcredential.K8sTypeGKE}},
+		{Name: "validate docker-cfg-url auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, K8sType: gcpcredential.K8sTypeGKE}},
 		{Name: "bad auth flow option", Options: CredentialOptions{AuthFlow: "bad-flow"}, Error: &AuthFlowFlagError{flagValue: "bad-flow"}},
 		{Name: "empty auth flow option", Options: CredentialOptions{AuthFlow: ""}, Error: &AuthFlowFlagError{flagValue: ""}},
 		{Name: "case-sensitive auth flow", Options: CredentialOptions{AuthFlow: "Gcrauthflow"}, Error: &AuthFlowFlagError{flagValue: "Gcrauthflow"}},
-		{Name: "identity-provider and project-id with gcr flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}},
-		{Name: "identity-provider and project-id with dockercfg flow", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}},
-		{Name: "identity-provider and project-id with dockercfg-url flow", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}},
-		{Name: "identity-provider without project-id with gcr flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, IdentityProvider: "https://container.googleapis.com/..."}, Error: ErrProjectIDRequired},
-		{Name: "identity-provider without project-id with dockercfg flow", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, IdentityProvider: "https://container.googleapis.com/..."}, Error: ErrProjectIDRequired},
-		{Name: "identity-provider without project-id with dockercfg-url flow", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, IdentityProvider: "https://container.googleapis.com/..."}, Error: ErrProjectIDRequired},
+		{Name: "identity-provider and project-id with gcr flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}}},
+		{Name: "identity-provider and project-id with dockercfg flow", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}}},
+		{Name: "identity-provider and project-id with dockercfg-url flow", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}}},
+		{Name: "identity-provider without project-id with gcr flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/..."}}, Error: ErrProjectIDRequired},
+		{Name: "identity-provider without project-id with dockercfg flow", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/..."}}},
+		{Name: "identity-provider without project-id with dockercfg-url flow", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/..."}}},
+		{Name: "bad k8s type", Options: CredentialOptions{AuthFlow: gcrAuthFlow, K8sType: "bad-type"}, Error: &K8sTypeFlagError{flagValue: "bad-type"}},
+		{Name: "self-managed gcr flow with required flags", Options: CredentialOptions{AuthFlow: gcrAuthFlow, K8sType: gcpcredential.K8sTypeSelfManaged, WIConfig: gcpcredential.WIConfig{ProjectNumber: "123456", PoolID: "pool", ProviderID: "provider"}}},
+		{Name: "self-managed dockercfg flow without gcr-only flags", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, K8sType: gcpcredential.K8sTypeSelfManaged}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -64,7 +68,7 @@ func TestValidateAuthFlow(t *testing.T) {
 	}
 }
 
-func TestProviderFromFlow(t *testing.T) {
+func TestMakeProvider(t *testing.T) {
 	type ProviderResult struct {
 		Name  string
 		Flow  string
@@ -80,7 +84,7 @@ func TestProviderFromFlow(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			provider, err := providerFromFlow(tc.Flow, credentialproviderapi.CredentialProviderRequest{}, CredentialOptions{AuthFlow: tc.Flow})
+			provider, err := makeProvider(credentialproviderapi.CredentialProviderRequest{}, CredentialOptions{AuthFlow: tc.Flow})
 			if tc.Error != nil {
 				if err == nil {
 					t.Fatalf("with flow %q did not get expected error %q", tc.Flow, err)
@@ -138,7 +142,7 @@ func TestFlowError(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			_, err := providerFromFlow(tc.Flow, credentialproviderapi.CredentialProviderRequest{}, CredentialOptions{AuthFlow: tc.Flow})
+			_, err := makeProvider(credentialproviderapi.CredentialProviderRequest{}, CredentialOptions{AuthFlow: tc.Flow})
 			if !errors.Is(err, &tc.ExpectedError) {
 				t.Fatalf("did not get expected error %q (got %q instead", &tc.ExpectedError, err)
 			}

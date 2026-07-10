@@ -84,7 +84,7 @@ func TestContainerRegistry(t *testing.T) {
 			return url.Parse(server.URL + req.URL.Path)
 		},
 	})
-	provider := MakeRegistryProvider(transport, "", nil, "", "")
+	provider := MakeRegistryProvider(transport, credentialproviderapi.CredentialProviderRequest{}, gcpcredential.K8sTypeGKE, gcpcredential.WIConfig{})
 	response, err := GetResponse(credentialproviderapi.CredentialProviderRequest{Image: dummyImage}, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
@@ -199,13 +199,17 @@ func TestContainerRegistry_WorkloadIdentity(t *testing.T) {
 		},
 	})
 
-	provider := MakeRegistryProvider(transport, ksaToken, map[string]string{
-		"iam.gke.io/enable-wi-image-pull": "true",
-	}, "https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster", "my-project")
-
 	req := credentialproviderapi.CredentialProviderRequest{
-		Image: dummyImage,
+		Image:               dummyImage,
+		ServiceAccountToken: ksaToken,
+		ServiceAccountAnnotations: map[string]string{
+			gcpcredential.EnableWIImagePullAnnotation: "true",
+		},
 	}
+	provider := MakeRegistryProvider(transport, req, gcpcredential.K8sTypeGKE, gcpcredential.WIConfig{
+		IdentityProvider: "https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster",
+		ProjectID:        "my-project",
+	})
 
 	response, err := GetResponse(req, provider)
 	if err != nil {
@@ -343,7 +347,14 @@ func TestMakeRegistryProvider(t *testing.T) {
 		"test-annotation": "test-value",
 	}
 
-	provider := MakeRegistryProvider(transport, token, annotations, "test-provider", "test-project-123")
+	req := credentialproviderapi.CredentialProviderRequest{
+		ServiceAccountToken:       token,
+		ServiceAccountAnnotations: annotations,
+	}
+	provider := MakeRegistryProvider(transport, req, gcpcredential.K8sTypeGKE, gcpcredential.WIConfig{
+		IdentityProvider: "test-provider",
+		ProjectID:        "test-project-123",
+	})
 
 	if provider.KSAToken != token {
 		t.Errorf("expected KSAToken to be %q, got %q", token, provider.KSAToken)
@@ -354,11 +365,15 @@ func TestMakeRegistryProvider(t *testing.T) {
 		t.Errorf("expected ServiceAccountAnnotations to contain test-annotation=test-value, got %v", provider.ServiceAccountAnnotations)
 	}
 
-	if provider.IdentityProvider != "test-provider" {
-		t.Errorf("expected IdentityProvider to be %q, got %q", "test-provider", provider.IdentityProvider)
+	if provider.K8sType != gcpcredential.K8sTypeGKE {
+		t.Errorf("expected K8sType to be %q, got %q", gcpcredential.K8sTypeGKE, provider.K8sType)
 	}
 
-	if provider.ProjectID != "test-project-123" {
-		t.Errorf("expected ProjectID to be %q, got %q", "test-project-123", provider.ProjectID)
+	if provider.WIConfig.IdentityProvider != "test-provider" {
+		t.Errorf("expected IdentityProvider to be %q, got %q", "test-provider", provider.WIConfig.IdentityProvider)
+	}
+
+	if provider.WIConfig.ProjectID != "test-project-123" {
+		t.Errorf("expected ProjectID to be %q, got %q", "test-project-123", provider.WIConfig.ProjectID)
 	}
 }

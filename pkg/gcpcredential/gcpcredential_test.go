@@ -201,11 +201,12 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 					Client: httpClient,
 				},
 				UseRegistryFromImage: true,
+				K8sType:              K8sTypeGKE,
 			}
 			provider.KSAToken = tc.serviceAccountToken
 			provider.ServiceAccountAnnotations = tc.serviceAccountAnnotations
-			provider.IdentityProvider = tc.identityProvider
-			provider.ProjectID = tc.projectID
+			provider.WIConfig.IdentityProvider = tc.identityProvider
+			provider.WIConfig.ProjectID = tc.projectID
 
 			cfg := provider.Provide("us-central1-docker.pkg.dev/my-project/my-repo/my-image:latest")
 
@@ -227,6 +228,100 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 					t.Errorf("expected token %q not found in config: %+v", tc.expectedToken, cfg)
 				}
 			}
+		})
+	}
+}
+
+func TestProvide_SelfManagedWorkloadIdentity(t *testing.T) {
+	validToken := "dummyHeader.eyJpc3MiOiAic2VsZi1tYW5hZ2VkLWlzc3VlciJ9.dummySignature"
+	const federatedToken = "self-managed-federated-token"
+	const image = "us-central1-docker.pkg.dev/my-project/my-repo/my-image:latest"
+
+	tests := []struct {
+		name          string
+		wiConfig      WIConfig
+		wantAudience  string
+		wantToken     string
+		wantSTSCalled bool
+	}{
+		{
+			name: "success",
+			wiConfig: WIConfig{
+				ProjectNumber: "123456789",
+				PoolID:        "pool-id",
+				ProviderID:    "provider-id",
+			},
+			wantAudience:  "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/pool-id/providers/provider-id",
+			wantToken:     federatedToken,
+			wantSTSCalled: true,
+		},
+		{
+			name: "missing provider id fails before STS",
+			wiConfig: WIConfig{
+				ProjectNumber: "123456789",
+				PoolID:        "pool-id",
+			},
+			wantSTSCalled: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			stsCalled := false
+			httpClient := &http.Client{
+				Transport: &mockTransport{
+					roundTripFunc: func(req *http.Request) (*http.Response, error) {
+						if req.URL.Host != "sts.googleapis.com" || req.URL.Path != "/v1/token" {
+							t.Fatalf("unexpected request to %s", req.URL.String())
+						}
+
+						stsCalled = true
+						var stsReq stsTokenExchangeRequest
+						if err := json.NewDecoder(req.Body).Decode(&stsReq); err != nil {
+							t.Fatalf("failed to decode STS request: %v", err)
+						}
+						if stsReq.Audience != tc.wantAudience {
+							t.Fatalf("unexpected STS audience: got=%q, want=%q", stsReq.Audience, tc.wantAudience)
+						}
+						if stsReq.SubjectToken != validToken {
+							t.Fatalf("unexpected subject token: got=%q, want=%q", stsReq.SubjectToken, validToken)
+						}
+
+						return &http.Response{
+							StatusCode: http.StatusOK,
+							Body:       io.NopCloser(bytes.NewBufferString(`{"access_token": "` + federatedToken + `", "expires_in": 3600, "token_type": "Bearer"}`)),
+							Header:     make(http.Header),
+						}, nil
+					},
+				},
+			}
+
+			provider := &ContainerRegistryProvider{
+				MetadataProvider: MetadataProvider{
+					Client: httpClient,
+				},
+				UseRegistryFromImage: true,
+				K8sType:              K8sTypeSelfManaged,
+				KSAToken:             validToken,
+				WIConfig:             tc.wiConfig,
+			}
+
+			cfg := provider.Provide(image)
+			if stsCalled != tc.wantSTSCalled {
+				t.Fatalf("STS call mismatch: got=%t, want=%t", stsCalled, tc.wantSTSCalled)
+			}
+			if tc.wantToken == "" {
+				if len(cfg) != 0 {
+					t.Fatalf("expected empty config, got: %+v", cfg)
+				}
+				return
+			}
+			for _, entry := range cfg {
+				if entry.Password == tc.wantToken {
+					return
+				}
+			}
+			t.Fatalf("expected token %q not found in config: %+v", tc.wantToken, cfg)
 		})
 	}
 }
