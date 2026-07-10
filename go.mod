@@ -10,7 +10,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.36.0
-	google.golang.org/api v0.287.1
+	google.golang.org/api v0.288.0
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	k8s.io/api v0.36.2
@@ -31,7 +31,7 @@ require (
 
 require (
 	github.com/GoogleCloudPlatform/gke-enterprise-mt v0.1.0
-	github.com/GoogleCloudPlatform/gke-networking-api v0.2.1-0.20260327205951-1d0cb5d74c02
+	github.com/GoogleCloudPlatform/gke-networking-api v0.2.1
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.36.2
@@ -131,7 +131,7 @@ require (
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/term v0.44.0 // indirect
 	golang.org/x/text v0.38.0 // indirect

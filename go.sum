@@ -10,8 +10,8 @@ github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 h1:L/gRVlceqvL25
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/GoogleCloudPlatform/gke-enterprise-mt v0.1.0 h1:VbaMM0mWLVKE5z/UrGxdBHE5/MOR6rM4MRVb0c3UdIY=
 github.com/GoogleCloudPlatform/gke-enterprise-mt v0.1.0/go.mod h1:4OaeS6mKZtfsPHaDGOgZ3uz15sUO8KXl9tElNunV5Zc=
-github.com/GoogleCloudPlatform/gke-networking-api v0.2.1-0.20260327205951-1d0cb5d74c02 h1:wU4juqROYf7cVS+9NNJt55ivHVFZrDploNHZWP6TdHA=
-github.com/GoogleCloudPlatform/gke-networking-api v0.2.1-0.20260327205951-1d0cb5d74c02/go.mod h1:jC8/IazDeY3D4zTcEsZK6WiwbmqSTYjGNTZqXucxVVU=
+github.com/GoogleCloudPlatform/gke-networking-api v0.2.1 h1:aPxAtI5umQadCP2mfciTxGcmdVClM3fKg/zKQ6/uyZo=
+github.com/GoogleCloudPlatform/gke-networking-api v0.2.1/go.mod h1:jC8/IazDeY3D4zTcEsZK6WiwbmqSTYjGNTZqXucxVVU=
 github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0 h1:SvXmA79s+vlNlViAh6r+1rNODTOfkmZ7tIUEoTBNvC8=
 github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0/go.mod h1:+s19ozAkr5hJxWUFg5YB9XpGhArKdVUmtbItQicBYU0=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
@@ -266,8 +266,8 @@ golang.org/x/oauth2 v0.36.0/go.mod h1:YDBUJMTkDnJS+A4BP4eZBjCqtokkg1hODuPjwiGPO7
 golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
-golang.org/x/sync v0.21.0 h1:HLII4xRRTtCRkxYp4HNFF0Js/Og6q2i++KXbg0gHCwM=
-golang.org/x/sync v0.21.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
+golang.org/x/sync v0.22.0 h1:SZjpbeLmrCk4xhRSZFNZW5gFUeCeFgjekvI/+gfScek=
+golang.org/x/sync v0.22.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
 golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20190412213103-97732733099d/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
@@ -300,8 +300,8 @@ golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8T
 golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 gonum.org/v1/gonum v0.17.0 h1:VbpOemQlsSMrYmn7T2OUvQ4dqxQXU+ouZFQsZOx50z4=
 gonum.org/v1/gonum v0.17.0/go.mod h1:El3tOrEuMpv2UdMrbNlKEh9vd86bmQ6vqIcDwxEOc1E=
-google.golang.org/api v0.287.1 h1:LiyJx32VU3cwQfLchn/513qKhc25hq0pEANYJoWNnnI=
-google.golang.org/api v0.287.1/go.mod h1:lM2kYRzYUCBY91P9h6VF1PYmvhxii3O5hji37qRvIcY=
+google.golang.org/api v0.288.0 h1:glhO/J88obKP5I269W3hB73dvBKrjU56ZfmNlNXpgTU=
+google.golang.org/api v0.288.0/go.mod h1:lM2kYRzYUCBY91P9h6VF1PYmvhxii3O5hji37qRvIcY=
 google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7 h1:XzmzkmB14QhVhgnawEVsOn6OFsnpyxNPRY9QV01dNB0=
 google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7/go.mod h1:L43LFes82YgSonw6iTXTxXUX1OlULt4AQtkik4ULL/I=
 google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 h1:yQugLulqltosq0B/f8l4w9VryjV+N/5gcW0jQ3N8Qec=
