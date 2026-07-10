@@ -7,7 +7,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.36.0
-	google.golang.org/api v0.287.1
+	google.golang.org/api v0.288.0
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	k8s.io/api v0.36.2
@@ -20,7 +20,7 @@ require (
 
 require (
 	cloud.google.com/go/compute/metadata v0.9.0
-	golang.org/x/sync v0.21.0
+	golang.org/x/sync v0.22.0
 	k8s.io/cloud-provider v0.36.2
 )
 
