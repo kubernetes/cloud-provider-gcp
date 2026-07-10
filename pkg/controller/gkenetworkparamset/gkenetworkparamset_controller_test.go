@@ -48,11 +48,12 @@ const (
 	newPodRange1              = "new-pod-range1"
 	newPodRange2              = "new-pod-range2"
 	defaultPodCIDR            = "10.100.0.0/16"
+	defaultPodIPv6CIDR        = "2600:1900:4000:fd1::/64"
 	newPodCIDR1               = "10.101.0.0/16"
 	newPodCIDR2               = "10.102.0.0/16"
 )
 
-func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParamSetController {
+func setupGKENetworkParamSetController(ctx context.Context, clusterCIDR string) *testGKENetworkParamSetController {
 	fakeNetworking := networkfake.NewSimpleClientset()
 	nwInfFactory := networkinformers.NewSharedInformerFactory(fakeNetworking, 0*time.Second)
 	nwInformer := nwInfFactory.Networking().V1().Networks()
@@ -65,7 +66,7 @@ func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParam
 	fakeInformerFactory := informers.NewSharedInformerFactory(&fake.Clientset{}, 0*time.Second)
 	fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
 
-	_, ipnet, _ := net.ParseCIDR(defaultPodCIDR)
+	_, ipnet, _ := net.ParseCIDR(clusterCIDR)
 
 	controller := NewGKENetworkParamSetController(
 		fakeNodeInformer,
@@ -111,7 +112,14 @@ func (testVals *testGKENetworkParamSetController) runGKENetworkParamSetControlle
 func TestControllerRuns(t *testing.T) {
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	testVals := setupGKENetworkParamSetController(ctx)
+	testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
+	testVals.runGKENetworkParamSetController(ctx)
+}
+
+func TestControllerRunsIPv6Only(t *testing.T) {
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	testVals := setupGKENetworkParamSetController(ctx, defaultPodIPv6CIDR)
 	testVals.runGKENetworkParamSetController(ctx)
 }
 
@@ -119,7 +127,7 @@ func TestAddValidParamSetSingleSecondaryRange(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	testVals := setupGKENetworkParamSetController(ctx)
+	testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
 
 	subnetName := "test-subnet"
 	subnetSecondaryRangeName := "test-secondary-range"
@@ -183,7 +191,7 @@ func TestAddValidParamSetMultipleSecondaryRange(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	testVals := setupGKENetworkParamSetController(ctx)
+	testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
 
 	subnetName := "test-subnet"
 	subnetSecondaryRangeName1 := "test-secondary-range-1"
@@ -254,7 +262,7 @@ func TestAddInvalidParamSetNoMatchingSecondaryRange(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	testVals := setupGKENetworkParamSetController(ctx)
+	testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
 
 	subnetName := "test-subnet"
 	subnetKey := meta.RegionalKey(subnetName, testVals.clusterValues.Region)
@@ -310,7 +318,7 @@ func TestParamSetPartialSecondaryRange(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	testVals := setupGKENetworkParamSetController(ctx)
+	testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
 
 	subnetName := "test-subnet"
 	subnetSecondaryRangeName1 := "test-secondary-range-1"
@@ -374,7 +382,7 @@ func TestValidParamSetSubnetRange(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	testVals := setupGKENetworkParamSetController(ctx)
+	testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
 
 	subnetName := "test-subnet"
 	subnetCidr := "10.0.0.0/24"
@@ -427,7 +435,7 @@ func TestAddAndRemoveFinalizerToGKENetworkParamSet_NoNetworkName(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	testVals := setupGKENetworkParamSetController(ctx)
+	testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
 
 	testVals.runGKENetworkParamSetController(ctx)
 
@@ -854,7 +862,7 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			g := gomega.NewGomegaWithT(t)
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
-			testVals := setupGKENetworkParamSetController(ctx)
+			testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
 
 			// Create subnet
 			subnet := &compute.Subnetwork{
@@ -1170,7 +1178,7 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 			g := gomega.NewGomegaWithT(t)
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
-			testVals := setupGKENetworkParamSetController(ctx)
+			testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
 
 			subnetSecondaryCidr := "10.0.0.1/24"
 			subnetKey := meta.RegionalKey(subnetName, testVals.clusterValues.Region)
@@ -1255,7 +1263,7 @@ func TestHandleGKENetworkParamSetDelete_NetworkPresent(t *testing.T) {
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
 
-			testVals := setupGKENetworkParamSetController(ctx)
+			testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
 
 			subnetName := "test-subnet"
 			subnet := &compute.Subnetwork{
@@ -1435,7 +1443,7 @@ func TestPopulateDesiredDefaultParamSet(t *testing.T) {
 			g := gomega.NewGomegaWithT(t)
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
-			testVals := setupGKENetworkParamSetController(ctx)
+			testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
 
 			subnetKey := meta.RegionalKey(defaultTestSubnetworkName, testVals.clusterValues.Region)
 			subnet := &compute.Subnetwork{
@@ -1570,7 +1578,7 @@ func TestSyncDefaultPodRanges(t *testing.T) {
 			g := gomega.NewGomegaWithT(t)
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
-			testVals := setupGKENetworkParamSetController(ctx)
+			testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
 
 			subnetKey := meta.RegionalKey(defaultTestSubnetworkName, testVals.clusterValues.Region)
 			subnet := &compute.Subnetwork{
