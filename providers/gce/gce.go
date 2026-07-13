@@ -425,8 +425,6 @@ func readConfig(reader io.Reader) (*ConfigFile, error) {
 
 func GenerateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err error) {
 	cloudConfig = &CloudConfig{}
-	// By default, fetch token from GCE metadata server
-	cloudConfig.TokenSource = google.ComputeTokenSource("")
 	cloudConfig.UseMetadataServer = true
 	cloudConfig.AlphaFeatureGate = NewAlphaFeatureGate([]string{})
 	if configFile != nil {
@@ -438,14 +436,8 @@ func GenerateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 			cloudConfig.ContainerAPIEndpoint = configFile.Global.ContainerAPIEndpoint
 		}
 
-		if configFile.Global.TokenURL != "" {
-			// if tokenURL is nil, set tokenSource to nil. This will force the OAuth client to fall
-			// back to use DefaultTokenSource. This allows running gceCloud remotely.
-			if configFile.Global.TokenURL == "nil" {
-				cloudConfig.TokenSource = nil
-			} else {
-				cloudConfig.TokenSource = NewAltTokenSource(configFile.Global.TokenURL, configFile.Global.TokenBody)
-			}
+		if configFile.Global.TokenURL != "" && configFile.Global.TokenURL != "nil" {
+			cloudConfig.TokenSource = NewAltTokenSource(configFile.Global.TokenURL, configFile.Global.TokenBody)
 		}
 
 		cloudConfig.NodeTags = configFile.Global.NodeTags
