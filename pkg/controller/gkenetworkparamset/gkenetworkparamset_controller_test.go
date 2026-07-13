@@ -526,6 +526,7 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 		name              string
 		paramSet          *networkv1.GKENetworkParamSet
 		subnet            *compute.Subnetwork
+		isIPv6OnlyCluster bool
 		expectedCondition metav1.Condition
 	}{
 		{
@@ -869,6 +870,68 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 				Reason: "GNPConfigInvalid",
 			},
 		},
+		{
+			name: "IPv4/Dual-stack cluster rejects unset GNP.Spec.PodIPv4Ranges for Default Network",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: networkv1.DefaultPodNetworkName,
+					Labels: map[string]string{
+						"addonmanager.kubernetes.io/mode": "Reconcile",
+					},
+					Annotations: map[string]string{},
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:       "test-vpc",
+					VPCSubnet: "test-subnet",
+				},
+			},
+			isIPv6OnlyCluster: false,
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionFalse,
+				Reason: "SecondaryRangeAndDeviceModeUnspecified",
+			},
+		},
+		{
+			name: "IPv6-only cluster allows unset GNP.Spec.PodIPv4Ranges for Default Network",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        networkv1.DefaultPodNetworkName,
+					Labels:      map[string]string{},
+					Annotations: map[string]string{},
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:       defaultTestNetworkName,
+					VPCSubnet: "test-subnet",
+				},
+			},
+			isIPv6OnlyCluster: true,
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionTrue,
+				Reason: "GNPReady",
+			},
+		},
+		{
+			name: "IPv6-only cluster rejects unset GNP.Spec.PodIPv4Ranges for custom Network",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "custom-network",
+					Labels:      map[string]string{},
+					Annotations: map[string]string{},
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:       defaultTestNetworkName,
+					VPCSubnet: "test-subnet",
+				},
+			},
+			isIPv6OnlyCluster: true,
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionFalse,
+				Reason: "SecondaryRangeAndDeviceModeUnspecified",
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -876,7 +939,12 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			g := gomega.NewGomegaWithT(t)
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
-			testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
+
+			cidrForEnv := defaultPodCIDR
+			if test.isIPv6OnlyCluster {
+				cidrForEnv = defaultPodIPv6CIDR
+			}
+			testVals := setupGKENetworkParamSetController(ctx, cidrForEnv)
 
 			// Create subnet
 			subnet := &compute.Subnetwork{
@@ -890,6 +958,15 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			}
 			subnetKey := meta.RegionalKey(subnet.Name, testVals.clusterValues.Region)
 			err := testVals.cloud.Compute().Subnetworks().Insert(ctx, subnetKey, subnet)
+			if err != nil {
+				t.Error(err)
+			}
+
+			defaultSubnet := &compute.Subnetwork{
+				Name: defaultTestSubnetworkName,
+			}
+			defaultSubnetKey := meta.RegionalKey(defaultSubnet.Name, testVals.clusterValues.Region)
+			err = testVals.cloud.Compute().Subnetworks().Insert(ctx, defaultSubnetKey, defaultSubnet)
 			if err != nil {
 				t.Error(err)
 			}
@@ -974,6 +1051,7 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 		name              string
 		network           *networkv1.Network
 		paramSet          *networkv1.GKENetworkParamSet
+		isIPv6OnlyCluster bool
 		expectedCondition metav1.Condition
 	}{
 		{
@@ -1186,13 +1264,75 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 				Reason: "GNPParamsReady",
 			},
 		},
+		{
+			name: "IPv6-only cluster allows L3NetworkType with unset GNP.Spec.PodIPv4Ranges for Default Network",
+			network: &networkv1.Network{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: networkv1.DefaultPodNetworkName,
+				},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.L3NetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: networkv1.DefaultPodNetworkName, Kind: gnpKind},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        networkv1.DefaultPodNetworkName,
+					Labels:      map[string]string{},
+					Annotations: map[string]string{},
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:       nonDefaultTestNetworkName,
+					VPCSubnet: subnetName,
+				},
+			},
+			isIPv6OnlyCluster: true,
+			expectedCondition: metav1.Condition{
+				Type:   "ParamsReady",
+				Status: metav1.ConditionTrue,
+				Reason: "GNPParamsReady",
+			},
+		},
+		{
+			name: "IPv6-only cluster rejects L3NetworkType with unset GNP.Spec.PodIPv4Ranges for custom Network",
+			network: &networkv1.Network{
+				ObjectMeta: metav1.ObjectMeta{Name: networkName},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.L3NetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: gkeNetworkParamSetName, Kind: gnpKind},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        gkeNetworkParamSetName,
+					Labels:      map[string]string{},
+					Annotations: map[string]string{},
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:        nonDefaultTestNetworkName,
+					VPCSubnet:  subnetName,
+					DeviceMode: networkv1.NetDevice,
+				},
+			},
+			isIPv6OnlyCluster: true,
+			expectedCondition: metav1.Condition{
+				Type:   "ParamsReady",
+				Status: metav1.ConditionFalse,
+				Reason: "L3SecondaryMissing",
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			g := gomega.NewGomegaWithT(t)
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
-			testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
+
+			cidrForEnv := defaultPodCIDR
+			if test.isIPv6OnlyCluster {
+				cidrForEnv = defaultPodIPv6CIDR
+			}
+			testVals := setupGKENetworkParamSetController(ctx, cidrForEnv)
 
 			subnetSecondaryCidr := "10.0.0.1/24"
 			subnetKey := meta.RegionalKey(subnetName, testVals.clusterValues.Region)
@@ -1205,8 +1345,16 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 					},
 				},
 			}
-
 			err := testVals.cloud.Compute().Subnetworks().Insert(ctx, subnetKey, subnet)
+			if err != nil {
+				t.Error(err)
+			}
+
+			defaultSubnet := &compute.Subnetwork{
+				Name: defaultTestSubnetworkName,
+			}
+			defaultSubnetKey := meta.RegionalKey(defaultSubnet.Name, testVals.clusterValues.Region)
+			err = testVals.cloud.Compute().Subnetworks().Insert(ctx, defaultSubnetKey, defaultSubnet)
 			if err != nil {
 				t.Error(err)
 			}
@@ -1415,10 +1563,13 @@ func (testVals *testGKENetworkParamSetController) doesGNPFinalizerExist(ctx cont
 func TestPopulateDesiredDefaultParamSet(t *testing.T) {
 	desiredDefaultParamSet := newL3GNP(networkv1.DefaultPodNetworkName, []string{defaultPodRange}, nil)
 
+	ipv6DesiredDefaultParamSet := newL3GNP(networkv1.DefaultPodNetworkName, nil, nil)
+
 	tests := []struct {
-		name            string
-		defaultParamSet *networkv1.GKENetworkParamSet
-		wantParamSet    *networkv1.GKENetworkParamSet
+		name              string
+		defaultParamSet   *networkv1.GKENetworkParamSet
+		wantParamSet      *networkv1.GKENetworkParamSet
+		isIPv6OnlyCluster bool
 	}{
 		{
 			name:            "not populate if addon is reconcile mode",
@@ -1450,6 +1601,12 @@ func TestPopulateDesiredDefaultParamSet(t *testing.T) {
 			defaultParamSet: newL3GNP(networkv1.DefaultPodNetworkName, []string{defaultPodRange}, &gnpOptions{testAddonMode: ""}),
 			wantParamSet:    desiredDefaultParamSet,
 		},
+		{
+			name:              "ipv6-only cluster ignores and clears PodIPv4Ranges",
+			defaultParamSet:   newL3GNP(networkv1.DefaultPodNetworkName, []string{defaultPodRange}, nil),
+			wantParamSet:      ipv6DesiredDefaultParamSet,
+			isIPv6OnlyCluster: true,
+		},
 	}
 
 	for _, test := range tests {
@@ -1457,7 +1614,12 @@ func TestPopulateDesiredDefaultParamSet(t *testing.T) {
 			g := gomega.NewGomegaWithT(t)
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
-			testVals := setupGKENetworkParamSetController(ctx, defaultPodCIDR)
+
+			cidrForEnv := defaultPodCIDR
+			if test.isIPv6OnlyCluster {
+				cidrForEnv = defaultPodIPv6CIDR
+			}
+			testVals := setupGKENetworkParamSetController(ctx, cidrForEnv)
 
 			subnetKey := meta.RegionalKey(defaultTestSubnetworkName, testVals.clusterValues.Region)
 			subnet := &compute.Subnetwork{
