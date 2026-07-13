@@ -462,7 +462,7 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 		}
 	}
 
-	cidrs := extractRelevantCidrs(subnet, params)
+	cidrs := extractRelevantCidrs(subnet, params, c.isIPv6OnlyCluster)
 	params.Status.PodCIDRs = &networkv1.NetworkRanges{
 		CIDRBlocks: cidrs,
 	}
@@ -579,24 +579,38 @@ func (c *Controller) cleanupGNPDeletion(ctx context.Context, gnpName string) err
 	return nil
 }
 
-// extractRelevantCidrs returns the CIDRS of the named ranges in paramset
-func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1.GKENetworkParamSet) []string {
+// extractRelevantCidrs returns the appropriate IPv4 and IPv6 CIDR blocks from the subnet based on the paramset configuration (including primary, secondary, and IPv6 prefixes)
+func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1.GKENetworkParamSet, isIPv6OnlyCluster bool) []string {
 	cidrs := []string{}
 
-	// use the subnet cidr if there are no secondary ranges specified by user in params, this can only happen if the GNP is using deviceMode
-	if !hasRangeNames(paramset) {
-		cidrs = append(cidrs, subnet.IpCidrRange)
-		return cidrs
-	}
-
-	// get secondary ranges' corresponding cidrs
-	for _, sr := range subnet.SecondaryIpRanges {
-		if !paramSetIncludesRange(paramset, sr.RangeName) {
-			continue
+	canHaveIpv6OnlyNetworksOnly := isIPv6OnlyCluster && paramset.Name == networkv1.DefaultPodNetworkName
+	if !canHaveIpv6OnlyNetworksOnly {
+		if hasRangeNames(paramset) {
+			// get secondary ranges' corresponding cidrs
+			for _, sr := range subnet.SecondaryIpRanges {
+				if paramSetIncludesRange(paramset, sr.RangeName) {
+					cidrs = append(cidrs, sr.IpCidrRange)
+				}
+			}
+		} else {
+			// use the subnet cidr if there are no secondary ranges specified by user in params,
+			// this can only happen if the GNP is using deviceMode.
+			if subnet.IpCidrRange != "" {
+				cidrs = append(cidrs, subnet.IpCidrRange)
+			}
 		}
-
-		cidrs = append(cidrs, sr.IpCidrRange)
 	}
+
+	// add IPv6 ranges if present
+	if subnet.InternalIpv6Prefix != "" {
+		cidrs = append(cidrs, subnet.InternalIpv6Prefix)
+	} else if subnet.ExternalIpv6Prefix != "" {
+		cidrs = append(cidrs, subnet.ExternalIpv6Prefix)
+	} else if subnet.Ipv6CidrRange != "" {
+		// legacy subnet case
+		cidrs = append(cidrs, subnet.Ipv6CidrRange)
+	}
+
 	return cidrs
 }
 
