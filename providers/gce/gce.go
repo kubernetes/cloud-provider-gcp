@@ -21,6 +21,7 @@ package gce
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"runtime"
@@ -524,9 +525,49 @@ func GenerateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 	return cloudConfig, err
 }
 
+// clientOptions returns GCP API client options for authentication.
+// A custom TokenSource set in the config, is used directly.
+// Otherwise, FindDefaultCredentials discovers credentials.
+// WithCredentialsJSON is preferred when available as it uses
+// self-signed JWTs, which may be necessary for custom universe domains.
+func clientOptions(ts oauth2.TokenSource) ([]option.ClientOption, error) {
+	creds, err := google.FindDefaultCredentials(context.Background(), compute.CloudPlatformScope)
+
+	var opts []option.ClientOption
+	switch {
+	case ts != nil:
+		opts = []option.ClientOption{option.WithTokenSource(ts)}
+	case err != nil:
+		return nil, fmt.Errorf("failed to find default credentials: %w", err)
+	case len(creds.JSON) > 0:
+		// WithAuthCredentialsJSON takes a credentials type argument to allow
+		// restricting which credential types are accepted from external sources.
+		// In this case, there are no restrictions so we simply pass the type through.
+		var f struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(creds.JSON, &f); err != nil {
+			return nil, fmt.Errorf("failed to parse credentials JSON: %w", err)
+		}
+		opts = []option.ClientOption{option.WithAuthCredentialsJSON(option.CredentialsType(f.Type), creds.JSON)}
+	default:
+		opts = []option.ClientOption{option.WithCredentials(creds)}
+	}
+
+	if creds != nil {
+		if ud, err := creds.GetUniverseDomain(); err == nil {
+			opts = append(opts, option.WithUniverseDomain(ud))
+		} else {
+			klog.Warningf("Failed to get universe domain from credentials: %v", err)
+		}
+	}
+
+	return opts, nil
+}
+
 // CreateGCECloud creates a Cloud object using the specified parameters.
 // If no networkUrl is specified, loads networkName via rest call.
-// If no tokenSource is specified, uses oauth2.DefaultTokenSource.
+// If no tokenSource is specified, uses FindDefaultCredentials.
 // If managedZones is nil / empty all zones in the region will be managed.
 func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 	// If ManagedZones was empty at startup, it means the cluster was configured
@@ -546,19 +587,24 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		config.NetworkProjectID = config.ProjectID
 	}
 
-	service, err := compute.NewService(context.Background(), option.WithTokenSource(config.TokenSource))
+	clientOpts, err := clientOptions(config.TokenSource)
+	if err != nil {
+		return nil, err
+	}
+
+	service, err := compute.NewService(context.Background(), clientOpts...)
 	if err != nil {
 		return nil, err
 	}
 	service.UserAgent = userAgent
 
-	serviceBeta, err := computebeta.NewService(context.Background(), option.WithTokenSource(config.TokenSource))
+	serviceBeta, err := computebeta.NewService(context.Background(), clientOpts...)
 	if err != nil {
 		return nil, err
 	}
 	serviceBeta.UserAgent = userAgent
 
-	serviceAlpha, err := computealpha.NewService(context.Background(), option.WithTokenSource(config.TokenSource))
+	serviceAlpha, err := computealpha.NewService(context.Background(), clientOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +622,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		}
 	}
 
-	containerService, err := container.NewService(context.Background(), option.WithTokenSource(config.TokenSource))
+	containerService, err := container.NewService(context.Background(), clientOpts...)
 	if err != nil {
 		return nil, err
 	}
