@@ -965,20 +965,20 @@ func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, 
 
 // UpdateInstanceAliasIPRanges updates the alias IP ranges for a specific network interface of an instance.
 // It takes the providerID, the target network URL, and the additions/removals.
-// It returns the list of all active alias IP CIDRs on that network interface after the update.
+// It returns an error if the mutation fails.
 func (g *Cloud) UpdateInstanceAliasIPRanges(
 	ctx context.Context,
 	providerID string,
 	networkURL string,
 	additions []string, // e.g. ["/28"]
 	removals []string,  // e.g. ["10.100.0.0/28"]
-) ([]string, error) {
+) error {
 	klog.V(2).Infof("UpdateInstanceAliasIPRanges: providerID=%q, networkURL=%q, additions=%v, removals=%v", providerID, networkURL, additions, removals)
 
 	// 1. Split providerID to get project, zone, name
 	project, zone, name, err := splitProviderID(providerID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	name = canonicalizeInstanceName(name)
 
@@ -990,7 +990,7 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone))
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get GCE instance %q in zone %q: %w", name, zone, err)
+		return fmt.Errorf("failed to get GCE instance %q in zone %q: %w", name, zone, err)
 	}
 
 	// 3. Find the target network interface by Network URL
@@ -1003,7 +1003,7 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 	}
 
 	if targetIface == nil {
-		return nil, fmt.Errorf("network interface for network %q not found on instance %q", networkURL, name)
+		return fmt.Errorf("network interface for network %q not found on instance %q", networkURL, name)
 	}
 
 	// 4. Construct the new AliasIpRanges list
@@ -1043,36 +1043,30 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate)
 	}
 	if err = mc.Observe(err); err != nil {
-		return nil, fmt.Errorf("failed to update network interface %q on instance %q: %w", targetIface.Name, name, err)
+		return fmt.Errorf("failed to update network interface %q on instance %q: %w", targetIface.Name, name, err)
 	}
 
-	// 7. Retrieve the updated instance to return the actual allocated CIDRs
-	var updatedInstance *computebeta.Instance
+	return nil
+}
+
+// GetInstanceNetworkInterfaces retrieves the network interfaces for a given instance.
+// It is used by the controller's loading cache to fetch fresh GCE state.
+func (g *Cloud) GetInstanceNetworkInterfaces(ctx context.Context, providerID string) ([]*computebeta.NetworkInterface, error) {
+	project, zone, name, err := splitProviderID(providerID)
+	if err != nil {
+		return nil, err
+	}
+	name = canonicalizeInstanceName(name)
+
+	var instance *computebeta.Instance
 	if g.projectFromNodeProviderID {
-		updatedInstance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
 	} else {
-		updatedInstance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone))
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone))
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get updated GCE instance %q after mutation: %w", name, err)
+		return nil, fmt.Errorf("failed to get GCE instance %q in zone %q: %w", name, zone, err)
 	}
 
-	// Find the interface again and extract the CIDRs
-	var updatedIface *computebeta.NetworkInterface
-	for _, iface := range updatedInstance.NetworkInterfaces {
-		if iface.Name == targetIface.Name {
-			updatedIface = iface
-			break
-		}
-	}
-	if updatedIface == nil {
-		return nil, fmt.Errorf("updated network interface %q not found on instance %q", targetIface.Name, name)
-	}
-
-	actualCIDRs := []string{}
-	for _, r := range updatedIface.AliasIpRanges {
-		actualCIDRs = append(actualCIDRs, r.IpCidrRange)
-	}
-
-	return actualCIDRs, nil
+	return instance.NetworkInterfaces, nil
 }

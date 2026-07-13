@@ -19,8 +19,8 @@ package dynamicpodip
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
+	"time"
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
@@ -29,10 +29,12 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	compute "google.golang.org/api/compute/v1"
 	computebeta "google.golang.org/api/compute/v0.beta"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	clientgotesting "k8s.io/client-go/testing"
+	clocktesting "k8s.io/utils/clock/testing"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 )
 
@@ -54,6 +56,7 @@ type testFixture struct {
 	informerFactory nncinformers.SharedInformerFactory
 	fakeGCE         *gce.Cloud
 	controller      *Controller
+	fakeClock       *clocktesting.FakeClock
 }
 
 func newTestFixture(t *testing.T) *testFixture {
@@ -87,6 +90,11 @@ func newTestFixture(t *testing.T) *testFixture {
 		fakeGCE,
 	)
 
+	// Initialize fake clock and inject it into the controller
+	initialTime := time.Date(2026, 6, 26, 9, 0, 0, 0, time.UTC)
+	fakeClock := clocktesting.NewFakeClock(initialTime)
+	controller.SetClock(fakeClock)
+
 	return &testFixture{
 		t:               t,
 		kubeClient:      kubeClient,
@@ -94,6 +102,7 @@ func newTestFixture(t *testing.T) *testFixture {
 		informerFactory: informerFactory,
 		fakeGCE:         fakeGCE,
 		controller:      controller,
+		fakeClock:       fakeClock,
 	}
 }
 
@@ -138,7 +147,7 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 			Allocations: []nncv1.Allocation{
 				{
 					Network: "default",
-					Pods:    48, // Requests 48 pods -> should result in 2x /27 blocks (64 IPs)
+					Pods:    48, // Requests 48 pods -> should result in 3x /28 blocks (48 IPs)
 				},
 			},
 		},
@@ -164,11 +173,11 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 	}
 
 	iface := updatedInstance.NetworkInterfaces[0]
-	// We expect 2 alias IP ranges added (each of size /27)
-	if len(iface.AliasIpRanges) != 2 {
-		t.Errorf("Expected 2 alias IP ranges, got %d: %v", len(iface.AliasIpRanges), iface.AliasIpRanges)
+	// We expect 3 alias IP ranges added (each of size /28)
+	if len(iface.AliasIpRanges) != 3 {
+		t.Errorf("Expected 3 alias IP ranges, got %d: %v", len(iface.AliasIpRanges), iface.AliasIpRanges)
 	}
-	expectedCIDRs := []string{"10.100.0.0/27", "10.100.1.0/27"}
+	expectedCIDRs := []string{"10.100.0.0/28", "10.100.1.0/28", "10.100.2.0/28"}
 	for i, r := range iface.AliasIpRanges {
 		if i < len(expectedCIDRs) && r.IpCidrRange != expectedCIDRs[i] {
 			t.Errorf("Expected alias IP range %q, got %q", expectedCIDRs[i], r.IpCidrRange)
@@ -181,8 +190,8 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 		t.Fatalf("Failed to get updated NodeNetworkConfig: %v", err)
 	}
 
-	if len(updatedNNC.Status.PodCIDRs) != 2 {
-		t.Errorf("Expected 2 PodCIDRs in status, got %d: %v", len(updatedNNC.Status.PodCIDRs), updatedNNC.Status.PodCIDRs)
+	if len(updatedNNC.Status.PodCIDRs) != 3 {
+		t.Errorf("Expected 3 PodCIDRs in status, got %d: %v", len(updatedNNC.Status.PodCIDRs), updatedNNC.Status.PodCIDRs)
 	}
 	for i, pc := range updatedNNC.Status.PodCIDRs {
 		if i < len(expectedCIDRs) && pc.CIDR != expectedCIDRs[i] {
@@ -210,8 +219,8 @@ func TestReconcile_RemoveAliasIP(t *testing.T) {
 	defer close(stopCh)
 	f.run(ctx, stopCh)
 
-	cidrToRemove := "10.100.0.0/27"
-	cidrToKeep := "10.100.1.0/27"
+	cidrToRemove := "10.100.0.0/28"
+	cidrToKeep := "10.100.1.0/28"
 
 	// 1. Create a fake GCE instance with 2 alias IPs
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
@@ -314,7 +323,7 @@ func TestReconcile_NoOp(t *testing.T) {
 	defer close(stopCh)
 	f.run(ctx, stopCh)
 
-	cidr := "10.100.0.0/27" // 32 IPs
+	cidr := "10.100.0.0/28" // 16 IPs
 
 	// 1. Create GCE instance with 1 alias IP
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
@@ -337,7 +346,7 @@ func TestReconcile_NoOp(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// 2. Create NodeNetworkConfig where Spec matches Status capacity (32 desired, 32 actual)
+	// 2. Create NodeNetworkConfig where Spec matches Status capacity (16 desired, 16 actual)
 	nnc := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -346,7 +355,7 @@ func TestReconcile_NoOp(t *testing.T) {
 			Allocations: []nncv1.Allocation{
 				{
 					Network: "default",
-					Pods:    32, // Matches current capacity of 32
+					Pods:    16, // Matches current capacity of 16
 				},
 			},
 		},
@@ -543,7 +552,26 @@ func TestReconcile_InvalidStatusCIDR(t *testing.T) {
 	defer close(stopCh)
 	f.run(ctx, stopCh)
 
-	// 1. Create NNC with an invalid CIDR in Status
+	// 1. Create a fake GCE instance with 0 alias IPs (clean state)
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{
+				Name:       "nic0",
+				Network:    testNetworkURL,
+				Subnetwork: "default",
+			},
+		},
+	}
+	err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance)
+	if err != nil {
+		t.Fatalf("Failed to insert fake GCE instance: %v", err)
+	}
+
+	// 2. Part 1: Create NNC with an invalid CIDR in Status.
+	// The controller should NOT fail; it should heal the status to match GCE (allocating 2 blocks).
 	nncInvalid := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -559,37 +587,63 @@ func TestReconcile_InvalidStatusCIDR(t *testing.T) {
 			},
 		},
 	}
-	_, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nncInvalid, metav1.CreateOptions{})
+	_, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nncInvalid, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create NNC: %v", err)
 	}
 
-	// Sync informer cache
 	f.informerFactory.WaitForCacheSync(stopCh)
 
-	// Run reconcile. It should succeed by writing the error condition to status (terminal error).
+	// Run reconcile. It should succeed because GCE is valid, and it should heal K8s status.
 	err = f.controller.reconcile(ctx, nncInvalid, testProviderID)
 	if err != nil {
-		t.Fatalf("Expected reconcile to succeed (return nil) by writing error status, got: %v", err)
+		t.Fatalf("Expected reconcile to succeed (self-healing), got error: %v", err)
 	}
 
-	// Verify status has False Ready condition with InvalidParameters reason
+	// Verify GCE has exactly 2 blocks allocated
+	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get GCE instance: %v", err)
+	}
+	if len(updatedInstance.NetworkInterfaces[0].AliasIpRanges) != 2 {
+		t.Fatalf("Expected GCE to have 2 alias IPs allocated, got %d", len(updatedInstance.NetworkInterfaces[0].AliasIpRanges))
+	}
+
+	// Verify NNC Status is healed: has exactly 2 valid blocks, and "invalid-cidr" is GONE
 	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
 	if err != nil {
-		t.Fatalf("Failed to get updated NodeNetworkConfig: %v", err)
+		t.Fatalf("Failed to get NNC: %v", err)
+	}
+	if len(updatedNNC.Status.PodCIDRs) != 2 {
+		t.Fatalf("Expected Status to be healed to 2 PodCIDRs, got %d: %v", len(updatedNNC.Status.PodCIDRs), updatedNNC.Status.PodCIDRs)
+	}
+	for _, pc := range updatedNNC.Status.PodCIDRs {
+		if pc.CIDR == "invalid-cidr" {
+			t.Errorf("FAIL: 'invalid-cidr' was not cleaned up from status")
+		}
 	}
 	readyCond := getCondition(updatedNNC.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
-	if readyCond == nil {
-		t.Fatal("Expected Ready condition to be present")
-	}
-	if readyCond.Status != metav1.ConditionFalse {
-		t.Errorf("Expected Ready condition to be False, got %s", readyCond.Status)
-	}
-	if readyCond.Reason != string(nncv1.NodeNetworkConfigInvalidParametersReason) {
-		t.Errorf("Expected reason %q, got %q", nncv1.NodeNetworkConfigInvalidParametersReason, readyCond.Reason)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Errorf("Expected Ready condition to be True, got: %v", readyCond)
 	}
 
-	// 2. Create NNC with an IPv6 CIDR in Status (should be rejected by our new IPv4-only check)
+	// 3. Part 2: IPv6 CIDR in Status.
+	// Clean up NNC and GCE alias IPs to reset.
+	mockInstances, _ := f.fakeGCE.Compute().BetaInstances().(*gcloud.MockBetaInstances)
+	instObj, err := mockInstances.Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get instance from mock: %v", err)
+	}
+	mockInstances.Lock.Lock()
+	instObj.NetworkInterfaces[0].AliasIpRanges = nil // reset GCE
+	mockInstances.Lock.Unlock()
+
+	err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Delete(ctx, testNodeName, metav1.DeleteOptions{})
+	if err != nil {
+		t.Fatalf("Failed to delete NNC: %v", err)
+	}
+
+	// Create NNC with IPv6 CIDR in Status
 	nncIPv6 := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -605,43 +659,424 @@ func TestReconcile_InvalidStatusCIDR(t *testing.T) {
 			},
 		},
 	}
-
-	// Reset client for next test by deleting the old one
-	err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Delete(ctx, testNodeName, metav1.DeleteOptions{})
-	if err != nil && !errors.IsNotFound(err) {
-		t.Fatalf("Failed to clean up NNC: %v", err)
-	}
-	// Re-create it with IPv6
 	_, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nncIPv6, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create NNC: %v", err)
 	}
-
-	// Sync informer cache
 	f.informerFactory.WaitForCacheSync(stopCh)
 
-	// Run reconcile. It should succeed by writing the error condition to status (terminal error).
+	// Invalidate cache manually (since we reset GCE behind its back, and it might still be fresh from the previous test!)
+	// Wait, we don't have Invalidate anymore!
+	// How do we expire the cache?
+	// We can just advance the fake clock by 11 seconds!
+	f.fakeClock.Step(11 * time.Second)
+
+	// Run reconcile. It should succeed and heal status (allocating 2 blocks).
 	err = f.controller.reconcile(ctx, nncIPv6, testProviderID)
 	if err != nil {
-		t.Fatalf("Expected reconcile to succeed (return nil) by writing error status, got: %v", err)
+		t.Fatalf("Expected reconcile to succeed (self-healing IPv6), got error: %v", err)
 	}
 
-	// Verify status has False Ready condition with InvalidParameters reason
-	updatedNNC, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	// Verify GCE has 2 blocks
+	updatedInstance2, _ := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if len(updatedInstance2.NetworkInterfaces[0].AliasIpRanges) != 2 {
+		t.Fatalf("Expected GCE to have 2 alias IPs allocated (IPv6 test), got %d", len(updatedInstance2.NetworkInterfaces[0].AliasIpRanges))
+	}
+
+	// Verify NNC Status is healed: has exactly 2 valid blocks, and IPv6 is GONE
+	updatedNNC2, _ := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if len(updatedNNC2.Status.PodCIDRs) != 2 {
+		t.Fatalf("Expected Status to be healed to 2 PodCIDRs (IPv6 test), got %d: %v", len(updatedNNC2.Status.PodCIDRs), updatedNNC2.Status.PodCIDRs)
+	}
+	for _, pc := range updatedNNC2.Status.PodCIDRs {
+		if pc.CIDR == "2001:db8::/64" {
+			t.Errorf("FAIL: IPv6 CIDR was not cleaned up from status")
+		}
+	}
+}
+
+func TestReconcile_IdempotentRetryOnStatusFailure(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	// 1. Create a fake GCE instance in the fake cloud
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{
+				Name:    "nic0",
+				Network: testNetworkURL,
+				Subnetwork: "default",
+			},
+		},
+	}
+	err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance)
+	if err != nil {
+		t.Fatalf("Failed to insert fake GCE instance: %v", err)
+	}
+
+	// 2. Create a NodeNetworkConfig with a request for 32 pods (needs 2 blocks of /28)
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNodeName,
+		},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{
+					Network: "default",
+					Pods:    32,
+				},
+			},
+		},
+	}
+	_, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+	}
+
+	f.informerFactory.WaitForCacheSync(stopCh)
+
+	// Inject a reactor to fail the second Status Update (the final "Ready" status update, after GCE call)
+	statusUpdateCount := 0
+	f.nncClient.PrependReactor("update", "nodenetworkconfigs", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		if action.GetSubresource() == "status" {
+			statusUpdateCount++
+			if statusUpdateCount == 2 {
+				return true, nil, fmt.Errorf("simulated status conflict error")
+			}
+		}
+		return false, nil, nil
+	})
+
+	// 3. First reconcile run. It should fail on the status update.
+	err = f.controller.reconcile(ctx, nnc, testProviderID)
+	if err == nil {
+		t.Fatal("Expected first reconcile to fail due to simulated status update error, but it succeeded")
+	}
+
+	// GCE call succeeded, so GCE should have 2 blocks allocated now.
+	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get GCE instance: %v", err)
+	}
+	if len(updatedInstance.NetworkInterfaces[0].AliasIpRanges) != 2 {
+		t.Fatalf("Expected 2 alias IP ranges in GCE after first run, got %d", len(updatedInstance.NetworkInterfaces[0].AliasIpRanges))
+	}
+	allocatedCIDRs := []string{
+		updatedInstance.NetworkInterfaces[0].AliasIpRanges[0].IpCidrRange,
+		updatedInstance.NetworkInterfaces[0].AliasIpRanges[1].IpCidrRange,
+	}
+
+	// But NNC Status was NOT updated because of the reactor error.
+	unsyncedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get NNC: %v", err)
+	}
+	if len(unsyncedNNC.Status.PodCIDRs) != 0 {
+		t.Fatalf("Expected 0 PodCIDRs in status due to update failure, got %d", len(unsyncedNNC.Status.PodCIDRs))
+	}
+
+	// 4. Second reconcile run (Simulated Retry).
+	// The reactor will now succeed.
+	// We pass the same NNC object (which still has empty status).
+	err = f.controller.reconcile(ctx, unsyncedNNC, testProviderID)
+	if err != nil {
+		t.Fatalf("Second reconcile (retry) failed: %v", err)
+	}
+
+	// ASSERTION: GCE should STILL only have 2 blocks allocated!
+	// If the controller is not idempotent, it will have allocated more blocks (e.g. 4)!
+	finalInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get GCE instance: %v", err)
+	}
+	if len(finalInstance.NetworkInterfaces[0].AliasIpRanges) != 2 {
+		t.Errorf("FAIL: Expected GCE to still have exactly 2 alias IP ranges, but it has %d: %v",
+			len(finalInstance.NetworkInterfaces[0].AliasIpRanges), finalInstance.NetworkInterfaces[0].AliasIpRanges)
+	}
+
+	// Status should have exactly those 2 blocks.
+	finalNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get NNC: %v", err)
+	}
+	if len(finalNNC.Status.PodCIDRs) != 2 {
+		t.Errorf("FAIL: Expected 2 PodCIDRs in status, got %d: %v", len(finalNNC.Status.PodCIDRs), finalNNC.Status.PodCIDRs)
+	} else {
+		for i, pc := range finalNNC.Status.PodCIDRs {
+			if i < len(allocatedCIDRs) && pc.CIDR != allocatedCIDRs[i] {
+				t.Errorf("FAIL: Expected PodCIDR to match %q, got %q", allocatedCIDRs[i], pc.CIDR)
+			}
+		}
+	}
+}
+
+func TestReconcile_MultiNetwork(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	customNetworkName := "custom-network"
+	customNetworkURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", testProject, customNetworkName)
+
+	// 1. Create a GCE instance with TWO network interfaces
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{
+				Name:       "nic0",
+				Network:    testNetworkURL,
+				Subnetwork: "default",
+			},
+			{
+				Name:       "nic1",
+				Network:    customNetworkURL,
+				Subnetwork: "custom-subnet",
+			},
+		},
+	}
+	err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance)
+	if err != nil {
+		t.Fatalf("Failed to insert fake GCE instance: %v", err)
+	}
+
+	// 2. Create NodeNetworkConfig requesting allocations on BOTH networks
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNodeName,
+		},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{
+					Network: "default",
+					Pods:    32, // needs 2 blocks of /28
+				},
+				{
+					Network: customNetworkName,
+					Pods:    32, // needs 2 blocks of /28
+				},
+			},
+		},
+	}
+	_, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+	}
+
+	f.informerFactory.WaitForCacheSync(stopCh)
+
+	// 3. Run reconcile
+	err = f.controller.reconcile(ctx, nnc, testProviderID)
+	if err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	// 4. Verify GCE Instance has alias IPs on BOTH interfaces
+	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get updated GCE instance: %v", err)
+	}
+
+	if len(updatedInstance.NetworkInterfaces) != 2 {
+		t.Fatalf("Expected 2 network interfaces, got %d", len(updatedInstance.NetworkInterfaces))
+	}
+
+	// nic0 (default) - expects 2 blocks of /28 for 32 pods
+	nic0 := updatedInstance.NetworkInterfaces[0]
+	if len(nic0.AliasIpRanges) != 2 {
+		t.Errorf("Expected 2 alias IP ranges on nic0, got %d: %v", len(nic0.AliasIpRanges), nic0.AliasIpRanges)
+	}
+
+	// nic1 (custom) - expects 2 blocks of /28 for 32 pods
+	nic1 := updatedInstance.NetworkInterfaces[1]
+	if len(nic1.AliasIpRanges) != 2 {
+		t.Errorf("Expected 2 alias IP ranges on nic1, got %d: %v", len(nic1.AliasIpRanges), nic1.AliasIpRanges)
+	}
+
+	// Verify both allocations are in NNC Status
+	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Failed to get updated NodeNetworkConfig: %v", err)
 	}
-	readyCond = getCondition(updatedNNC.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
-	if readyCond == nil {
-		t.Fatal("Expected Ready condition to be present")
+
+	if len(updatedNNC.Status.PodCIDRs) != 4 {
+		t.Errorf("Expected 4 PodCIDRs in status, got %d: %v", len(updatedNNC.Status.PodCIDRs), updatedNNC.Status.PodCIDRs)
 	}
-	if readyCond.Status != metav1.ConditionFalse {
-		t.Errorf("Expected Ready condition to be False, got %s", readyCond.Status)
+
+	// Verify they are mapped to the correct networks
+	defaultCount := 0
+	customCount := 0
+	for _, pc := range updatedNNC.Status.PodCIDRs {
+		if pc.Network == "default" {
+			defaultCount++
+		} else if pc.Network == customNetworkName {
+			customCount++
+		} else {
+			t.Errorf("Unexpected network %q in status PodCIDR", pc.Network)
+		}
 	}
-	if readyCond.Reason != string(nncv1.NodeNetworkConfigInvalidParametersReason) {
-		t.Errorf("Expected reason %q, got %q", nncv1.NodeNetworkConfigInvalidParametersReason, readyCond.Reason)
+	if defaultCount != 2 || customCount != 2 {
+		t.Errorf("Expected 2 default and 2 custom PodCIDRs, got default=%d, custom=%d", defaultCount, customCount)
 	}
-	if !strings.Contains(readyCond.Message, "only IPv4 is supported") {
-		t.Errorf("Expected message to contain 'only IPv4 is supported', got %q", readyCond.Message)
+}
+
+func TestReconcile_CacheExpirationBehavior(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	// 1. Create a fake GCE instance
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{
+				Name:    "nic0",
+				Network: testNetworkURL,
+				Subnetwork: "default",
+			},
+		},
+	}
+	err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance)
+	if err != nil {
+		t.Fatalf("Failed to insert fake GCE instance: %v", err)
+	}
+
+	// 2. Create NNC requesting 32 pods (needs 2 blocks of /28)
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNodeName,
+		},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{
+					Network: "default",
+					Pods:    32,
+				},
+			},
+		},
+	}
+	_, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+	}
+
+	f.informerFactory.WaitForCacheSync(stopCh)
+
+	// Inject reactor to fail the second status update (final "Ready" write)
+	statusUpdateCount := 0
+	f.nncClient.PrependReactor("update", "nodenetworkconfigs", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		if action.GetSubresource() == "status" {
+			statusUpdateCount++
+			if statusUpdateCount == 2 {
+				return true, nil, fmt.Errorf("simulated status conflict error")
+			}
+		}
+		return false, nil, nil
+	})
+
+	// 3. First run: allocates 2 blocks in GCE, fails status write.
+	err = f.controller.reconcile(ctx, nnc, testProviderID)
+	if err == nil {
+		t.Fatal("Expected reconcile to fail on status write, but it succeeded")
+	}
+
+	// Verify GCE has 2 blocks
+	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get GCE instance: %v", err)
+	}
+	if len(updatedInstance.NetworkInterfaces[0].AliasIpRanges) != 2 {
+		t.Fatalf("Expected 2 alias IP ranges in GCE, got %d", len(updatedInstance.NetworkInterfaces[0].AliasIpRanges))
+	}
+
+	// 4. Manually mutate GCE behind the back of the cache (add a 3rd block!)
+	// This simulates out-of-band changes or GCE state drift.
+	mockInstances, _ := f.fakeGCE.Compute().BetaInstances().(*gcloud.MockBetaInstances)
+	instObj, err := mockInstances.Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get instance from mock: %v", err)
+	}
+	mockInstances.Lock.Lock()
+	instObj.NetworkInterfaces[0].AliasIpRanges = append(instObj.NetworkInterfaces[0].AliasIpRanges, &computebeta.AliasIpRange{
+		IpCidrRange:         "10.100.2.0/28",
+		SubnetworkRangeName: "default-secondary",
+	})
+	mockInstances.Lock.Unlock()
+
+	// 5. Scenario A: Retry immediately (Fresh Cache, age = 0s < 10s TTL)
+	// The simulated reactor only fails on the 2nd update, so this retry will naturally succeed.
+
+	unsyncedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get NNC: %v", err)
+	}
+
+	err = f.controller.reconcile(ctx, unsyncedNNC, testProviderID)
+	if err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	// ASSERTION: Status should ONLY contain the 2 blocks from the fresh cache!
+	// It should NOT contain the 3rd block we added directly to GCE, because it hit the cache and skipped GCE GET!
+	finalNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get NNC: %v", err)
+	}
+	if len(finalNNC.Status.PodCIDRs) != 2 {
+		t.Errorf("Expected 2 PodCIDRs in status (cache hit), got %d: %v", len(finalNNC.Status.PodCIDRs), finalNNC.Status.PodCIDRs)
+	}
+
+	// 6. Scenario B: Expire the Cache & Sync again
+	// Update Spec to 48 pods (needs 3 blocks)
+	finalNNC.Spec.Allocations[0].Pods = 48
+	_, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Update(ctx, finalNNC, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to update NNC Spec: %v", err)
+	}
+	f.informerFactory.WaitForCacheSync(stopCh)
+
+	// Advance the clock by 11 seconds (cache is now STALE!)
+	f.fakeClock.Step(11 * time.Second)
+
+	// Run reconciliation
+	updatedNNC2, _ := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	err = f.controller.reconcile(ctx, updatedNNC2, testProviderID)
+	if err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	// ASSERTION: GCE should STILL only have 3 blocks!
+	// Because the cache expired, the controller did a GCE GET, saw the 3rd block was already there,
+	// calculated a diff of 0, and skipped the GCE mutation!
+	// If it had hit a stale cache that only knew about 2 blocks, it would have called GCE to add a 4th block!
+	finalInstance2, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get GCE instance: %v", err)
+	}
+	if len(finalInstance2.NetworkInterfaces[0].AliasIpRanges) != 3 {
+		t.Errorf("FAIL: Cache expiration failed to refresh from GCE. Expected 3 alias IP ranges, got %d: %v",
+			len(finalInstance2.NetworkInterfaces[0].AliasIpRanges), finalInstance2.NetworkInterfaces[0].AliasIpRanges)
+	}
+
+	// Status should have all 3 blocks
+	finalNNC2, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get NNC: %v", err)
+	}
+	if len(finalNNC2.Status.PodCIDRs) != 3 {
+		t.Errorf("Expected 3 PodCIDRs in status, got %d: %v", len(finalNNC2.Status.PodCIDRs), finalNNC2.Status.PodCIDRs)
 	}
 }

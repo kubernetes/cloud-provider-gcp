@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
+	"sync"
 	"time"
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
@@ -27,6 +29,7 @@ import (
 	nncinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions/nodenetworkconfig/v1"
 	nnclisters "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/listers/nodenetworkconfig/v1"
 	"golang.org/x/time/rate"
+	computebeta "google.golang.org/api/compute/v0.beta"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,12 +41,13 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/utils/clock"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/klog/v2"
 )
 
 const (
-	// DefaultBlockSizeMask is the default CIDR mask we request from GCE.
+	// DefaultBlockSizeMask is the default CIDR mask we request from GCE (e.g. 28 for 16 IPs).
 	DefaultBlockSizeMask = 28
 
 	// reconcileTimeout is the maximum time allowed for a single node reconciliation.
@@ -72,6 +76,8 @@ type Controller struct {
 	nodeSynced cache.InformerSynced
 	gceCloud   *gce.Cloud
 	queue      workqueue.TypedRateLimitingInterface[string]
+	gceCache   *GCECache
+	clock      clock.Clock
 }
 
 // NewController creates a new DynamicPodIPController.
@@ -88,6 +94,10 @@ func NewController(
 		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 	)
 
+	loader := func(ctx context.Context, providerID string) ([]*computebeta.NetworkInterface, error) {
+		return gceCloud.GetInstanceNetworkInterfaces(ctx, providerID)
+	}
+
 	c := &Controller{
 		kubeClient: kubeClient,
 		nncClient:  nncClient,
@@ -97,6 +107,8 @@ func NewController(
 		nodeSynced: nodeInformer.Informer().HasSynced,
 		gceCloud:   gceCloud,
 		queue:      workqueue.NewTypedRateLimitingQueueWithConfig[string](rateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{Name: "dynamic-pod-ip"}),
+		gceCache:   NewGCECache(loader, 10*time.Second, clock.RealClock{}),
+		clock:      clock.RealClock{},
 	}
 
 	nncInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -108,6 +120,12 @@ func NewController(
 	})
 
 	return c
+}
+
+// SetClock overrides the default real clock with a custom clock (used in unit tests).
+func (c *Controller) SetClock(clk clock.Clock) {
+	c.clock = clk
+	c.gceCache.clock = clk
 }
 
 // Name returns the name of the controller.
@@ -211,10 +229,18 @@ func (c *Controller) syncNode(key string) error {
 }
 
 func (c *Controller) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig, providerID string) error {
-	klog.V(4).Infof("Reconciling NodeNetworkConfig %q with providerID %q", nnc.Name, providerID)
+	nodeName := nnc.Name
 
-	// 1. Calculate additions and removals based on Spec vs Status.
-	additions, removals, err := c.calculateChanges(nnc)
+	// 1. Retrieve the actual GCE state. The cache automatically handles hits, misses, and refreshes.
+	ifaces, err := c.gceCache.Get(ctx, nodeName, providerID)
+	if err != nil {
+		klog.Errorf("Failed to get GCE state for node %q: %v", nodeName, err)
+		_ = c.updateStatusError(ctx, nnc, string(nncv1.NodeNetworkConfigInvalidParametersReason), err.Error())
+		return fmt.Errorf("failed to get GCE state for node %q: %w", nodeName, err)
+	}
+
+	// 2. Calculate changes using GCE actual state instead of K8s status
+	additions, removals, err := c.calculateChanges(nnc, ifaces)
 	if err != nil {
 		klog.Errorf("Failed to calculate changes for %q: %v", nnc.Name, err)
 		return c.updateStatusError(ctx, nnc, string(nncv1.NodeNetworkConfigInvalidParametersReason), err.Error())
@@ -222,21 +248,22 @@ func (c *Controller) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig
 
 	if len(additions) == 0 && len(removals) == 0 {
 		klog.V(4).Infof("NodeNetworkConfig %q is already aligned", nnc.Name)
+		if c.statusNeedsSync(nnc, ifaces) {
+			return c.syncStatusToGCE(ctx, nnc, ifaces)
+		}
 		if c.setCondition(nnc, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionTrue, string(nncv1.NodeNetworkConfigReadyReason), "Node network config is ready") {
 			return c.updateNNCStatus(ctx, nnc)
 		}
 		return nil
 	}
 
-	// 2. Set condition to False (Updating) before starting GCE mutation.
+	// 3. Set condition to False (Updating) before starting GCE mutation.
 	c.setCondition(nnc, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionFalse, "Updating", "GCE mutation in progress")
 	if err := c.updateNNCStatus(ctx, nnc); err != nil {
 		return fmt.Errorf("failed to update status to 'Updating' for %q: %w", nnc.Name, err)
 	}
 
-	// 3. Apply changes via GCE Provider sequentially per network.
-	var allActualCIDRs []nncv1.PodCIDR
-
+	// 4. Apply changes via GCE Provider sequentially per network (Provider returns error only).
 	existingNetworksWithChanges := sets.NewString()
 	for netName := range additions {
 		existingNetworksWithChanges.Insert(netName)
@@ -245,14 +272,6 @@ func (c *Controller) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig
 		existingNetworksWithChanges.Insert(netName)
 	}
 
-	// Add existing CIDRs from networks that had NO changes.
-	for _, pc := range nnc.Status.PodCIDRs {
-		if !existingNetworksWithChanges.Has(pc.Network) {
-			allActualCIDRs = append(allActualCIDRs, pc)
-		}
-	}
-
-	// Process networks with changes.
 	for _, network := range existingNetworksWithChanges.List() {
 		adds := additions[network]
 		rems := removals[network]
@@ -260,38 +279,23 @@ func (c *Controller) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig
 
 		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v", nnc.Name, network, netURL, adds, rems)
 
-		// Call GCE provider (single network call)
-		actualCIDRStrings, err := c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, netURL, adds, rems)
+		err := c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, netURL, adds, rems)
 		if err != nil {
 			klog.Errorf("GCE mutation failed for node %q, network %q: %v", nnc.Name, network, err)
 			c.setCondition(nnc, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionFalse, string(nncv1.NodeNetworkConfigInvalidParametersReason), err.Error())
 			_ = c.updateNNCStatus(ctx, nnc)
-			return err // Re-queue
-		}
-
-		// Map strings back to nncv1.PodCIDR
-		for _, cidr := range actualCIDRStrings {
-			allActualCIDRs = append(allActualCIDRs, nncv1.PodCIDR{
-				Id:      cidr,
-				Network: network,
-				CIDR:    cidr,
-				Condition: &metav1.Condition{
-					Type:               string(nncv1.PodCIDRConditionReady),
-					Status:             metav1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
-					Reason:             string(nncv1.PodCIDRReadyConditionReady),
-					Message:            "Pod CIDR is ready and routed",
-				},
-			})
+			return err // Re-queue (cache is NOT invalidated, will retry using cached old state)
 		}
 	}
 
-	// 4. Update Status with the new actual state
-	nnc.Status.PodCIDRs = allActualCIDRs
-	c.setCondition(nnc, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionTrue, string(nncv1.NodeNetworkConfigReadyReason), "Node network config is ready")
+	// 5. Active Refresh: ForceGet bypasses TTL, performs a fresh GCE GET, and updates the cache.
+	finalIfaces, err := c.gceCache.ForceGet(ctx, nodeName, providerID)
+	if err != nil {
+		return fmt.Errorf("failed to refresh GCE state after mutation for node %q: %w", nodeName, err)
+	}
 
-	klog.Infof("Successfully reconciled NodeNetworkConfig %q", nnc.Name)
-	return c.updateNNCStatus(ctx, nnc)
+	// 6. Sync K8s Status using the fresh, cached GCE state.
+	return c.syncStatusToGCE(ctx, nnc, finalIfaces)
 }
 
 // resolveNetworkURL maps NNC network name to GCE Network URL.
@@ -303,23 +307,127 @@ func (c *Controller) resolveNetworkURL(networkName string) string {
 	return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", c.gceCloud.ProjectID(), networkName)
 }
 
-// calculateChanges compares Spec and Status to determine additions (range sizes) and removals (exact CIDRs).
-func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig) (map[string][]string, map[string][]string, error) {
+// mapURLToNetworkName maps a GCE Network URL back to the network name used in the NNC Spec/Status.
+func (c *Controller) mapURLToNetworkName(url string, nnc *nncv1.NodeNetworkConfig) string {
+	// Check default network
+	if url == c.gceCloud.NetworkURL() {
+		for _, alloc := range nnc.Spec.Allocations {
+			if alloc.Network == "default" || alloc.Network == "" {
+				return alloc.Network
+			}
+		}
+		for _, pc := range nnc.Status.PodCIDRs {
+			if pc.Network == "default" || pc.Network == "" {
+				return pc.Network
+			}
+		}
+		return "default" // fallback
+	}
+
+	// Check custom networks in spec/status
+	for _, alloc := range nnc.Spec.Allocations {
+		if c.resolveNetworkURL(alloc.Network) == url {
+			return alloc.Network
+		}
+	}
+	for _, pc := range nnc.Status.PodCIDRs {
+		if c.resolveNetworkURL(pc.Network) == url {
+			return pc.Network
+		}
+	}
+
+	// Fallback to the last component of the URL
+	return lastComponent(url)
+}
+
+// lastComponent returns the last component of a slash-separated URL/path.
+func lastComponent(url string) string {
+	parts := strings.Split(url, "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
+// statusNeedsSync checks if the NNC Status PodCIDRs set differs from the actual GCE alias IP ranges.
+func (c *Controller) statusNeedsSync(nnc *nncv1.NodeNetworkConfig, ifaces []*computebeta.NetworkInterface) bool {
+	gceCIDRs := sets.NewString()
+	for _, iface := range ifaces {
+		netName := c.mapURLToNetworkName(iface.Network, nnc)
+		for _, r := range iface.AliasIpRanges {
+			gceCIDRs.Insert(fmt.Sprintf("%s/%s", netName, r.IpCidrRange))
+		}
+	}
+
+	statusCIDRs := sets.NewString()
+	for _, pc := range nnc.Status.PodCIDRs {
+		statusCIDRs.Insert(fmt.Sprintf("%s/%s", pc.Network, pc.CIDR))
+	}
+
+	return !gceCIDRs.Equal(statusCIDRs)
+}
+
+// syncStatusToGCE updates the NNC Status PodCIDRs to match the actual GCE state.
+func (c *Controller) syncStatusToGCE(ctx context.Context, nnc *nncv1.NodeNetworkConfig, ifaces []*computebeta.NetworkInterface) error {
+	var allActualCIDRs []nncv1.PodCIDR
+
+	// Build a set of managed network URLs to filter out unmanaged GCE interfaces
+	managedNetworks := sets.NewString()
+	managedNetworks.Insert(c.resolveNetworkURL(""))
+	managedNetworks.Insert(c.resolveNetworkURL("default"))
+	for _, alloc := range nnc.Spec.Allocations {
+		managedNetworks.Insert(c.resolveNetworkURL(alloc.Network))
+	}
+	for _, pc := range nnc.Status.PodCIDRs {
+		managedNetworks.Insert(c.resolveNetworkURL(pc.Network))
+	}
+
+	for _, iface := range ifaces {
+		if !managedNetworks.Has(iface.Network) {
+			continue // Skip unmanaged GCE interfaces
+		}
+		netName := c.mapURLToNetworkName(iface.Network, nnc)
+		for _, r := range iface.AliasIpRanges {
+			allActualCIDRs = append(allActualCIDRs, nncv1.PodCIDR{
+				Id:      r.IpCidrRange,
+				Network: netName,
+				CIDR:    r.IpCidrRange,
+				Condition: &metav1.Condition{
+					Type:               string(nncv1.PodCIDRConditionReady),
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+					Reason:             string(nncv1.PodCIDRReadyConditionReady),
+					Message:            "Pod CIDR is ready and routed",
+				},
+			})
+		}
+	}
+
+	nnc.Status.PodCIDRs = allActualCIDRs
+	c.setCondition(nnc, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionTrue, string(nncv1.NodeNetworkConfigReadyReason), "Node network config is ready")
+
+	klog.Infof("Syncing NNC status to GCE state for %q (CIDRs: %d)", nnc.Name, len(allActualCIDRs))
+	return c.updateNNCStatus(ctx, nnc)
+}
+
+// calculateChanges compares Spec and GCE actual interfaces to determine additions (sizes) and removals (exact CIDRs).
+func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*computebeta.NetworkInterface) (map[string][]string, map[string][]string, error) {
 	additions := make(map[string][]string)
 	removals := make(map[string][]string)
 
-	// Precalculate current capacity per network from Status.
 	currentCapacity := make(map[string]int)
-	// Build a set of active CIDRs for fast $O(1)$ removal verification.
 	activeCIDRs := sets.NewString()
 
-	for _, pc := range nnc.Status.PodCIDRs {
-		cap, err := cidrCapacity(pc.CIDR)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to parse CIDR %q in status: %w", pc.CIDR, err)
+	for _, iface := range ifaces {
+		netName := c.mapURLToNetworkName(iface.Network, nnc)
+		for _, r := range iface.AliasIpRanges {
+			cap, err := cidrCapacity(r.IpCidrRange)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to parse CIDR %q in GCE: %w", r.IpCidrRange, err)
+			}
+			currentCapacity[netName] += cap
+			activeCIDRs.Insert(fmt.Sprintf("%s/%s", netName, r.IpCidrRange))
 		}
-		currentCapacity[pc.Network] += cap
-		activeCIDRs.Insert(fmt.Sprintf("%s/%s", pc.Network, pc.CIDR))
 	}
 
 	// 1. Calculate Additions (Growth)
@@ -330,9 +438,8 @@ func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig) (map[string]
 
 		if desiredPods > currentCap {
 			neededIPs := desiredPods - currentCap
-			// Integer arithmetic equivalent to ceil(neededIPs / DefaultCapacity)
 			blocksNeeded := (neededIPs + DefaultCapacity - 1) / DefaultCapacity
-			
+
 			for i := 0; i < blocksNeeded; i++ {
 				additions[network] = append(additions[network], DefaultBlockSize)
 			}
@@ -345,7 +452,6 @@ func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig) (map[string]
 		network := rel.Network
 		key := fmt.Sprintf("%s/%s", network, rel.CIDR)
 
-		// O(1) verification using precalculated set
 		if activeCIDRs.Has(key) {
 			removals[network] = append(removals[network], rel.CIDR)
 			klog.V(3).Infof("Node %q network %q: flagging %q for removal", nnc.Name, network, rel.CIDR)
@@ -391,7 +497,6 @@ func (c *Controller) setCondition(nnc *nncv1.NodeNetworkConfig, cType string, st
 }
 
 // cidrCapacity calculates the number of IP addresses in a CIDR block.
-// It returns an error if the CIDR is invalid or is not an IPv4 block.
 func cidrCapacity(cidrStr string) (int, error) {
 	_, ipNet, err := net.ParseCIDR(cidrStr)
 	if err != nil {
@@ -402,4 +507,117 @@ func cidrCapacity(cidrStr string) (int, error) {
 		return 0, fmt.Errorf("CIDR %q is not IPv4 (bits=%d), only IPv4 is supported", cidrStr, bits)
 	}
 	return 1 << (32 - ones), nil
+}
+
+// --- GCE Cache Implementation (Loading Cache with Per-Node Locking) ---
+
+// GCEInstanceLoader is a functional dependency injected into the cache to fetch fresh data from GCE.
+type GCEInstanceLoader func(ctx context.Context, providerID string) ([]*computebeta.NetworkInterface, error)
+
+// CachedInstance represents a cached view of a single GCE instance's network interfaces, protected by its own mutex.
+type CachedInstance struct {
+	mu          sync.Mutex // Guards this specific node's cached interfaces and timestamp
+	interfaces  []*computebeta.NetworkInterface
+	lastUpdated time.Time
+}
+
+// GCECache manages thread-safe, concurrent timed caching of GCE instance states using per-node locking.
+type GCECache struct {
+	mapLock   sync.RWMutex // Guards the map structure itself
+	instances map[string]*CachedInstance
+	loader    GCEInstanceLoader
+	ttl       time.Duration
+	clock     clock.Clock
+}
+
+// NewGCECache constructs a new GCE loading cache.
+func NewGCECache(loader GCEInstanceLoader, ttl time.Duration, clock clock.Clock) *GCECache {
+	return &GCECache{
+		instances: make(map[string]*CachedInstance),
+		loader:    loader,
+		ttl:       ttl,
+		clock:     clock,
+	}
+}
+
+// getOrCreateInstance retrieves or initializes the CachedInstance pointer for a node under the global map lock.
+func (c *GCECache) getOrCreateInstance(nodeName string) *CachedInstance {
+	c.mapLock.Lock()
+	defer c.mapLock.Unlock()
+
+	inst, ok := c.instances[nodeName]
+	if !ok {
+		inst = &CachedInstance{}
+		c.instances[nodeName] = inst
+	}
+	return inst
+}
+
+// Get retrieves the cached network interfaces for the node.
+// If the cache is stale or missing, it calls the GCE loader holding ONLY the node-specific lock.
+func (c *GCECache) Get(ctx context.Context, nodeName string, providerID string) ([]*computebeta.NetworkInterface, error) {
+	inst := c.getOrCreateInstance(nodeName)
+
+	// Lock only this specific node's state. Other nodes can be processed concurrently.
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+
+	now := c.clock.Now()
+	if inst.lastUpdated.IsZero() || now.Sub(inst.lastUpdated) > c.ttl {
+		ifaces, err := c.loader(ctx, providerID)
+		if err != nil {
+			return nil, err
+		}
+		inst.interfaces = deepCopyInterfaces(ifaces)
+		inst.lastUpdated = now
+	}
+
+	return deepCopyInterfaces(inst.interfaces), nil
+}
+
+// ForceGet bypasses the TTL check, forces a fresh load from GCE, updates the cache, and returns the state.
+func (c *GCECache) ForceGet(ctx context.Context, nodeName string, providerID string) ([]*computebeta.NetworkInterface, error) {
+	inst := c.getOrCreateInstance(nodeName)
+
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+
+	ifaces, err := c.loader(ctx, providerID)
+	if err != nil {
+		return nil, err
+	}
+	inst.interfaces = deepCopyInterfaces(ifaces)
+	inst.lastUpdated = c.clock.Now()
+
+	return deepCopyInterfaces(inst.interfaces), nil
+}
+
+// deepCopyInterfaces performs a deep copy of GCE network interfaces to prevent data races.
+func deepCopyInterfaces(ifaces []*computebeta.NetworkInterface) []*computebeta.NetworkInterface {
+	if ifaces == nil {
+		return nil
+	}
+	copy := make([]*computebeta.NetworkInterface, len(ifaces))
+	for i, ni := range ifaces {
+		if ni == nil {
+			continue
+		}
+		copy[i] = &computebeta.NetworkInterface{
+			Name:    ni.Name,
+			Network: ni.Network,
+		}
+		if ni.AliasIpRanges != nil {
+			copy[i].AliasIpRanges = make([]*computebeta.AliasIpRange, len(ni.AliasIpRanges))
+			for j, r := range ni.AliasIpRanges {
+				if r == nil {
+					continue
+				}
+				copy[i].AliasIpRanges[j] = &computebeta.AliasIpRange{
+					IpCidrRange:         r.IpCidrRange,
+					SubnetworkRangeName: r.SubnetworkRangeName,
+				}
+			}
+		}
+	}
+	return copy
 }
