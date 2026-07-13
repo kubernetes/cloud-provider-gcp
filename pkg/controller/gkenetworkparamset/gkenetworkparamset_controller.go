@@ -448,7 +448,7 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 			return nil
 		}
 
-		return c.getAndSyncNetworkForGNP(ctx, params)
+		return c.getAndSyncNetworkForGNP(ctx, params, nil)
 	}
 
 	// Validate params with (VPC + VPCSubnet).
@@ -482,13 +482,13 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 		CIDRBlocks: cidrs,
 	}
 
-	return c.getAndSyncNetworkForGNP(ctx, params)
+	return c.getAndSyncNetworkForGNP(ctx, params, subnet)
 }
 
 // getAndSyncNetworkForGNP gets the network that refers to this GNP object, and
 // then does the cross sync of Network with GNP. GNP is guaranteed to have
 // minimum fields set (either NetworkAttachment or [VPC + VPCSubnet]).
-func (c *Controller) getAndSyncNetworkForGNP(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
+func (c *Controller) getAndSyncNetworkForGNP(ctx context.Context, params *networkv1.GKENetworkParamSet, subnet *compute.Subnetwork) error {
 	network, err := c.getNetworkReferringToGNP(params.Name)
 	if err != nil {
 		return err
@@ -497,7 +497,7 @@ func (c *Controller) getAndSyncNetworkForGNP(ctx context.Context, params *networ
 		return nil
 	}
 
-	if err = c.syncNetworkWithGNP(ctx, network, params); err != nil {
+	if err = c.syncNetworkWithGNP(ctx, network, params, subnet); err != nil {
 		return err
 	}
 	return nil
@@ -520,11 +520,11 @@ func (c *Controller) getNetworkReferringToGNP(gnpName string) (*networkv1.Networ
 
 // syncNetworkWithGNP does the cross sync of Network with GNP.
 // GNP can be mutated, while a copy of Network is both transformed AND updated in the cluster
-func (c *Controller) syncNetworkWithGNP(ctx context.Context, network *networkv1.Network, params *networkv1.GKENetworkParamSet) error {
+func (c *Controller) syncNetworkWithGNP(ctx context.Context, network *networkv1.Network, params *networkv1.GKENetworkParamSet, subnet *compute.Subnetwork) error {
 	newNetwork := network.DeepCopy()
 
 	// update the copy of old Network with new conditions to be new Network basing on the change of the GNP
-	networkCrossValidation := crossValidateNetworkAndGnp(newNetwork, params, c.isIPv6OnlyCluster)
+	networkCrossValidation := crossValidateNetworkAndGnp(newNetwork, params, c.isIPv6OnlyCluster, subnet)
 	meta.SetStatusCondition(&newNetwork.Status.Conditions, networkCrossValidation.toCondition())
 
 	if !reflect.DeepEqual(newNetwork.Status.Conditions, network.Status.Conditions) {

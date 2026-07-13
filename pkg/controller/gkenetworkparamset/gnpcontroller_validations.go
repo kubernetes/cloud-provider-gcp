@@ -283,7 +283,7 @@ func (val *gnpNetworkCrossValidation) toCondition() metav1.Condition {
 }
 
 // crossValidateNetworkAndGnp validates a given network and GNP object are compatible
-func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GKENetworkParamSet, isIPv6OnlyCluster bool) *gnpNetworkCrossValidation {
+func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GKENetworkParamSet, isIPv6OnlyCluster bool, subnet *compute.Subnetwork) *gnpNetworkCrossValidation {
 	isSecondaryRangeSpecified := hasRangeNames(params)
 	isVPCSpecified := params.Spec.VPC != ""
 	isVPCSubnetSpecified := params.Spec.VPCSubnet != ""
@@ -313,6 +313,20 @@ func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GK
 				IsValid:      false,
 				ErrorReason:  networkv1.DeviceModeMissing,
 				ErrorMessage: "Device type network requires device mode to be specified in params",
+			}
+		}
+	}
+
+	// Network CR is implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
+	if subnet != nil && subnet.StackType == "IPV6_ONLY" {
+		isDefaultNetwork := params.Name == networkv1.DefaultPodNetworkName
+		isAllowedContext := isDefaultNetwork && isIPv6OnlyCluster
+
+		if !isAllowedContext {
+			return &gnpNetworkCrossValidation{
+				IsValid:      false,
+				ErrorReason:  networkv1.GNPNetworkParamsReadyConditionReason("SubnetStackTypeIncompatible"),
+				ErrorMessage: "Network CR is not compatible with the subnet's StackType",
 			}
 		}
 	}

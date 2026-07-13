@@ -1114,6 +1114,12 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 
 			defaultSubnet := &compute.Subnetwork{
 				Name: defaultTestSubnetworkName,
+				SecondaryIpRanges: []*compute.SubnetworkSecondaryRange{
+					{
+						IpCidrRange: "10.100.0.0/16",
+						RangeName:   "default-pod-range",
+					},
+				},
 			}
 			defaultSubnetKey := meta.RegionalKey(defaultSubnet.Name, testVals.clusterValues.Region)
 			err = testVals.cloud.Compute().Subnetworks().Insert(ctx, defaultSubnetKey, defaultSubnet)
@@ -1201,6 +1207,7 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 		name              string
 		network           *networkv1.Network
 		paramSet          *networkv1.GKENetworkParamSet
+		subnetStackType   string
 		isIPv6OnlyCluster bool
 		expectedCondition metav1.Condition
 	}{
@@ -1229,6 +1236,96 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 				Type:   "ParamsReady",
 				Status: metav1.ConditionFalse,
 				Reason: "L3SecondaryMissing",
+			},
+		},
+		{
+			name: "L3NetworkType with IPV6_ONLY subnet",
+			network: &networkv1.Network{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: networkName,
+				},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.L3NetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: gkeNetworkParamSetName, Kind: gnpKind},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:           nonDefaultTestNetworkName,
+					VPCSubnet:     subnetName,
+					PodIPv4Ranges: &networkv1.SecondaryRanges{RangeNames: []string{subnetSecondaryRangeName}},
+				},
+			},
+			subnetStackType: "IPV6_ONLY",
+			expectedCondition: metav1.Condition{
+				Type:   "ParamsReady",
+				Status: metav1.ConditionFalse,
+				Reason: "SubnetStackTypeIncompatible",
+			},
+		},
+		{
+			name: "L3NetworkType Default network with IPV6_ONLY subnet on IPv6Only Cluster",
+			network: &networkv1.Network{
+				ObjectMeta: metav1.ObjectMeta{Name: networkv1.DefaultPodNetworkName},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.L3NetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: networkv1.DefaultPodNetworkName, Kind: gnpKind},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        networkv1.DefaultPodNetworkName,
+					Annotations: map[string]string{},
+					Labels: map[string]string{
+						"addonmanager.kubernetes.io/mode": "Reconcile",
+					},
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:           nonDefaultTestNetworkName,
+					VPCSubnet:     subnetName,
+					PodIPv4Ranges: &networkv1.SecondaryRanges{RangeNames: []string{subnetSecondaryRangeName}},
+				},
+			},
+			subnetStackType:   "IPV6_ONLY",
+			isIPv6OnlyCluster: true,
+			expectedCondition: metav1.Condition{
+				Type:   "ParamsReady",
+				Status: metav1.ConditionTrue,
+				Reason: "GNPParamsReady",
+			},
+		},
+		{
+			name: "L3NetworkType Default network with IPV6_ONLY subnet on DualStack/IPv4 Cluster",
+			network: &networkv1.Network{
+				ObjectMeta: metav1.ObjectMeta{Name: networkv1.DefaultPodNetworkName},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.L3NetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: networkv1.DefaultPodNetworkName, Kind: gnpKind},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        networkv1.DefaultPodNetworkName,
+					Annotations: map[string]string{},
+					Labels: map[string]string{
+						"addonmanager.kubernetes.io/mode": "Reconcile",
+					},
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:           nonDefaultTestNetworkName,
+					VPCSubnet:     subnetName,
+					PodIPv4Ranges: &networkv1.SecondaryRanges{RangeNames: []string{subnetSecondaryRangeName}},
+				},
+			},
+			subnetStackType:   "IPV6_ONLY",
+			isIPv6OnlyCluster: false,
+			expectedCondition: metav1.Condition{
+				Type:   "ParamsReady",
+				Status: metav1.ConditionFalse,
+				Reason: "SubnetStackTypeIncompatible",
 			},
 		},
 		{
@@ -1427,8 +1524,10 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 			},
 			paramSet: &networkv1.GKENetworkParamSet{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        networkv1.DefaultPodNetworkName,
-					Labels:      map[string]string{},
+					Name: networkv1.DefaultPodNetworkName,
+					Labels: map[string]string{
+						"addonmanager.kubernetes.io/mode": "Reconcile",
+					},
 					Annotations: map[string]string{},
 				},
 				Spec: networkv1.GKENetworkParamSetSpec{
@@ -1454,8 +1553,10 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 			},
 			paramSet: &networkv1.GKENetworkParamSet{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        gkeNetworkParamSetName,
-					Labels:      map[string]string{},
+					Name: gkeNetworkParamSetName,
+					Labels: map[string]string{
+						"addonmanager.kubernetes.io/mode": "Reconcile",
+					},
 					Annotations: map[string]string{},
 				},
 				Spec: networkv1.GKENetworkParamSetSpec{
@@ -1487,7 +1588,8 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 			subnetSecondaryCidr := "10.0.0.1/24"
 			subnetKey := meta.RegionalKey(subnetName, testVals.clusterValues.Region)
 			subnet := &compute.Subnetwork{
-				Name: subnetName,
+				Name:      subnetName,
+				StackType: test.subnetStackType,
 				SecondaryIpRanges: []*compute.SubnetworkSecondaryRange{
 					{
 						IpCidrRange: subnetSecondaryCidr,
