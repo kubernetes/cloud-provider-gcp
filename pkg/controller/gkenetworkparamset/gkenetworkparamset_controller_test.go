@@ -445,6 +445,156 @@ func TestValidParamSetSubnetRange(t *testing.T) {
 
 }
 
+func TestValidParamSetSubnetInternalIpv6Prefix(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	testVals := setupGKENetworkParamSetController(ctx, defaultPodIPv6CIDR)
+
+	subnetName := "ipv6-subnet"
+	subnetIpv6Cidr := "2001:db8::/32"
+	subnetKey := meta.RegionalKey(subnetName, testVals.clusterValues.Region)
+
+	subnet := &compute.Subnetwork{
+		Name:               subnetName,
+		InternalIpv6Prefix: subnetIpv6Cidr,
+	}
+
+	err := testVals.cloud.Compute().Subnetworks().Insert(ctx, subnetKey, subnet)
+	if err != nil {
+		t.Error(err)
+	}
+	testVals.runGKENetworkParamSetController(ctx)
+
+	gkeNetworkParamSetName := "test-paramset-ipv6"
+	paramSet := &networkv1.GKENetworkParamSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: gkeNetworkParamSetName,
+		},
+		Spec: networkv1.GKENetworkParamSetSpec{
+			VPC:        nonDefaultTestNetworkName,
+			VPCSubnet:  subnetName,
+			DeviceMode: networkv1.NetDevice,
+		},
+	}
+
+	_, err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, paramSet, metav1.CreateOptions{})
+	if err != nil {
+		t.Error(err)
+	}
+
+	g.Eventually(func() (bool, error) {
+		paramSet, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+
+		cidrExists := paramSet.Status.PodCIDRs != nil && len(paramSet.Status.PodCIDRs.CIDRBlocks) > 0
+		if cidrExists {
+			g.Ω(paramSet.Status.PodCIDRs.CIDRBlocks).Should(gomega.ConsistOf(subnetIpv6Cidr))
+			return true, nil
+		}
+
+		return false, nil
+	}).Should(gomega.BeTrue(), "GKENetworkParamSet Status should be updated ONLY with subnet internal ipv6 prefix.")
+}
+
+func TestValidParamSetSubnetExternalIpv6Prefix(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	testVals := setupGKENetworkParamSetController(ctx, defaultPodIPv6CIDR)
+	subnetName := "ipv6-subnet"
+	subnetIpv6Cidr := "2001:db8::/32"
+	subnetKey := meta.RegionalKey(subnetName, testVals.clusterValues.Region)
+
+	subnet := &compute.Subnetwork{
+		Name:               subnetName,
+		ExternalIpv6Prefix: subnetIpv6Cidr,
+	}
+	err := testVals.cloud.Compute().Subnetworks().Insert(ctx, subnetKey, subnet)
+	if err != nil {
+		t.Error(err)
+	}
+	testVals.runGKENetworkParamSetController(ctx)
+	gkeNetworkParamSetName := "test-paramset-ipv6"
+	paramSet := &networkv1.GKENetworkParamSet{
+		ObjectMeta: metav1.ObjectMeta{Name: gkeNetworkParamSetName},
+		Spec: networkv1.GKENetworkParamSetSpec{
+			VPC:        nonDefaultTestNetworkName,
+			VPCSubnet:  subnetName,
+			DeviceMode: networkv1.NetDevice,
+		},
+	}
+
+	_, err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, paramSet, metav1.CreateOptions{})
+	if err != nil {
+		t.Error(err)
+	}
+	g.Eventually(func() (bool, error) {
+		paramSet, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		cidrExists := paramSet.Status.PodCIDRs != nil && len(paramSet.Status.PodCIDRs.CIDRBlocks) > 0
+		if cidrExists {
+			g.Ω(paramSet.Status.PodCIDRs.CIDRBlocks).Should(gomega.ConsistOf(subnetIpv6Cidr))
+			return true, nil
+		}
+		return false, nil
+	}).Should(gomega.BeTrue(), "GKENetworkParamSet Status should be updated with subnet cidr.")
+}
+
+func TestValidParamSetSubnetIpv6CidrRange(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	testVals := setupGKENetworkParamSetController(ctx, defaultPodIPv6CIDR)
+
+	subnetName := "ipv6-subnet"
+	subnetIpv6Cidr := "2001:db8::/32"
+	subnetKey := meta.RegionalKey(subnetName, testVals.clusterValues.Region)
+
+	subnet := &compute.Subnetwork{
+		Name:          subnetName,
+		Ipv6CidrRange: subnetIpv6Cidr,
+	}
+
+	err := testVals.cloud.Compute().Subnetworks().Insert(ctx, subnetKey, subnet)
+	if err != nil {
+		t.Error(err)
+	}
+	testVals.runGKENetworkParamSetController(ctx)
+
+	gkeNetworkParamSetName := "test-paramset-ipv6"
+	paramSet := &networkv1.GKENetworkParamSet{
+		ObjectMeta: metav1.ObjectMeta{Name: gkeNetworkParamSetName},
+		Spec: networkv1.GKENetworkParamSetSpec{
+			VPC:        nonDefaultTestNetworkName,
+			VPCSubnet:  subnetName,
+			DeviceMode: networkv1.NetDevice,
+		},
+	}
+
+	_, err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, paramSet, metav1.CreateOptions{})
+	if err != nil {
+		t.Error(err)
+	}
+
+	g.Eventually(func() (bool, error) {
+		paramSet, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, gkeNetworkParamSetName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		cidrExists := paramSet.Status.PodCIDRs != nil && len(paramSet.Status.PodCIDRs.CIDRBlocks) > 0
+		if cidrExists {
+			g.Ω(paramSet.Status.PodCIDRs.CIDRBlocks).Should(gomega.ConsistOf(subnetIpv6Cidr))
+			return true, nil
+		}
+		return false, nil
+	}).Should(gomega.BeTrue(), "GKENetworkParamSet Status should be updated with subnet cidr.")
+}
+
 func TestAddAndRemoveFinalizerToGKENetworkParamSet_NoNetworkName(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	ctx, stop := context.WithCancel(context.Background())
