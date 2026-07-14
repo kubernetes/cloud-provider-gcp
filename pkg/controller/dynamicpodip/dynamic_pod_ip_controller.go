@@ -228,6 +228,30 @@ func (c *Controller) syncNode(key string) error {
 	return c.reconcile(ctx, nnc, node.Spec.ProviderID)
 }
 
+// networkChanges encapsulates the additions and removals for a specific network interface.
+type networkChanges struct {
+	additions []string
+	removals  []string
+}
+
+// nodeNetworkChanges wraps a map of network names to their networkChanges for a node.
+type nodeNetworkChanges map[string]networkChanges
+
+// Empty returns true if there are no changes for any network.
+func (n nodeNetworkChanges) Empty() bool {
+	return len(n) == 0
+}
+
+// Networks returns a sorted slice of network names that have changes.
+func (n nodeNetworkChanges) Networks() []string {
+	return sets.StringKeySet(n).List()
+}
+
+// GetNetwork returns the networkChanges for a given network name.
+func (n nodeNetworkChanges) GetNetwork(network string) networkChanges {
+	return n[network]
+}
+
 func (c *Controller) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig, providerID string) error {
 	nodeName := nnc.Name
 
@@ -240,13 +264,13 @@ func (c *Controller) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig
 	}
 
 	// 2. Calculate changes using GCE actual state instead of K8s status
-	additions, removals, err := c.calculateChanges(nnc, ifaces)
+	changes, err := c.calculateChanges(nnc, ifaces)
 	if err != nil {
 		klog.Errorf("Failed to calculate changes for %q: %v", nnc.Name, err)
 		return c.updateStatusError(ctx, nnc, string(nncv1.NodeNetworkConfigInvalidParametersReason), err.Error())
 	}
 
-	if len(additions) == 0 && len(removals) == 0 {
+	if changes.Empty() {
 		klog.V(4).Infof("NodeNetworkConfig %q is already aligned", nnc.Name)
 		if c.statusNeedsSync(nnc, ifaces) {
 			return c.syncStatusToGCE(ctx, nnc, ifaces)
@@ -264,22 +288,13 @@ func (c *Controller) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig
 	}
 
 	// 4. Apply changes via GCE Provider sequentially per network (Provider returns error only).
-	existingNetworksWithChanges := sets.NewString()
-	for netName := range additions {
-		existingNetworksWithChanges.Insert(netName)
-	}
-	for netName := range removals {
-		existingNetworksWithChanges.Insert(netName)
-	}
-
-	for _, network := range existingNetworksWithChanges.List() {
-		adds := additions[network]
-		rems := removals[network]
+	for _, network := range changes.Networks() {
+		change := changes.GetNetwork(network)
 		netURL := c.resolveNetworkURL(network)
 
-		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v", nnc.Name, network, netURL, adds, rems)
+		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v", nnc.Name, network, netURL, change.additions, change.removals)
 
-		err := c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, netURL, adds, rems)
+		err := c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, netURL, change.additions, change.removals)
 		if err != nil {
 			klog.Errorf("GCE mutation failed for node %q, network %q: %v", nnc.Name, network, err)
 			c.setCondition(nnc, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionFalse, string(nncv1.NodeNetworkConfigInvalidParametersReason), err.Error())
@@ -411,9 +426,8 @@ func (c *Controller) syncStatusToGCE(ctx context.Context, nnc *nncv1.NodeNetwork
 }
 
 // calculateChanges compares Spec and GCE actual interfaces to determine additions (sizes) and removals (exact CIDRs).
-func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*computebeta.NetworkInterface) (map[string][]string, map[string][]string, error) {
-	additions := make(map[string][]string)
-	removals := make(map[string][]string)
+func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*computebeta.NetworkInterface) (nodeNetworkChanges, error) {
+	changes := make(nodeNetworkChanges)
 
 	currentCapacity := make(map[string]int)
 	activeCIDRs := sets.NewString()
@@ -423,7 +437,7 @@ func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*co
 		for _, r := range iface.AliasIpRanges {
 			cap, err := cidrCapacity(r.IpCidrRange)
 			if err != nil {
-				return nil, nil, fmt.Errorf("failed to parse CIDR %q in GCE: %w", r.IpCidrRange, err)
+				return nil, fmt.Errorf("failed to parse CIDR %q in GCE: %w", r.IpCidrRange, err)
 			}
 			currentCapacity[netName] += cap
 			activeCIDRs.Insert(fmt.Sprintf("%s/%s", netName, r.IpCidrRange))
@@ -440,9 +454,11 @@ func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*co
 			neededIPs := desiredPods - currentCap
 			blocksNeeded := (neededIPs + DefaultCapacity - 1) / DefaultCapacity
 
+			entry := changes[network]
 			for i := 0; i < blocksNeeded; i++ {
-				additions[network] = append(additions[network], DefaultBlockSize)
+				entry.additions = append(entry.additions, DefaultBlockSize)
 			}
+			changes[network] = entry
 			klog.V(3).Infof("Node %q network %q needs %d more IPs, requesting %d blocks of size %s", nnc.Name, network, neededIPs, blocksNeeded, DefaultBlockSize)
 		}
 	}
@@ -453,12 +469,14 @@ func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*co
 		key := fmt.Sprintf("%s/%s", network, rel.CIDR)
 
 		if activeCIDRs.Has(key) {
-			removals[network] = append(removals[network], rel.CIDR)
+			entry := changes[network]
+			entry.removals = append(entry.removals, rel.CIDR)
+			changes[network] = entry
 			klog.V(3).Infof("Node %q network %q: flagging %q for removal", nnc.Name, network, rel.CIDR)
 		}
 	}
 
-	return additions, removals, nil
+	return changes, nil
 }
 
 func (c *Controller) updateNNCStatus(ctx context.Context, nnc *nncv1.NodeNetworkConfig) error {
@@ -556,6 +574,15 @@ func (c *GCECache) getOrCreateInstance(nodeName string) *CachedInstance {
 // Get retrieves the cached network interfaces for the node.
 // If the cache is stale or missing, it calls the GCE loader holding ONLY the node-specific lock.
 func (c *GCECache) Get(ctx context.Context, nodeName string, providerID string) ([]*computebeta.NetworkInterface, error) {
+	return c.get(ctx, nodeName, providerID, false)
+}
+
+// ForceGet bypasses the TTL check, forces a fresh load from GCE, updates the cache, and returns the state.
+func (c *GCECache) ForceGet(ctx context.Context, nodeName string, providerID string) ([]*computebeta.NetworkInterface, error) {
+	return c.get(ctx, nodeName, providerID, true)
+}
+
+func (c *GCECache) get(ctx context.Context, nodeName string, providerID string, force bool) ([]*computebeta.NetworkInterface, error) {
 	inst := c.getOrCreateInstance(nodeName)
 
 	// Lock only this specific node's state. Other nodes can be processed concurrently.
@@ -563,7 +590,7 @@ func (c *GCECache) Get(ctx context.Context, nodeName string, providerID string) 
 	defer inst.mu.Unlock()
 
 	now := c.clock.Now()
-	if inst.lastUpdated.IsZero() || now.Sub(inst.lastUpdated) > c.ttl {
+	if force || inst.lastUpdated.IsZero() || now.Sub(inst.lastUpdated) > c.ttl {
 		ifaces, err := c.loader(ctx, providerID)
 		if err != nil {
 			return nil, err
@@ -571,23 +598,6 @@ func (c *GCECache) Get(ctx context.Context, nodeName string, providerID string) 
 		inst.interfaces = deepCopyInterfaces(ifaces)
 		inst.lastUpdated = now
 	}
-
-	return deepCopyInterfaces(inst.interfaces), nil
-}
-
-// ForceGet bypasses the TTL check, forces a fresh load from GCE, updates the cache, and returns the state.
-func (c *GCECache) ForceGet(ctx context.Context, nodeName string, providerID string) ([]*computebeta.NetworkInterface, error) {
-	inst := c.getOrCreateInstance(nodeName)
-
-	inst.mu.Lock()
-	defer inst.mu.Unlock()
-
-	ifaces, err := c.loader(ctx, providerID)
-	if err != nil {
-		return nil, err
-	}
-	inst.interfaces = deepCopyInterfaces(ifaces)
-	inst.lastUpdated = c.clock.Now()
 
 	return deepCopyInterfaces(inst.interfaces), nil
 }
