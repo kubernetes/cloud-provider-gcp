@@ -17,7 +17,11 @@ limitations under the License.
 package gcpcredential
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os/exec"
@@ -44,6 +48,10 @@ const (
 	StorageScopePrefix       = "https://www.googleapis.com/auth/devstorage"
 	cloudPlatformScopePrefix = "https://www.googleapis.com/auth/cloud-platform"
 	defaultServiceAccount    = "default/"
+	// EnableWIImagePullAnnotation is the KSA annotation key to opt-in to Workload Identity image pulling
+	EnableWIImagePullAnnotation = "iam.gke.io/enable-wi-image-pull"
+	// googleSTSEndpoint is the GCP STS token exchange endpoint
+	googleSTSEndpoint = "https://sts.googleapis.com/v1/token"
 )
 
 // GCEProductNameFile is the product file path that contains the cloud service name.
@@ -56,6 +64,7 @@ var containerRegistryUrls = []string{"container.cloud.google.com", "gcr.io", "*.
 
 var metadataHeader = &http.Header{
 	"Metadata-Flavor": []string{"Google"},
+	"User-Agent":      []string{"GKE auth-provider-gcp image pull"},
 }
 
 // MetadataProvider is a DockerConfigProvider that reads its configuration from Google
@@ -83,6 +92,12 @@ type DockerConfigURLKeyProvider struct {
 type ContainerRegistryProvider struct {
 	MetadataProvider
 	UseRegistryFromImage bool
+
+	// Workload Identity context passed via constructor
+	KSAToken                  string
+	ServiceAccountAnnotations map[string]string
+	IdentityProvider          string
+	ProjectID                 string
 }
 
 // Returns true if it finds a local GCE VM.
@@ -232,8 +247,54 @@ type TokenBlob struct {
 	AccessToken string `json:"access_token"`
 }
 
+// DTO definitions for public GCP STS and IAM token exchanges
+type stsTokenExchangeRequest struct {
+	Audience           string `json:"audience,omitempty"`
+	GrantType          string `json:"grant_type"`
+	RequestedTokenType string `json:"requested_token_type"`
+	Scope              string `json:"scope,omitempty"`
+	SubjectToken       string `json:"subject_token"`
+	SubjectTokenType   string `json:"subject_token_type"`
+}
+
+type stsTokenExchangeResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int    `json:"expires_in"`
+	TokenType   string `json:"token_type"`
+}
+
 // Provide implements DockerConfigProvider
 func (g *ContainerRegistryProvider) Provide(image string) credentialconfig.DockerConfig {
+	if g.IdentityProvider == "" || g.ServiceAccountAnnotations[EnableWIImagePullAnnotation] != "true" {
+		klog.V(4).Infof("Standard flow active: Workload Identity is disabled, using Node Service Account for image: %s", image)
+		return g.provideNodeSACredentials(image)
+	}
+
+	if g.KSAToken == "" {
+		klog.Errorf("auth-provider-gcp: Workload Identity opted-in but KSA token is unset. Failing fast without fallback.")
+		return credentialconfig.DockerConfig{} // Returns empty config (causes authentication failure)
+	}
+
+	// Trigger Workload Identity flow
+	cfg := credentialconfig.DockerConfig{}
+	klog.V(4).Infof("auth-provider-gcp: Triggering Workload Identity exchange for image: %s", image)
+	accessToken, err := g.executeWorkloadIdentityExchange(context.Background(), image)
+	if err != nil {
+		// Strict Fail-Fast: Since it was opted-in, do NOT fall back to GCE Node SA if exchange fails
+		klog.Errorf("auth-provider-gcp: Workload Identity exchange failed for opted-in KSA (%v). Failing fast without fallback.", err)
+		return cfg // Returns empty config (causes authentication failure)
+	}
+
+	klog.V(4).Infof("auth-provider-gcp: Workload Identity exchange successful!")
+	entry := credentialconfig.DockerConfigEntry{
+		Username: "_token",
+		Password: accessToken,
+	}
+	g.populateConfig(cfg, image, entry)
+	return cfg
+}
+
+func (g *ContainerRegistryProvider) provideNodeSACredentials(image string) credentialconfig.DockerConfig {
 	cfg := credentialconfig.DockerConfig{}
 
 	tokenJSONBlob, err := credentialconfig.ReadURL(metadataToken, g.Client, metadataHeader)
@@ -260,6 +321,11 @@ func (g *ContainerRegistryProvider) Provide(image string) credentialconfig.Docke
 		Email:    string(email),
 	}
 
+	g.populateConfig(cfg, image, entry)
+	return cfg
+}
+
+func (g *ContainerRegistryProvider) populateConfig(cfg credentialconfig.DockerConfig, image string, entry credentialconfig.DockerConfigEntry) {
 	// If UseRegistryFromImage is true, we will directly give the credential to the registry of the image.
 	// Currently, this is only used by auth-provider-gcp.
 	if g.UseRegistryFromImage {
@@ -267,10 +333,74 @@ func (g *ContainerRegistryProvider) Provide(image string) credentialconfig.Docke
 			cfg[registry] = entry
 		}
 	}
-
 	// Add our entry for each of the supported container registry URLs
 	for _, k := range containerRegistryUrls {
 		cfg[k] = entry
 	}
-	return cfg
+}
+
+// executeWorkloadIdentityExchange handles the direct workload identity token exchange
+func (g *ContainerRegistryProvider) executeWorkloadIdentityExchange(ctx context.Context, image string) (string, error) {
+	if g.ProjectID == "" {
+		return "", fmt.Errorf("project-id must be configured for Workload Identity exchange")
+	}
+
+	// Trade KSA token for a Google Federated Token via STS
+	klog.V(4).Infof("auth-provider-gcp: Executing STS exchange for Project ID: %s", g.ProjectID)
+	federatedToken, err := g.exchangeKSATokenForFederated(ctx, g.ProjectID)
+	if err != nil {
+		return "", fmt.Errorf("failed KSA->Federated STS exchange: %w", err)
+	}
+	klog.V(4).Infof("auth-provider-gcp: STS exchange successful (Google Federated Token acquired)")
+
+	return federatedToken, nil
+}
+
+func (g *ContainerRegistryProvider) exchangeKSATokenForFederated(ctx context.Context, projectID string) (string, error) {
+	// Audience format: identitynamespace:<POOL_ID>:<PROVIDER_URL>
+	audience := fmt.Sprintf("identitynamespace:%s.svc.id.goog:%s", projectID, g.IdentityProvider)
+	klog.V(4).Infof("auth-provider-gcp: Constructed STS Full Audience: %s", audience)
+
+	payload := stsTokenExchangeRequest{
+		Audience:           audience,
+		GrantType:          "urn:ietf:params:oauth:grant-type:token-exchange",
+		RequestedTokenType: "urn:ietf:params:oauth:token-type:access_token",
+		Scope:              "https://www.googleapis.com/auth/cloud-platform",
+		SubjectToken:       g.KSAToken,
+		SubjectTokenType:   "urn:ietf:params:oauth:token-type:jwt",
+	}
+
+	return g.callSTSEndpoint(ctx, payload)
+}
+
+func (g *ContainerRegistryProvider) callSTSEndpoint(ctx context.Context, payload stsTokenExchangeRequest) (string, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", googleSTSEndpoint, bytes.NewBuffer(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "GKE auth-provider-gcp image pull")
+
+	resp, err := g.Client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("STS token exchange failed with status %d: %s", resp.StatusCode, string(respBytes))
+	}
+
+	var stsResp stsTokenExchangeResponse
+	if err := json.NewDecoder(resp.Body).Decode(&stsResp); err != nil {
+		return "", err
+	}
+
+	return stsResp.AccessToken, nil
 }
