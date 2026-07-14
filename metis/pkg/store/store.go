@@ -757,6 +757,18 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 	}
 	defer tx.Rollback()
 
+	// Check if there are already available unallocated IPs in this block.
+	var hasAvailable int
+	nowMilli := time.Now().UTC().UnixMilli()
+	err = tx.QueryRowContext(ctx, `
+		SELECT COUNT(id) FROM ip_addresses 
+		WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= ?)
+	`, cidrBlockID, nowMilli).Scan(&hasAvailable)
+	if err == nil && hasAvailable > 0 {
+		s.log.Info("Block already has available IPs, skipping expansion", "cidrBlockID", cidrBlockID)
+		return nil
+	}
+
 	// 1. Fetch CIDR range for the given ID
 	var cidrRange string
 	err = tx.QueryRowContext(ctx, `

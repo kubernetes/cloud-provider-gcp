@@ -14,6 +14,8 @@
 
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 LOCAL_BIN := $(PROJECT_DIR)/bin
+
+include Makefile-deps.mk
 GCP_PROJECT ?= $(shell gcloud config get-value project)
 
 GIT_VERSION := $(shell git describe --tags --always --dirty | sed 's|.*/||' | tr -cd '[:alnum:].-')
@@ -232,7 +234,7 @@ test: ## Run unit tests.
 ## --------------------------------------
 
 .PHONY: verify
-verify: ## Run all verification scripts.
+verify: golangci-lint ## Run all verification scripts.
 	./tools/verify-all.sh
 
 .PHONY: update-vendor
@@ -292,23 +294,6 @@ TEST_ARGS ?=
 .PHONY: test-cluster-simple
 test-cluster-simple: ## Run test cluster simple E2E test scenario.
 	./e2e/scenarios/kops-simple
-
-.PHONY: install-test-cluster-deps
-install-test-cluster-deps: ## Install kubetest2 and other dependencies.
-	@echo "Installing kubetest2 and plugins..."
-	@mkdir -p $(LOCAL_BIN)
-	@GOBIN=$(LOCAL_BIN) go install sigs.k8s.io/kubetest2@latest
-	@GOBIN=$(LOCAL_BIN) go install sigs.k8s.io/kubetest2/kubetest2-tester-ginkgo@latest
-	@TEMP_DIR=$$(mktemp -d); \
-	trap 'rm -rf "$$TEMP_DIR"' EXIT; \
-	git clone --depth 1 https://github.com/kubernetes/kops.git "$$TEMP_DIR"; \
-	cd "$$TEMP_DIR/tests/e2e" && GOBIN=$(LOCAL_BIN) go install ./kubetest2-kops ./kubetest2-tester-kops
-	@echo "Downloading latest green kOps binary..."
-	@KOPS_BASE_URL=$$(curl -s https://storage.googleapis.com/k8s-staging-kops/kops/releases/markers/master/latest-ci-updown-green.txt); \
-	mkdir -p $(LOCAL_BIN); \
-	wget -qO $(LOCAL_BIN)/kops.tmp $${KOPS_BASE_URL}/linux/amd64/kops; \
-	chmod +x $(LOCAL_BIN)/kops.tmp; \
-	mv $(LOCAL_BIN)/kops.tmp $(LOCAL_BIN)/kops
 
 .PHONY: test-cluster-tool
 test-cluster-tool: $(LOCAL_BIN)/gkops ## Build the test cluster lifecycle tool.
