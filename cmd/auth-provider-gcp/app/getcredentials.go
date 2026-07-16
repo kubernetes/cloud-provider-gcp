@@ -18,6 +18,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,8 +41,13 @@ const (
 
 // CredentialOptions contains a representation of the options passed to the credential provider.
 type CredentialOptions struct {
-	AuthFlow string
+	AuthFlow         string
+	IdentityProvider string
+	ProjectID        string
 }
+
+// ErrProjectIDRequired is returned when --identity-provider is set but --project-id is empty.
+var ErrProjectIDRequired = errors.New("--project-id is required when --identity-provider is set")
 
 // AuthFlowFlagError represents an error that occurred during flag validation.
 type AuthFlowFlagError struct {
@@ -81,22 +87,22 @@ func NewGetCredentialsCommand() (*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:   "get-credentials",
 		Short: "Get authentication credentials",
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return validateFlags(&options)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return getCredentials(options.AuthFlow)
+			return getCredentials(options)
 		},
 	}
 	defineFlags(cmd, &options)
-	if err := validateFlags(&options); err != nil {
-		return nil, err
-	}
 	return cmd, nil
 }
 
-func providerFromFlow(flow string) (credentialconfig.DockerConfigProvider, error) {
+func providerFromFlow(flow string, req credentialproviderapi.CredentialProviderRequest, options CredentialOptions) (credentialconfig.DockerConfigProvider, error) {
 	transport := utilnet.SetTransportDefaults(&http.Transport{})
 	switch flow {
 	case gcrAuthFlow:
-		return provider.MakeRegistryProvider(transport), nil
+		return provider.MakeRegistryProvider(transport, req.ServiceAccountToken, req.ServiceAccountAnnotations, options.IdentityProvider, options.ProjectID), nil
 	case dockerConfigAuthFlow:
 		return provider.MakeDockerConfigProvider(transport), nil
 	case dockerConfigURLAuthFlow:
@@ -106,11 +112,10 @@ func providerFromFlow(flow string) (credentialconfig.DockerConfigProvider, error
 	}
 }
 
-func getCredentials(authFlow string) error {
-	klog.V(2).Infof("get-credentials (authFlow %s)", authFlow)
-	authProvider, err := providerFromFlow(authFlow)
-	if err != nil {
-		return err
+func getCredentials(options CredentialOptions) error {
+	klog.V(2).Infof("get-credentials (authFlow %s)", options.AuthFlow)
+	if options.IdentityProvider != "" {
+		klog.V(2).Infof("auth-provider-gcp: Workload Identity flow is enabled (identity-provider: %q)", options.IdentityProvider)
 	}
 	unparsedRequest, err := io.ReadAll(os.Stdin)
 	if err != nil {
@@ -121,7 +126,11 @@ func getCredentials(authFlow string) error {
 	if err != nil {
 		return fmt.Errorf("error unmarshaling auth credential request: %w", err)
 	}
-	authCredentials, err := provider.GetResponse(authRequest.Image, authProvider)
+	authProvider, err := providerFromFlow(options.AuthFlow, authRequest, options)
+	if err != nil {
+		return err
+	}
+	authCredentials, err := provider.GetResponse(authRequest, authProvider)
 	if err != nil {
 		return fmt.Errorf("error getting authentication response from provider: %w", err)
 	}
@@ -137,11 +146,19 @@ func getCredentials(authFlow string) error {
 
 func defineFlags(credCmd *cobra.Command, options *CredentialOptions) {
 	credCmd.Flags().StringVarP(&options.AuthFlow, "authFlow", "a", gcrAuthFlow, fmt.Sprintf("authentication flow (valid values are %q, %q, and %q)", gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow))
+	credCmd.Flags().StringVar(&options.IdentityProvider, "identity-provider", "", "Target Identity Provider URL to request federated tokens from. Only takes effect when --authFlow=gcr. If configured, it enables Workload Identity flow.")
+	credCmd.Flags().StringVar(&options.ProjectID, "project-id", "", "The GCP Project ID. Required when --identity-provider is configured.")
 }
 
 func validateFlags(options *CredentialOptions) error {
 	if options.AuthFlow != gcrAuthFlow && options.AuthFlow != dockerConfigAuthFlow && options.AuthFlow != dockerConfigURLAuthFlow {
 		return &AuthFlowFlagError{flagValue: options.AuthFlow}
+	}
+	if options.IdentityProvider != "" && options.AuthFlow != gcrAuthFlow {
+		klog.Warningf("auth-provider-gcp: --identity-provider was set but --authFlow is %q. This flag only has effect when --authFlow=gcr.", options.AuthFlow)
+	}
+	if options.IdentityProvider != "" && options.ProjectID == "" {
+		return ErrProjectIDRequired
 	}
 	return nil
 }
