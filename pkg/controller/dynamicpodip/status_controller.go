@@ -53,8 +53,7 @@ type NoopStatusTrigger struct{}
 // EnqueueNode performs a no-op when status population is disabled.
 func (n *NoopStatusTrigger) EnqueueNode(nodeName string) {}
 
-// NodeNetworkConfigStatusController ("Read" side / Status Populator) reconciles the status
-// section of NodeNetworkConfig CRDs to match actual GCE VM alias IP range state.
+// NodeNetworkConfigStatusController reconciles the status section of NodeNetworkConfig CRDs to match actual GCE VM alias IP range state.
 type NodeNetworkConfigStatusController struct {
 	kubeClient kubernetes.Interface
 	nncClient  nncclientset.Interface
@@ -151,7 +150,7 @@ func (c *NodeNetworkConfigStatusController) syncNode(key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), reconcileTimeout)
 	defer cancel()
 
-	// 1. Get the NodeNetworkConfig CRD (check lister first, fall back to API client)
+	// Get the NodeNetworkConfig CRD (check lister first, fall back to API client)
 	nnc, err := c.nncLister.Get(key)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -168,7 +167,7 @@ func (c *NodeNetworkConfigStatusController) syncNode(key string) error {
 		}
 	}
 
-	// 2. Get the Node to extract ProviderID
+	// Get the Node to extract ProviderID
 	node, err := c.nodeLister.Get(nnc.Name)
 	if err != nil {
 		if errors.IsNotFound(err) && c.kubeClient != nil {
@@ -199,14 +198,14 @@ func (c *NodeNetworkConfigStatusController) syncNode(key string) error {
 }
 
 func (c *NodeNetworkConfigStatusController) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig, providerID string) error {
-	// 3. Retrieve GCE actual state via cache
+	// Retrieve GCE actual state via cache.
 	ifaces, err := c.gceCache.Get(ctx, nnc.Name, providerID)
 	if err != nil {
 		klog.Errorf("Failed to get GCE state for node %q: %v", nnc.Name, err)
 		return err
 	}
 
-	// 4. Sync status if needed
+	// Sync status if needed
 	if c.statusNeedsSync(nnc, ifaces) {
 		return c.syncStatusToGCE(ctx, nnc, ifaces)
 	}

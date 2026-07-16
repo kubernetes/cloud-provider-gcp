@@ -671,7 +671,6 @@ func (g *Cloud) AddAliasToInstanceByProviderID(providerID string, alias *net.IPN
 	})
 
 	mc := newInstancesMetricContext("add_alias", zone)
-	// TODO: Use v1 API once the client SDK starts generating it.
 	if g.projectFromNodeProviderID {
 		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(instance.Name, lastComponent(instance.Zone)), iface.Name, iface, cloud.ForceProjectID(project))
 	} else {
@@ -976,16 +975,16 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 ) error {
 	klog.V(2).Infof("UpdateInstanceAliasIPRanges: providerID=%q, networkURL=%q, additions=%v, removals=%v", providerID, networkURL, additions, removals)
 
-	// 1. Split providerID to get project, zone, name
 	project, zone, name, err := splitProviderID(providerID)
 	if err != nil {
 		return err
 	}
 	name = canonicalizeInstanceName(name)
 
-	// 2. Get the GCE Instance to get current interfaces and fingerprints
+	// Get the GCE Instance to get current interfaces and fingerprints
 	var instance *computebeta.Instance
 	if g.projectFromNodeProviderID {
+		// TODO: Use v1 API once the client SDK starts generating it.
 		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
 	} else {
 		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone))
@@ -994,7 +993,7 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 		return fmt.Errorf("failed to get GCE instance %q in zone %q: %w", name, zone, err)
 	}
 
-	// 3. Find the target network interface by Network URL
+	// Find the target network interface by Network URL
 	var targetIface *computebeta.NetworkInterface
 	for _, iface := range instance.NetworkInterfaces {
 		if iface.Network == networkURL {
@@ -1007,7 +1006,7 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 		return fmt.Errorf("network interface for network %q not found on instance %q", networkURL, name)
 	}
 
-	// 4. Construct the new AliasIpRanges list
+	// Construct the new AliasIpRanges list
 	newRanges := []*computebeta.AliasIpRange{}
 
 	// Filter out removals
@@ -1029,14 +1028,14 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 		})
 	}
 
-	// 5. Prepare the update body
+	// Prepare the update body
 	ifaceUpdate := &computebeta.NetworkInterface{
 		Name:          targetIface.Name,
 		Fingerprint:   targetIface.Fingerprint,
 		AliasIpRanges: newRanges,
 	}
 
-	// 6. Call UpdateNetworkInterface (blocks until LRO completes)
+	// Call UpdateNetworkInterface (blocks until LRO completes)
 	mc := newInstancesMetricContext("update_instance_alias_ip_ranges", zone)
 	if g.projectFromNodeProviderID {
 		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate, cloud.ForceProjectID(project))

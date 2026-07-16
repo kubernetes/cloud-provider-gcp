@@ -76,7 +76,7 @@ func StartControllers(
 	var statusCtrl *NodeNetworkConfigStatusController
 
 	if opts.PopulateNodeNetworkConfig {
-		klog.Info("Initializing NodeNetworkConfig Status Controller (Read Side)")
+		klog.Info("Initializing NodeNetworkConfig Status Controller")
 		statusCtrl = NewStatusController(
 			kubeClient,
 			nncClient,
@@ -90,7 +90,7 @@ func StartControllers(
 	}
 
 	if opts.EnableDynamicPodIPController {
-		klog.Info("Initializing NodeNetworkConfig Spec Controller (Write Side)")
+		klog.Info("Initializing NodeNetworkConfig Spec Controller")
 		specCtrl := NewSpecController(
 			kubeClient,
 			nncClient,
