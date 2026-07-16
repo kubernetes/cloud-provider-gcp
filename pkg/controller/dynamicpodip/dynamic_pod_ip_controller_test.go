@@ -29,6 +29,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	compute "google.golang.org/api/compute/v1"
 	computebeta "google.golang.org/api/compute/v0.beta"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
@@ -55,7 +56,8 @@ type testFixture struct {
 	nncClient       *nncfake.Clientset
 	informerFactory nncinformers.SharedInformerFactory
 	fakeGCE         *gce.Cloud
-	controller      *Controller
+	specCtrl        *NodeNetworkConfigSpecController
+	statusCtrl      *NodeNetworkConfigStatusController
 	fakeClock       *clocktesting.FakeClock
 }
 
@@ -82,18 +84,38 @@ func newTestFixture(t *testing.T) *testFixture {
 	}
 	mockInstances.UpdateNetworkInterfaceHook = updateNetworkInterfaceHook
 
-	controller := NewController(
+	loader := func(ctx context.Context, providerID string) ([]*networkInterface, error) {
+		gceIfaces, err := fakeGCE.GetInstanceNetworkInterfaces(ctx, providerID)
+		if err != nil {
+			return nil, err
+		}
+		return toNetworkInterfaces(gceIfaces), nil
+	}
+
+	initialTime := time.Date(2026, 6, 26, 9, 0, 0, 0, time.UTC)
+	fakeClock := clocktesting.NewFakeClock(initialTime)
+
+	gceCache := NewGCECache(loader, 10*time.Second, fakeClock)
+
+	statusCtrl := NewStatusController(
+		kubeClient,
+		nncClient,
+		nncInformer.Lister(),
+		nodeInformer.Lister(),
+		fakeGCE,
+		gceCache,
+		fakeClock,
+	)
+
+	specCtrl := NewSpecController(
 		kubeClient,
 		nncClient,
 		nncInformer,
 		nodeInformer,
 		fakeGCE,
+		gceCache,
+		statusCtrl,
 	)
-
-	// Initialize fake clock and inject it into the controller
-	initialTime := time.Date(2026, 6, 26, 9, 0, 0, 0, time.UTC)
-	fakeClock := clocktesting.NewFakeClock(initialTime)
-	controller.SetClock(fakeClock)
 
 	return &testFixture{
 		t:               t,
@@ -101,15 +123,22 @@ func newTestFixture(t *testing.T) *testFixture {
 		nncClient:       nncClient,
 		informerFactory: informerFactory,
 		fakeGCE:         fakeGCE,
-		controller:      controller,
+		specCtrl:        specCtrl,
+		statusCtrl:      statusCtrl,
 		fakeClock:       fakeClock,
 	}
 }
 
 func (f *testFixture) run(ctx context.Context, stopCh <-chan struct{}) {
 	f.informerFactory.Start(stopCh)
-	// We don't call controller.Run because it blocks. We will call reconcile directly in tests
-	// to have fine-grained control and synchronous execution.
+}
+
+func (f *testFixture) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig, providerID string) error {
+	err := f.specCtrl.reconcile(ctx, nnc, providerID)
+	if err != nil {
+		return err
+	}
+	return f.statusCtrl.reconcile(ctx, nnc, providerID)
 }
 
 func TestReconcile_AddAliasIP(t *testing.T) {
@@ -161,7 +190,7 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 	f.informerFactory.WaitForCacheSync(stopCh)
 
 	// 3. Run reconcile
-	err = f.controller.reconcile(ctx, nnc, testProviderID)
+	err = f.reconcile(ctx, nnc, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
@@ -283,7 +312,7 @@ func TestReconcile_RemoveAliasIP(t *testing.T) {
 	f.informerFactory.WaitForCacheSync(stopCh)
 
 	// 3. Run reconcile
-	err = f.controller.reconcile(ctx, nnc, testProviderID)
+	err = f.reconcile(ctx, nnc, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
@@ -386,7 +415,7 @@ func TestReconcile_NoOp(t *testing.T) {
 	// We can just verify that the instance in fake GCE remains unchanged.
 	
 	// 3. Run reconcile
-	err = f.controller.reconcile(ctx, nnc, testProviderID)
+	err = f.reconcile(ctx, nnc, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
@@ -434,7 +463,7 @@ func TestReconcile_GCEError(t *testing.T) {
 	f.informerFactory.WaitForCacheSync(stopCh)
 
 	// 2. Run reconcile. It should fail because the instance doesn't exist in GCE.
-	err = f.controller.reconcile(ctx, nnc, testProviderID)
+	err = f.reconcile(ctx, nnc, testProviderID)
 	if err == nil {
 		t.Fatal("Expected reconcile to fail, but it succeeded")
 	}
@@ -595,7 +624,7 @@ func TestReconcile_InvalidStatusCIDR(t *testing.T) {
 	f.informerFactory.WaitForCacheSync(stopCh)
 
 	// Run reconcile. It should succeed because GCE is valid, and it should heal K8s status.
-	err = f.controller.reconcile(ctx, nncInvalid, testProviderID)
+	err = f.reconcile(ctx, nncInvalid, testProviderID)
 	if err != nil {
 		t.Fatalf("Expected reconcile to succeed (self-healing), got error: %v", err)
 	}
@@ -672,7 +701,7 @@ func TestReconcile_InvalidStatusCIDR(t *testing.T) {
 	f.fakeClock.Step(11 * time.Second)
 
 	// Run reconcile. It should succeed and heal status (allocating 2 blocks).
-	err = f.controller.reconcile(ctx, nncIPv6, testProviderID)
+	err = f.reconcile(ctx, nncIPv6, testProviderID)
 	if err != nil {
 		t.Fatalf("Expected reconcile to succeed (self-healing IPv6), got error: %v", err)
 	}
@@ -754,7 +783,7 @@ func TestReconcile_IdempotentRetryOnStatusFailure(t *testing.T) {
 	})
 
 	// 3. First reconcile run. It should fail on the status update.
-	err = f.controller.reconcile(ctx, nnc, testProviderID)
+	err = f.reconcile(ctx, nnc, testProviderID)
 	if err == nil {
 		t.Fatal("Expected first reconcile to fail due to simulated status update error, but it succeeded")
 	}
@@ -784,7 +813,7 @@ func TestReconcile_IdempotentRetryOnStatusFailure(t *testing.T) {
 	// 4. Second reconcile run (Simulated Retry).
 	// The reactor will now succeed.
 	// We pass the same NNC object (which still has empty status).
-	err = f.controller.reconcile(ctx, unsyncedNNC, testProviderID)
+	err = f.reconcile(ctx, unsyncedNNC, testProviderID)
 	if err != nil {
 		t.Fatalf("Second reconcile (retry) failed: %v", err)
 	}
@@ -875,7 +904,7 @@ func TestReconcile_MultiNetwork(t *testing.T) {
 	f.informerFactory.WaitForCacheSync(stopCh)
 
 	// 3. Run reconcile
-	err = f.controller.reconcile(ctx, nnc, testProviderID)
+	err = f.reconcile(ctx, nnc, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
@@ -988,7 +1017,7 @@ func TestReconcile_CacheExpirationBehavior(t *testing.T) {
 	})
 
 	// 3. First run: allocates 2 blocks in GCE, fails status write.
-	err = f.controller.reconcile(ctx, nnc, testProviderID)
+	err = f.reconcile(ctx, nnc, testProviderID)
 	if err == nil {
 		t.Fatal("Expected reconcile to fail on status write, but it succeeded")
 	}
@@ -1024,7 +1053,7 @@ func TestReconcile_CacheExpirationBehavior(t *testing.T) {
 		t.Fatalf("Failed to get NNC: %v", err)
 	}
 
-	err = f.controller.reconcile(ctx, unsyncedNNC, testProviderID)
+	err = f.reconcile(ctx, unsyncedNNC, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
@@ -1053,7 +1082,7 @@ func TestReconcile_CacheExpirationBehavior(t *testing.T) {
 
 	// Run reconciliation
 	updatedNNC2, _ := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
-	err = f.controller.reconcile(ctx, updatedNNC2, testProviderID)
+	err = f.reconcile(ctx, updatedNNC2, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
@@ -1080,3 +1109,80 @@ func TestReconcile_CacheExpirationBehavior(t *testing.T) {
 		t.Errorf("Expected 3 PodCIDRs in status, got %d: %v", len(finalNNC2.Status.PodCIDRs), finalNNC2.Status.PodCIDRs)
 	}
 }
+
+func TestStatusController_Independent(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+
+	// 1. Create a GCE instance with existing alias IPs
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{
+				Name:       "nic0",
+				Network:    testNetworkURL,
+				Subnetwork: "default",
+				AliasIpRanges: []*compute.AliasIpRange{
+					{IpCidrRange: "10.100.0.0/28"},
+				},
+			},
+		},
+	}
+	err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance)
+	if err != nil {
+		t.Fatalf("Failed to insert fake GCE instance: %v", err)
+	}
+
+	// 2. Create NNC with empty Status
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNodeName,
+		},
+	}
+	_, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+	}
+
+	// Create a node object in fake kubeClient
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNodeName,
+		},
+		Spec: corev1.NodeSpec{
+			ProviderID: testProviderID,
+		},
+	}
+	_, err = f.kubeClient.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create Node: %v", err)
+	}
+
+	// 3. Directly invoke status controller syncNode (simulating workqueue execution)
+	err = f.statusCtrl.syncNode(testNodeName)
+	if err != nil {
+		t.Fatalf("Status sync failed: %v", err)
+	}
+
+	// 4. Verify NNC Status is populated
+	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get updated NNC: %v", err)
+	}
+
+	if len(updatedNNC.Status.PodCIDRs) != 1 {
+		t.Fatalf("Expected 1 PodCIDR in status, got %d", len(updatedNNC.Status.PodCIDRs))
+	}
+	if updatedNNC.Status.PodCIDRs[0].CIDR != "10.100.0.0/28" {
+		t.Errorf("Expected PodCIDR 10.100.0.0/28, got %q", updatedNNC.Status.PodCIDRs[0].CIDR)
+	}
+}
+
+func TestNoopStatusTrigger(t *testing.T) {
+	trigger := &NoopStatusTrigger{}
+	// Calling EnqueueNode on NoopStatusTrigger should execute cleanly without panic
+	trigger.EnqueueNode("test-node")
+}
+
