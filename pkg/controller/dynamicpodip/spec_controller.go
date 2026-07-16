@@ -199,7 +199,7 @@ func (c *NodeNetworkConfigSpecController) syncNode(key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), reconcileTimeout)
 	defer cancel()
 
-	// 1. Get the NodeNetworkConfig CRD (check lister first, fall back to API client)
+	// Get the NodeNetworkConfig CRD (check lister first, fall back to API client)
 	nnc, err := c.nncLister.Get(key)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -216,7 +216,7 @@ func (c *NodeNetworkConfigSpecController) syncNode(key string) error {
 		}
 	}
 
-	// 2. Get the Node to extract ProviderID
+	// Get the Node to extract ProviderID
 	node, err := c.nodeLister.Get(nnc.Name)
 	if err != nil {
 		if errors.IsNotFound(err) && c.kubeClient != nil {
@@ -247,7 +247,7 @@ func (c *NodeNetworkConfigSpecController) syncNode(key string) error {
 }
 
 func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig, providerID string) error {
-	// 3. Retrieve GCE actual state via cache
+	// Retrieve GCE actual state via cache
 	ifaces, err := c.gceCache.Get(ctx, nnc.Name, providerID)
 	if err != nil {
 		klog.Errorf("Failed to get GCE state for node %q: %v", nnc.Name, err)
@@ -255,7 +255,7 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		return err
 	}
 
-	// 4. Calculate changes needed between Spec and GCE
+	// Calculate changes needed between Spec and GCE
 	changes, err := c.calculateChanges(nnc, ifaces)
 	if err != nil {
 		klog.Errorf("Failed to calculate changes for node %q: %v", nnc.Name, err)
@@ -263,21 +263,21 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		return err
 	}
 
-	// 5. If no mutations needed, trigger status populator and return
+	// If no mutations needed, trigger status populator and return
 	if changes.Empty() {
 		klog.V(4).Infof("No GCE changes required for node %q", nnc.Name)
 		c.statusTrigger.EnqueueNode(nnc.Name)
 		return nil
 	}
 
-	// 6. Set status condition to Updating before mutating GCE
+	// Set status condition to Updating before mutating GCE
 	nncCopy := nnc.DeepCopy()
 	c.setCondition(nncCopy, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionFalse, "Updating", "Updating GCE VM IP alias ranges")
 	if err := c.updateNNCStatus(ctx, nncCopy); err != nil {
 		return fmt.Errorf("failed to update status condition to Updating: %w", err)
 	}
 
-	// 7. Execute GCE VM alias IP mutations
+	// Execute GCE VM alias IP mutations
 	for _, network := range changes.Networks() {
 		netChanges := changes.GetNetwork(network)
 		networkURL, err := ResolveNetworkURL(c.gceCloud, network)
@@ -298,7 +298,7 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		}
 	}
 
-	// 8. Trigger status controller
+	// Trigger status controller
 	c.statusTrigger.EnqueueNode(nnc.Name)
 
 	return nil

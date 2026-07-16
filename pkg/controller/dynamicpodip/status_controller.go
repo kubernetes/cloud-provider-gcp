@@ -270,17 +270,24 @@ func (c *NodeNetworkConfigStatusController) syncStatusToGCE(ctx context.Context,
 		}
 	}
 
+	// Update Status PodCIDRs first
 	nncCopy := nnc.DeepCopy()
 	nncCopy.Status.PodCIDRs = allActualCIDRs
-	_ = c.setCondition(nncCopy, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionTrue, string(nncv1.NodeNetworkConfigReadyReason), "Node network config is ready")
 
-	klog.Infof("Syncing NNC status to GCE state for %q (CIDRs: %d)", nncCopy.Name, len(allActualCIDRs))
-	return c.updateNNCStatus(ctx, nncCopy)
+	klog.Infof("Updating NNC status PodCIDRs for %q (CIDRs: %d)", nncCopy.Name, len(allActualCIDRs))
+	updatedNNC, err := c.updateNNCStatus(ctx, nncCopy)
+	if err != nil {
+		return fmt.Errorf("failed to update NNC status PodCIDRs for node %q: %w", nnc.Name, err)
+	}
+
+	// Set Ready condition only AFTER the status section update succeeds
+	c.setCondition(updatedNNC, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionTrue, string(nncv1.NodeNetworkConfigReadyReason), "Node network config is ready")
+	_, err = c.updateNNCStatus(ctx, updatedNNC)
+	return err
 }
 
-func (c *NodeNetworkConfigStatusController) updateNNCStatus(ctx context.Context, nnc *nncv1.NodeNetworkConfig) error {
-	_, err := c.nncClient.NetworkingV1().NodeNetworkConfigs().UpdateStatus(ctx, nnc, metav1.UpdateOptions{})
-	return err
+func (c *NodeNetworkConfigStatusController) updateNNCStatus(ctx context.Context, nnc *nncv1.NodeNetworkConfig) (*nncv1.NodeNetworkConfig, error) {
+	return c.nncClient.NetworkingV1().NodeNetworkConfigs().UpdateStatus(ctx, nnc, metav1.UpdateOptions{})
 }
 
 func (c *NodeNetworkConfigStatusController) setCondition(nnc *nncv1.NodeNetworkConfig, cType string, status corev1.ConditionStatus, reason, message string) bool {

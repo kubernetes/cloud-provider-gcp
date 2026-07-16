@@ -18,13 +18,10 @@ package dynamicpodip
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	computebeta "google.golang.org/api/compute/v0.beta"
-	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/utils/clock"
 )
 
@@ -86,14 +83,14 @@ type GCEInstanceLoader func(ctx context.Context, providerID string) ([]*networkI
 
 // CachedInstance represents a cached view of a single GCE instance's network interfaces, protected by its own mutex.
 type CachedInstance struct {
-	mu          sync.Mutex // Guards this specific node's cached interfaces and timestamp
+	mu          sync.Mutex
 	interfaces  []*networkInterface
 	lastUpdated time.Time
 }
 
 // GCECache manages thread-safe, concurrent timed caching of GCE instance states using per-node locking.
 type GCECache struct {
-	mapLock   sync.RWMutex // Guards the map structure itself
+	mapLock   sync.RWMutex
 	instances map[string]*CachedInstance
 	loader    GCEInstanceLoader
 	ttl       time.Duration
@@ -137,7 +134,6 @@ func (c *GCECache) ForceGet(ctx context.Context, nodeName string, providerID str
 func (c *GCECache) get(ctx context.Context, nodeName string, providerID string, force bool) ([]*networkInterface, error) {
 	inst := c.getOrCreateInstance(nodeName)
 
-	// Lock only this specific node's state. Other nodes can be processed concurrently.
 	inst.mu.Lock()
 	defer inst.mu.Unlock()
 
@@ -152,30 +148,4 @@ func (c *GCECache) get(ctx context.Context, nodeName string, providerID string, 
 	}
 
 	return deepCopyInterfaces(inst.interfaces), nil
-}
-
-// ResolveNetworkURL converts a network name to a GCE network URL.
-// Returns an error if netName is empty or gceCloud is nil.
-func ResolveNetworkURL(gceCloud *gce.Cloud, netName string) (string, error) {
-	if gceCloud == nil {
-		return "", fmt.Errorf("GCE cloud provider is nil")
-	}
-	if netName == "" {
-		return "", fmt.Errorf("network name cannot be empty")
-	}
-	return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", gceCloud.ProjectID(), netName), nil
-}
-
-// ExtractNetworkName extracts the network resource name from a full GCE network URL.
-// Returns an error if networkURL is empty.
-func ExtractNetworkName(networkURL string) (string, error) {
-	if networkURL == "" {
-		return "", fmt.Errorf("network URL cannot be empty")
-	}
-	parts := strings.Split(networkURL, "/")
-	name := parts[len(parts)-1]
-	if name == "" {
-		return "", fmt.Errorf("invalid network URL %q", networkURL)
-	}
-	return name, nil
 }

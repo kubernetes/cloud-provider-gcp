@@ -148,7 +148,7 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 	defer close(stopCh)
 	f.run(ctx, stopCh)
 
-	// 1. Create a fake GCE instance in the fake cloud
+	// Create a fake GCE instance in the fake cloud
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
 	instance := &compute.Instance{
 		Name: testNodeName,
@@ -167,7 +167,7 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// 2. Create a NodeNetworkConfig with a request for 48 pods
+	// Create a NodeNetworkConfig with a request for 48 pods
 	nnc := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -189,13 +189,13 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 	// Sync informer cache
 	f.informerFactory.WaitForCacheSync(stopCh)
 
-	// 3. Run reconcile
+	// Run reconcile
 	err = f.reconcile(ctx, nnc, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
 
-	// 4. Verify GCE Instance has new alias IPs
+	// Verify GCE Instance has new alias IPs
 	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
 	if err != nil {
 		t.Fatalf("Failed to get updated GCE instance: %v", err)
@@ -213,7 +213,7 @@ func TestReconcile_AddAliasIP(t *testing.T) {
 		}
 	}
 
-	// 5. Verify NodeNetworkConfig Status is updated
+	// Verify NodeNetworkConfig Status is updated
 	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Failed to get updated NodeNetworkConfig: %v", err)
@@ -251,7 +251,7 @@ func TestReconcile_RemoveAliasIP(t *testing.T) {
 	cidrToRemove := "10.100.0.0/28"
 	cidrToKeep := "10.100.1.0/28"
 
-	// 1. Create a fake GCE instance with 2 alias IPs
+	// Create a fake GCE instance with 2 alias IPs
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
 	instance := &compute.Instance{
 		Name: testNodeName,
@@ -273,7 +273,7 @@ func TestReconcile_RemoveAliasIP(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// 2. Create NodeNetworkConfig with:
+	// Create NodeNetworkConfig with:
 	// - Status containing both CIDRs
 	// - Spec.ReleasableCIDRs containing cidrToRemove
 	nnc := &nncv1.NodeNetworkConfig{
@@ -311,13 +311,13 @@ func TestReconcile_RemoveAliasIP(t *testing.T) {
 	// Sync informer cache
 	f.informerFactory.WaitForCacheSync(stopCh)
 
-	// 3. Run reconcile
+	// Run reconcile
 	err = f.reconcile(ctx, nnc, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
 
-	// 4. Verify GCE Instance has only the kept alias IP
+	// Verify GCE Instance has only the kept alias IP
 	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
 	if err != nil {
 		t.Fatalf("Failed to get updated GCE instance: %v", err)
@@ -331,7 +331,7 @@ func TestReconcile_RemoveAliasIP(t *testing.T) {
 		t.Errorf("Expected kept range %q, got %q", cidrToKeep, iface.AliasIpRanges[0].IpCidrRange)
 	}
 
-	// 5. Verify NodeNetworkConfig Status is updated (only kept CIDR remains)
+	// Verify NodeNetworkConfig Status is updated (only kept CIDR remains)
 	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Failed to get updated NodeNetworkConfig: %v", err)
@@ -354,7 +354,7 @@ func TestReconcile_NoOp(t *testing.T) {
 
 	cidr := "10.100.0.0/28" // 16 IPs
 
-	// 1. Create GCE instance with 1 alias IP
+	// Create GCE instance with 1 alias IP
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
 	instance := &compute.Instance{
 		Name: testNodeName,
@@ -375,7 +375,7 @@ func TestReconcile_NoOp(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// 2. Create NodeNetworkConfig where Spec matches Status capacity (16 desired, 16 actual)
+	// Create NodeNetworkConfig where Spec matches Status capacity (16 desired, 16 actual)
 	nnc := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -414,13 +414,13 @@ func TestReconcile_NoOp(t *testing.T) {
 	// But simpler: fake GCE doesn't track call counts easily unless we mock.
 	// We can just verify that the instance in fake GCE remains unchanged.
 	
-	// 3. Run reconcile
+	// Run reconcile
 	err = f.reconcile(ctx, nnc, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
 
-	// 4. Verify GCE Instance remains unchanged
+	// Verify GCE Instance remains unchanged
 	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
 	if err != nil {
 		t.Fatalf("Failed to get GCE instance: %v", err)
@@ -440,7 +440,7 @@ func TestReconcile_GCEError(t *testing.T) {
 	// We do NOT create the GCE instance. This will cause the GCE Get call to fail
 	// with InstanceNotFound, simulating a GCE API error (or rather, a configuration/sync error).
 
-	// 1. Create NodeNetworkConfig with a request
+	// Create NodeNetworkConfig with a request
 	nnc := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -462,13 +462,13 @@ func TestReconcile_GCEError(t *testing.T) {
 	// Sync informer cache
 	f.informerFactory.WaitForCacheSync(stopCh)
 
-	// 2. Run reconcile. It should fail because the instance doesn't exist in GCE.
+	// Run reconcile. It should fail because the instance doesn't exist in GCE.
 	err = f.reconcile(ctx, nnc, testProviderID)
 	if err == nil {
 		t.Fatal("Expected reconcile to fail, but it succeeded")
 	}
 
-	// 3. Verify NodeNetworkConfig Status has False Ready condition with correct reason
+	// Verify NodeNetworkConfig Status has False Ready condition with correct reason
 	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Failed to get updated NodeNetworkConfig: %v", err)
@@ -581,7 +581,7 @@ func TestReconcile_InvalidStatusCIDR(t *testing.T) {
 	defer close(stopCh)
 	f.run(ctx, stopCh)
 
-	// 1. Create a fake GCE instance with 0 alias IPs (clean state)
+	// Create a fake GCE instance with 0 alias IPs (clean state)
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
 	instance := &compute.Instance{
 		Name: testNodeName,
@@ -599,7 +599,7 @@ func TestReconcile_InvalidStatusCIDR(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// 2. Part 1: Create NNC with an invalid CIDR in Status.
+	// Part 1: Create NNC with an invalid CIDR in Status.
 	// The controller should NOT fail; it should heal the status to match GCE (allocating 2 blocks).
 	nncInvalid := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
@@ -656,7 +656,7 @@ func TestReconcile_InvalidStatusCIDR(t *testing.T) {
 		t.Errorf("Expected Ready condition to be True, got: %v", readyCond)
 	}
 
-	// 3. Part 2: IPv6 CIDR in Status.
+	// Part 2: IPv6 CIDR in Status.
 	// Clean up NNC and GCE alias IPs to reset.
 	mockInstances, _ := f.fakeGCE.Compute().BetaInstances().(*gcloud.MockBetaInstances)
 	instObj, err := mockInstances.Get(ctx, instanceKey)
@@ -731,7 +731,7 @@ func TestReconcile_IdempotentRetryOnStatusFailure(t *testing.T) {
 	defer close(stopCh)
 	f.run(ctx, stopCh)
 
-	// 1. Create a fake GCE instance in the fake cloud
+	// Create a fake GCE instance in the fake cloud
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
 	instance := &compute.Instance{
 		Name: testNodeName,
@@ -749,7 +749,7 @@ func TestReconcile_IdempotentRetryOnStatusFailure(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// 2. Create a NodeNetworkConfig with a request for 32 pods (needs 2 blocks of /28)
+	// Create a NodeNetworkConfig with a request for 32 pods (needs 2 blocks of /28)
 	nnc := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -782,7 +782,7 @@ func TestReconcile_IdempotentRetryOnStatusFailure(t *testing.T) {
 		return false, nil, nil
 	})
 
-	// 3. First reconcile run. It should fail on the status update.
+	// First reconcile run. It should fail on the status update.
 	err = f.reconcile(ctx, nnc, testProviderID)
 	if err == nil {
 		t.Fatal("Expected first reconcile to fail due to simulated status update error, but it succeeded")
@@ -810,7 +810,7 @@ func TestReconcile_IdempotentRetryOnStatusFailure(t *testing.T) {
 		t.Fatalf("Expected 0 PodCIDRs in status due to update failure, got %d", len(unsyncedNNC.Status.PodCIDRs))
 	}
 
-	// 4. Second reconcile run (Simulated Retry).
+	// Second reconcile run (Simulated Retry).
 	// The reactor will now succeed.
 	// We pass the same NNC object (which still has empty status).
 	err = f.reconcile(ctx, unsyncedNNC, testProviderID)
@@ -855,7 +855,7 @@ func TestReconcile_MultiNetwork(t *testing.T) {
 	customNetworkName := "custom-network"
 	customNetworkURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", testProject, customNetworkName)
 
-	// 1. Create a GCE instance with TWO network interfaces
+	// Create a GCE instance with TWO network interfaces
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
 	instance := &compute.Instance{
 		Name: testNodeName,
@@ -878,7 +878,7 @@ func TestReconcile_MultiNetwork(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// 2. Create NodeNetworkConfig requesting allocations on BOTH networks
+	// Create NodeNetworkConfig requesting allocations on BOTH networks
 	nnc := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -903,13 +903,13 @@ func TestReconcile_MultiNetwork(t *testing.T) {
 
 	f.informerFactory.WaitForCacheSync(stopCh)
 
-	// 3. Run reconcile
+	// Run reconcile
 	err = f.reconcile(ctx, nnc, testProviderID)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
 
-	// 4. Verify GCE Instance has alias IPs on BOTH interfaces
+	// Verify GCE Instance has alias IPs on BOTH interfaces
 	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
 	if err != nil {
 		t.Fatalf("Failed to get updated GCE instance: %v", err)
@@ -965,7 +965,7 @@ func TestReconcile_CacheExpirationBehavior(t *testing.T) {
 	defer close(stopCh)
 	f.run(ctx, stopCh)
 
-	// 1. Create a fake GCE instance
+	// Create a fake GCE instance
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
 	instance := &compute.Instance{
 		Name: testNodeName,
@@ -983,7 +983,7 @@ func TestReconcile_CacheExpirationBehavior(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// 2. Create NNC requesting 32 pods (needs 2 blocks of /28)
+	// Create NNC requesting 32 pods (needs 2 blocks of /28)
 	nnc := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -1016,7 +1016,7 @@ func TestReconcile_CacheExpirationBehavior(t *testing.T) {
 		return false, nil, nil
 	})
 
-	// 3. First run: allocates 2 blocks in GCE, fails status write.
+	// First run: allocates 2 blocks in GCE, fails status write.
 	err = f.reconcile(ctx, nnc, testProviderID)
 	if err == nil {
 		t.Fatal("Expected reconcile to fail on status write, but it succeeded")
@@ -1031,7 +1031,7 @@ func TestReconcile_CacheExpirationBehavior(t *testing.T) {
 		t.Fatalf("Expected 2 alias IP ranges in GCE, got %d", len(updatedInstance.NetworkInterfaces[0].AliasIpRanges))
 	}
 
-	// 4. Manually mutate GCE behind the back of the cache (add a 3rd block!)
+	// Manually mutate GCE behind the back of the cache (add a 3rd block!)
 	// This simulates out-of-band changes or GCE state drift.
 	mockInstances, _ := f.fakeGCE.Compute().BetaInstances().(*gcloud.MockBetaInstances)
 	instObj, err := mockInstances.Get(ctx, instanceKey)
@@ -1045,7 +1045,7 @@ func TestReconcile_CacheExpirationBehavior(t *testing.T) {
 	})
 	mockInstances.Lock.Unlock()
 
-	// 5. Scenario A: Retry immediately (Fresh Cache, age = 0s < 10s TTL)
+	// Scenario A: Retry immediately (Fresh Cache, age = 0s < 10s TTL)
 	// The simulated reactor only fails on the 2nd update, so this retry will naturally succeed.
 
 	unsyncedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
@@ -1067,7 +1067,7 @@ func TestReconcile_CacheExpirationBehavior(t *testing.T) {
 		t.Errorf("Expected 3 PodCIDRs in status (ForceGet), got %d: %v", len(finalNNC.Status.PodCIDRs), finalNNC.Status.PodCIDRs)
 	}
 
-	// 6. Scenario B: Expire the Cache & Sync again
+	// Scenario B: Expire the Cache & Sync again
 	// Update Spec to 48 pods (needs 3 blocks)
 	finalNNC.Spec.Allocations[0].Pods = 48
 	_, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Update(ctx, finalNNC, metav1.UpdateOptions{})
@@ -1113,7 +1113,7 @@ func TestStatusController_Independent(t *testing.T) {
 	ctx := context.Background()
 	f := newTestFixture(t)
 
-	// 1. Create a GCE instance with existing alias IPs
+	// Create a GCE instance with existing alias IPs
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
 	instance := &compute.Instance{
 		Name: testNodeName,
@@ -1134,7 +1134,7 @@ func TestStatusController_Independent(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// 2. Create NNC with empty Status
+	// Create NNC with empty Status
 	nnc := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -1159,13 +1159,13 @@ func TestStatusController_Independent(t *testing.T) {
 		t.Fatalf("Failed to create Node: %v", err)
 	}
 
-	// 3. Directly invoke status controller syncNode (simulating workqueue execution)
+	// Directly invoke status controller syncNode (simulating workqueue execution)
 	err = f.statusCtrl.syncNode(testNodeName)
 	if err != nil {
 		t.Fatalf("Status sync failed: %v", err)
 	}
 
-	// 4. Verify NNC Status is populated
+	// Verify NNC Status is populated
 	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Failed to get updated NNC: %v", err)
