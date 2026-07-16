@@ -177,7 +177,7 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 		},
 		"node-lifecycle-controller": func(cfg *gketenantcontrollers.ControllerConfig) error {
 			klog.Infof("Creating Node Lifecycle Controller for %s...", cfg.ProviderConfig.Name)
-			nodeMonitorPeriod := mgrCfg.completedConfig.ComponentConfig.KubeCloudShared.NodeMonitorPeriod.Duration
+			nodeMonitorPeriod := mgrCfg.completedConfig.ComponentConfig.NodeLifecycleController.NodeMonitorPeriod.Duration
 			// Wrap the informer to filter nodes
 			filteringInformer := &utilnode.GKEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
 			lifecycleController, err := nodelifecycle.NewCloudNodeLifecycleController(
@@ -185,6 +185,7 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 				cfg.KubeClient,
 				cfg.Cloud,
 				nodeMonitorPeriod,
+				int(mgrCfg.completedConfig.ComponentConfig.NodeLifecycleController.ConcurrentNodeLifecycleSyncs),
 			)
 			if err != nil {
 				return err

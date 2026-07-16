@@ -45,7 +45,8 @@ func startCloudNodeLifecycleController(ctx context.Context, initContext app.Cont
 		// cloud node lifecycle controller uses existing cluster role from node-controller
 		completedConfig.ClientBuilder.ClientOrDie(initContext.ClientName),
 		cloud,
-		completedConfig.ComponentConfig.KubeCloudShared.NodeMonitorPeriod.Duration,
+		completedConfig.ComponentConfig.NodeLifecycleController.NodeMonitorPeriod.Duration,
+		int(completedConfig.ComponentConfig.NodeLifecycleController.ConcurrentNodeLifecycleSyncs),
 	)
 	if err != nil {
 		klog.Warningf("failed to start cloud node lifecycle controller: %s", err)
