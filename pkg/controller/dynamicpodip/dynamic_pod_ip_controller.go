@@ -94,8 +94,12 @@ func NewController(
 		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 	)
 
-	loader := func(ctx context.Context, providerID string) ([]*computebeta.NetworkInterface, error) {
-		return gceCloud.GetInstanceNetworkInterfaces(ctx, providerID)
+	loader := func(ctx context.Context, providerID string) ([]*networkInterface, error) {
+		gceIfaces, err := gceCloud.GetInstanceNetworkInterfaces(ctx, providerID)
+		if err != nil {
+			return nil, err
+		}
+		return toNetworkInterfaces(gceIfaces), nil
 	}
 
 	c := &Controller{
@@ -364,13 +368,44 @@ func lastComponent(url string) string {
 	return parts[len(parts)-1]
 }
 
+// networkInterface is a controller-internal, lightweight representation of a GCE network interface.
+type networkInterface struct {
+	Name          string
+	Network       string
+	AliasIPRanges []string
+}
+
+// toNetworkInterfaces converts a slice of GCE API computebeta.NetworkInterface objects to controller-internal networkInterface objects.
+func toNetworkInterfaces(gceIfaces []*computebeta.NetworkInterface) []*networkInterface {
+	if gceIfaces == nil {
+		return nil
+	}
+	res := make([]*networkInterface, len(gceIfaces))
+	for i, iface := range gceIfaces {
+		if iface == nil {
+			continue
+		}
+		ni := &networkInterface{
+			Name:    iface.Name,
+			Network: iface.Network,
+		}
+		for _, r := range iface.AliasIpRanges {
+			if r != nil && r.IpCidrRange != "" {
+				ni.AliasIPRanges = append(ni.AliasIPRanges, r.IpCidrRange)
+			}
+		}
+		res[i] = ni
+	}
+	return res
+}
+
 // statusNeedsSync checks if the NNC Status PodCIDRs set differs from the actual GCE alias IP ranges.
-func (c *Controller) statusNeedsSync(nnc *nncv1.NodeNetworkConfig, ifaces []*computebeta.NetworkInterface) bool {
+func (c *Controller) statusNeedsSync(nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) bool {
 	gceCIDRs := sets.NewString()
 	for _, iface := range ifaces {
 		netName := c.mapURLToNetworkName(iface.Network, nnc)
-		for _, r := range iface.AliasIpRanges {
-			gceCIDRs.Insert(fmt.Sprintf("%s/%s", netName, r.IpCidrRange))
+		for _, cidr := range iface.AliasIPRanges {
+			gceCIDRs.Insert(fmt.Sprintf("%s/%s", netName, cidr))
 		}
 	}
 
@@ -383,7 +418,7 @@ func (c *Controller) statusNeedsSync(nnc *nncv1.NodeNetworkConfig, ifaces []*com
 }
 
 // syncStatusToGCE updates the NNC Status PodCIDRs to match the actual GCE state.
-func (c *Controller) syncStatusToGCE(ctx context.Context, nnc *nncv1.NodeNetworkConfig, ifaces []*computebeta.NetworkInterface) error {
+func (c *Controller) syncStatusToGCE(ctx context.Context, nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) error {
 	var allActualCIDRs []nncv1.PodCIDR
 
 	// Build a set of managed network URLs to filter out unmanaged GCE interfaces
@@ -402,11 +437,11 @@ func (c *Controller) syncStatusToGCE(ctx context.Context, nnc *nncv1.NodeNetwork
 			continue // Skip unmanaged GCE interfaces
 		}
 		netName := c.mapURLToNetworkName(iface.Network, nnc)
-		for _, r := range iface.AliasIpRanges {
+		for _, cidr := range iface.AliasIPRanges {
 			allActualCIDRs = append(allActualCIDRs, nncv1.PodCIDR{
-				Id:      r.IpCidrRange,
+				Id:      cidr,
 				Network: netName,
-				CIDR:    r.IpCidrRange,
+				CIDR:    cidr,
 				Condition: &metav1.Condition{
 					Type:               string(nncv1.PodCIDRConditionReady),
 					Status:             metav1.ConditionTrue,
@@ -426,7 +461,7 @@ func (c *Controller) syncStatusToGCE(ctx context.Context, nnc *nncv1.NodeNetwork
 }
 
 // calculateChanges compares Spec and GCE actual interfaces to determine additions (sizes) and removals (exact CIDRs).
-func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*computebeta.NetworkInterface) (nodeNetworkChanges, error) {
+func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) (nodeNetworkChanges, error) {
 	changes := make(nodeNetworkChanges)
 
 	currentCapacity := make(map[string]int)
@@ -434,13 +469,13 @@ func (c *Controller) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*co
 
 	for _, iface := range ifaces {
 		netName := c.mapURLToNetworkName(iface.Network, nnc)
-		for _, r := range iface.AliasIpRanges {
-			cap, err := cidrCapacity(r.IpCidrRange)
+		for _, cidr := range iface.AliasIPRanges {
+			cap, err := cidrCapacity(cidr)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse CIDR %q in GCE: %w", r.IpCidrRange, err)
+				return nil, fmt.Errorf("failed to parse CIDR %q in GCE: %w", cidr, err)
 			}
 			currentCapacity[netName] += cap
-			activeCIDRs.Insert(fmt.Sprintf("%s/%s", netName, r.IpCidrRange))
+			activeCIDRs.Insert(fmt.Sprintf("%s/%s", netName, cidr))
 		}
 	}
 
@@ -530,12 +565,12 @@ func cidrCapacity(cidrStr string) (int, error) {
 // --- GCE Cache Implementation (Loading Cache with Per-Node Locking) ---
 
 // GCEInstanceLoader is a functional dependency injected into the cache to fetch fresh data from GCE.
-type GCEInstanceLoader func(ctx context.Context, providerID string) ([]*computebeta.NetworkInterface, error)
+type GCEInstanceLoader func(ctx context.Context, providerID string) ([]*networkInterface, error)
 
 // CachedInstance represents a cached view of a single GCE instance's network interfaces, protected by its own mutex.
 type CachedInstance struct {
 	mu          sync.Mutex // Guards this specific node's cached interfaces and timestamp
-	interfaces  []*computebeta.NetworkInterface
+	interfaces  []*networkInterface
 	lastUpdated time.Time
 }
 
@@ -573,16 +608,16 @@ func (c *GCECache) getOrCreateInstance(nodeName string) *CachedInstance {
 
 // Get retrieves the cached network interfaces for the node.
 // If the cache is stale or missing, it calls the GCE loader holding ONLY the node-specific lock.
-func (c *GCECache) Get(ctx context.Context, nodeName string, providerID string) ([]*computebeta.NetworkInterface, error) {
+func (c *GCECache) Get(ctx context.Context, nodeName string, providerID string) ([]*networkInterface, error) {
 	return c.get(ctx, nodeName, providerID, false)
 }
 
 // ForceGet bypasses the TTL check, forces a fresh load from GCE, updates the cache, and returns the state.
-func (c *GCECache) ForceGet(ctx context.Context, nodeName string, providerID string) ([]*computebeta.NetworkInterface, error) {
+func (c *GCECache) ForceGet(ctx context.Context, nodeName string, providerID string) ([]*networkInterface, error) {
 	return c.get(ctx, nodeName, providerID, true)
 }
 
-func (c *GCECache) get(ctx context.Context, nodeName string, providerID string, force bool) ([]*computebeta.NetworkInterface, error) {
+func (c *GCECache) get(ctx context.Context, nodeName string, providerID string, force bool) ([]*networkInterface, error) {
 	inst := c.getOrCreateInstance(nodeName)
 
 	// Lock only this specific node's state. Other nodes can be processed concurrently.
@@ -602,32 +637,24 @@ func (c *GCECache) get(ctx context.Context, nodeName string, providerID string, 
 	return deepCopyInterfaces(inst.interfaces), nil
 }
 
-// deepCopyInterfaces performs a deep copy of GCE network interfaces to prevent data races.
-func deepCopyInterfaces(ifaces []*computebeta.NetworkInterface) []*computebeta.NetworkInterface {
+// deepCopyInterfaces performs a deep copy of internal network interfaces to prevent data races.
+func deepCopyInterfaces(ifaces []*networkInterface) []*networkInterface {
 	if ifaces == nil {
 		return nil
 	}
-	copy := make([]*computebeta.NetworkInterface, len(ifaces))
+	copy := make([]*networkInterface, len(ifaces))
 	for i, ni := range ifaces {
 		if ni == nil {
 			continue
 		}
-		copy[i] = &computebeta.NetworkInterface{
+		niCopy := &networkInterface{
 			Name:    ni.Name,
 			Network: ni.Network,
 		}
-		if ni.AliasIpRanges != nil {
-			copy[i].AliasIpRanges = make([]*computebeta.AliasIpRange, len(ni.AliasIpRanges))
-			for j, r := range ni.AliasIpRanges {
-				if r == nil {
-					continue
-				}
-				copy[i].AliasIpRanges[j] = &computebeta.AliasIpRange{
-					IpCidrRange:         r.IpCidrRange,
-					SubnetworkRangeName: r.SubnetworkRangeName,
-				}
-			}
+		if ni.AliasIPRanges != nil {
+			niCopy.AliasIPRanges = append([]string(nil), ni.AliasIPRanges...)
 		}
+		copy[i] = niCopy
 	}
 	return copy
 }
