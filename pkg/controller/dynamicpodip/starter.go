@@ -18,6 +18,7 @@ package dynamicpodip
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
@@ -29,6 +30,29 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/clock"
 )
+
+var (
+	globalStatusTriggerMu sync.RWMutex
+	globalStatusTrigger   StatusTrigger = &NoopStatusTrigger{}
+)
+
+// GetStatusTrigger returns the active StatusTrigger (or NoopStatusTrigger if not initialized).
+func GetStatusTrigger() StatusTrigger {
+	globalStatusTriggerMu.RLock()
+	defer globalStatusTriggerMu.RUnlock()
+	return globalStatusTrigger
+}
+
+// SetStatusTrigger sets the active StatusTrigger.
+func SetStatusTrigger(st StatusTrigger) {
+	globalStatusTriggerMu.Lock()
+	defer globalStatusTriggerMu.Unlock()
+	if st == nil {
+		globalStatusTrigger = &NoopStatusTrigger{}
+	} else {
+		globalStatusTrigger = st
+	}
+}
 
 // Options holds activation flags for the NodeNetworkConfig controllers.
 type Options struct {
@@ -56,7 +80,7 @@ func StartControllers(
 
 	if !opts.PopulateNodeNetworkConfig && !opts.EnableDynamicPodIPController {
 		klog.Info("Neither --populate-node-network-config nor --enable-dynamic-pod-ip-controller is set; dynamic pod IP controllers will not be started")
-		return &NoopStatusTrigger{}, nil, false, nil
+		return GetStatusTrigger(), nil, false, nil
 	}
 
 	nncInformerFactory := nncinformers.NewSharedInformerFactory(nncClient, 0)
@@ -87,6 +111,7 @@ func StartControllers(
 			clock.RealClock{},
 		)
 		statusTrigger = statusCtrl
+		SetStatusTrigger(statusTrigger)
 	}
 
 	if opts.EnableDynamicPodIPController {
@@ -100,11 +125,11 @@ func StartControllers(
 			gceCache,
 			statusTrigger,
 		)
-		go specCtrl.Run(1, ctx.Done())
+		go specCtrl.Run(DefaultSpecControllerWorkers, ctx.Done())
 	}
 
 	if statusCtrl != nil {
-		go statusCtrl.Run(1, ctx.Done())
+		go statusCtrl.Run(DefaultStatusControllerWorkers, ctx.Done())
 	}
 
 	go nncInformerFactory.Start(ctx.Done())

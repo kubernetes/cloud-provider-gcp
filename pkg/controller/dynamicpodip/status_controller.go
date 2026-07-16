@@ -19,12 +19,12 @@ package dynamicpodip
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nnclisters "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/listers/nodenetworkconfig/v1"
+	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,7 +37,16 @@ import (
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/clock"
-	"golang.org/x/time/rate"
+)
+
+const (
+	// DefaultStatusControllerWorkers is the default number of worker goroutines for the status controller.
+	DefaultStatusControllerWorkers = 4
+
+	statusWorkqueueBaseDelay = 5 * time.Millisecond
+	statusWorkqueueMaxDelay  = 1000 * time.Second
+	statusWorkqueueQPS       = 10
+	statusWorkqueueBurst     = 100
 )
 
 // StatusTrigger defines an asynchronous interface to request an NNC status refresh for a node.
@@ -80,8 +89,8 @@ func NewStatusController(
 	}
 
 	rateLimiter := workqueue.NewTypedMaxOfRateLimiter[string](
-		workqueue.NewTypedItemExponentialFailureRateLimiter[string](5*time.Millisecond, 1000*time.Second),
-		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](statusWorkqueueBaseDelay, statusWorkqueueMaxDelay),
+		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(statusWorkqueueQPS), statusWorkqueueBurst)},
 	)
 
 	return &NodeNetworkConfigStatusController{
@@ -198,8 +207,8 @@ func (c *NodeNetworkConfigStatusController) syncNode(key string) error {
 }
 
 func (c *NodeNetworkConfigStatusController) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig, providerID string) error {
-	// Retrieve GCE actual state via cache.
-	ifaces, err := c.gceCache.Get(ctx, nnc.Name, providerID)
+	// Retrieve GCE actual state via ForceGet to ensure fresh status population.
+	ifaces, err := c.gceCache.ForceGet(ctx, nnc.Name, providerID)
 	if err != nil {
 		klog.Errorf("Failed to get GCE state for node %q: %v", nnc.Name, err)
 		return err
@@ -217,7 +226,11 @@ func (c *NodeNetworkConfigStatusController) reconcile(ctx context.Context, nnc *
 func (c *NodeNetworkConfigStatusController) statusNeedsSync(nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) bool {
 	gceCIDRs := sets.NewString()
 	for _, iface := range ifaces {
-		netName := c.mapURLToNetworkName(iface.Network, nnc)
+		netName, err := ExtractNetworkName(iface.Network)
+		if err != nil {
+			klog.Warningf("Failed to extract network name from URL %q: %v", iface.Network, err)
+			continue
+		}
 		for _, cidr := range iface.AliasIPRanges {
 			gceCIDRs.Insert(fmt.Sprintf("%s/%s", netName, cidr))
 		}
@@ -235,21 +248,12 @@ func (c *NodeNetworkConfigStatusController) statusNeedsSync(nnc *nncv1.NodeNetwo
 func (c *NodeNetworkConfigStatusController) syncStatusToGCE(ctx context.Context, nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) error {
 	var allActualCIDRs []nncv1.PodCIDR
 
-	managedNetworks := sets.NewString()
-	managedNetworks.Insert(c.resolveNetworkURL(""))
-	managedNetworks.Insert(c.resolveNetworkURL("default"))
-	for _, alloc := range nnc.Spec.Allocations {
-		managedNetworks.Insert(c.resolveNetworkURL(alloc.Network))
-	}
-	for _, pc := range nnc.Status.PodCIDRs {
-		managedNetworks.Insert(c.resolveNetworkURL(pc.Network))
-	}
-
 	for _, iface := range ifaces {
-		if !managedNetworks.Has(iface.Network) {
+		netName, err := ExtractNetworkName(iface.Network)
+		if err != nil {
+			klog.Warningf("Failed to extract network name from URL %q: %v", iface.Network, err)
 			continue
 		}
-		netName := c.mapURLToNetworkName(iface.Network, nnc)
 		for _, cidr := range iface.AliasIPRanges {
 			allActualCIDRs = append(allActualCIDRs, nncv1.PodCIDR{
 				Id:      cidr,
@@ -266,11 +270,12 @@ func (c *NodeNetworkConfigStatusController) syncStatusToGCE(ctx context.Context,
 		}
 	}
 
-	nnc.Status.PodCIDRs = allActualCIDRs
-	c.setCondition(nnc, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionTrue, string(nncv1.NodeNetworkConfigReadyReason), "Node network config is ready")
+	nncCopy := nnc.DeepCopy()
+	nncCopy.Status.PodCIDRs = allActualCIDRs
+	_ = c.setCondition(nncCopy, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionTrue, string(nncv1.NodeNetworkConfigReadyReason), "Node network config is ready")
 
-	klog.Infof("Syncing NNC status to GCE state for %q (CIDRs: %d)", nnc.Name, len(allActualCIDRs))
-	return c.updateNNCStatus(ctx, nnc)
+	klog.Infof("Syncing NNC status to GCE state for %q (CIDRs: %d)", nncCopy.Name, len(allActualCIDRs))
+	return c.updateNNCStatus(ctx, nncCopy)
 }
 
 func (c *NodeNetworkConfigStatusController) updateNNCStatus(ctx context.Context, nnc *nncv1.NodeNetworkConfig) error {
@@ -300,38 +305,4 @@ func (c *NodeNetworkConfigStatusController) setCondition(nnc *nncv1.NodeNetworkC
 
 	nnc.Status.Conditions = append(nnc.Status.Conditions, newCond)
 	return true
-}
-
-func (c *NodeNetworkConfigStatusController) resolveNetworkURL(netName string) string {
-	if c.gceCloud == nil {
-		if netName == "" || netName == "default" {
-			return "https://www.googleapis.com/compute/v1/projects/test-project/global/networks/default"
-		}
-		return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/test-project/global/networks/%s", netName)
-	}
-	if netName == "" || netName == "default" {
-		return c.gceCloud.NetworkURL()
-	}
-	return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", c.gceCloud.ProjectID(), netName)
-}
-
-func (c *NodeNetworkConfigStatusController) mapURLToNetworkName(url string, nnc *nncv1.NodeNetworkConfig) string {
-	for _, alloc := range nnc.Spec.Allocations {
-		if c.resolveNetworkURL(alloc.Network) == url {
-			return alloc.Network
-		}
-	}
-	for _, pc := range nnc.Status.PodCIDRs {
-		if c.resolveNetworkURL(pc.Network) == url {
-			return pc.Network
-		}
-	}
-	if url == c.resolveNetworkURL("default") || url == c.resolveNetworkURL("") {
-		return "default"
-	}
-	parts := strings.Split(url, "/")
-	if len(parts) == 0 {
-		return ""
-	}
-	return parts[len(parts)-1]
 }

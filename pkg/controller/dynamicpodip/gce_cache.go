@@ -18,10 +18,13 @@ package dynamicpodip
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	computebeta "google.golang.org/api/compute/v0.beta"
+	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/utils/clock"
 )
 
@@ -149,4 +152,30 @@ func (c *GCECache) get(ctx context.Context, nodeName string, providerID string, 
 	}
 
 	return deepCopyInterfaces(inst.interfaces), nil
+}
+
+// ResolveNetworkURL converts a network name to a GCE network URL.
+// Returns an error if netName is empty or gceCloud is nil.
+func ResolveNetworkURL(gceCloud *gce.Cloud, netName string) (string, error) {
+	if gceCloud == nil {
+		return "", fmt.Errorf("GCE cloud provider is nil")
+	}
+	if netName == "" {
+		return "", fmt.Errorf("network name cannot be empty")
+	}
+	return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", gceCloud.ProjectID(), netName), nil
+}
+
+// ExtractNetworkName extracts the network resource name from a full GCE network URL.
+// Returns an error if networkURL is empty.
+func ExtractNetworkName(networkURL string) (string, error) {
+	if networkURL == "" {
+		return "", fmt.Errorf("network URL cannot be empty")
+	}
+	parts := strings.Split(networkURL, "/")
+	name := parts[len(parts)-1]
+	if name == "" {
+		return "", fmt.Errorf("invalid network URL %q", networkURL)
+	}
+	return name, nil
 }

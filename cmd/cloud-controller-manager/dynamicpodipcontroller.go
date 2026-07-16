@@ -61,11 +61,16 @@ func startDynamicPodIPController(
 		return nil, false, fmt.Errorf("failed to create NodeNetworkConfig clientset: %w", err)
 	}
 
-	return dynamicpodip.StartDynamicPodIPController(
+	_, ctrl, started, err := dynamicpodip.StartControllers(
 		ctx,
+		dynamicpodip.Options{
+			PopulateNodeNetworkConfig:    populateNodeNetworkConfig,
+			EnableDynamicPodIPController: enableDynamicPodIPController,
+		},
 		ccmConfig.ClientBuilder.ClientOrDie("dynamic-pod-ip-controller"),
 		nncClient,
 		ccmConfig.SharedInformers.Core().V1().Nodes(), // Pass the Node Informer from CCM config
 		gceCloud,
 	)
+	return ctrl, started, err
 }

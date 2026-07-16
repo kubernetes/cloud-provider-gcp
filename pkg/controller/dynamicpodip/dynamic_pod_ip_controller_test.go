@@ -1058,14 +1058,13 @@ func TestReconcile_CacheExpirationBehavior(t *testing.T) {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
 
-	// ASSERTION: Status should ONLY contain the 2 blocks from the fresh cache!
-	// It should NOT contain the 3rd block we added directly to GCE, because it hit the cache and skipped GCE GET!
+	// ASSERTION: Status controller uses ForceGet to fetch fresh GCE state, so it immediately discovers the 3rd block!
 	finalNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Failed to get NNC: %v", err)
 	}
-	if len(finalNNC.Status.PodCIDRs) != 2 {
-		t.Errorf("Expected 2 PodCIDRs in status (cache hit), got %d: %v", len(finalNNC.Status.PodCIDRs), finalNNC.Status.PodCIDRs)
+	if len(finalNNC.Status.PodCIDRs) != 3 {
+		t.Errorf("Expected 3 PodCIDRs in status (ForceGet), got %d: %v", len(finalNNC.Status.PodCIDRs), finalNNC.Status.PodCIDRs)
 	}
 
 	// 6. Scenario B: Expire the Cache & Sync again

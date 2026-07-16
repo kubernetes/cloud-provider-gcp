@@ -87,6 +87,9 @@ var (
 
 	// enableDynamicPodIPController enables the dynamic-pod-ip-controller.
 	enableDynamicPodIPController bool
+
+	// populateNodeNetworkConfig enables the node-network-config-status-controller.
+	populateNodeNetworkConfig bool
 )
 
 func main() {
@@ -110,6 +113,7 @@ func main() {
 	cloudProviderFS.BoolVar(&enableGKETenantController, "enable-gke-tenant-controller", false, "Enables the GKE Tenant Controller Manager for Multi-Tenancy.")
 	cloudProviderFS.BoolVar(&enableL4ILBFineGrainedLocks, "enable-l4-ilb-fine-grained-lock", false, "Enable resource-specific locking for L4 ILB")
 	cloudProviderFS.BoolVar(&enableDynamicPodIPController, "enable-dynamic-pod-ip-controller", false, "Enables the GKE Dynamic Pod IP Controller.")
+	cloudProviderFS.BoolVar(&populateNodeNetworkConfig, "populate-node-network-config", false, "Enables population of NodeNetworkConfig status from GCE state.")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}

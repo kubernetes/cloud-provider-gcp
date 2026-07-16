@@ -20,13 +20,13 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nncinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions/nodenetworkconfig/v1"
 	nnclisters "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/listers/nodenetworkconfig/v1"
+	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,7 +40,16 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/klog/v2"
-	"golang.org/x/time/rate"
+)
+
+const (
+	// DefaultSpecControllerWorkers is the default number of worker goroutines for the spec controller.
+	DefaultSpecControllerWorkers = 4
+
+	specWorkqueueBaseDelay = 5 * time.Millisecond
+	specWorkqueueMaxDelay  = 1000 * time.Second
+	specWorkqueueQPS       = 10
+	specWorkqueueBurst     = 100
 )
 
 // networkChanges tracks addition CIDR sizes and removal exact CIDRs for a specific network.
@@ -102,8 +111,8 @@ func NewSpecController(
 	}
 
 	rateLimiter := workqueue.NewTypedMaxOfRateLimiter[string](
-		workqueue.NewTypedItemExponentialFailureRateLimiter[string](5*time.Millisecond, 1000*time.Second),
-		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](specWorkqueueBaseDelay, specWorkqueueMaxDelay),
+		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(specWorkqueueQPS), specWorkqueueBurst)},
 	)
 
 	c := &NodeNetworkConfigSpecController{
@@ -190,7 +199,7 @@ func (c *NodeNetworkConfigSpecController) syncNode(key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), reconcileTimeout)
 	defer cancel()
 
-	// Get the NodeNetworkConfig CRD (check lister first, fall back to API client)
+	// 1. Get the NodeNetworkConfig CRD (check lister first, fall back to API client)
 	nnc, err := c.nncLister.Get(key)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -207,7 +216,7 @@ func (c *NodeNetworkConfigSpecController) syncNode(key string) error {
 		}
 	}
 
-	// Get the Node to extract ProviderID
+	// 2. Get the Node to extract ProviderID
 	node, err := c.nodeLister.Get(nnc.Name)
 	if err != nil {
 		if errors.IsNotFound(err) && c.kubeClient != nil {
@@ -238,7 +247,7 @@ func (c *NodeNetworkConfigSpecController) syncNode(key string) error {
 }
 
 func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig, providerID string) error {
-	// Retrieve GCE state, possibly from cache.
+	// 3. Retrieve GCE actual state via cache
 	ifaces, err := c.gceCache.Get(ctx, nnc.Name, providerID)
 	if err != nil {
 		klog.Errorf("Failed to get GCE state for node %q: %v", nnc.Name, err)
@@ -246,7 +255,7 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		return err
 	}
 
-	// Calculate changes needed between Spec and GCE
+	// 4. Calculate changes needed between Spec and GCE
 	changes, err := c.calculateChanges(nnc, ifaces)
 	if err != nil {
 		klog.Errorf("Failed to calculate changes for node %q: %v", nnc.Name, err)
@@ -254,29 +263,34 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		return err
 	}
 
-	// If no mutations needed, trigger status populator and return
+	// 5. If no mutations needed, trigger status populator and return
 	if changes.Empty() {
 		klog.V(4).Infof("No GCE changes required for node %q", nnc.Name)
 		c.statusTrigger.EnqueueNode(nnc.Name)
 		return nil
 	}
 
-	// Set status condition to Updating before mutating GCE
+	// 6. Set status condition to Updating before mutating GCE
 	nncCopy := nnc.DeepCopy()
 	c.setCondition(nncCopy, string(nncv1.NodeNetworkConfigConditionReady), corev1.ConditionFalse, "Updating", "Updating GCE VM IP alias ranges")
 	if err := c.updateNNCStatus(ctx, nncCopy); err != nil {
 		return fmt.Errorf("failed to update status condition to Updating: %w", err)
 	}
 
-	// Execute GCE VM alias IP mutations
+	// 7. Execute GCE VM alias IP mutations
 	for _, network := range changes.Networks() {
 		netChanges := changes.GetNetwork(network)
-		networkURL := c.resolveNetworkURL(network)
+		networkURL, err := ResolveNetworkURL(c.gceCloud, network)
+		if err != nil {
+			klog.Errorf("Failed to resolve network URL for network %q: %v", network, err)
+			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("Failed to resolve network URL: %v", err))
+			return fmt.Errorf("failed to resolve network URL for network %q: %w", network, err)
+		}
 
 		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v",
 			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals)
 
-		err := c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, networkURL, netChanges.additions, netChanges.removals)
+		err = c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, networkURL, netChanges.additions, netChanges.removals)
 		if err != nil {
 			klog.Errorf("GCE mutation failed for node %q network %q: %v", nnc.Name, network, err)
 			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("GCE mutation failed: %v", err))
@@ -284,8 +298,7 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		}
 	}
 
-	// Force cache update and trigger status controller
-	_, _ = c.gceCache.ForceGet(ctx, nnc.Name, providerID)
+	// 8. Trigger status controller
 	c.statusTrigger.EnqueueNode(nnc.Name)
 
 	return nil
@@ -309,7 +322,11 @@ func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetwor
 	activeCIDRs := sets.NewString()
 
 	for _, iface := range ifaces {
-		netName := c.mapURLToNetworkName(iface.Network, nnc)
+		netName, err := ExtractNetworkName(iface.Network)
+		if err != nil {
+			klog.Warningf("Failed to extract network name from URL %q: %v", iface.Network, err)
+			continue
+		}
 		for _, cidr := range iface.AliasIPRanges {
 			cap, err := cidrCapacity(cidr)
 			if err != nil {
@@ -323,6 +340,9 @@ func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetwor
 	// Additions
 	for _, alloc := range nnc.Spec.Allocations {
 		network := alloc.Network
+		if network == "" {
+			return nil, fmt.Errorf("allocation has empty network name")
+		}
 		currentCap := currentCapacity[network]
 		desiredPods := int(alloc.Pods)
 
@@ -342,6 +362,9 @@ func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetwor
 	// Removals
 	for _, rel := range nnc.Spec.ReleasableCIDRs {
 		network := rel.Network
+		if network == "" {
+			return nil, fmt.Errorf("releasable CIDR has empty network name")
+		}
 		key := fmt.Sprintf("%s/%s", network, rel.CIDR)
 
 		if activeCIDRs.Has(key) {
@@ -387,38 +410,4 @@ func (c *NodeNetworkConfigSpecController) setCondition(nnc *nncv1.NodeNetworkCon
 
 	nnc.Status.Conditions = append(nnc.Status.Conditions, newCond)
 	return true
-}
-
-func (c *NodeNetworkConfigSpecController) resolveNetworkURL(netName string) string {
-	if c.gceCloud == nil {
-		if netName == "" || netName == "default" {
-			return "https://www.googleapis.com/compute/v1/projects/test-project/global/networks/default"
-		}
-		return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/test-project/global/networks/%s", netName)
-	}
-	if netName == "" || netName == "default" {
-		return c.gceCloud.NetworkURL()
-	}
-	return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", c.gceCloud.ProjectID(), netName)
-}
-
-func (c *NodeNetworkConfigSpecController) mapURLToNetworkName(url string, nnc *nncv1.NodeNetworkConfig) string {
-	for _, alloc := range nnc.Spec.Allocations {
-		if c.resolveNetworkURL(alloc.Network) == url {
-			return alloc.Network
-		}
-	}
-	for _, pc := range nnc.Status.PodCIDRs {
-		if c.resolveNetworkURL(pc.Network) == url {
-			return pc.Network
-		}
-	}
-	if url == c.resolveNetworkURL("default") || url == c.resolveNetworkURL("") {
-		return "default"
-	}
-	parts := strings.Split(url, "/")
-	if len(parts) == 0 {
-		return ""
-	}
-	return parts[len(parts)-1]
 }
