@@ -782,7 +782,7 @@ func (g *Cloud) getInstanceByName(name string) (*gceInstance, error) {
 }
 
 func (g *Cloud) getInstanceFromProjectInZoneByName(project, zone, name string) (*gceInstance, error) {
-	ctx, cancel := cloud.ContextWithCallTimeout()
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
 
 	name = canonicalizeInstanceName(name)

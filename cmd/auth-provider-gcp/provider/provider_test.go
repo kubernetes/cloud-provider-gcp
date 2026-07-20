@@ -16,9 +16,12 @@ limitations under the License.
 package provider
 
 import (
+	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -81,8 +84,8 @@ func TestContainerRegistry(t *testing.T) {
 			return url.Parse(server.URL + req.URL.Path)
 		},
 	})
-	provider := MakeRegistryProvider(transport)
-	response, err := GetResponse(dummyImage, provider)
+	provider := MakeRegistryProvider(transport, "", nil, "", "")
+	response, err := GetResponse(credentialproviderapi.CredentialProviderRequest{Image: dummyImage}, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
@@ -104,6 +107,121 @@ func TestContainerRegistry(t *testing.T) {
 		}
 		if dummyToken != auth.Password {
 			t.Errorf("Expected password %s not found (password: %s)", dummyToken, auth.Password)
+		}
+	}
+}
+
+func TestContainerRegistry_WorkloadIdentity(t *testing.T) {
+	registryURL := strings.Split(dummyImage, "/")[0]
+	gcpRegistryURL := "container.cloud.google.com"
+
+	ksaToken := "dummyHeader.eyJpc3MiOiAiaHR0cHM6Ly9jb250YWluZXIuZ29vZ2xlYXBpcy5jb20vdjEvcHJvamVjdHMvbXktcHJvamVjdC9sb2NhdGlvbnMvdXMtY2VudHJhbDEvY2x1c3RlcnMvbXktY2x1c3RlciJ9.dummySignature"
+	federatedToken := "federated-token-xyz"
+
+	// 1. Mock Metadata Server (HTTP)
+	metadataServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defaultPrefix := "/computeMetadata/v1/instance/service-accounts/default/"
+		switch r.URL.Path {
+		case "/computeMetadata/v1/instance/attributes/cluster-name":
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "my-cluster")
+		case "/computeMetadata/v1/instance/attributes/cluster-location":
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "us-central1")
+		case "/computeMetadata/v1/project/project-id":
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "my-project")
+		case defaultPrefix + "scopes":
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `["%s.read_write"]`, gcpcredential.StorageScopePrefix)
+		case defaultPrefix + "email":
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, email)
+		default:
+			http.Error(w, fmt.Sprintf("unexpected metadata path %s", r.URL.Path), http.StatusNotFound)
+		}
+	}))
+	defer metadataServer.Close()
+
+	// 2. Mock STS Server (HTTPS/TLS)
+	stsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/token" {
+			var reqPayload struct {
+				Audience           string `json:"audience"`
+				GrantType          string `json:"grant_type"`
+				RequestedTokenType string `json:"requested_token_type"`
+				SubjectToken       string `json:"subject_token"`
+				SubjectTokenType   string `json:"subject_token_type"`
+			}
+			err := json.NewDecoder(r.Body).Decode(&reqPayload)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			expectedAudience := "identitynamespace:my-project.svc.id.goog:https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster"
+			if reqPayload.Audience != expectedAudience {
+				http.Error(w, fmt.Sprintf("unexpected audience %q", reqPayload.Audience), http.StatusBadRequest)
+				return
+			}
+			if reqPayload.SubjectToken != ksaToken {
+				http.Error(w, fmt.Sprintf("unexpected subject token %q", reqPayload.SubjectToken), http.StatusBadRequest)
+				return
+			}
+
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"access_token": %q, "expires_in": 3600, "token_type": "Bearer"}`, federatedToken)
+		} else {
+			http.Error(w, fmt.Sprintf("unexpected STS path %s", r.URL.Path), http.StatusNotFound)
+		}
+	}))
+	defer stsServer.Close()
+
+	// Parse ports to use in DialContext
+	_, metadataPort, _ := net.SplitHostPort(metadataServer.Listener.Addr().String())
+	_, stsPort, _ := net.SplitHostPort(stsServer.Listener.Addr().String())
+
+	// 3. Configure Transport to redirect traffic
+	transport := utilnet.SetTransportDefaults(&http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if addr == "metadata.google.internal.:80" || addr == "metadata.google.internal:80" {
+				return net.Dial(network, net.JoinHostPort("127.0.0.1", metadataPort))
+			}
+			if addr == "sts.googleapis.com:443" {
+				return net.Dial(network, net.JoinHostPort("127.0.0.1", stsPort))
+			}
+			return net.Dial(network, addr)
+		},
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // trust the mock TLS certificate
+		},
+	})
+
+	provider := MakeRegistryProvider(transport, ksaToken, map[string]string{
+		"iam.gke.io/enable-wi-image-pull": "true",
+	}, "https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster", "my-project")
+
+	req := credentialproviderapi.CredentialProviderRequest{
+		Image: dummyImage,
+	}
+
+	response, err := GetResponse(req, provider)
+	if err != nil {
+		t.Fatalf("Unexpected error while getting response: %s", err.Error())
+	}
+
+	if !hasURL(registryURL, response) || !hasURL(gcpRegistryURL, response) {
+		t.Errorf("expected URLs not found in response: %v", response.Auth)
+	}
+
+	for _, auth := range response.Auth {
+		if expectedUsername != auth.Username {
+			t.Errorf("Expected username %s, got %s", expectedUsername, auth.Username)
+		}
+		if federatedToken != auth.Password {
+			t.Errorf("Expected federated token %s, got %s", federatedToken, auth.Password)
 		}
 	}
 }
@@ -144,7 +262,7 @@ func TestConfigProvider(t *testing.T) {
 		},
 	})
 	provider := MakeDockerConfigProvider(transport)
-	response, err := GetResponse(dummyImage, provider)
+	response, err := GetResponse(credentialproviderapi.CredentialProviderRequest{Image: dummyImage}, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
@@ -201,7 +319,7 @@ func TestConfigURLProvider(t *testing.T) {
 	})
 
 	provider := MakeDockerConfigURLProvider(transport)
-	response, err := GetResponse(dummyImage, provider)
+	response, err := GetResponse(credentialproviderapi.CredentialProviderRequest{Image: dummyImage}, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
 	}
@@ -215,5 +333,32 @@ func TestConfigURLProvider(t *testing.T) {
 		if password != auth.Password {
 			t.Errorf("Expected password %s not found (password: %s)", password, auth.Password)
 		}
+	}
+}
+
+func TestMakeRegistryProvider(t *testing.T) {
+	transport := &http.Transport{}
+	token := "test-token-123"
+	annotations := map[string]string{
+		"test-annotation": "test-value",
+	}
+
+	provider := MakeRegistryProvider(transport, token, annotations, "test-provider", "test-project-123")
+
+	if provider.KSAToken != token {
+		t.Errorf("expected KSAToken to be %q, got %q", token, provider.KSAToken)
+	}
+
+	val, ok := provider.ServiceAccountAnnotations["test-annotation"]
+	if !ok || val != "test-value" {
+		t.Errorf("expected ServiceAccountAnnotations to contain test-annotation=test-value, got %v", provider.ServiceAccountAnnotations)
+	}
+
+	if provider.IdentityProvider != "test-provider" {
+		t.Errorf("expected IdentityProvider to be %q, got %q", "test-provider", provider.IdentityProvider)
+	}
+
+	if provider.ProjectID != "test-project-123" {
+		t.Errorf("expected ProjectID to be %q, got %q", "test-project-123", provider.ProjectID)
 	}
 }

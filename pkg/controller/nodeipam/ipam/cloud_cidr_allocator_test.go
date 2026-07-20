@@ -34,6 +34,7 @@ import (
 	ntfakeclient "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/fake"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/time/rate"
 	"google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -104,6 +105,54 @@ func TestBoundedRetries(t *testing.T) {
 	})
 	for hasNodeInProcessing(ca, nodeName) {
 		// wait for node to finish processing (should terminate and not time out)
+	}
+}
+
+func TestCloudCIDRAllocatorRetryLogic(t *testing.T) {
+	nodeName := "testNode"
+	ca := &cloudCIDRAllocator{
+		queue: workqueue.NewRateLimitingQueueWithConfig(
+			workqueue.NewMaxOfRateLimiter(
+				workqueue.NewItemExponentialFailureRateLimiter(updateRetryTimeout, maxUpdateRetryTimeout),
+				&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+			),
+			workqueue.RateLimitingQueueConfig{Name: "cloudCIDRAllocatorTest"},
+		),
+	}
+
+	for i := 0; i < updateMaxRetries; i++ {
+		ca.handleErr(fmt.Errorf("test error"), nodeName)
+		if ca.queue.NumRequeues(nodeName) != i+1 {
+			t.Fatalf("expected %d requeues, got %d", i+1, ca.queue.NumRequeues(nodeName))
+		}
+	}
+
+	ca.handleErr(fmt.Errorf("test error"), nodeName)
+	if ca.queue.NumRequeues(nodeName) != 0 {
+		t.Fatalf("expected item to be dropped from queue and requeues reset, but got %d", ca.queue.NumRequeues(nodeName))
+	}
+}
+
+func TestCloudCIDRAllocatorRateLimiter(t *testing.T) {
+	rl := workqueue.NewMaxOfRateLimiter(
+		workqueue.NewItemExponentialFailureRateLimiter(updateRetryTimeout, maxUpdateRetryTimeout),
+		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+	)
+	nodeName := "testNode"
+
+	var lastDelay time.Duration
+	for i := 0; i < updateMaxRetries; i++ {
+		delay := rl.When(nodeName)
+		if delay > maxUpdateRetryTimeout {
+			t.Fatalf("expected delay %v to be <= max retry timeout %v", delay, maxUpdateRetryTimeout)
+		}
+		if delay < lastDelay {
+			t.Fatalf("expected delay %v to be >= previous delay %v", delay, lastDelay)
+		}
+		lastDelay = delay
+	}
+	if lastDelay != maxUpdateRetryTimeout {
+		t.Fatalf("expected final delay to be max retry timeout %v, got %v", maxUpdateRetryTimeout, lastDelay)
 	}
 }
 

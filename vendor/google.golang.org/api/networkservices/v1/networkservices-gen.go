@@ -487,7 +487,7 @@ type AgentGateway struct {
 	Name string `json:"name,omitempty"`
 	// NetworkConfig: Optional. Network configuration for the AgentGateway.
 	NetworkConfig *AgentGatewayNetworkConfig `json:"networkConfig,omitempty"`
-	// Protocols: Required. List of protocols supported by an Agent Gateway
+	// Protocols: Optional. Deprecated.
 	//
 	// Possible values:
 	//   "PROTOCOL_UNSPECIFIED" - Unspecified protocol.
@@ -496,7 +496,7 @@ type AgentGateway struct {
 	// Registries: Optional. A list of Agent registries containing the agents, MCP
 	// servers and tools governed by the Agent Gateway. Note: Currently limited to
 	// project-scoped registries Must be of format
-	// `//agentregistry.googleapis.com/projects/{project}/locations/{location}/
+	// `//agentregistry.googleapis.com/projects/{project}/locations/{location}/`
 	Registries []string `json:"registries,omitempty"`
 	// SelfManaged: Optional. Attach to existing Application Load Balancers or
 	// Secure Web Proxies.
