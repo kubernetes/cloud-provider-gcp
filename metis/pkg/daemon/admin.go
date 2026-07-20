@@ -7,7 +7,7 @@ import (
 )
 
 func (s *adaptiveIpamServer) ListCIDRBlocks(ctx context.Context, _ *adminv1.ListCIDRBlocksRequest) (*adminv1.AdminTableDumpResponse, error) {
-	headers, results, err := s.store.QueryTable(ctx, "cidr_blocks")
+	headers, results, err := s.store.AdminListCIDRBlocks(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -16,7 +16,7 @@ func (s *adaptiveIpamServer) ListCIDRBlocks(ctx context.Context, _ *adminv1.List
 }
 
 func (s *adaptiveIpamServer) ListIPAddresses(ctx context.Context, _ *adminv1.ListIPAddressesRequest) (*adminv1.AdminTableDumpResponse, error) {
-	headers, results, err := s.store.QueryTable(ctx, "ip_addresses")
+	headers, results, err := s.store.AdminListIPAddresses(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +25,7 @@ func (s *adaptiveIpamServer) ListIPAddresses(ctx context.Context, _ *adminv1.Lis
 }
 
 func (s *adaptiveIpamServer) GetCIDRBlock(ctx context.Context, req *adminv1.GetCIDRBlockRequest) (*adminv1.AdminTableDumpResponse, error) {
-	headers, results, err := s.store.QueryTableByID(ctx, "cidr_blocks", req.Id)
+	headers, results, err := s.store.AdminGetCIDRBlock(ctx, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func (s *adaptiveIpamServer) GetCIDRBlock(ctx context.Context, req *adminv1.GetC
 }
 
 func (s *adaptiveIpamServer) GetIPAddress(ctx context.Context, req *adminv1.GetIPAddressRequest) (*adminv1.AdminTableDumpResponse, error) {
-	headers, results, err := s.store.QueryTableByID(ctx, "ip_addresses", req.Id)
+	headers, results, err := s.store.AdminGetIPAddress(ctx, req.Id)
 	if err != nil {
 		return nil, err
 	}

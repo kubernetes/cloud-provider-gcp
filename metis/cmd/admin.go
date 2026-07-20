@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	adminv1 "k8s.io/metis/api/admin/v1"
 	"k8s.io/metis/pkg"
 )
@@ -25,32 +23,8 @@ func newAdminCommand() *cobra.Command {
 		Hidden: true,
 	}
 
-	cmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "json", "Output format (json or table)")
+	cmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "table", "Output format (json or table)")
 	cmd.PersistentFlags().MarkHidden("output")
-
-	printDumpResponse := func(res *adminv1.AdminTableDumpResponse) {
-		if outputFormat == "table" {
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			// Print Headers
-			fmt.Fprintln(w, strings.ToUpper(strings.Join(res.Headers, "\t")))
-			// Print Rows
-			for _, row := range res.Rows {
-				fmt.Fprintln(w, strings.Join(row.Values, "\t"))
-			}
-			w.Flush()
-		} else {
-			var jsonPayload []map[string]interface{}
-			for _, row := range res.Rows {
-				rowMap := make(map[string]interface{})
-				for i, header := range res.Headers {
-					rowMap[header] = row.Values[i]
-				}
-				jsonPayload = append(jsonPayload, rowMap)
-			}
-			b, _ := json.MarshalIndent(jsonPayload, "", "  ")
-			fmt.Println(string(b))
-		}
-	}
 
 	cidrCmd := &cobra.Command{
 		Use:    "cidr-blocks",
@@ -72,7 +46,7 @@ func newAdminCommand() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
 				os.Exit(1)
 			}
-			printDumpResponse(res)
+			printDumpResponse(res, outputFormat)
 		},
 	})
 	cidrCmd.AddCommand(&cobra.Command{
@@ -91,7 +65,7 @@ func newAdminCommand() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
 				os.Exit(1)
 			}
-			printDumpResponse(res)
+			printDumpResponse(res, outputFormat)
 		},
 	})
 
@@ -115,7 +89,7 @@ func newAdminCommand() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
 				os.Exit(1)
 			}
-			printDumpResponse(res)
+			printDumpResponse(res, outputFormat)
 		},
 	})
 	ipCmd.AddCommand(&cobra.Command{
@@ -134,7 +108,7 @@ func newAdminCommand() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
 				os.Exit(1)
 			}
-			printDumpResponse(res)
+			printDumpResponse(res, outputFormat)
 		},
 	})
 
@@ -144,15 +118,32 @@ func newAdminCommand() *cobra.Command {
 	return cmd
 }
 
+func printDumpResponse(res *adminv1.AdminTableDumpResponse, outputFormat string) {
+	if outputFormat == "table" {
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		// Print Headers
+		fmt.Fprintln(w, strings.ToUpper(strings.Join(res.Headers, "\t")))
+		// Print Rows
+		for _, row := range res.Rows {
+			fmt.Fprintln(w, strings.Join(row.Values, "\t"))
+		}
+		w.Flush()
+	} else {
+		var jsonPayload []map[string]interface{}
+		for _, row := range res.Rows {
+			rowMap := make(map[string]interface{})
+			for i, header := range res.Headers {
+				rowMap[header] = row.Values[i]
+			}
+			jsonPayload = append(jsonPayload, rowMap)
+		}
+		b, _ := json.MarshalIndent(jsonPayload, "", "  ")
+		fmt.Println(string(b))
+	}
+}
+
 func getAdminClient() (adminv1.AdminClient, *grpc.ClientConn, error) {
-	conn, err := grpc.Dial(
-		pkg.DefaultSockPath,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "unix", addr)
-		}),
-	)
+	conn, err := pkg.NewLocalGrpcConnection(pkg.DefaultSockPath)
 	if err != nil {
 		return nil, nil, err
 	}
