@@ -37,7 +37,15 @@ fi
 
 res=0
 
-# Helper function to fail on output
+# Helper functions similar to grpc-go
+not() {
+  ! "$@"
+}
+
+noret_grep() {
+  grep "$@" || [[ $? == 1 ]]
+}
+
 fail_on_output() {
   local output
   output=$(cat)
@@ -45,25 +53,21 @@ fail_on_output() {
     echo "Failed. Output:"
     echo "${output}"
     res=1
-  else
-    echo "Passed."
   fi
 }
 
 echo "Running staticcheck..."
-staticcheck_out=$(staticcheck ./... 2>&1 || true)
-# Filter out the specific deprecation warning for NewSimpleClientset
-filtered_out=$(echo "${staticcheck_out}" | grep -v "NewSimpleClientset is deprecated" || true)
-# Remove empty lines
-filtered_out=$(echo "${filtered_out}" | sed '/^[[:space:]]*$/d')
+SC_OUT="$(mktemp)"
+staticcheck ./... >"${SC_OUT}" || true
 
-if [[ -n "${filtered_out}" ]]; then
-  echo "Staticcheck failed. Output:"
-  echo "${filtered_out}"
-  res=1
-else
-  echo "Passed (ignored known SA1019 nuisance warnings)."
-fi
+# Error for anything other than SA1019.
+noret_grep -v "(SA1019)" "${SC_OUT}" | fail_on_output
+
+# For SA1019, ignore only NewSimpleClientset deprecation.
+noret_grep "(SA1019)" "${SC_OUT}" | not grep -Fv 'NewSimpleClientset is deprecated' | fail_on_output || true
+
+rm -f "${SC_OUT}"
+
 
 echo "Running revive..."
 revive \
