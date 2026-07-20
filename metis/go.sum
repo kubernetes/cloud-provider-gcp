@@ -1,5 +1,3 @@
-github.com/GoogleCloudPlatform/gke-networking-api v0.2.1 h1:aPxAtI5umQadCP2mfciTxGcmdVClM3fKg/zKQ6/uyZo=
-github.com/GoogleCloudPlatform/gke-networking-api v0.2.1/go.mod h1:jC8/IazDeY3D4zTcEsZK6WiwbmqSTYjGNTZqXucxVVU=
 github.com/GoogleCloudPlatform/gke-networking-api v0.2.2 h1:zSw47Rs7HmI8rlD/i+s9I2L49sP0T2hTGUqa2mGs9uE=
 github.com/GoogleCloudPlatform/gke-networking-api v0.2.2/go.mod h1:jC8/IazDeY3D4zTcEsZK6WiwbmqSTYjGNTZqXucxVVU=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=

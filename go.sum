@@ -10,8 +10,8 @@ github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 h1:L/gRVlceqvL25
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/GoogleCloudPlatform/gke-enterprise-mt v0.1.0 h1:VbaMM0mWLVKE5z/UrGxdBHE5/MOR6rM4MRVb0c3UdIY=
 github.com/GoogleCloudPlatform/gke-enterprise-mt v0.1.0/go.mod h1:4OaeS6mKZtfsPHaDGOgZ3uz15sUO8KXl9tElNunV5Zc=
-github.com/GoogleCloudPlatform/gke-networking-api v0.2.1 h1:aPxAtI5umQadCP2mfciTxGcmdVClM3fKg/zKQ6/uyZo=
-github.com/GoogleCloudPlatform/gke-networking-api v0.2.1/go.mod h1:jC8/IazDeY3D4zTcEsZK6WiwbmqSTYjGNTZqXucxVVU=
+github.com/GoogleCloudPlatform/gke-networking-api v0.2.2 h1:zSw47Rs7HmI8rlD/i+s9I2L49sP0T2hTGUqa2mGs9uE=
+github.com/GoogleCloudPlatform/gke-networking-api v0.2.2/go.mod h1:jC8/IazDeY3D4zTcEsZK6WiwbmqSTYjGNTZqXucxVVU=
 github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0 h1:SvXmA79s+vlNlViAh6r+1rNODTOfkmZ7tIUEoTBNvC8=
 github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0/go.mod h1:+s19ozAkr5hJxWUFg5YB9XpGhArKdVUmtbItQicBYU0=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
