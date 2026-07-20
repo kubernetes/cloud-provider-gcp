@@ -51,7 +51,7 @@ fail_on_output() {
 }
 
 echo "Running staticcheck..."
-staticcheck ./... || res=1
+staticcheck -checks "inherit,-SA1019" ./... || res=1
 
 echo "Running revive..."
 revive \

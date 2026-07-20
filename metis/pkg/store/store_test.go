@@ -1498,13 +1498,13 @@ func TestStore_UndrainOneCIDRBlock(t *testing.T) {
 	// Check states: exactly one of id1 or id2 should be Ready, the other Draining. id6 should be Draining.
 	var state1, state2, state6 string
 	if err := s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id1).Scan(&state1); err != nil {
-		t.Fatalf("Failed to scan state for id1: %v", err)
+		t.Errorf("Failed to scan state for id1: %v", err)
 	}
 	if err := s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id2).Scan(&state2); err != nil {
-		t.Fatalf("Failed to scan state for id2: %v", err)
+		t.Errorf("Failed to scan state for id2: %v", err)
 	}
 	if err := s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id6).Scan(&state6); err != nil {
-		t.Fatalf("Failed to scan state for id6: %v", err)
+		t.Errorf("Failed to scan state for id6: %v", err)
 	}
 
 	if (state1 == string(StateReady) && state2 == string(StateReady)) || (state1 == string(StateDraining) && state2 == string(StateDraining)) {
@@ -1597,7 +1597,7 @@ func TestStore_ExpireDrainingCIDRBlocks(t *testing.T) {
 	for id, expected := range expectedStates {
 		var state string
 		if err := s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id).Scan(&state); err != nil {
-			t.Fatalf("Failed to scan state for id %d: %v", id, err)
+			t.Errorf("Failed to scan state for id %d: %v", id, err)
 		}
 		if state != expected {
 			t.Errorf("Expected id %d state to be %s, got %s", id, expected, state)

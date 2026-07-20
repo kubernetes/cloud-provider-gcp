@@ -40,6 +40,8 @@ github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/taskqueue
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfigcr
 # github.com/GoogleCloudPlatform/gke-networking-api v0.2.1
 ## explicit; go 1.25.0
+# github.com/GoogleCloudPlatform/gke-networking-api v0.2.2
+## explicit; go 1.25.0
 github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1
 github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1
 github.com/GoogleCloudPlatform/gke-networking-api/apis/nodetopology/v1
