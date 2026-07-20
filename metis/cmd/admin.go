@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -27,10 +28,38 @@ func newAdminCommand() *cobra.Command {
 	cmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "json", "Output format (json or table)")
 	cmd.PersistentFlags().MarkHidden("output")
 
+	printDumpResponse := func(res *adminv1.AdminTableDumpResponse) {
+		if outputFormat == "table" {
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			// Print Headers
+			fmt.Fprintln(w, strings.ToUpper(strings.Join(res.Headers, "\t")))
+			// Print Rows
+			for _, row := range res.Rows {
+				fmt.Fprintln(w, strings.Join(row.Values, "\t"))
+			}
+			w.Flush()
+		} else {
+			var jsonPayload []map[string]interface{}
+			for _, row := range res.Rows {
+				rowMap := make(map[string]interface{})
+				for i, header := range res.Headers {
+					rowMap[header] = row.Values[i]
+				}
+				jsonPayload = append(jsonPayload, rowMap)
+			}
+			b, _ := json.MarshalIndent(jsonPayload, "", "  ")
+			fmt.Println(string(b))
+		}
+	}
+
 	cidrCmd := &cobra.Command{
-		Use:   "cidrblocks",
-		Short: "List CIDR blocks",
+		Use:    "cidr-blocks",
+		Short:  "Manage CIDR blocks",
 		Hidden: true,
+	}
+	cidrCmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List CIDR blocks",
 		Run: func(cmd *cobra.Command, args []string) {
 			client, conn, err := getAdminClient()
 			if err != nil {
@@ -40,27 +69,40 @@ func newAdminCommand() *cobra.Command {
 			defer conn.Close()
 			res, err := client.ListCIDRBlocks(context.Background(), &adminv1.ListCIDRBlocksRequest{})
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to list cidrblocks: %v\n", err)
+				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
 				os.Exit(1)
 			}
-			if outputFormat == "table" {
-				w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-				fmt.Fprintln(w, "ID\tCIDR\tNETWORK\tIP_FAMILY\tSTATE\tTOTAL_IPS\tALLOCATED_IPS")
-				for _, c := range res.CidrBlocks {
-					fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%d\t%d\n", c.Id, c.Cidr, c.Network, c.IpFamily, c.State, c.TotalIps, c.AllocatedIps)
-				}
-				w.Flush()
-			} else {
-				b, _ := json.MarshalIndent(res, "", "  ")
-				fmt.Println(string(b))
-			}
+			printDumpResponse(res)
 		},
-	}
+	})
+	cidrCmd.AddCommand(&cobra.Command{
+		Use:   "get [id]",
+		Short: "Get CIDR block by ID",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			client, conn, err := getAdminClient()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to connect: %v\n", err)
+				os.Exit(1)
+			}
+			defer conn.Close()
+			res, err := client.GetCIDRBlock(context.Background(), &adminv1.GetCIDRBlockRequest{Id: args[0]})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
+				os.Exit(1)
+			}
+			printDumpResponse(res)
+		},
+	})
 
 	ipCmd := &cobra.Command{
-		Use:   "ip_addresses",
-		Short: "List IP addresses",
+		Use:    "ip-addresses",
+		Short:  "Manage IP addresses",
 		Hidden: true,
+	}
+	ipCmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List IP addresses",
 		Run: func(cmd *cobra.Command, args []string) {
 			client, conn, err := getAdminClient()
 			if err != nil {
@@ -70,22 +112,31 @@ func newAdminCommand() *cobra.Command {
 			defer conn.Close()
 			res, err := client.ListIPAddresses(context.Background(), &adminv1.ListIPAddressesRequest{})
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to list ip_addresses: %v\n", err)
+				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
 				os.Exit(1)
 			}
-			if outputFormat == "table" {
-				w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-				fmt.Fprintln(w, "ID\tADDRESS\tCIDR_BLOCK_ID\tCONTAINER_ID\tPOD_NAME\tPOD_NAMESPACE\tINTERFACE_NAME\tIS_ALLOCATED")
-				for _, ip := range res.IpAddresses {
-					fmt.Fprintf(w, "%d\t%s\t%d\t%s\t%s\t%s\t%s\t%t\n", ip.Id, ip.Address, ip.CidrBlockId, ip.ContainerId, ip.PodName, ip.PodNamespace, ip.InterfaceName, ip.IsAllocated)
-				}
-				w.Flush()
-			} else {
-				b, _ := json.MarshalIndent(res, "", "  ")
-				fmt.Println(string(b))
-			}
+			printDumpResponse(res)
 		},
-	}
+	})
+	ipCmd.AddCommand(&cobra.Command{
+		Use:   "get [id]",
+		Short: "Get IP address by ID",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			client, conn, err := getAdminClient()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to connect: %v\n", err)
+				os.Exit(1)
+			}
+			defer conn.Close()
+			res, err := client.GetIPAddress(context.Background(), &adminv1.GetIPAddressRequest{Id: args[0]})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
+				os.Exit(1)
+			}
+			printDumpResponse(res)
+		},
+	})
 
 	cmd.AddCommand(cidrCmd)
 	cmd.AddCommand(ipCmd)

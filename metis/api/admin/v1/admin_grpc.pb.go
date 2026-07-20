@@ -20,15 +20,19 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	Admin_ListCIDRBlocks_FullMethodName  = "/admin.v1.Admin/ListCIDRBlocks"
+	Admin_GetCIDRBlock_FullMethodName    = "/admin.v1.Admin/GetCIDRBlock"
 	Admin_ListIPAddresses_FullMethodName = "/admin.v1.Admin/ListIPAddresses"
+	Admin_GetIPAddress_FullMethodName    = "/admin.v1.Admin/GetIPAddress"
 )
 
 // AdminClient is the client API for Admin service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AdminClient interface {
-	ListCIDRBlocks(ctx context.Context, in *ListCIDRBlocksRequest, opts ...grpc.CallOption) (*ListCIDRBlocksResponse, error)
-	ListIPAddresses(ctx context.Context, in *ListIPAddressesRequest, opts ...grpc.CallOption) (*ListIPAddressesResponse, error)
+	ListCIDRBlocks(ctx context.Context, in *ListCIDRBlocksRequest, opts ...grpc.CallOption) (*AdminTableDumpResponse, error)
+	GetCIDRBlock(ctx context.Context, in *GetCIDRBlockRequest, opts ...grpc.CallOption) (*AdminTableDumpResponse, error)
+	ListIPAddresses(ctx context.Context, in *ListIPAddressesRequest, opts ...grpc.CallOption) (*AdminTableDumpResponse, error)
+	GetIPAddress(ctx context.Context, in *GetIPAddressRequest, opts ...grpc.CallOption) (*AdminTableDumpResponse, error)
 }
 
 type adminClient struct {
@@ -39,9 +43,9 @@ func NewAdminClient(cc grpc.ClientConnInterface) AdminClient {
 	return &adminClient{cc}
 }
 
-func (c *adminClient) ListCIDRBlocks(ctx context.Context, in *ListCIDRBlocksRequest, opts ...grpc.CallOption) (*ListCIDRBlocksResponse, error) {
+func (c *adminClient) ListCIDRBlocks(ctx context.Context, in *ListCIDRBlocksRequest, opts ...grpc.CallOption) (*AdminTableDumpResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListCIDRBlocksResponse)
+	out := new(AdminTableDumpResponse)
 	err := c.cc.Invoke(ctx, Admin_ListCIDRBlocks_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -49,10 +53,30 @@ func (c *adminClient) ListCIDRBlocks(ctx context.Context, in *ListCIDRBlocksRequ
 	return out, nil
 }
 
-func (c *adminClient) ListIPAddresses(ctx context.Context, in *ListIPAddressesRequest, opts ...grpc.CallOption) (*ListIPAddressesResponse, error) {
+func (c *adminClient) GetCIDRBlock(ctx context.Context, in *GetCIDRBlockRequest, opts ...grpc.CallOption) (*AdminTableDumpResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListIPAddressesResponse)
+	out := new(AdminTableDumpResponse)
+	err := c.cc.Invoke(ctx, Admin_GetCIDRBlock_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminClient) ListIPAddresses(ctx context.Context, in *ListIPAddressesRequest, opts ...grpc.CallOption) (*AdminTableDumpResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminTableDumpResponse)
 	err := c.cc.Invoke(ctx, Admin_ListIPAddresses_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminClient) GetIPAddress(ctx context.Context, in *GetIPAddressRequest, opts ...grpc.CallOption) (*AdminTableDumpResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminTableDumpResponse)
+	err := c.cc.Invoke(ctx, Admin_GetIPAddress_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -63,8 +87,10 @@ func (c *adminClient) ListIPAddresses(ctx context.Context, in *ListIPAddressesRe
 // All implementations must embed UnimplementedAdminServer
 // for forward compatibility.
 type AdminServer interface {
-	ListCIDRBlocks(context.Context, *ListCIDRBlocksRequest) (*ListCIDRBlocksResponse, error)
-	ListIPAddresses(context.Context, *ListIPAddressesRequest) (*ListIPAddressesResponse, error)
+	ListCIDRBlocks(context.Context, *ListCIDRBlocksRequest) (*AdminTableDumpResponse, error)
+	GetCIDRBlock(context.Context, *GetCIDRBlockRequest) (*AdminTableDumpResponse, error)
+	ListIPAddresses(context.Context, *ListIPAddressesRequest) (*AdminTableDumpResponse, error)
+	GetIPAddress(context.Context, *GetIPAddressRequest) (*AdminTableDumpResponse, error)
 	mustEmbedUnimplementedAdminServer()
 }
 
@@ -75,11 +101,17 @@ type AdminServer interface {
 // pointer dereference when methods are called.
 type UnimplementedAdminServer struct{}
 
-func (UnimplementedAdminServer) ListCIDRBlocks(context.Context, *ListCIDRBlocksRequest) (*ListCIDRBlocksResponse, error) {
+func (UnimplementedAdminServer) ListCIDRBlocks(context.Context, *ListCIDRBlocksRequest) (*AdminTableDumpResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCIDRBlocks not implemented")
 }
-func (UnimplementedAdminServer) ListIPAddresses(context.Context, *ListIPAddressesRequest) (*ListIPAddressesResponse, error) {
+func (UnimplementedAdminServer) GetCIDRBlock(context.Context, *GetCIDRBlockRequest) (*AdminTableDumpResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetCIDRBlock not implemented")
+}
+func (UnimplementedAdminServer) ListIPAddresses(context.Context, *ListIPAddressesRequest) (*AdminTableDumpResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListIPAddresses not implemented")
+}
+func (UnimplementedAdminServer) GetIPAddress(context.Context, *GetIPAddressRequest) (*AdminTableDumpResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetIPAddress not implemented")
 }
 func (UnimplementedAdminServer) mustEmbedUnimplementedAdminServer() {}
 func (UnimplementedAdminServer) testEmbeddedByValue()               {}
@@ -120,6 +152,24 @@ func _Admin_ListCIDRBlocks_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Admin_GetCIDRBlock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCIDRBlockRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServer).GetCIDRBlock(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Admin_GetCIDRBlock_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServer).GetCIDRBlock(ctx, req.(*GetCIDRBlockRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Admin_ListIPAddresses_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListIPAddressesRequest)
 	if err := dec(in); err != nil {
@@ -138,6 +188,24 @@ func _Admin_ListIPAddresses_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Admin_GetIPAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetIPAddressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServer).GetIPAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Admin_GetIPAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServer).GetIPAddress(ctx, req.(*GetIPAddressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Admin_ServiceDesc is the grpc.ServiceDesc for Admin service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -150,8 +218,16 @@ var Admin_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Admin_ListCIDRBlocks_Handler,
 		},
 		{
+			MethodName: "GetCIDRBlock",
+			Handler:    _Admin_GetCIDRBlock_Handler,
+		},
+		{
 			MethodName: "ListIPAddresses",
 			Handler:    _Admin_ListIPAddresses_Handler,
+		},
+		{
+			MethodName: "GetIPAddress",
+			Handler:    _Admin_GetIPAddress_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

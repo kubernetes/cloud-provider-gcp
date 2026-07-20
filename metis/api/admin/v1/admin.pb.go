@@ -57,33 +57,27 @@ func (*ListCIDRBlocksRequest) Descriptor() ([]byte, []int) {
 	return file_metis_api_admin_v1_admin_proto_rawDescGZIP(), []int{0}
 }
 
-type CIDRBlock struct {
+type GetCIDRBlockRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	TotalIps      int32                  `protobuf:"varint,2,opt,name=total_ips,json=totalIps,proto3" json:"total_ips,omitempty"`
-	AllocatedIps  int32                  `protobuf:"varint,3,opt,name=allocated_ips,json=allocatedIps,proto3" json:"allocated_ips,omitempty"`
-	Cidr          string                 `protobuf:"bytes,4,opt,name=cidr,proto3" json:"cidr,omitempty"`
-	Network       string                 `protobuf:"bytes,5,opt,name=network,proto3" json:"network,omitempty"`
-	IpFamily      string                 `protobuf:"bytes,6,opt,name=ip_family,json=ipFamily,proto3" json:"ip_family,omitempty"`
-	State         string                 `protobuf:"bytes,7,opt,name=state,proto3" json:"state,omitempty"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CIDRBlock) Reset() {
-	*x = CIDRBlock{}
+func (x *GetCIDRBlockRequest) Reset() {
+	*x = GetCIDRBlockRequest{}
 	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CIDRBlock) String() string {
+func (x *GetCIDRBlockRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CIDRBlock) ProtoMessage() {}
+func (*GetCIDRBlockRequest) ProtoMessage() {}
 
-func (x *CIDRBlock) ProtoReflect() protoreflect.Message {
+func (x *GetCIDRBlockRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -95,102 +89,16 @@ func (x *CIDRBlock) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CIDRBlock.ProtoReflect.Descriptor instead.
-func (*CIDRBlock) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetCIDRBlockRequest.ProtoReflect.Descriptor instead.
+func (*GetCIDRBlockRequest) Descriptor() ([]byte, []int) {
 	return file_metis_api_admin_v1_admin_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *CIDRBlock) GetId() int64 {
+func (x *GetCIDRBlockRequest) GetId() string {
 	if x != nil {
 		return x.Id
 	}
-	return 0
-}
-
-func (x *CIDRBlock) GetTotalIps() int32 {
-	if x != nil {
-		return x.TotalIps
-	}
-	return 0
-}
-
-func (x *CIDRBlock) GetAllocatedIps() int32 {
-	if x != nil {
-		return x.AllocatedIps
-	}
-	return 0
-}
-
-func (x *CIDRBlock) GetCidr() string {
-	if x != nil {
-		return x.Cidr
-	}
 	return ""
-}
-
-func (x *CIDRBlock) GetNetwork() string {
-	if x != nil {
-		return x.Network
-	}
-	return ""
-}
-
-func (x *CIDRBlock) GetIpFamily() string {
-	if x != nil {
-		return x.IpFamily
-	}
-	return ""
-}
-
-func (x *CIDRBlock) GetState() string {
-	if x != nil {
-		return x.State
-	}
-	return ""
-}
-
-type ListCIDRBlocksResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CidrBlocks    []*CIDRBlock           `protobuf:"bytes,1,rep,name=cidr_blocks,json=cidrBlocks,proto3" json:"cidr_blocks,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListCIDRBlocksResponse) Reset() {
-	*x = ListCIDRBlocksResponse{}
-	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListCIDRBlocksResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListCIDRBlocksResponse) ProtoMessage() {}
-
-func (x *ListCIDRBlocksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListCIDRBlocksResponse.ProtoReflect.Descriptor instead.
-func (*ListCIDRBlocksResponse) Descriptor() ([]byte, []int) {
-	return file_metis_api_admin_v1_admin_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *ListCIDRBlocksResponse) GetCidrBlocks() []*CIDRBlock {
-	if x != nil {
-		return x.CidrBlocks
-	}
-	return nil
 }
 
 type ListIPAddressesRequest struct {
@@ -201,7 +109,7 @@ type ListIPAddressesRequest struct {
 
 func (x *ListIPAddressesRequest) Reset() {
 	*x = ListIPAddressesRequest{}
-	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[3]
+	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -213,7 +121,7 @@ func (x *ListIPAddressesRequest) String() string {
 func (*ListIPAddressesRequest) ProtoMessage() {}
 
 func (x *ListIPAddressesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[3]
+	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -226,130 +134,126 @@ func (x *ListIPAddressesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIPAddressesRequest.ProtoReflect.Descriptor instead.
 func (*ListIPAddressesRequest) Descriptor() ([]byte, []int) {
+	return file_metis_api_admin_v1_admin_proto_rawDescGZIP(), []int{2}
+}
+
+type GetIPAddressRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetIPAddressRequest) Reset() {
+	*x = GetIPAddressRequest{}
+	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetIPAddressRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetIPAddressRequest) ProtoMessage() {}
+
+func (x *GetIPAddressRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetIPAddressRequest.ProtoReflect.Descriptor instead.
+func (*GetIPAddressRequest) Descriptor() ([]byte, []int) {
 	return file_metis_api_admin_v1_admin_proto_rawDescGZIP(), []int{3}
 }
 
-type IPAddress struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Address       string                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
-	CidrBlockId   int64                  `protobuf:"varint,3,opt,name=cidr_block_id,json=cidrBlockId,proto3" json:"cidr_block_id,omitempty"`
-	ContainerId   string                 `protobuf:"bytes,4,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
-	PodName       string                 `protobuf:"bytes,5,opt,name=pod_name,json=podName,proto3" json:"pod_name,omitempty"`
-	PodNamespace  string                 `protobuf:"bytes,6,opt,name=pod_namespace,json=podNamespace,proto3" json:"pod_namespace,omitempty"`
-	InterfaceName string                 `protobuf:"bytes,7,opt,name=interface_name,json=interfaceName,proto3" json:"interface_name,omitempty"`
-	IsAllocated   bool                   `protobuf:"varint,8,opt,name=is_allocated,json=isAllocated,proto3" json:"is_allocated,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *IPAddress) Reset() {
-	*x = IPAddress{}
-	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *IPAddress) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*IPAddress) ProtoMessage() {}
-
-func (x *IPAddress) ProtoReflect() protoreflect.Message {
-	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use IPAddress.ProtoReflect.Descriptor instead.
-func (*IPAddress) Descriptor() ([]byte, []int) {
-	return file_metis_api_admin_v1_admin_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *IPAddress) GetId() int64 {
+func (x *GetIPAddressRequest) GetId() string {
 	if x != nil {
 		return x.Id
 	}
-	return 0
-}
-
-func (x *IPAddress) GetAddress() string {
-	if x != nil {
-		return x.Address
-	}
 	return ""
 }
 
-func (x *IPAddress) GetCidrBlockId() int64 {
-	if x != nil {
-		return x.CidrBlockId
-	}
-	return 0
-}
-
-func (x *IPAddress) GetContainerId() string {
-	if x != nil {
-		return x.ContainerId
-	}
-	return ""
-}
-
-func (x *IPAddress) GetPodName() string {
-	if x != nil {
-		return x.PodName
-	}
-	return ""
-}
-
-func (x *IPAddress) GetPodNamespace() string {
-	if x != nil {
-		return x.PodNamespace
-	}
-	return ""
-}
-
-func (x *IPAddress) GetInterfaceName() string {
-	if x != nil {
-		return x.InterfaceName
-	}
-	return ""
-}
-
-func (x *IPAddress) GetIsAllocated() bool {
-	if x != nil {
-		return x.IsAllocated
-	}
-	return false
-}
-
-type ListIPAddressesResponse struct {
+type AdminTableDumpResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	IpAddresses   []*IPAddress           `protobuf:"bytes,1,rep,name=ip_addresses,json=ipAddresses,proto3" json:"ip_addresses,omitempty"`
+	Headers       []string               `protobuf:"bytes,1,rep,name=headers,proto3" json:"headers,omitempty"`
+	Rows          []*Row                 `protobuf:"bytes,2,rep,name=rows,proto3" json:"rows,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListIPAddressesResponse) Reset() {
-	*x = ListIPAddressesResponse{}
+func (x *AdminTableDumpResponse) Reset() {
+	*x = AdminTableDumpResponse{}
+	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminTableDumpResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminTableDumpResponse) ProtoMessage() {}
+
+func (x *AdminTableDumpResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminTableDumpResponse.ProtoReflect.Descriptor instead.
+func (*AdminTableDumpResponse) Descriptor() ([]byte, []int) {
+	return file_metis_api_admin_v1_admin_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *AdminTableDumpResponse) GetHeaders() []string {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
+func (x *AdminTableDumpResponse) GetRows() []*Row {
+	if x != nil {
+		return x.Rows
+	}
+	return nil
+}
+
+type Row struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []string               `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Row) Reset() {
+	*x = Row{}
 	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListIPAddressesResponse) String() string {
+func (x *Row) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListIPAddressesResponse) ProtoMessage() {}
+func (*Row) ProtoMessage() {}
 
-func (x *ListIPAddressesResponse) ProtoReflect() protoreflect.Message {
+func (x *Row) ProtoReflect() protoreflect.Message {
 	mi := &file_metis_api_admin_v1_admin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -361,14 +265,14 @@ func (x *ListIPAddressesResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListIPAddressesResponse.ProtoReflect.Descriptor instead.
-func (*ListIPAddressesResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use Row.ProtoReflect.Descriptor instead.
+func (*Row) Descriptor() ([]byte, []int) {
 	return file_metis_api_admin_v1_admin_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *ListIPAddressesResponse) GetIpAddresses() []*IPAddress {
+func (x *Row) GetValues() []string {
 	if x != nil {
-		return x.IpAddresses
+		return x.Values
 	}
 	return nil
 }
@@ -378,33 +282,22 @@ var File_metis_api_admin_v1_admin_proto protoreflect.FileDescriptor
 const file_metis_api_admin_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"\x1emetis/api/admin/v1/admin.proto\x12\badmin.v1\"\x17\n" +
-	"\x15ListCIDRBlocksRequest\"\xbe\x01\n" +
-	"\tCIDRBlock\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1b\n" +
-	"\ttotal_ips\x18\x02 \x01(\x05R\btotalIps\x12#\n" +
-	"\rallocated_ips\x18\x03 \x01(\x05R\fallocatedIps\x12\x12\n" +
-	"\x04cidr\x18\x04 \x01(\tR\x04cidr\x12\x18\n" +
-	"\anetwork\x18\x05 \x01(\tR\anetwork\x12\x1b\n" +
-	"\tip_family\x18\x06 \x01(\tR\bipFamily\x12\x14\n" +
-	"\x05state\x18\a \x01(\tR\x05state\"N\n" +
-	"\x16ListCIDRBlocksResponse\x124\n" +
-	"\vcidr_blocks\x18\x01 \x03(\v2\x13.admin.v1.CIDRBlockR\n" +
-	"cidrBlocks\"\x18\n" +
-	"\x16ListIPAddressesRequest\"\x86\x02\n" +
-	"\tIPAddress\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x18\n" +
-	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\"\n" +
-	"\rcidr_block_id\x18\x03 \x01(\x03R\vcidrBlockId\x12!\n" +
-	"\fcontainer_id\x18\x04 \x01(\tR\vcontainerId\x12\x19\n" +
-	"\bpod_name\x18\x05 \x01(\tR\apodName\x12#\n" +
-	"\rpod_namespace\x18\x06 \x01(\tR\fpodNamespace\x12%\n" +
-	"\x0einterface_name\x18\a \x01(\tR\rinterfaceName\x12!\n" +
-	"\fis_allocated\x18\b \x01(\bR\visAllocated\"Q\n" +
-	"\x17ListIPAddressesResponse\x126\n" +
-	"\fip_addresses\x18\x01 \x03(\v2\x13.admin.v1.IPAddressR\vipAddresses2\xb4\x01\n" +
+	"\x15ListCIDRBlocksRequest\"%\n" +
+	"\x13GetCIDRBlockRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x18\n" +
+	"\x16ListIPAddressesRequest\"%\n" +
+	"\x13GetIPAddressRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"U\n" +
+	"\x16AdminTableDumpResponse\x12\x18\n" +
+	"\aheaders\x18\x01 \x03(\tR\aheaders\x12!\n" +
+	"\x04rows\x18\x02 \x03(\v2\r.admin.v1.RowR\x04rows\"\x1d\n" +
+	"\x03Row\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\tR\x06values2\xd5\x02\n" +
 	"\x05Admin\x12S\n" +
-	"\x0eListCIDRBlocks\x12\x1f.admin.v1.ListCIDRBlocksRequest\x1a .admin.v1.ListCIDRBlocksResponse\x12V\n" +
-	"\x0fListIPAddresses\x12 .admin.v1.ListIPAddressesRequest\x1a!.admin.v1.ListIPAddressesResponseB#Z!k8s.io/metis/api/admin/v1;adminv1b\x06proto3"
+	"\x0eListCIDRBlocks\x12\x1f.admin.v1.ListCIDRBlocksRequest\x1a .admin.v1.AdminTableDumpResponse\x12O\n" +
+	"\fGetCIDRBlock\x12\x1d.admin.v1.GetCIDRBlockRequest\x1a .admin.v1.AdminTableDumpResponse\x12U\n" +
+	"\x0fListIPAddresses\x12 .admin.v1.ListIPAddressesRequest\x1a .admin.v1.AdminTableDumpResponse\x12O\n" +
+	"\fGetIPAddress\x12\x1d.admin.v1.GetIPAddressRequest\x1a .admin.v1.AdminTableDumpResponseB#Z!k8s.io/metis/api/admin/v1;adminv1b\x06proto3"
 
 var (
 	file_metis_api_admin_v1_admin_proto_rawDescOnce sync.Once
@@ -420,25 +313,28 @@ func file_metis_api_admin_v1_admin_proto_rawDescGZIP() []byte {
 
 var file_metis_api_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_metis_api_admin_v1_admin_proto_goTypes = []any{
-	(*ListCIDRBlocksRequest)(nil),   // 0: admin.v1.ListCIDRBlocksRequest
-	(*CIDRBlock)(nil),               // 1: admin.v1.CIDRBlock
-	(*ListCIDRBlocksResponse)(nil),  // 2: admin.v1.ListCIDRBlocksResponse
-	(*ListIPAddressesRequest)(nil),  // 3: admin.v1.ListIPAddressesRequest
-	(*IPAddress)(nil),               // 4: admin.v1.IPAddress
-	(*ListIPAddressesResponse)(nil), // 5: admin.v1.ListIPAddressesResponse
+	(*ListCIDRBlocksRequest)(nil),  // 0: admin.v1.ListCIDRBlocksRequest
+	(*GetCIDRBlockRequest)(nil),    // 1: admin.v1.GetCIDRBlockRequest
+	(*ListIPAddressesRequest)(nil), // 2: admin.v1.ListIPAddressesRequest
+	(*GetIPAddressRequest)(nil),    // 3: admin.v1.GetIPAddressRequest
+	(*AdminTableDumpResponse)(nil), // 4: admin.v1.AdminTableDumpResponse
+	(*Row)(nil),                    // 5: admin.v1.Row
 }
 var file_metis_api_admin_v1_admin_proto_depIdxs = []int32{
-	1, // 0: admin.v1.ListCIDRBlocksResponse.cidr_blocks:type_name -> admin.v1.CIDRBlock
-	4, // 1: admin.v1.ListIPAddressesResponse.ip_addresses:type_name -> admin.v1.IPAddress
-	0, // 2: admin.v1.Admin.ListCIDRBlocks:input_type -> admin.v1.ListCIDRBlocksRequest
-	3, // 3: admin.v1.Admin.ListIPAddresses:input_type -> admin.v1.ListIPAddressesRequest
-	2, // 4: admin.v1.Admin.ListCIDRBlocks:output_type -> admin.v1.ListCIDRBlocksResponse
-	5, // 5: admin.v1.Admin.ListIPAddresses:output_type -> admin.v1.ListIPAddressesResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	5, // 0: admin.v1.AdminTableDumpResponse.rows:type_name -> admin.v1.Row
+	0, // 1: admin.v1.Admin.ListCIDRBlocks:input_type -> admin.v1.ListCIDRBlocksRequest
+	1, // 2: admin.v1.Admin.GetCIDRBlock:input_type -> admin.v1.GetCIDRBlockRequest
+	2, // 3: admin.v1.Admin.ListIPAddresses:input_type -> admin.v1.ListIPAddressesRequest
+	3, // 4: admin.v1.Admin.GetIPAddress:input_type -> admin.v1.GetIPAddressRequest
+	4, // 5: admin.v1.Admin.ListCIDRBlocks:output_type -> admin.v1.AdminTableDumpResponse
+	4, // 6: admin.v1.Admin.GetCIDRBlock:output_type -> admin.v1.AdminTableDumpResponse
+	4, // 7: admin.v1.Admin.ListIPAddresses:output_type -> admin.v1.AdminTableDumpResponse
+	4, // 8: admin.v1.Admin.GetIPAddress:output_type -> admin.v1.AdminTableDumpResponse
+	5, // [5:9] is the sub-list for method output_type
+	1, // [1:5] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_metis_api_admin_v1_admin_proto_init() }

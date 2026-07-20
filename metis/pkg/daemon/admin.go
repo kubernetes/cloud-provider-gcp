@@ -2,49 +2,55 @@ package daemon
 
 import (
 	"context"
-	
-	"k8s.io/metis/api/admin/v1"
+
+	adminv1 "k8s.io/metis/api/admin/v1"
 )
 
-func (s *adaptiveIpamServer) ListCIDRBlocks(ctx context.Context, req *adminv1.ListCIDRBlocksRequest) (*adminv1.ListCIDRBlocksResponse, error) {
-	blocks, err := s.store.ListCIDRBlocks(ctx)
+func (s *adaptiveIpamServer) ListCIDRBlocks(ctx context.Context, _ *adminv1.ListCIDRBlocksRequest) (*adminv1.AdminTableDumpResponse, error) {
+	headers, results, err := s.store.QueryTable(ctx, "cidr_blocks")
 	if err != nil {
 		return nil, err
 	}
-	
-	var res adminv1.ListCIDRBlocksResponse
-	for _, b := range blocks {
-		res.CidrBlocks = append(res.CidrBlocks, &adminv1.CIDRBlock{
-			Id:           b.ID,
-			TotalIps:     int32(b.TotalIPs),
-			AllocatedIps: int32(b.AllocatedIPs),
-			Cidr:         b.CIDR,
-			Network:      b.Network,
-			IpFamily:     b.IpFamily,
-			State:        b.State,
-		})
-	}
-	return &res, nil
+
+	return formatAdminTableDumpResponse(headers, results), nil
 }
 
-func (s *adaptiveIpamServer) ListIPAddresses(ctx context.Context, req *adminv1.ListIPAddressesRequest) (*adminv1.ListIPAddressesResponse, error) {
-	ips, err := s.store.ListIPAddresses(ctx)
+func (s *adaptiveIpamServer) ListIPAddresses(ctx context.Context, _ *adminv1.ListIPAddressesRequest) (*adminv1.AdminTableDumpResponse, error) {
+	headers, results, err := s.store.QueryTable(ctx, "ip_addresses")
 	if err != nil {
 		return nil, err
 	}
-	
-	var res adminv1.ListIPAddressesResponse
-	for _, ip := range ips {
-		res.IpAddresses = append(res.IpAddresses, &adminv1.IPAddress{
-			Id:            ip.ID,
-			Address:       ip.Address,
-			CidrBlockId:   ip.CIDRBlockID,
-			ContainerId:   ip.ContainerID,
-			PodName:       ip.PodName,
-			PodNamespace:  ip.PodNamespace,
-			InterfaceName: ip.InterfaceName,
-			IsAllocated:   ip.IsAllocated,
+
+	return formatAdminTableDumpResponse(headers, results), nil
+}
+
+func (s *adaptiveIpamServer) GetCIDRBlock(ctx context.Context, req *adminv1.GetCIDRBlockRequest) (*adminv1.AdminTableDumpResponse, error) {
+	headers, results, err := s.store.QueryTableByID(ctx, "cidr_blocks", req.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	return formatAdminTableDumpResponse(headers, results), nil
+}
+
+func (s *adaptiveIpamServer) GetIPAddress(ctx context.Context, req *adminv1.GetIPAddressRequest) (*adminv1.AdminTableDumpResponse, error) {
+	headers, results, err := s.store.QueryTableByID(ctx, "ip_addresses", req.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	return formatAdminTableDumpResponse(headers, results), nil
+}
+
+func formatAdminTableDumpResponse(headers []string, results [][]string) *adminv1.AdminTableDumpResponse {
+	var parsedRows []*adminv1.Row
+	for _, rawRow := range results {
+		parsedRows = append(parsedRows, &adminv1.Row{
+			Values: rawRow,
 		})
 	}
-	return &res, nil
+	return &adminv1.AdminTableDumpResponse{
+		Headers: headers,
+		Rows:    parsedRows,
+	}
 }

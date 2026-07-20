@@ -5,39 +5,27 @@ package admin.v1;
 option go_package = "k8s.io/metis/api/admin/v1;adminv1";
 
 service Admin {
-  rpc ListCIDRBlocks(ListCIDRBlocksRequest) returns (ListCIDRBlocksResponse);
-  rpc ListIPAddresses(ListIPAddressesRequest) returns (ListIPAddressesResponse);
+  rpc ListCIDRBlocks(ListCIDRBlocksRequest) returns (AdminTableDumpResponse);
+  rpc GetCIDRBlock(GetCIDRBlockRequest) returns (AdminTableDumpResponse);
+  rpc ListIPAddresses(ListIPAddressesRequest) returns (AdminTableDumpResponse);
+  rpc GetIPAddress(GetIPAddressRequest) returns (AdminTableDumpResponse);
 }
 
 message ListCIDRBlocksRequest {}
-
-message CIDRBlock {
-  int64 id = 1;
-  int32 total_ips = 2;
-  int32 allocated_ips = 3;
-  string cidr = 4;
-  string network = 5;
-  string ip_family = 6;
-  string state = 7;
-}
-
-message ListCIDRBlocksResponse {
-  repeated CIDRBlock cidr_blocks = 1;
+message GetCIDRBlockRequest {
+  string id = 1;
 }
 
 message ListIPAddressesRequest {}
-
-message IPAddress {
-  int64 id = 1;
-  string address = 2;
-  int64 cidr_block_id = 3;
-  string container_id = 4;
-  string pod_name = 5;
-  string pod_namespace = 6;
-  string interface_name = 7;
-  bool is_allocated = 8;
+message GetIPAddressRequest {
+  string id = 1;
 }
 
-message ListIPAddressesResponse {
-  repeated IPAddress ip_addresses = 1;
+message AdminTableDumpResponse {
+  repeated string headers = 1;
+  repeated Row rows = 2;
+}
+
+message Row {
+  repeated string values = 1;
 }

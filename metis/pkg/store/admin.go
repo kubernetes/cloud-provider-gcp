@@ -5,59 +5,105 @@ import (
 	"fmt"
 )
 
-// IPAddress holds the metadata for an IP address.
-type IPAddress struct {
-	ID            int64
-	Address       string
-	CIDRBlockID   int64
-	ContainerID   string
-	PodName       string
-	PodNamespace  string
-	InterfaceName string
-	IsAllocated   bool
-}
+// QueryTable fetches the entire contents of a given table natively using SQLite column mapping.
+func (s *Store) QueryTable(ctx context.Context, tableName string) ([]string, [][]string, error) {
+	// Prevent SQL injection by validating tableName against known schema tables.
+	if tableName != "cidr_blocks" && tableName != "ip_addresses" {
+		return nil, nil, fmt.Errorf("unsupported table: %s", tableName)
+	}
 
-// ListCIDRBlocks fetches all CIDR blocks.
-func (s *Store) ListCIDRBlocks(ctx context.Context) ([]CIDRBlock, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, total_ips, allocated_ips, cidr, network, ip_family, state FROM cidr_blocks")
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf("SELECT * FROM %s", tableName))
 	if err != nil {
-		return nil, fmt.Errorf("failed to list cidr blocks: %w", err)
+		return nil, nil, fmt.Errorf("failed to query table %s: %w", tableName, err)
 	}
 	defer rows.Close()
 
-	var result []CIDRBlock
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get columns: %w", err)
+	}
+
+	var results [][]string
 	for rows.Next() {
-		var r CIDRBlock
-		var ipFamily, state string
-		if err := rows.Scan(&r.ID, &r.TotalIPs, &r.AllocatedIPs, &r.CIDR, &r.Network, &ipFamily, &state); err != nil {
-			return nil, fmt.Errorf("failed to scan cidr block: %w", err)
+		columns := make([]interface{}, len(cols))
+		columnPointers := make([]interface{}, len(cols))
+		for i := range columns {
+			columnPointers[i] = &columns[i]
 		}
-		result = append(result, r)
+
+		if err := rows.Scan(columnPointers...); err != nil {
+			return nil, nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		var rowData []string
+		for _, col := range columns {
+			if col == nil {
+				rowData = append(rowData, "NULL")
+			} else {
+				// We can handle specific types generically if needed, but string representation works for admin tools
+				switch v := col.(type) {
+				case []byte:
+					rowData = append(rowData, string(v))
+				default:
+					rowData = append(rowData, fmt.Sprintf("%v", v))
+				}
+			}
+		}
+		results = append(results, rowData)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate rows: %w", err)
+		return nil, nil, fmt.Errorf("failed to iterate rows: %w", err)
 	}
-	return result, nil
+	return cols, results, nil
 }
 
-// ListIPAddresses fetches all IP addresses.
-func (s *Store) ListIPAddresses(ctx context.Context) ([]IPAddress, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, address, cidr_block_id, COALESCE(container_id, ''), COALESCE(pod_name, ''), COALESCE(pod_namespace, ''), COALESCE(interface_name, ''), is_allocated FROM ip_addresses")
+// QueryTableByID fetches a specific record from a given table by its ID.
+func (s *Store) QueryTableByID(ctx context.Context, tableName string, id string) ([]string, [][]string, error) {
+	// Prevent SQL injection by validating tableName against known schema tables.
+	if tableName != "cidr_blocks" && tableName != "ip_addresses" {
+		return nil, nil, fmt.Errorf("unsupported table: %s", tableName)
+	}
+
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf("SELECT * FROM %s WHERE id = ?", tableName), id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list ip addresses: %w", err)
+		return nil, nil, fmt.Errorf("failed to query table %s by id %s: %w", tableName, id, err)
 	}
 	defer rows.Close()
 
-	var result []IPAddress
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get columns: %w", err)
+	}
+
+	var results [][]string
 	for rows.Next() {
-		var r IPAddress
-		if err := rows.Scan(&r.ID, &r.Address, &r.CIDRBlockID, &r.ContainerID, &r.PodName, &r.PodNamespace, &r.InterfaceName, &r.IsAllocated); err != nil {
-			return nil, fmt.Errorf("failed to scan ip address: %w", err)
+		columns := make([]interface{}, len(cols))
+		columnPointers := make([]interface{}, len(cols))
+		for i := range columns {
+			columnPointers[i] = &columns[i]
 		}
-		result = append(result, r)
+
+		if err := rows.Scan(columnPointers...); err != nil {
+			return nil, nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		var rowData []string
+		for _, col := range columns {
+			if col == nil {
+				rowData = append(rowData, "NULL")
+			} else {
+				switch v := col.(type) {
+				case []byte:
+					rowData = append(rowData, string(v))
+				default:
+					rowData = append(rowData, fmt.Sprintf("%v", v))
+				}
+			}
+		}
+		results = append(results, rowData)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate rows: %w", err)
+		return nil, nil, fmt.Errorf("failed to iterate rows: %w", err)
 	}
-	return result, nil
+	return cols, results, nil
 }
