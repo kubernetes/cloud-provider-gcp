@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/metis/api/adaptiveipam/v1"
+	adminv1 "k8s.io/metis/api/admin/v1"
 	"k8s.io/metis/pkg"
 	"k8s.io/metis/pkg/store"
 )
@@ -53,6 +54,7 @@ type cniClient struct {
 
 type adaptiveIpamServer struct {
 	adaptiveipam.UnimplementedAdaptiveIpamServer
+	adminv1.UnimplementedAdminServer
 	store           *store.Store
 	sockPath        string
 	releaseCooldown time.Duration
@@ -401,6 +403,7 @@ func (s *adaptiveIpamServer) start() error {
 
 	s.grpcServer = grpc.NewServer()
 	adaptiveipam.RegisterAdaptiveIpamServer(s.grpcServer, s)
+	adminv1.RegisterAdminServer(s.grpcServer, s)
 
 	s.logger.Info("gRPC server is listening", "socket", sockPath)
 	return s.grpcServer.Serve(listener)
