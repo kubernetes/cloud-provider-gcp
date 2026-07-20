@@ -31,21 +31,9 @@ echo $(GOFLAGS='' go version)
 
 # run all verify scripts, optionally skipping any of them
 
-if [[ "${VERIFY_GOFMT:-true}" == "true" ]]; then
-  echo "[*] Verifying gofmt..."
-  tools/verify-gofmt.sh || res=1
-  cd "${KUBE_ROOT}"
-fi
-
-if [[ "${VERIFY_GOLINT:-true}" == "true" ]]; then
-  echo "[*] Verifying golint..."
-  tools/verify-golint.sh || res=1
-  cd "${KUBE_ROOT}"
-fi
-
-if [[ "${VERIFY_GOVET:-true}" == "true" ]]; then
-  echo "[*] Verifying govet..."
-  tools/verify-govet.sh || res=1
+if [[ "${VERIFY_GOLANGCI_LINT:-true}" == "true" ]]; then
+  echo "[*] Verifying golangci-lint..."
+  tools/verify-golangci-lint.sh || res=1
   cd "${KUBE_ROOT}"
 fi
 
