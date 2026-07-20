@@ -51,7 +51,19 @@ fail_on_output() {
 }
 
 echo "Running staticcheck..."
-staticcheck -checks "inherit,-SA1019" ./... || res=1
+staticcheck_out=$(staticcheck ./... 2>&1 || true)
+# Filter out the specific deprecation warning for NewSimpleClientset
+filtered_out=$(echo "${staticcheck_out}" | grep -v "NewSimpleClientset is deprecated" || true)
+# Remove empty lines
+filtered_out=$(echo "${filtered_out}" | sed '/^[[:space:]]*$/d')
+
+if [[ -n "${filtered_out}" ]]; then
+  echo "Staticcheck failed. Output:"
+  echo "${filtered_out}"
+  res=1
+else
+  echo "Passed (ignored known SA1019 nuisance warnings)."
+fi
 
 echo "Running revive..."
 revive \
