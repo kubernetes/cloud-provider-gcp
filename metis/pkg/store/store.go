@@ -498,11 +498,11 @@ func (s *Store) DrainCIDRBlock(ctx context.Context, id int64) error {
 func (s *Store) UndrainOneCIDRBlock(ctx context.Context, network string, ipFamily IPFamily) (bool, error) {
 	nowMilli := time.Now().UTC().UnixMilli()
 	res, err := s.db.ExecContext(ctx, `
-		UPDATE cidr_blocks 
-		SET state = ?, updated_at = ? 
+		UPDATE cidr_blocks
+		SET state = ?, updated_at = ?
 		WHERE id = (
-			SELECT id FROM cidr_blocks 
-			WHERE network = ? AND ip_family = ? AND state = ? 
+			SELECT id FROM cidr_blocks
+			WHERE network = ? AND ip_family = ? AND state = ?
 			LIMIT 1
 		)
 	`, StateReady, nowMilli, network, ipFamily, StateDraining)
@@ -522,8 +522,8 @@ func (s *Store) ExpireDrainingCIDRBlocks(ctx context.Context, network string, ip
 	nowMilli := time.Now().UTC().UnixMilli()
 
 	rows, err := s.db.QueryContext(ctx, `
-		UPDATE cidr_blocks 
-		SET state = ?, updated_at = ? 
+		UPDATE cidr_blocks
+		SET state = ?, updated_at = ?
 		WHERE network = ? AND ip_family = ? AND state = ? AND allocated_ips = 0 AND updated_at + ? <= ?
 		RETURNING id, total_ips, cidr
 	`, StateDeleting, nowMilli, network, ipFamily, StateDraining, expMs, nowMilli)
@@ -758,7 +758,7 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 	var hasAvailable int
 	nowMilli := time.Now().UTC().UnixMilli()
 	err = tx.QueryRowContext(ctx, `
-		SELECT COUNT(id) FROM ip_addresses 
+		SELECT COUNT(id) FROM ip_addresses
 		WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= ?)
 	`, cidrBlockID, nowMilli).Scan(&hasAvailable)
 	if err == nil && hasAvailable > 0 {
@@ -852,12 +852,12 @@ func (s *Store) GetIPUsage(ctx context.Context, network string, ipFamily IPFamil
 	var usage NetworkIPUsage
 	nowMilli := time.Now().UTC().UnixMilli()
 	err := s.db.QueryRowContext(ctx, `
-		SELECT 
+		SELECT
 			IFNULL(SUM(allocated_ips), 0) AS allocated,
 			(
-				SELECT COUNT(i.id) 
-				FROM ip_addresses i 
-				JOIN cidr_blocks cb ON i.cidr_block_id = cb.id 
+				SELECT COUNT(i.id)
+				FROM ip_addresses i
+				JOIN cidr_blocks cb ON i.cidr_block_id = cb.id
 				WHERE cb.network = ? AND cb.state != ? AND cb.ip_family = ? AND i.is_allocated = FALSE AND i.release_at > ?
 			) AS cooldown,
 			IFNULL(SUM(total_ips), 0) AS total_ips,

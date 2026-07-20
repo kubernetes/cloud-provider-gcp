@@ -639,7 +639,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 		{
 			name:      "Context Cancelled Path",
 			cancelCtx: true,
-			action: func(ctx context.Context, server *adaptiveIpamServer, storeInstance *store.Store, network string) error {
+			action: func(_ context.Context, _ *adaptiveIpamServer, _ *store.Store, _ string) error {
 				return nil
 			},
 			wantErr:      true,

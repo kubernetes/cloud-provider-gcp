@@ -269,10 +269,10 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 			var patchedData []byte
 
 			mockInterface := &mockNodeNetworkConfigInterface{
-				getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+				getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
 					return tc.mockNNC, nil
 				},
-				patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
+				patchFunc: func(_ context.Context, _ string, _ types.PatchType, data []byte, _ metav1.PatchOptions, _ ...string) (*nncv1.NodeNetworkConfig, error) {
 					patchCalled = true
 					patchedData = data
 					if tc.injectPatchErr != nil {
@@ -290,7 +290,7 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 				NNCClient:                mockClient,
 				Store:                    storeInstance,
 				NodeName:                 nodeName,
-				GetPendingRequestsCount:  func(net string) int { return tc.pendingRequests },
+				GetPendingRequestsCount:  func(_ string) int { return tc.pendingRequests },
 				CooldownPushbackInterval: 1 * time.Millisecond,
 			})
 
@@ -468,7 +468,7 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 			}
 
 			mockInterface := &mockNodeNetworkConfigInterface{
-				getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+				getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
 					return mockNNC, nil
 				},
 			}
@@ -480,7 +480,7 @@ func TestMonitor_DynamicAllocation_drainExcessive(t *testing.T) {
 				NNCClient:               mockClient,
 				Store:                   storeInstance,
 				NodeName:                nodeName,
-				GetPendingRequestsCount: func(net string) int { return tc.pendingRequests },
+				GetPendingRequestsCount: func(_ string) int { return tc.pendingRequests },
 			})
 
 			m.lowUtilizationTimers[network] = time.Now().Add(-9 * time.Hour)
@@ -631,7 +631,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 	}{
 		{
 			desc: "Draining block expires and is added to ReleasableCIDRs",
-			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
+			setup: func(_ *testing.T, ctx context.Context, s *store.Store) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.1.0/28")
 				id, _, _ := s.GetCIDRBlock(ctx, "10.0.1.0/28", network)
@@ -655,7 +655,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 		},
 		{
 			desc: "Deleting block in store but not in CRD is reconciled",
-			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
+			setup: func(_ *testing.T, ctx context.Context, s *store.Store) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.2.0/28")
 				id, _, _ := s.GetCIDRBlock(ctx, "10.0.2.0/28", network)
@@ -679,7 +679,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 		},
 		{
 			desc: "Both expired draining and missed deleting blocks are handled",
-			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
+			setup: func(_ *testing.T, ctx context.Context, s *store.Store) {
 				// Expired draining
 				s.AddCIDR(ctx, network, "10.0.2.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.3.0/28")
@@ -713,7 +713,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 		},
 		{
 			desc: "No-op when draining block is not expired",
-			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
+			setup: func(_ *testing.T, ctx context.Context, s *store.Store) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.5.0/28")
 				id, _, _ := s.GetCIDRBlock(ctx, "10.0.5.0/28", network)
@@ -737,7 +737,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 		},
 		{
 			desc: "Deleting block already in ReleasableCIDRs does not reduce pods again",
-			setup: func(t *testing.T, ctx context.Context, s *store.Store) {
+			setup: func(_ *testing.T, ctx context.Context, s *store.Store) {
 				s.AddCIDR(ctx, network, "10.0.0.0/28") // Dummy initial block
 				s.AddCIDR(ctx, network, "10.0.6.0/28")
 				id, _, _ := s.GetCIDRBlock(ctx, "10.0.6.0/28", network)
@@ -779,10 +779,10 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 			var mu sync.Mutex
 
 			mockInterface := &mockNodeNetworkConfigInterface{
-				getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+				getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
 					return tc.initialNNC, nil
 				},
-				patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
+				patchFunc: func(_ context.Context, _ string, _ types.PatchType, data []byte, _ metav1.PatchOptions, _ ...string) (*nncv1.NodeNetworkConfig, error) {
 					mu.Lock()
 					defer mu.Unlock()
 					patchCount++
@@ -899,7 +899,7 @@ func runMonitorTestHelper(t *testing.T, tc monitorTestParams) {
 	}
 
 	mockInterface := &mockNodeNetworkConfigInterface{
-		getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+		getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
 			mu.Lock()
 			getCount++
 			count := getCount
@@ -919,7 +919,7 @@ func runMonitorTestHelper(t *testing.T, tc monitorTestParams) {
 			defer mu.Unlock()
 			return mockNNC, nil
 		},
-		patchFunc: func(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*nncv1.NodeNetworkConfig, error) {
+		patchFunc: func(_ context.Context, _ string, _ types.PatchType, data []byte, _ metav1.PatchOptions, _ ...string) (*nncv1.NodeNetworkConfig, error) {
 			mu.Lock()
 			patchCount++
 			count := patchCount
@@ -1070,8 +1070,8 @@ func TestMonitorRun(t *testing.T) {
 					},
 				}
 			},
-			getPendingCount: func(net string) int { return 5 },
-			onPatchCalled: func(callCount int, nnc *nncv1.NodeNetworkConfig, done func()) {
+			getPendingCount: func(_ string) int { return 5 },
+			onPatchCalled: func(_ int, nnc *nncv1.NodeNetworkConfig, done func()) {
 				if len(nnc.Spec.ReleasableCIDRs) == 1 &&
 					nnc.Spec.ReleasableCIDRs[0].CIDR == "10.0.2.0/28" &&
 					len(nnc.Spec.Allocations) == 1 &&
@@ -1079,7 +1079,7 @@ func TestMonitorRun(t *testing.T) {
 					done()
 				}
 			},
-			verify: func(t *testing.T, getCount, patchCount int, patches [][]byte, expectedRV string) {
+			verify: func(t *testing.T, _, _ int, patches [][]byte, expectedRV string) {
 				if len(patches) == 0 {
 					t.Fatal("Expected at least one patch, got none")
 				}
@@ -1109,7 +1109,7 @@ func TestMonitorRun(t *testing.T) {
 		},
 		{
 			name: "Transient Get Failure",
-			initialNNC: func(nodeName, rv string, network string) *nncv1.NodeNetworkConfig {
+			initialNNC: func(nodeName, rv string, _ string) *nncv1.NodeNetworkConfig {
 				return &nncv1.NodeNetworkConfig{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:            nodeName,
@@ -1128,7 +1128,7 @@ func TestMonitorRun(t *testing.T) {
 					done()
 				}
 			},
-			verify: func(t *testing.T, getCount, patchCount int, patches [][]byte, expectedRV string) {
+			verify: func(t *testing.T, getCount, _ int, _ [][]byte, _ string) {
 				if getCount < 2 {
 					t.Errorf("Expected at least 2 attempts due to retry, got %d", getCount)
 				}
@@ -1177,14 +1177,14 @@ func TestMonitorRun(t *testing.T) {
 					},
 				}
 			},
-			getPendingCount: func(net string) int { return 5 },
+			getPendingCount: func(_ string) int { return 5 },
 			injectPatchError: func(callCount int) error {
 				if callCount == 1 {
 					return apierrors.NewConflict(schema.GroupResource{Group: "networking.gke.io", Resource: "nodenetworkconfigs"}, "test-node", fmt.Errorf("conflict"))
 				}
 				return nil
 			},
-			onPatchCalled: func(callCount int, nnc *nncv1.NodeNetworkConfig, done func()) {
+			onPatchCalled: func(_ int, nnc *nncv1.NodeNetworkConfig, done func()) {
 				if len(nnc.Spec.ReleasableCIDRs) == 1 &&
 					nnc.Spec.ReleasableCIDRs[0].CIDR == "10.0.2.0/28" &&
 					len(nnc.Spec.Allocations) == 1 &&
@@ -1192,7 +1192,7 @@ func TestMonitorRun(t *testing.T) {
 					done()
 				}
 			},
-			verify: func(t *testing.T, getCount, patchCount int, patches [][]byte, expectedRV string) {
+			verify: func(t *testing.T, _, patchCount int, patches [][]byte, expectedRV string) {
 				if patchCount < 2 {
 					t.Errorf("Expected at least 2 patch calls due to retry after conflict, got %d", patchCount)
 				}
@@ -1217,7 +1217,7 @@ func TestMonitorRun(t *testing.T) {
 		},
 		{
 			name: "Permanent Failure - Drop After 10 Retries",
-			initialNNC: func(nodeName, rv string, network string) *nncv1.NodeNetworkConfig {
+			initialNNC: func(nodeName, rv string, _ string) *nncv1.NodeNetworkConfig {
 				return &nncv1.NodeNetworkConfig{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:            nodeName,
@@ -1225,7 +1225,7 @@ func TestMonitorRun(t *testing.T) {
 					},
 				}
 			},
-			injectGetError: func(callCount int) error {
+			injectGetError: func(_ int) error {
 				return fmt.Errorf("permanent get error")
 			},
 			onGetCalled: func(callCount int, done func()) {
@@ -1235,7 +1235,7 @@ func TestMonitorRun(t *testing.T) {
 			},
 			rateLimiter:     workqueue.NewTypedItemExponentialFailureRateLimiter[string](1*time.Millisecond, 10*time.Millisecond),
 			monitorInterval: 1 * time.Hour,
-			verify: func(t *testing.T, getCount, patchCount int, patches [][]byte, expectedRV string) {
+			verify: func(t *testing.T, getCount, _ int, _ [][]byte, _ string) {
 				if getCount != 11 {
 					t.Errorf("Expected exactly 11 attempts (1 initial + 10 retries), got %d", getCount)
 				}
