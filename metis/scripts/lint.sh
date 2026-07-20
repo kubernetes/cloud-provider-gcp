@@ -37,36 +37,24 @@ fi
 
 res=0
 
-# Helper functions similar to grpc-go
-not() {
-  ! "$@"
-}
+echo "Running staticcheck..."
+# Use if directly to capture output and handle exit code without triggering set -e
+if SC_OUT=$(staticcheck ./... 2>&1); then
+  echo "Passed."
+else
+  # Filter out the specific deprecation warning for NewSimpleClientset
+  # TODO(https://github.com/kubernetes/cloud-provider-gcp/issues/1262): Remove this once upstream generates apply configs.
+  FILTERED=$(echo "${SC_OUT}" | grep -v "NewSimpleClientset is deprecated" || true)
 
-noret_grep() {
-  grep "$@" || [[ $? == 1 ]]
-}
-
-fail_on_output() {
-  local output
-  output=$(cat)
-  if [[ -n "${output}" ]]; then
+  if [[ -z "${FILTERED}" ]]; then
+    echo "Passed (ignoring exempted warnings)."
+  else
     echo "Failed. Output:"
-    echo "${output}"
+    echo "${FILTERED}"
     res=1
   fi
-}
+fi
 
-echo "Running staticcheck..."
-SC_OUT="$(mktemp)"
-staticcheck ./... >"${SC_OUT}" || true
-
-# Error for anything other than SA1019.
-noret_grep -v "(SA1019)" "${SC_OUT}" | fail_on_output
-
-# For SA1019, ignore only NewSimpleClientset deprecation.
-noret_grep "(SA1019)" "${SC_OUT}" | not grep -Fv 'NewSimpleClientset is deprecated' | fail_on_output || true
-
-rm -f "${SC_OUT}"
 
 
 echo "Running revive..."
