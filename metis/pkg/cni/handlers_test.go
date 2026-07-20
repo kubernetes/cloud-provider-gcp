@@ -342,6 +342,7 @@ func TestCniWithActualDaemon(t *testing.T) {
 
 	d := daemon.NewDaemon(cfg)
 	// Pre-populate with fake clients to satisfy the initialization requirements in Run() (they are not actually used by this test).
+	//lint:ignore SA1019 NewClientset is not available in this module without apply configs
 	d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-node",

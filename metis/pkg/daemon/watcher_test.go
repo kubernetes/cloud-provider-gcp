@@ -76,6 +76,7 @@ func TestWatcher_Success(t *testing.T) {
 		},
 	}
 
+	//lint:ignore SA1019 NewClientset is not available in this module without apply configs
 	nncClient := nncfake.NewSimpleClientset(mockNNC)
 	nncInformerFactory := externalversions.NewSharedInformerFactory(nncClient, 0)
 	nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()

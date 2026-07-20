@@ -49,6 +49,7 @@ func TestDaemon_Run(t *testing.T) {
 		{
 			name: "successful run",
 			setupDaemon: func(_ *testing.T, d *Daemon) {
+				//lint:ignore SA1019 NewClientset is not available in this module without apply configs
 				d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "test-node",
@@ -70,6 +71,7 @@ func TestDaemon_Run(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Failed to get hostname: %v", err)
 				}
+				//lint:ignore SA1019 NewClientset is not available in this module without apply configs
 				d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: hostname,
@@ -92,6 +94,7 @@ func TestDaemon_Run(t *testing.T) {
 		{
 			name: "only NNCClient set (initClients fails)",
 			setupDaemon: func(_ *testing.T, d *Daemon) {
+				//lint:ignore SA1019 NewClientset is not available in this module without apply configs
 				d.NNCClient = nncfake.NewSimpleClientset()
 			},
 			wantErr:     true,
@@ -274,6 +277,7 @@ func TestEnsureNodeNetworkConfig(t *testing.T) {
 			if tc.initNNC != nil {
 				nncObjects = append(nncObjects, tc.initNNC)
 			}
+			//lint:ignore SA1019 NewClientset is not available in this module without apply configs
 			nncClient := nncfake.NewSimpleClientset(nncObjects...)
 
 			if tc.createReactor != nil {

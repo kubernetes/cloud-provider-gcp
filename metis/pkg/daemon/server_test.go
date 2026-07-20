@@ -669,6 +669,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 			mockNNC := &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
 			}
+			//lint:ignore SA1019 NewClientset is not available in this module without apply configs
 			nncClient := nncfake.NewSimpleClientset(mockNNC)
 
 			monitorInstance := NewMonitor(MonitorConfig{
@@ -778,6 +779,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation_MultipleRequests(t *
 	mockNNC := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{Name: nodeName},
 	}
+	//lint:ignore SA1019 NewClientset is not available in this module without apply configs
 	nncClient := nncfake.NewSimpleClientset(mockNNC)
 
 	monitorInstance := NewMonitor(MonitorConfig{
