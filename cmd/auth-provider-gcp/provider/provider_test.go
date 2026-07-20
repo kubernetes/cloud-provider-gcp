@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/cloud-provider-gcp/pkg/gcpcredential"
@@ -84,7 +85,7 @@ func TestContainerRegistry(t *testing.T) {
 			return url.Parse(server.URL + req.URL.Path)
 		},
 	})
-	provider := MakeRegistryProvider(transport, credentialproviderapi.CredentialProviderRequest{}, gcpcredential.K8sTypeGKE, gcpcredential.WIConfig{})
+	provider := MakeRegistryProvider(transport, credentialproviderapi.CredentialProviderRequest{}, "", "", "")
 	response, err := GetResponse(credentialproviderapi.CredentialProviderRequest{Image: dummyImage}, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
@@ -206,10 +207,7 @@ func TestContainerRegistry_WorkloadIdentity(t *testing.T) {
 			gcpcredential.EnableWIImagePullAnnotation: "true",
 		},
 	}
-	provider := MakeRegistryProvider(transport, req, gcpcredential.K8sTypeGKE, gcpcredential.WIConfig{
-		IdentityProvider: "https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster",
-		ProjectID:        "my-project",
-	})
+	provider := MakeRegistryProvider(transport, req, "https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster", "my-project", "")
 
 	response, err := GetResponse(req, provider)
 	if err != nil {
@@ -351,10 +349,7 @@ func TestMakeRegistryProvider(t *testing.T) {
 		ServiceAccountToken:       token,
 		ServiceAccountAnnotations: annotations,
 	}
-	provider := MakeRegistryProvider(transport, req, gcpcredential.K8sTypeGKE, gcpcredential.WIConfig{
-		IdentityProvider: "test-provider",
-		ProjectID:        "test-project-123",
-	})
+	provider := MakeRegistryProvider(transport, req, "test-provider", "test-project-123", "test-sts-audience")
 
 	if provider.KSAToken != token {
 		t.Errorf("expected KSAToken to be %q, got %q", token, provider.KSAToken)
@@ -365,15 +360,67 @@ func TestMakeRegistryProvider(t *testing.T) {
 		t.Errorf("expected ServiceAccountAnnotations to contain test-annotation=test-value, got %v", provider.ServiceAccountAnnotations)
 	}
 
-	if provider.K8sType != gcpcredential.K8sTypeGKE {
-		t.Errorf("expected K8sType to be %q, got %q", gcpcredential.K8sTypeGKE, provider.K8sType)
+	if provider.IdentityProvider != "test-provider" {
+		t.Errorf("expected IdentityProvider to be %q, got %q", "test-provider", provider.IdentityProvider)
 	}
 
-	if provider.WIConfig.IdentityProvider != "test-provider" {
-		t.Errorf("expected IdentityProvider to be %q, got %q", "test-provider", provider.WIConfig.IdentityProvider)
+	if provider.ProjectID != "test-project-123" {
+		t.Errorf("expected ProjectID to be %q, got %q", "test-project-123", provider.ProjectID)
 	}
 
-	if provider.WIConfig.ProjectID != "test-project-123" {
-		t.Errorf("expected ProjectID to be %q, got %q", "test-project-123", provider.WIConfig.ProjectID)
+	if provider.STSAudience != "test-sts-audience" {
+		t.Errorf("expected STSAudience to be %q, got %q", "test-sts-audience", provider.STSAudience)
+	}
+}
+
+func TestMakeRegistryProviderTimeout(t *testing.T) {
+	tests := []struct {
+		name             string
+		req              credentialproviderapi.CredentialProviderRequest
+		identityProvider string
+		stsAudience      string
+		wantTimeout      time.Duration
+	}{
+		{
+			name:        "standard flow uses metadata timeout",
+			req:         credentialproviderapi.CredentialProviderRequest{},
+			wantTimeout: metadataHTTPClientTimeout,
+		},
+		{
+			name: "annotated identity provider flow uses sts timeout",
+			req: credentialproviderapi.CredentialProviderRequest{
+				ServiceAccountToken: "test-token",
+				ServiceAccountAnnotations: map[string]string{
+					gcpcredential.EnableWIImagePullAnnotation: "true",
+				},
+			},
+			identityProvider: "test-provider",
+			wantTimeout:      stsHTTPClientTimeout,
+		},
+		{
+			name: "sts audience flow uses sts timeout without annotation",
+			req: credentialproviderapi.CredentialProviderRequest{
+				ServiceAccountToken: "test-token",
+			},
+			stsAudience: "//iam.googleapis.com/projects/123456/locations/global/workloadIdentityPools/pool/providers/provider",
+			wantTimeout: stsHTTPClientTimeout,
+		},
+		{
+			name: "sts audience without token uses metadata timeout",
+			req: credentialproviderapi.CredentialProviderRequest{
+				ServiceAccountToken: "",
+			},
+			stsAudience: "//iam.googleapis.com/projects/123456/locations/global/workloadIdentityPools/pool/providers/provider",
+			wantTimeout: metadataHTTPClientTimeout,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := MakeRegistryProvider(&http.Transport{}, tc.req, tc.identityProvider, "", tc.stsAudience)
+			if provider.Client.Timeout != tc.wantTimeout {
+				t.Fatalf("expected timeout %s, got %s", tc.wantTimeout, provider.Client.Timeout)
+			}
+		})
 	}
 }

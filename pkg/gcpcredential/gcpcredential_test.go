@@ -29,6 +29,8 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 		wantAudience              string
 		expectedToken             string
 		projectID                 string
+		stsAudience               string
+		wantSTSCalled             bool
 	}{
 		{
 			name:                "Direct Access Mode (Success)",
@@ -41,6 +43,7 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 			stsResponse:   `{"access_token": "federated-token-xyz", "expires_in": 3600, "token_type": "Bearer"}`,
 			wantAudience:  "identitynamespace:my-project.svc.id.goog:https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster",
 			expectedToken: "federated-token-xyz",
+			wantSTSCalled: true,
 		},
 		{
 			name:                "Fallback to Node SA (Unannotated SA, bypass STS)",
@@ -53,6 +56,7 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 			},
 			stsResponse:   `{"access_token": "should-not-be-called", "expires_in": 3600, "token_type": "Bearer"}`,
 			expectedToken: "node-sa-token",
+			wantSTSCalled: false,
 		},
 		{
 			name:                "Fail Fast - Annotated SA for WIF, STS Fails",
@@ -68,6 +72,7 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 			stsResponse:   "error",
 			wantAudience:  "identitynamespace:my-project.svc.id.goog:https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster",
 			expectedToken: "",
+			wantSTSCalled: true,
 		},
 		{
 			name:                "Fail Fast - Annotated SA for WIF, Token is Empty",
@@ -82,6 +87,7 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 			},
 			stsResponse:   `{"access_token": "should-not-be-called", "expires_in": 3600, "token_type": "Bearer"}`,
 			expectedToken: "",
+			wantSTSCalled: false,
 		},
 		{
 			name:                "Fallback to Node SA - Annotated but Feature Disabled",
@@ -98,6 +104,7 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 			},
 			stsResponse:   `{"access_token": "should-not-be-called", "expires_in": 3600, "token_type": "Bearer"}`,
 			expectedToken: "node-sa-token",
+			wantSTSCalled: false,
 		},
 		{
 			name:                "Direct Access Mode - Configured Identity Provider (Success)",
@@ -110,6 +117,7 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 			stsResponse:   `{"access_token": "federated-token-custom", "expires_in": 3600, "token_type": "Bearer"}`,
 			wantAudience:  "identitynamespace:my-project.svc.id.goog:https://custom-provider.com",
 			expectedToken: "federated-token-custom",
+			wantSTSCalled: true,
 		},
 		{
 			name:                "Direct Access Mode - With Pre-configured Project ID (Success)",
@@ -122,6 +130,7 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 			stsResponse:   `{"access_token": "federated-token-pre", "expires_in": 3600, "token_type": "Bearer"}`,
 			wantAudience:  "identitynamespace:pre-configured-project.svc.id.goog:https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster",
 			expectedToken: "federated-token-pre",
+			wantSTSCalled: true,
 		},
 		{
 			name:                "Fail Fast - Project ID is Empty",
@@ -132,11 +141,30 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 			},
 			projectID:     "",
 			expectedToken: "",
+			wantSTSCalled: false,
+		},
+		{
+			name:                "STS Audience Mode (Success)",
+			serviceAccountToken: validToken,
+			stsAudience:         "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/pool-id/providers/provider-id",
+			stsResponse:         `{"access_token": "sts-audience-token", "expires_in": 3600, "token_type": "Bearer"}`,
+			wantAudience:        "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/pool-id/providers/provider-id",
+			expectedToken:       "sts-audience-token",
+			wantSTSCalled:       true,
+		},
+		{
+			name:                "Fail Fast - STS Audience Mode, Token is Empty",
+			serviceAccountToken: "",
+			stsAudience:         "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/pool-id/providers/provider-id",
+			stsResponse:         `{"access_token": "should-not-be-called", "expires_in": 3600, "token_type": "Bearer"}`,
+			expectedToken:       "",
+			wantSTSCalled:       false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			stsCalled := false
 			mTransport := &mockTransport{
 				roundTripFunc: func(req *http.Request) (*http.Response, error) {
 					// Handle Metadata Server requests
@@ -157,6 +185,7 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 
 					// Handle STS Requests
 					if req.URL.Host == "sts.googleapis.com" && req.URL.Path == "/v1/token" {
+						stsCalled = true
 						if tc.stsResponse == "error" {
 							return &http.Response{
 								StatusCode: http.StatusBadRequest,
@@ -201,14 +230,17 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 					Client: httpClient,
 				},
 				UseRegistryFromImage: true,
-				K8sType:              K8sTypeGKE,
 			}
 			provider.KSAToken = tc.serviceAccountToken
 			provider.ServiceAccountAnnotations = tc.serviceAccountAnnotations
-			provider.WIConfig.IdentityProvider = tc.identityProvider
-			provider.WIConfig.ProjectID = tc.projectID
+			provider.IdentityProvider = tc.identityProvider
+			provider.ProjectID = tc.projectID
+			provider.STSAudience = tc.stsAudience
 
 			cfg := provider.Provide("us-central1-docker.pkg.dev/my-project/my-repo/my-image:latest")
+			if stsCalled != tc.wantSTSCalled {
+				t.Fatalf("STS call mismatch: got=%t, want=%t", stsCalled, tc.wantSTSCalled)
+			}
 
 			if tc.expectedToken == "" {
 				for _, entry := range cfg {
@@ -232,96 +264,22 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 	}
 }
 
-func TestProvide_SelfManagedWorkloadIdentity(t *testing.T) {
-	validToken := "dummyHeader.eyJpc3MiOiAic2VsZi1tYW5hZ2VkLWlzc3VlciJ9.dummySignature"
-	const federatedToken = "self-managed-federated-token"
-	const image = "us-central1-docker.pkg.dev/my-project/my-repo/my-image:latest"
-
-	tests := []struct {
-		name          string
-		wiConfig      WIConfig
-		wantAudience  string
-		wantToken     string
-		wantSTSCalled bool
-	}{
-		{
-			name: "success",
-			wiConfig: WIConfig{
-				ProjectNumber: "123456789",
-				PoolID:        "pool-id",
-				ProviderID:    "provider-id",
-			},
-			wantAudience:  "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/pool-id/providers/provider-id",
-			wantToken:     federatedToken,
-			wantSTSCalled: true,
-		},
-		{
-			name: "missing provider id fails before STS",
-			wiConfig: WIConfig{
-				ProjectNumber: "123456789",
-				PoolID:        "pool-id",
-			},
-			wantSTSCalled: false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			stsCalled := false
-			httpClient := &http.Client{
+func TestContainerRegistryProviderEnabled_STSAudience(t *testing.T) {
+	provider := &ContainerRegistryProvider{
+		MetadataProvider: MetadataProvider{
+			Client: &http.Client{
 				Transport: &mockTransport{
 					roundTripFunc: func(req *http.Request) (*http.Response, error) {
-						if req.URL.Host != "sts.googleapis.com" || req.URL.Path != "/v1/token" {
-							t.Fatalf("unexpected request to %s", req.URL.String())
-						}
-
-						stsCalled = true
-						var stsReq stsTokenExchangeRequest
-						if err := json.NewDecoder(req.Body).Decode(&stsReq); err != nil {
-							t.Fatalf("failed to decode STS request: %v", err)
-						}
-						if stsReq.Audience != tc.wantAudience {
-							t.Fatalf("unexpected STS audience: got=%q, want=%q", stsReq.Audience, tc.wantAudience)
-						}
-						if stsReq.SubjectToken != validToken {
-							t.Fatalf("unexpected subject token: got=%q, want=%q", stsReq.SubjectToken, validToken)
-						}
-
-						return &http.Response{
-							StatusCode: http.StatusOK,
-							Body:       io.NopCloser(bytes.NewBufferString(`{"access_token": "` + federatedToken + `", "expires_in": 3600, "token_type": "Bearer"}`)),
-							Header:     make(http.Header),
-						}, nil
+						t.Fatalf("Enabled should not call metadata when STSAudience is configured")
+						return nil, nil
 					},
 				},
-			}
+			},
+		},
+		STSAudience: "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/pool-id/providers/provider-id",
+	}
 
-			provider := &ContainerRegistryProvider{
-				MetadataProvider: MetadataProvider{
-					Client: httpClient,
-				},
-				UseRegistryFromImage: true,
-				K8sType:              K8sTypeSelfManaged,
-				KSAToken:             validToken,
-				WIConfig:             tc.wiConfig,
-			}
-
-			cfg := provider.Provide(image)
-			if stsCalled != tc.wantSTSCalled {
-				t.Fatalf("STS call mismatch: got=%t, want=%t", stsCalled, tc.wantSTSCalled)
-			}
-			if tc.wantToken == "" {
-				if len(cfg) != 0 {
-					t.Fatalf("expected empty config, got: %+v", cfg)
-				}
-				return
-			}
-			for _, entry := range cfg {
-				if entry.Password == tc.wantToken {
-					return
-				}
-			}
-			t.Fatalf("expected token %q not found in config: %+v", tc.wantToken, cfg)
-		})
+	if !provider.Enabled() {
+		t.Fatal("expected provider to be enabled when STSAudience is configured")
 	}
 }

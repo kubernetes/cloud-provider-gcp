@@ -33,21 +33,20 @@ func TestValidateAuthFlow(t *testing.T) {
 		Error   error
 	}
 	tests := []FlagResult{
-		{Name: "validate gcr auth flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, K8sType: gcpcredential.K8sTypeGKE}},
-		{Name: "validate docker-cfg auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, K8sType: gcpcredential.K8sTypeGKE}},
-		{Name: "validate docker-cfg-url auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, K8sType: gcpcredential.K8sTypeGKE}},
+		{Name: "validate gcr auth flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow}},
+		{Name: "validate docker-cfg auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow}},
+		{Name: "validate docker-cfg-url auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow}},
 		{Name: "bad auth flow option", Options: CredentialOptions{AuthFlow: "bad-flow"}, Error: &AuthFlowFlagError{flagValue: "bad-flow"}},
 		{Name: "empty auth flow option", Options: CredentialOptions{AuthFlow: ""}, Error: &AuthFlowFlagError{flagValue: ""}},
 		{Name: "case-sensitive auth flow", Options: CredentialOptions{AuthFlow: "Gcrauthflow"}, Error: &AuthFlowFlagError{flagValue: "Gcrauthflow"}},
-		{Name: "identity-provider and project-id with gcr flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}}},
-		{Name: "identity-provider and project-id with dockercfg flow", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}}},
-		{Name: "identity-provider and project-id with dockercfg-url flow", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}}},
-		{Name: "identity-provider without project-id with gcr flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/..."}}, Error: ErrProjectIDRequired},
-		{Name: "identity-provider without project-id with dockercfg flow", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/..."}}},
-		{Name: "identity-provider without project-id with dockercfg-url flow", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, K8sType: gcpcredential.K8sTypeGKE, WIConfig: gcpcredential.WIConfig{IdentityProvider: "https://container.googleapis.com/..."}}},
-		{Name: "bad k8s type", Options: CredentialOptions{AuthFlow: gcrAuthFlow, K8sType: "bad-type"}, Error: &K8sTypeFlagError{flagValue: "bad-type"}},
-		{Name: "self-managed gcr flow with required flags", Options: CredentialOptions{AuthFlow: gcrAuthFlow, K8sType: gcpcredential.K8sTypeSelfManaged, WIConfig: gcpcredential.WIConfig{ProjectNumber: "123456", PoolID: "pool", ProviderID: "provider"}}},
-		{Name: "self-managed dockercfg flow without gcr-only flags", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, K8sType: gcpcredential.K8sTypeSelfManaged}},
+		{Name: "identity-provider and project-id with gcr flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}},
+		{Name: "identity-provider and project-id with dockercfg flow", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}},
+		{Name: "identity-provider and project-id with dockercfg-url flow", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, IdentityProvider: "https://container.googleapis.com/...", ProjectID: "my-project"}},
+		{Name: "identity-provider without project-id with gcr flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, IdentityProvider: "https://container.googleapis.com/..."}, Error: ErrProjectIDRequired},
+		{Name: "identity-provider without project-id with dockercfg flow", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, IdentityProvider: "https://container.googleapis.com/..."}},
+		{Name: "identity-provider without project-id with dockercfg-url flow", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow, IdentityProvider: "https://container.googleapis.com/..."}},
+		{Name: "sts audience with gcr flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow, STSAudience: "//iam.googleapis.com/projects/123456/locations/global/workloadIdentityPools/pool/providers/provider"}},
+		{Name: "sts audience with dockercfg flow", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow, STSAudience: "//iam.googleapis.com/projects/123456/locations/global/workloadIdentityPools/pool/providers/provider"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -102,6 +101,46 @@ func TestMakeProvider(t *testing.T) {
 				t.Errorf("with flow %q unexpected provider type %q", tc.Flow, providerType)
 			}
 		})
+	}
+}
+
+func TestMakeProviderPassesRegistryOptions(t *testing.T) {
+	req := credentialproviderapi.CredentialProviderRequest{
+		ServiceAccountToken: "test-token",
+		ServiceAccountAnnotations: map[string]string{
+			gcpcredential.EnableWIImagePullAnnotation: "true",
+		},
+	}
+	options := CredentialOptions{
+		AuthFlow:         gcrAuthFlow,
+		IdentityProvider: "https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster",
+		ProjectID:        "my-project",
+		STSAudience:      "//iam.googleapis.com/projects/123456/locations/global/workloadIdentityPools/pool/providers/provider",
+	}
+
+	dockerConfigProvider, err := makeProvider(req, options)
+	if err != nil {
+		t.Fatalf("makeProvider returned unexpected error: %v", err)
+	}
+
+	registryProvider, ok := dockerConfigProvider.(*gcpcredential.ContainerRegistryProvider)
+	if !ok {
+		t.Fatalf("expected ContainerRegistryProvider, got %T", dockerConfigProvider)
+	}
+	if registryProvider.KSAToken != req.ServiceAccountToken {
+		t.Fatalf("expected KSAToken %q, got %q", req.ServiceAccountToken, registryProvider.KSAToken)
+	}
+	if registryProvider.ServiceAccountAnnotations[gcpcredential.EnableWIImagePullAnnotation] != "true" {
+		t.Fatalf("expected service account annotations to be preserved, got %v", registryProvider.ServiceAccountAnnotations)
+	}
+	if registryProvider.IdentityProvider != options.IdentityProvider {
+		t.Fatalf("expected IdentityProvider %q, got %q", options.IdentityProvider, registryProvider.IdentityProvider)
+	}
+	if registryProvider.ProjectID != options.ProjectID {
+		t.Fatalf("expected ProjectID %q, got %q", options.ProjectID, registryProvider.ProjectID)
+	}
+	if registryProvider.STSAudience != options.STSAudience {
+		t.Fatalf("expected STSAudience %q, got %q", options.STSAudience, registryProvider.STSAudience)
 	}
 }
 
