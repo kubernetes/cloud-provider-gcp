@@ -95,34 +95,6 @@ func TestSubnetsInCIDR(t *testing.T) {
 	}
 }
 
-func TestFirewallToGcloudArgs(t *testing.T) {
-	firewall := compute.Firewall{
-		Description:  "Last Line of Defense",
-		TargetTags:   []string{"jock-nodes", "band-nodes"},
-		SourceRanges: []string{"3.3.3.3/20", "1.1.1.1/20", "2.2.2.2/20"},
-		Allowed: []*compute.FirewallAllowed{
-			{
-				IPProtocol: "udp",
-				Ports:      []string{"321", "123-456", "123"},
-			},
-			{
-				IPProtocol: "tcp",
-				Ports:      []string{"321", "123-456", "123"},
-			},
-			{
-				IPProtocol: "sctp",
-				Ports:      []string{"321", "123-456", "123"},
-			},
-		},
-	}
-	got := firewallToGcloudArgs(&firewall, "my-project")
-
-	var e = `--description "Last Line of Defense" --allow sctp:123,sctp:123-456,sctp:321,tcp:123,tcp:123-456,tcp:321,udp:123,udp:123-456,udp:321 --source-ranges 1.1.1.1/20,2.2.2.2/20,3.3.3.3/20 --target-tags band-nodes,jock-nodes --project my-project`
-	if got != e {
-		t.Errorf("%q does not equal %q", got, e)
-	}
-}
-
 func TestFirewallToGCloudCreateCmd(t *testing.T) {
 	testCases := []struct {
 		desc      string
@@ -130,6 +102,40 @@ func TestFirewallToGCloudCreateCmd(t *testing.T) {
 		projectID string
 		wantArgs  []string
 	}{
+		{
+			desc: "rule with multiple protocols, port ranges, source ranges, and tags",
+			fw: &compute.Firewall{
+				Name:         "k8s-fw-last-line",
+				Network:      "projects/my-project/global/networks/default",
+				Description:  "Last Line of Defense",
+				TargetTags:   []string{"jock-nodes", "band-nodes"},
+				SourceRanges: []string{"3.3.3.3/20", "1.1.1.1/20", "2.2.2.2/20"},
+				Allowed: []*compute.FirewallAllowed{
+					{
+						IPProtocol: "udp",
+						Ports:      []string{"321", "123-456", "123"},
+					},
+					{
+						IPProtocol: "tcp",
+						Ports:      []string{"321", "123-456", "123"},
+					},
+					{
+						IPProtocol: "sctp",
+						Ports:      []string{"321", "123-456", "123"},
+					},
+				},
+			},
+			projectID: "my-project",
+			wantArgs: []string{
+				"gcloud compute firewall-rules create k8s-fw-last-line",
+				"--network default",
+				`--description "Last Line of Defense"`,
+				"--allow sctp:123,sctp:123-456,sctp:321,tcp:123,tcp:123-456,tcp:321,udp:123,udp:123-456,udp:321",
+				"--source-ranges 1.1.1.1/20,2.2.2.2/20,3.3.3.3/20",
+				"--target-tags band-nodes,jock-nodes",
+				"--project my-project",
+			},
+		},
 		{
 			desc: "pinhole rule with destination ranges",
 			fw: &compute.Firewall{
