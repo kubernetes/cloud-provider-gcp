@@ -568,30 +568,43 @@ func TestFirewallToGCloudUpdateCmd(t *testing.T) {
 }
 
 func TestFirewallToGCloud_FieldExhaustiveness(t *testing.T) {
+	// knownFields maps every field in compute.Firewall to a boolean:
+	// true  = handled in FirewallToGCloudCreateCmd / FirewallToGCloudUpdateCmd
+	// false = intentionally unmapped (e.g. read-only server metadata,
+	//         internal SDK fields, or unused GCP features)
 	knownFields := map[string]bool{
-		"Allowed":               true,
-		"CreationTimestamp":     false,
-		"Denied":                true,
-		"Description":           true,
-		"DestinationRanges":     true,
-		"Direction":             true,
-		"Disabled":              true,
-		"Id":                    false,
-		"Kind":                  false,
+		// Handled fields in gcloud command generation
+		"Name":              true,
+		"Network":           true,
+		"Description":       true,
+		"Allowed":           true,
+		"Denied":            true,
+		"SourceRanges":      true,
+		"DestinationRanges": true,
+		"TargetTags":        true,
+		"Priority":          true,
+		"Direction":         true,
+		"Disabled":          true,
+
+		// Read-only server metadata (not CLI flags)
+		"CreationTimestamp": false,
+		"Id":                false,
+		"Kind":              false,
+		"SelfLink":          false,
+
+		// Unused GCP features in cloud provider
 		"LogConfig":             false,
-		"Name":                  true,
-		"Network":               true,
 		"Params":                false,
-		"Priority":              true,
-		"SelfLink":              false,
-		"SourceRanges":          true,
 		"SourceServiceAccounts": false,
 		"SourceTags":            false,
 		"TargetServiceAccounts": false,
-		"TargetTags":            true,
-		"ServerResponse":        false,
-		"ForceSendFields":       false,
-		"NullFields":            false,
+
+		// Internal Google API Go SDK helpers used for HTTP status tracking
+		// and JSON marshaling (ServerResponse stores HTTP headers/status,
+		// ForceSendFields/NullFields control JSON serialization).
+		"ServerResponse":  false,
+		"ForceSendFields": false,
+		"NullFields":      false,
 	}
 
 	for field := range reflect.TypeFor[compute.Firewall]().Fields() {
