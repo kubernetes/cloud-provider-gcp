@@ -32,6 +32,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	cloudprovider "k8s.io/cloud-provider"
@@ -456,7 +457,11 @@ func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string,
 
 	klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): Removing %q finalizer", loadBalancerName, ILBFinalizerV1)
 	if err := removeFinalizer(svc, g.client.CoreV1(), ILBFinalizerV1); err != nil {
-		klog.Errorf("Failed to remove finalizer '%s' on service %s - %v", ILBFinalizerV1, svcNamespacedName, err)
+		if apierrors.IsNotFound(err) {
+			klog.Errorf("Failed to remove finalizer '%s' from service %s/%s (not found) - %v", ILBFinalizerV1, svc.Namespace, svc.Name, err)
+			return nil
+		}
+		klog.Errorf("Failed to remove finalizer '%s' on service %s/%s - %v", ILBFinalizerV1, svc.Namespace, svc.Name, err)
 		return err
 	}
 

@@ -686,6 +686,67 @@ func TestEnsureExternalLoadBalancerDeleted(t *testing.T) {
 	}
 }
 
+func TestEnsureExternalLoadBalancerDeletedServiceNotFound(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	svc := fakeLoadbalancerService("")
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	_, err = createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	assert.NoError(t, err)
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	if !hasFinalizer(svc, NetLBFinalizerV1) {
+		t.Fatalf("Expected finalizer '%s' not found in Finalizer list - %v", NetLBFinalizerV1, svc.Finalizers)
+	}
+
+	// Delete service from API server before deleting the load balancer.
+	err = gce.client.CoreV1().Services(svc.Namespace).Delete(context.TODO(), svc.Name, metav1.DeleteOptions{})
+	require.NoError(t, err)
+
+	// ensureExternalLoadBalancerDeleted should succeed even though the service doesn't exist,
+	// because removeFinalizer should ignore NotFound errors.
+	err = gce.ensureExternalLoadBalancerDeleted(vals.ClusterName, vals.ClusterID, svc)
+	assert.NoError(t, err)
+
+	// Assert that GCE resources are deleted. We cannot use assertExternalLbResourcesDeleted
+	// because the service itself has been deleted and cannot be fetched from the API server.
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+	hcName := MakeNodesHealthCheckName(vals.ClusterID)
+
+	// Check that Firewalls are deleted for the LoadBalancer and the HealthCheck
+	fwNames := []string{
+		MakeFirewallName(lbName),
+		MakeHealthCheckFirewallName(vals.ClusterID, hcName, true),
+	}
+	for _, fwName := range fwNames {
+		firewall, err := gce.GetFirewall(fwName)
+		require.Error(t, err)
+		assert.Nil(t, firewall)
+	}
+
+	// Check forwarding rule is deleted
+	fwdRule, err := gce.GetRegionForwardingRule(lbName, gce.region)
+	require.Error(t, err)
+	assert.Nil(t, fwdRule)
+
+	// Check that TargetPool is deleted
+	pool, err := gce.GetTargetPool(lbName, gce.region)
+	require.Error(t, err)
+	assert.Nil(t, pool)
+
+	// Check that HealthCheck is deleted
+	healthcheck, err := gce.GetHTTPHealthCheck(hcName)
+	require.Error(t, err)
+	assert.Nil(t, healthcheck)
+}
+
 func TestLoadBalancerWrongTierResourceDeletion(t *testing.T) {
 	t.Parallel()
 
