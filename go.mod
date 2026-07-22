@@ -32,7 +32,7 @@ require (
 
 require (
 	github.com/GoogleCloudPlatform/gke-enterprise-mt v0.1.0
-	github.com/GoogleCloudPlatform/gke-networking-api v0.2.1
+	github.com/GoogleCloudPlatform/gke-networking-api v0.2.2
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.36.2

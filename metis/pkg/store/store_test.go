@@ -21,7 +21,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -91,7 +90,9 @@ func TestNewStore_Idempotency(t *testing.T) {
 	if _, err := db.Exec("DROP INDEX idx_ip_idempotency;"); err != nil {
 		t.Fatalf("Failed to manually drop index: %v", err)
 	}
-	db.Close()
+	if err := db.Close(); err != nil {
+		t.Fatalf("Failed to close DB: %v", err)
+	}
 
 	// If the short-circuit works, it will see user_version=1 and return early,
 	// meaning it will NOT execute the CREATE statements to fix the missing index.
@@ -189,7 +190,7 @@ func TestStore_Concurrency(t *testing.T) {
 
 			// Simulate an Insert.
 			cidr := fmt.Sprintf("10.0.%d.0/24", id)
-			insertQuery := `INSERT INTO cidr_blocks (cidr, network, ip_family, total_ips, allocated_ips, state) 
+			insertQuery := `INSERT INTO cidr_blocks (cidr, network, ip_family, total_ips, allocated_ips, state)
 							VALUES (?, 'test-network', 'ipv4', 256, 0, 'Ready')`
 
 			_, err := s.db.Exec(insertQuery, cidr)
@@ -788,7 +789,7 @@ func TestStore_AllocateIPv4_Concurrency_DifferentContainers(t *testing.T) {
 	wg.Wait()
 
 	// Verify all succeeded and IPs are unique
-	uniqueIPs := make(map[string]bool)
+	uniqueIPs := map[string]bool{}
 	for i := 0; i < numGoroutines; i++ {
 		if errs[i] != nil {
 			t.Errorf("Goroutine %d failed: %v", i, errs[i])
@@ -894,7 +895,7 @@ func TestStore_AllocateIPv6_ExceedBatch(t *testing.T) {
 	}
 
 	// Verify we got unique IPs
-	uniqueIPs := make(map[string]bool)
+	uniqueIPs := map[string]bool{}
 	for _, ip := range ips {
 		if uniqueIPs[ip] {
 			t.Errorf("Duplicate IP allocated: %s", ip)
@@ -939,7 +940,7 @@ func TestStore_AllocateIPv6_Concurrency(t *testing.T) {
 	wg.Wait()
 
 	// Verify all succeeded and IPs are unique
-	uniqueIPs := make(map[string]bool)
+	uniqueIPs := map[string]bool{}
 	for i := 0; i < numGoroutines; i++ {
 		if errs[i] != nil {
 			t.Errorf("Goroutine %d failed: %v", i, errs[i])
@@ -1496,9 +1497,15 @@ func TestStore_UndrainOneCIDRBlock(t *testing.T) {
 
 	// Check states: exactly one of id1 or id2 should be Ready, the other Draining. id6 should be Draining.
 	var state1, state2, state6 string
-	s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id1).Scan(&state1)
-	s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id2).Scan(&state2)
-	s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id6).Scan(&state6)
+	if err := s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id1).Scan(&state1); err != nil {
+		t.Errorf("Failed to scan state for id1: %v", err)
+	}
+	if err := s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id2).Scan(&state2); err != nil {
+		t.Errorf("Failed to scan state for id2: %v", err)
+	}
+	if err := s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id6).Scan(&state6); err != nil {
+		t.Errorf("Failed to scan state for id6: %v", err)
+	}
 
 	if (state1 == string(StateReady) && state2 == string(StateReady)) || (state1 == string(StateDraining) && state2 == string(StateDraining)) {
 		t.Errorf("Expected exactly one IPv4 block to be Ready, got id1:%s id2:%s", state1, state2)
@@ -1589,7 +1596,9 @@ func TestStore_ExpireDrainingCIDRBlocks(t *testing.T) {
 
 	for id, expected := range expectedStates {
 		var state string
-		s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id).Scan(&state)
+		if err := s.db.QueryRowContext(context.Background(), "SELECT state FROM cidr_blocks WHERE id = ?", id).Scan(&state); err != nil {
+			t.Errorf("Failed to scan state for id %d: %v", id, err)
+		}
 		if state != expected {
 			t.Errorf("Expected id %d state to be %s, got %s", id, expected, state)
 		}
@@ -1597,16 +1606,13 @@ func TestStore_ExpireDrainingCIDRBlocks(t *testing.T) {
 }
 
 func TestStore_ReleaseIP_TimezoneRobustness(t *testing.T) {
-	// 1. Save original TZ and local location
-	origTZ := os.Getenv("TZ")
+	// 1. Force timezone to be America/Los_Angeles (UTC-7 / UTC-8, i.e., behind UTC)
+	t.Setenv("TZ", "America/Los_Angeles")
 	origLocal := time.Local
 	defer func() {
-		os.Setenv("TZ", origTZ)
 		time.Local = origLocal
 	}()
 
-	// 2. Force timezone to be America/Los_Angeles (UTC-7 / UTC-8, i.e., behind UTC)
-	os.Setenv("TZ", "America/Los_Angeles")
 	time.Local = nil // Force Go to reload timezone location from TZ env
 
 	network := "timezone-network"
@@ -1832,7 +1838,9 @@ func setupTestStore(t *testing.T) *Store {
 		t.Fatalf("Failed to initialize test store: %v", err)
 	}
 	t.Cleanup(func() {
-		s.Close()
+		if err := s.Close(); err != nil {
+			t.Errorf("Failed to close store: %v", err)
+		}
 	})
 	return s
 }

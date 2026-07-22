@@ -79,7 +79,7 @@ func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socke
 		releaseCooldown: releaseCooldown,
 		busyTimeout:     busyTimeout,
 		logger:          logger,
-		requestsMap:     make(map[string]map[cniClient]chan struct{}),
+		requestsMap:     map[string]map[cniClient]chan struct{}{},
 	}
 
 	return server
@@ -202,7 +202,7 @@ func (s *adaptiveIpamServer) allocateIPWithRetry(ctx context.Context, params sto
 	})
 
 	if err != nil {
-		if (errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded)) && lastErr != nil {
+		if wait.Interrupted(err) && lastErr != nil {
 			err = lastErr // Use last error if timed out
 		}
 		return "", "", err
@@ -422,7 +422,7 @@ func (s *adaptiveIpamServer) getOrCreatePendingRequest(clientKey cniClient, netw
 
 	netMap, netOk := s.requestsMap[network]
 	if !netOk {
-		netMap = make(map[cniClient]chan struct{})
+		netMap = map[cniClient]chan struct{}{}
 		s.requestsMap[network] = netMap
 	}
 	ch, ok := netMap[clientKey]

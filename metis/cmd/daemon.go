@@ -29,7 +29,6 @@ import (
 )
 
 func newDaemonCommand() *cobra.Command {
-
 	opts := newDaemonOptions()
 
 	// Define command-line flags to configure the daemon
@@ -38,7 +37,7 @@ func newDaemonCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "daemon",
 		Short: "Run the metis daemon",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(cmd *cobra.Command, _ []string) {
 			cliflag.PrintFlags(cmd.Flags())
 			var cfg daemon.Config
 			_ = opts.applyTo(&cfg)
