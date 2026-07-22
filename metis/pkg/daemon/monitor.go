@@ -326,19 +326,19 @@ func (m *Monitor) syncAll(ctx context.Context) error {
 			continue
 		}
 
-		currentPods := 0
+		crdSpecAllocatedPods := 0
 		if info.CurrentAllocation != nil {
-			currentPods = int(info.CurrentAllocation.Pods)
+			crdSpecAllocatedPods = int(info.CurrentAllocation.Pods)
 		}
 
-		m.logger.Info("Reconciling network capacity",
+		m.logger.Info("Evaluating IP utilization and capacity requirements",
 			"network", network,
-			"currentPods", currentPods,
-			"allocatedIPs", info.Usage.Allocated,
-			"cooldownIPs", info.Usage.Cooldown,
-			"totalIPs", info.Usage.Total,
-			"pendingRequests", info.PendingRequests,
-			"utilization", fmt.Sprintf("%.2f%%", info.Utilization*100),
+			"crdSpecAllocatedPods", crdSpecAllocatedPods,
+			"dbAllocatedIPs", info.Usage.Allocated,
+			"dbCooldownIPs", info.Usage.Cooldown,
+			"dbTotalIPs", info.Usage.Total,
+			"inMemPendingRequests", info.PendingRequests,
+			"calculatedUtilization", fmt.Sprintf("%.2f%%", info.Utilization*100),
 		)
 
 		// Scale-Up: Calculate desired pod capacity based on current utilization and target threshold.
