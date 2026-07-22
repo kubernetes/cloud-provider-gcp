@@ -21,11 +21,14 @@ package gce
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
-	"golang.org/x/oauth2/google"
+	"golang.org/x/oauth2"
+	"google.golang.org/api/option"
 
 	cloudprovider "k8s.io/cloud-provider"
 )
@@ -352,7 +355,6 @@ func TestGenerateCloudConfigs(t *testing.T) {
 		SubnetworkURL:      "",
 		SecondaryRangeName: "",
 		NodeTags:           []string{"node-tag"},
-		TokenSource:        google.ComputeTokenSource(""),
 		NodeInstancePrefix: "node-prefix",
 		UseMetadataServer:  true,
 		AlphaFeatureGate:   &AlphaFeatureGate{map[string]bool{}},
@@ -375,11 +377,7 @@ func TestGenerateCloudConfigs(t *testing.T) {
 				v.TokenURL = "nil"
 				return v
 			},
-			cloud: func() CloudConfig {
-				v := cloudBoilerplate
-				v.TokenSource = nil
-				return v
-			},
+			cloud: func() CloudConfig { return cloudBoilerplate },
 		},
 		{
 			name: "Network Project ID",
@@ -491,6 +489,79 @@ func TestGenerateCloudConfigs(t *testing.T) {
 			v := tc.cloud()
 			if !reflect.DeepEqual(*resultCloud, v) {
 				t.Errorf("Got: \n%v\nWant\n%v\n", v, *resultCloud)
+			}
+		})
+	}
+}
+
+// optionTypeName returns the unexported type name of a ClientOption using reflection.
+func optionTypeName(opt option.ClientOption) string {
+	t := reflect.TypeOf(opt)
+	if t.Kind() == reflect.Ptr {
+		return "*" + t.Elem().Name()
+	}
+	return t.Name()
+}
+
+// writeFakeCredentials writes a minimal service account JSON to a temp file
+// and sets GOOGLE_APPLICATION_CREDENTIALS to point at it.
+func writeFakeCredentials(t *testing.T) {
+	t.Helper()
+	fakeJSON := `{
+		"type": "service_account",
+		"project_id": "test-project",
+		"private_key_id": "key-id",
+		"private_key": "fake-key",
+		"client_email": "test@test-project.iam.gserviceaccount.com",
+		"client_id": "123456789",
+		"token_uri": "https://oauth2.googleapis.com/token"
+	}`
+	f := filepath.Join(t.TempDir(), "creds.json")
+	if err := os.WriteFile(f, []byte(fakeJSON), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", f)
+}
+
+func TestClientOptions(t *testing.T) {
+	tests := []struct {
+		name         string
+		ts           oauth2.TokenSource
+		wantOptTypes []string
+	}{
+		{
+			name: "custom token source uses WithTokenSource",
+			ts:   oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test"}),
+			wantOptTypes: []string{
+				"withTokenSource",
+				"withUniverseDomain",
+			},
+		},
+		{
+			name: "JSON credentials uses WithAuthCredentialsJSON",
+			wantOptTypes: []string{
+				"withAuthCredentialsJSON",
+				"withUniverseDomain",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			writeFakeCredentials(t)
+
+			opts, err := clientOptions(tt.ts)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(opts) != len(tt.wantOptTypes) {
+				t.Fatalf("got %d options, want %d", len(opts), len(tt.wantOptTypes))
+			}
+			for i, wantType := range tt.wantOptTypes {
+				if got := optionTypeName(opts[i]); got != wantType {
+					t.Errorf("opts[%d] type = %s, want %s", i, got, wantType)
+				}
 			}
 		})
 	}
