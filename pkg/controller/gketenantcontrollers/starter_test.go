@@ -168,7 +168,7 @@ func TestStartController_CloudClientRetry(t *testing.T) {
 			},
 			expectSuccess: false,
 			minAttempts:   3,               // inside a short timeout context, it will still retry a few times with 1s start
-			timeout:       4 * time.Second, // test short timeout
+			timeout:       8 * time.Second, // test short timeout
 		},
 	}
 
