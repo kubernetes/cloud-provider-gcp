@@ -29,6 +29,8 @@ import (
 	"github.com/go-logr/logr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/metis/api/adaptiveipam/v1"
@@ -401,6 +403,10 @@ func (s *adaptiveIpamServer) start() error {
 
 	s.grpcServer = grpc.NewServer()
 	adaptiveipam.RegisterAdaptiveIpamServer(s.grpcServer, s)
+
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(s.grpcServer, healthServer)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	s.logger.Info("gRPC server is listening", "socket", sockPath)
 	return s.grpcServer.Serve(listener)
