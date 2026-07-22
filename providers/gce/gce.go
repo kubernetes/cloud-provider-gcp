@@ -21,6 +21,7 @@ package gce
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"runtime"
@@ -356,6 +357,10 @@ type CloudConfig struct {
 	NodeTags           []string
 	NodeInstancePrefix string
 	TokenSource        oauth2.TokenSource
+	// CredentialsJSON is the raw JSON credentials. When provided, it will be used
+	// instead of TokenSource to properly support alternate universe domains.
+	// SECURITY: This field contains sensitive credentials and must not be logged or serialized.
+	CredentialsJSON    []byte `json:"-" datapolicy:"token"`
 	UseMetadataServer  bool
 	AlphaFeatureGate   *AlphaFeatureGate
 	StackType          string
@@ -524,6 +529,40 @@ func GenerateCloudConfig(configFile *ConfigFile) (cloudConfig *CloudConfig, err 
 	return cloudConfig, err
 }
 
+// credentialOptions returns the appropriate credential option for creating a GCP client.
+// It checks if CredentialsJSON contains a "type" field to determine if it's a typed credential
+// (e.g., service_account, authorized_user, impersonated_service_account, external_account).
+// If typed credentials are present, it uses option.WithAuthCredentialsJSON which properly
+// handles Universe Domain. Otherwise, it falls back to the legacy token source approach for
+// backward compatibility.
+func credentialOptions(config *CloudConfig) ([]option.ClientOption, error) {
+	// If no credentials JSON is provided, use the legacy TokenSource path
+	if len(config.CredentialsJSON) == 0 {
+		if config.TokenSource == nil {
+			return nil, fmt.Errorf("either CredentialsJSON or TokenSource must be provided")
+		}
+		return []option.ClientOption{option.WithTokenSource(config.TokenSource)}, nil
+	}
+
+	// Parse the credentials JSON to check if it contains a "type" field
+	var f struct {
+		Type option.CredentialsType `json:"type"`
+	}
+	if err := json.Unmarshal(config.CredentialsJSON, &f); err == nil && f.Type != "" {
+		// Use the new WithAuthCredentialsJSON which properly handles Universe Domain
+		klog.V(4).Infof("Using WithAuthCredentialsJSON for credential type: %s", f.Type)
+		return []option.ClientOption{option.WithAuthCredentialsJSON(f.Type, config.CredentialsJSON)}, nil
+	}
+
+	// Fall back to the legacy path if no type field is present
+	klog.V(4).Info("No type field in credentials JSON, falling back to legacy credentials path")
+	creds, err := google.CredentialsFromJSON(context.Background(), config.CredentialsJSON, compute.CloudPlatformScope)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create credentials from JSON: %w", err)
+	}
+	return []option.ClientOption{option.WithCredentials(creds)}, nil
+}
+
 // CreateGCECloud creates a Cloud object using the specified parameters.
 // If no networkUrl is specified, loads networkName via rest call.
 // If no tokenSource is specified, uses oauth2.DefaultTokenSource.
@@ -546,19 +585,25 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		config.NetworkProjectID = config.ProjectID
 	}
 
-	service, err := compute.NewService(context.Background(), option.WithTokenSource(config.TokenSource))
+	// Get credential options (supports both CredentialsJSON and TokenSource)
+	credOpts, err := credentialOptions(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create credential options: %w", err)
+	}
+
+	service, err := compute.NewService(context.Background(), credOpts...)
 	if err != nil {
 		return nil, err
 	}
 	service.UserAgent = userAgent
 
-	serviceBeta, err := computebeta.NewService(context.Background(), option.WithTokenSource(config.TokenSource))
+	serviceBeta, err := computebeta.NewService(context.Background(), credOpts...)
 	if err != nil {
 		return nil, err
 	}
 	serviceBeta.UserAgent = userAgent
 
-	serviceAlpha, err := computealpha.NewService(context.Background(), option.WithTokenSource(config.TokenSource))
+	serviceAlpha, err := computealpha.NewService(context.Background(), credOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +621,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		}
 	}
 
-	containerService, err := container.NewService(context.Background(), option.WithTokenSource(config.TokenSource))
+	containerService, err := container.NewService(context.Background(), credOpts...)
 	if err != nil {
 		return nil, err
 	}
