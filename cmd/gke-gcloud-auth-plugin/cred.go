@@ -8,12 +8,14 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -48,6 +50,11 @@ const (
 	// env variable is set to a value, that value is propagated by gcloud as an
 	// access token
 	cloudsdkAuthAccessEnvVar = "CLOUDSDK_AUTH_ACCESS_TOKEN"
+	// strictCacheInvalidationEnvVar enables opt-in cache invalidation when the
+	// active gcloud configuration changes. It remains opt-in while the behavior
+	// bakes because a cache miss requires invoking gcloud to mint a new token.
+	strictCacheInvalidationEnvVar = "GKE_AUTH_PLUGIN_STRICT_CACHE_INVALIDATION"
+	cloudsdkActiveConfigEnvVar    = "CLOUDSDK_ACTIVE_CONFIG_NAME"
 )
 
 // cache is the struct that gets cached in the cache file in json format.
@@ -72,6 +79,9 @@ type cache struct {
 	// ExtraArgs refers to the args used when generating the token.
 	// These args could allow the user to set get tokens for non-default accounts, projects, etc.
 	ExtraArgs string `json:"extra_args"`
+	// GcloudConfig tracks the active gcloud configuration used to mint the token.
+	// When that configuration changes, the cached token is invalidated.
+	GcloudConfig *gcloudConfig `json:"gcloud_config,omitempty"`
 }
 
 // plugin holds data to be passed around (eg: useApplicationDefaultCredentials)
@@ -83,6 +93,12 @@ type plugin struct {
 	getCacheFilePath  func() string
 	timeNow           func() time.Time
 	tokenProvider     tokenProvider
+}
+
+type gcloudConfig struct {
+	ConfigDir    string `json:"config_dir"`
+	ActiveConfig string `json:"active_config"`
+	ConfigHash   string `json:"config_hash"`
 }
 
 func newPlugin(tokenProvider tokenProvider) *plugin {
@@ -285,6 +301,15 @@ func (p *plugin) writeGcloudAccessTokenToCache(accessToken string, expiry time.T
 		TokenExpiry:    expiry.Format(time.RFC3339Nano),
 		ExtraArgs:      extraArgsString,
 	}
+	if strictCacheInvalidationEnabled() {
+		if gcloudConfig, err := p.currentGcloudConfig(); err != nil {
+			// Cache writes are best effort. Do not make authentication depend on
+			// reading gcloud's configuration files.
+			klog.V(4).Infof("Strict cache invalidation: unable to read gcloud configuration; using legacy cache behavior: %v", err)
+		} else if gcloudConfig != nil {
+			c.GcloudConfig = gcloudConfig
+		}
+	}
 
 	formatted, err := formatToJSON(c)
 	if err != nil {
@@ -334,8 +359,87 @@ func (p *plugin) getCachedGcloudAccessToken() (string, *metav1.Time, error) {
 	if c.ExtraArgs != strings.Join(p.tokenProvider.getExtraArgs(), " ") {
 		return "", nil, fmt.Errorf("cache is invalid as the passed in args have changed")
 	}
+	if strictCacheInvalidationEnabled() {
+		currentGcloudConfig, err := p.currentGcloudConfig()
+		if err != nil {
+			// Reading gcloud configuration is an optional cache optimization. If
+			// it fails, preserve the legacy cache behavior instead of failing
+			// kubectl authentication.
+			klog.V(4).Infof("Strict cache invalidation: unable to read gcloud configuration; using legacy cache behavior: %v", err)
+		} else if !gcloudConfigsEqual(c.GcloudConfig, currentGcloudConfig) {
+			klog.V(4).Info("Strict cache invalidation: gcloud configuration changed; refreshing access token")
+			return "", nil, fmt.Errorf("cache is invalid as the gcloud config changed")
+		}
+	}
 
 	return c.AccessToken, &metav1.Time{Time: expiryTimeStamp}, nil
+}
+
+func (p *plugin) currentGcloudConfig() (*gcloudConfig, error) {
+	if _, ok := p.tokenProvider.(*gcloudTokenProvider); !ok {
+		return nil, nil
+	}
+
+	configDir, err := gcloudConfigDir()
+	if err != nil {
+		return nil, err
+	}
+
+	activeConfigName := os.Getenv(cloudsdkActiveConfigEnvVar)
+	if activeConfigName == "" {
+		activeConfigContents, err := p.readFile(filepath.Join(configDir, activeConfig))
+		if err != nil {
+			return nil, err
+		}
+		activeConfigName = strings.TrimSpace(string(activeConfigContents))
+	}
+	if activeConfigName == "" {
+		return nil, fmt.Errorf("active gcloud configuration is empty")
+	}
+
+	configContents, err := p.readFile(filepath.Join(configDir, "configurations", "config_"+activeConfigName))
+	if err != nil {
+		return nil, err
+	}
+
+	return &gcloudConfig{
+		ConfigDir:    configDir,
+		ActiveConfig: activeConfigName,
+		ConfigHash:   fmt.Sprintf("%x", sha256.Sum256(configContents)),
+	}, nil
+}
+
+func strictCacheInvalidationEnabled() bool {
+	return os.Getenv(strictCacheInvalidationEnvVar) == "true"
+}
+
+func gcloudConfigDir() (string, error) {
+	if configDir := os.Getenv("CLOUDSDK_CONFIG"); configDir != "" {
+		return configDir, nil
+	}
+	if runtime.GOOS == "windows" {
+		userConfigDir, err := os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(userConfigDir, "gcloud"), nil
+	}
+	// gcloud uses ~/.config/gcloud on both macOS and Linux, unlike
+	// os.UserConfigDir on macOS which resolves to ~/Library/Application Support.
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".config", "gcloud"), nil
+}
+
+func gcloudConfigsEqual(a, b *gcloudConfig) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.ConfigDir == b.ConfigDir &&
+		a.ActiveConfig == b.ActiveConfig &&
+		a.ConfigHash == b.ConfigHash
 }
 
 func k8sStartingConfig() (*clientcmdapi.Config, error) {
