@@ -30,6 +30,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -431,7 +432,11 @@ func (g *Cloud) ensureExternalLoadBalancerDeleted(clusterName, clusterID string,
 
 	klog.Infof("ensureExternalLoadBalancerDeleted(%v): Removing %q finalizer from service %s", loadBalancerName, NetLBFinalizerV1, service.Name)
 	if err := removeFinalizer(service, g.client.CoreV1(), NetLBFinalizerV1); err != nil {
-		klog.Errorf("Failed to remove finalizer '%s' from service %s - %v", NetLBFinalizerV1, service.Name, err)
+		if apierrors.IsNotFound(err) {
+			klog.Errorf("Failed to remove finalizer '%s' from service %s/%s (not found) - %v", NetLBFinalizerV1, service.Namespace, service.Name, err)
+			return nil
+		}
+		klog.Errorf("Failed to remove finalizer '%s' from service %s/%s - %v", NetLBFinalizerV1, service.Namespace, service.Name, err)
 		return err
 	}
 	g.metricsCollector.DeleteL4NetLBService(serviceName.String())
