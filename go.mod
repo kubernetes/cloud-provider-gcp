@@ -13,14 +13,14 @@ require (
 	google.golang.org/api v0.289.0
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	k8s.io/api v0.36.2
-	k8s.io/apimachinery v0.36.2
-	k8s.io/apiserver v0.36.2
-	k8s.io/client-go v0.36.2
+	k8s.io/api v0.36.3
+	k8s.io/apimachinery v0.36.3
+	k8s.io/apiserver v0.36.3
+	k8s.io/client-go v0.36.3
 	k8s.io/code-generator v0.36.0
-	k8s.io/component-base v0.36.2
-	k8s.io/component-helpers v0.36.2
-	k8s.io/controller-manager v0.36.2
+	k8s.io/component-base v0.36.3
+	k8s.io/component-helpers v0.36.3
+	k8s.io/controller-manager v0.36.3
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kube-controller-manager v0.36.0
 	k8s.io/kubelet v0.36.0
@@ -34,7 +34,7 @@ require (
 	github.com/GoogleCloudPlatform/gke-networking-api v0.2.1
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
-	k8s.io/cloud-provider v0.36.2
+	k8s.io/cloud-provider v0.36.3
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
 	k8s.io/kubernetes v1.36.0
 )
@@ -64,11 +64,11 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	k8s.io/gengo/v2 v2.0.0-20250922181213-ec3ebc5fd46b // indirect
-	k8s.io/streaming v0.36.2 // indirect
+	k8s.io/streaming v0.36.3 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.34.0 // indirect
 	sigs.k8s.io/controller-runtime v0.14.7 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
+	sigs.k8s.io/structured-merge-diff/v6 v6.3.3 // indirect
 )
 
 require (
@@ -144,7 +144,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.36.0 // indirect
-	k8s.io/kms v0.36.2 // indirect
+	k8s.io/kms v0.36.3 // indirect
 	k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
