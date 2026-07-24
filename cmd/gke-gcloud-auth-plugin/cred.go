@@ -48,6 +48,9 @@ const (
 	// env variable is set to a value, that value is propagated by gcloud as an
 	// access token
 	cloudsdkAuthAccessEnvVar = "CLOUDSDK_AUTH_ACCESS_TOKEN"
+
+	// cacheFilePathOverrideEnvVar is an env variable to override the cache file path.
+	cacheFilePathOverrideEnvVar = "GKE_GCLOUD_AUTH_PLUGIN_CACHE_OVERRIDE"
 )
 
 // cache is the struct that gets cached in the cache file in json format.
@@ -367,6 +370,10 @@ func writeCacheFile(content string) error {
 }
 
 func getCacheFilePath() string {
+	if override := os.Getenv(cacheFilePathOverrideEnvVar); override != "" {
+		return override
+	}
+
 	po := clientcmd.NewDefaultPathOptions()
 	kubeconfig := po.GetDefaultFilename()
 	dir := filepath.Dir(kubeconfig)
