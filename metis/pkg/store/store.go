@@ -445,6 +445,8 @@ type CIDRBlock struct {
 	AllocatedIPs int
 	CIDR         string
 	Network      string
+	IpFamily     string
+	State        string
 }
 
 // GetDeletingCIDRBlocks fetches all CIDR blocks in Deleting state for a specific network and IP family.
