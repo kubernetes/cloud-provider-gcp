@@ -84,6 +84,12 @@ var (
 
 	// enableL4ILBFineGrainedLocks enables resource-specific locking for L4 ILB.
 	enableL4ILBFineGrainedLocks bool
+
+	// enableDynamicPodIPController enables the dynamic-pod-ip-controller.
+	enableDynamicPodIPController bool
+
+	// populateNodeNetworkConfig enables the node-network-config-status-controller.
+	populateNodeNetworkConfig bool
 )
 
 func main() {
@@ -106,6 +112,8 @@ func main() {
 	cloudProviderFS.BoolVar(&enableL4DenyFirewallRollbackCleanup, "enable-l4-deny-firewall-rollback-cleanup", false, "Enable cleanup codepath of the deny firewalls for rollback. The reason for it not being enabled by default is the additional GCE API calls that are made for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.")
 	cloudProviderFS.BoolVar(&enableGKETenantController, "enable-gke-tenant-controller", false, "Enables the GKE Tenant Controller Manager for Multi-Tenancy.")
 	cloudProviderFS.BoolVar(&enableL4ILBFineGrainedLocks, "enable-l4-ilb-fine-grained-lock", false, "Enable resource-specific locking for L4 ILB")
+	cloudProviderFS.BoolVar(&enableDynamicPodIPController, "enable-dynamic-pod-ip-controller", false, "Enables the GKE Dynamic Pod IP Controller.")
+	cloudProviderFS.BoolVar(&populateNodeNetworkConfig, "populate-node-network-config", false, "Enables population of NodeNetworkConfig status from GCE state.")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
@@ -133,6 +141,10 @@ func main() {
 		Constructor: startGkeNetworkParamSetControllerWrapper,
 	}
 
+	controllerInitializers["dynamicpodip"] = app.ControllerInitFuncConstructor{
+		Constructor: startDynamicPodIPControllerWrapper,
+	}
+
 	controllerInitializers[gkeServiceLBControllerName] = app.ControllerInitFuncConstructor{
 		InitContext: app.ControllerInitContext{
 			ClientName: gkeServiceControllerClientName,
@@ -153,6 +165,7 @@ func main() {
 	app.ControllersDisabledByDefault.Insert("gkenetworkparamset")
 	app.ControllersDisabledByDefault.Insert(gkeServiceLBControllerName)
 	app.ControllersDisabledByDefault.Insert(gkeTenantControllerManagerName)
+	app.ControllersDisabledByDefault.Insert("dynamicpodip")
 
 	aliasMap := names.CCMControllerAliases()
 	aliasMap["nodeipam"] = kcmnames.NodeIpamController
