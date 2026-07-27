@@ -16,6 +16,7 @@ import (
 
 func newAdminCommand() *cobra.Command {
 	var outputFormat string
+	var filter string
 
 	cmd := &cobra.Command{
 		Use:    "admin",
@@ -25,6 +26,7 @@ func newAdminCommand() *cobra.Command {
 
 	cmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "table", "Output format (json or table)")
 	cmd.PersistentFlags().MarkHidden("output")
+	cmd.PersistentFlags().StringVarP(&filter, "filter", "f", "", "Filter rows in list output")
 
 	cidrCmd := &cobra.Command{
 		Use:    "cidr-blocks",
@@ -41,26 +43,7 @@ func newAdminCommand() *cobra.Command {
 				os.Exit(1)
 			}
 			defer conn.Close()
-			res, err := client.ListCIDRBlocks(context.Background(), &adminv1.ListCIDRBlocksRequest{})
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
-				os.Exit(1)
-			}
-			printDumpResponse(res, outputFormat)
-		},
-	})
-	cidrCmd.AddCommand(&cobra.Command{
-		Use:   "get [id]",
-		Short: "Get CIDR block by ID",
-		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			client, conn, err := getAdminClient()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to connect: %v\n", err)
-				os.Exit(1)
-			}
-			defer conn.Close()
-			res, err := client.GetCIDRBlock(context.Background(), &adminv1.GetCIDRBlockRequest{Id: args[0]})
+			res, err := client.ListCIDRBlocks(context.Background(), &adminv1.ListCIDRBlocksRequest{Filter: filter})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
 				os.Exit(1)
@@ -84,26 +67,7 @@ func newAdminCommand() *cobra.Command {
 				os.Exit(1)
 			}
 			defer conn.Close()
-			res, err := client.ListIPAddresses(context.Background(), &adminv1.ListIPAddressesRequest{})
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
-				os.Exit(1)
-			}
-			printDumpResponse(res, outputFormat)
-		},
-	})
-	ipCmd.AddCommand(&cobra.Command{
-		Use:   "get [id]",
-		Short: "Get IP address by ID",
-		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			client, conn, err := getAdminClient()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to connect: %v\n", err)
-				os.Exit(1)
-			}
-			defer conn.Close()
-			res, err := client.GetIPAddress(context.Background(), &adminv1.GetIPAddressRequest{Id: args[0]})
+			res, err := client.ListIPAddresses(context.Background(), &adminv1.ListIPAddressesRequest{Filter: filter})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
 				os.Exit(1)

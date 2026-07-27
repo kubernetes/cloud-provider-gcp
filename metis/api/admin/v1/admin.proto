@@ -6,19 +6,15 @@ option go_package = "k8s.io/metis/api/admin/v1;adminv1";
 
 service Admin {
   rpc ListCIDRBlocks(ListCIDRBlocksRequest) returns (AdminTableDumpResponse);
-  rpc GetCIDRBlock(GetCIDRBlockRequest) returns (AdminTableDumpResponse);
   rpc ListIPAddresses(ListIPAddressesRequest) returns (AdminTableDumpResponse);
-  rpc GetIPAddress(GetIPAddressRequest) returns (AdminTableDumpResponse);
 }
 
-message ListCIDRBlocksRequest {}
-message GetCIDRBlockRequest {
-  string id = 1;
+message ListCIDRBlocksRequest {
+  string filter = 1;
 }
 
-message ListIPAddressesRequest {}
-message GetIPAddressRequest {
-  string id = 1;
+message ListIPAddressesRequest {
+  string filter = 1;
 }
 
 message AdminTableDumpResponse {
