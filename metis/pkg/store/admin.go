@@ -6,17 +6,20 @@ import (
 	"time"
 )
 
-// AdminListCIDRBlocks fetches cidr_blocks records natively formatted as generic text output, optionally filtered.
+// AdminListCIDRBlocks fetches cidr_blocks records natively formatted as
+// generic text output, optionally filtered.
 func (s *Store) AdminListCIDRBlocks(ctx context.Context, filter string) ([]string, [][]string, error) {
 	return s.adminQueryTable(ctx, "cidr_blocks", filter)
 }
 
-// AdminListIPAddresses fetches ip_addresses records natively formatted as generic text output, optionally filtered.
+// AdminListIPAddresses fetches ip_addresses records natively formatted as
+// generic text output, optionally filtered.
 func (s *Store) AdminListIPAddresses(ctx context.Context, filter string) ([]string, [][]string, error) {
 	return s.adminQueryTable(ctx, "ip_addresses", filter)
 }
 
-// adminQueryTable fetches the entire contents of a given table natively using SQLite column mapping.
+// adminQueryTable fetches the entire contents of a given table natively
+// using SQLite column mapping.
 func (s *Store) adminQueryTable(ctx context.Context, tableName string, filter string) ([]string, [][]string, error) {
 	query := fmt.Sprintf("SELECT * FROM %s", tableName)
 	if filter != "" {
