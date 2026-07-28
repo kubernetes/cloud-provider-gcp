@@ -132,6 +132,13 @@ func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipa
 		}
 	}
 
+	s.logger.Info("Successfully allocated Pod IP",
+		"network", req.Network,
+		"podName", req.PodName,
+		"podNamespace", req.PodNamespace,
+		"ipv4", fmt.Sprintf("%+v", ipv4Alloc),
+		"ipv6", fmt.Sprintf("%+v", ipv6Alloc))
+
 	return &adaptiveipam.AllocatePodIPResponse{
 		Ipv4: ipv4Alloc,
 		Ipv6: ipv6Alloc,
@@ -303,16 +310,21 @@ func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptivei
 		return nil, status.Error(codes.InvalidArgument, "container_id and interface_name must not be empty")
 	}
 
-	count, err := s.store.ReleaseIPByOwner(ctx, req.Network, req.ContainerId, req.InterfaceName, s.releaseCooldown)
+	releasedIPs, err := s.store.ReleaseIPByOwner(ctx, req.Network, req.ContainerId, req.InterfaceName, s.releaseCooldown)
 	if err != nil {
 		s.logger.Error(err, "failed to deallocate ips", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		return nil, status.Errorf(codes.Unavailable, "failed to deallocate ips for pod %s/%s: %v", req.PodNamespace, req.PodName, err)
 	}
 
-	if count == 0 {
+	if len(releasedIPs) == 0 {
 		s.logger.Info("No IP addresses were released (likely already deallocated or didn't exist)", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 	} else {
-		s.logger.Info("Successfully deallocated ips", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace, "count", count)
+		s.logger.Info("Successfully deallocated ips",
+			"network", req.Network,
+			"podName", req.PodName,
+			"podNamespace", req.PodNamespace,
+			"releasedIPs", releasedIPs,
+			"count", len(releasedIPs))
 	}
 
 	return &adaptiveipam.DeallocatePodIPResponse{}, nil
