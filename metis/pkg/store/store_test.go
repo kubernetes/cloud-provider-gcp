@@ -1050,12 +1050,12 @@ func TestStore_AllocateIPv6_ExpansionScenarios(t *testing.T) {
 		allocateIPs(ctx, network, 64)
 
 		// Release 1 IP with a long cooldown (10 seconds).
-		count, err := s.ReleaseIPByOwner(ctx, network, "container-"+network+"-0", "eth0", 10*time.Second)
+		releasedIPs, err := s.ReleaseIPByOwner(ctx, network, "container-"+network+"-0", "eth0", 10*time.Second)
 		if err != nil {
 			t.Fatalf("ReleaseIPByOwner failed: %v", err)
 		}
-		if count != 1 {
-			t.Fatalf("Expected 1 IP to be released, got %d", count)
+		if len(releasedIPs) != 1 {
+			t.Fatalf("Expected 1 IP to be released, got %d", len(releasedIPs))
 		}
 
 		// Should trigger expansion because the only unallocated IP is in cooldown.
