@@ -146,6 +146,7 @@ func (e *IPAMEngine) allocateIP(ctx context.Context, req *adaptiveipam.AllocateP
 		IPFamily:      ipFamily,
 	}
 
+	// The loop is bounded by the cancellation or timeout of the context ctx.
 	for {
 		ip, cidr, err := e.allocateIPWithRetry(ctx, params, timeout)
 		if err != nil {
@@ -158,6 +159,7 @@ func (e *IPAMEngine) allocateIP(ctx context.Context, req *adaptiveipam.AllocateP
 			if capacityAdded {
 				continue
 			}
+			// TODO: Refine status code to return a more specific code based on the error type instead of a fallback Unavailable.
 			return nil, status.Errorf(codes.Unavailable, "failed to allocate %s for pod %s/%s: %v", ipFamily, req.PodNamespace, req.PodName, err)
 		}
 
@@ -172,24 +174,27 @@ func (e *IPAMEngine) allocateIPWithRetry(ctx context.Context, params store.Alloc
 	var ip, cidr string
 	var lastErr error
 
+	// The total timeout is set to align with the SQLite busy_timeout configured in the DSN.
+	// PollUntilContextTimeout creates a derived context with this timeout, but also respects
+	// the parent gRPC context (ctx) cancellation.
 	err := wait.PollUntilContextTimeout(ctx, defaultPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
 		ip, cidr, lastErr = e.store.AllocateIP(ctx, params)
 		if lastErr == nil {
-			return true, nil
+			return true, nil // Success
 		}
 		if errors.Is(lastErr, store.ErrNoAvailableIPs) {
-			return true, lastErr
+			return true, lastErr // Stop immediately on non-retryable error
 		}
 		if ctx.Err() != nil {
-			return true, ctx.Err()
+			return true, ctx.Err() // Stop immediately if context is done
 		}
 		e.logger.V(4).Info(fmt.Sprintf("Retrying %s allocation due to transient error", params.IPFamily), "err", lastErr, "network", params.Network)
-		return false, nil
+		return false, nil // Retry
 	})
 
 	if err != nil {
 		if (errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded)) && lastErr != nil {
-			err = lastErr
+			err = lastErr // Use last error if timed out
 		}
 		return "", "", err
 	}
@@ -252,6 +257,7 @@ func (e *IPAMEngine) maybeAddInitialPodCidr(ctx context.Context, network string,
 	if initialPodCidr == "" {
 		return nil
 	}
+	// TODO: save a bool flag about whether we added the initial CIDR to the store to avoid calling store everytime to check if initial cidr is added
 	_, exists, err := e.store.GetCIDRBlock(ctx, initialPodCidr, network)
 
 	if err != nil {
