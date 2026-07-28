@@ -21,9 +21,11 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ListCIDRBlocksRequest requests a dump of CIDR blocks from the DB.
 type ListCIDRBlocksRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Filter        string                 `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Optional native SQLite WHERE clause to filter the returned rows.
+	Filter        string `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -65,9 +67,11 @@ func (x *ListCIDRBlocksRequest) GetFilter() string {
 	return ""
 }
 
+// ListIPAddressesRequest requests a dump of IP addresses from the DB.
 type ListIPAddressesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Filter        string                 `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Optional native SQLite WHERE clause to filter the returned rows.
+	Filter        string `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -109,10 +113,13 @@ func (x *ListIPAddressesRequest) GetFilter() string {
 	return ""
 }
 
+// AdminTableDumpResponse is a generic table output containing column headers and row values.
 type AdminTableDumpResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Headers       []string               `protobuf:"bytes,1,rep,name=headers,proto3" json:"headers,omitempty"`
-	Rows          []*Row                 `protobuf:"bytes,2,rep,name=rows,proto3" json:"rows,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The column headers dynamically extracted from the database.
+	Headers []string `protobuf:"bytes,1,rep,name=headers,proto3" json:"headers,omitempty"`
+	// The individual row records mapped column-by-column.
+	Rows          []*Row `protobuf:"bytes,2,rep,name=rows,proto3" json:"rows,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -161,9 +168,11 @@ func (x *AdminTableDumpResponse) GetRows() []*Row {
 	return nil
 }
 
+// Row represents a single table record as generic string data.
 type Row struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Values        []string               `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The string representations of each cell in the row aligned with headers.
+	Values        []string `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

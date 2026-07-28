@@ -37,11 +37,6 @@ func (s *Store) adminQueryTable(ctx context.Context, tableName string, filter st
 		return nil, nil, fmt.Errorf("failed to get columns: %w", err)
 	}
 
-	colTypes, err := rows.ColumnTypes()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get column types: %w", err)
-	}
-
 	var results [][]string
 	for rows.Next() {
 		columns := make([]interface{}, len(cols))
@@ -60,14 +55,13 @@ func (s *Store) adminQueryTable(ctx context.Context, tableName string, filter st
 				rowData = append(rowData, "NULL")
 			} else {
 				colName := cols[i]
-				colType := colTypes[i].DatabaseTypeName()
 				switch v := col.(type) {
 				case []byte:
 					rowData = append(rowData, string(v))
 				case time.Time:
 					rowData = append(rowData, v.Format(time.RFC3339))
 				case int64:
-					if colType == "TIMESTAMP" || colType == "DATETIME" || colName == "created_at" || colName == "updated_at" || colName == "release_at" || colName == "allocated_at" {
+					if colName == "created_at" || colName == "updated_at" || colName == "release_at" || colName == "allocated_at" {
 						t := time.UnixMilli(v)
 						rowData = append(rowData, t.Format(time.RFC3339))
 					} else {

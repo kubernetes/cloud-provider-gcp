@@ -8,6 +8,7 @@ package adminv1
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -26,8 +27,12 @@ const (
 // AdminClient is the client API for Admin service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// Admin service exposes internal Metis daemon state for structural debugging over UDS.
 type AdminClient interface {
+	// ListCIDRBlocks returns a formatted table of all CIDR blocks.
 	ListCIDRBlocks(ctx context.Context, in *ListCIDRBlocksRequest, opts ...grpc.CallOption) (*AdminTableDumpResponse, error)
+	// ListIPAddresses returns a formatted table of all IP addresses.
 	ListIPAddresses(ctx context.Context, in *ListIPAddressesRequest, opts ...grpc.CallOption) (*AdminTableDumpResponse, error)
 }
 
@@ -62,8 +67,12 @@ func (c *adminClient) ListIPAddresses(ctx context.Context, in *ListIPAddressesRe
 // AdminServer is the server API for Admin service.
 // All implementations must embed UnimplementedAdminServer
 // for forward compatibility.
+//
+// Admin service exposes internal Metis daemon state for structural debugging over UDS.
 type AdminServer interface {
+	// ListCIDRBlocks returns a formatted table of all CIDR blocks.
 	ListCIDRBlocks(context.Context, *ListCIDRBlocksRequest) (*AdminTableDumpResponse, error)
+	// ListIPAddresses returns a formatted table of all IP addresses.
 	ListIPAddresses(context.Context, *ListIPAddressesRequest) (*AdminTableDumpResponse, error)
 	mustEmbedUnimplementedAdminServer()
 }

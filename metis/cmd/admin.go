@@ -37,18 +37,9 @@ func newAdminCommand() *cobra.Command {
 		Use:   "list",
 		Short: "List CIDR blocks",
 		Run: func(cmd *cobra.Command, args []string) {
-			client, conn, err := getAdminClient()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to connect: %v\n", err)
-				os.Exit(1)
-			}
-			defer conn.Close()
-			res, err := client.ListCIDRBlocks(context.Background(), &adminv1.ListCIDRBlocksRequest{Filter: filter})
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
-				os.Exit(1)
-			}
-			printDumpResponse(res, outputFormat)
+			executeAdminListCommand(outputFormat, func(ctx context.Context, client adminv1.AdminClient) (*adminv1.AdminTableDumpResponse, error) {
+				return client.ListCIDRBlocks(ctx, &adminv1.ListCIDRBlocksRequest{Filter: filter})
+			})
 		},
 	})
 
@@ -61,18 +52,9 @@ func newAdminCommand() *cobra.Command {
 		Use:   "list",
 		Short: "List IP addresses",
 		Run: func(cmd *cobra.Command, args []string) {
-			client, conn, err := getAdminClient()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to connect: %v\n", err)
-				os.Exit(1)
-			}
-			defer conn.Close()
-			res, err := client.ListIPAddresses(context.Background(), &adminv1.ListIPAddressesRequest{Filter: filter})
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
-				os.Exit(1)
-			}
-			printDumpResponse(res, outputFormat)
+			executeAdminListCommand(outputFormat, func(ctx context.Context, client adminv1.AdminClient) (*adminv1.AdminTableDumpResponse, error) {
+				return client.ListIPAddresses(ctx, &adminv1.ListIPAddressesRequest{Filter: filter})
+			})
 		},
 	})
 
@@ -80,6 +62,21 @@ func newAdminCommand() *cobra.Command {
 	cmd.AddCommand(ipCmd)
 
 	return cmd
+}
+
+func executeAdminListCommand(outputFormat string, queryFunc func(context.Context, adminv1.AdminClient) (*adminv1.AdminTableDumpResponse, error)) {
+	client, conn, err := getAdminClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to connect: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+	res, err := queryFunc(context.Background(), client)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to query: %v\n", err)
+		os.Exit(1)
+	}
+	printDumpResponse(res, outputFormat)
 }
 
 func printDumpResponse(res *adminv1.AdminTableDumpResponse, outputFormat string) {
