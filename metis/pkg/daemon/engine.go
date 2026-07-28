@@ -36,7 +36,7 @@ const (
 	defaultPollInterval = 50 * time.Millisecond
 	// scaleUpWaitTimeout is the maximum time to wait for a dynamic scale-up operation.
 	// It must be smaller than the CNI client-side RPC timeout (defaultRPCTimeout = 10s)
-	// to allow returning a clean error response before the client times out.
+	// to allow the server to return a clean error response before the client times out.
 	scaleUpWaitTimeout = 9 * time.Second
 )
 
@@ -54,7 +54,12 @@ type IPAMEngine struct {
 	releaseCooldown time.Duration
 	busyTimeout     time.Duration
 	logger          logr.Logger
-	requestsMap     map[string]map[cniClient]chan struct{}
+	// requestsMap tracks pending CNI IP allocation requests waiting for a new CIDR
+	// to be dynamically allocated. It is organized per-network (outer map key is network name)
+	// to optimize lookups and avoid iterating over all waiting clients from other networks.
+	// The inner map associates each blocked cniClient to a channel that is closed to wake
+	// it up when new IPs become available.
+	requestsMap map[string]map[cniClient]chan struct{}
 	requestsMu      sync.RWMutex
 	monitor         *Monitor
 }
@@ -97,6 +102,9 @@ func (e *IPAMEngine) AllocatePodIP(ctx context.Context, req *adaptiveipam.Alloca
 		return nil, err
 	}
 
+	// Enforce a server-side safety timeout ceiling for the entire allocation attempt.
+	// This must be shorter than the client CNI plugin's timeout to ensure the server
+	// fails gracefully and returns a structured gRPC error before the client gives up.
 	ctx, cancel := context.WithTimeout(ctx, scaleUpWaitTimeout)
 	defer cancel()
 
@@ -219,6 +227,7 @@ func (e *IPAMEngine) handleDynamicAllocation(ctx context.Context, req *adaptivei
 
 	if !ok {
 		e.logger.Info("Local store IP exhaustion detected, requesting scale up", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
+		// Enqueue the request to trigger the controller sync for dynamic allocation.
 		e.monitor.enqueue()
 	} else {
 		e.logger.Info("Dynamic allocation request already pending, waiting on existing request", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
@@ -374,6 +383,9 @@ func (e *IPAMEngine) CheckPodIP(ctx context.Context, req *adaptiveipam.CheckPodI
 	return &adaptiveipam.CheckPodIPResponse{}, nil
 }
 
+// getOrCreatePendingRequest retrieves the wakeup channel for a pending CNI client request,
+// creating it if it does not already exist. It returns the channel and a boolean indicating
+// whether the channel already existed.
 func (e *IPAMEngine) getOrCreatePendingRequest(clientKey cniClient, network string) (chan struct{}, bool) {
 	e.requestsMu.Lock()
 	defer e.requestsMu.Unlock()
@@ -391,6 +403,8 @@ func (e *IPAMEngine) getOrCreatePendingRequest(clientKey cniClient, network stri
 	return ch, ok
 }
 
+// removePendingRequest removes a CNI client request from the pending map once it has completed
+// or timed out.
 func (e *IPAMEngine) removePendingRequest(clientKey cniClient, network string) {
 	e.requestsMu.Lock()
 	defer e.requestsMu.Unlock()
