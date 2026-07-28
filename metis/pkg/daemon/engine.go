@@ -60,8 +60,8 @@ type IPAMEngine struct {
 	// The inner map associates each blocked cniClient to a channel that is closed to wake
 	// it up when new IPs become available.
 	requestsMap map[string]map[cniClient]chan struct{}
-	requestsMu      sync.RWMutex
-	monitor         *Monitor
+	requestsMu  sync.RWMutex
+	monitor     *Monitor
 }
 
 // NewIPAMEngine constructs a new IPAMEngine instance.
