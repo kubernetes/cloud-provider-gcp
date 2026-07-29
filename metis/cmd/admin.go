@@ -27,6 +27,7 @@ func newAdminCommand() *cobra.Command {
 	cmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "table", "Output format (json or table)")
 	cmd.PersistentFlags().MarkHidden("output")
 	cmd.PersistentFlags().StringVarP(&filter, "filter", "f", "", "Filter rows in list output")
+	cmd.PersistentFlags().MarkHidden("filter")
 
 	cidrCmd := &cobra.Command{
 		Use:    "cidr-blocks",
@@ -36,6 +37,13 @@ func newAdminCommand() *cobra.Command {
 	cidrCmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List CIDR blocks",
+		Long:  "List CIDR blocks.",
+		Example: `  # List all CIDR blocks
+  metis admin cidr-blocks list
+  # List a specific CIDR block by ID
+  metis admin cidr-blocks list --filter "id = '1'"
+  # List all Ready CIDR blocks
+  metis admin cidr-blocks list --filter "state = 'Ready'"`,
 		Run: func(cmd *cobra.Command, args []string) {
 			executeAdminListCommand(outputFormat, func(ctx context.Context, client adminv1.AdminClient) (*adminv1.AdminTableDumpResponse, error) {
 				return client.ListCIDRBlocks(ctx, &adminv1.ListCIDRBlocksRequest{Filter: filter})
@@ -51,6 +59,13 @@ func newAdminCommand() *cobra.Command {
 	ipCmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List IP addresses",
+		Long:  "List IP addresses.",
+		Example: `  # List all IP addresses
+  metis admin ip-addresses list
+  # List a specific IP address by ID
+  metis admin ip-addresses list --filter "id = '1'"
+  # List IP addresses that are allocated in a specific namespace
+  metis admin ip-addresses list --filter "pod_namespace = 'default' AND is_allocated = '1'"`,
 		Run: func(cmd *cobra.Command, args []string) {
 			executeAdminListCommand(outputFormat, func(ctx context.Context, client adminv1.AdminClient) (*adminv1.AdminTableDumpResponse, error) {
 				return client.ListIPAddresses(ctx, &adminv1.ListIPAddressesRequest{Filter: filter})
