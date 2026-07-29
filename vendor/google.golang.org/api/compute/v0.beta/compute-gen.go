@@ -31156,6 +31156,9 @@ func (s InstanceGroupManagerResizeRequestStatusError) MarshalJSON() ([]byte, err
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// InstanceGroupManagerResizeRequestStatusErrorErrors: Represents a single
+// error encountered during the processing of an
+// operation.
 type InstanceGroupManagerResizeRequestStatusErrorErrors struct {
 	// Code: [Output Only] The error type identifier for this error.
 	Code string `json:"code,omitempty"`
@@ -31191,11 +31194,20 @@ func (s InstanceGroupManagerResizeRequestStatusErrorErrors) MarshalJSON() ([]byt
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// InstanceGroupManagerResizeRequestStatusErrorErrorsErrorDetails: Container
+// for structured error details providing additional context
+// specific to the encountered error code.
 type InstanceGroupManagerResizeRequestStatusErrorErrorsErrorDetails struct {
-	ErrorInfo        *ErrorInfo         `json:"errorInfo,omitempty"`
-	Help             *Help              `json:"help,omitempty"`
-	LocalizedMessage *LocalizedMessage  `json:"localizedMessage,omitempty"`
-	QuotaInfo        *QuotaExceededInfo `json:"quotaInfo,omitempty"`
+	// ErrorInfo: Error information containing structured domain, reason, and
+	// metadata.
+	ErrorInfo *ErrorInfo `json:"errorInfo,omitempty"`
+	// Help: Links and information to help the user resolve the error.
+	Help *Help `json:"help,omitempty"`
+	// LocalizedMessage: A localized human-readable error message intended for end
+	// users.
+	LocalizedMessage *LocalizedMessage `json:"localizedMessage,omitempty"`
+	// QuotaInfo: Details about quota limits and metrics when a quota is exceeded.
+	QuotaInfo *QuotaExceededInfo `json:"quotaInfo,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ErrorInfo") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -31260,6 +31272,9 @@ func (s InstanceGroupManagerResizeRequestStatusLastAttemptError) MarshalJSON() (
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// InstanceGroupManagerResizeRequestStatusLastAttemptErrorErrors: Represents a
+// single error encountered during the processing of an
+// operation.
 type InstanceGroupManagerResizeRequestStatusLastAttemptErrorErrors struct {
 	// Code: [Output Only] The error type identifier for this error.
 	Code string `json:"code,omitempty"`
@@ -31295,11 +31310,20 @@ func (s InstanceGroupManagerResizeRequestStatusLastAttemptErrorErrors) MarshalJS
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// InstanceGroupManagerResizeRequestStatusLastAttemptErrorErrorsErrorDetails:
+// Container for structured error details providing additional context
+// specific to the encountered error code.
 type InstanceGroupManagerResizeRequestStatusLastAttemptErrorErrorsErrorDetails struct {
-	ErrorInfo        *ErrorInfo         `json:"errorInfo,omitempty"`
-	Help             *Help              `json:"help,omitempty"`
-	LocalizedMessage *LocalizedMessage  `json:"localizedMessage,omitempty"`
-	QuotaInfo        *QuotaExceededInfo `json:"quotaInfo,omitempty"`
+	// ErrorInfo: Error information containing structured domain, reason, and
+	// metadata.
+	ErrorInfo *ErrorInfo `json:"errorInfo,omitempty"`
+	// Help: Links and information to help the user resolve the error.
+	Help *Help `json:"help,omitempty"`
+	// LocalizedMessage: A localized human-readable error message intended for end
+	// users.
+	LocalizedMessage *LocalizedMessage `json:"localizedMessage,omitempty"`
+	// QuotaInfo: Details about quota limits and metrics when a quota is exceeded.
+	QuotaInfo *QuotaExceededInfo `json:"quotaInfo,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ErrorInfo") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -31717,6 +31741,10 @@ func (s InstanceGroupManagerStatusAcceleratorTopologyAcceleratorTopologyStateDet
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// InstanceGroupManagerStatusAcceleratorTopologyAcceleratorTopologyStateDetailsE
+// rrorErrors: Represents a single error encountered during the processing of
+// an
+// operation.
 type InstanceGroupManagerStatusAcceleratorTopologyAcceleratorTopologyStateDetailsErrorErrors struct {
 	// Code: [Output Only] The error type identifier for this error.
 	Code string `json:"code,omitempty"`
@@ -31752,11 +31780,21 @@ func (s InstanceGroupManagerStatusAcceleratorTopologyAcceleratorTopologyStateDet
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// InstanceGroupManagerStatusAcceleratorTopologyAcceleratorTopologyStateDetailsE
+// rrorErrorsErrorDetails: Container for structured error details providing
+// additional context
+// specific to the encountered error code.
 type InstanceGroupManagerStatusAcceleratorTopologyAcceleratorTopologyStateDetailsErrorErrorsErrorDetails struct {
-	ErrorInfo        *ErrorInfo         `json:"errorInfo,omitempty"`
-	Help             *Help              `json:"help,omitempty"`
-	LocalizedMessage *LocalizedMessage  `json:"localizedMessage,omitempty"`
-	QuotaInfo        *QuotaExceededInfo `json:"quotaInfo,omitempty"`
+	// ErrorInfo: Error information containing structured domain, reason, and
+	// metadata.
+	ErrorInfo *ErrorInfo `json:"errorInfo,omitempty"`
+	// Help: Links and information to help the user resolve the error.
+	Help *Help `json:"help,omitempty"`
+	// LocalizedMessage: A localized human-readable error message intended for end
+	// users.
+	LocalizedMessage *LocalizedMessage `json:"localizedMessage,omitempty"`
+	// QuotaInfo: Details about quota limits and metrics when a quota is exceeded.
+	QuotaInfo *QuotaExceededInfo `json:"quotaInfo,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ErrorInfo") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -31880,6 +31918,9 @@ func (s InstanceGroupManagerStatusBulkInstanceOperationLastProgressCheckError) M
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// InstanceGroupManagerStatusBulkInstanceOperationLastProgressCheckErrorErrors:
+// Represents a single error encountered during the processing of an
+// operation.
 type InstanceGroupManagerStatusBulkInstanceOperationLastProgressCheckErrorErrors struct {
 	// Code: [Output Only] The error type identifier for this error.
 	Code string `json:"code,omitempty"`
@@ -31915,11 +31956,21 @@ func (s InstanceGroupManagerStatusBulkInstanceOperationLastProgressCheckErrorErr
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// InstanceGroupManagerStatusBulkInstanceOperationLastProgressCheckErrorErrorsEr
+// rorDetails: Container for structured error details providing additional
+// context
+// specific to the encountered error code.
 type InstanceGroupManagerStatusBulkInstanceOperationLastProgressCheckErrorErrorsErrorDetails struct {
-	ErrorInfo        *ErrorInfo         `json:"errorInfo,omitempty"`
-	Help             *Help              `json:"help,omitempty"`
-	LocalizedMessage *LocalizedMessage  `json:"localizedMessage,omitempty"`
-	QuotaInfo        *QuotaExceededInfo `json:"quotaInfo,omitempty"`
+	// ErrorInfo: Error information containing structured domain, reason, and
+	// metadata.
+	ErrorInfo *ErrorInfo `json:"errorInfo,omitempty"`
+	// Help: Links and information to help the user resolve the error.
+	Help *Help `json:"help,omitempty"`
+	// LocalizedMessage: A localized human-readable error message intended for end
+	// users.
+	LocalizedMessage *LocalizedMessage `json:"localizedMessage,omitempty"`
+	// QuotaInfo: Details about quota limits and metrics when a quota is exceeded.
+	QuotaInfo *QuotaExceededInfo `json:"quotaInfo,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ErrorInfo") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -32388,7 +32439,7 @@ func (s InstanceGroupManagersAbandonInstancesRequest) MarshalJSON() ([]byte, err
 // InstanceGroupManagers.applyUpdatesToInstances
 type InstanceGroupManagersApplyUpdatesRequest struct {
 	// AllInstances: Flag to update all instances instead of specified list of
-	// “instances”.
+	// "instances".
 	// If the flag is set to true then the instances may not be specified
 	// in the request.
 	AllInstances bool `json:"allInstances,omitempty"`
@@ -32782,6 +32833,10 @@ func (s InstanceGroupManagersGetAvailableAcceleratorTopologiesResponseAccelerato
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// InstanceGroupManagersGetAvailableAcceleratorTopologiesResponseAcceleratorTopo
+// logyStateErrorErrors: Represents a single error encountered during the
+// processing of an
+// operation.
 type InstanceGroupManagersGetAvailableAcceleratorTopologiesResponseAcceleratorTopologyStateErrorErrors struct {
 	// Code: [Output Only] The error type identifier for this error.
 	Code string `json:"code,omitempty"`
@@ -32817,11 +32872,21 @@ func (s InstanceGroupManagersGetAvailableAcceleratorTopologiesResponseAccelerato
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// InstanceGroupManagersGetAvailableAcceleratorTopologiesResponseAcceleratorTopo
+// logyStateErrorErrorsErrorDetails: Container for structured error details
+// providing additional context
+// specific to the encountered error code.
 type InstanceGroupManagersGetAvailableAcceleratorTopologiesResponseAcceleratorTopologyStateErrorErrorsErrorDetails struct {
-	ErrorInfo        *ErrorInfo         `json:"errorInfo,omitempty"`
-	Help             *Help              `json:"help,omitempty"`
-	LocalizedMessage *LocalizedMessage  `json:"localizedMessage,omitempty"`
-	QuotaInfo        *QuotaExceededInfo `json:"quotaInfo,omitempty"`
+	// ErrorInfo: Error information containing structured domain, reason, and
+	// metadata.
+	ErrorInfo *ErrorInfo `json:"errorInfo,omitempty"`
+	// Help: Links and information to help the user resolve the error.
+	Help *Help `json:"help,omitempty"`
+	// LocalizedMessage: A localized human-readable error message intended for end
+	// users.
+	LocalizedMessage *LocalizedMessage `json:"localizedMessage,omitempty"`
+	// QuotaInfo: Details about quota limits and metrics when a quota is exceeded.
+	QuotaInfo *QuotaExceededInfo `json:"quotaInfo,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ErrorInfo") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -32841,13 +32906,12 @@ func (s InstanceGroupManagersGetAvailableAcceleratorTopologiesResponseAccelerato
 }
 
 type InstanceGroupManagersListErrorsResponse struct {
-	// Items: Output only. [Output Only] The list of errors of the managed instance
-	// group.
+	// Items: Output only. The list of errors of the managed instance group.
 	Items []*InstanceManagedByIgmError `json:"items,omitempty"`
-	// NextPageToken: Output only. [Output Only] This token allows you to get the
-	// next page of results for
-	// list requests. If the number of results is larger thanmaxResults, use the
-	// nextPageToken as a value for
+	// NextPageToken: Output only. This token allows you to get the next page of
+	// results for list requests.
+	// If the number of results is larger than maxResults
+	// , then use the nextPageToken as a value for
 	// the query parameter pageToken in the next list request.
 	// Subsequent list requests will have their own nextPageToken to
 	// continue paging through the results.
@@ -44514,6 +44578,9 @@ func (s ManagedInstanceLastAttemptErrors) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// ManagedInstanceLastAttemptErrorsErrors: Represents a single error
+// encountered during the processing of an
+// operation.
 type ManagedInstanceLastAttemptErrorsErrors struct {
 	// Code: [Output Only] The error type identifier for this error.
 	Code string `json:"code,omitempty"`
@@ -44549,11 +44616,20 @@ func (s ManagedInstanceLastAttemptErrorsErrors) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// ManagedInstanceLastAttemptErrorsErrorsErrorDetails: Container for structured
+// error details providing additional context
+// specific to the encountered error code.
 type ManagedInstanceLastAttemptErrorsErrorsErrorDetails struct {
-	ErrorInfo        *ErrorInfo         `json:"errorInfo,omitempty"`
-	Help             *Help              `json:"help,omitempty"`
-	LocalizedMessage *LocalizedMessage  `json:"localizedMessage,omitempty"`
-	QuotaInfo        *QuotaExceededInfo `json:"quotaInfo,omitempty"`
+	// ErrorInfo: Error information containing structured domain, reason, and
+	// metadata.
+	ErrorInfo *ErrorInfo `json:"errorInfo,omitempty"`
+	// Help: Links and information to help the user resolve the error.
+	Help *Help `json:"help,omitempty"`
+	// LocalizedMessage: A localized human-readable error message intended for end
+	// users.
+	LocalizedMessage *LocalizedMessage `json:"localizedMessage,omitempty"`
+	// QuotaInfo: Details about quota limits and metrics when a quota is exceeded.
+	QuotaInfo *QuotaExceededInfo `json:"quotaInfo,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ErrorInfo") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -45351,6 +45427,10 @@ func (s MultiMigStatusAcceleratorTopologyAcceleratorTopologyStateLastCheckError)
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// MultiMigStatusAcceleratorTopologyAcceleratorTopologyStateLastCheckErrorErrors
+// : Represents a single error encountered during the processing of
+// an
+// operation.
 type MultiMigStatusAcceleratorTopologyAcceleratorTopologyStateLastCheckErrorErrors struct {
 	// Code: [Output Only] The error type identifier for this error.
 	Code string `json:"code,omitempty"`
@@ -45386,11 +45466,21 @@ func (s MultiMigStatusAcceleratorTopologyAcceleratorTopologyStateLastCheckErrorE
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// MultiMigStatusAcceleratorTopologyAcceleratorTopologyStateLastCheckErrorErrors
+// ErrorDetails: Container for structured error details providing additional
+// context
+// specific to the encountered error code.
 type MultiMigStatusAcceleratorTopologyAcceleratorTopologyStateLastCheckErrorErrorsErrorDetails struct {
-	ErrorInfo        *ErrorInfo         `json:"errorInfo,omitempty"`
-	Help             *Help              `json:"help,omitempty"`
-	LocalizedMessage *LocalizedMessage  `json:"localizedMessage,omitempty"`
-	QuotaInfo        *QuotaExceededInfo `json:"quotaInfo,omitempty"`
+	// ErrorInfo: Error information containing structured domain, reason, and
+	// metadata.
+	ErrorInfo *ErrorInfo `json:"errorInfo,omitempty"`
+	// Help: Links and information to help the user resolve the error.
+	Help *Help `json:"help,omitempty"`
+	// LocalizedMessage: A localized human-readable error message intended for end
+	// users.
+	LocalizedMessage *LocalizedMessage `json:"localizedMessage,omitempty"`
+	// QuotaInfo: Details about quota limits and metrics when a quota is exceeded.
+	QuotaInfo *QuotaExceededInfo `json:"quotaInfo,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ErrorInfo") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -54221,9 +54311,10 @@ type Operation struct {
 	// `PENDING`, `RUNNING`, or `DONE`.
 	//
 	// Possible values:
-	//   "DONE"
-	//   "PENDING"
-	//   "RUNNING"
+	//   "DONE" - The operation has completed processing successfully or with an
+	// error.
+	//   "PENDING" - The operation is waiting to be processed.
+	//   "RUNNING" - The operation is actively being processed.
 	Status string `json:"status,omitempty"`
 	// StatusMessage: [Output Only] An optional textual description of the current
 	// status of the
@@ -54298,6 +54389,9 @@ func (s OperationError) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// OperationErrorErrors: Represents a single error encountered during the
+// processing of an
+// operation.
 type OperationErrorErrors struct {
 	// Code: [Output Only] The error type identifier for this error.
 	Code string `json:"code,omitempty"`
@@ -54333,11 +54427,20 @@ func (s OperationErrorErrors) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// OperationErrorErrorsErrorDetails: Container for structured error details
+// providing additional context
+// specific to the encountered error code.
 type OperationErrorErrorsErrorDetails struct {
-	ErrorInfo        *ErrorInfo         `json:"errorInfo,omitempty"`
-	Help             *Help              `json:"help,omitempty"`
-	LocalizedMessage *LocalizedMessage  `json:"localizedMessage,omitempty"`
-	QuotaInfo        *QuotaExceededInfo `json:"quotaInfo,omitempty"`
+	// ErrorInfo: Error information containing structured domain, reason, and
+	// metadata.
+	ErrorInfo *ErrorInfo `json:"errorInfo,omitempty"`
+	// Help: Links and information to help the user resolve the error.
+	Help *Help `json:"help,omitempty"`
+	// LocalizedMessage: A localized human-readable error message intended for end
+	// users.
+	LocalizedMessage *LocalizedMessage `json:"localizedMessage,omitempty"`
+	// QuotaInfo: Details about quota limits and metrics when a quota is exceeded.
+	QuotaInfo *QuotaExceededInfo `json:"quotaInfo,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ErrorInfo") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -57810,6 +57913,24 @@ type PublicAdvertisedPrefix struct {
 	// which
 	// cannot be a dash.
 	Name string `json:"name,omitempty"`
+	// NetworkTier: Network tier to be used for this prefix. All child delegated
+	// prefixes will
+	// inherit this field. If this field is not specified, it defaults to
+	// the
+	// network tier of the project that the PublicAdvertisedPrefix belongs to.
+	//
+	// Possible values:
+	//   "FIXED_STANDARD" - Public internet quality with fixed bandwidth.
+	//   "PREMIUM" - High quality, Google-grade network tier, support for all
+	// networking
+	// products.
+	//   "STANDARD" - Public internet quality, only limited support for other
+	// networking
+	// products.
+	//   "STANDARD_OVERRIDES_FIXED_STANDARD" - (Output only) Temporary tier for
+	// FIXED_STANDARD when fixed standard tier
+	// is expired or not configured.
+	NetworkTier string `json:"networkTier,omitempty"`
 	// PdpScope: Specifies how child public delegated prefix will be scoped. It
 	// could
 	// be one of following values:
@@ -58218,6 +58339,24 @@ type PublicDelegatedPrefix struct {
 	// which
 	// cannot be a dash.
 	Name string `json:"name,omitempty"`
+	// NetworkTier: Network tier of the public delegated prefix. If populated, it
+	// must match
+	// the network tier of the parent public advertised prefix. If not
+	// populated,
+	// it defaults to the network tier of the parent public advertised prefix.
+	//
+	// Possible values:
+	//   "FIXED_STANDARD" - Public internet quality with fixed bandwidth.
+	//   "PREMIUM" - High quality, Google-grade network tier, support for all
+	// networking
+	// products.
+	//   "STANDARD" - Public internet quality, only limited support for other
+	// networking
+	// products.
+	//   "STANDARD_OVERRIDES_FIXED_STANDARD" - (Output only) Temporary tier for
+	// FIXED_STANDARD when fixed standard tier
+	// is expired or not configured.
+	NetworkTier string `json:"networkTier,omitempty"`
 	// ParentPrefix: The URL of parent prefix. Either PublicAdvertisedPrefix
 	// or
 	// PublicDelegatedPrefix.
@@ -60777,7 +60916,7 @@ func (s RegionInstanceGroupManagersAdoptInstancesRequest) MarshalJSON() ([]byte,
 // RegionInstanceGroupManagers.applyUpdatesToInstances
 type RegionInstanceGroupManagersApplyUpdatesRequest struct {
 	// AllInstances: Flag to update all instances instead of specified list of
-	// “instances”.
+	// "instances".
 	// If the flag is set to true then the instances may not be specified
 	// in the request.
 	AllInstances bool `json:"allInstances,omitempty"`

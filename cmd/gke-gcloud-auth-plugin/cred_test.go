@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"path"
 	"testing"
@@ -36,60 +37,124 @@ var (
     "current_context": "%s",
     "access_token": "%s",
     "token_expiry": "%s",
-	"extra_args": "%s"
+	"extra_args": "%s",
+    "gcloud_config": {
+        "config_dir": "%s",
+        "active_config": "%s",
+        "config_hash": "%s"
+    }
 }
 `
 	invalidCacheFile   = "invalid_cache_file"
 	fakeCurrentContext = "gke_user-gke-dev_us-east1-b_cluster-1"
 	cachedAccessToken  = "ya29.cached_token"
+	fakeCloudSDKConfig = "/Users/username/.config/gcloud"
+	fakeConfigName     = "default"
+	fakeConfigContents = `[core]
+account = username@google.com
+project = username-gke-dev
+
+[container]
+use_application_default_credentials = false
+cluster = username-cluster
+
+[compute]
+zone = us-central1-c
+`
+	fakeChangedConfigContents = `[core]
+account = other-user@google.com
+project = username-gke-dev
+
+[container]
+use_application_default_credentials = false
+cluster = username-cluster
+
+[compute]
+zone = us-central1-c
+`
+	fakeConfigHash        = fmt.Sprintf("%x", sha256.Sum256([]byte(fakeConfigContents)))
+	fakeChangedConfigHash = fmt.Sprintf("%x", sha256.Sum256([]byte(fakeChangedConfigContents)))
 
 	validCacheFile = fmt.Sprintf(baseCacheFile,
 		fakeCurrentContext,
 		cachedAccessToken,
 		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
-		"")
+		"",
+		fakeCloudSDKConfig,
+		fakeConfigName,
+		fakeConfigHash)
 
 	validCacheFileWithExtraArgs = fmt.Sprintf(baseCacheFile,
 		fakeCurrentContext,
 		cachedAccessToken,
 		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
-		fmt.Sprintf("--project=%s --account=%s", fakeProject, fakeAccount))
+		fmt.Sprintf("--project=%s --account=%s", fakeProject, fakeAccount),
+		fakeCloudSDKConfig,
+		fakeConfigName,
+		fakeConfigHash)
 
 	validCacheFileWithImpersonateServiceAccount = fmt.Sprintf(baseCacheFile,
 		fakeCurrentContext,
 		cachedAccessToken,
 		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
-		"--impersonate-service-account="+fakeImpersonateServiceAccount)
+		"--impersonate-service-account="+fakeImpersonateServiceAccount,
+		fakeCloudSDKConfig,
+		fakeConfigName,
+		fakeConfigHash)
 
 	cacheFileWithTokenExpired = fmt.Sprintf(baseCacheFile,
 		fakeCurrentContext,
 		cachedAccessToken,
 		time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
-		"")
+		"",
+		fakeCloudSDKConfig,
+		fakeConfigName,
+		fakeConfigHash)
 
 	cachedFileAccessTokenIsEmpty = fmt.Sprintf(baseCacheFile,
 		fakeCurrentContext,
 		"",
 		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
-		"")
+		"",
+		fakeCloudSDKConfig,
+		fakeConfigName,
+		fakeConfigHash)
 
 	cachedFileExpiryTimestampIsMalformed = fmt.Sprintf(baseCacheFile,
 		fakeCurrentContext,
 		cachedAccessToken,
 		"bad time stamp",
-		"")
+		"",
+		fakeCloudSDKConfig,
+		fakeConfigName,
+		fakeConfigHash)
 
 	cachedFileClusterContextChanged = fmt.Sprintf(baseCacheFile,
 		"old cluster context",
 		cachedAccessToken,
 		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
-		"")
+		"",
+		fakeCloudSDKConfig,
+		fakeConfigName,
+		fakeConfigHash)
 
 	cachedFileWithBadExtraArgs = fmt.Sprintf(baseCacheFile,
 		fakeCurrentContext,
 		cachedAccessToken,
 		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
-		"FakeArgs")
+		"FakeArgs",
+		fakeCloudSDKConfig,
+		fakeConfigName,
+		fakeConfigHash)
+
+	cachedFileWithOldGcloudConfig = fmt.Sprintf(baseCacheFile,
+		fakeCurrentContext,
+		cachedAccessToken,
+		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		"",
+		fakeCloudSDKConfig,
+		fakeConfigName,
+		fakeChangedConfigHash)
 
 	baseCacheFileWithAuthzToken = `{
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
@@ -104,28 +169,48 @@ var (
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z",
-    "extra_args": ""
+    "extra_args": "",
+    "gcloud_config": {
+        "config_dir": "/Users/username/.config/gcloud",
+        "active_config": "default",
+        "config_hash": "` + fakeConfigHash + `"
+    }
 }`
 
 	wantCacheFileWithExtraArgs = `{
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z",
-    "extra_args": "--project=` + fakeProject + ` --account=` + fakeAccount + `"
+    "extra_args": "--project=` + fakeProject + ` --account=` + fakeAccount + `",
+    "gcloud_config": {
+        "config_dir": "/Users/username/.config/gcloud",
+        "active_config": "default",
+        "config_hash": "` + fakeConfigHash + `"
+    }
 }`
 
 	wantCacheFileImpersonateServiceAccount = `{
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z",
-    "extra_args": "--impersonate-service-account=` + fakeImpersonateServiceAccount + `"
+    "extra_args": "--impersonate-service-account=` + fakeImpersonateServiceAccount + `",
+    "gcloud_config": {
+        "config_dir": "/Users/username/.config/gcloud",
+        "active_config": "default",
+        "config_hash": "` + fakeConfigHash + `"
+    }
 }`
 
 	wantCacheFileWithAuthzToken = `{
     "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
     "access_token": "ya29.gcloud_t0k3n",
     "token_expiry": "2022-01-01T00:00:00Z",
-    "extra_args": ""
+    "extra_args": "",
+    "gcloud_config": {
+        "config_dir": "/Users/username/.config/gcloud",
+        "active_config": "default",
+        "config_hash": "` + fakeConfigHash + `"
+    }
 }`
 
 	// Edge cloud test helpers
@@ -133,19 +218,19 @@ var (
 	fakeEdgeCloudCluster  = "fake-edge-cloud-cluster"
 	kubeCtlStartingConfig = fakeCurrentContext
 
-	validEdgeCloudCacheFile = fmt.Sprintf(baseCacheFile,
-		kubeCtlStartingConfig,
-		"EdgeCloud_CachedAccessToken",
-		time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
-		"fake-edge-cloud-cluster --project= --location=us-central-fake --format=json",
-	)
+	validEdgeCloudCacheFile = `{
+    "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
+    "access_token": "EdgeCloud_CachedAccessToken",
+    "token_expiry": "2022-01-03T00:00:00Z",
+    "extra_args": "fake-edge-cloud-cluster --project= --location=us-central-fake --format=json"
+}`
 
-	expiredEdgeCloudCacheFile = fmt.Sprintf(baseCacheFile,
-		kubeCtlStartingConfig,
-		"EdgeCloud_CachedAccessToken",
-		time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
-		"fake-edge-cloud-cluster --project= --location=us-central-fake --format=json",
-	)
+	expiredEdgeCloudCacheFile = `{
+    "current_context": "gke_user-gke-dev_us-east1-b_cluster-1",
+    "access_token": "EdgeCloud_CachedAccessToken",
+    "token_expiry": "2022-01-01T00:00:00Z",
+    "extra_args": "fake-edge-cloud-cluster --project= --location=us-central-fake --format=json"
+}`
 
 	wantEdgeCloudCacheFile = fmt.Sprintf(`{
     "current_context": "%s",
@@ -158,6 +243,8 @@ var (
 func TestExecCredential(t *testing.T) {
 	newYears := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
 	cacheFilesWrittenBySubtest := make(map[string]string)
+	t.Setenv("CLOUDSDK_CONFIG", fakeCloudSDKConfig)
+	t.Setenv(strictCacheInvalidationEnvVar, "true")
 
 	testCases := []struct {
 		testName       string
@@ -461,6 +548,28 @@ func TestExecCredential(t *testing.T) {
 			wantCacheFile: wantCacheFile,
 		},
 		{
+			testName: "cachedFileGcloudConfigChanged",
+			p: &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile: func(filename string) ([]byte, error) {
+					switch filename {
+					case fakeGetCacheFilePath():
+						return []byte(cachedFileWithOldGcloudConfig), nil
+					default:
+						return fakeReadFile(filename)
+					}
+				},
+				timeNow: fakeTimeNow,
+				tokenProvider: &gcloudTokenProvider{
+					readGcloudConfigRaw: fakeGcloudConfigOutput,
+					readFile:            fakeReadFile,
+				},
+			},
+			wantToken:     fakeExecCredential("ya29.gcloud_t0k3n", &metav1.Time{Time: newYears}),
+			wantCacheFile: wantCacheFile,
+		},
+		{
 			testName: "CachingFailsSafely",
 			p: &plugin{
 				k8sStartingConfig: fakeK8sStartingConfig,
@@ -720,6 +829,56 @@ func TestCloudsdkBasedGcloudAccessToken(t *testing.T) {
 	}
 }
 
+func TestCachedGcloudAccessTokenFallsBackWhenConfigCannotBeRead(t *testing.T) {
+	t.Setenv(strictCacheInvalidationEnvVar, "true")
+	t.Setenv("CLOUDSDK_CONFIG", fakeCloudSDKConfig)
+	p := &plugin{
+		k8sStartingConfig: fakeK8sStartingConfig,
+		getCacheFilePath:  fakeGetCacheFilePath,
+		readFile: func(filename string) ([]byte, error) {
+			if filename == fakeGetCacheFilePath() {
+				return []byte(validCacheFile), nil
+			}
+			return nil, fmt.Errorf("cannot read %s", filename)
+		},
+		timeNow:       fakeTimeNow,
+		tokenProvider: &gcloudTokenProvider{},
+	}
+
+	token, _, err := p.getCachedGcloudAccessToken()
+	if err != nil {
+		t.Fatalf("getCachedGcloudAccessToken() returned an error: %v", err)
+	}
+	if token != cachedAccessToken {
+		t.Fatalf("getCachedGcloudAccessToken() token = %q, want %q", token, cachedAccessToken)
+	}
+}
+
+func TestCurrentGcloudConfigHonorsActiveConfigEnvironmentVariable(t *testing.T) {
+	t.Setenv("CLOUDSDK_CONFIG", fakeCloudSDKConfig)
+	t.Setenv(cloudsdkActiveConfigEnvVar, "overridden")
+	p := &plugin{
+		readFile: func(filename string) ([]byte, error) {
+			if filename != path.Join(fakeCloudSDKConfig, "configurations", "config_overridden") {
+				return nil, fmt.Errorf("unexpected path %s", filename)
+			}
+			return []byte(fakeConfigContents), nil
+		},
+		tokenProvider: &gcloudTokenProvider{},
+	}
+
+	config, err := p.currentGcloudConfig()
+	if err != nil {
+		t.Fatalf("currentGcloudConfig() returned an error: %v", err)
+	}
+	if config.ActiveConfig != "overridden" {
+		t.Errorf("currentGcloudConfig() active config = %q, want overridden", config.ActiveConfig)
+	}
+	if config.ConfigHash != fakeConfigHash {
+		t.Errorf("currentGcloudConfig() config hash = %q, want %q", config.ConfigHash, fakeConfigHash)
+	}
+}
+
 func fakeDefaultTokenSource(ctx context.Context, scope ...string) (oauth2.TokenSource, error) {
 	return &mockTokenSource{}, nil
 }
@@ -813,6 +972,7 @@ func fakeReadFile(filename string) ([]byte, error) {
 
 	m[path.Join("/home/username/.kube", cacheFileName)] = cacheFileWithTokenExpired
 	m[path.Join("/Users/username/.config/gcloud", activeConfig)] = activeUserConfig
+	m["/Users/username/.config/gcloud/configurations/config_default"] = fakeConfigContents
 	m["/Users/username/.config/gcloud/configurations/fakeConfigDefault"] = fakeConfigDefault
 
 	file, present := m[filename]
