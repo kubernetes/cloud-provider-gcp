@@ -17,9 +17,11 @@ package kops
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHydrateTemplate(t *testing.T) {
@@ -107,3 +109,24 @@ func TestConfigFinalize(t *testing.T) {
 		t.Errorf("expected SSHPublicKey to be SSHPrivateKey + .pub, got %s", c.SSHPublicKey)
 	}
 }
+
+func TestRunWithRetry(t *testing.T) {
+	t.Run("success on first try", func(t *testing.T) {
+		err := runWithRetry(func() *exec.Cmd {
+			return exec.Command("true")
+		}, "test command", 3, 10*time.Millisecond)
+		if err != nil {
+			t.Errorf("expected success, got %v", err)
+		}
+	})
+
+	t.Run("fail after retries", func(t *testing.T) {
+		err := runWithRetry(func() *exec.Cmd {
+			return exec.Command("false")
+		}, "failing command", 2, 10*time.Millisecond)
+		if err == nil {
+			t.Errorf("expected error, got nil")
+		}
+	})
+}
+
