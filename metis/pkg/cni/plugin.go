@@ -203,6 +203,10 @@ func (p *Plugin) setupLogging(args *skel.CmdArgs, command string, logFile string
 }
 
 func getGrpcClient(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+	if _, err := os.Stat(socketPath); err != nil {
+		return nil, nil, fmt.Errorf("daemon socket file %s unavailable: %w", socketPath, err)
+	}
+
 	dialOption := grpc.WithTransportCredentials(local.NewCredentials())
 
 	absPath, err := filepath.Abs(socketPath)
