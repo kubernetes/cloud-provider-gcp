@@ -567,4 +567,3 @@ func TestDirectFallback_Disabled(t *testing.T) {
 		t.Fatal("Expected CmdAdd to fail when fallback is disabled and daemon is unavailable, but it succeeded")
 	}
 }
-
