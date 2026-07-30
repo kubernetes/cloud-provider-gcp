@@ -24,7 +24,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -39,14 +38,39 @@ import (
 	"k8s.io/metis/pkg/daemon"
 )
 
-// TestDaemonAndCNIStartupRace verifies concurrent startup behavior when the Daemon and CNI
-// attempt to initialize the SQLite database and allocate IPs at the same time.
-func TestDaemonAndCNIStartupRace(t *testing.T) {
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "race_test.sqlite")
-	socketPath := filepath.Join(tempDir, "race_test.sock")
-	logFile := filepath.Join(tempDir, "metis-cni.log")
+// Helper to run CNI CmdAdd with captured stdout
+func runCNICmdAdd(plugin *cni.Plugin, args *skel.CmdArgs) (*current.Result, error) {
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
 
+	outChan := make(chan string)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		outChan <- buf.String()
+	}()
+
+	err := plugin.CmdAdd(args)
+
+	w.Close()
+	os.Stdout = oldStdout
+	stdoutStr := <-outChan
+	r.Close()
+
+	if err != nil {
+		return nil, err
+	}
+
+	var result current.Result
+	if unmarshalErr := json.Unmarshal([]byte(stdoutStr), &result); unmarshalErr != nil {
+		return nil, fmt.Errorf("CNI result unmarshal error: %w (stdout: %q)", unmarshalErr, stdoutStr)
+	}
+
+	return &result, nil
+}
+
+func setupDaemon(t *testing.T, dbPath, socketPath string) (*daemon.Daemon, context.Context, context.CancelFunc) {
 	t.Setenv("NODE_NAME", "test-node")
 
 	daemonConfig := daemon.Config{
@@ -69,91 +93,162 @@ func TestDaemonAndCNIStartupRace(t *testing.T) {
 	})
 
 	daemonCtx, daemonCancel := context.WithCancel(context.Background())
-	defer daemonCancel()
+	return d, daemonCtx, daemonCancel
+}
 
-	var wg sync.WaitGroup
+// Sequence A: CNI runs BEFORE Daemon starts.
+// CNI falls back to direct mode, initializes SQLite, and allocates an IP.
+// Then Daemon starts up, opens the existing SQLite DB, and processes subsequent gRPC requests cleanly.
+func TestCNI_SequenceA_CNIBeforeDaemon(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "seq_a.sqlite")
+	socketPath := filepath.Join(tempDir, "seq_a.sock")
+	logFile := filepath.Join(tempDir, "seq_a.log")
 
-	// 1. Start the Daemon in the background
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := d.Run(daemonCtx); err != nil {
-			t.Logf("Daemon exited: %v", err)
-		}
-	}()
-
-	// 2. Concurrently attempt CNI allocations (simulating CNI running while Daemon is setting up DB)
 	cniPlugin := cni.NewPlugin(
 		cni.WithSocketPath(socketPath),
 		cni.WithDBPath(dbPath),
 		cni.WithLogFile(logFile),
 	)
 
-	var stdoutMu sync.Mutex
-	cniErrCh := make(chan error, 5)
-
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-
-			containerID := fmt.Sprintf("container-%d", id)
-			args := &skel.CmdArgs{
-				ContainerID: containerID,
-				Netns:       "/var/run/netns/test",
-				IfName:      "eth0",
-				Args:        fmt.Sprintf("K8S_POD_NAME=pod-%d;K8S_POD_NAMESPACE=test-ns", id),
-				StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]], "routes": [{"dst": "0.0.0.0/0"}]}}`),
-			}
-
-			stdoutMu.Lock()
-			oldStdout := os.Stdout
-			r, w, _ := os.Pipe()
-			os.Stdout = w
-
-			outChan := make(chan string)
-			go func() {
-				var buf bytes.Buffer
-				_, _ = io.Copy(&buf, r)
-				outChan <- buf.String()
-			}()
-
-			err := cniPlugin.CmdAdd(args)
-
-			w.Close()
-			os.Stdout = oldStdout
-			stdoutStr := <-outChan
-			r.Close()
-			stdoutMu.Unlock()
-
-			if err != nil {
-				cniErrCh <- fmt.Errorf("CNI CmdAdd failed for pod-%d: %w", id, err)
-				return
-			}
-
-			var result current.Result
-			if unmarshalErr := json.Unmarshal([]byte(stdoutStr), &result); unmarshalErr != nil {
-				cniErrCh <- fmt.Errorf("CNI result unmarshal failed for pod-%d: %w (output: %q)", id, unmarshalErr, stdoutStr)
-				return
-			}
-
-			if len(result.IPs) == 0 {
-				cniErrCh <- fmt.Errorf("CNI result had 0 IPs for pod-%d", id)
-				return
-			}
-		}(i)
+	// 1. Run CNI before daemon exists
+	args1 := &skel.CmdArgs{
+		ContainerID: "container-a1",
+		Netns:       "/var/run/netns/test",
+		IfName:      "eth0",
+		Args:        "K8S_POD_NAME=pod-a1;K8S_POD_NAMESPACE=test-ns",
+		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]], "routes": [{"dst": "0.0.0.0/0"}]}}`),
 	}
 
-	// Stop daemon after tests finish
+	res1, err := runCNICmdAdd(cniPlugin, args1)
+	if err != nil {
+		t.Fatalf("Sequence A: Initial CNI direct fallback failed: %v", err)
+	}
+	if len(res1.IPs) == 0 {
+		t.Fatalf("Sequence A: Expected IP allocation, got 0")
+	}
+
+	// 2. Now start the Daemon on the same DB & socket
+	d, daemonCtx, cancel := setupDaemon(t, dbPath, socketPath)
+	defer cancel()
+
 	go func() {
-		time.Sleep(1 * time.Second)
-		daemonCancel()
+		_ = d.Run(daemonCtx)
 	}()
 
-	wg.Wait()
-	close(cniErrCh)
+	// Wait for daemon socket to be created
+	var socketReady bool
+	for i := 0; i < 20; i++ {
+		if _, statErr := os.Stat(socketPath); statErr == nil {
+			socketReady = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !socketReady {
+		t.Fatalf("Sequence A: Daemon failed to create socket within 1 second")
+	}
 
-	for err := range cniErrCh {
-		t.Errorf("Race test failure: %v", err)
+	// 3. Run CNI again now that daemon is running
+	args2 := &skel.CmdArgs{
+		ContainerID: "container-a2",
+		Netns:       "/var/run/netns/test",
+		IfName:      "eth0",
+		Args:        "K8S_POD_NAME=pod-a2;K8S_POD_NAMESPACE=test-ns",
+		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]], "routes": [{"dst": "0.0.0.0/0"}]}}`),
+	}
+
+	res2, err := runCNICmdAdd(cniPlugin, args2)
+	if err != nil {
+		t.Fatalf("Sequence A: CNI via running daemon failed: %v", err)
+	}
+	if len(res2.IPs) == 0 {
+		t.Fatalf("Sequence A: Expected IP allocation from daemon, got 0")
+	}
+}
+
+// Sequence B: Socket becomes available DURING CNI connection retry loop (Socket Retry -> Daemon Mode).
+func TestCNI_SequenceB_SocketAppearsDuringRetry(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "seq_b.sqlite")
+	socketPath := filepath.Join(tempDir, "seq_b.sock")
+	logFile := filepath.Join(tempDir, "seq_b.log")
+
+	cniPlugin := cni.NewPlugin(
+		cni.WithSocketPath(socketPath),
+		cni.WithDBPath(dbPath),
+		cni.WithLogFile(logFile),
+	)
+
+	// Start daemon with a 150ms delay before socket creation
+	d, daemonCtx, cancel := setupDaemon(t, dbPath, socketPath)
+	defer cancel()
+
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		_ = d.Run(daemonCtx)
+	}()
+
+	args := &skel.CmdArgs{
+		ContainerID: "container-b1",
+		Netns:       "/var/run/netns/test",
+		IfName:      "eth0",
+		Args:        "K8S_POD_NAME=pod-b1;K8S_POD_NAMESPACE=test-ns",
+		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]], "routes": [{"dst": "0.0.0.0/0"}]}}`),
+	}
+
+	// CNI retries 3 times with 100ms delay. Since daemon socket appears after 150ms,
+	// attempt 0 (0ms) fails, attempt 1 (100ms) fails, attempt 2 (200ms) succeeds over daemon gRPC!
+	res, err := runCNICmdAdd(cniPlugin, args)
+	if err != nil {
+		t.Fatalf("Sequence B: CNI socket retry connection failed: %v", err)
+	}
+	if len(res.IPs) == 0 {
+		t.Fatalf("Sequence B: Expected IP allocation, got 0")
+	}
+}
+
+// Sequence C: Daemon is fully running before CNI starts.
+func TestCNI_SequenceC_DaemonAlreadyRunning(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "seq_c.sqlite")
+	socketPath := filepath.Join(tempDir, "seq_c.sock")
+	logFile := filepath.Join(tempDir, "seq_c.log")
+
+	d, daemonCtx, cancel := setupDaemon(t, dbPath, socketPath)
+	defer cancel()
+
+	go func() {
+		_ = d.Run(daemonCtx)
+	}()
+
+	// Wait for socket to exist
+	for i := 0; i < 20; i++ {
+		if _, statErr := os.Stat(socketPath); statErr == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	cniPlugin := cni.NewPlugin(
+		cni.WithSocketPath(socketPath),
+		cni.WithDBPath(dbPath),
+		cni.WithLogFile(logFile),
+	)
+
+	args := &skel.CmdArgs{
+		ContainerID: "container-c1",
+		Netns:       "/var/run/netns/test",
+		IfName:      "eth0",
+		Args:        "K8S_POD_NAME=pod-c1;K8S_POD_NAMESPACE=test-ns",
+		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]], "routes": [{"dst": "0.0.0.0/0"}]}}`),
+	}
+
+	res, err := runCNICmdAdd(cniPlugin, args)
+	if err != nil {
+		t.Fatalf("Sequence C: CNI via running daemon failed: %v", err)
+	}
+	if len(res.IPs) == 0 {
+		t.Fatalf("Sequence C: Expected IP allocation, got 0")
 	}
 }
