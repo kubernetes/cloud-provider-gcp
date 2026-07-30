@@ -67,21 +67,13 @@ func WithLogFile(path string) Option {
 	}
 }
 
-// WithEnableFallback sets whether direct local fallback is enabled when the daemon is unavailable.
-func WithEnableFallback(enable bool) Option {
-	return func(p *Plugin) {
-		p.enableFallback = enable
-	}
-}
-
 // NewPlugin creates a new Plugin with functional options.
 func NewPlugin(opts ...Option) *Plugin {
 	p := &Plugin{
-		newClientFunc:  getGrpcClient,
-		socketPath:     pkg.DefaultSockPath,
-		dbPath:         pkg.DefaultDBPath,
-		logFile:        pkg.DefaultCNILogPath,
-		enableFallback: true,
+		newClientFunc: getGrpcClient,
+		socketPath:    pkg.DefaultSockPath,
+		dbPath:        pkg.DefaultDBPath,
+		logFile:       pkg.DefaultCNILogPath,
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -142,11 +134,6 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 		dbPath = conf.DBPath
 	}
 
-	enableFallback := p.enableFallback
-	if conf.EnableFallback != nil {
-		enableFallback = *conf.EnableFallback
-	}
-
 	var client pb.AdaptiveIpamClient
 	var conn *grpc.ClientConn
 
@@ -166,11 +153,6 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 	sessionCleanup := cleanup
 
 	if clientErr != nil {
-		if !enableFallback {
-			cleanup()
-			return nil, fmt.Errorf("metis cni: daemon connection failed and fallback is disabled: %w", clientErr)
-		}
-
 		logger.Info("Daemon unavailable, falling back to direct local IPAM engine", "socketPath", socketPath, "dbPath", dbPath, "err", clientErr)
 		ctx := context.Background()
 		storeInstance, err := store.NewStore(ctx, logger, dbPath)

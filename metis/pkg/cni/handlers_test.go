@@ -495,7 +495,6 @@ func TestDirectFallback_DaemonUnavailable(t *testing.T) {
 		}),
 		WithDBPath(dbPath),
 		WithLogFile(logFile),
-		WithEnableFallback(true),
 	)
 
 	args := &skel.CmdArgs{
@@ -536,34 +535,5 @@ func TestDirectFallback_DaemonUnavailable(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("CmdDel via direct fallback failed: %v", err)
-	}
-}
-
-func TestDirectFallback_Disabled(t *testing.T) {
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "metis_fallback_disabled_test.sqlite")
-	logFile := filepath.Join(tempDir, "metis-cni-disabled.log")
-
-	plugin := NewPlugin(
-		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
-			return nil, nil, fmt.Errorf("daemon socket unavailable")
-		}),
-		WithDBPath(dbPath),
-		WithLogFile(logFile),
-		WithEnableFallback(false),
-	)
-
-	args := &skel.CmdArgs{
-		ContainerID: "test-container-id",
-		Netns:       "/var/run/netns/test",
-		IfName:      "eth0",
-		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]]}}`),
-	}
-
-	_, _, err := runWithOutputCapture(t, func() error {
-		return plugin.CmdAdd(args)
-	})
-	if err == nil {
-		t.Fatal("Expected CmdAdd to fail when fallback is disabled and daemon is unavailable, but it succeeded")
 	}
 }

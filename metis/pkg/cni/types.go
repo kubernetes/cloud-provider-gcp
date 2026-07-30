@@ -42,11 +42,10 @@ type IPAM struct {
 // PluginConf extends standard CNI network configuration.
 type PluginConf struct {
 	types.PluginConf
-	IPAM           IPAM   `json:"ipam"`
-	DaemonSocket   string `json:"daemonSocket,omitempty"`
-	DBPath         string `json:"dbPath,omitempty"`
-	LogFile        string `json:"logFile,omitempty"`
-	EnableFallback *bool  `json:"enableFallback,omitempty"`
+	IPAM         IPAM   `json:"ipam"`
+	DaemonSocket string `json:"daemonSocket,omitempty"`
+	DBPath       string `json:"dbPath,omitempty"`
+	LogFile      string `json:"logFile,omitempty"`
 }
 
 // K8sArgs contains the standard Kubernetes CNI arguments.
@@ -58,9 +57,8 @@ type K8sArgs struct {
 
 // Plugin holds the runtime configuration and handlers for the CNI plugin.
 type Plugin struct {
-	newClientFunc  func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error)
-	socketPath     string
-	dbPath         string
-	logFile        string
-	enableFallback bool
+	newClientFunc func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error)
+	socketPath    string
+	dbPath        string
+	logFile       string
 }
