@@ -483,3 +483,57 @@ func TestCmdAdd_CleanStdout(t *testing.T) {
 		t.Errorf("Stdout is not valid JSON, does not match schema, or has garbage: %v. Output was: %q", err, stdout)
 	}
 }
+
+func TestDirectFallback_DaemonUnavailable(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "metis_fallback_test.sqlite")
+	logFile := filepath.Join(tempDir, "metis-cni-fallback.log")
+
+	plugin := NewPlugin(
+		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+			return nil, nil, fmt.Errorf("daemon socket unavailable (simulated test error)")
+		}),
+		WithDBPath(dbPath),
+		WithLogFile(logFile),
+	)
+
+	args := &skel.CmdArgs{
+		ContainerID: "test-container-id",
+		Netns:       "/var/run/netns/test",
+		IfName:      "eth0",
+		Args:        "K8S_POD_NAME=test-pod;K8S_POD_NAMESPACE=test-ns",
+		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]], "routes": [{"dst": "0.0.0.0/0"}]}}`),
+	}
+
+	// 1. CmdAdd via direct fallback
+	stdout, _, err := runWithOutputCapture(t, func() error {
+		return plugin.CmdAdd(args)
+	})
+	if err != nil {
+		t.Fatalf("CmdAdd via direct fallback failed: %v", err)
+	}
+
+	var result current.Result
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("Failed to unmarshal CNI result: %v", err)
+	}
+	if len(result.IPs) == 0 {
+		t.Fatalf("Expected allocated IP, got 0 IPs in result")
+	}
+
+	// 2. CmdCheck via direct fallback
+	_, _, err = runWithOutputCapture(t, func() error {
+		return plugin.CmdCheck(args)
+	})
+	if err != nil {
+		t.Fatalf("CmdCheck via direct fallback failed: %v", err)
+	}
+
+	// 3. CmdDel via direct fallback
+	_, _, err = runWithOutputCapture(t, func() error {
+		return plugin.CmdDel(args)
+	})
+	if err != nil {
+		t.Fatalf("CmdDel via direct fallback failed: %v", err)
+	}
+}
