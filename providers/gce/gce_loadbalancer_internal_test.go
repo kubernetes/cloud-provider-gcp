@@ -813,6 +813,32 @@ func TestEnsureInternalLoadBalancerDeleted(t *testing.T) {
 	assertInternalLbResourcesDeleted(t, gce, svc, vals, true)
 }
 
+func TestEnsureInternalLoadBalancerDeletedServiceNotFound(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	svc := fakeLoadbalancerService(string(LBTypeInternal))
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+	syncResult, err := createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	assert.NoError(t, err)
+	assertILBSyncResultAnnotations(t, gce, svc, vals.ClusterID, syncResult)
+
+	// Delete service from API server before deleting the load balancer.
+	err = gce.client.CoreV1().Services(svc.Namespace).Delete(context.TODO(), svc.Name, metav1.DeleteOptions{})
+	require.NoError(t, err)
+
+	// ensureInternalLoadBalancerDeleted should succeed even though the service doesn't exist,
+	// because removeFinalizer should ignore NotFound errors.
+	err = gce.ensureInternalLoadBalancerDeleted(vals.ClusterName, vals.ClusterID, svc)
+	assert.NoError(t, err)
+
+	assertInternalLbResourcesDeleted(t, gce, svc, vals, true)
+}
+
 func TestSkipInstanceGroupDeletion(t *testing.T) {
 	t.Parallel()
 

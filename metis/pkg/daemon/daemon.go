@@ -138,7 +138,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		CooldownPushbackThreshold:       d.Config.CooldownPushbackThreshold,
 	})
 
-	server.monitor = monitorInstance
+	server.engine.SetMonitor(monitorInstance)
 
 	// TODO: Replace with nncInformerFactory.StartWithContext(ctx) once the
 	// gke-networking-api library is updated to generate StartWithContext.

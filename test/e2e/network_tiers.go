@@ -65,7 +65,7 @@ var _ = ginkgo.Describe("[cloud-provider-gcp-e2e] Network Tiers", func() {
 	})
 
 	f.It("should be able to create and tear down a standard-tier load balancer", f.WithSlow(), func(ctx context.Context) {
-		lagTimeout := e2eservice.LoadBalancerLagTimeoutDefault
+		lagTimeout := e2eservice.GetServiceLoadBalancerPropagationTimeout(ctx, cs)
 		createTimeout := e2eservice.GetServiceLoadBalancerCreationTimeout(ctx, cs)
 
 		svcName := "net-tiers-svc"
