@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package admin.v1;
+
+option go_package = "k8s.io/metis/api/admin/v1;adminv1";
+
+// Admin service exposes internal Metis daemon state for structural debugging over UDS.
+service Admin {
+  // ListCIDRBlocks returns a formatted table of all CIDR blocks.
+  rpc ListCIDRBlocks(ListCIDRBlocksRequest) returns (AdminTableDumpResponse);
+  // ListIPAddresses returns a formatted table of all IP addresses.
+  rpc ListIPAddresses(ListIPAddressesRequest) returns (AdminTableDumpResponse);
+}
+
+// ListCIDRBlocksRequest requests a dump of CIDR blocks from the DB.
+message ListCIDRBlocksRequest {
+  // Optional native SQLite WHERE clause to filter the returned rows.
+  string filter = 1;
+}
+
+// ListIPAddressesRequest requests a dump of IP addresses from the DB.
+message ListIPAddressesRequest {
+  // Optional native SQLite WHERE clause to filter the returned rows.
+  string filter = 1;
+}
+
+// AdminTableDumpResponse is a generic table output containing column headers and row values.
+message AdminTableDumpResponse {
+  // The column headers dynamically extracted from the database.
+  repeated string headers = 1;
+  // The individual row records mapped column-by-column.
+  repeated Row rows = 2;
+}
+
+// Row represents a single table record as generic string data.
+message Row {
+  // The string representations of each cell in the row aligned with headers.
+  repeated string values = 1;
+}
