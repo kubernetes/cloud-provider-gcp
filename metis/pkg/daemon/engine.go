@@ -71,7 +71,7 @@ func NewIPAMEngine(logger logr.Logger, storeInstance *store.Store, releaseCooldo
 		releaseCooldown: releaseCooldown,
 		busyTimeout:     busyTimeout,
 		logger:          logger,
-		requestsMap:     make(map[string]map[cniClient]chan struct{}),
+		requestsMap:     map[string]map[cniClient]chan struct{}{},
 		monitor:         monitor,
 	}
 }
@@ -201,7 +201,7 @@ func (e *IPAMEngine) allocateIPWithRetry(ctx context.Context, params store.Alloc
 	})
 
 	if err != nil {
-		if (errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded)) && lastErr != nil {
+		if wait.Interrupted(err) && lastErr != nil {
 			err = lastErr // Use last error if timed out
 		}
 		return "", "", err
@@ -392,7 +392,7 @@ func (e *IPAMEngine) getOrCreatePendingRequest(clientKey cniClient, network stri
 
 	netMap, netOk := e.requestsMap[network]
 	if !netOk {
-		netMap = make(map[cniClient]chan struct{})
+		netMap = map[cniClient]chan struct{}{}
 		e.requestsMap[network] = netMap
 	}
 	ch, ok := netMap[clientKey]
