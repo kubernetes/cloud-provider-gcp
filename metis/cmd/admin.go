@@ -114,7 +114,7 @@ func printDumpResponse(res *adminv1.AdminTableDumpResponse, outputFormat string)
 	if outputFormat == "table" {
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		// Print Headers
-		_ , _ = fmt.Fprintln(w, strings.ToUpper(strings.Join(res.Headers, "\t")))
+		_, _ = fmt.Fprintln(w, strings.ToUpper(strings.Join(res.Headers, "\t")))
 		// Print Rows
 		for _, row := range res.Rows {
 			_, _ = fmt.Fprintln(w, strings.Join(row.Values, "\t"))
