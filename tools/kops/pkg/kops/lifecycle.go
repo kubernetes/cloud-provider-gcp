@@ -168,6 +168,13 @@ func runKubetest2(c *Config, args []string) error {
 }
 
 func prepareLocalCCMManifest(c *Config) (string, error) {
+	if strings.ContainsAny(c.ImageTag, "\n\r") {
+		return "", fmt.Errorf("invalid characters (newline) in image tag")
+	}
+	if strings.ContainsAny(c.ImageRepo, "\n\r") {
+		return "", fmt.Errorf("invalid characters (newline) in image repo")
+	}
+
 	repoRoot, err := repoRoot()
 	if err != nil {
 		return "", err
