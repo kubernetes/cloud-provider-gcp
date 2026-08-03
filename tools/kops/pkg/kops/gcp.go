@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // EnsureStateStore ensures the GCS bucket for kOps state exists and has correct settings.
@@ -37,26 +38,30 @@ func EnsureStateStore(c *Config) error {
 	// Check if bucket exists
 	lsCmd := exec.Command("gsutil", "ls", "-p", c.GCPProject, c.StateStore)
 	if err := lsCmd.Run(); err != nil {
-		// Assume it doesn't exist, try to create it
+		// Assume it doesn't exist, try to create it with retries
 		fmt.Printf("Bucket %s does not exist, creating...\n", c.StateStore)
-		mbCmd := exec.Command("gsutil", "mb", "-p", c.GCPProject, "-l", c.GCPLocation, c.StateStore)
-		mbCmd.Stdout = os.Stdout
-		mbCmd.Stderr = os.Stderr
-		if err := mbCmd.Run(); err != nil {
+		err := runWithRetry(func() *exec.Cmd {
+			return exec.Command("gsutil", "mb", "-p", c.GCPProject, "-l", c.GCPLocation, c.StateStore)
+		}, "creating state store bucket", 3, 2*time.Second)
+		if err != nil {
 			return fmt.Errorf("failed to create bucket: %v", err)
 		}
 	}
 
-	// Disable uniform bucket-level access
-	ublaCmd := exec.Command("gsutil", "ubla", "set", "off", c.StateStore)
-	ublaCmd.Stdout = os.Stdout
-	ublaCmd.Stderr = os.Stderr
-	if err := ublaCmd.Run(); err != nil {
+	// Poll until GCS bucket creation/propagation is complete and ready for operations
+	if err := waitForBucketReadiness(c.StateStore, 15, 2*time.Second); err != nil {
+		return fmt.Errorf("state store bucket is not ready: %v", err)
+	}
+
+	// Disable uniform bucket-level access with retries
+	err := runWithRetry(func() *exec.Cmd {
+		return exec.Command("gsutil", "ubla", "set", "off", c.StateStore)
+	}, "disabling UBLA", 5, 2*time.Second)
+	if err != nil {
 		return fmt.Errorf("failed to disable UBLA: %v", err)
 	}
 
 	// Grant storage.admin to the current account
-	// SA=$(gcloud config list --format 'value(core.account)')
 	saCmd := exec.Command("gcloud", "config", "list", "--format", "value(core.account)")
 	saBytes, err := saCmd.Output()
 	if err != nil {
@@ -64,22 +69,63 @@ func EnsureStateStore(c *Config) error {
 	}
 	sa := strings.TrimSpace(string(saBytes))
 
-	iamCmd := exec.Command("gsutil", "iam", "ch", fmt.Sprintf("serviceAccount:%s:admin", sa), c.StateStore)
-	iamCmd.Stdout = os.Stdout
-	iamCmd.Stderr = os.Stderr
-	if err := iamCmd.Run(); err != nil {
-		// This might fail if the account is not a service account (e.g. user account)
-		// The bash script assumes serviceAccount:
+	err = runWithRetry(func() *exec.Cmd {
+		return exec.Command("gsutil", "iam", "ch", fmt.Sprintf("serviceAccount:%s:admin", sa), c.StateStore)
+	}, "granting serviceAccount admin IAM", 3, 2*time.Second)
+
+	if err != nil {
 		fmt.Printf("Warning: failed to grant storage.admin to %s: %v. Retrying with user account...\n", sa, err)
-		iamUserCmd := exec.Command("gsutil", "iam", "ch", fmt.Sprintf("user:%s:admin", sa), c.StateStore)
-		iamUserCmd.Stdout = os.Stdout
-		iamUserCmd.Stderr = os.Stderr
-		if err := iamUserCmd.Run(); err != nil {
-			fmt.Printf("Warning: failed to grant storage.admin to user %s: %v\n", sa, err)
+		errUser := runWithRetry(func() *exec.Cmd {
+			return exec.Command("gsutil", "iam", "ch", fmt.Sprintf("user:%s:admin", sa), c.StateStore)
+		}, "granting user admin IAM", 3, 2*time.Second)
+		if errUser != nil {
+			fmt.Printf("Warning: failed to grant storage.admin to user %s: %v\n", sa, errUser)
 		}
 	}
 
 	return nil
+}
+
+func runWithRetry(cmdFunc func() *exec.Cmd, description string, maxRetries int, delay time.Duration) error {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		cmd := cmdFunc()
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			fmt.Printf("Retrying %s (attempt %d/%d) after error: %v\n", description, i+1, maxRetries, err)
+			time.Sleep(delay)
+		}
+	}
+	return fmt.Errorf("%s failed after %d attempts: %v", description, maxRetries, lastErr)
+}
+
+// waitForBucketReadiness polls the state store bucket until it is verified to be accessible and writable.
+func waitForBucketReadiness(stateStore string, maxRetries int, delay time.Duration) error {
+	fmt.Printf("Waiting for KOPS_STATE_STORE readiness: %s...\n", stateStore)
+	probeFile := fmt.Sprintf("%s/.probe_%d", strings.TrimSuffix(stateStore, "/"), time.Now().UnixNano())
+
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		// Try writing a small probe object to the bucket to verify object creation works
+		cpCmd := exec.Command("gsutil", "cp", "-", probeFile)
+		cpCmd.Stdin = strings.NewReader("probe")
+		if err := cpCmd.Run(); err == nil {
+			// Probe succeeded; clean up the probe file
+			rmCmd := exec.Command("gsutil", "rm", probeFile)
+			_ = rmCmd.Run()
+			fmt.Printf("KOPS_STATE_STORE %s is ready and writable.\n", stateStore)
+			return nil
+		} else {
+			lastErr = err
+			fmt.Printf("Waiting for bucket readiness (%s) (attempt %d/%d): %v\n", stateStore, i+1, maxRetries, err)
+			time.Sleep(delay)
+		}
+	}
+	return fmt.Errorf("bucket %s did not become ready after %d retries: %v", stateStore, maxRetries, lastErr)
 }
 
 // EnsureSSHKey ensures that an SSH key exists for kOps.
