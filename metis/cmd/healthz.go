@@ -20,17 +20,14 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/local"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"k8s.io/metis/pkg"
 )
 
-func newHealthCommand() *cobra.Command {
+func newHealthCheckCommand() *cobra.Command {
 	var socketPath string
 
 	cmd := &cobra.Command{
@@ -52,17 +49,10 @@ func RunGRPCHealthCheck(socketPath string) int {
 		socketPath = pkg.DefaultSockPath
 	}
 
-	absPath, err := filepath.Abs(socketPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unhealthy: failed to get absolute path for socket %s: %v\n", socketPath, err)
-		return 1
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	dialTarget := fmt.Sprintf("unix://%s", absPath)
-	conn, err := grpc.NewClient(dialTarget, grpc.WithTransportCredentials(local.NewCredentials()))
+	conn, err := pkg.NewLocalGrpcConnection(socketPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unhealthy: failed to connect to Metis UDS at %s: %v\n", socketPath, err)
 		return 1
