@@ -30,8 +30,8 @@ if ! command -v staticcheck &> /dev/null || ! command -v revive &> /dev/null; th
   echo "Installing tools..."
   mkdir -p "${GOBIN}"
   pushd tools >/dev/null
-    GOWORK=off go install github.com/mgechev/revive
-    GOWORK=off go install honnef.co/go/tools/cmd/staticcheck
+    GOWORK=off GOFLAGS=-mod=mod go install github.com/mgechev/revive
+    GOWORK=off GOFLAGS=-mod=mod go install honnef.co/go/tools/cmd/staticcheck
   popd >/dev/null
 fi
 

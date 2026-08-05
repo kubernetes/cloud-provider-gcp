@@ -29,7 +29,6 @@ go work use .
 go work use ./providers
 go work use ./test/e2e
 go work use ./metis
-go work use ./metis/tools
 
 # Copy over replace directives from go.mod to go.work
 echo -e "\nreplace (" >> go.work
@@ -43,7 +42,6 @@ go work sync
 (cd providers && go mod tidy)
 (cd test/e2e && go mod tidy)
 (cd metis && go mod tidy)
-(cd metis/tools && go mod tidy)
 go mod tidy
 
 # update vendor/
