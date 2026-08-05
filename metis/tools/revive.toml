@@ -63,5 +63,5 @@
 [rule.unhandled-error] # Disabled to avoid forcing dummy assignments (_ = ...) for harmless unhandled errors.
     Disabled = true
 
-[rule.empty-block] # Disabled to allow intentional no-op blocks.
-    Disabled = true
+# Checks for empty blocks.
+[rule.empty-block]

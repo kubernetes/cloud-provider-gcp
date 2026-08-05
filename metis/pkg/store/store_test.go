@@ -1782,6 +1782,7 @@ func TestStore_GetIPUsage(t *testing.T) {
 		t.Errorf("Expected IPv6 Total to be 512, got %d", ipv6Usage.Total)
 	}
 	if ipv6Usage.Draining != 256 {
+		t.Errorf("Expected IPv6 Draining to be 256, got %d", ipv6Usage.Draining)
 	}
 
 	// 7. Test UndrainOneCIDRBlock
