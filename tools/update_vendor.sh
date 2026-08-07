@@ -42,6 +42,7 @@ go work sync
 (cd providers && go mod tidy)
 (cd test/e2e && go mod tidy)
 (cd metis && go mod tidy)
+(cd metis/tools && GOFLAGS=-mod=mod go mod tidy)
 go mod tidy
 
 # update vendor/
