@@ -46,6 +46,7 @@ func main() {
 	// Register subcommands
 	rootCmd.AddCommand(newDaemonCommand())
 	rootCmd.AddCommand(newInstallCommand())
+	rootCmd.AddCommand(newHealthCheckCommand())
 	rootCmd.AddCommand(newAdminCommand())
 
 	// Register standard/logging flags globally
