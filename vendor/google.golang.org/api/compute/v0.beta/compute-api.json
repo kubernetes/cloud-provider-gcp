@@ -2278,7 +2278,7 @@
           ]
         },
         "listUsable": {
-          "description": "Retrieves a list of all usable backend services in the specified project.",
+          "description": "Retrieves a list of all usable backend services for Application Load\nBalancers and Proxy Network Load Balancers in the specified project.\nBackend services for external and internal passthrough Network Load\nBalancers are not included in the response.",
           "flatPath": "projects/{project}/global/backendServices/listUsable",
           "httpMethod": "GET",
           "id": "compute.backendServices.listUsable",
@@ -26972,7 +26972,7 @@
           ]
         },
         "listUsable": {
-          "description": "Retrieves a list of all usable backend services in the specified project in\nthe given region.",
+          "description": "Retrieves a list of all usable backend services for Application Load\nBalancers and Proxy Network Load Balancers in the specified project in the\ngiven region. Backend services for external and internal passthrough\nNetwork Load Balancers are not included in the response.",
           "flatPath": "projects/{project}/regions/{region}/backendServices/listUsable",
           "httpMethod": "GET",
           "id": "compute.regionBackendServices.listUsable",
@@ -39524,6 +39524,100 @@
           "path": "projects/{project}/regions",
           "response": {
             "$ref": "RegionList"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute",
+            "https://www.googleapis.com/auth/compute.readonly"
+          ]
+        }
+      }
+    },
+    "reliabilityRisks": {
+      "methods": {
+        "get": {
+          "description": "Returns the specified ReliabilityRisk resource.",
+          "flatPath": "projects/{project}/global/reliabilityRisks/{reliabilityRisk}",
+          "httpMethod": "GET",
+          "id": "compute.reliabilityRisks.get",
+          "parameterOrder": [
+            "project",
+            "reliabilityRisk"
+          ],
+          "parameters": {
+            "project": {
+              "description": "Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "reliabilityRisk": {
+              "description": "Name of the ReliabilityRisk resource to return.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?|[1-9][0-9]{0,19}",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/global/reliabilityRisks/{reliabilityRisk}",
+          "response": {
+            "$ref": "ReliabilityRisk"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute",
+            "https://www.googleapis.com/auth/compute.readonly"
+          ]
+        },
+        "list": {
+          "description": "Retrieves the list of reliabilityRisks available in the specified project.",
+          "flatPath": "projects/{project}/global/reliabilityRisks",
+          "httpMethod": "GET",
+          "id": "compute.reliabilityRisks.list",
+          "parameterOrder": [
+            "project"
+          ],
+          "parameters": {
+            "filter": {
+              "description": "A filter expression that filters resources listed in the response. Most\nCompute resources support two types of filter expressions:\nexpressions that support regular expressions and expressions that follow\nAPI improvement proposal AIP-160.\nThese two types of filter expressions cannot be mixed in one request.\n\nIf you want to use AIP-160, your expression must specify the field name, an\noperator, and the value that you want to use for filtering. The value\nmust be a string, a number, or a boolean. The operator\nmust be either `=`, `!=`, `\u003e`, `\u003c`, `\u003c=`, `\u003e=` or `:`.\n\nFor example, if you are filtering Compute Engine instances, you can\nexclude instances named `example-instance` by specifying\n`name != example-instance`.\n\nThe `:*` comparison can be used to test whether a key has been defined.\nFor example, to find all objects with `owner` label use:\n```\nlabels.owner:*\n```\n\nYou can also filter nested fields. For example, you could specify\n`scheduling.automaticRestart = false` to include instances only\nif they are not scheduled for automatic restarts. You can use filtering\non nested fields to filter based onresource labels.\n\nTo filter on multiple expressions, provide each separate expression within\nparentheses. For example:\n```\n(scheduling.automaticRestart = true)\n(cpuPlatform = \"Intel Skylake\")\n```\nBy default, each expression is an `AND` expression. However, you\ncan include `AND` and `OR` expressions explicitly.\nFor example:\n```\n(cpuPlatform = \"Intel Skylake\") OR\n(cpuPlatform = \"Intel Broadwell\") AND\n(scheduling.automaticRestart = true)\n```\n\nIf you want to use a regular expression, use the `eq` (equal) or `ne`\n(not equal) operator against a single un-parenthesized expression with or\nwithout quotes or against multiple parenthesized expressions. Examples:\n\n`fieldname eq unquoted literal`\n`fieldname eq 'single quoted literal'`\n`fieldname eq \"double quoted literal\"`\n`(fieldname1 eq literal) (fieldname2 ne \"literal\")`\n\nThe literal value is interpreted as a regular expression using GoogleRE2 library syntax.\nThe literal value must match the entire field.\n\nFor example, to filter for instances that do not end with name \"instance\",\nyou would use `name ne .*instance`.\n\nYou cannot combine constraints on multiple fields using regular\nexpressions.",
+              "location": "query",
+              "type": "string"
+            },
+            "maxResults": {
+              "default": "500",
+              "description": "The maximum number of results per page that should be returned.\nIf the number of available results is larger than `maxResults`,\nCompute Engine returns a `nextPageToken` that can be used to get\nthe next page of results in subsequent list requests. Acceptable values are\n`0` to `500`, inclusive. (Default: `500`)",
+              "format": "uint32",
+              "location": "query",
+              "minimum": "0",
+              "type": "integer"
+            },
+            "orderBy": {
+              "description": "Sorts list results by a certain order. By default, results\nare returned in alphanumerical order based on the resource name.\n\nYou can also sort results in descending order based on the creation\ntimestamp using `orderBy=\"creationTimestamp desc\"`. This sorts\nresults based on the `creationTimestamp` field in\nreverse chronological order (newest result first). Use this to sort\nresources like operations so that the newest operation is returned first.\n\nCurrently, only sorting by `name` or\n`creationTimestamp desc` is supported.",
+              "location": "query",
+              "type": "string"
+            },
+            "pageToken": {
+              "description": "Specifies a page token to use. Set `pageToken` to the\n`nextPageToken` returned by a previous list request to get\nthe next page of results.",
+              "location": "query",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "returnPartialSuccess": {
+              "description": "Opt-in for partial success behavior which provides partial results in case\nof failure. The default value is false.\n\nFor example, when partial success behavior is enabled, aggregatedList for a\nsingle zone scope either returns all resources in the zone or no resources,\nwith an error code.",
+              "location": "query",
+              "type": "boolean"
+            }
+          },
+          "path": "projects/{project}/global/reliabilityRisks",
+          "response": {
+            "$ref": "ReliabilityRisksListResponse"
           },
           "scopes": [
             "https://www.googleapis.com/auth/cloud-platform",
@@ -52666,7 +52760,7 @@
       }
     }
   },
-  "revision": "20260625",
+  "revision": "20260709",
   "rootUrl": "https://compute.googleapis.com/",
   "schemas": {
     "AWSV4Signature": {
@@ -53393,7 +53487,7 @@
           "type": "string"
         },
         "ipCollection": {
-          "description": "Reference to the source of external IPv4 addresses,\nlike a PublicDelegatedPrefix (PDP) for BYOIP.\nThe PDP must support enhanced IPv4 allocations.\n\nUse one of the following formats to specify a PDP when reserving an\nexternal IPv4 address using BYOIP.\n   \n   - \n   Full resource URL, as inhttps://www.googleapis.com/compute/v1/projects/projectId/regions/region/publicDelegatedPrefixes/pdp-name\n   - \n   Partial URL, as in\n     \n      \n          - projects/projectId/regions/region/publicDelegatedPrefixes/pdp-name\n          - regions/region/publicDelegatedPrefixes/pdp-name",
+          "description": "Reference to the source of IP addresses.\n\nIt supports the following cases:\n   \n   - \n     Case 1: PublicDelegatedPrefix (PDP) for BYOIP external IPv4\n     addresses. The PDP must support enhanced IPv4 allocations.\n   - \n     Case 2: Internal Range for global internal addresses.\n\n\n\nUse one of the following formats to specify the resource:\n\nFor a Public Delegated Prefix:\n   \n   - \n   Full resource URL:https://www.googleapis.com/compute/v1/projects/projectId/regions/region/publicDelegatedPrefixes/pdp\n   - Partial URL:\n      - projects/projectId/regions/region/publicDelegatedPrefixes/pdp-name\n      - regions/region/publicDelegatedPrefixes/pdp-name\n   \n\n\nFor an Internal Range:\n   \n   - Full URL:https://networkconnectivity.googleapis.com/v1/projects/project/locations/global/internalRanges/internal-range\n   - Partial URL:projects/project/locations/global/internalRanges/internal-range",
           "type": "string"
         },
         "ipVersion": {
@@ -59242,19 +59336,23 @@
       "id": "CapacityHistoryResponse",
       "properties": {
         "location": {
+          "description": "Output only. The location (region or zone) for which the capacity history is returned.\nIt is returned as a URL - For example,https://www.googleapis.com/compute/v1/projects/project/zones/zone.",
           "readOnly": true,
           "type": "string"
         },
         "machineType": {
+          "description": "The machine type for which the capacity history is returned.",
           "type": "string"
         },
         "preemptionHistory": {
+          "description": "The preemption history for the requested machine type and location.",
           "items": {
             "$ref": "CapacityHistoryResponsePreemptionRecord"
           },
           "type": "array"
         },
         "priceHistory": {
+          "description": "The price history for the requested machine type and location.",
           "items": {
             "$ref": "CapacityHistoryResponsePriceRecord"
           },
@@ -59264,12 +59362,15 @@
       "type": "object"
     },
     "CapacityHistoryResponsePreemptionRecord": {
+      "description": "A record of Spot VM preemption history.",
       "id": "CapacityHistoryResponsePreemptionRecord",
       "properties": {
         "interval": {
-          "$ref": "Interval"
+          "$ref": "Interval",
+          "description": "The time interval for this preemption record."
         },
         "preemptionRate": {
+          "description": "The preemption rate during the interval, representing the fraction of\nSpot VMs that were preempted. Range: 0.0 to 1.0. Preemption rate is\ncalculated as (total preempted Spots) / (total Spots that stopped\nrunning).",
           "format": "double",
           "type": "number"
         }
@@ -59277,13 +59378,16 @@
       "type": "object"
     },
     "CapacityHistoryResponsePriceRecord": {
+      "description": "A record of price history.",
       "id": "CapacityHistoryResponsePriceRecord",
       "properties": {
         "interval": {
-          "$ref": "Interval"
+          "$ref": "Interval",
+          "description": "The time interval for this price record."
         },
         "listPrice": {
-          "$ref": "Money"
+          "$ref": "Money",
+          "description": "The Spot VM list price during the interval."
         }
       },
       "type": "object"
@@ -59337,9 +59441,11 @@
           "enum": [
             "CATEGORY_UNSPECIFIED",
             "LICENSE",
-            "MACHINE"
+            "MACHINE",
+            "PERSISTENT_DISK"
           ],
           "enumDescriptions": [
+            "",
             "",
             "",
             ""
@@ -59401,6 +59507,13 @@
         "params": {
           "$ref": "CommitmentParams",
           "description": "Input only. Additional params passed with the request, but not persisted\nas part of resource payload."
+        },
+        "persistentDiskResources": {
+          "description": "Optional. Used when category is PERSISTENT_DISK.\nEach entry in the list represents a commitment to a specific Persistent\nDisk product type and dimension.",
+          "items": {
+            "$ref": "PersistentDiskResourceCommitment"
+          },
+          "type": "array"
         },
         "plan": {
           "description": "The minimum time duration that you commit to purchasing resources.\nThe plan that you choose determines the preset term length of the\ncommitment (which is 1 year or 3 years) and affects the discount rate that\nyou receive for your resources. Committing to a longer time duration\ntypically gives you a higher discount rate. The supported values for this\nfield are TWELVE_MONTH (1 year), andTHIRTY_SIX_MONTH (3 years).",
@@ -64197,7 +64310,7 @@
       "id": "FirewallPolicyRule",
       "properties": {
         "action": {
-          "description": "The Action to perform when the client connection triggers the rule.\nValid actions for firewall rules are: \"allow\", \"deny\",\n\"apply_security_profile_group\" and \"goto_next\".\nValid actions for packet mirroring rules are: \"mirror\", \"do_not_mirror\"\nand \"goto_next\".",
+          "description": "The Action to perform when the client connection triggers the rule.\nValid actions for firewall rules are: \"allow\", \"deny\",\n\"apply_security_profile_group\" and \"goto_next\" (\n\"apply_security_profile_group\" can be specified only for global\nnetwork firewall policies or hierarchical firewall policies).\nValid actions for packet mirroring rules are: \"mirror\", \"do_not_mirror\"\nand \"goto_next\".",
           "type": "string"
         },
         "description": {
@@ -64250,7 +64363,7 @@
           "type": "integer"
         },
         "securityProfileGroup": {
-          "description": "A fully-qualified URL of a SecurityProfile resource instance.\nExample:\nhttps://networksecurity.googleapis.com/v1/projects/{project}/locations/{location}/securityProfileGroups/my-security-profile-group\nMust be specified if action is one of 'apply_security_profile_group' or\n'mirror'. Cannot be specified for other actions.",
+          "description": "A fully-qualified URL of a SecurityProfileGroup resource instance.\nExample:\nhttps://networksecurity.googleapis.com/v1/projects/{project}/locations/{location}/securityProfileGroups/my-security-profile-group\nMust be specified if action is one of 'apply_security_profile_group' or\n'mirror'. Cannot be specified for other actions. Can be specified only\nfor global network firewall policies or hierarchical firewall policies.",
           "type": "string"
         },
         "targetForwardingRules": {
@@ -71831,6 +71944,20 @@
           "readOnly": true,
           "type": "string"
         },
+        "localSsdEncryptionMode": {
+          "description": "Specifies which method should be used for encrypting the\nLocal SSDs attached to the VM.",
+          "enum": [
+            "EPHEMERAL_KEY_ENCRYPTION",
+            "LOCAL_SSD_ENCRYPTION_MODE_UNSPECIFIED",
+            "STANDARD_ENCRYPTION"
+          ],
+          "enumDescriptions": [
+            "The given VM will opt-in for using ephemeral key for\nencryption of Local SSDs.\nThe Local SSDs will not be able to recover data in case of VM\ncrash.",
+            "The given VM will be encrypted using keys managed by the cloud\ninfrastructure and the keys will be deleted when the VM is\ndeleted.",
+            "The given VM will be encrypted using keys managed by the cloud\ninfrastructure and the keys will be deleted when the VM is\ndeleted."
+          ],
+          "type": "string"
+        },
         "machineType": {
           "description": "Full or partial URL of the machine type resource to use for this instance,\nin the format:zones/zone/machineTypes/machine-type. This is provided by the client\nwhen the instance is created. For example, the following is a valid partial\nurl to a predefined\nmachine type:\n\nzones/us-central1-f/machineTypes/n1-standard-1\n\n\nTo create acustom\nmachine type, provide a URL to a machine type in the following format,\nwhere CPUS is 1 or an even number up to 32 (2,\n4, 6, ... 24, etc), and MEMORY is the total\nmemory for this instance. Memory must be a multiple of 256 MB and must\nbe supplied in MB (e.g. 5 GB of memory is 5120 MB):\n\nzones/zone/machineTypes/custom-CPUS-MEMORY\n\n\nFor example: zones/us-central1-f/machineTypes/custom-4-5120\nFor a full list of restrictions, read theSpecifications\nfor custom machine types.",
           "type": "string"
@@ -73619,6 +73746,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -73627,18 +73755,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -73679,6 +73812,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -73687,18 +73821,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -74013,6 +74152,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -74021,18 +74161,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -74107,6 +74252,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -74115,18 +74261,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -74456,7 +74607,7 @@
       "id": "InstanceGroupManagersApplyUpdatesRequest",
       "properties": {
         "allInstances": {
-          "description": "Flag to update all instances instead of specified list of “instances”.\nIf the flag is set to true then the instances may not be specified\nin the request.",
+          "description": "Flag to update all instances instead of specified list of \"instances\".\nIf the flag is set to true then the instances may not be specified\nin the request.",
           "type": "boolean"
         },
         "allowedActions": {
@@ -74715,6 +74866,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -74723,18 +74875,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -74773,7 +74930,7 @@
       "id": "InstanceGroupManagersListErrorsResponse",
       "properties": {
         "items": {
-          "description": "Output only. [Output Only] The list of errors of the managed instance group.",
+          "description": "Output only. The list of errors of the managed instance group.",
           "items": {
             "$ref": "InstanceManagedByIgmError"
           },
@@ -74781,7 +74938,7 @@
           "type": "array"
         },
         "nextPageToken": {
-          "description": "Output only. [Output Only] This token allows you to get the next page of results for\nlist requests. If the number of results is larger thanmaxResults, use the nextPageToken as a value for\nthe query parameter pageToken in the next list request.\nSubsequent list requests will have their own nextPageToken to\ncontinue paging through the results.",
+          "description": "Output only. This token allows you to get the next page of results for list requests.\nIf the number of results is larger than maxResults\n, then use the nextPageToken as a value for\nthe query parameter pageToken in the next list request.\nSubsequent list requests will have their own nextPageToken to\ncontinue paging through the results.",
           "readOnly": true,
           "type": "string"
         }
@@ -76101,6 +76258,20 @@
           },
           "description": "Labels to apply to instances that are created from these properties.",
           "type": "object"
+        },
+        "localSsdEncryptionMode": {
+          "description": "Specifies which method should be used for encrypting the\nLocal SSDs attached to the VM.",
+          "enum": [
+            "EPHEMERAL_KEY_ENCRYPTION",
+            "LOCAL_SSD_ENCRYPTION_MODE_UNSPECIFIED",
+            "STANDARD_ENCRYPTION"
+          ],
+          "enumDescriptions": [
+            "The given VM will opt-in for using ephemeral key for\nencryption of Local SSDs.\nThe Local SSDs will not be able to recover data in case of VM\ncrash.",
+            "The given VM will be encrypted using keys managed by the cloud\ninfrastructure and the keys will be deleted when the VM is\ndeleted.",
+            "The given VM will be encrypted using keys managed by the cloud\ninfrastructure and the keys will be deleted when the VM is\ndeleted."
+          ],
+          "type": "string"
         },
         "machineType": {
           "annotations": {
@@ -83878,12 +84049,12 @@
         },
         "scheduling": {
           "$ref": "ManagedInstanceScheduling",
-          "description": "Output only. [Output Only] Information about the termination timestamp of the instance,\nif applicable.",
+          "description": "Output only. Information about the termination timestamp of the instance, if applicable.",
           "readOnly": true
         },
         "shutdownDetails": {
           "$ref": "ManagedInstanceShutdownDetails",
-          "description": "Output only. [Output Only] Specifies the graceful shutdown details if the instance is in\n`PENDING_STOP` state or there is a programmed stop scheduled.",
+          "description": "Output only. Specifies the graceful shutdown details if the instance is in\n`PENDING_STOP` state or there is a programmed stop scheduled.",
           "readOnly": true
         },
         "targetStatus": {
@@ -83963,6 +84134,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -83971,18 +84143,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -84052,13 +84229,13 @@
       "id": "ManagedInstanceScheduling",
       "properties": {
         "gracefulShutdownTimestamp": {
-          "description": "Output only. [Output Only] The timestamp at which the underlying instance will be\ntriggered for graceful shutdown if it is configured. This is in RFC3339 text format.",
+          "description": "Output only. The timestamp at which the underlying instance will be\ntriggered for graceful shutdown if it is configured. This is in RFC3339 text format.",
           "format": "google-datetime",
           "readOnly": true,
           "type": "string"
         },
         "terminationTimestamp": {
-          "description": "Output only. [Output Only] The timestamp at which the managed instance will be\nterminated. This is in RFC3339 text format.",
+          "description": "Output only. The timestamp at which the managed instance will be terminated. This is\nin RFC3339 text\nformat.",
           "format": "google-datetime",
           "readOnly": true,
           "type": "string"
@@ -84071,11 +84248,11 @@
       "properties": {
         "maxDuration": {
           "$ref": "Duration",
-          "description": "Output only. [Output Only] The duration for graceful shutdown. Only applicable when\nthe instance is in `PENDING_STOP` state.",
+          "description": "Output only. The duration for graceful shutdown. Only applicable when the instance is\nin `PENDING_STOP` state.",
           "readOnly": true
         },
         "requestTimestamp": {
-          "description": "Output only. [Output Only] Past timestamp indicating the beginning of `PENDING_STOP`\nstate of instance in RFC3339 text format.",
+          "description": "Output only. Past timestamp indicating the beginning of `PENDING_STOP` state of\ninstance in RFC3339\ntext format.",
           "format": "google-datetime",
           "readOnly": true,
           "type": "string"
@@ -84550,6 +84727,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -84558,18 +84736,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -85069,14 +85252,14 @@
           "type": "string"
         },
         "producerAcceptLists": {
-          "description": "Projects that are allowed to connect to this network attachment.\nThe project can be specified using its id or number.",
+          "description": "Projects or service class ids that are allowed to connect to this network\nattachment. The project can be specified using its id or number. Service\nclass id can be specified as \"serviceclasses/{service_class_id}\".",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "producerRejectLists": {
-          "description": "Projects that are not allowed to connect to this network attachment.\nThe project can be specified using its id or number.",
+          "description": "Projects or service class ids that are not allowed to connect to this\nnetwork attachment. The project can be specified using its id or number.\nService class id can be specified as \"serviceclasses/{service_class_id}\".",
           "items": {
             "type": "string"
           },
@@ -92096,6 +92279,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -92104,18 +92288,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -92211,9 +92400,9 @@
             "RUNNING"
           ],
           "enumDescriptions": [
-            "",
-            "",
-            ""
+            "The operation has completed processing successfully or with an error.",
+            "The operation is waiting to be processed.",
+            "The operation is actively being processed."
           ],
           "type": "string"
         },
@@ -93975,6 +94164,48 @@
       },
       "type": "object"
     },
+    "PersistentDiskResourceCommitment": {
+      "description": "Commitment for a particular persistent disk resource.",
+      "id": "PersistentDiskResourceCommitment",
+      "properties": {
+        "amount": {
+          "description": "Required. The amount of the resource to commit to, in GiB.",
+          "format": "int64",
+          "type": "string"
+        },
+        "dimensionType": {
+          "description": "The specific dimension of the product for this amount.",
+          "enum": [
+            "CAPACITY_OPTIMIZED",
+            "DIMENSION_TYPE_UNSPECIFIED",
+            "READ_OPTIMIZED",
+            "WRITE_OPTIMIZED"
+          ],
+          "enumDescriptions": [
+            "Dimensions for HYPERDISK_EXAPOOL_*\nRepresents a commitment for HYPERDISK_EXAPOOL_CAPACITY_CAPACITY_OPTIMIZED\nSKU.",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        },
+        "productType": {
+          "description": "The PD product being committed to. All entries in a\nCommitment.persistent_disk_resources list must have the same product_type.",
+          "enum": [
+            "HYPERDISK_EXAPOOL_BALANCED",
+            "HYPERDISK_EXAPOOL_THROUGHPUT",
+            "PRODUCT_TYPE_UNSPECIFIED"
+          ],
+          "enumDescriptions": [
+            "Represents a commitment for Hyperdisk Exapool Balanced.",
+            "",
+            ""
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "Policy": {
       "description": "An Identity and Access Management (IAM) policy, which specifies access\ncontrols for Google Cloud resources.\n\n\nA `Policy` is a collection of `bindings`. A `binding` binds one or more\n`members`, or principals, to a single `role`. Principals can be user\naccounts, service accounts, Google groups, and domains (such as G Suite). A\n`role` is a named list of permissions; each `role` can be an IAM predefined\nrole or a user-created custom role.\n\nFor some types of Google Cloud resources, a `binding` can also specify a\n`condition`, which is a logical expression that allows access to a resource\nonly if the expression evaluates to `true`. A condition can add constraints\nbased on attributes of the request, the resource, or both. To learn which\nresources support conditions in their IAM policies, see the\n[IAM documentation](https://cloud.google.com/iam/help/conditions/resource-policies).\n\n**JSON example:**\n\n```\n    {\n      \"bindings\": [\n        {\n          \"role\": \"roles/resourcemanager.organizationAdmin\",\n          \"members\": [\n            \"user:mike@example.com\",\n            \"group:admins@example.com\",\n            \"domain:google.com\",\n            \"serviceAccount:my-project-id@appspot.gserviceaccount.com\"\n          ]\n        },\n        {\n          \"role\": \"roles/resourcemanager.organizationViewer\",\n          \"members\": [\n            \"user:eve@example.com\"\n          ],\n          \"condition\": {\n            \"title\": \"expirable access\",\n            \"description\": \"Does not grant access after Sep 2020\",\n            \"expression\": \"request.time \u003c timestamp('2020-10-01T00:00:00.000Z')\",\n          }\n        }\n      ],\n      \"etag\": \"BwWWja0YfJA=\",\n      \"version\": 3\n    }\n```\n\n**YAML example:**\n\n```\n    bindings:\n    - members:\n      - user:mike@example.com\n      - group:admins@example.com\n      - domain:google.com\n      - serviceAccount:my-project-id@appspot.gserviceaccount.com\n      role: roles/resourcemanager.organizationAdmin\n    - members:\n      - user:eve@example.com\n      role: roles/resourcemanager.organizationViewer\n      condition:\n        title: expirable access\n        description: Does not grant access after Sep 2020\n        expression: request.time \u003c timestamp('2020-10-01T00:00:00.000Z')\n    etag: BwWWja0YfJA=\n    version: 3\n```\n\nFor a description of IAM and its features, see the\n[IAM documentation](https://cloud.google.com/iam/docs/).",
       "id": "Policy",
@@ -94766,6 +94997,22 @@
           "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
           "type": "string"
         },
+        "networkTier": {
+          "description": "Network tier to be used for this prefix. All child delegated prefixes will\ninherit this field. If this field is not specified, it defaults to the\nnetwork tier of the project that the PublicAdvertisedPrefix belongs to.",
+          "enum": [
+            "FIXED_STANDARD",
+            "PREMIUM",
+            "STANDARD",
+            "STANDARD_OVERRIDES_FIXED_STANDARD"
+          ],
+          "enumDescriptions": [
+            "Public internet quality with fixed bandwidth.",
+            "High quality, Google-grade network tier, support for all networking\nproducts.",
+            "Public internet quality, only limited support for other networking\nproducts.",
+            "(Output only) Temporary tier for FIXED_STANDARD when fixed standard tier\nis expired or not configured."
+          ],
+          "type": "string"
+        },
         "pdpScope": {
           "description": "Specifies how child public delegated prefix will be scoped. It could\nbe one of following values:\n   \n   \n     - `REGIONAL`: The public delegated prefix is regional only. The\n     provisioning will take a few minutes.\n     - `GLOBAL`: The public delegated prefix is global only. The\n     provisioning will take ~4 weeks.\n     - `GLOBAL_AND_REGIONAL` [output only]: The public delegated prefixes is\n      BYOIP V1 legacy prefix. This is output only value and no longer\n      supported in BYOIP V2.",
           "enum": [
@@ -95106,6 +95353,22 @@
           },
           "description": "Name of the resource. Provided by the client when the resource is created.\nThe name must be 1-63 characters long, and comply withRFC1035.\nSpecifically, the name must be 1-63 characters long and match the regular\nexpression `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first\ncharacter must be a lowercase letter, and all following characters must\nbe a dash, lowercase letter, or digit, except the last character, which\ncannot be a dash.",
           "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+          "type": "string"
+        },
+        "networkTier": {
+          "description": "Network tier of the public delegated prefix. If populated, it must match\nthe network tier of the parent public advertised prefix. If not populated,\nit defaults to the network tier of the parent public advertised prefix.",
+          "enum": [
+            "FIXED_STANDARD",
+            "PREMIUM",
+            "STANDARD",
+            "STANDARD_OVERRIDES_FIXED_STANDARD"
+          ],
+          "enumDescriptions": [
+            "Public internet quality with fixed bandwidth.",
+            "High quality, Google-grade network tier, support for all networking\nproducts.",
+            "Public internet quality, only limited support for other networking\nproducts.",
+            "(Output only) Temporary tier for FIXED_STANDARD when fixed standard tier\nis expired or not configured."
+          ],
           "type": "string"
         },
         "parentPrefix": {
@@ -96146,6 +96409,21 @@
         },
         "target": {
           "description": "URL of the resource to which this reference points.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RegexRewrite": {
+      "description": "The spec for modifying the path using a regular expression.",
+      "id": "RegexRewrite",
+      "properties": {
+        "pathPattern": {
+          "description": "The regular expression used to match against the URL path.\nIt uses RE2 syntax with the following constraints:\n   \n   \n     - Any single character operators\n     - Groups are allowed to have only submatch operator inside\n     - Groups are allowed only without any char repetition, e.g.\n     .*\n     - Any char repetition, e.g. .*, is\n     only allowed to be used in a single regex together with:\n       \n      \n            - Empty string operators\n            - Other repetitions\n            - Ranges\n            - Repetitions of ranges\n          \n     \n     - Ranges are only allowed to have:\n       \n      \n            - Character range\n            - Digits range\n            - Symbols listed in characters allowed for ranges",
+          "type": "string"
+        },
+        "pathSubstitution": {
+          "description": "Required when path pattern is specified. Used to rewrite matching parts of\nthe path.",
           "type": "string"
         }
       },
@@ -97305,7 +97583,7 @@
       "id": "RegionInstanceGroupManagersApplyUpdatesRequest",
       "properties": {
         "allInstances": {
-          "description": "Flag to update all instances instead of specified list of “instances”.\nIf the flag is set to true then the instances may not be specified\nin the request.",
+          "description": "Flag to update all instances instead of specified list of \"instances\".\nIf the flag is set to true then the instances may not be specified\nin the request.",
           "type": "boolean"
         },
         "allowedActions": {
@@ -98246,6 +98524,218 @@
         "resource": {
           "$ref": "UrlMap",
           "description": "Content of the UrlMap to be validated."
+        }
+      },
+      "type": "object"
+    },
+    "ReliabilityRisk": {
+      "description": "Represents a ReliabilityRisk resource.",
+      "id": "ReliabilityRisk",
+      "properties": {
+        "creationTimestamp": {
+          "description": "Output only. [Output Only] Creation timestamp in RFC3339\ntext format.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "description": {
+          "description": "An optional textual description of the resource; provided when the\nresource is created.",
+          "type": "string"
+        },
+        "details": {
+          "$ref": "RiskDetails",
+          "description": "[Output Only] Details of the reliability risk resource"
+        },
+        "id": {
+          "description": "[Output Only] The unique identifier for the resource. This identifier is\ndefined by the server.",
+          "format": "uint64",
+          "type": "string"
+        },
+        "kind": {
+          "default": "compute#reliabilityRisk",
+          "description": "Output only. [Output Only] Type of resource. Always compute#reliabilityRisk\nfor reliability risks.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the resource. The name must be 1-63 characters long and\ncomply with RFC1035.",
+          "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+          "type": "string"
+        },
+        "recommendation": {
+          "$ref": "RiskRecommendation",
+          "description": "The recommendation to mitigate the risk."
+        },
+        "selfLink": {
+          "description": "Output only. [Output Only] Server-defined URL for the resource.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "selfLinkWithId": {
+          "description": "Output only. [Output Only] Server-defined URL for this resource with the resource id.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ReliabilityRisksListResponse": {
+      "description": "Response message for the List method of ReliabilityRisksService.",
+      "id": "ReliabilityRisksListResponse",
+      "properties": {
+        "etag": {
+          "type": "string"
+        },
+        "id": {
+          "description": "[Output Only] Unique identifier for the resource; defined by the server.",
+          "type": "string"
+        },
+        "items": {
+          "description": "A list of ReliabilityRisk resources.",
+          "items": {
+            "$ref": "ReliabilityRisk"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "[Output Only] This token allows you to get the next page of results for\nlist requests. If the number of results is larger thanmaxResults, use the nextPageToken as a value for\nthe query parameter pageToken in the next list request.\nSubsequent list requests will have their own nextPageToken to\ncontinue paging through the results.",
+          "type": "string"
+        },
+        "selfLink": {
+          "description": "Output only. [Output Only] Server-defined URL for this resource.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "unreachables": {
+          "description": "Output only. [Output Only] Unreachable resources.\nend_interface: MixerListResponseWithEtagBuilder",
+          "items": {
+            "type": "string"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "warning": {
+          "description": "[Output Only] Informational warning message.",
+          "properties": {
+            "code": {
+              "description": "[Output Only] A warning code, if applicable. For example, Compute\nEngine returns NO_RESULTS_ON_PAGE if there\nare no results in the response.",
+              "enum": [
+                "CLEANUP_FAILED",
+                "DEPRECATED_RESOURCE_USED",
+                "DEPRECATED_TYPE_USED",
+                "DISK_SIZE_LARGER_THAN_IMAGE_SIZE",
+                "EXPERIMENTAL_TYPE_USED",
+                "EXTERNAL_API_WARNING",
+                "FIELD_VALUE_OVERRIDEN",
+                "INJECTED_KERNELS_DEPRECATED",
+                "INVALID_HEALTH_CHECK_FOR_DYNAMIC_WIEGHTED_LB",
+                "LARGE_DEPLOYMENT_WARNING",
+                "LIST_OVERHEAD_QUOTA_EXCEED",
+                "MISSING_TYPE_DEPENDENCY",
+                "NEXT_HOP_ADDRESS_NOT_ASSIGNED",
+                "NEXT_HOP_CANNOT_IP_FORWARD",
+                "NEXT_HOP_INSTANCE_HAS_NO_IPV6_INTERFACE",
+                "NEXT_HOP_INSTANCE_NOT_FOUND",
+                "NEXT_HOP_INSTANCE_NOT_ON_NETWORK",
+                "NEXT_HOP_NOT_RUNNING",
+                "NOT_CRITICAL_ERROR",
+                "NO_RESULTS_ON_PAGE",
+                "PARTIAL_SUCCESS",
+                "QUOTA_INFO_UNAVAILABLE",
+                "REQUIRED_TOS_AGREEMENT",
+                "RESOURCE_IN_USE_BY_OTHER_RESOURCE_WARNING",
+                "RESOURCE_NOT_DELETED",
+                "SCHEMA_VALIDATION_IGNORED",
+                "SINGLE_INSTANCE_PROPERTY_TEMPLATE",
+                "UNDECLARED_PROPERTIES",
+                "UNREACHABLE"
+              ],
+              "enumDeprecated": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ],
+              "enumDescriptions": [
+                "Warning about failed cleanup of transient changes made by a failed\noperation.",
+                "A link to a deprecated resource was created.",
+                "When deploying and at least one of the resources has a type marked as\ndeprecated",
+                "The user created a boot disk that is larger than image size.",
+                "When deploying and at least one of the resources has a type marked as\nexperimental",
+                "Warning that is present in an external api call",
+                "Warning that value of a field has been overridden.\nDeprecated unused field.",
+                "The operation involved use of an injected kernel, which is deprecated.",
+                "A WEIGHTED_MAGLEV backend service is associated with a health check that is\nnot of type HTTP/HTTPS/HTTP2.",
+                "When deploying a deployment with a exceedingly large number of resources",
+                "Resource can't be retrieved due to list overhead quota exceed\nwhich captures the amount of resources filtered out by\nuser-defined list filter.",
+                "A resource depends on a missing type",
+                "The route's nextHopIp address is not assigned to an instance on the\nnetwork.",
+                "The route's next hop instance cannot ip forward.",
+                "The route's nextHopInstance URL refers to an instance that does not have an\nipv6 interface on the same network as the route.",
+                "The route's nextHopInstance URL refers to an instance that does not exist.",
+                "The route's nextHopInstance URL refers to an instance that is not on the\nsame network as the route.",
+                "The route's next hop instance does not have a status of RUNNING.",
+                "Error which is not critical. We decided to continue the process despite\nthe mentioned error.",
+                "No results are present on a particular list page.",
+                "Success is reported, but some results may be missing due to errors",
+                "Quota information is not available to client requests (e.g:\nregions.list).",
+                "The user attempted to use a resource that requires a TOS they have not\naccepted.",
+                "Warning that a resource is in use.",
+                "One or more of the resources set to auto-delete could not be deleted\nbecause they were in use.",
+                "When a resource schema validation is ignored.",
+                "Instance template used in instance group manager is valid as such, but\nits application does not make a lot of sense, because it allows only\nsingle instance in instance group.",
+                "When undeclared properties in the schema are present",
+                "A given scope cannot be reached."
+              ],
+              "type": "string"
+            },
+            "data": {
+              "description": "[Output Only] Metadata about this warning in key:\nvalue format. For example:\n\n\"data\": [\n  {\n   \"key\": \"scope\",\n   \"value\": \"zones/us-east1-d\"\n  }",
+              "items": {
+                "properties": {
+                  "key": {
+                    "description": "[Output Only] A key that provides more detail on the warning being\nreturned. For example, for warnings where there are no results in a list\nrequest for a particular zone, this key might be scope and\nthe key value might be the zone name. Other examples might be a key\nindicating a deprecated resource and a suggested replacement, or a\nwarning about invalid network settings (for example, if an instance\nattempts to perform IP forwarding but is not enabled for IP forwarding).",
+                    "type": "string"
+                  },
+                  "value": {
+                    "description": "[Output Only] A warning data value corresponding to the key.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "message": {
+              "description": "[Output Only] A human-readable description of the warning code.",
+              "type": "string"
+            }
+          },
+          "type": "object"
         }
       },
       "type": "object"
@@ -101324,6 +101814,98 @@
             "The instance will be deleted.",
             "The instance will be stopped."
           ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RiskDetails": {
+      "description": "Detailed insights and metrics about a detected reliability risk.",
+      "id": "RiskDetails",
+      "properties": {
+        "duration": {
+          "description": "The duration of the risk since it was detected.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "globalDnsInsight": {
+          "$ref": "RiskDetailsGlobalDnsInsight",
+          "description": "Insight details for global DNS risk."
+        },
+        "lastUpdateTimestamp": {
+          "description": "The last time the risk was updated.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "severity": {
+          "description": "The severity of the risk.",
+          "enum": [
+            "CRITICAL",
+            "HIGH",
+            "LOW",
+            "MEDIUM",
+            "SEVERITY_UNSPECIFIED"
+          ],
+          "enumDescriptions": [
+            "Critical severity.",
+            "High severity.",
+            "Low severity.",
+            "Medium severity.",
+            "No severity specified. The default value."
+          ],
+          "type": "string"
+        },
+        "type": {
+          "description": "The type of risk.",
+          "enum": [
+            "GLOBAL_DNS",
+            "RISK_TYPE_UNSPECIFIED"
+          ],
+          "enumDescriptions": [
+            "Risk type related to global DNS.",
+            "Default value. This value is unused."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RiskDetailsGlobalDnsInsight": {
+      "description": "Detailed insights for a global DNS reliability risk.",
+      "id": "RiskDetailsGlobalDnsInsight",
+      "properties": {
+        "projectDefaultIsGlobalDns": {
+          "description": "Indicates whether the project's default DNS setting is global DNS.",
+          "type": "boolean"
+        },
+        "queryObservationWindow": {
+          "description": "The observation window for the query counts.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "riskyQueryCount": {
+          "description": "The number of queries that are risky. This is always less than or\nequal to total_query_count.",
+          "format": "int64",
+          "type": "string"
+        },
+        "totalQueryCount": {
+          "description": "The total number of queries in the observation window.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RiskRecommendation": {
+      "description": "Recommendation for mitigating a reliability risk, including a reference URL.",
+      "id": "RiskRecommendation",
+      "properties": {
+        "content": {
+          "description": "Mitigation guide for the risk.",
+          "type": "string"
+        },
+        "referenceUrl": {
+          "description": "URL referencing a more detailed mitigation guide.",
           "type": "string"
         }
       },
@@ -110364,7 +110946,6 @@
       "id": "SslPolicyReference",
       "properties": {
         "sslPolicy": {
-          "description": "URL of the SSL policy resource. Set this to empty string to clear any\nexisting SSL policy associated with the target proxy resource.",
           "type": "string"
         }
       },
@@ -112106,6 +112687,22 @@
             ""
           ],
           "readOnly": true,
+          "type": "string"
+        },
+        "ipv6NetworkTier": {
+          "description": "Specifies the network tier for EXTERNAL IPv6. Can only be set when\nipv6_access_type is EXTERNAL. Defaults to project defaultNetworkTier if not\nspecified during the creation of the subnetwork. This field is IMMUTABLE\nonce set with EXTERNAL IPv6.",
+          "enum": [
+            "FIXED_STANDARD",
+            "PREMIUM",
+            "STANDARD",
+            "STANDARD_OVERRIDES_FIXED_STANDARD"
+          ],
+          "enumDescriptions": [
+            "Public internet quality with fixed bandwidth.",
+            "High quality, Google-grade network tier, support for all networking\nproducts.",
+            "Public internet quality, only limited support for other networking\nproducts.",
+            "(Output only) Temporary tier for FIXED_STANDARD when fixed standard tier\nis expired or not configured."
+          ],
           "type": "string"
         },
         "kind": {
@@ -118009,6 +118606,10 @@
         "pathTemplateRewrite": {
           "description": "If specified, the pattern rewrites the URL path (based on the :path\nheader) using the HTTP template syntax. \n\nA corresponding\npath_template_match must be specified. Any template variables must exist in\nthe path_template_match field. \n   \n   \n      - -At least one variable must be specified in the path_template_match\n      field \n   - You can omit variables from the rewritten URL\n      - The * and ** operators cannot be matched\n      unless they have a corresponding variable name - e.g.\n      {format=*} or {var=**}.\n\nFor example, a path_template_match of /static/{format=**}\ncould be rewritten as /static/content/{format} to prefix/content to the URL. Variables can also be re-ordered in a\nrewrite, so that /{country}/{format}/{suffix=**} can be\nrewritten as /content/{format}/{country}/{suffix}. \n\nAt least\none non-empty routeRules[].matchRules[].path_template_match is\nrequired. \n\nOnly one of path_prefix_rewrite orpath_template_rewrite may be specified.",
           "type": "string"
+        },
+        "regexRewrite": {
+          "$ref": "RegexRewrite",
+          "description": "The regex rewrite to be applied to the URL. Only one ofpathPrefixRewrite, pathTemplateRewrite, orregexRewrite may be specified."
         }
       },
       "type": "object"

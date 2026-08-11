@@ -26,6 +26,24 @@ set -o xtrace
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "${REPO_ROOT}"
 
+# Initialize cleanup flags
+DELETE_CLUSTER="false"
+CLEANUP_BOSKOS="false"
+
+# Define cleanup function
+function cleanup {
+  local exit_status=$?
+  if [[ "${DELETE_CLUSTER}" == "true" ]]; then
+    make test-cluster-down || echo "Warning: test-cluster-down failed"
+  fi
+  if [[ "${CLEANUP_BOSKOS}" == "true" ]]; then
+    source test/boskos.sh
+    cleanup_boskos || echo "Warning: cleanup_boskos failed"
+  fi
+  exit "${exit_status}"
+}
+trap cleanup EXIT
+
 # 1. Project Lifecycle Management (Boskos)
 if [[ -z "${GCP_PROJECT:-}" ]]; then
     echo "GCP_PROJECT not set, acquiring project from boskos"
@@ -39,21 +57,8 @@ export KOPS_STATE_STORE="gs://kops-state-${GCP_PROJECT}"
 
 # 2. Cluster Lifecycle Management
 export KOPS_CLUSTER_NAME="${CLUSTER_NAME:-run-e2e-test.k8s.local}"
+DELETE_CLUSTER="true"
 make test-cluster-up
-
-# Define cleanup function
-function cleanup {
-  local exit_status=$?
-  if [[ "${DELETE_CLUSTER:-true}" == "true" ]]; then
-    make test-cluster-down || echo "Warning: test-cluster-down failed"
-  fi
-  if [[ "${CLEANUP_BOSKOS:-}" == "true" ]]; then
-    source test/boskos.sh
-    cleanup_boskos || echo "Warning: cleanup_boskos failed"
-  fi
-  exit "${exit_status}"
-}
-trap cleanup EXIT
 
 # 3. Test Setup
 export K8S_VERSION=$(make --silent print-k8s-version)
@@ -124,9 +129,9 @@ kubetest2 kops \
   --focus-regex='\[cloud-provider-gcp-e2e\]'
 
 # 4. Teardown
-if [[ "${DELETE_CLUSTER:-true}" == "true" ]]; then
+if [[ "${DELETE_CLUSTER}" == "true" ]]; then
   make test-cluster-down
-  DELETE_CLUSTER=false # Don't delete again in trap
+  DELETE_CLUSTER="false" # Don't delete again in trap
 fi
 
 echo
