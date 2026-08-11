@@ -6,13 +6,14 @@ require (
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
-	google.golang.org/api v0.287.0
-	k8s.io/api v0.36.2
-	k8s.io/apimachinery v0.36.2
-	k8s.io/client-go v0.36.2
-	k8s.io/cloud-provider v0.36.2
+	google.golang.org/api v0.291.0
+	k8s.io/api v0.36.3
+	k8s.io/apimachinery v0.36.3
+	k8s.io/client-go v0.36.3
+	k8s.io/cloud-provider v0.36.3
 	k8s.io/cloud-provider-gcp v0.0.0-00010101000000-000000000000
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
+	k8s.io/kubelet v0.36.0
 	k8s.io/kubernetes v1.36.0
 	k8s.io/pod-security-admission v0.36.3
 )
@@ -124,7 +125,6 @@ require (
 	k8s.io/kms v0.36.3 // indirect
 	k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a // indirect
 	k8s.io/kubectl v0.0.0 // indirect
-	k8s.io/kubelet v0.36.0 // indirect
 	k8s.io/streaming v0.36.3 // indirect
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.34.0 // indirect
@@ -135,8 +135,6 @@ require (
 )
 
 replace (
-	k8s.io/cloud-provider-gcp => ../..
-
 	k8s.io/api => k8s.io/api v0.36.0
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.0
 	k8s.io/apimachinery => k8s.io/apimachinery v0.36.0
@@ -144,6 +142,7 @@ replace (
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.36.0
 	k8s.io/client-go => k8s.io/client-go v0.36.0
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.36.0
+	k8s.io/cloud-provider-gcp => ../..
 
 	k8s.io/cloud-provider-gcp/providers => ../../providers
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.36.0
