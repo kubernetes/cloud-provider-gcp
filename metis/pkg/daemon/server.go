@@ -26,13 +26,16 @@ import (
 	"github.com/go-logr/logr"
 	"google.golang.org/grpc"
 	"k8s.io/metis/api/adaptiveipam/v1"
+	adminv1 "k8s.io/metis/api/admin/v1"
 	"k8s.io/metis/pkg"
 	"k8s.io/metis/pkg/store"
 )
 
 type adaptiveIpamServer struct {
 	adaptiveipam.UnimplementedAdaptiveIpamServer
+	adminv1.UnimplementedAdminServer
 	engine     *IPAMEngine
+	store      *store.Store
 	sockPath   string
 	grpcServer *grpc.Server
 	logger     logr.Logger
@@ -42,6 +45,7 @@ func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socke
 	engine := NewIPAMEngine(logger, storeInstance, releaseCooldown, busyTimeout, nil)
 	return &adaptiveIpamServer{
 		engine:   engine,
+		store:    storeInstance,
 		sockPath: socketPath,
 		logger:   logger,
 	}
@@ -91,6 +95,7 @@ func (s *adaptiveIpamServer) start() error {
 
 	s.grpcServer = grpc.NewServer()
 	adaptiveipam.RegisterAdaptiveIpamServer(s.grpcServer, s)
+	adminv1.RegisterAdminServer(s.grpcServer, s)
 
 	s.logger.Info("gRPC server is listening", "socket", sockPath)
 	return s.grpcServer.Serve(listener)

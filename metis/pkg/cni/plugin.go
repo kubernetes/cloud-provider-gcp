@@ -26,7 +26,6 @@ import (
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/go-logr/logr"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/local"
 	"k8s.io/klog/v2"
 
 	pb "k8s.io/metis/api/adaptiveipam/v1"
@@ -207,18 +206,9 @@ func getGrpcClient(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, 
 		return nil, nil, fmt.Errorf("daemon socket file %s unavailable: %w", socketPath, err)
 	}
 
-	dialOption := grpc.WithTransportCredentials(local.NewCredentials())
-
-	absPath, err := filepath.Abs(socketPath)
+	conn, err := pkg.NewLocalGrpcConnection(socketPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get absolute path for socket %s: %v", socketPath, err)
+		return nil, nil, err
 	}
-	dialTarget := fmt.Sprintf("unix://%s", absPath)
-
-	conn, err := grpc.NewClient(dialTarget, dialOption)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect to daemon: %v", err)
-	}
-
 	return pb.NewAdaptiveIpamClient(conn), conn, nil
 }
