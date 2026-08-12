@@ -6,5 +6,5 @@ release/*
 _artifacts/
 _rundir/
 _tmp/
-/bin/
+bin/
 __pycache__/

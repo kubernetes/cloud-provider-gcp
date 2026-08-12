@@ -50,8 +50,10 @@ type PluginConf struct {
 // K8sArgs contains the standard Kubernetes CNI arguments.
 type K8sArgs struct {
 	types.CommonArgs
+	// revive:disable:var-naming CNI LoadArgs requires exact match
 	K8S_POD_NAME      types.UnmarshallableString `json:"K8S_POD_NAME"`
 	K8S_POD_NAMESPACE types.UnmarshallableString `json:"K8S_POD_NAMESPACE"`
+	// revive:enable:var-naming CNI LoadArgs requires exact match
 }
 
 // Plugin holds the runtime configuration and handlers for the CNI plugin.
