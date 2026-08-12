@@ -425,8 +425,8 @@ func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 	if st.Code() != codes.ResourceExhausted {
 		t.Errorf("Expected status code ResourceExhausted, got %v", st.Code())
 	}
-	if !strings.Contains(st.Message(), store.ErrNoAvailableIPs.Error()) {
-		t.Errorf("Expected status message to contain '%v', got: %s", store.ErrNoAvailableIPs, st.Message())
+	if !strings.Contains(st.Message(), "exhausted") {
+		t.Errorf("Expected status message to contain 'exhausted', got: %s", st.Message())
 	}
 }
 
@@ -639,7 +639,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 				return nil
 			},
 			wantErr:      true,
-			errSubstring: "timed out",
+			errSubstring: "exhausted",
 			checkResp: func(t *testing.T, resp *adaptiveipam.AllocatePodIPResponse) {
 				if resp != nil {
 					t.Errorf("Expected nil response on cancellation, got: %v", resp)

@@ -18,6 +18,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -28,6 +29,7 @@ import (
 	"k8s.io/metis/api/adaptiveipam/v1"
 	adminv1 "k8s.io/metis/api/admin/v1"
 	"k8s.io/metis/pkg"
+	metiserrors "k8s.io/metis/pkg/errors"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -93,12 +95,27 @@ func (s *adaptiveIpamServer) start() error {
 		return fmt.Errorf("failed to set permissions on socket %s: %w", sockPath, err)
 	}
 
-	s.grpcServer = grpc.NewServer()
+	s.grpcServer = grpc.NewServer(grpc.UnaryInterceptor(s.ErrorInterceptor))
 	adaptiveipam.RegisterAdaptiveIpamServer(s.grpcServer, s)
 	adminv1.RegisterAdminServer(s.grpcServer, s)
 
 	s.logger.Info("gRPC server is listening", "socket", sockPath)
 	return s.grpcServer.Serve(listener)
+}
+
+func (s *adaptiveIpamServer) ErrorInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	resp, err := handler(ctx, req)
+	if err != nil {
+		var mErr metiserrors.MetisError
+		if errors.As(err, &mErr) {
+			if mErr.Unwrap() != nil {
+				s.logger.V(4).Info("Domain error cause details", "method", info.FullMethod, "reason", mErr.Reason(), "cause", mErr.Unwrap())
+			}
+			return nil, mErr.ToGRPCStatus().Err()
+		}
+		return nil, err
+	}
+	return resp, nil
 }
 
 func (s *adaptiveIpamServer) stop() {

@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/metis/api/adaptiveipam/v1"
+	metiserrors "k8s.io/metis/pkg/errors"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -220,7 +221,7 @@ func (e *IPAMEngine) handleDynamicAllocation(ctx context.Context, req *adaptivei
 
 	if e.monitor == nil {
 		e.logger.V(2).Info("No monitor available, failing fast on exhaustion", "network", req.Network)
-		return fmt.Errorf("failed to allocate ipv4 for pod %s/%s: %w", req.PodNamespace, req.PodName, store.ErrNoAvailableIPs)
+		return metiserrors.ErrIPPoolExhausted(req.Network, store.ErrNoAvailableIPs)
 	}
 
 	ch, ok := e.getOrCreatePendingRequest(clientKey, req.Network)
@@ -237,7 +238,7 @@ func (e *IPAMEngine) handleDynamicAllocation(ctx context.Context, req *adaptivei
 	case <-ctx.Done():
 		e.removePendingRequest(clientKey, req.Network)
 		e.logger.Error(ctx.Err(), "Dynamic allocation wait timed out or cancelled", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
-		return fmt.Errorf("failed to allocate ipv4 for pod %s/%s (timed out): %w", req.PodNamespace, req.PodName, store.ErrNoAvailableIPs)
+		return metiserrors.ErrIPPoolExhausted(req.Network, store.ErrNoAvailableIPs)
 	case <-ch:
 		e.logger.Info("Woken up by CIDR watcher, retrying local allocation", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		return nil
