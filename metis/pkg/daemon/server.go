@@ -105,17 +105,19 @@ func (s *adaptiveIpamServer) start() error {
 
 func (s *adaptiveIpamServer) ErrorInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	resp, err := handler(ctx, req)
-	if err != nil {
-		var mErr metiserrors.MetisError
-		if errors.As(err, &mErr) {
-			if mErr.Unwrap() != nil {
-				s.logger.V(4).Info("Domain error cause details", "method", info.FullMethod, "reason", mErr.Reason(), "cause", mErr.Unwrap())
-			}
-			return nil, mErr.ToGRPCStatus().Err()
-		}
-		return nil, err
+	if err == nil {
+		return resp, nil
 	}
-	return resp, nil
+
+	var mErr metiserrors.MetisError
+	if errors.As(err, &mErr) {
+		if mErr.Unwrap() != nil {
+			s.logger.V(4).Info("Domain error cause details", "method", info.FullMethod, "reason", mErr.Reason(), "cause", mErr.Unwrap())
+		}
+		return nil, mErr.ToGRPCStatus().Err()
+	}
+
+	return nil, err
 }
 
 func (s *adaptiveIpamServer) stop() {
