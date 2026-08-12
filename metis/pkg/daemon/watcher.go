@@ -187,7 +187,7 @@ func (w *Watcher) processNextWorkItem(ctx context.Context) bool {
 }
 
 func (w *Watcher) syncCIDR(ctx context.Context, network string) error {
-	w.logger.Info("Daemon watcher starting synchronization: reconciling CIDR blocks with NodeNetworkConfig status", "node", w.nodeName, "network", network)
+	w.logger.V(4).Info("Daemon watcher starting synchronization: reconciling CIDR blocks with NodeNetworkConfig status", "node", w.nodeName, "network", network)
 
 	nnc, err := getNodeNetworkConfig(ctx, w.nncLister, w.nncClient, w.nodeName)
 	if err != nil {
@@ -202,7 +202,7 @@ func (w *Watcher) syncCIDR(ctx context.Context, network string) error {
 		return err
 	}
 
-	w.logger.Info("Daemon watcher synchronization done", "node", w.nodeName, "network", network)
+	w.logger.V(4).Info("Daemon watcher synchronization done", "node", w.nodeName, "network", network)
 	return nil
 }
 

@@ -618,7 +618,7 @@ func (s *Store) allocateIP(ctx context.Context, params AllocateIPParams) (string
 	`, params.ContainerID, params.InterfaceName, params.IPFamily).Scan(&address, &cidrRange)
 
 	if err == nil {
-		s.log.Info("Idempotency check hit (fast path), returning existing allocation", "containerID", params.ContainerID, "interfaceName", params.InterfaceName, "address", address, "cidr", cidrRange)
+		s.log.V(4).Info("Idempotency check hit (fast path), returning existing allocation", "containerID", params.ContainerID, "interfaceName", params.InterfaceName, "address", address, "cidr", cidrRange)
 		return address, cidrRange, nil
 	}
 	if err != sql.ErrNoRows {
@@ -672,7 +672,7 @@ func (s *Store) allocateIP(ctx context.Context, params AllocateIPParams) (string
 				break // Successfully expanded one block!
 			}
 			if errors.Is(err, ErrCidrBlockExhausted) {
-				s.log.Info("CIDR block exhausted, trying next one for expansion", "cidrBlockID", cidrBlockID)
+				s.log.V(4).Info("CIDR block exhausted, trying next one for expansion", "cidrBlockID", cidrBlockID)
 				continue
 			}
 			return "", "", fmt.Errorf("failed to expand IPv6 block %d: %w", cidrBlockID, err)
@@ -705,7 +705,7 @@ func (s *Store) tryAllocateIPInBlock(ctx context.Context, params AllocateIPParam
 	`, params.ContainerID, params.InterfaceName, params.IPFamily).Scan(&address, &cidrRange)
 
 	if err == nil {
-		s.log.Info("Idempotency check hit (slow path), returning existing allocation", "containerID", params.ContainerID, "interfaceName", params.InterfaceName, "address", address, "cidr", cidrRange)
+		s.log.V(4).Info("Idempotency check hit (slow path), returning existing allocation", "containerID", params.ContainerID, "interfaceName", params.InterfaceName, "address", address, "cidr", cidrRange)
 		return address, cidrRange, nil
 	}
 	if err != sql.ErrNoRows {
@@ -765,7 +765,7 @@ func (s *Store) expandIPv6Block(ctx context.Context, cidrBlockID int64) error {
 		WHERE cidr_block_id = ? AND is_allocated = FALSE AND (release_at IS NULL OR release_at <= ?)
 	`, cidrBlockID, nowMilli).Scan(&hasAvailable)
 	if err == nil && hasAvailable > 0 {
-		s.log.Info("Block already has available IPs, skipping expansion", "cidrBlockID", cidrBlockID)
+		s.log.V(4).Info("Block already has available IPs, skipping expansion", "cidrBlockID", cidrBlockID)
 		return nil
 	}
 
