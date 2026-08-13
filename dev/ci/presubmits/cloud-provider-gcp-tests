@@ -25,7 +25,7 @@ def main():
     """
     for mod_path in find_go_modules():
         dir = os.path.dirname(mod_path) or "."
-        if dir == "test/e2e":
+        if dir in ("test/e2e", "metis/tools"):
             continue
         print(f"Running go test in {dir}")
         subprocess.run(["go", "test", "-v", "./..."], cwd=dir, check=True)

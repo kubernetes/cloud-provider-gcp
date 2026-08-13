@@ -58,13 +58,6 @@ const (
 	// allowing us to perform a single read-modify-write operation on the NodeNetworkConfig (NNC) custom resource,
 	// which avoids API write conflicts and drastically reduces Kubernetes API server I/O overhead.
 	syncKey = "sync"
-
-	// defaultMonitorWorkers is set to 1 because the Monitor uses a single queue key (syncKey)
-	// to process all networks on the node sequentially. Since the workqueue ensures a key
-	// is processed by only one worker at a time, having more workers would just result in
-	// idle goroutines. This single-threaded execution avoids race conditions and write conflicts
-	// during read-modify-write updates of the NodeNetworkConfig (NNC) custom resource.
-	defaultMonitorWorkers = 1
 )
 
 // Monitor manages the dynamic scaling (up and down) of IP CIDR block capacity
@@ -210,7 +203,7 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 		nodeName:                        cfg.NodeName,
 		store:                           cfg.Store,
 		logger:                          cfg.Logger,
-		lowUtilizationTimers:            make(map[string]time.Time),
+		lowUtilizationTimers:            map[string]time.Time{},
 		GetPendingRequestsCount:         cfg.GetPendingRequestsCount,
 		cooldownPushbackInterval:        cfg.CooldownPushbackInterval,
 		drainingExpiration:              cfg.DrainingExpiration,
@@ -236,7 +229,7 @@ func (m *Monitor) Run(ctx context.Context) {
 	}
 
 	// Periodic enqueuer
-	go wait.UntilWithContext(ctx, func(ctx context.Context) {
+	go wait.UntilWithContext(ctx, func(_ context.Context) {
 		m.enqueue()
 	}, m.monitorInterval)
 
@@ -389,11 +382,11 @@ func (m *Monitor) patchNNC(ctx context.Context, nncCopy *nncv1.NodeNetworkConfig
 	// optimistic concurrency control. This causes the patch to fail with a
 	// 409 Conflict if another controller (e.g. GCE) updated the NNC since we
 	// fetched it. The monitor's workqueue will automatically retry.
-	patchData := map[string]interface{}{
-		"metadata": map[string]interface{}{
+	patchData := map[string]any{
+		"metadata": map[string]any{
 			"resourceVersion": nncCopy.ResourceVersion,
 		},
-		"spec": map[string]interface{}{
+		"spec": map[string]any{
 			"allocations":     nncCopy.Spec.Allocations,
 			"releasableCIDRs": nncCopy.Spec.ReleasableCIDRs,
 		},
@@ -615,12 +608,12 @@ func (m *Monitor) reconcileDeletingBlocks(
 	}
 
 	// Map status CIDRs for quick lookup
-	statusMap := make(map[string]nncv1.PodCIDR)
+	statusMap := map[string]nncv1.PodCIDR{}
 	for _, podCIDR := range currentStatus {
 		statusMap[podCIDR.CIDR] = podCIDR
 	}
 
-	releasableMap := make(map[string]bool)
+	releasableMap := map[string]bool{}
 	for _, releasable := range currentReleasables {
 		releasableMap[releasable.CIDR] = true
 	}

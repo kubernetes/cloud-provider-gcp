@@ -49,6 +49,12 @@ if [[ "${VERIFY_K8S_VERSION:-true}" == "true" ]]; then
   cd "${KUBE_ROOT}"
 fi
 
+if [[ "${VERIFY_METIS:-true}" == "true" ]]; then
+  echo "[*] Verifying metis..."
+  make -C metis verify || res=1
+  cd "${KUBE_ROOT}"
+fi
+
 # exit based on verify scripts
 if [[ "${res}" = 0 ]]; then
   echo ""

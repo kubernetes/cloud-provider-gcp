@@ -1,3 +1,19 @@
+/*
+Copyright 2026 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package main
 
 import (
@@ -44,7 +60,7 @@ func newAdminCommand() *cobra.Command {
   metis admin cidr-blocks list --filter "id = '1'"
   # List all Ready CIDR blocks
   metis admin cidr-blocks list --filter "state = 'Ready'"`,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			executeAdminListCommand(outputFormat, func(ctx context.Context, client adminv1.AdminClient) (*adminv1.AdminTableDumpResponse, error) {
 				return client.ListCIDRBlocks(ctx, &adminv1.ListCIDRBlocksRequest{Filter: filter})
 			})
@@ -66,7 +82,7 @@ func newAdminCommand() *cobra.Command {
   metis admin ip-addresses list --filter "id = '1'"
   # List IP addresses that are allocated in a specific namespace
   metis admin ip-addresses list --filter "pod_namespace = 'default' AND is_allocated = '1'"`,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			executeAdminListCommand(outputFormat, func(ctx context.Context, client adminv1.AdminClient) (*adminv1.AdminTableDumpResponse, error) {
 				return client.ListIPAddresses(ctx, &adminv1.ListIPAddressesRequest{Filter: filter})
 			})
@@ -105,9 +121,9 @@ func printDumpResponse(res *adminv1.AdminTableDumpResponse, outputFormat string)
 		}
 		w.Flush()
 	} else {
-		var jsonPayload []map[string]interface{}
+		var jsonPayload []map[string]any
 		for _, row := range res.Rows {
-			rowMap := make(map[string]interface{})
+			rowMap := map[string]any{}
 			for i, header := range res.Headers {
 				rowMap[header] = row.Values[i]
 			}
