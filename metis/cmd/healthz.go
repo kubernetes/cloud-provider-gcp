@@ -33,7 +33,7 @@ func newHealthCheckCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "health",
 		Short: "Run a gRPC health check against the Metis daemon UDS",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			os.Exit(RunGRPCHealthCheck(socketPath))
 		},
 	}
