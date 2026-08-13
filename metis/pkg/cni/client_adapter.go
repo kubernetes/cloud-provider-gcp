@@ -30,14 +30,14 @@ type directClientAdapter struct {
 	engine *daemon.IPAMEngine
 }
 
-func (a *directClientAdapter) AllocatePodIP(ctx context.Context, in *pb.AllocatePodIPRequest, opts ...grpc.CallOption) (*pb.AllocatePodIPResponse, error) {
+func (a *directClientAdapter) AllocatePodIP(ctx context.Context, in *pb.AllocatePodIPRequest, _ ...grpc.CallOption) (*pb.AllocatePodIPResponse, error) {
 	return a.engine.AllocatePodIP(ctx, in)
 }
 
-func (a *directClientAdapter) DeallocatePodIP(ctx context.Context, in *pb.DeallocatePodIPRequest, opts ...grpc.CallOption) (*pb.DeallocatePodIPResponse, error) {
+func (a *directClientAdapter) DeallocatePodIP(ctx context.Context, in *pb.DeallocatePodIPRequest, _ ...grpc.CallOption) (*pb.DeallocatePodIPResponse, error) {
 	return a.engine.DeallocatePodIP(ctx, in)
 }
 
-func (a *directClientAdapter) CheckPodIP(ctx context.Context, in *pb.CheckPodIPRequest, opts ...grpc.CallOption) (*pb.CheckPodIPResponse, error) {
+func (a *directClientAdapter) CheckPodIP(ctx context.Context, in *pb.CheckPodIPRequest, _ ...grpc.CallOption) (*pb.CheckPodIPResponse, error) {
 	return a.engine.CheckPodIP(ctx, in)
 }

@@ -490,7 +490,7 @@ func TestDirectFallback_DaemonUnavailable(t *testing.T) {
 	logFile := filepath.Join(tempDir, "metis-cni-fallback.log")
 
 	plugin := NewPlugin(
-		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+		WithClientFunc(func(_ string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 			return nil, nil, fmt.Errorf("daemon socket unavailable (simulated test error)")
 		}),
 		WithDBPath(dbPath),
