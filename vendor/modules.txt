@@ -38,7 +38,7 @@ github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/mtcontext
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/taskqueue
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfigcr
-# github.com/GoogleCloudPlatform/gke-networking-api v0.2.2
+# github.com/GoogleCloudPlatform/gke-networking-api v0.2.4
 ## explicit; go 1.25.0
 github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1
 github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1
@@ -322,7 +322,7 @@ github.com/munnerz/goautoneg
 # github.com/natefinch/atomic v1.0.1
 ## explicit; go 1.12
 github.com/natefinch/atomic
-# github.com/onsi/ginkgo/v2 v2.32.0
+# github.com/onsi/ginkgo/v2 v2.32.1
 ## explicit; go 1.25.0
 github.com/onsi/ginkgo/v2
 github.com/onsi/ginkgo/v2/config
@@ -663,7 +663,7 @@ golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
-# google.golang.org/api v0.291.0
+# google.golang.org/api v0.292.0
 ## explicit; go 1.25.0
 google.golang.org/api/compute/v0.alpha
 google.golang.org/api/compute/v0.beta
@@ -689,7 +689,7 @@ google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/api/expr/v1alpha1
 google.golang.org/genproto/googleapis/api/httpbody
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20260724162435-b2f20204f0df
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d
 ## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
@@ -768,7 +768,7 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
+# google.golang.org/protobuf v1.36.12
 ## explicit; go 1.23
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
