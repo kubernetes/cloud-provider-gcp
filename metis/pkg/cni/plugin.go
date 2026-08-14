@@ -34,7 +34,11 @@ import (
 	"k8s.io/metis/pkg/store"
 )
 
-const defaultRPCTimeout = 10 * time.Second
+const (
+	defaultRPCTimeout = 10 * time.Second
+	// num of retries before CNI plugin fallback to direct mode
+	maxRetries = 3
+)
 
 type Option func(*Plugin)
 
@@ -137,7 +141,6 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 	var conn *grpc.ClientConn
 
 	// Retry connecting to the daemon socket before falling back to direct mode.
-	maxRetries := 3
 	var clientErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		client, conn, clientErr = p.newClientFunc(socketPath)
