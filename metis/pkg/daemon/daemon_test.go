@@ -134,10 +134,16 @@ func TestDaemon_Run(t *testing.T) {
 			}()
 
 			if !tc.wantErr {
-				// Wait for server to start and create socket
-				time.Sleep(500 * time.Millisecond)
-
-				if _, err := os.Stat(sockPath); os.IsNotExist(err) {
+				// Poll for server to start and create socket (up to 3 seconds)
+				var socketFound bool
+				for i := 0; i < 60; i++ {
+					if _, err := os.Stat(sockPath); err == nil {
+						socketFound = true
+						break
+					}
+					time.Sleep(50 * time.Millisecond)
+				}
+				if !socketFound {
 					t.Errorf("Expected socket to be created at %s, but doesn't exist", sockPath)
 				}
 
