@@ -26,7 +26,13 @@ import (
 
 func TestErrIPPoolExhausted(t *testing.T) {
 	causeErr := errors.New("underlying pool empty")
-	mErr := ErrIPPoolExhausted("test-network", causeErr)
+	podInfo := PodInfo{
+		PodName:      "nginx-pod",
+		PodNamespace: "production",
+		ContainerID:  "container-123",
+		Network:      "test-network",
+	}
+	mErr := ErrIPPoolExhausted(podInfo, causeErr)
 
 	if mErr.GRPCCode() != codes.ResourceExhausted {
 		t.Errorf("expected GRPCCode %v, got %v", codes.ResourceExhausted, mErr.GRPCCode())
@@ -36,8 +42,16 @@ func TestErrIPPoolExhausted(t *testing.T) {
 		t.Errorf("expected Reason %q, got %q", ReasonIPPoolExhausted, mErr.Reason())
 	}
 
-	if mErr.Metadata()["network"] != "test-network" {
-		t.Errorf("expected metadata network 'test-network', got %q", mErr.Metadata()["network"])
+	if mErr.Metadata()[MetadataKeyNetwork] != "test-network" {
+		t.Errorf("expected metadata network 'test-network', got %q", mErr.Metadata()[MetadataKeyNetwork])
+	}
+
+	if mErr.Metadata()[MetadataKeyPodName] != "nginx-pod" {
+		t.Errorf("expected metadata pod_name 'nginx-pod', got %q", mErr.Metadata()[MetadataKeyPodName])
+	}
+
+	if mErr.Metadata()[MetadataKeyPodNamespace] != "production" {
+		t.Errorf("expected metadata pod_namespace 'production', got %q", mErr.Metadata()[MetadataKeyPodNamespace])
 	}
 
 	if !errors.Is(mErr.Unwrap(), causeErr) {
@@ -59,8 +73,11 @@ func TestErrIPPoolExhausted(t *testing.T) {
 			if errorInfo.Domain != MetisErrorDomain {
 				t.Errorf("expected ErrorInfo domain %q, got %q", MetisErrorDomain, errorInfo.Domain)
 			}
-			if errorInfo.Metadata["network"] != "test-network" {
-				t.Errorf("expected ErrorInfo metadata 'test-network', got %q", errorInfo.Metadata["network"])
+			if errorInfo.Metadata[MetadataKeyNetwork] != "test-network" {
+				t.Errorf("expected ErrorInfo metadata 'test-network', got %q", errorInfo.Metadata[MetadataKeyNetwork])
+			}
+			if errorInfo.Metadata[MetadataKeyPodName] != "nginx-pod" {
+				t.Errorf("expected ErrorInfo metadata pod_name 'nginx-pod', got %q", errorInfo.Metadata[MetadataKeyPodName])
 			}
 		}
 	}
@@ -71,10 +88,10 @@ func TestErrIPPoolExhausted(t *testing.T) {
 }
 
 func TestMetisErrorAs(t *testing.T) {
-	mErr := ErrIPPoolExhausted("default", nil)
-	var target MetisError
-	if !errors.As(mErr, &target) {
-		t.Fatalf("errors.As failed to match MetisError interface")
+	mErr := ErrIPPoolExhausted(PodInfo{Network: "default"}, nil)
+	target, ok := errors.AsType[MetisError](mErr)
+	if !ok {
+		t.Fatalf("errors.AsType failed to match MetisError interface")
 	}
 	if target.Reason() != ReasonIPPoolExhausted {
 		t.Errorf("expected reason %q, got %q", ReasonIPPoolExhausted, target.Reason())

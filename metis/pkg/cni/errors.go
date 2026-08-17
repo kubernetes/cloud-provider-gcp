@@ -33,8 +33,9 @@ func ToCNIError(err error, fallbackMsg string) *types.Error {
 		return nil
 	}
 
-	var cniErr *types.Error
-	if errors.As(err, &cniErr) {
+	// If err is already a CNI spec error, return it directly to ensure idempotency
+	// and preserve pre-formed CNI errors (e.g. config parsing failures).
+	if cniErr, ok := errors.AsType[*types.Error](err); ok {
 		return cniErr
 	}
 

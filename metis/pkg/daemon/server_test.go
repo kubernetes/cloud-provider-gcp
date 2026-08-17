@@ -18,6 +18,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -37,6 +38,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/metis/api/adaptiveipam/v1"
+	metiserrors "k8s.io/metis/pkg/errors"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -418,15 +420,18 @@ func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 		t.Errorf("Expected test to fail fast, but took %v", duration)
 	}
 
-	st, ok := status.FromError(err)
+	mErr, ok := errors.AsType[metiserrors.MetisError](err)
 	if !ok {
-		t.Fatalf("Expected gRPC status error, got: %v", err)
+		t.Fatalf("Expected MetisError from engine handler, got: %v", err)
 	}
-	if st.Code() != codes.ResourceExhausted {
-		t.Errorf("Expected status code ResourceExhausted, got %v", st.Code())
+	if mErr.GRPCCode() != codes.ResourceExhausted {
+		t.Errorf("Expected GRPCCode ResourceExhausted, got %v", mErr.GRPCCode())
 	}
-	if !strings.Contains(st.Message(), "exhausted") {
-		t.Errorf("Expected status message to contain 'exhausted', got: %s", st.Message())
+	if mErr.Reason() != metiserrors.ReasonIPPoolExhausted {
+		t.Errorf("Expected Reason %q, got %q", metiserrors.ReasonIPPoolExhausted, mErr.Reason())
+	}
+	if mErr.Metadata()[metiserrors.MetadataKeyNetwork] != network {
+		t.Errorf("Expected network metadata %q, got %q", network, mErr.Metadata()[metiserrors.MetadataKeyNetwork])
 	}
 }
 

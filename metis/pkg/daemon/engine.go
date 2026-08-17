@@ -220,8 +220,8 @@ func (e *IPAMEngine) handleDynamicAllocation(ctx context.Context, req *adaptivei
 	}
 
 	if e.monitor == nil {
-		e.logger.V(2).Info("No monitor available, failing fast on exhaustion", "network", req.Network)
-		return metiserrors.ErrIPPoolExhausted(req.Network, store.ErrNoAvailableIPs)
+		cause := fmt.Errorf("no monitor available to trigger scale up: %w", store.ErrNoAvailableIPs)
+		return metiserrors.ErrIPPoolExhausted(metiserrors.NewPodInfoFromAllocateReq(req), cause)
 	}
 
 	ch, ok := e.getOrCreatePendingRequest(clientKey, req.Network)
@@ -237,8 +237,8 @@ func (e *IPAMEngine) handleDynamicAllocation(ctx context.Context, req *adaptivei
 	select {
 	case <-ctx.Done():
 		e.removePendingRequest(clientKey, req.Network)
-		e.logger.Error(ctx.Err(), "Dynamic allocation wait timed out or cancelled", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
-		return metiserrors.ErrIPPoolExhausted(req.Network, store.ErrNoAvailableIPs)
+		cause := fmt.Errorf("dynamic allocation wait timed out: %w", store.ErrNoAvailableIPs)
+		return metiserrors.ErrIPPoolExhausted(metiserrors.NewPodInfoFromAllocateReq(req), cause)
 	case <-ch:
 		e.logger.Info("Woken up by CIDR watcher, retrying local allocation", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		return nil
@@ -257,7 +257,7 @@ func (e *IPAMEngine) maybeDynamicAllocation(ctx context.Context, req *adaptiveip
 	}
 
 	if err := e.handleDynamicAllocation(ctx, req); err != nil {
-		return false, status.Errorf(codes.ResourceExhausted, "failed to allocate ipv4 for pod %s/%s: %v", req.PodNamespace, req.PodName, err)
+		return false, err
 	}
 
 	return true, nil

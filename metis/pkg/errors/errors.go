@@ -22,16 +22,35 @@ import (
 	genproto "google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"k8s.io/metis/api/adaptiveipam/v1"
 )
 
-const MetisErrorDomain = "metis.google.com"
+// PodInfo holds pod metadata for error reporting and telemetry across Metis components.
+type PodInfo struct {
+	PodName      string
+	PodNamespace string
+	ContainerID  string
+	Network      string
+}
 
-// Well-defined error reasons across Metis
-const (
-	ReasonIPPoolExhausted = "IP_POOL_EXHAUSTED"
-)
+// NewPodInfoFromAllocateReq extracts PodInfo metadata from an AllocatePodIPRequest.
+func NewPodInfoFromAllocateReq(req *adaptiveipam.AllocatePodIPRequest) PodInfo {
+	var containerID string
+	if req.Ipv4Config != nil {
+		containerID = req.Ipv4Config.ContainerId
+	} else if req.Ipv6Config != nil {
+		containerID = req.Ipv6Config.ContainerId
+	}
+	return PodInfo{
+		PodName:      req.PodName,
+		PodNamespace: req.PodNamespace,
+		ContainerID:  containerID,
+		Network:      req.Network,
+	}
+}
 
-// MetisError interface implemented by all internal domain errors.
+// MetisError interface implemented by all structured Metis errors.
 type MetisError interface {
 	error
 	GRPCCode() codes.Code
@@ -41,7 +60,10 @@ type MetisError interface {
 	Unwrap() error
 }
 
-type domainError struct {
+// metisError represents a structured error bound to MetisErrorDomain
+// ("container.googleapis.com"). It carries machine-readable error reasons, HTTP/gRPC codes,
+// and underlying cause errors, converting directly into google.rpc.ErrorInfo gRPC status details.
+type metisError struct {
 	code     codes.Code
 	reason   string
 	message  string
@@ -49,13 +71,13 @@ type domainError struct {
 	cause    error
 }
 
-func (e *domainError) Error() string               { return e.message }
-func (e *domainError) GRPCCode() codes.Code        { return e.code }
-func (e *domainError) Reason() string              { return e.reason }
-func (e *domainError) Metadata() map[string]string { return e.metadata }
-func (e *domainError) Unwrap() error               { return e.cause }
+func (e *metisError) Error() string               { return e.message }
+func (e *metisError) GRPCCode() codes.Code        { return e.code }
+func (e *metisError) Reason() string              { return e.reason }
+func (e *metisError) Metadata() map[string]string { return e.metadata }
+func (e *metisError) Unwrap() error               { return e.cause }
 
-func (e *domainError) ToGRPCStatus() *status.Status {
+func (e *metisError) ToGRPCStatus() *status.Status {
 	st := status.New(e.code, e.message)
 	errorInfo := &genproto.ErrorInfo{
 		Reason:   e.reason,
@@ -69,9 +91,9 @@ func (e *domainError) ToGRPCStatus() *status.Status {
 	return stWithDetails
 }
 
-// NewDomainError constructs a MetisError with custom parameters.
-func NewDomainError(code codes.Code, reason, message string, metadata map[string]string, cause error) MetisError {
-	return &domainError{
+// NewMetisError constructs a MetisError with custom parameters.
+func NewMetisError(code codes.Code, reason, message string, metadata map[string]string, cause error) MetisError {
+	return &metisError{
 		code:     code,
 		reason:   reason,
 		message:  message,
@@ -80,15 +102,31 @@ func NewDomainError(code codes.Code, reason, message string, metadata map[string
 	}
 }
 
-// Factory Constructors for Developers
+// ErrIPPoolExhausted indicates that the local node IP address pool is exhausted for a pod request.
+func ErrIPPoolExhausted(podInfo PodInfo, cause error) MetisError {
+	meta := map[string]string{
+		MetadataKeyNetwork: podInfo.Network,
+	}
+	if podInfo.PodName != "" {
+		meta[MetadataKeyPodName] = podInfo.PodName
+	}
+	if podInfo.PodNamespace != "" {
+		meta[MetadataKeyPodNamespace] = podInfo.PodNamespace
+	}
+	if podInfo.ContainerID != "" {
+		meta[MetadataKeyContainerID] = podInfo.ContainerID
+	}
 
-// ErrIPPoolExhausted indicates that the local node IP address pool is exhausted.
-func ErrIPPoolExhausted(network string, cause error) MetisError {
-	return &domainError{
+	msg := fmt.Sprintf("IP address pool exhausted for network %s", podInfo.Network)
+	if podInfo.PodName != "" {
+		msg = fmt.Sprintf("IP address pool exhausted for pod %s/%s on network %s", podInfo.PodNamespace, podInfo.PodName, podInfo.Network)
+	}
+
+	return &metisError{
 		code:     codes.ResourceExhausted,
 		reason:   ReasonIPPoolExhausted,
-		message:  fmt.Sprintf("IP address pool exhausted for network %s", network),
-		metadata: map[string]string{"network": network},
+		message:  msg,
+		metadata: meta,
 		cause:    cause,
 	}
 }

@@ -26,7 +26,8 @@ import (
 )
 
 func TestToCNIError_IPPoolExhausted(t *testing.T) {
-	mErr := metiserrors.ErrIPPoolExhausted("test-net", errors.New("empty"))
+	podInfo := metiserrors.PodInfo{Network: "test-net"}
+	mErr := metiserrors.ErrIPPoolExhausted(podInfo, errors.New("empty"))
 	grpcErr := mErr.ToGRPCStatus().Err()
 
 	cniErr := ToCNIError(grpcErr, "cni add failed")
