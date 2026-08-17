@@ -130,7 +130,7 @@ func (p *Plugin) cmdDel(args *skel.CmdArgs) error {
 	_, err = session.client.DeallocatePodIP(ctx, req)
 	if err != nil {
 		session.logger.Info("DeallocatePodIP failed", "err", err)
-		return ToCNIError(err, "metis cni delete: deallocation via daemon failed")
+		return fmt.Errorf("metis cni delete: deallocation via daemon failed: %w", err)
 	}
 
 	session.logger.Info("Successfully deallocated IP")
