@@ -52,8 +52,15 @@ fmt: ## Format the Go source code.
 	go fmt ./...
 
 .PHONY: vet
-vet: ## Run Go vet to check for potential issues.
+vet: ## Run standard go vet.
 	go vet ./...
+
+.PHONY: lint
+lint: ## Run style and static analysis checks.
+	./scripts/lint.sh
+
+.PHONY: verify
+verify: vet lint ## Run both vet and lint checks.
 
 .PHONY: build
 build: ## Build the Metis binary locally using workspace dependencies.
@@ -69,7 +76,7 @@ proto: ## Generate code from proto files.
 	../tools/update-proto.sh
 
 .PHONY: all
-all: clean tidy fmt vet test build ## Run all standard development targets.
+all: clean tidy fmt verify test build ## Run all standard development targets.
 
 .PHONY: clean
 clean: ## Clean up build artifacts.

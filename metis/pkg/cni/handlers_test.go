@@ -49,21 +49,21 @@ type mockAdaptiveIpamClient struct {
 	checkPodIPFunc      func(ctx context.Context, in *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error)
 }
 
-func (m *mockAdaptiveIpamClient) AllocatePodIP(ctx context.Context, in *pb.AllocatePodIPRequest, opts ...grpc.CallOption) (*pb.AllocatePodIPResponse, error) {
+func (m *mockAdaptiveIpamClient) AllocatePodIP(ctx context.Context, in *pb.AllocatePodIPRequest, _ ...grpc.CallOption) (*pb.AllocatePodIPResponse, error) {
 	if m.allocatePodIPFunc != nil {
 		return m.allocatePodIPFunc(ctx, in)
 	}
 	return nil, fmt.Errorf("unimplemented")
 }
 
-func (m *mockAdaptiveIpamClient) DeallocatePodIP(ctx context.Context, in *pb.DeallocatePodIPRequest, opts ...grpc.CallOption) (*pb.DeallocatePodIPResponse, error) {
+func (m *mockAdaptiveIpamClient) DeallocatePodIP(ctx context.Context, in *pb.DeallocatePodIPRequest, _ ...grpc.CallOption) (*pb.DeallocatePodIPResponse, error) {
 	if m.deallocatePodIPFunc != nil {
 		return m.deallocatePodIPFunc(ctx, in)
 	}
 	return nil, fmt.Errorf("unimplemented")
 }
 
-func (m *mockAdaptiveIpamClient) CheckPodIP(ctx context.Context, in *pb.CheckPodIPRequest, opts ...grpc.CallOption) (*pb.CheckPodIPResponse, error) {
+func (m *mockAdaptiveIpamClient) CheckPodIP(ctx context.Context, in *pb.CheckPodIPRequest, _ ...grpc.CallOption) (*pb.CheckPodIPResponse, error) {
 	if m.checkPodIPFunc != nil {
 		return m.checkPodIPFunc(ctx, in)
 	}
@@ -144,13 +144,13 @@ func TestCmdAdd(t *testing.T) {
 			logFile := filepath.Join(tempLogDir, "metis-cni.log")
 
 			plugin := NewPlugin(
-				WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+				WithClientFunc(func(_ string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 					return mockClient, nil, nil
 				}),
 				WithLogFile(logFile),
 			)
 
-			mockClient.allocatePodIPFunc = func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
+			mockClient.allocatePodIPFunc = func(_ context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
 				if tc.assertInput != nil {
 					tc.assertInput(t, in)
 				}
@@ -241,14 +241,14 @@ func TestCmdDel(t *testing.T) {
 			logFile := filepath.Join(tempLogDir, "metis-cni.log")
 
 			plugin := NewPlugin(
-				WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+				WithClientFunc(func(_ string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 					return mockClient, nil, nil
 				}),
 				WithLogFile(logFile),
 			)
 
 			deallocateCalled := false
-			mockClient.deallocatePodIPFunc = func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
+			mockClient.deallocatePodIPFunc = func(_ context.Context, _ *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
 				deallocateCalled = true
 				return &pb.DeallocatePodIPResponse{}, nil
 			}
@@ -280,14 +280,14 @@ func TestCmdCheck(t *testing.T) {
 	logFile := filepath.Join(tempLogDir, "metis-cni.log")
 
 	plugin := NewPlugin(
-		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+		WithClientFunc(func(_ string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 			return mockClient, nil, nil
 		}),
 		WithLogFile(logFile),
 	)
 
 	checkCalled := false
-	mockClient.checkPodIPFunc = func(ctx context.Context, in *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error) {
+	mockClient.checkPodIPFunc = func(_ context.Context, _ *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error) {
 		checkCalled = true
 		return &pb.CheckPodIPResponse{}, nil
 	}
@@ -324,7 +324,7 @@ func TestCniWithActualDaemon(t *testing.T) {
 	logFile := filepath.Join(tempDir, "metis-cni.log")
 
 	plugin := NewPlugin(
-		WithClientFunc(func(path string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+		WithClientFunc(func(_ string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 			return getGrpcClient(socketPath)
 		}),
 		WithSocketPath(socketPath),
@@ -359,7 +359,7 @@ func TestCniWithActualDaemon(t *testing.T) {
 	}()
 
 	// Wait for socket to be created
-	err = wait.PollUntilContextTimeout(context.Background(), 100*time.Millisecond, 5*time.Second, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), 100*time.Millisecond, 5*time.Second, true, func(_ context.Context) (bool, error) {
 		if _, err := os.Stat(socketPath); err == nil {
 			return true, nil
 		}
@@ -428,8 +428,8 @@ func runWithOutputCapture(t *testing.T, f func() error) (stdout string, stderr s
 
 	err = f()
 
-	wOut.Close()
-	wErr.Close()
+	_ = wOut.Close()
+	_ = wErr.Close()
 
 	stdout = <-outC
 	stderr = <-errC
@@ -443,13 +443,13 @@ func TestCmdAdd_CleanStdout(t *testing.T) {
 	logFile := filepath.Join(tempLogDir, "metis-cni.log")
 
 	plugin := NewPlugin(
-		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+		WithClientFunc(func(_ string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 			return mockClient, nil, nil
 		}),
 		WithLogFile(logFile),
 	)
 
-	mockClient.allocatePodIPFunc = func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
+	mockClient.allocatePodIPFunc = func(_ context.Context, _ *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
 		return &pb.AllocatePodIPResponse{
 			Ipv4: &pb.PodIP{
 				IpAddress: "10.240.0.2",

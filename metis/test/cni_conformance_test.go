@@ -100,7 +100,7 @@ func TestLibcniConformance(t *testing.T) {
 	defer cancel()
 
 	// Wait until the domain socket successfully mounts
-	err = wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, 5*time.Second, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, 5*time.Second, true, func(_ context.Context) (bool, error) {
 		if _, err := os.Stat(socketPath); err == nil {
 			return true, nil
 		}
@@ -130,7 +130,7 @@ func TestLibcniConformance(t *testing.T) {
 		}
 	}`, socketPath, filepath.Join(tempDir, "metis-cni.log"))
 
-	conf, err := libcni.ConfFromBytes([]byte(netConfigString))
+	conf, err := libcni.NetworkPluginConfFromBytes([]byte(netConfigString))
 	if err != nil {
 		t.Fatalf("Failed to decode internal libcni config bytes: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestLibcniConformance(t *testing.T) {
 		},
 		"prevResult": %s
 	}`, socketPath, filepath.Join(tempDir, "metis-cni.log"), string(resultBytes))
-	checkConf, _ := libcni.ConfFromBytes([]byte(checkConfigString))
+	checkConf, _ := libcni.NetworkPluginConfFromBytes([]byte(checkConfigString))
 
 	// Validate CHECK (which we natively wired previously)
 	if err := cniLib.CheckNetwork(ctx, checkConf, runtimeConf); err != nil {
