@@ -34,7 +34,7 @@ import (
 func TestErrorInterceptor_MetisError(t *testing.T) {
 	server := &adaptiveIpamServer{logger: logr.Discard()}
 
-	dummyHandler := func(ctx context.Context, req any) (any, error) {
+	dummyHandler := func(_ context.Context, _ any) (any, error) {
 		podInfo := metiserrors.PodInfo{
 			PodName:      "test-pod",
 			PodNamespace: "default",
@@ -64,7 +64,7 @@ func TestErrorInterceptor_MetisError(t *testing.T) {
 func TestErrorInterceptor_NonMetisError(t *testing.T) {
 	server := &adaptiveIpamServer{logger: logr.Discard()}
 
-	dummyHandler := func(ctx context.Context, req any) (any, error) {
+	dummyHandler := func(_ context.Context, _ any) (any, error) {
 		return nil, fmt.Errorf("bare internal database error")
 	}
 
