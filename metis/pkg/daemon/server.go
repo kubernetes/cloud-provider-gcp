@@ -95,7 +95,7 @@ func (s *adaptiveIpamServer) start() error {
 		return fmt.Errorf("failed to set permissions on socket %s: %w", sockPath, err)
 	}
 
-	s.grpcServer = grpc.NewServer()
+	s.grpcServer = grpc.NewServer(grpc.UnaryInterceptor(s.ErrorInterceptor))
 	adaptiveipam.RegisterAdaptiveIpamServer(s.grpcServer, s)
 	adminv1.RegisterAdminServer(s.grpcServer, s)
 

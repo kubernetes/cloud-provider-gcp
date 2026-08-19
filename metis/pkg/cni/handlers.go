@@ -88,7 +88,7 @@ func (p *Plugin) cmdAdd(args *skel.CmdArgs) (*current.Result, error) {
 	resp, err := session.client.AllocatePodIP(ctx, req)
 	if err != nil {
 		session.logger.Info("AllocatePodIP failed", "err", err)
-		return nil, fmt.Errorf("metis cni add: allocation via daemon failed: %w", err)
+		return nil, ToCNIError(err, "metis cni add: allocation via daemon failed")
 	}
 	session.logger.Info("AllocatePodIP response", "resp", resp)
 
