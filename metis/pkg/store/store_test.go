@@ -702,15 +702,28 @@ func TestStore_AllocateIPv4_FallbackAndCooldown(t *testing.T) {
 		t.Fatalf("ReleaseIPByOwner failed: %v", err)
 	}
 
+	// Add a third CIDR block before step 6 to verify allocation order (older block first)
+	cidr3 := "10.0.3.0/29"
+	if err := s.AddCIDR(context.Background(), network, cidr3); err != nil {
+		t.Fatalf("Failed to add third CIDR block: %v", err)
+	}
+
 	// 6. Try to re-allocate for a NEW container. It should NOT pick the released IP (since it's in cooldown).
-	// It should pick the next available in the second CIDR (since first CIDR is full except for the cooled-down one).
-	ipNew, _, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-new", IPFamily: IPv4})
+	// It should pick the next available in the second CIDR (since first CIDR is full except for the cooled-down one,
+	// and second CIDR is older than third CIDR).
+	ipNew, cidrNew, err := s.AllocateIP(context.Background(), AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "container-new", IPFamily: IPv4})
 	if err != nil {
 		t.Fatalf("AllocateIPv4 failed after release with cooldown: %v", err)
 	}
 
 	if ipNew == "10.0.1.2" {
 		t.Errorf("Expected different IP from 10.0.1.2 which should be in release cooldown")
+	}
+	if cidrNew != cidr2 {
+		t.Errorf("Expected CIDR %s (older block), got %s", cidr2, cidrNew)
+	}
+	if ipNew != "10.0.2.1" {
+		t.Errorf("Expected IP 10.0.2.1 from second CIDR, got %s", ipNew)
 	}
 }
 
