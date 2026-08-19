@@ -44,6 +44,7 @@ type PluginConf struct {
 	types.PluginConf
 	IPAM         IPAM   `json:"ipam"`
 	DaemonSocket string `json:"daemonSocket,omitempty"`
+	DBPath       string `json:"dbPath,omitempty"`
 	LogFile      string `json:"logFile,omitempty"`
 }
 
@@ -60,5 +61,6 @@ type K8sArgs struct {
 type Plugin struct {
 	newClientFunc func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error)
 	socketPath    string
+	dbPath        string
 	logFile       string
 }
