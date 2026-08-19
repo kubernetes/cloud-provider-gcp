@@ -625,10 +625,11 @@ func (s *Store) allocateIP(ctx context.Context, params AllocateIPParams) (string
 		return "", "", fmt.Errorf("failed during fast-path idempotency check: %w", err)
 	}
 
-	// 2. Query available CIDRs (Outside write transaction)
+	// 2. Query available CIDRs in order of block ID (oldest first for defragmentation)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id FROM cidr_blocks
 		WHERE network = ? AND ip_family = ? AND total_ips > allocated_ips AND state = 'Ready'
+		ORDER BY id ASC
 	`, params.Network, params.IPFamily)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to query available cidr blocks: %w", err)
