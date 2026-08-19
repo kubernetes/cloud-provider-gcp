@@ -962,3 +962,111 @@ func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, 
 	}
 	return res, nil
 }
+
+// UpdateInstanceAliasIPRanges updates the alias IP ranges for a specific network interface of an instance.
+// It takes the providerID, the target network URL, and the additions/removals.
+// It returns an error if the mutation fails.
+func (g *Cloud) UpdateInstanceAliasIPRanges(
+	ctx context.Context,
+	providerID string,
+	networkURL string,
+	additions []string, // e.g. ["/28"]
+	removals []string,  // e.g. ["10.100.0.0/28"]
+) error {
+	klog.V(2).Infof("UpdateInstanceAliasIPRanges: providerID=%q, networkURL=%q, additions=%v, removals=%v", providerID, networkURL, additions, removals)
+
+	project, zone, name, err := splitProviderID(providerID)
+	if err != nil {
+		return err
+	}
+	name = canonicalizeInstanceName(name)
+
+	// Get the GCE Instance to get current interfaces and fingerprints
+	var instance *computebeta.Instance
+	if g.projectFromNodeProviderID {
+		// TODO: Use v1 API once the client SDK starts generating it.
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
+	} else {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get GCE instance %q in zone %q: %w", name, zone, err)
+	}
+
+	// Find the target network interface by Network URL
+	var targetIface *computebeta.NetworkInterface
+	for _, iface := range instance.NetworkInterfaces {
+		if iface.Network == networkURL {
+			targetIface = iface
+			break
+		}
+	}
+
+	if targetIface == nil {
+		return fmt.Errorf("network interface for network %q not found on instance %q", networkURL, name)
+	}
+
+	// Construct the new AliasIpRanges list
+	newRanges := []*computebeta.AliasIpRange{}
+
+	// Filter out removals
+	removalSet := sets.NewString(removals...)
+	for _, r := range targetIface.AliasIpRanges {
+		if removalSet.Has(r.IpCidrRange) {
+			klog.V(4).Infof("Removing alias IP range %q from interface %q", r.IpCidrRange, targetIface.Name)
+			continue
+		}
+		newRanges = append(newRanges, r)
+	}
+
+	// Add additions
+	for _, add := range additions {
+		klog.V(4).Infof("Adding alias IP range size %q to interface %q", add, targetIface.Name)
+		newRanges = append(newRanges, &computebeta.AliasIpRange{
+			IpCidrRange:         add,
+			SubnetworkRangeName: g.secondaryRangeName, // Use the configured secondary range name
+		})
+	}
+
+	// Prepare the update body
+	ifaceUpdate := &computebeta.NetworkInterface{
+		Name:          targetIface.Name,
+		Fingerprint:   targetIface.Fingerprint,
+		AliasIpRanges: newRanges,
+	}
+
+	// Call UpdateNetworkInterface (blocks until LRO completes)
+	mc := newInstancesMetricContext("update_instance_alias_ip_ranges", zone)
+	if g.projectFromNodeProviderID {
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate, cloud.ForceProjectID(project))
+	} else {
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate)
+	}
+	if err = mc.Observe(err); err != nil {
+		return fmt.Errorf("failed to update network interface %q on instance %q: %w", targetIface.Name, name, err)
+	}
+
+	return nil
+}
+
+// GetInstanceNetworkInterfaces retrieves the network interfaces for a given instance.
+// It is used by the controller's loading cache to fetch fresh GCE state.
+func (g *Cloud) GetInstanceNetworkInterfaces(ctx context.Context, providerID string) ([]*computebeta.NetworkInterface, error) {
+	project, zone, name, err := splitProviderID(providerID)
+	if err != nil {
+		return nil, err
+	}
+	name = canonicalizeInstanceName(name)
+
+	var instance *computebeta.Instance
+	if g.projectFromNodeProviderID {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
+	} else {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GCE instance %q in zone %q: %w", name, zone, err)
+	}
+
+	return instance.NetworkInterfaces, nil
+}
