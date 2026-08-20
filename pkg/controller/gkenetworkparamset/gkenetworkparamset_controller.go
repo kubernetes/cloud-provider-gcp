@@ -78,6 +78,7 @@ type Controller struct {
 	nodeLister                corelisters.NodeLister
 	nodeInformerSynced        cache.InformerSynced
 	clusterDefaultIPv4PodCIDR string
+	isIPv6OnlyCluster         bool
 }
 
 // NewGKENetworkParamSetController returns a new
@@ -183,7 +184,11 @@ func NewGKENetworkParamSetController(
 			c.clusterDefaultIPv4PodCIDR = clusterCIDR.String()
 		}
 	}
-	if c.clusterDefaultIPv4PodCIDR == "" {
+
+	// cluster is IPv6-only if it doesn't have any IPv4 cluster CIDRs.
+	c.isIPv6OnlyCluster = c.clusterDefaultIPv4PodCIDR == ""
+
+	if len(clusterCIDRs) == 0 {
 		klog.Fatal("Controller: Must specify --cluster-cidr for GKE VPC native cluster")
 	}
 
@@ -365,14 +370,17 @@ func (c *Controller) populateDesiredDefaultParamSet(ctx context.Context, params 
 		return fmt.Errorf("failed to get vpcSubnet %q compute subnetwork: %v, err: %v", vpcSubnet, subnet, err)
 	}
 	defaultPodRange := ""
-	for _, r := range subnet.SecondaryIpRanges {
-		if r.IpCidrRange == c.clusterDefaultIPv4PodCIDR {
-			defaultPodRange = r.RangeName
-			break
+	// if cluster is ipv6 only, then defaultPodRange should be empty
+	if !c.isIPv6OnlyCluster {
+		for _, r := range subnet.SecondaryIpRanges {
+			if r.IpCidrRange == c.clusterDefaultIPv4PodCIDR {
+				defaultPodRange = r.RangeName
+				break
+			}
 		}
-	}
-	if defaultPodRange == "" {
-		return fmt.Errorf("failed to find range name for cluster default IPv4 Pod CIDR %q in compute subnet: %q", c.clusterDefaultIPv4PodCIDR, subnet.Name)
+		if defaultPodRange == "" {
+			return fmt.Errorf("failed to find range name for cluster default IPv4 Pod CIDR %q in compute subnet: %q", c.clusterDefaultIPv4PodCIDR, subnet.Name)
+		}
 	}
 
 	// ensure Annotations and Labels
@@ -390,9 +398,11 @@ func (c *Controller) populateDesiredDefaultParamSet(ctx context.Context, params 
 	params.Spec = networkv1.GKENetworkParamSetSpec{
 		VPC:       vpc,
 		VPCSubnet: vpcSubnet,
-		PodIPv4Ranges: &networkv1.SecondaryRanges{
+	}
+	if defaultPodRange != "" {
+		params.Spec.PodIPv4Ranges = &networkv1.SecondaryRanges{
 			RangeNames: []string{defaultPodRange},
-		},
+		}
 	}
 	return nil
 }
@@ -444,7 +454,7 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 
 	// update PodIPv4Ranges for the "default" paramset basing on all the nodes Pod ranges
 	// when the paramset is EnsureExists mode
-	if params.Name == networkv1.DefaultPodNetworkName {
+	if params.Name == networkv1.DefaultPodNetworkName && params.Spec.PodIPv4Ranges != nil {
 		if mode, ok := params.Labels[labelsAddonManagerMode]; ok && mode == ensureExistsMode {
 			if err = c.syncPodRanges(ctx, params); err != nil {
 				return err
@@ -499,7 +509,7 @@ func (c *Controller) syncNetworkWithGNP(ctx context.Context, network *networkv1.
 	newNetwork := network.DeepCopy()
 
 	// update the copy of old Network with new conditions to be new Network basing on the change of the GNP
-	networkCrossValidation := crossValidateNetworkAndGnp(newNetwork, params)
+	networkCrossValidation := crossValidateNetworkAndGnp(newNetwork, params, c.isIPv6OnlyCluster)
 	meta.SetStatusCondition(&newNetwork.Status.Conditions, networkCrossValidation.toCondition())
 
 	if !reflect.DeepEqual(newNetwork.Status.Conditions, network.Status.Conditions) {
