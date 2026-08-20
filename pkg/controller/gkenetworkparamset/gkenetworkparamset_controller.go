@@ -183,7 +183,7 @@ func NewGKENetworkParamSetController(
 			c.clusterDefaultIPv4PodCIDR = clusterCIDR.String()
 		}
 	}
-	if c.clusterDefaultIPv4PodCIDR == "" {
+	if len(clusterCIDRs) == 0 {
 		klog.Fatal("Controller: Must specify --cluster-cidr for GKE VPC native cluster")
 	}
 
