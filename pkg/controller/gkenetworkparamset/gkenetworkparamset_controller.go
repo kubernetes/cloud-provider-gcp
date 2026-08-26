@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/cloud-provider-gcp/pkg/controllermetrics"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
@@ -49,7 +51,6 @@ import (
 	controllersmetrics "k8s.io/component-base/metrics/prometheus/controllers"
 	"k8s.io/klog/v2"
 	netutils "k8s.io/utils/net"
-	"k8s.io/utils/strings/slices"
 )
 
 const (
@@ -64,6 +65,7 @@ const (
 	componentName             = "cloud-controller-manager"
 	ensureExistsMode          = "EnsureExists"
 	reconcileMode             = "Reconcile"
+	ProviderConfigLabelKey    = "tenancy.gke.io/provider-config"
 )
 
 // Controller manages GKENetworkParamSet status.
@@ -78,6 +80,7 @@ type Controller struct {
 	nodeLister                corelisters.NodeLister
 	nodeInformerSynced        cache.InformerSynced
 	clusterDefaultIPv4PodCIDR string
+	defaultGNPName            string
 }
 
 // NewGKENetworkParamSetController returns a new
@@ -89,10 +92,15 @@ func NewGKENetworkParamSetController(
 	gceCloud *gce.Cloud,
 	networkInformerFactory networkinformers.SharedInformerFactory,
 	clusterCIDRs []*net.IPNet,
+	defaultGNPName string,
 ) *Controller {
 
 	// register GNP metrics
 	registerGKENetworkParamSetMetrics()
+
+	if defaultGNPName == "" {
+		defaultGNPName = networkv1.DefaultPodNetworkName
+	}
 
 	c := &Controller{
 		networkClientset:         networkClientset,
@@ -103,6 +111,7 @@ func NewGKENetworkParamSetController(
 		networkInformerFactory:   networkInformerFactory,
 		nodeLister:               nodeInformer.Lister(),
 		nodeInformerSynced:       nodeInformer.Informer().HasSynced,
+		defaultGNPName:           defaultGNPName,
 	}
 
 	gkeNetworkParamsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -167,13 +176,13 @@ func NewGKENetworkParamSetController(
 		AddFunc: func(obj interface{}) {
 			node := obj.(*v1.Node)
 			if c.nonDefaultParamsPodRanges(node) {
-				c.queue.Add(networkv1.DefaultPodNetworkName)
+				c.queue.Add(c.defaultGNPName)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
 			node := obj.(*v1.Node)
 			if v, ok := node.Labels[utilnode.NodePoolPodRangeLabelPrefix]; ok && v != "" {
-				c.queue.Add(networkv1.DefaultPodNetworkName)
+				c.queue.Add(c.defaultGNPName)
 			}
 		},
 	})
@@ -301,7 +310,7 @@ func (c *Controller) reconcile(ctx context.Context, key string) error {
 	params := originalParams.DeepCopy()
 
 	// always re-create "default" paramset to ensure the valid vpc, subnet and cluster-default pod range
-	if params.Name == networkv1.DefaultPodNetworkName {
+	if params.DeletionTimestamp == nil && params.Name == c.defaultGNPName {
 		// should make sure the addon manager is not on reconcile mode
 		if v := params.Labels[labelsAddonManagerMode]; v != reconcileMode {
 			if err = c.populateDesiredDefaultParamSet(ctx, params); err != nil {
@@ -314,7 +323,7 @@ func (c *Controller) reconcile(ctx context.Context, key string) error {
 
 	// if the "default" paramset updates PodIPv4Range, marks the default Network not ready.
 	// This will trigger NCM to update Network routes.
-	if params.Name == networkv1.DefaultPodNetworkName && !samePodIPv4Ranges(params, originalParams) {
+	if params.Name == c.defaultGNPName && !samePodIPv4Ranges(params, originalParams) {
 		err = c.updateNetworkConditionForPodRanges(ctx, params)
 	}
 
@@ -376,6 +385,12 @@ func (c *Controller) populateDesiredDefaultParamSet(ctx context.Context, params 
 	}
 
 	// ensure Annotations and Labels
+	if params.Annotations == nil {
+		params.Annotations = make(map[string]string)
+	}
+	if params.Labels == nil {
+		params.Labels = make(map[string]string)
+	}
 	if v, ok := params.Annotations[annotationComponentsLayer]; !ok || v != componentLayer {
 		params.Annotations[annotationComponentsLayer] = componentLayer
 	}
@@ -444,7 +459,7 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 
 	// update PodIPv4Ranges for the "default" paramset basing on all the nodes Pod ranges
 	// when the paramset is EnsureExists mode
-	if params.Name == networkv1.DefaultPodNetworkName {
+	if params.Name == c.defaultGNPName {
 		if mode, ok := params.Labels[labelsAddonManagerMode]; ok && mode == ensureExistsMode {
 			if err = c.syncPodRanges(ctx, params); err != nil {
 				return err
@@ -659,4 +674,42 @@ func (c *Controller) updateNetworkConditionForPodRanges(ctx context.Context, par
 		return err
 	}
 	return nil
+}
+
+// RemoveTenantParamSetFinalizers removes the GNP finalizer from all GKENetworkParamSet resources managed by this controller instance.
+// It removes the GNP finalizer to ensure clean tenant teardown.
+func (c *Controller) RemoveTenantParamSetFinalizers(ctx context.Context, tenantName string) error {
+	if tenantName == "" || tenantName == networkv1.DefaultPodNetworkName {
+		return fmt.Errorf("invalid tenant name for deletion: %q", tenantName)
+	}
+	gnps, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("%s=%s", ProviderConfigLabelKey, tenantName),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list tenant GNPs for cleanup: %w", err)
+	}
+	var errs error
+	for _, gnp := range gnps.Items {
+		if slices.Contains(gnp.Finalizers, GNPFinalizer) {
+			klog.Infof("Removing finalizer from tenant GKENetworkParamSet %s", gnp.Name)
+			err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+				latest, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().Get(ctx, gnp.Name, metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+				if !slices.Contains(latest.Finalizers, GNPFinalizer) {
+					return nil
+				}
+				gnpCopy := latest.DeepCopy()
+				removeFinalizerInPlace(gnpCopy)
+				_, err = c.networkClientset.NetworkingV1().GKENetworkParamSets().Update(ctx, gnpCopy, metav1.UpdateOptions{})
+				return err
+			})
+			if err != nil && !errors.IsNotFound(err) {
+				klog.Errorf("Failed to remove finalizer from GNP %s: %v", gnp.Name, err)
+				errs = multierror.Append(errs, err)
+			}
+		}
+	}
+	return errs
 }

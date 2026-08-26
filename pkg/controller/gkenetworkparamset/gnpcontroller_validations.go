@@ -315,7 +315,7 @@ func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GK
 
 // nonDefaultParamsPodRanges returns true if the node has new Pod range that's not in the "default" params
 func (c *Controller) nonDefaultParamsPodRanges(node *v1.Node) bool {
-	defaultPodRanges, err := c.getParamsPodRanges(networkv1.DefaultPodNetworkName)
+	defaultPodRanges, err := c.getParamsPodRanges(c.defaultGNPName)
 	if err != nil {
 		klog.V(4).Infof("check new Pod range on node %q error: %v", node.Name, err)
 		return false
