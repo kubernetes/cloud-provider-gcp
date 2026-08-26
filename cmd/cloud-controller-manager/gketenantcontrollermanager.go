@@ -132,8 +132,10 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 			// overwriting the global "default" NodeTopology CR with tenant-specific subnets.
 			// We only enable this feature if the current controller belongs to the supervisor.
 			tenantNodeIPAMConfig := mgrCfg.nodeIPAMConfig
+			defaultNetworkName := ""
 			if !utils.IsSupervisor(cfg.ProviderConfig) {
-				tenantNodeIPAMConfig.EnableMultiSubnetCluster = false
+				defaultNetworkName = cfg.ProviderConfig.Name + "-default"
+				klog.Infof("Node IPAM Controller for %s using default network name %s", cfg.ProviderConfig.Name, defaultNetworkName)
 			}
 
 			// Wrap the informer to filter nodes
@@ -160,6 +162,7 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 				nodeTopologyClient,
 				ipam.CIDRAllocatorType(mgrCfg.completedConfig.ComponentConfig.KubeCloudShared.CIDRAllocatorType),
 				cfg.ControllerContext.ControllerManagerMetrics,
+				defaultNetworkName,
 			)
 			if err != nil {
 				return err

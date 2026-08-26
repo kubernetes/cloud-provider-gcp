@@ -44,7 +44,7 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 	// we do not filter Networks with DeletionTimestamp set, because we
 	// count on the Network "delete event" for cleanup
 	for _, network := range k8sNetworksList {
-		if meta.IsStatusConditionTrue(network.Status.Conditions, string(networkv1.NetworkConditionStatusReady)) || networkv1.IsDefaultNetwork(network.Name) {
+		if meta.IsStatusConditionTrue(network.Status.Conditions, string(networkv1.NetworkConditionStatusReady)) || ca.isDefaultNetwork(network.Name) {
 			networks = append(networks, network)
 		}
 	}
@@ -127,14 +127,15 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 				processedNetworks[network.Name] = struct{}{}
 				// for defaultNwCIDRs, if there're no NodeLabels keep this,
 				// otherwise get the CIDR with labels
-				if networkv1.IsDefaultNetwork(network.Name) && !hasNodeLabels {
+				if ca.isDefaultNetwork(network.Name) && !hasNodeLabels {
+					klog.V(2).Infof("Default network %s found for node %s with CIDR %s", network.Name, node.Name, ipRange.IpCidrRange)
 					defaultNwCIDRs = append(defaultNwCIDRs, ipRange.IpCidrRange)
 					ipv6Addr := ca.cloud.GetIPV6Address(inf)
 					if ipv6Addr != nil {
 						defaultNwCIDRs = append(defaultNwCIDRs, ipv6Addr.String())
 					}
 				}
-				if !networkv1.IsDefaultNetwork(network.Name) {
+				if !ca.isDefaultNetwork(network.Name) {
 					northInterfaces = append(northInterfaces, networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP})
 					if _, ok := upStatusNetworks[network.Name]; ok {
 						additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{ipRange.IpCidrRange}})

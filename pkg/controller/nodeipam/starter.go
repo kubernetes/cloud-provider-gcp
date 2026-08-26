@@ -45,6 +45,7 @@ func StartNodeIpamController(
 	nodeTopologyClient nodetopologyclientset.Interface,
 	cidrAllocatorType ipam.CIDRAllocatorType,
 	controllerManagerMetrics *controllersmetrics.ControllerManagerMetrics,
+	defaultNetworkName string,
 ) (controller.Interface, bool, error) {
 	var serviceCIDR *net.IPNet
 	var secondaryServiceCIDR *net.IPNet
@@ -120,6 +121,7 @@ func StartNodeIpamController(
 		secondaryServiceCIDR,
 		nodeCIDRMaskSizes,
 		cidrAllocatorType,
+		defaultNetworkName,
 	)
 	if err != nil {
 		return nil, false, err
