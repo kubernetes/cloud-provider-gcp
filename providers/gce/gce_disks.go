@@ -929,6 +929,34 @@ func (g *Cloud) getRegionalDiskByName(diskName string) (*Disk, error) {
 	return disk, err
 }
 
+func (g *Cloud) findDiskInZones(diskName string, zones []string) (*Disk, error) {
+	var found *Disk
+	for _, zone := range zones {
+		disk, err := g.findDiskByName(diskName, zone)
+		if err != nil {
+			return nil, err
+		}
+		if disk == nil {
+			continue
+		}
+		if found != nil {
+			switch zoneInfo := disk.ZoneInfo.(type) {
+			case multiZone:
+				if zoneInfo.replicaZones.Has(zone) {
+					klog.Warningf("GCE PD name (%q) was found in multiple zones (%q), but ok because it is a RegionalDisk.",
+						diskName, zoneInfo.replicaZones)
+					continue
+				}
+				return nil, fmt.Errorf("GCE PD name was found in multiple zones: %q", diskName)
+			default:
+				return nil, fmt.Errorf("GCE PD name was found in multiple zones: %q", diskName)
+			}
+		}
+		found = disk
+	}
+	return found, nil
+}
+
 // GetDiskByNameUnknownZone scans all managed zones to return the GCE PD
 // Prefer getDiskByName, if the zone can be established
 // Return cloudprovider.DiskNotFound if the given disk cannot be found in any zone
@@ -948,35 +976,33 @@ func (g *Cloud) GetDiskByNameUnknownZone(diskName string) (*Disk, error) {
 	// admission control, but that might be a little weird (values changing
 	// on create)
 
-	var found *Disk
-	for _, zone := range g.getManagedZones() {
-		disk, err := g.findDiskByName(diskName, zone)
-		if err != nil {
-			return nil, err
-		}
-		// findDiskByName returns (nil,nil) if the disk doesn't exist, so we can't
-		// assume that a disk was found unless disk is non-nil.
-		if disk == nil {
-			continue
-		}
-		if found != nil {
-			switch zoneInfo := disk.ZoneInfo.(type) {
-			case multiZone:
-				if zoneInfo.replicaZones.Has(zone) {
-					klog.Warningf("GCE PD name (%q) was found in multiple zones (%q), but ok because it is a RegionalDisk.",
-						diskName, zoneInfo.replicaZones)
-					continue
-				}
-				return nil, fmt.Errorf("GCE PD name was found in multiple zones: %q", diskName)
-			default:
-				return nil, fmt.Errorf("GCE PD name was found in multiple zones: %q", diskName)
-			}
-		}
-		found = disk
+	initialZones := g.getManagedZones()
+	found, err := g.findDiskInZones(diskName, initialZones)
+	if err != nil {
+		return nil, err
 	}
 	if found != nil {
 		return found, nil
 	}
+
+	if g.dynamicZones {
+		if err := g.refreshManagedZones(); err != nil {
+			klog.Errorf("Failed to refresh GCE managed zones for disk %s: %v", diskName, err)
+		} else {
+			refreshedZones := g.getManagedZones()
+			newZones := sets.NewString(refreshedZones...).Difference(sets.NewString(initialZones...)).List()
+			if len(newZones) > 0 {
+				found, err := g.findDiskInZones(diskName, newZones)
+				if err != nil {
+					return nil, err
+				}
+				if found != nil {
+					return found, nil
+				}
+			}
+		}
+	}
+
 	klog.Warningf("GCE persistent disk %q not found in managed zones (%s)",
 		diskName, strings.Join(g.getManagedZones(), ","))
 
