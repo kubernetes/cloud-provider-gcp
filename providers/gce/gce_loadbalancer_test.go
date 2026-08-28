@@ -655,3 +655,112 @@ func TestUpdateLoadBalancerWithLoadBalancerClass(t *testing.T) {
 		}
 	}
 }
+
+func TestGetHCFirewallSourceRanges(t *testing.T) {
+	// Backup and restore global states
+	oldILB := overrideL4ILBHealthCheckSourceCIDRs
+	oldNetLB := overrideL4NetLBHealthCheckSourceCIDRs
+	defer func() {
+		SetOverrideL4ILBHealthCheckSourceCIDRs(oldILB)
+		SetOverrideL4NetLBHealthCheckSourceCIDRs(oldNetLB)
+	}()
+
+	defaultIPv4 := l4LbSrcRngsFlag.ipn.StringSlice()
+
+	testCases := []struct {
+		name           string
+		overrideILB    string
+		overrideNetLB  string
+		l4Type         L4LBType
+		shared         bool
+		isIPv6         bool
+		expectedRanges []string
+	}{
+		{
+			name:           "ILB default IPv4",
+			l4Type:         L4LBTypeILB,
+			shared:         false,
+			isIPv6:         false,
+			expectedRanges: defaultIPv4,
+		},
+		{
+			name:           "ILB default IPv6 (empty)",
+			l4Type:         L4LBTypeILB,
+			shared:         false,
+			isIPv6:         true,
+			expectedRanges: []string{}, // default only has IPv4
+		},
+		{
+			name:           "NetLB default IPv4",
+			l4Type:         L4LBTypeNetLB,
+			shared:         false,
+			isIPv6:         false,
+			expectedRanges: defaultIPv4,
+		},
+		{
+			name:           "ILB overridden IPv4",
+			overrideILB:    "1.2.3.0/24,2.3.4.0/24",
+			l4Type:         L4LBTypeILB,
+			shared:         false,
+			isIPv6:         false,
+			expectedRanges: []string{"1.2.3.0/24", "2.3.4.0/24"},
+		},
+		{
+			name:           "NetLB overridden IPv6",
+			overrideNetLB:  "2600::/64,1.2.3.0/24",
+			l4Type:         L4LBTypeNetLB,
+			shared:         false,
+			isIPv6:         true,
+			expectedRanges: []string{"2600::/64"}, // should filter out IPv4
+		},
+		{
+			name:           "Shared default IPv4",
+			l4Type:         L4LBTypeILB, // l4Type shouldn't matter when shared
+			shared:         true,
+			isIPv6:         false,
+			expectedRanges: defaultIPv4, // both use default
+		},
+		{
+			name:           "Shared mixed overrides IPv4",
+			overrideILB:    "1.2.3.0/24",
+			overrideNetLB:  "4.5.6.0/24",
+			l4Type:         L4LBTypeILB,
+			shared:         true,
+			isIPv6:         false,
+			expectedRanges: []string{"1.2.3.0/24", "4.5.6.0/24"}, // should union both
+		},
+		{
+			name:          "Shared mixed overrides deduplication",
+			overrideILB:   "1.2.3.0/24,10.0.0.0/8",
+			overrideNetLB: "1.2.3.0/24,20.0.0.0/8",
+			l4Type:        L4LBTypeILB,
+			shared:        true,
+			isIPv6:        false,
+			// The IPNetSet output string slice order is deterministic but let's test if it handles it correctly.
+			// Actually StringSlice() sorts the strings!
+			expectedRanges: []string{"1.2.3.0/24", "10.0.0.0/8", "20.0.0.0/8"},
+		},
+		{
+			name:        "Shared fallback IPv6",
+			overrideILB: "2600::/64",
+			// NetLB has no override, so it should fallback to default (empty for IPv6)
+			l4Type:         L4LBTypeNetLB,
+			shared:         true,
+			isIPv6:         true,
+			expectedRanges: []string{"2600::/64"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			SetOverrideL4ILBHealthCheckSourceCIDRs(tc.overrideILB)
+			SetOverrideL4NetLBHealthCheckSourceCIDRs(tc.overrideNetLB)
+
+			res := getHCFirewallSourceRanges(tc.l4Type, tc.shared, tc.isIPv6).StringSlice()
+
+			// netutils.IPNetSet.StringSlice() sorts the results, so we can directly assert Equal
+			// but we need to make sure tc.expectedRanges is sorted too.
+			assert.ElementsMatch(t, tc.expectedRanges, res)
+		})
+	}
+}
