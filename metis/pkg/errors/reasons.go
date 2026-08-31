@@ -28,23 +28,19 @@ const (
 	MetadataKeyContainerID  = "container_id"
 )
 
-// Well-defined error reasons across Metis
-
-// ReasonNetworkConfigInvalid indicates that request parameters or CNI stdin
-// netconf JSON parameters are invalid or missing.
+// Well-defined error reasons across Metis.
 //
-// Semantics:
-//   - Triggered during Pod IP allocation or CNI execution when required fields
-//     (e.g. network name, pod configs) are missing or malformed.
-//   - gRPC Code: InvalidArgument (3).
-//   - CNI Mapping: Code 7 (ErrInvalidNetworkConfig).
+// Developer Requirement:
+// Every new error reason constant introduced in Metis MUST be defined here and
+// registered in reasonToCNIMap in pkg/cni/error_mappings.go with its CNI code,
+// default message, root cause, and CNI/Kubelet recovery expectations.
+
+// ReasonNetworkConfigInvalid indicates missing or malformed request parameters
+// (gRPC Code: InvalidArgument -> CNI Code 7 ErrInvalidNetworkConfig).
+// See reasonToCNIMap in pkg/cni/error_mappings.go for root cause & expectations.
 const ReasonNetworkConfigInvalid = "NETWORK_CONFIG_INVALID"
 
 // ReasonInternalError indicates an internal server, database, or uncaught
-// component error within Metis.
-//
-// Semantics:
-// - Triggered when SQLite database transactions fail or uncaught panics occur.
-// - gRPC Code: Internal (13).
-// - CNI Mapping: Code 999 (ErrInternal).
+// component error within Metis (gRPC Code: Internal -> CNI Code 999 ErrInternal).
+// See reasonToCNIMap in pkg/cni/error_mappings.go for root cause & expectations.
 const ReasonInternalError = "INTERNAL_ERROR"

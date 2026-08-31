@@ -17,6 +17,7 @@ limitations under the License.
 package cni
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"strings"
@@ -25,26 +26,62 @@ import (
 	metiserrors "k8s.io/metis/pkg/errors"
 )
 
-// TestCNIMappings_ExhaustiveInvariants enforces that EVERY Reason constant
-// defined in pkg/errors/reasons.go is registered in reasonToCNIMap and carries
-// a valid positive CNI code and non-empty default message.
+// TestCNIMappings_ExhaustiveInvariants dynamically parses pkg/errors/reasons.go
+// AST to discover every exported Reason... constant and enforces that EVERY reason
+// defined in reasons.go is registered in reasonToCNIMap with a valid positive CNI
+// code and non-empty default message.
 func TestCNIMappings_ExhaustiveInvariants(t *testing.T) {
-	requiredReasons := []string{
-		metiserrors.ReasonNetworkConfigInvalid,
-		metiserrors.ReasonInternalError,
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, "../errors/reasons.go", nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("failed to parse ../errors/reasons.go AST: %v", err)
 	}
 
-	for _, reason := range requiredReasons {
-		mapping, ok := reasonToCNIMap[reason]
+	var discoveredReasons []string
+	for _, decl := range node.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range genDecl.Specs {
+			valueSpec, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for _, name := range valueSpec.Names {
+				if strings.HasPrefix(name.Name, "Reason") {
+					discoveredReasons = append(discoveredReasons, name.Name)
+				}
+			}
+		}
+	}
+
+	if len(discoveredReasons) == 0 {
+		t.Fatal("failed to discover any Reason... constants in ../errors/reasons.go")
+	}
+
+	// Known mappings value map for discovered Reason identifiers
+	reasonValueMap := map[string]string{
+		"ReasonNetworkConfigInvalid": metiserrors.ReasonNetworkConfigInvalid,
+		"ReasonInternalError":        metiserrors.ReasonInternalError,
+	}
+
+	for _, reasonIdent := range discoveredReasons {
+		reasonVal, known := reasonValueMap[reasonIdent]
+		if !known {
+			t.Errorf("new Reason constant %q discovered in reasons.go but not added to reasonValueMap check in error_mappings_test.go", reasonIdent)
+			continue
+		}
+		mapping, ok := reasonToCNIMap[reasonVal]
 		if !ok {
-			t.Errorf("pkg/errors Reason %q is missing from reasonToCNIMap in cni/error_mappings.go!", reason)
+			t.Errorf("pkg/errors Reason %q (%s) is missing from reasonToCNIMap in cni/error_mappings.go!", reasonIdent, reasonVal)
 			continue
 		}
 		if mapping.code == 0 {
-			t.Errorf("reason %q mapped to invalid CNI code 0", reason)
+			t.Errorf("reason %q mapped to invalid CNI code 0", reasonVal)
 		}
 		if mapping.defaultMsg == "" {
-			t.Errorf("reason %q has empty default message", reason)
+			t.Errorf("reason %q has empty default message", reasonVal)
 		}
 	}
 }
