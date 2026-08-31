@@ -46,6 +46,7 @@ func (o *daemonOptions) addFlags() cliflag.NamedFlagSets {
 	fs.DurationVar(&o.ReleaseCooldown, "release-cooldown", daemon.DefaultReleaseCooldown, "Release cooldown duration (e.g., 5m). 0 or negative values will be interpreted as the default value.")
 	fs.StringVar(&o.DBPath, "db-path", pkg.DefaultDBPath, "Path to the SQLite database file")
 	fs.StringVar(&o.SocketPath, "socket-path", pkg.DefaultSockPath, "Path to the Unix domain socket")
+	fs.IntVar(&o.MetricsPort, "metrics-port", pkg.DefaultMetricsPort, "Metrics HTTP server port (e.g., 9996). Set to 0 to disable.")
 	fs.DurationVar(&o.DrainingExpiration, "draining-expiration", daemon.DefaultDrainingExpiration, "Draining expiration duration (e.g., 5h). 0 or negative values will be interpreted as the default value.")
 	fs.DurationVar(&o.SustainedLowUtilizationDuration, "sustained-low-utilization-duration", daemon.DefaultSustainedLowUtilizationDuration, "Sustained low utilization duration (e.g., 8h). 0 or negative values will be interpreted as the default value.")
 
@@ -62,6 +63,7 @@ func (o *daemonOptions) applyTo(cfg *daemon.Config) error {
 	cfg.ReleaseCooldown = o.ReleaseCooldown
 	cfg.DBPath = o.DBPath
 	cfg.SocketPath = o.SocketPath
+	cfg.MetricsPort = o.MetricsPort
 	cfg.DrainingExpiration = o.DrainingExpiration
 	cfg.SustainedLowUtilizationDuration = o.SustainedLowUtilizationDuration
 

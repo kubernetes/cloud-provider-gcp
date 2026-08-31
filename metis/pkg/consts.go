@@ -22,4 +22,5 @@ const (
 	DefaultCNILogPath  = "/var/lib/cni/metis/metis-cni.log"
 	DefaultGatewayIPv4 = "169.254.4.6"
 	DefaultGatewayIPv6 = "fe80::8893:b6ff:fe2c:7a0d"
+	DefaultMetricsPort = 9996
 )

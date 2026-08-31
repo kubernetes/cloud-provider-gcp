@@ -59,4 +59,5 @@ type Plugin struct {
 	newClientFunc func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error)
 	socketPath    string
 	logFile       string
+	enableMetrics bool
 }

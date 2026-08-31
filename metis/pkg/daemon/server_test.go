@@ -52,7 +52,7 @@ func TestAdaptiveIpamServer_withGrpcClient(t *testing.T) {
 	}
 	defer s.Close()
 
-	server := newAdaptiveIpamServer(logger, s, sockPath, 0, 0)
+	server := newAdaptiveIpamServer(logger, s, sockPath, 0, 0, true)
 
 	// 1. Start server in background
 	errCh := make(chan error, 1)
@@ -112,7 +112,7 @@ func TestAdaptiveIpamServer_AllocatePodIP(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0, true)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -153,7 +153,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_Concurrency(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0, true)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -260,7 +260,7 @@ func TestAdaptiveIpamServer_DeallocatePodIP(t *testing.T) {
 	}
 	defer s.Close()
 
-	server := newAdaptiveIpamServer(logger, s, "", 1*time.Minute, 0)
+	server := newAdaptiveIpamServer(logger, s, "", 1*time.Minute, 0, true)
 
 	network := "gke-pod-network"
 	cidr := "10.0.1.0/24"
@@ -329,7 +329,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_RetryOnDBError(t *testing.T) {
 		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 500*time.Millisecond)
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 500*time.Millisecond, true)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -389,7 +389,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0, true)
 
 	network := "test-network"
 
@@ -441,7 +441,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_IPv6(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0, true)
 
 	network := "test-network"
 	cidr := "2001:db8::/64"
@@ -488,7 +488,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_IPv6_Idempotency_Release(t *testing.T)
 	}
 	defer storeInstance.Close()
 
-	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0, true)
 
 	network := "test-network"
 	cidr := "2001:db8::/64"
@@ -561,7 +561,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_DualStack(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0, true)
 
 	network := "test-network"
 	cidr4 := "10.0.1.0/24"
@@ -659,7 +659,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 			}
 			defer storeInstance.Close()
 
-			server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0)
+			server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 0, true)
 
 			nodeName := "test-node"
 			mockNNC := &nncv1.NodeNetworkConfig{
@@ -768,7 +768,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation_MultipleRequests(t *
 	}
 	defer storeInstance.Close()
 
-	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 10*time.Second)
+	server := newAdaptiveIpamServer(logger, storeInstance, "", 0, 10*time.Second, true)
 
 	nodeName := "test-node"
 	mockNNC := &nncv1.NodeNetworkConfig{
@@ -862,7 +862,7 @@ func TestAdaptiveIpamServer_CheckPodIP(t *testing.T) {
 	}
 	defer s.Close()
 
-	server := newAdaptiveIpamServer(logger, s, "", 0, 0)
+	server := newAdaptiveIpamServer(logger, s, "", 0, 0, true)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -922,7 +922,7 @@ func TestAdaptiveIpamServer_CheckPodIP(t *testing.T) {
 }
 
 func TestAdaptiveIpamServer_AllocatePodIP_Validation(t *testing.T) {
-	server := newAdaptiveIpamServer(klog.Background(), nil, "", 0, 0)
+	server := newAdaptiveIpamServer(klog.Background(), nil, "", 0, 0, true)
 
 	tests := []struct {
 		name          string
@@ -976,7 +976,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_Validation(t *testing.T) {
 }
 
 func TestAdaptiveIpamServer_DeallocatePodIP_Validation(t *testing.T) {
-	server := newAdaptiveIpamServer(klog.Background(), nil, "", 0, 0)
+	server := newAdaptiveIpamServer(klog.Background(), nil, "", 0, 0, true)
 
 	tests := []struct {
 		name          string

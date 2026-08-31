@@ -57,12 +57,20 @@ func WithLogFile(path string) Option {
 	}
 }
 
+// WithEnableMetrics sets whether metrics recording is enabled for the CNI plugin.
+func WithEnableMetrics(enable bool) Option {
+	return func(p *Plugin) {
+		p.enableMetrics = enable
+	}
+}
+
 // NewPlugin creates a new Plugin with functional options.
 func NewPlugin(opts ...Option) *Plugin {
 	p := &Plugin{
 		newClientFunc: getGrpcClient,
 		socketPath:    pkg.DefaultSockPath,
 		logFile:       pkg.DefaultCNILogPath,
+		enableMetrics: true,
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -71,12 +79,13 @@ func NewPlugin(opts ...Option) *Plugin {
 }
 
 type pluginSession struct {
-	pluginConf *PluginConf
-	k8sArgs    *K8sArgs
-	client     pb.AdaptiveIpamClient
-	conn       *grpc.ClientConn
-	logger     logr.Logger
-	cleanup    func()
+	containerID string
+	pluginConf  *PluginConf
+	k8sArgs     *K8sArgs
+	client      pb.AdaptiveIpamClient
+	conn        *grpc.ClientConn
+	logger      logr.Logger
+	cleanup     func()
 }
 
 func (s *pluginSession) close() {
@@ -125,12 +134,13 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 	}
 
 	return &pluginSession{
-		pluginConf: conf,
-		k8sArgs:    k8sArgs,
-		client:     client,
-		conn:       conn,
-		logger:     logger,
-		cleanup:    cleanup,
+		containerID: args.ContainerID,
+		pluginConf:  conf,
+		k8sArgs:     k8sArgs,
+		client:      client,
+		conn:        conn,
+		logger:      logger,
+		cleanup:     cleanup,
 	}, nil
 }
 
