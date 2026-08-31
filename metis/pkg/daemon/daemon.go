@@ -40,8 +40,6 @@ import (
 	"k8s.io/metis/pkg/store"
 )
 
-
-
 // Config contains the configuration parameters for the daemon.
 type Config struct {
 	DBPath                          string

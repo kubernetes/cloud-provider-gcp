@@ -60,13 +60,6 @@ const (
 	// allowing us to perform a single read-modify-write operation on the NodeNetworkConfig (NNC) custom resource,
 	// which avoids API write conflicts and drastically reduces Kubernetes API server I/O overhead.
 	syncKey = "sync"
-
-	// defaultMonitorWorkers is set to 1 because the Monitor uses a single queue key (syncKey)
-	// to process all networks on the node sequentially. Since the workqueue ensures a key
-	// is processed by only one worker at a time, having more workers would just result in
-	// idle goroutines. This single-threaded execution avoids race conditions and write conflicts
-	// during read-modify-write updates of the NodeNetworkConfig (NNC) custom resource.
-	defaultMonitorWorkers = 1
 )
 
 // Monitor manages the dynamic scaling (up and down) of IP CIDR block capacity
@@ -215,7 +208,7 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 		nodeName:                        cfg.NodeName,
 		store:                           cfg.Store,
 		logger:                          cfg.Logger,
-		lowUtilizationTimers:            make(map[string]time.Time),
+		lowUtilizationTimers:            map[string]time.Time{},
 		GetPendingRequestsCount:         cfg.GetPendingRequestsCount,
 		cooldownPushbackInterval:        cfg.CooldownPushbackInterval,
 		drainingExpiration:              cfg.DrainingExpiration,
@@ -242,7 +235,7 @@ func (m *Monitor) Run(ctx context.Context) {
 	}
 
 	// Periodic enqueuer
-	go wait.UntilWithContext(ctx, func(ctx context.Context) {
+	go wait.UntilWithContext(ctx, func(_ context.Context) {
 		m.enqueue()
 	}, m.monitorInterval)
 
@@ -297,7 +290,7 @@ func (m *Monitor) enqueue() {
 // If any modifications are made to the allocations or releasable CIDRs, it patches
 // the NodeNetworkConfig (NNC) custom resource.
 func (m *Monitor) syncAll(ctx context.Context) error {
-	m.logger.Info("Daemon monitor starting synchronization: evaluating IP usage and reconciling capacity for dynamic allocation on node", "node", m.nodeName)
+	m.logger.V(4).Info("Daemon monitor starting synchronization: evaluating IP usage and reconciling capacity for dynamic allocation on node", "node", m.nodeName)
 
 	// Retrieve the latest NodeNetworkConfig (NNC) resource for this node.
 	nnc, err := getNodeNetworkConfig(ctx, m.nncLister, m.nncClient, m.nodeName)
@@ -337,7 +330,7 @@ func (m *Monitor) syncAll(ctx context.Context) error {
 			crdSpecAllocatedPods = int(info.CurrentAllocation.Pods)
 		}
 
-		m.logger.Info("Evaluating IP utilization and capacity requirements",
+		m.logger.V(4).Info("Evaluating IP utilization and capacity requirements",
 			"network", network,
 			"crdSpecAllocatedPods", crdSpecAllocatedPods,
 			"dbAllocatedIPs", info.Usage.IPs.Allocated,
@@ -390,7 +383,7 @@ func (m *Monitor) syncAll(ctx context.Context) error {
 			return err
 		}
 	}
-	m.logger.Info("Daemon monitor synchronization done", "node", m.nodeName)
+	m.logger.V(4).Info("Daemon monitor synchronization done", "node", m.nodeName)
 	return nil
 }
 
@@ -399,11 +392,11 @@ func (m *Monitor) patchNNC(ctx context.Context, nncCopy *nncv1.NodeNetworkConfig
 	// optimistic concurrency control. This causes the patch to fail with a
 	// 409 Conflict if another controller (e.g. GCE) updated the NNC since we
 	// fetched it. The monitor's workqueue will automatically retry.
-	patchData := map[string]interface{}{
-		"metadata": map[string]interface{}{
+	patchData := map[string]any{
+		"metadata": map[string]any{
 			"resourceVersion": nncCopy.ResourceVersion,
 		},
-		"spec": map[string]interface{}{
+		"spec": map[string]any{
 			"allocations":     nncCopy.Spec.Allocations,
 			"releasableCIDRs": nncCopy.Spec.ReleasableCIDRs,
 		},
@@ -509,7 +502,7 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string, nncCop
 
 	utilization := m.calculateUtilization(usedIPs, pendingRequests, v4Usage.IPs.ActiveTotal)
 
-	m.logger.Info("Calculated utilization", "network", network, "used", usedIPs, "pending", pendingRequests, "activeTotal", v4Usage.IPs.ActiveTotal, "total", v4Usage.IPs.Total, "utilization", utilization)
+	m.logger.V(4).Info("Calculated utilization", "network", network, "used", usedIPs, "pending", pendingRequests, "activeTotal", v4Usage.IPs.ActiveTotal, "total", v4Usage.IPs.Total, "utilization", utilization)
 
 	return &UtilizationInfo{
 		Utilization:        utilization,
@@ -535,7 +528,7 @@ func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) int {
 	// there may never be new CIDRs to wake up the blocking requests from the daemon server.
 	// So we need to callback onCIDR when we check there are enough available IPs.
 	if info.Usage.IPs.Cooldown > m.cooldownPushbackThreshold {
-		m.logger.Info("Too many IPs in cooldown, holding on sending outgoing requests", "network", network, "cooldownCount", info.Usage.IPs.Cooldown)
+		m.logger.V(4).Info("Too many IPs in cooldown, holding on sending outgoing requests", "network", network, "cooldownCount", info.Usage.IPs.Cooldown)
 		m.queue.AddAfter(syncKey, m.cooldownPushbackInterval)
 		return currentPods
 	}
@@ -560,7 +553,7 @@ func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) int {
 // or less blocks than strictly necessary, and that is still fine. The system will self-correct in subsequent cycles.
 func (m *Monitor) drainExcessive(ctx context.Context, network string, info *UtilizationInfo) (bool, error) {
 	usedIPs := info.Usage.IPs.Allocated // Only allocated, not in cooldown
-	m.logger.Info(fmt.Sprintf("Utilization falls below %d%% for %s, evaluating CIDR blocks to drain", int(m.lowUtilizationThreshold*100), m.sustainedLowUtilizationDuration), "network", network)
+	m.logger.V(4).Info(fmt.Sprintf("Utilization falls below %d%% for %s, evaluating CIDR blocks to drain", int(m.lowUtilizationThreshold*100), m.sustainedLowUtilizationDuration), "network", network)
 
 	readyBlocks, err := m.store.GetReadyCIDRBlocksSorted(ctx, network, store.IPv4)
 	if err != nil {
@@ -568,7 +561,7 @@ func (m *Monitor) drainExcessive(ctx context.Context, network string, info *Util
 	}
 
 	if len(readyBlocks) <= 1 {
-		m.logger.Info("Only initial block or no blocks available, skipping draining", "network", network)
+		m.logger.V(4).Info("Only initial block or no blocks available, skipping draining", "network", network)
 		return false, nil
 	}
 
@@ -580,7 +573,7 @@ func (m *Monitor) drainExcessive(ctx context.Context, network string, info *Util
 	updated := false
 	for _, block := range blocksToMark {
 		if totalUsedIPs >= targetUsedIPs {
-			m.logger.Info("Target total used IPs reached, stopping marking blocks", "target", targetUsedIPs, "running", totalUsedIPs)
+			m.logger.V(4).Info("Target total used IPs reached, stopping marking blocks", "target", targetUsedIPs, "running", totalUsedIPs)
 			break
 		}
 		availableIPs := max(0, block.TotalIPs-block.AllocatedIPs)
@@ -601,12 +594,12 @@ func (m *Monitor) maybeDrainExcessive(ctx context.Context, network string, info 
 	if info.Utilization >= m.lowUtilizationThreshold {
 		if _, ok := m.lowUtilizationTimers[network]; ok {
 			delete(m.lowUtilizationTimers, network)
-			m.logger.Info("Utilization went above threshold, reset timer", "network", network, "utilization", info.Utilization)
+			m.logger.V(4).Info("Utilization went above threshold, reset timer", "network", network, "utilization", info.Utilization)
 		}
 	} else {
 		if _, ok := m.lowUtilizationTimers[network]; !ok {
 			m.lowUtilizationTimers[network] = time.Now()
-			m.logger.Info("Low utilization detected, started timer", "network", network, "utilization", info.Utilization)
+			m.logger.V(4).Info("Low utilization detected, started timer", "network", network, "utilization", info.Utilization)
 		}
 
 		if time.Since(m.lowUtilizationTimers[network]) > m.sustainedLowUtilizationDuration {
@@ -617,7 +610,7 @@ func (m *Monitor) maybeDrainExcessive(ctx context.Context, network string, info 
 			}
 			if drained {
 				delete(m.lowUtilizationTimers, network)
-				m.logger.Info("Successfully drained CIDR blocks, resetting low utilization timer", "network", network)
+				m.logger.V(4).Info("Successfully drained CIDR blocks, resetting low utilization timer", "network", network)
 			}
 			return drained
 		}
@@ -643,12 +636,12 @@ func (m *Monitor) reconcileDeletingBlocks(
 	}
 
 	// Map status CIDRs for quick lookup
-	statusMap := make(map[string]nncv1.PodCIDR)
+	statusMap := map[string]nncv1.PodCIDR{}
 	for _, podCIDR := range currentStatus {
 		statusMap[podCIDR.CIDR] = podCIDR
 	}
 
-	releasableMap := make(map[string]bool)
+	releasableMap := map[string]bool{}
 	for _, releasable := range currentReleasables {
 		releasableMap[releasable.CIDR] = true
 	}

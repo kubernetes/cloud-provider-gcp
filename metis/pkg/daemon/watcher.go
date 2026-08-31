@@ -107,7 +107,7 @@ func NewWatcher(cfg WatcherConfig) *Watcher {
 	// nncInformer is never nil. This is for UT.
 	if cfg.NNCInformer != nil {
 		cfg.NNCInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
+			AddFunc: func(obj any) {
 				nnc, ok := obj.(*nncv1.NodeNetworkConfig)
 				if !ok {
 					return
@@ -118,7 +118,7 @@ func NewWatcher(cfg WatcherConfig) *Watcher {
 					}
 				}
 			},
-			UpdateFunc: func(oldObj, newObj interface{}) {
+			UpdateFunc: func(oldObj, newObj any) {
 				oldNNC, ok1 := oldObj.(*nncv1.NodeNetworkConfig)
 				newNNC, ok2 := newObj.(*nncv1.NodeNetworkConfig)
 				if !ok1 || !ok2 {
@@ -191,7 +191,7 @@ func (w *Watcher) processNextWorkItem(ctx context.Context) bool {
 }
 
 func (w *Watcher) syncCIDR(ctx context.Context, network string) error {
-	w.logger.Info("Daemon watcher starting synchronization: reconciling CIDR blocks with NodeNetworkConfig status", "node", w.nodeName, "network", network)
+	w.logger.V(4).Info("Daemon watcher starting synchronization: reconciling CIDR blocks with NodeNetworkConfig status", "node", w.nodeName, "network", network)
 
 	nnc, err := getNodeNetworkConfig(ctx, w.nncLister, w.nncClient, w.nodeName)
 	if err != nil {
@@ -206,7 +206,7 @@ func (w *Watcher) syncCIDR(ctx context.Context, network string) error {
 		return err
 	}
 
-	w.logger.Info("Daemon watcher synchronization done", "node", w.nodeName, "network", network)
+	w.logger.V(4).Info("Daemon watcher synchronization done", "node", w.nodeName, "network", network)
 	return nil
 }
 
@@ -270,7 +270,7 @@ func (w *Watcher) maybeDeleteCIDRs(ctx context.Context, nnc *nncv1.NodeNetworkCo
 	}
 
 	// Create a map for quick lookup of CIDRs in NNC status for the current network
-	statusCIDRs := make(map[string]bool)
+	statusCIDRs := map[string]bool{}
 	for _, podCIDR := range nnc.Status.PodCIDRs {
 		if podCIDR.Network == network {
 			statusCIDRs[podCIDR.CIDR] = true

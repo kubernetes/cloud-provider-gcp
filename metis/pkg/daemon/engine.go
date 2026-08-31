@@ -73,7 +73,7 @@ func NewIPAMEngine(logger logr.Logger, storeInstance *store.Store, releaseCooldo
 		releaseCooldown: releaseCooldown,
 		busyTimeout:     busyTimeout,
 		logger:          logger,
-		requestsMap:     make(map[string]map[cniClient]chan struct{}),
+		requestsMap:     map[string]map[cniClient]chan struct{}{},
 		monitor:         monitor,
 		enableMetrics:   enableMetrics,
 	}
@@ -204,7 +204,7 @@ func (e *IPAMEngine) allocateIPWithRetry(ctx context.Context, params store.Alloc
 	})
 
 	if err != nil {
-		if (errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded)) && lastErr != nil {
+		if wait.Interrupted(err) && lastErr != nil {
 			err = lastErr // Use last error if timed out
 		}
 		return "", "", err
@@ -297,7 +297,7 @@ func (e *IPAMEngine) maybeAddInitialPodCidr(ctx context.Context, network string,
 	if !exists {
 		if err := e.store.AddCIDR(ctx, network, initialPodCidr); err != nil {
 			if errors.Is(err, store.ErrCidrAlreadyExists) {
-				e.logger.Info("Initial CIDR block already added by another thread", "network", network, "cidr", initialPodCidr)
+				e.logger.V(4).Info("Initial CIDR block already added by another thread", "network", network, "cidr", initialPodCidr)
 			} else {
 				e.logger.Error(err, "failed to add initial cidr block", "network", network, "cidr", initialPodCidr)
 				return status.Errorf(codes.Unavailable, "failed to add initial cidr block %s for network %s: %v", initialPodCidr, network, err)
@@ -331,7 +331,7 @@ func (e *IPAMEngine) DeallocatePodIP(ctx context.Context, req *adaptiveipam.Deal
 	}
 
 	if len(releasedIPs) == 0 {
-		e.logger.Info("No IP addresses were released (likely already deallocated or didn't exist)", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
+		e.logger.V(4).Info("No IP addresses were released (likely already deallocated or didn't exist)", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 	} else {
 		e.logger.Info("Successfully deallocated ips",
 			"network", req.Network,
@@ -362,10 +362,16 @@ func (e *IPAMEngine) onCIDRAdded(network string, availableIPs int) {
 		return
 	}
 
+	var awakenedClients []string
 	count := 0
 	for client, ch := range netMap {
 		close(ch)
 		delete(netMap, client)
+		clientDetail := fmt.Sprintf("%s/%s", client.podNamespace, client.podName)
+		if client.containerID != "" {
+			clientDetail = fmt.Sprintf("%s/%s (containerID: %s)", client.podNamespace, client.podName, client.containerID)
+		}
+		awakenedClients = append(awakenedClients, clientDetail)
 		count++
 		if count >= availableIPs {
 			break
@@ -378,6 +384,7 @@ func (e *IPAMEngine) onCIDRAdded(network string, availableIPs int) {
 
 	if count > 0 {
 		e.logger.Info("Successfully woke up waiting CNI requests", "network", network, "count", count)
+		e.logger.V(4).Info("Awakened CNI client requests details", "network", network, "clients", awakenedClients)
 	}
 }
 
@@ -413,7 +420,7 @@ func (e *IPAMEngine) getOrCreatePendingRequest(clientKey cniClient, network stri
 
 	netMap, netOk := e.requestsMap[network]
 	if !netOk {
-		netMap = make(map[cniClient]chan struct{})
+		netMap = map[cniClient]chan struct{}{}
 		e.requestsMap[network] = netMap
 	}
 	ch, ok := netMap[clientKey]
