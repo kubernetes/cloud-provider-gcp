@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/metis/api/adaptiveipam/v1"
+	metiserrors "k8s.io/metis/pkg/errors"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -97,7 +98,12 @@ func (e *IPAMEngine) AllocatePodIP(ctx context.Context, req *adaptiveipam.Alloca
 		"ipv6Config", fmt.Sprintf("%+v", req.Ipv6Config))
 
 	if req.Ipv4Config == nil && req.Ipv6Config == nil {
-		err := status.Errorf(codes.InvalidArgument, "both ipv4_config and ipv6_config are missing for pod %s/%s", req.PodNamespace, req.PodName)
+		meta := map[string]string{
+			metiserrors.MetadataKeyNetwork:      req.Network,
+			metiserrors.MetadataKeyPodName:      req.PodName,
+			metiserrors.MetadataKeyPodNamespace: req.PodNamespace,
+		}
+		err := metiserrors.ErrNetworkConfigInvalid(fmt.Sprintf("both ipv4_config and ipv6_config are missing for pod %s/%s", req.PodNamespace, req.PodName), meta, nil)
 		e.logger.Error(err, "AllocatePodIP validation failed", "podName", req.PodName, "podNamespace", req.PodNamespace)
 		return nil, err
 	}
@@ -112,7 +118,13 @@ func (e *IPAMEngine) AllocatePodIP(ctx context.Context, req *adaptiveipam.Alloca
 	var err error
 	if req.Ipv4Config != nil {
 		if req.Ipv4Config.ContainerId == "" || req.Ipv4Config.InterfaceName == "" {
-			return nil, status.Error(codes.InvalidArgument, "container_id and interface_name must not be empty")
+			metaIPv4 := map[string]string{
+				metiserrors.MetadataKeyNetwork:      req.Network,
+				metiserrors.MetadataKeyPodName:      req.PodName,
+				metiserrors.MetadataKeyPodNamespace: req.PodNamespace,
+				metiserrors.MetadataKeyContainerID:  req.Ipv4Config.ContainerId,
+			}
+			return nil, metiserrors.ErrNetworkConfigInvalid("container_id and interface_name must not be empty", metaIPv4, nil)
 		}
 		ipv4Alloc, err = e.allocateIP(ctx, req, req.Ipv4Config, store.IPv4)
 		if err != nil {
@@ -123,7 +135,13 @@ func (e *IPAMEngine) AllocatePodIP(ctx context.Context, req *adaptiveipam.Alloca
 	var ipv6Alloc *adaptiveipam.PodIP
 	if req.Ipv6Config != nil {
 		if req.Ipv6Config.ContainerId == "" || req.Ipv6Config.InterfaceName == "" {
-			return nil, status.Error(codes.InvalidArgument, "container_id and interface_name must not be empty")
+			metaIPv6 := map[string]string{
+				metiserrors.MetadataKeyNetwork:      req.Network,
+				metiserrors.MetadataKeyPodName:      req.PodName,
+				metiserrors.MetadataKeyPodNamespace: req.PodNamespace,
+				metiserrors.MetadataKeyContainerID:  req.Ipv6Config.ContainerId,
+			}
+			return nil, metiserrors.ErrNetworkConfigInvalid("container_id and interface_name must not be empty", metaIPv6, nil)
 		}
 		ipv6Alloc, err = e.allocateIP(ctx, req, req.Ipv6Config, store.IPv6)
 		if err != nil {
