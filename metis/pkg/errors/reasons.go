@@ -34,13 +34,12 @@ const (
 // Every new error reason constant introduced in Metis MUST be defined here and
 // registered in reasonToCNIMap in pkg/cni/error_mappings.go with its CNI code,
 // default message, root cause, and CNI/Kubelet recovery expectations.
+// See reasonToCNIMap in pkg/cni/error_mappings.go for detailed root cause & expectations.
 
 // ReasonNetworkConfigInvalid indicates missing or malformed request parameters
 // (gRPC Code: InvalidArgument -> CNI Code 7 ErrInvalidNetworkConfig).
-// See reasonToCNIMap in pkg/cni/error_mappings.go for root cause & expectations.
 const ReasonNetworkConfigInvalid = "NETWORK_CONFIG_INVALID"
 
 // ReasonInternalError indicates an internal server, database, or uncaught
 // component error within Metis (gRPC Code: Internal -> CNI Code 999 ErrInternal).
-// See reasonToCNIMap in pkg/cni/error_mappings.go for root cause & expectations.
 const ReasonInternalError = "INTERNAL_ERROR"
