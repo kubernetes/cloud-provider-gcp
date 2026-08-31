@@ -695,7 +695,7 @@ func getAllocationForNetwork(nnc *nncv1.NodeNetworkConfig, network string) *nncv
 	return nil
 }
 
-func (m *Monitor) emitLocalStoreIPAndCIDRMetrics(ctx context.Context, network string, family store.IPFamily, usage store.NetworkIPUsage) {
+func (m *Monitor) emitLocalStoreIPAndCIDRMetrics(_ context.Context, network string, family store.IPFamily, usage store.NetworkIPUsage) {
 	if !m.EnableMetrics {
 		return
 	}

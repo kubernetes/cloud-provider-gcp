@@ -541,13 +541,13 @@ func TestDirectFallback_DaemonUnavailable(t *testing.T) {
 
 func TestCNICommandMetrics(t *testing.T) {
 	mockClient := &mockAdaptiveIpamClient{
-		allocatePodIPFunc: func(ctx context.Context, in *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
+		allocatePodIPFunc: func(_ context.Context, _ *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
 			return nil, fmt.Errorf("mock add error")
 		},
-		deallocatePodIPFunc: func(ctx context.Context, in *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
+		deallocatePodIPFunc: func(_ context.Context, _ *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
 			return nil, fmt.Errorf("mock del error")
 		},
-		checkPodIPFunc: func(ctx context.Context, in *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error) {
+		checkPodIPFunc: func(_ context.Context, _ *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error) {
 			return nil, fmt.Errorf("mock check error")
 		},
 	}
@@ -556,7 +556,7 @@ func TestCNICommandMetrics(t *testing.T) {
 	logFile := filepath.Join(tempLogDir, "metis-cni.log")
 
 	plugin := NewPlugin(
-		WithClientFunc(func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+		WithClientFunc(func(_ string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
 			return mockClient, nil, nil
 		}),
 		WithLogFile(logFile),
@@ -593,8 +593,8 @@ func TestCNICommandMetrics(t *testing.T) {
 	}
 
 	expectedLabels := map[string]map[string]map[string]bool{
-		"metis_cni_request_latency_seconds": make(map[string]map[string]bool),
-		"metis_cni_request_error_total":     make(map[string]map[string]bool),
+		"metis_cni_request_latency_seconds": {},
+		"metis_cni_request_error_total":     {},
 	}
 
 	for _, mf := range metricFamilies {
@@ -603,13 +603,13 @@ func TestCNICommandMetrics(t *testing.T) {
 			continue
 		}
 		for _, m := range mf.GetMetric() {
-			labels := make(map[string]string)
+			labels := map[string]string{}
 			for _, l := range m.GetLabel() {
 				labels[l.GetName()] = l.GetValue()
 			}
 			method := labels["method"]
 			if expectedLabels[name][method] == nil {
-				expectedLabels[name][method] = make(map[string]bool)
+				expectedLabels[name][method] = map[string]bool{}
 			}
 			for k, v := range labels {
 				expectedLabels[name][method][k+"="+v] = true

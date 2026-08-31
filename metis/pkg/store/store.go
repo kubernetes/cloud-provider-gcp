@@ -870,12 +870,12 @@ func (s *Store) GetIPUsage(ctx context.Context, network string, ipFamily IPFamil
 	var usage NetworkIPUsage
 	nowMilli := time.Now().UTC().UnixMilli()
 	err := s.db.QueryRowContext(ctx, `
-		SELECT 
+		SELECT
 			IFNULL(SUM(CASE WHEN state != ? THEN allocated_ips ELSE 0 END), 0) AS allocated,
 			(
-				SELECT COUNT(i.id) 
-				FROM ip_addresses i 
-				JOIN cidr_blocks cb ON i.cidr_block_id = cb.id 
+				SELECT COUNT(i.id)
+				FROM ip_addresses i
+				JOIN cidr_blocks cb ON i.cidr_block_id = cb.id
 				WHERE cb.network = ? AND cb.ip_family = ? AND cb.state != ? AND i.is_allocated = FALSE AND i.release_at > ?
 			) AS cooldown,
 			IFNULL(SUM(CASE WHEN state = ? THEN total_ips ELSE 0 END), 0) AS draining_ips,

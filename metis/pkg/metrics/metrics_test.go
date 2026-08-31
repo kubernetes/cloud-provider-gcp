@@ -50,7 +50,7 @@ func TestMetrics_Version(t *testing.T) {
 				t.Errorf("Expected metrics for metis_version, got 0")
 			} else {
 				m := mf.GetMetric()[0]
-				labels := make(map[string]string)
+				labels := map[string]string{}
 				for _, l := range m.GetLabel() {
 					labels[l.GetName()] = l.GetValue()
 				}
@@ -101,7 +101,7 @@ func TestMetrics_AllMetricsRegistered(t *testing.T) {
 		"metis_cni_request_error_total",
 	}
 
-	foundMetrics := make(map[string]bool)
+	foundMetrics := map[string]bool{}
 	for _, mf := range metricFamilies {
 		name := mf.GetName()
 		for _, exp := range expectedMetrics {
@@ -153,7 +153,7 @@ func TestDaemon_MetricsHTTPServer(t *testing.T) {
 	}()
 
 	var bodyStr string
-	err := wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 3*time.Minute, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 3*time.Minute, true, func(_ context.Context) (bool, error) {
 		resp, err := http.Get("http://localhost:9997/metrics")
 		if err != nil {
 			return false, nil
