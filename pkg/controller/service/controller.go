@@ -29,6 +29,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -41,6 +43,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	cloudprovider "k8s.io/cloud-provider"
+	consistencyutil "k8s.io/cloud-provider-gcp/pkg/controller/util/consistency"
 	"k8s.io/cloud-provider/api"
 	servicehelper "k8s.io/cloud-provider/service/helpers"
 	"k8s.io/component-base/featuregate"
@@ -97,6 +100,8 @@ type Controller struct {
 	// service and node controllers, hence it is protected by a lock.
 	lastSyncedNodes     map[string][]*v1.Node
 	lastSyncedNodesLock sync.Mutex
+
+	consistencyStore consistencyutil.ConsistencyStore
 }
 
 // New returns a new service controller to keep cloud provider service resources
@@ -110,6 +115,14 @@ func New(
 	featureGate featuregate.FeatureGate,
 ) (*Controller, error) {
 	registerMetrics()
+
+	serviceGroupResource := schema.GroupResource{Group: "", Resource: "services"}
+	nodeGroupResource := schema.GroupResource{Group: "", Resource: "nodes"}
+
+	consistencyStore := consistencyutil.NewConsistencyStore(map[schema.GroupResource]consistencyutil.LastSyncRVGetter{
+		serviceGroupResource: serviceInformer.Informer().GetStore(),
+		nodeGroupResource:    nodeInformer.Informer().GetStore(),
+	})
 
 	s := &Controller{
 		cloud:            cloud,
@@ -126,7 +139,8 @@ func New(
 			workqueue.NewTypedItemExponentialFailureRateLimiter[string](minRetryDelay, maxRetryDelay),
 			workqueue.TypedRateLimitingQueueConfig[string]{Name: "node"},
 		),
-		lastSyncedNodes: make(map[string][]*v1.Node),
+		lastSyncedNodes:  make(map[string][]*v1.Node),
+		consistencyStore: consistencyStore,
 	}
 
 	if err := s.init(); err != nil {
@@ -150,8 +164,18 @@ func New(
 					s.enqueueService(cur)
 				}
 			},
-			// No need to handle deletion event because the deletion would be handled by
-			// the update path when the deletion timestamp is added.
+			DeleteFunc: func(cur interface{}) {
+				svc, ok := cur.(*v1.Service)
+				if !ok {
+					tombstone, ok := cur.(cache.DeletedFinalStateUnknown)
+					if ok {
+						svc, _ = tombstone.Obj.(*v1.Service)
+					}
+				}
+				if svc != nil {
+					s.consistencyStore.Clear(types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}, svc.UID)
+				}
+			},
 		},
 		serviceSyncPeriod,
 	)
@@ -892,11 +916,22 @@ func (c *Controller) syncService(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
+	namespacedName := types.NamespacedName{Namespace: namespace, Name: name}
+
+	// 1. Ensure the cache is ready (not stale)
+	if err := c.consistencyStore.EnsureReady(namespacedName); err != nil {
+		var consistencyErr *consistencyutil.ConsistencyError
+		if errors.As(err, &consistencyErr) {
+			klog.V(4).Infof("Consistency store not ready for service %s: %v", key, err)
+		}
+		return err
+	}
 
 	// service holds the latest service info from apiserver
 	service, err := c.serviceLister.Services(namespace).Get(name)
 	switch {
 	case apierrors.IsNotFound(err):
+		c.consistencyStore.Clear(namespacedName, "")
 		// service absence in store means watcher caught the deletion, ensure LB info is cleaned
 		err = c.processServiceDeletion(ctx, key)
 	case err != nil:
@@ -953,8 +988,17 @@ func (c *Controller) addFinalizer(service *v1.Service) error {
 	updated.ObjectMeta.Finalizers = append(updated.ObjectMeta.Finalizers, servicehelper.LoadBalancerCleanupFinalizer)
 
 	klog.V(2).Infof("Adding finalizer to service %s/%s", updated.Namespace, updated.Name)
-	_, err := servicehelper.PatchService(c.kubeClient.CoreV1(), service, updated)
-	return err
+	patched, err := servicehelper.PatchService(c.kubeClient.CoreV1(), service, updated)
+	if err != nil {
+		return err
+	}
+	c.consistencyStore.WroteAt(
+		types.NamespacedName{Namespace: patched.Namespace, Name: patched.Name},
+		patched.UID,
+		schema.GroupResource{Group: "", Resource: "services"},
+		patched.ResourceVersion,
+	)
+	return nil
 }
 
 // removeFinalizer patches the service to remove finalizer.
@@ -968,8 +1012,17 @@ func (c *Controller) removeFinalizer(service *v1.Service) error {
 	updated.ObjectMeta.Finalizers = removeString(updated.ObjectMeta.Finalizers, servicehelper.LoadBalancerCleanupFinalizer)
 
 	klog.V(2).Infof("Removing finalizer from service %s/%s", updated.Namespace, updated.Name)
-	_, err := servicehelper.PatchService(c.kubeClient.CoreV1(), service, updated)
-	return err
+	patched, err := servicehelper.PatchService(c.kubeClient.CoreV1(), service, updated)
+	if err != nil {
+		return err
+	}
+	c.consistencyStore.WroteAt(
+		types.NamespacedName{Namespace: patched.Namespace, Name: patched.Name},
+		patched.UID,
+		schema.GroupResource{Group: "", Resource: "services"},
+		patched.ResourceVersion,
+	)
+	return nil
 }
 
 // removeString returns a newly created []string that contains all items from slice that
@@ -994,8 +1047,17 @@ func (c *Controller) patchStatus(service *v1.Service, previousStatus, newStatus 
 	updated.Status.LoadBalancer = *newStatus
 
 	klog.V(2).Infof("Patching status for service %s/%s", updated.Namespace, updated.Name)
-	_, err := servicehelper.PatchService(c.kubeClient.CoreV1(), service, updated)
-	return err
+	patched, err := servicehelper.PatchService(c.kubeClient.CoreV1(), service, updated)
+	if err != nil {
+		return err
+	}
+	c.consistencyStore.WroteAt(
+		types.NamespacedName{Namespace: patched.Namespace, Name: patched.Name},
+		patched.UID,
+		schema.GroupResource{Group: "", Resource: "services"},
+		patched.ResourceVersion,
+	)
+	return nil
 }
 
 // NodeConditionPredicate is a function that indicates whether the given node's conditions meet

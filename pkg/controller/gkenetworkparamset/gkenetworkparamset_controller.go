@@ -18,6 +18,7 @@ package gkenetworkparamset
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -36,15 +37,18 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
+	consistencyutil "k8s.io/cloud-provider-gcp/pkg/controller/util/consistency"
 	"k8s.io/cloud-provider-gcp/pkg/controllermetrics"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider-gcp/providers/gce"
@@ -81,6 +85,8 @@ type Controller struct {
 	nodeInformerSynced        cache.InformerSynced
 	clusterDefaultIPv4PodCIDR string
 	defaultGNPName            string
+
+	consistencyStore consistencyutil.ConsistencyStore
 }
 
 // NewGKENetworkParamSetController returns a new
@@ -102,6 +108,14 @@ func NewGKENetworkParamSetController(
 		defaultGNPName = networkv1.DefaultPodNetworkName
 	}
 
+	gnpGroupResource := schema.GroupResource{Group: "networking.gke.io", Resource: "gkenetworkparamsets"}
+	networkGroupResource := schema.GroupResource{Group: "networking.gke.io", Resource: "networks"}
+
+	consistencyStore := consistencyutil.NewConsistencyStore(map[schema.GroupResource]consistencyutil.LastSyncRVGetter{
+		gnpGroupResource:     gkeNetworkParamsInformer.Informer().GetStore(),
+		networkGroupResource: networkInformer.Informer().GetStore(),
+	})
+
 	c := &Controller{
 		networkClientset:         networkClientset,
 		gkeNetworkParamsInformer: gkeNetworkParamsInformer,
@@ -112,6 +126,7 @@ func NewGKENetworkParamSetController(
 		nodeLister:               nodeInformer.Lister(),
 		nodeInformerSynced:       nodeInformer.Informer().HasSynced,
 		defaultGNPName:           defaultGNPName,
+		consistencyStore:         consistencyStore,
 	}
 
 	gkeNetworkParamsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -128,6 +143,16 @@ func NewGKENetworkParamSetController(
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			gnp, ok := obj.(*networkv1.GKENetworkParamSet)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if ok {
+					gnp, _ = tombstone.Obj.(*networkv1.GKENetworkParamSet)
+				}
+			}
+			if gnp != nil {
+				c.consistencyStore.Clear(types.NamespacedName{Name: gnp.Name}, gnp.UID)
+			}
 			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 			if err == nil {
 				c.queue.Add(key)
@@ -165,8 +190,17 @@ func NewGKENetworkParamSetController(
 		},
 
 		DeleteFunc: func(obj interface{}) {
-			network := obj.(*networkv1.Network)
-			if network.Spec.ParametersRef != nil && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) {
+			network, ok := obj.(*networkv1.Network)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if ok {
+					network, _ = tombstone.Obj.(*networkv1.Network)
+				}
+			}
+			if network != nil {
+				c.consistencyStore.Clear(types.NamespacedName{Name: network.Name}, network.UID)
+			}
+			if network != nil && network.Spec.ParametersRef != nil && strings.EqualFold(network.Spec.ParametersRef.Kind, gnpKind) {
 				c.queue.Add(network.Spec.ParametersRef.Name)
 			}
 		},
@@ -297,10 +331,22 @@ func removeFinalizerInPlace(params *networkv1.GKENetworkParamSet) {
 }
 
 func (c *Controller) reconcile(ctx context.Context, key string) error {
+	namespacedName := types.NamespacedName{Name: key}
+
+	// 1. Ensure the cache is ready (not stale)
+	if err := c.consistencyStore.EnsureReady(namespacedName); err != nil {
+		var consistencyErr *consistencyutil.ConsistencyError
+		if errors.As(err, &consistencyErr) {
+			klog.V(4).Infof("Consistency store not ready for GKENetworkParamSet %q: %v", key, err)
+		}
+		return err
+	}
+
 	originalParams, err := c.gkeNetworkParamsInformer.Lister().Get(key)
 
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
+			c.consistencyStore.Clear(namespacedName, "")
 			return c.cleanupGNPDeletion(ctx, key) // GNP was deleted, run cleanup
 		}
 		klog.Errorf("Fetching object with key %s from store failed with %v", key, err)
@@ -539,7 +585,7 @@ func (c *Controller) handleGNPDelete(ctx context.Context, params *networkv1.GKEN
 
 	network, err := c.networkClientset.NetworkingV1().Networks().Get(ctx, params.Status.NetworkName, metav1.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return c.executeGNPDelete(ctx, params, nil)
 		}
 		return err
@@ -577,9 +623,16 @@ func (c *Controller) cleanupGNPDeletion(ctx context.Context, gnpName string) err
 		Reason:  string(networkv1.GNPDeleted),
 		Message: fmt.Sprintf("GKENetworkParamSet resource was deleted: %v", gnpName),
 	})
-	if _, err := c.networkClientset.NetworkingV1().Networks().UpdateStatus(ctx, newNetwork, metav1.UpdateOptions{}); err != nil {
+	updatedNetwork, err := c.networkClientset.NetworkingV1().Networks().UpdateStatus(ctx, newNetwork, metav1.UpdateOptions{})
+	if err != nil {
 		return err
 	}
+	c.consistencyStore.WroteAt(
+		types.NamespacedName{Name: updatedNetwork.Name},
+		updatedNetwork.UID,
+		schema.GroupResource{Group: "networking.gke.io", Resource: "networks"},
+		updatedNetwork.ResourceVersion,
+	)
 
 	return nil
 }
@@ -615,18 +668,30 @@ func paramSetIncludesRange(params *networkv1.GKENetworkParamSet, secondaryRangeN
 }
 
 func (c *Controller) updateGKENetworkParamSet(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
-	_, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().Update(ctx, params, metav1.UpdateOptions{})
+	updated, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().Update(ctx, params, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update GKENetworkParamSet: %w", err)
 	}
+	c.consistencyStore.WroteAt(
+		types.NamespacedName{Name: updated.Name},
+		updated.UID,
+		schema.GroupResource{Group: "networking.gke.io", Resource: "gkenetworkparamsets"},
+		updated.ResourceVersion,
+	)
 	return nil
 }
 
 func (c *Controller) updateGKENetworkParamSetStatus(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
-	_, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().UpdateStatus(ctx, params, metav1.UpdateOptions{})
+	updated, err := c.networkClientset.NetworkingV1().GKENetworkParamSets().UpdateStatus(ctx, params, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update GKENetworkParamSet Status: %w", err)
 	}
+	c.consistencyStore.WroteAt(
+		types.NamespacedName{Name: updated.Name},
+		updated.UID,
+		schema.GroupResource{Group: "networking.gke.io", Resource: "gkenetworkparamsets"},
+		updated.ResourceVersion,
+	)
 	return nil
 }
 
@@ -670,9 +735,16 @@ func (c *Controller) updateNetworkConditionForPodRanges(ctx context.Context, par
 		Reason:  string(networkv1.GNPParamsNotReady),
 		Message: "New Pod ranges in default VPC requires CIDRs update in default Network",
 	})
-	if _, err := c.networkClientset.NetworkingV1().Networks().UpdateStatus(ctx, newNetwork, metav1.UpdateOptions{}); err != nil {
+	updatedNetwork, err := c.networkClientset.NetworkingV1().Networks().UpdateStatus(ctx, newNetwork, metav1.UpdateOptions{})
+	if err != nil {
 		return err
 	}
+	c.consistencyStore.WroteAt(
+		types.NamespacedName{Name: updatedNetwork.Name},
+		updatedNetwork.UID,
+		schema.GroupResource{Group: "networking.gke.io", Resource: "networks"},
+		updatedNetwork.ResourceVersion,
+	)
 	return nil
 }
 
@@ -702,10 +774,9 @@ func (c *Controller) RemoveTenantParamSetFinalizers(ctx context.Context, tenantN
 				}
 				gnpCopy := latest.DeepCopy()
 				removeFinalizerInPlace(gnpCopy)
-				_, err = c.networkClientset.NetworkingV1().GKENetworkParamSets().Update(ctx, gnpCopy, metav1.UpdateOptions{})
-				return err
+				return c.updateGKENetworkParamSet(ctx, gnpCopy)
 			})
-			if err != nil && !errors.IsNotFound(err) {
+			if err != nil && !apierrors.IsNotFound(err) {
 				klog.Errorf("Failed to remove finalizer from GNP %s: %v", gnp.Name, err)
 				errs = multierror.Append(errs, err)
 			}
