@@ -16,30 +16,40 @@ limitations under the License.
 
 package errors
 
-// MetisErrorDomain is the globally unique domain for Metis error propagation.
-// Aligns with Google Cloud GKE container service error specifications.
-const MetisErrorDomain = "container.googleapis.com"
-
-// Standard ErrorInfo metadata key constants
-const (
-	MetadataKeyNetwork      = "network"
-	MetadataKeyPodName      = "pod_name"
-	MetadataKeyPodNamespace = "pod_namespace"
-	MetadataKeyContainerID  = "container_id"
+import (
+	"github.com/containernetworking/cni/pkg/types"
+	"google.golang.org/grpc/codes"
 )
 
-// Well-defined error reasons across Metis.
-//
-// Developer Requirement:
-// Every new error reason constant introduced in Metis MUST be defined here and
-// registered in reasonToCNIMap in pkg/cni/error_mappings.go with its CNI code,
-// default message, root cause, and CNI/Kubelet recovery expectations.
-// See reasonToCNIMap in pkg/cni/error_mappings.go for detailed root cause & expectations.
+// Well-defined error reason specifications across Metis.
+var (
+	// ReasonNetworkConfigInvalid (NETWORK_CONFIG_INVALID): missing or malformed request parameters.
+	//
+	// Root Cause:
+	// - CNI netconf JSON stdin parameters or AllocatePodIP gRPC request fields missing or malformed.
+	//
+	// CNI / Kubelet Expectation:
+	// - Non-retriable Pod sandbox creation failure (CNI Code 7 ErrInvalidNetworkConfig).
+	// - Kubelet/containerd stops retrying Pod setup for this container until configuration is corrected.
+	ReasonNetworkConfigInvalid = ReasonSpec{
+		Reason:   "NETWORK_CONFIG_INVALID",
+		GRPCCode: codes.InvalidArgument,
+		CNICode:  types.ErrInvalidNetworkConfig,
+		Msg:      "invalid request parameters",
+	}
 
-// ReasonNetworkConfigInvalid indicates missing or malformed request parameters
-// (gRPC Code: InvalidArgument -> CNI Code 7 ErrInvalidNetworkConfig).
-const ReasonNetworkConfigInvalid = "NETWORK_CONFIG_INVALID"
-
-// ReasonInternalError indicates an internal server, database, or uncaught
-// component error within Metis (gRPC Code: Internal -> CNI Code 999 ErrInternal).
-const ReasonInternalError = "INTERNAL_ERROR"
+	// ReasonInternalError (INTERNAL_ERROR): internal server, database, or uncaught component error.
+	//
+	// Root Cause:
+	// - SQLite database transaction failures, disk I/O errors, uncaught daemon panics, or unhandled component errors.
+	//
+	// CNI / Kubelet Expectation:
+	// - Terminal daemon component error for current allocation attempt (CNI Code 999 ErrInternal).
+	// - Kubelet logs error details. Subsequent allocation attempts may succeed if daemon recovers.
+	ReasonInternalError = ReasonSpec{
+		Reason:   "INTERNAL_ERROR",
+		GRPCCode: codes.Internal,
+		CNICode:  types.ErrInternal,
+		Msg:      "internal daemon error",
+	}
+)

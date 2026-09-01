@@ -51,9 +51,9 @@ func ToCNIError(err error, fallbackMsg string) *types.Error {
 
 	for _, detail := range st.Details() {
 		if errorInfo, ok := detail.(*genproto.ErrorInfo); ok && errorInfo.Domain == metiserrors.MetisErrorDomain {
-			if code, defaultMsg, mapped := LookupCNIMapping(errorInfo.Reason); mapped {
-				cniCode = code
-				msg = defaultMsg
+			if spec, mapped := metiserrors.LookupReason(errorInfo.Reason); mapped {
+				cniCode = spec.CNICode
+				msg = spec.Msg
 			}
 			details = fmt.Sprintf("Domain: %s; Reason: %s; Message: %s", errorInfo.Domain, errorInfo.Reason, st.Message())
 			if len(errorInfo.Metadata) > 0 {

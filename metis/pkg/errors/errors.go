@@ -24,6 +24,14 @@ import (
 	"k8s.io/metis/api/adaptiveipam/v1"
 )
 
+// Standard ErrorInfo metadata key constants corresponding to PodInfo fields.
+const (
+	MetadataKeyNetwork      = "network"
+	MetadataKeyPodName      = "pod_name"
+	MetadataKeyPodNamespace = "pod_namespace"
+	MetadataKeyContainerID  = "container_id"
+)
+
 // PodInfo holds pod metadata for error reporting and telemetry across
 // Metis components.
 type PodInfo struct {
@@ -55,6 +63,7 @@ func NewPodInfoFromAllocateReq(req *adaptiveipam.AllocatePodIPRequest) PodInfo {
 // MetisError interface implemented by all structured Metis errors.
 type MetisError interface {
 	error
+	ReasonSpec() ReasonSpec
 	GRPCCode() codes.Code
 	Reason() string
 	Metadata() map[string]string
@@ -67,23 +76,23 @@ type MetisError interface {
 // HTTP/gRPC codes, and underlying cause errors, converting directly into
 // google.rpc.ErrorInfo gRPC status details.
 type metisError struct {
-	code     codes.Code
-	reason   string
+	spec     ReasonSpec
 	message  string
 	metadata map[string]string
 	cause    error
 }
 
 func (e *metisError) Error() string               { return e.message }
-func (e *metisError) GRPCCode() codes.Code        { return e.code }
-func (e *metisError) Reason() string              { return e.reason }
+func (e *metisError) ReasonSpec() ReasonSpec      { return e.spec }
+func (e *metisError) GRPCCode() codes.Code        { return e.spec.GRPCCode }
+func (e *metisError) Reason() string              { return e.spec.Reason }
 func (e *metisError) Metadata() map[string]string { return e.metadata }
 func (e *metisError) Unwrap() error               { return e.cause }
 
 func (e *metisError) ToGRPCStatus() *status.Status {
-	st := status.New(e.code, e.message)
+	st := status.New(e.spec.GRPCCode, e.message)
 	errorInfo := &genproto.ErrorInfo{
-		Reason:   e.reason,
+		Reason:   e.spec.Reason,
 		Domain:   MetisErrorDomain,
 		Metadata: e.metadata,
 	}
@@ -99,10 +108,9 @@ func (e *metisError) GRPCStatus() *status.Status {
 }
 
 // NewMetisError constructs a MetisError with custom parameters.
-func NewMetisError(code codes.Code, reason, message string, metadata map[string]string, cause error) MetisError {
+func NewMetisError(spec ReasonSpec, message string, metadata map[string]string, cause error) MetisError {
 	return &metisError{
-		code:     code,
-		reason:   reason,
+		spec:     spec,
 		message:  message,
 		metadata: metadata,
 		cause:    cause,
@@ -116,8 +124,7 @@ func ErrNetworkConfigInvalid(msg string, metadata map[string]string, cause error
 		metadata = map[string]string{}
 	}
 	return &metisError{
-		code:     codes.InvalidArgument,
-		reason:   ReasonNetworkConfigInvalid,
+		spec:     ReasonNetworkConfigInvalid,
 		message:  msg,
 		metadata: metadata,
 		cause:    cause,
@@ -128,8 +135,7 @@ func ErrNetworkConfigInvalid(msg string, metadata map[string]string, cause error
 // error within Metis.
 func ErrInternal(msg string, cause error) MetisError {
 	return &metisError{
-		code:     codes.Internal,
-		reason:   ReasonInternalError,
+		spec:     ReasonInternalError,
 		message:  msg,
 		metadata: map[string]string{},
 		cause:    cause,

@@ -40,8 +40,8 @@ func TestErrNetworkConfigInvalid(t *testing.T) {
 		t.Errorf("expected GRPCCode %v, got %v", codes.InvalidArgument, mErr.GRPCCode())
 	}
 
-	if mErr.Reason() != ReasonNetworkConfigInvalid {
-		t.Errorf("expected Reason %q, got %q", ReasonNetworkConfigInvalid, mErr.Reason())
+	if mErr.Reason() != ReasonNetworkConfigInvalid.Reason {
+		t.Errorf("expected Reason %q, got %q", ReasonNetworkConfigInvalid.Reason, mErr.Reason())
 	}
 
 	if mErr.Metadata()[MetadataKeyPodName] != "test-pod" {
@@ -61,8 +61,8 @@ func TestErrNetworkConfigInvalid(t *testing.T) {
 	for _, detail := range st.Details() {
 		if errorInfo, ok := detail.(*genproto.ErrorInfo); ok {
 			foundErrorInfo = true
-			if errorInfo.Reason != ReasonNetworkConfigInvalid {
-				t.Errorf("expected ErrorInfo reason %q, got %q", ReasonNetworkConfigInvalid, errorInfo.Reason)
+			if errorInfo.Reason != ReasonNetworkConfigInvalid.Reason {
+				t.Errorf("expected ErrorInfo reason %q, got %q", ReasonNetworkConfigInvalid.Reason, errorInfo.Reason)
 			}
 			if errorInfo.Domain != MetisErrorDomain {
 				t.Errorf("expected ErrorInfo domain %q, got %q", MetisErrorDomain, errorInfo.Domain)
@@ -88,8 +88,8 @@ func TestErrInternal(t *testing.T) {
 		t.Errorf("expected GRPCCode %v, got %v", codes.Internal, mErr.GRPCCode())
 	}
 
-	if mErr.Reason() != ReasonInternalError {
-		t.Errorf("expected Reason %q, got %q", ReasonInternalError, mErr.Reason())
+	if mErr.Reason() != ReasonInternalError.Reason {
+		t.Errorf("expected Reason %q, got %q", ReasonInternalError.Reason, mErr.Reason())
 	}
 
 	if !errors.Is(mErr.Unwrap(), causeErr) {
@@ -110,7 +110,7 @@ func TestMetisErrorAs(t *testing.T) {
 	if !ok {
 		t.Fatalf("errors.AsType failed to match MetisError interface")
 	}
-	if target.Reason() != ReasonNetworkConfigInvalid {
-		t.Errorf("expected reason %q, got %q", ReasonNetworkConfigInvalid, target.Reason())
+	if target.Reason() != ReasonNetworkConfigInvalid.Reason {
+		t.Errorf("expected reason %q, got %q", ReasonNetworkConfigInvalid.Reason, target.Reason())
 	}
 }
