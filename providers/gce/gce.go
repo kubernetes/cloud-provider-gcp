@@ -45,6 +45,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -781,6 +782,9 @@ func (g *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 
 	go g.watchClusterID(stop)
 	go g.metricsCollector.Run(stop)
+	if g.dynamicZones {
+		go g.syncManagedZonesPeriodically(stop)
+	}
 }
 
 // LoadBalancer returns an implementation of LoadBalancer for Google Compute Engine.
@@ -1127,4 +1131,12 @@ func (g *Cloud) refreshManagedZones() error {
 	}
 
 	return nil
+}
+
+func (g *Cloud) syncManagedZonesPeriodically(stop <-chan struct{}) {
+	wait.Until(func() {
+		if err := g.refreshManagedZones(); err != nil {
+			klog.Errorf("Periodic refresh of GCE managed zones failed: %v", err)
+		}
+	}, 5*time.Minute, stop)
 }

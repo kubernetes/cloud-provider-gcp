@@ -722,3 +722,160 @@ func TestUpdateNodeZonesDynamicRefresh(t *testing.T) {
 	expectedZones := []string{"us-central1-b", "us-central1-c"}
 	assert.ElementsMatch(t, expectedZones, gce.getManagedZones())
 }
+
+func TestGetInstanceByNameDynamicRefresh(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	gce.dynamicZones = true
+
+	// Initial managed zones only contain us-central1-b
+	assert.Equal(t, []string{"us-central1-b"}, gce.getManagedZones())
+
+	mockGCE := gce.c.(*cloud.MockGCE)
+
+	// Mock GCE zones.List call to return us-central1-c in addition to us-central1-b
+	keyC := meta.GlobalKey("key-c")
+	mockGCE.MockZones.Objects[*keyC] = &cloud.MockZonesObj{
+		Obj: &ga.Zone{Name: "us-central1-c", Region: gce.getRegionLink("us-central1")},
+	}
+
+	// Insert instance into us-central1-c in GCE
+	err = gce.InsertInstance(
+		gce.ProjectID(),
+		"us-central1-c",
+		&ga.Instance{
+			Name: "node-in-c",
+			Zone: "us-central1-c",
+		},
+	)
+	require.NoError(t, err)
+
+	// Lookup instance by name without prior node registration or label
+	inst, err := gce.getInstanceByName("node-in-c")
+	require.NoError(t, err)
+	require.NotNil(t, inst)
+	assert.Equal(t, "node-in-c", inst.Name)
+	assert.Equal(t, "us-central1-c", inst.Zone)
+
+	// Managed zones should have refreshed to include both zones
+	expectedZones := []string{"us-central1-b", "us-central1-c"}
+	assert.ElementsMatch(t, expectedZones, gce.getManagedZones())
+}
+
+func TestInstanceMetadataUninitializedNodeDynamicRefresh(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	gce.dynamicZones = true
+
+	// Initial managed zones only contain us-central1-b
+	assert.Equal(t, []string{"us-central1-b"}, gce.getManagedZones())
+
+	mockGCE := gce.c.(*cloud.MockGCE)
+
+	// Mock GCE zones.List call to return us-central1-c in addition to us-central1-b
+	keyC := meta.GlobalKey("key-c")
+	mockGCE.MockZones.Objects[*keyC] = &cloud.MockZonesObj{
+		Obj: &ga.Zone{Name: "us-central1-c", Region: gce.getRegionLink("us-central1")},
+	}
+
+	// Insert instance into us-central1-c in GCE
+	err = gce.InsertInstance(
+		gce.ProjectID(),
+		"us-central1-c",
+		&ga.Instance{
+			Name: "node-in-c",
+			Zone: "us-central1-c",
+			NetworkInterfaces: []*ga.NetworkInterface{
+				{
+					NetworkIP: "10.0.0.2",
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	// Uninitialized node as registered by kubelet with external cloud provider:
+	// No zone labels, no providerID.
+	uninitializedNode := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-in-c",
+		},
+		Spec: v1.NodeSpec{},
+	}
+
+	metadata, err := gce.InstanceMetadata(context.Background(), uninitializedNode)
+	require.NoError(t, err)
+	require.NotNil(t, metadata)
+	assert.Equal(t, "us-central1-c", metadata.Zone)
+	assert.Equal(t, "us-central1", metadata.Region)
+	assert.Equal(t, "gce://"+gce.ProjectID()+"/us-central1-c/node-in-c", metadata.ProviderID)
+
+	expectedZones := []string{"us-central1-b", "us-central1-c"}
+	assert.ElementsMatch(t, expectedZones, gce.getManagedZones())
+}
+
+func TestGetZoneProviderIDFallback(t *testing.T) {
+	nodeWithProviderID := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-in-c",
+		},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://my-project/us-central1-c/node-in-c",
+		},
+	}
+
+	zone := getZone(nodeWithProviderID)
+	assert.Equal(t, "us-central1-c", zone)
+
+	nodeWithoutZone := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "uninitialized-node",
+		},
+	}
+	assert.Equal(t, emptyZone, getZone(nodeWithoutZone))
+}
+
+func TestGetFoundInstanceByNamesDynamicRefresh(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	gce.dynamicZones = true
+
+	mockGCE := gce.c.(*cloud.MockGCE)
+	keyC := meta.GlobalKey("key-c")
+	mockGCE.MockZones.Objects[*keyC] = &cloud.MockZonesObj{
+		Obj: &ga.Zone{Name: "us-central1-c", Region: gce.getRegionLink("us-central1")},
+	}
+
+	// Insert instance in default zone us-central1-b
+	err = gce.InsertInstance(
+		gce.ProjectID(),
+		"us-central1-b",
+		&ga.Instance{
+			Name: "node-in-b",
+			Zone: "us-central1-b",
+		},
+	)
+	require.NoError(t, err)
+
+	// Insert instance in new zone us-central1-c
+	err = gce.InsertInstance(
+		gce.ProjectID(),
+		"us-central1-c",
+		&ga.Instance{
+			Name: "node-in-c",
+			Zone: "us-central1-c",
+		},
+	)
+	require.NoError(t, err)
+
+	instances, err := gce.getFoundInstanceByNames([]string{"node-in-b", "node-in-c"})
+	require.NoError(t, err)
+	require.Len(t, instances, 2)
+
+	foundZones := []string{instances[0].Zone, instances[1].Zone}
+	assert.ElementsMatch(t, []string{"us-central1-b", "us-central1-c"}, foundZones)
+	assert.ElementsMatch(t, []string{"us-central1-b", "us-central1-c"}, gce.getManagedZones())
+}
