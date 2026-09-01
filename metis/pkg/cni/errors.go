@@ -42,13 +42,16 @@ func ToCNIError(err error, fallbackMsg string) *types.Error {
 
 	st, ok := status.FromError(err)
 	if !ok {
+		// Fallback for non-gRPC errors where status details are unavailable.
 		return types.NewError(types.ErrInternal, fallbackMsg, err.Error())
 	}
 
+	// Default fallback values in case no matching structured ErrorInfo detail is found.
 	cniCode := types.ErrInternal
 	msg := fallbackMsg
 	details := st.Message()
 
+	// Iterate through the status details to extract structured ErrorInfo for Metis.
 	for _, detail := range st.Details() {
 		if errorInfo, ok := detail.(*genproto.ErrorInfo); ok && errorInfo.Domain == metiserrors.MetisErrorDomain {
 			if spec, mapped := metiserrors.LookupReason(errorInfo.Reason); mapped {
@@ -56,6 +59,7 @@ func ToCNIError(err error, fallbackMsg string) *types.Error {
 				msg = spec.Msg
 			}
 			details = fmt.Sprintf("Domain: %s; Reason: %s; Message: %s", errorInfo.Domain, errorInfo.Reason, st.Message())
+			// Append metadata key-value pairs if present.
 			if len(errorInfo.Metadata) > 0 {
 				details = fmt.Sprintf("%s; Metadata: %v", details, errorInfo.Metadata)
 			}
