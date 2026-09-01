@@ -37,7 +37,7 @@ func TestCNIMappings_ExhaustiveInvariants(t *testing.T) {
 		t.Fatalf("failed to parse ../errors/reasons.go AST: %v", err)
 	}
 
-	var discoveredReasons []string
+	discoveredReasons := make(map[string]string) // identifier -> string value
 	for _, decl := range node.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
 		if !ok || genDecl.Tok != token.CONST {
@@ -48,9 +48,13 @@ func TestCNIMappings_ExhaustiveInvariants(t *testing.T) {
 			if !ok {
 				continue
 			}
-			for _, name := range valueSpec.Names {
+			for i, name := range valueSpec.Names {
 				if strings.HasPrefix(name.Name, "Reason") {
-					discoveredReasons = append(discoveredReasons, name.Name)
+					if i < len(valueSpec.Values) {
+						if basicLit, ok := valueSpec.Values[i].(*ast.BasicLit); ok && basicLit.Kind == token.STRING {
+							discoveredReasons[name.Name] = strings.Trim(basicLit.Value, `"`)
+						}
+					}
 				}
 			}
 		}
@@ -60,28 +64,17 @@ func TestCNIMappings_ExhaustiveInvariants(t *testing.T) {
 		t.Fatal("failed to discover any Reason... constants in ../errors/reasons.go")
 	}
 
-	// Known mappings value map for discovered Reason identifiers
-	reasonValueMap := map[string]string{
-		"ReasonNetworkConfigInvalid": metiserrors.ReasonNetworkConfigInvalid,
-		"ReasonInternalError":        metiserrors.ReasonInternalError,
-	}
-
-	for _, reasonIdent := range discoveredReasons {
-		reasonVal, known := reasonValueMap[reasonIdent]
-		if !known {
-			t.Errorf("new Reason constant %q discovered in reasons.go but not added to reasonValueMap check in error_mappings_test.go", reasonIdent)
-			continue
-		}
+	for reasonIdent, reasonVal := range discoveredReasons {
 		mapping, ok := reasonToCNIMap[reasonVal]
 		if !ok {
-			t.Errorf("pkg/errors Reason %q (%s) is missing from reasonToCNIMap in cni/error_mappings.go!", reasonIdent, reasonVal)
+			t.Errorf("pkg/errors Reason %s (%q) defined in reasons.go is missing from reasonToCNIMap in cni/error_mappings.go!", reasonIdent, reasonVal)
 			continue
 		}
 		if mapping.code == 0 {
-			t.Errorf("reason %q mapped to invalid CNI code 0", reasonVal)
+			t.Errorf("reason %s (%q) mapped to invalid CNI code 0", reasonIdent, reasonVal)
 		}
 		if mapping.defaultMsg == "" {
-			t.Errorf("reason %q has empty default message", reasonVal)
+			t.Errorf("reason %s (%q) has empty default message", reasonIdent, reasonVal)
 		}
 	}
 }
