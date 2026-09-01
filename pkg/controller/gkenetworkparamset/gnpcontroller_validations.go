@@ -95,7 +95,8 @@ func (c *Controller) validateFieldCombinations(ctx context.Context, params *netw
 	// Network attachment is not specified.
 	// check if deviceMode and secondary ranges are unspecified
 	// The associated Network CRs are implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
-	canHaveIpv6OnlyNetworksOnly := c.isIPv6OnlyCluster && params.Name == networkv1.DefaultPodNetworkName
+	isDefaultGNP := params.Name == c.defaultGNPName
+	canHaveIpv6OnlyNetworksOnly := c.isIPv6OnlyCluster && isDefaultGNP
 
 	// we skip this check for IPv6-only clusters because their default network inherently does not have IPv4 secondary ranges
 	if !canHaveIpv6OnlyNetworksOnly && !hasSecondaryRanges && !hasDeviceMode {
@@ -181,7 +182,8 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 	// The associated Network CRs are implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
 	isSecondaryRangeSpecified := hasRangeNames(params)
 	isDeviceModeSpecified := params.Spec.DeviceMode != ""
-	canHaveIpv6OnlyNetworksOnly := c.isIPv6OnlyCluster && params.Name == networkv1.DefaultPodNetworkName
+	isDefaultGNP := params.Name == c.defaultGNPName
+	canHaveIpv6OnlyNetworksOnly := c.isIPv6OnlyCluster && isDefaultGNP
 
 	if !canHaveIpv6OnlyNetworksOnly && !isSecondaryRangeSpecified && !isDeviceModeSpecified {
 		return &gnpValidation{
@@ -283,14 +285,15 @@ func (val *gnpNetworkCrossValidation) toCondition() metav1.Condition {
 }
 
 // crossValidateNetworkAndGnp validates a given network and GNP object are compatible
-func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GKENetworkParamSet, isIPv6OnlyCluster bool, subnet *compute.Subnetwork) *gnpNetworkCrossValidation {
+func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GKENetworkParamSet, isIPv6OnlyCluster bool, defaultGNPName string, subnet *compute.Subnetwork) *gnpNetworkCrossValidation {
 	isSecondaryRangeSpecified := hasRangeNames(params)
 	isVPCSpecified := params.Spec.VPC != ""
 	isVPCSubnetSpecified := params.Spec.VPCSubnet != ""
 	isNetworkAttachmentSpecified := params.Spec.NetworkAttachment != ""
 
 	// The associated Network CRs are implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
-	canHaveIpv6OnlyNetworksOnly := isIPv6OnlyCluster && params.Name == networkv1.DefaultPodNetworkName
+	isDefaultGNP := params.Name == defaultGNPName
+	canHaveIpv6OnlyNetworksOnly := isIPv6OnlyCluster && isDefaultGNP
 	if network.Spec.Type == networkv1.L3NetworkType {
 		if !canHaveIpv6OnlyNetworksOnly && isVPCSpecified && isVPCSubnetSpecified && !isSecondaryRangeSpecified {
 			return &gnpNetworkCrossValidation{
@@ -319,8 +322,7 @@ func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GK
 
 	// Network CR is implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
 	if subnet != nil && subnet.StackType == "IPV6_ONLY" {
-		isDefaultNetwork := params.Name == networkv1.DefaultPodNetworkName
-		isAllowedContext := isDefaultNetwork && isIPv6OnlyCluster
+		isAllowedContext := isDefaultGNP && isIPv6OnlyCluster
 
 		if !isAllowedContext {
 			return &gnpNetworkCrossValidation{

@@ -477,7 +477,7 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 		}
 	}
 
-	cidrs := extractRelevantCidrs(subnet, params, c.isIPv6OnlyCluster)
+	cidrs := extractRelevantCidrs(subnet, params, c.isIPv6OnlyCluster, c.defaultGNPName)
 	params.Status.PodCIDRs = &networkv1.NetworkRanges{
 		CIDRBlocks: cidrs,
 	}
@@ -524,7 +524,7 @@ func (c *Controller) syncNetworkWithGNP(ctx context.Context, network *networkv1.
 	newNetwork := network.DeepCopy()
 
 	// update the copy of old Network with new conditions to be new Network basing on the change of the GNP
-	networkCrossValidation := crossValidateNetworkAndGnp(newNetwork, params, c.isIPv6OnlyCluster, subnet)
+	networkCrossValidation := crossValidateNetworkAndGnp(newNetwork, params, c.isIPv6OnlyCluster, c.defaultGNPName, subnet)
 	meta.SetStatusCondition(&newNetwork.Status.Conditions, networkCrossValidation.toCondition())
 
 	if !reflect.DeepEqual(newNetwork.Status.Conditions, network.Status.Conditions) {
@@ -595,10 +595,11 @@ func (c *Controller) cleanupGNPDeletion(ctx context.Context, gnpName string) err
 }
 
 // extractRelevantCidrs returns the appropriate IPv4 and IPv6 CIDR blocks from the subnet based on the paramset configuration (including primary, secondary, and IPv6 prefixes)
-func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1.GKENetworkParamSet, isIPv6OnlyCluster bool) []string {
+func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1.GKENetworkParamSet, isIPv6OnlyCluster bool, defaultGNPName string) []string {
 	cidrs := []string{}
 
-	canHaveIpv6OnlyNetworksOnly := isIPv6OnlyCluster && paramset.Name == networkv1.DefaultPodNetworkName
+	isDefaultGNP := paramset.Name == defaultGNPName
+	canHaveIpv6OnlyNetworksOnly := isIPv6OnlyCluster && isDefaultGNP
 	if !canHaveIpv6OnlyNetworksOnly {
 		if hasRangeNames(paramset) {
 			// get secondary ranges' corresponding cidrs
