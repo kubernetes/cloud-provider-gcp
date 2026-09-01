@@ -72,11 +72,17 @@ func getZone(node *v1.Node) string {
 		return zone
 	}
 	zone, ok = node.Labels[v1.LabelFailureDomainBetaZone]
-	if !ok {
-		klog.Warningf("Node without zone label, returning %q as zone. Node name: %v, node labels: %v", emptyZone, node.Name, node.Labels)
-		return emptyZone
+	if ok {
+		return zone
 	}
-	return zone
+	if node.Spec.ProviderID != "" {
+		_, zone, _, err := splitProviderID(node.Spec.ProviderID)
+		if err == nil && zone != "" {
+			return zone
+		}
+	}
+	klog.Warningf("Node without zone label or providerID, returning %q as zone. Node name: %v, node labels: %v", emptyZone, node.Name, node.Labels)
+	return emptyZone
 }
 
 func makeHostURL(projectsAPIEndpoint, projectID, zone, host string) string {
@@ -715,7 +721,8 @@ func (g *Cloud) getFoundInstanceByNames(names []string) ([]*gceInstance, error) 
 		found[name] = nil
 	}
 
-	for _, zone := range g.getManagedZones() {
+	initialZones := g.getManagedZones()
+	for _, zone := range initialZones {
 		if remaining == 0 {
 			break
 		}
@@ -745,6 +752,47 @@ func (g *Cloud) getFoundInstanceByNames(names []string) ([]*gceInstance, error) 
 		}
 	}
 
+	if remaining > 0 && g.dynamicZones {
+		if err := g.refreshManagedZones(); err != nil {
+			klog.Errorf("Failed to refresh GCE managed zones for remaining instances: %v", err)
+		} else {
+			refreshedZones := g.getManagedZones()
+			checkedZones := sets.NewString(initialZones...)
+			for _, zone := range refreshedZones {
+				if remaining == 0 {
+					break
+				}
+				if checkedZones.Has(zone) {
+					continue
+				}
+				instances, err := g.c.Instances().List(ctx, zone, filter.Regexp("name", nodeInstancePrefix+".*"))
+				if err != nil {
+					return nil, err
+				}
+				for _, inst := range instances {
+					if remaining == 0 {
+						break
+					}
+					if _, ok := found[inst.Name]; !ok {
+						continue
+					}
+					if found[inst.Name] != nil {
+						klog.Errorf("Instance name %q was duplicated (in zone %q and %q)", inst.Name, zone, found[inst.Name].Zone)
+						continue
+					}
+					found[inst.Name] = &gceInstance{
+						Zone:  zone,
+						Name:  inst.Name,
+						ID:    inst.Id,
+						Disks: inst.Disks,
+						Type:  lastComponent(inst.MachineType),
+					}
+					remaining--
+				}
+			}
+		}
+	}
+
 	var ret []*gceInstance
 	var failed []string
 	for name, instance := range found {
@@ -761,12 +809,8 @@ func (g *Cloud) getFoundInstanceByNames(names []string) ([]*gceInstance, error) 
 	return ret, nil
 }
 
-// Gets the named instance, returning cloudprovider.InstanceNotFound if the instance is not found
-func (g *Cloud) getInstanceByName(name string) (*gceInstance, error) {
-	klog.Infof("Searching node %s in managed zones %v", name, g.getManagedZones())
-
-	// Avoid changing behaviour when not managing multiple zones
-	for _, zone := range g.getManagedZones() {
+func (g *Cloud) findInstanceInZones(name string, zones []string) (*gceInstance, error) {
+	for _, zone := range zones {
 		instance, err := g.getInstanceFromProjectInZoneByName(g.projectID, zone, name)
 		if err != nil {
 			if isHTTPErrorCode(err, http.StatusNotFound) {
@@ -776,6 +820,33 @@ func (g *Cloud) getInstanceByName(name string) (*gceInstance, error) {
 			return nil, err
 		}
 		return instance, nil
+	}
+	return nil, nil
+}
+
+// Gets the named instance, returning cloudprovider.InstanceNotFound if the instance is not found
+func (g *Cloud) getInstanceByName(name string) (*gceInstance, error) {
+	initialZones := g.getManagedZones()
+	klog.Infof("Searching node %s in managed zones %v", name, initialZones)
+
+	if instance, err := g.findInstanceInZones(name, initialZones); err != nil || instance != nil {
+		return instance, err
+	}
+
+	if g.dynamicZones {
+		klog.Infof("Node %s not found in managed zones %v; attempting dynamic zone refresh", name, initialZones)
+		if err := g.refreshManagedZones(); err != nil {
+			klog.Errorf("Failed to refresh GCE managed zones: %v", err)
+		} else {
+			refreshedZones := g.getManagedZones()
+			newZones := sets.NewString(refreshedZones...).Difference(sets.NewString(initialZones...)).List()
+			if len(newZones) > 0 {
+				klog.Infof("Searching node %s in newly discovered zones %v", name, newZones)
+				if instance, err := g.findInstanceInZones(name, newZones); err != nil || instance != nil {
+					return instance, err
+				}
+			}
+		}
 	}
 
 	return nil, cloudprovider.InstanceNotFound

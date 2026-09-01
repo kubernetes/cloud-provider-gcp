@@ -37,10 +37,10 @@ import (
 )
 
 func TestWatcher_Success(t *testing.T) {
-	processed := make(map[string]bool)
+	processed := map[string]bool{}
 	var mu sync.Mutex
 
-	syncHandler := func(ctx context.Context, network string) error {
+	syncHandler := func(_ context.Context, network string) error {
 		mu.Lock()
 		defer mu.Unlock()
 		processed[network] = true
@@ -148,7 +148,7 @@ func TestWatcher_Retry(t *testing.T) {
 		{
 			name:        "Transient failure is retried",
 			targetCount: 2,
-			syncHandler: func(ctx context.Context, network string, count int) error {
+			syncHandler: func(_ context.Context, _ string, count int) error {
 				if count == 1 {
 					return errors.New("temporary error")
 				}
@@ -163,7 +163,7 @@ func TestWatcher_Retry(t *testing.T) {
 		{
 			name:        "Permanent failure is dropped after max retries",
 			targetCount: 11,
-			syncHandler: func(ctx context.Context, network string, count int) error {
+			syncHandler: func(_ context.Context, _ string, _ int) error {
 				return errors.New("permanent error")
 			},
 			waitAfter: 30 * time.Millisecond,
@@ -400,7 +400,7 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 			}
 
 			mockInterface := &mockNodeNetworkConfigInterface{
-				getFunc: func(ctx context.Context, name string, opts metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+				getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
 					if tc.injectErr != nil {
 						return nil, tc.injectErr
 					}
@@ -416,7 +416,7 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 				NNCClient: mockClient,
 				Store:     storeInstance,
 				NodeName:  nodeName,
-				OnCIDRAdded: func(net string, availableIPs int) {
+				OnCIDRAdded: func(_ string, _ int) {
 					onCIDRAddedCalled = true
 				},
 			})

@@ -64,6 +64,7 @@ func startGkeNetworkParamsController(ccmConfig *cloudcontrollerconfig.CompletedC
 		gceCloud,
 		nwInfFactory,
 		clusterCIDRs,
+		"", // defaultGNPName (empty defaults to "default")
 	)
 
 	go gkeNetworkParamsetController.Run(1, controllerCtx.Stop, controllerCtx.ControllerManagerMetrics)

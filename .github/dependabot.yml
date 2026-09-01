@@ -42,6 +42,12 @@ updates:
   - "ok-to-test"
   - 'area/dependency'
   - 'release-note-none'
+  ignore:
+  - dependency-name: "golang"
+    versions:
+    - "*rc*"
+    - "*beta*"
+    - "*alpha*"
 - package-ecosystem: "github-actions"
   directory: "/"
   target-branch: "release-1.36"
@@ -87,6 +93,9 @@ updates:
   - "ok-to-test"
   - 'area/dependency'
   - 'release-note-none'
-
-
-
+  ignore:
+  - dependency-name: "golang"
+    versions:
+    - "*rc*"
+    - "*beta*"
+    - "*alpha*"

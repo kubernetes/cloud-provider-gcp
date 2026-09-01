@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -29,13 +30,15 @@ import (
 )
 
 type testGKENetworkParamSetController struct {
-	networkClient   *networkfake.Clientset
-	informerFactory networkinformers.SharedInformerFactory
-	clusterValues   gce.TestClusterValues
-	controller      *Controller
-	metrics         *controllers.ControllerManagerMetrics
-	cloud           *gce.Cloud
-	nodeStore       cache.Store
+	networkClient       *networkfake.Clientset
+	informerFactory     networkinformers.SharedInformerFactory
+	clusterValues       gce.TestClusterValues
+	controller          *Controller
+	metrics             *controllers.ControllerManagerMetrics
+	cloud               *gce.Cloud
+	nodeStore           cache.Store
+	nodeClient          *fake.Clientset
+	nodeInformerFactory informers.SharedInformerFactory
 }
 
 const (
@@ -53,6 +56,14 @@ const (
 )
 
 func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParamSetController {
+	return setupGKENetworkParamSetControllerWithCustomDefaultGNPAndNodeClient(ctx, "", fake.NewSimpleClientset())
+}
+
+func setupGKENetworkParamSetControllerWithCustomDefaultGNP(ctx context.Context, customDefaultGNPName string) *testGKENetworkParamSetController {
+	return setupGKENetworkParamSetControllerWithCustomDefaultGNPAndNodeClient(ctx, customDefaultGNPName, fake.NewSimpleClientset())
+}
+
+func setupGKENetworkParamSetControllerWithCustomDefaultGNPAndNodeClient(ctx context.Context, customDefaultGNPName string, nodeClient *fake.Clientset) *testGKENetworkParamSetController {
 	fakeNetworking := networkfake.NewSimpleClientset()
 	nwInfFactory := networkinformers.NewSharedInformerFactory(fakeNetworking, 0*time.Second)
 	nwInformer := nwInfFactory.Networking().V1().Networks()
@@ -62,7 +73,7 @@ func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParam
 	testClusterValues.SubnetworkURL = fmt.Sprintf("projects/%v/regions/%v/subnetworks/%v", testClusterValues.ProjectID, testClusterValues.Region, defaultTestSubnetworkName)
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
 
-	fakeInformerFactory := informers.NewSharedInformerFactory(&fake.Clientset{}, 0*time.Second)
+	fakeInformerFactory := informers.NewSharedInformerFactory(nodeClient, 0*time.Second)
 	fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
 
 	_, ipnet, _ := net.ParseCIDR(defaultPodCIDR)
@@ -75,6 +86,7 @@ func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParam
 		fakeGCE,
 		nwInfFactory,
 		[]*net.IPNet{ipnet},
+		customDefaultGNPName,
 	)
 	controller.nodeInformerSynced = func() bool { return true }
 
@@ -94,13 +106,15 @@ func setupGKENetworkParamSetController(ctx context.Context) *testGKENetworkParam
 	fakeGCE.Compute().Networks().Insert(ctx, nonDefaultNetworkKey, nonDefaultNetwork)
 
 	return &testGKENetworkParamSetController{
-		networkClient:   fakeNetworking,
-		informerFactory: nwInfFactory,
-		clusterValues:   testClusterValues,
-		controller:      controller,
-		metrics:         metrics,
-		cloud:           fakeGCE,
-		nodeStore:       fakeNodeInformer.Informer().GetStore(),
+		networkClient:       fakeNetworking,
+		informerFactory:     nwInfFactory,
+		clusterValues:       testClusterValues,
+		controller:          controller,
+		metrics:             metrics,
+		cloud:               fakeGCE,
+		nodeStore:           fakeNodeInformer.Informer().GetStore(),
+		nodeClient:          nodeClient,
+		nodeInformerFactory: fakeInformerFactory,
 	}
 }
 
@@ -1758,5 +1772,208 @@ func TestSameStringSlice(t *testing.T) {
 				t.Fatalf("sameStringSlice(%+v) returns %v but want %v", tc.name, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestSyncDefaultPodRangesWithCustomDefaultGNPName(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+
+	customDefaultName := "t365985285473-tenantuno-default"
+
+	testVals := setupGKENetworkParamSetControllerWithCustomDefaultGNP(ctx, customDefaultName)
+
+	subnetKey := meta.RegionalKey(defaultTestSubnetworkName, testVals.clusterValues.Region)
+	subnet := &compute.Subnetwork{
+		Name: defaultTestSubnetworkName,
+		SecondaryIpRanges: []*compute.SubnetworkSecondaryRange{
+			{
+				IpCidrRange: defaultPodCIDR,
+				RangeName:   defaultPodRange,
+			},
+			{
+				IpCidrRange: newPodCIDR1,
+				RangeName:   newPodRange1,
+			},
+		},
+	}
+	err := testVals.cloud.Compute().Subnetworks().Insert(ctx, subnetKey, subnet)
+	if err != nil {
+		t.Error(err)
+	}
+
+	testVals.runGKENetworkParamSetController(ctx)
+
+	// Create Network and GNP using customDefaultName
+	_, err = testVals.networkClient.NetworkingV1().Networks().Create(ctx, newL3Network(customDefaultName), metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create Network: %v", err)
+	}
+
+	defaultParamSet := newL3GNP(customDefaultName, []string{defaultPodRange}, nil)
+	_, err = testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, defaultParamSet, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create default GKENetworkParamSet: %v", err)
+	}
+
+	// Add node with new pod range label
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: node1,
+			Labels: map[string]string{
+				utilnode.NodePoolPodRangeLabelPrefix: newPodRange1,
+			},
+		},
+	}
+	err = testVals.nodeStore.Add(node)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Wait for the custom default GNP's pod ranges to be updated by the controller
+	g.Eventually(func() (bool, error) {
+		paramSet, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, customDefaultName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		if paramSet.Spec.PodIPv4Ranges == nil {
+			return false, fmt.Errorf("PodIPv4Ranges is nil")
+		}
+		expectedRanges := []string{defaultPodRange, newPodRange1}
+		if sameStringSlice(paramSet.Spec.PodIPv4Ranges.RangeNames, expectedRanges) {
+			return true, nil
+		}
+		return false, fmt.Errorf("NetworkParamSet has the wrong Pod IPv4 ranges: expected %+v, got %+v", expectedRanges, paramSet.Spec.PodIPv4Ranges.RangeNames)
+	}).Should(gomega.BeTrue(), "Network Params Pod IPv4 ranges for custom default GNP should match the expected ranges")
+}
+
+func TestNodeUpdateTriggersCustomDefaultGNPQueue(t *testing.T) {
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+
+	customDefaultName := "t365985285473-tenantuno-default"
+	nodeClient := fake.NewSimpleClientset()
+	testVals := setupGKENetworkParamSetControllerWithCustomDefaultGNPAndNodeClient(ctx, customDefaultName, nodeClient)
+
+	// Start both informer factories
+	testVals.informerFactory.Start(ctx.Done())
+	testVals.nodeInformerFactory.Start(ctx.Done())
+
+	// Create custom default GNP first
+	defaultParamSet := newL3GNP(customDefaultName, []string{defaultPodRange}, nil)
+	_, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, defaultParamSet, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create default GKENetworkParamSet: %v", err)
+	}
+
+	// Wait for GNP informer cache to sync
+	testVals.informerFactory.WaitForCacheSync(ctx.Done())
+
+	// Add node with new pod range label (which is different from defaultPodRange, e.g. newPodRange1)
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-node",
+			Labels: map[string]string{
+				utilnode.NodePoolPodRangeLabelPrefix: newPodRange1,
+			},
+		},
+	}
+
+	// Create node in client to trigger events
+	_, err = nodeClient.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create node: %v", err)
+	}
+
+	// Verify that the customDefaultName gets added to the queue
+	gomega.NewGomegaWithT(t).Eventually(func() bool {
+		return testVals.controller.queue.Len() > 0
+	}, 5*time.Second, 100*time.Millisecond).Should(gomega.BeTrue(), "expected custom default GNP name to be enqueued on node addition")
+
+	item, quit := testVals.controller.queue.Get()
+	if quit {
+		t.Fatalf("queue quit unexpectedly")
+	}
+	if item.(string) != customDefaultName {
+		t.Errorf("expected enqueued item to be %q, got %q", customDefaultName, item.(string))
+	}
+}
+
+func TestRemoveTenantParamSetFinalizers(t *testing.T) {
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+
+	tenantName := "t12345-tenantuno"
+	otherTenantName := "t99999-tenantdos"
+
+	testVals := setupGKENetworkParamSetController(ctx)
+
+	// Create GNPs for tenant-1 (one with finalizer, one without)
+	gnp1 := newL3GNP("tenant1-default", []string{defaultPodRange}, nil)
+	gnp1.Labels = map[string]string{
+		ProviderConfigLabelKey: tenantName,
+	}
+	gnp1.Finalizers = []string{GNPFinalizer}
+
+	gnp2 := newL3GNP("tenant1-custom", []string{newPodRange1}, nil)
+	gnp2.Labels = map[string]string{
+		ProviderConfigLabelKey: tenantName,
+	}
+
+	// Create GNP for tenant-2
+	gnpOther := newL3GNP("tenant2-default", []string{defaultPodRange}, nil)
+	gnpOther.Labels = map[string]string{
+		ProviderConfigLabelKey: otherTenantName,
+	}
+	gnpOther.Finalizers = []string{GNPFinalizer}
+
+	for _, g := range []*networkv1.GKENetworkParamSet{gnp1, gnp2, gnpOther} {
+		_, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, g, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create GNP %s: %v", g.Name, err)
+		}
+	}
+
+	// 1. Guard check: empty or default supervisor name should return error
+	if err := testVals.controller.RemoveTenantParamSetFinalizers(ctx, ""); err == nil {
+		t.Errorf("expected error for empty tenant name, got nil")
+	}
+	if err := testVals.controller.RemoveTenantParamSetFinalizers(ctx, "default"); err == nil {
+		t.Errorf("expected error for 'default' tenant name, got nil")
+	}
+
+	// 2. Remove finalizers for tenant-1 GNPs
+	if err := testVals.controller.RemoveTenantParamSetFinalizers(ctx, tenantName); err != nil {
+		t.Fatalf("RemoveTenantParamSetFinalizers failed: %v", err)
+	}
+
+	// 3. Verify tenant-1 GNPs still exist but finalizer is removed
+	gnp1Check, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, "tenant1-default", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected tenant1-default to exist, got err: %v", err)
+	}
+	if slices.Contains(gnp1Check.Finalizers, GNPFinalizer) {
+		t.Errorf("expected tenant1-default finalizer to be removed, got %v", gnp1Check.Finalizers)
+	}
+
+	gnp2Check, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, "tenant1-custom", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected tenant1-custom to exist, got err: %v", err)
+	}
+	if slices.Contains(gnp2Check.Finalizers, GNPFinalizer) {
+		t.Errorf("expected tenant1-custom finalizer to be removed, got %v", gnp2Check.Finalizers)
+	}
+
+	// 4. Verify tenant-2 GNP is NOT changed and still has its finalizer
+	remainingGNP, err := testVals.networkClient.NetworkingV1().GKENetworkParamSets().Get(ctx, "tenant2-default", metav1.GetOptions{})
+	if err != nil {
+		t.Errorf("expected tenant-2 GNP to remain, got err: %v", err)
+	}
+	if remainingGNP == nil {
+		t.Errorf("expected tenant-2 GNP to exist")
+	}
+	if !slices.Contains(remainingGNP.Finalizers, GNPFinalizer) {
+		t.Errorf("expected tenant-2 GNP to retain finalizer, got %v", remainingGNP.Finalizers)
 	}
 }

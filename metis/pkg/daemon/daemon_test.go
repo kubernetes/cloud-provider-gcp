@@ -48,7 +48,7 @@ func TestDaemon_Run(t *testing.T) {
 	}{
 		{
 			name: "successful run",
-			setupDaemon: func(t *testing.T, d *Daemon) {
+			setupDaemon: func(_ *testing.T, d *Daemon) {
 				d.NNCClient = nncfake.NewSimpleClientset(&nncv1.NodeNetworkConfig{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "test-node",
@@ -85,13 +85,13 @@ func TestDaemon_Run(t *testing.T) {
 		},
 		{
 			name:        "both clients nil (initClients fails)",
-			setupDaemon: func(t *testing.T, d *Daemon) {},
+			setupDaemon: func(_ *testing.T, _ *Daemon) {},
 			wantErr:     true,
 			errContains: "failed to initialize clients",
 		},
 		{
 			name: "only NNCClient set (initClients fails)",
-			setupDaemon: func(t *testing.T, d *Daemon) {
+			setupDaemon: func(_ *testing.T, d *Daemon) {
 				d.NNCClient = nncfake.NewSimpleClientset()
 			},
 			wantErr:     true,
@@ -99,7 +99,7 @@ func TestDaemon_Run(t *testing.T) {
 		},
 		{
 			name: "only KubeClient set (initClients fails)",
-			setupDaemon: func(t *testing.T, d *Daemon) {
+			setupDaemon: func(_ *testing.T, d *Daemon) {
 				d.KubeClient = kubefake.NewSimpleClientset()
 			},
 			wantErr:     true,
@@ -134,10 +134,16 @@ func TestDaemon_Run(t *testing.T) {
 			}()
 
 			if !tc.wantErr {
-				// Wait for server to start and create socket
-				time.Sleep(500 * time.Millisecond)
-
-				if _, err := os.Stat(sockPath); os.IsNotExist(err) {
+				// Poll for server to start and create socket (up to 3 seconds)
+				var socketFound bool
+				for i := 0; i < 60; i++ {
+					if _, err := os.Stat(sockPath); err == nil {
+						socketFound = true
+						break
+					}
+					time.Sleep(50 * time.Millisecond)
+				}
+				if !socketFound {
 					t.Errorf("Expected socket to be created at %s, but doesn't exist", sockPath)
 				}
 
@@ -238,7 +244,7 @@ func TestEnsureNodeNetworkConfig(t *testing.T) {
 					UID:  nodeUID,
 				},
 			},
-			createReactor: func(action clienttesting.Action) (handled bool, ret runtime.Object, err error) {
+			createReactor: func(_ clienttesting.Action) (handled bool, ret runtime.Object, err error) {
 				return true, nil, apierrors.NewAlreadyExists(schema.GroupResource{Group: "networking.gke.io", Resource: "nodenetworkconfigs"}, nodeName)
 			},
 		},
@@ -255,7 +261,7 @@ func TestEnsureNodeNetworkConfig(t *testing.T) {
 					UID:  nodeUID,
 				},
 			},
-			createReactor: func(action clienttesting.Action) (handled bool, ret runtime.Object, err error) {
+			createReactor: func(_ clienttesting.Action) (handled bool, ret runtime.Object, err error) {
 				return true, nil, fmt.Errorf("general API error")
 			},
 			wantErr: true,

@@ -17,6 +17,7 @@ limitations under the License.
 package cni
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,9 +30,15 @@ import (
 
 	pb "k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg"
+	"k8s.io/metis/pkg/daemon"
+	"k8s.io/metis/pkg/store"
 )
 
-const defaultRPCTimeout = 10 * time.Second
+const (
+	defaultRPCTimeout = 10 * time.Second
+	// num of retries before CNI plugin fallback to direct mode
+	maxRetries = 3
+)
 
 type Option func(*Plugin)
 
@@ -49,6 +56,13 @@ func WithSocketPath(path string) Option {
 	}
 }
 
+// WithDBPath overrides the default SQLite database path for direct local fallback.
+func WithDBPath(path string) Option {
+	return func(p *Plugin) {
+		p.dbPath = path
+	}
+}
+
 // WithLogFile overrides the default CNI log path.
 func WithLogFile(path string) Option {
 	return func(p *Plugin) {
@@ -61,6 +75,7 @@ func NewPlugin(opts ...Option) *Plugin {
 	p := &Plugin{
 		newClientFunc: getGrpcClient,
 		socketPath:    pkg.DefaultSockPath,
+		dbPath:        pkg.DefaultDBPath,
 		logFile:       pkg.DefaultCNILogPath,
 	}
 	for _, opt := range opts {
@@ -117,10 +132,44 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 		socketPath = conf.DaemonSocket
 	}
 
-	client, conn, err := p.newClientFunc(socketPath)
-	if err != nil {
-		cleanup()
-		return nil, err
+	dbPath := p.dbPath
+	if conf.DBPath != "" {
+		dbPath = conf.DBPath
+	}
+
+	var client pb.AdaptiveIpamClient
+	var conn *grpc.ClientConn
+
+	// Retry connecting to the daemon socket before falling back to direct mode.
+	var clientErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		client, conn, clientErr = p.newClientFunc(socketPath)
+		if clientErr == nil {
+			break
+		}
+		if attempt < maxRetries-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	sessionCleanup := cleanup
+
+	if clientErr != nil {
+		logger.Info("Daemon unavailable, falling back to direct local IPAM engine", "socketPath", socketPath, "dbPath", dbPath, "err", clientErr)
+		ctx := context.Background()
+		storeInstance, err := store.NewStore(ctx, logger, dbPath)
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("metis cni fallback: failed to open store at %s: %w", dbPath, err)
+		}
+
+		engine := daemon.NewIPAMEngine(logger, storeInstance, 0, store.DefaultBusyTimeout, nil)
+		client = &directClientAdapter{engine: engine}
+
+		sessionCleanup = func() {
+			storeInstance.Close()
+			cleanup()
+		}
 	}
 
 	return &pluginSession{
@@ -129,7 +178,7 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 		client:     client,
 		conn:       conn,
 		logger:     logger,
-		cleanup:    cleanup,
+		cleanup:    sessionCleanup,
 	}, nil
 }
 
@@ -148,7 +197,7 @@ func (p *Plugin) setupLogging(args *skel.CmdArgs, command string, logFile string
 	logger.Info("Received CNI request", "netns", args.Netns, "ifName", args.IfName, "args", args.Args, "path", args.Path, "stdinData", string(args.StdinData))
 
 	cleanup = func() {
-		f.Close()
+		_ = f.Close()
 		klog.Flush()
 	}
 
@@ -156,6 +205,10 @@ func (p *Plugin) setupLogging(args *skel.CmdArgs, command string, logFile string
 }
 
 func getGrpcClient(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+	if _, err := os.Stat(socketPath); err != nil {
+		return nil, nil, fmt.Errorf("daemon socket file %s unavailable: %w", socketPath, err)
+	}
+
 	conn, err := pkg.NewLocalGrpcConnection(socketPath)
 	if err != nil {
 		return nil, nil, err
