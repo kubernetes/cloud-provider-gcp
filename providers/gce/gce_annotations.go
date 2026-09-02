@@ -21,6 +21,7 @@ package gce
 
 import (
 	"fmt"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -86,6 +87,11 @@ const (
 	// RBSAnnotationKey is annotated on a Service object to indicate
 	// opt-in mode for RBS NetLB
 	RBSAnnotationKey = "cloud.google.com/l4-rbs"
+
+	// ServiceAnnotationLoadBalancerResourceLabels specifies the GCP resource labels to
+	// apply to forwarding rules created for this LoadBalancer. Its value is a
+	// comma-separated list of key=value pairs.
+	ServiceAnnotationLoadBalancerResourceLabels = "cloud.google.com/load-balancer-resource-labels"
 
 	// RBSEnabled is an annotation to indicate the Service is opt-in for RBS
 	RBSEnabled = "enabled"
@@ -195,6 +201,31 @@ func GetLoadBalancerAnnotationSubnet(service *v1.Service) string {
 		return val
 	}
 	return ""
+}
+
+// GetLoadBalancerAnnotationResourceLabels returns the resource labels requested for
+// forwarding rules created for the given LoadBalancer service, and whether the
+// resource-label annotation is present. A present annotation with an empty value
+// intentionally returns an empty map: it requests removal of all forwarding rule
+// labels. An absent annotation leaves forwarding rule labels unmanaged.
+func GetLoadBalancerAnnotationResourceLabels(service *v1.Service) (map[string]string, bool, error) {
+	value, present := service.Annotations[ServiceAnnotationLoadBalancerResourceLabels]
+	if !present {
+		return nil, false, nil
+	}
+
+	labels := make(map[string]string)
+	if value == "" {
+		return labels, true, nil
+	}
+	for _, pair := range strings.Split(value, ",") {
+		key, value, found := strings.Cut(strings.TrimSpace(pair), "=")
+		if !found || key == "" {
+			return nil, true, fmt.Errorf("invalid forwarding rule resource label %q", pair)
+		}
+		labels[key] = value
+	}
+	return labels, true, nil
 }
 
 // mergeMap returns a new map containing the merged content of existing and update.

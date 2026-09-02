@@ -75,6 +75,51 @@ func TestServiceNetworkTierAnnotationKey(t *testing.T) {
 	}
 }
 
+func TestGetLoadBalancerAnnotationResourceLabels(t *testing.T) {
+	for name, tc := range map[string]struct {
+		annotation string
+		expected   map[string]string
+		present    bool
+		err        string
+	}{
+		"missing annotation": {},
+		"empty annotation":   {annotation: "", present: true, expected: map[string]string{}},
+		"single label": {
+			annotation: "goog-partner-solution=openshift",
+			expected:   map[string]string{"goog-partner-solution": "openshift"},
+			present:    true,
+		},
+		"multiple labels with whitespace": {
+			annotation: "goog-partner-solution=openshift, environment=dev",
+			expected: map[string]string{
+				"goog-partner-solution": "openshift",
+				"environment":           "dev",
+			},
+			present: true,
+		},
+		"malformed entry": {
+			annotation: "valid=value,malformed,=empty-key",
+			present:    true,
+			err:        "invalid forwarding rule resource label \"malformed\"",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc := &v1.Service{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}}
+			if tc.present {
+				svc.Annotations[ServiceAnnotationLoadBalancerResourceLabels] = tc.annotation
+			}
+			labels, present, err := GetLoadBalancerAnnotationResourceLabels(svc)
+			assert.Equal(t, tc.present, present)
+			assert.Equal(t, tc.expected, labels)
+			if tc.err != "" {
+				assert.EqualError(t, err, tc.err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestMergeMap(t *testing.T) {
 	for _, tc := range []struct {
 		desc           string

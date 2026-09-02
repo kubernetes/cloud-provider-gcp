@@ -242,6 +242,15 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	if err != nil {
 		return nil, err
 	}
+	labels, present, err := GetLoadBalancerAnnotationResourceLabels(svc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse forwarding rule resource labels: %w", err)
+	}
+	if present {
+		if err := g.SetRegionForwardingRuleLabels(updatedFwdRule, g.region, labels); err != nil {
+			return nil, fmt.Errorf("failed to reconcile forwarding rule labels: %w", err)
+		}
+	}
 
 	ipToUse = updatedFwdRule.IPAddress
 	// Ensure firewall rules if necessary

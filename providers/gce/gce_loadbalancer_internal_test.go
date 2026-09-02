@@ -500,6 +500,63 @@ func TestEnsureInternalLoadBalancerWithExistingResources(t *testing.T) {
 	assertILBSyncResultAnnotations(t, gce, svc, vals.ClusterID, syncResult)
 }
 
+func TestEnsureInternalLoadBalancerReconcilesForwardingRuleLabels(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	svc := fakeLoadbalancerService(string(LBTypeInternal))
+	svc.Annotations[ServiceAnnotationLoadBalancerResourceLabels] = "goog-partner-solution=openshift"
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	mockGCE := gce.c.(*cloud.MockGCE)
+	mockGCE.MockForwardingRules.InsertHook = func(ctx context.Context, key *meta.Key, rule *compute.ForwardingRule, m *cloud.MockForwardingRules, options ...cloud.Option) (bool, error) {
+		assert.Empty(t, rule.Labels, "labels must not be set during forwarding rule creation")
+		return mock.InsertFwdRuleHook(ctx, key, rule, m, options...)
+	}
+	var setLabelsRequest *compute.RegionSetLabelsRequest
+	mockGCE.MockForwardingRules.SetLabelsHook = func(_ context.Context, _ *meta.Key, request *compute.RegionSetLabelsRequest, _ *cloud.MockForwardingRules, _ ...cloud.Option) error {
+		setLabelsRequest = request
+		return nil
+	}
+
+	_, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	require.NoError(t, err)
+	require.NotNil(t, setLabelsRequest)
+	assert.Equal(t, map[string]string{"goog-partner-solution": "openshift"}, setLabelsRequest.Labels)
+}
+
+func TestEnsureInternalLoadBalancerClearsForwardingRuleLabelsWithEmptyAnnotation(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	svc := fakeLoadbalancerService(string(LBTypeInternal))
+	svc.Annotations[ServiceAnnotationLoadBalancerResourceLabels] = ""
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	var setLabelsRequest *compute.RegionSetLabelsRequest
+	mockGCE := gce.c.(*cloud.MockGCE)
+	mockGCE.MockForwardingRules.GetHook = func(_ context.Context, key *meta.Key, _ *cloud.MockForwardingRules, _ ...cloud.Option) (bool, *compute.ForwardingRule, error) {
+		return true, &compute.ForwardingRule{
+			Name:             key.Name,
+			Labels:           map[string]string{"stale": "label"},
+			LabelFingerprint: "fingerprint",
+		}, nil
+	}
+	mockGCE.MockForwardingRules.SetLabelsHook = func(_ context.Context, _ *meta.Key, request *compute.RegionSetLabelsRequest, _ *cloud.MockForwardingRules, _ ...cloud.Option) error {
+		setLabelsRequest = request
+		return nil
+	}
+
+	_, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	require.NoError(t, err)
+	require.NotNil(t, setLabelsRequest)
+	assert.Empty(t, setLabelsRequest.Labels)
+}
+
 func TestEnsureInternalLoadBalancerClearPreviousResources(t *testing.T) {
 	t.Parallel()
 
