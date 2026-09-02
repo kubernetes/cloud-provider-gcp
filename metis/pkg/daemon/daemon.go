@@ -18,7 +18,9 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -26,7 +28,8 @@ import (
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	"github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions"
 	"github.com/go-logr/logr"
-	"k8s.io/apimachinery/pkg/api/errors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -41,6 +44,7 @@ import (
 type Config struct {
 	DBPath                          string
 	SocketPath                      string
+	MetricsPort                     int
 	MonitorInterval                 time.Duration
 	ReleaseCooldown                 time.Duration
 	DrainingExpiration              time.Duration
@@ -88,7 +92,27 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	defer storeInstance.Close()
 
-	server := newAdaptiveIpamServer(logger, storeInstance, d.Config.SocketPath, d.Config.ReleaseCooldown, store.DefaultBusyTimeout)
+	enableMetrics := d.Config.MetricsPort > 0
+	if enableMetrics {
+		metricsAddr := fmt.Sprintf(":%d", d.Config.MetricsPort)
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		metricsServer := &http.Server{
+			Addr:    metricsAddr,
+			Handler: mux,
+		}
+
+		go func() {
+			logger.Info("Metrics server is listening", "port", d.Config.MetricsPort)
+			if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error(err, "Metrics server failed")
+			}
+		}()
+
+		defer metricsServer.Close()
+	}
+
+	server := newAdaptiveIpamServer(logger, storeInstance, d.Config.SocketPath, d.Config.ReleaseCooldown, store.DefaultBusyTimeout, enableMetrics)
 
 	if d.NNCClient == nil || d.KubeClient == nil {
 		var err error
@@ -115,12 +139,13 @@ func (d *Daemon) Run(ctx context.Context) error {
 	nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
 
 	watcher := NewWatcher(WatcherConfig{
-		Logger:      logger,
-		NNCClient:   d.NNCClient,
-		NNCInformer: nncInformer,
-		Store:       storeInstance,
-		NodeName:    nodeName,
-		OnCIDRAdded: server.onCIDRAdded,
+		Logger:        logger,
+		NNCClient:     d.NNCClient,
+		NNCInformer:   nncInformer,
+		Store:         storeInstance,
+		NodeName:      nodeName,
+		OnCIDRAdded:   server.onCIDRAdded,
+		EnableMetrics: enableMetrics,
 	})
 	monitorInstance := NewMonitor(MonitorConfig{
 		Logger:                          logger,
@@ -136,6 +161,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		LowUtilizationThreshold:         d.Config.LowUtilizationThreshold,
 		TargetUtilizationAfterScaleUp:   d.Config.TargetUtilizationAfterScaleUp,
 		CooldownPushbackThreshold:       d.Config.CooldownPushbackThreshold,
+		EnableMetrics:                   enableMetrics,
 	})
 
 	server.engine.SetMonitor(monitorInstance)
@@ -170,7 +196,7 @@ func (d *Daemon) ensureNodeNetworkConfig(ctx context.Context, nodeName string, l
 	if err == nil {
 		return nil // Already exists
 	}
-	if !errors.IsNotFound(err) {
+	if !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed to get NodeNetworkConfig: %w", err)
 	}
 
@@ -197,7 +223,7 @@ func (d *Daemon) ensureNodeNetworkConfig(ctx context.Context, nodeName string, l
 	}
 	_, err = d.NNCClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
 	if err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			logger.Info("NodeNetworkConfig was created concurrently", "nodeName", nodeName)
 			return nil
 		}

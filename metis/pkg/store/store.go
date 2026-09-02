@@ -842,33 +842,62 @@ func (s *Store) MarkCIDRBlockAsDeletingForTest(ctx context.Context, id int64) er
 	return err
 }
 
-// NetworkIPUsage holds the allocated, cooldown, total, and draining IP counts for a network.
-type NetworkIPUsage struct {
-	Allocated int
-	Cooldown  int
-	Total     int
-	Draining  int
+// IPUsage holds IP counts categorized by allocation state for a network.
+type IPUsage struct {
+	Allocated   int
+	Cooldown    int
+	Draining    int
+	Deleting    int
+	ActiveTotal int
+	Total       int
 }
 
-// GetIPUsage fetches the allocated, cooldown, total, and draining IP counts for a specific network and IP family.
-// CIDR blocks marked as Deleting are excluded from all counts since they are scheduled for removal by GCE.
+// CIDRUsage holds CIDR block counts categorized by operational state for a network.
+type CIDRUsage struct {
+	Ready    int
+	Draining int
+	Deleting int
+}
+
+// NetworkIPUsage holds IP counts and CIDR block counts for a network.
+type NetworkIPUsage struct {
+	IPs   IPUsage
+	CIDRs CIDRUsage
+}
+
+// GetIPUsage fetches IP counts (allocated, cooldown, draining, deleting, active_total, total) and CIDR block counts (ready, draining, deleting) for a specific network and IP family.
 func (s *Store) GetIPUsage(ctx context.Context, network string, ipFamily IPFamily) (NetworkIPUsage, error) {
 	var usage NetworkIPUsage
 	nowMilli := time.Now().UTC().UnixMilli()
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
-			IFNULL(SUM(allocated_ips), 0) AS allocated,
+			IFNULL(SUM(CASE WHEN state != ? THEN allocated_ips ELSE 0 END), 0) AS allocated,
 			(
 				SELECT COUNT(i.id)
 				FROM ip_addresses i
 				JOIN cidr_blocks cb ON i.cidr_block_id = cb.id
-				WHERE cb.network = ? AND cb.state != ? AND cb.ip_family = ? AND i.is_allocated = FALSE AND i.release_at > ?
+				WHERE cb.network = ? AND cb.ip_family = ? AND cb.state != ? AND i.is_allocated = FALSE AND i.release_at > ?
 			) AS cooldown,
+			IFNULL(SUM(CASE WHEN state = ? THEN total_ips ELSE 0 END), 0) AS draining_ips,
+			IFNULL(SUM(CASE WHEN state = ? THEN total_ips ELSE 0 END), 0) AS deleting_ips,
+			IFNULL(SUM(CASE WHEN state != ? THEN total_ips ELSE 0 END), 0) AS active_total_ips,
 			IFNULL(SUM(total_ips), 0) AS total_ips,
-			IFNULL(SUM(CASE WHEN state = ? THEN total_ips ELSE 0 END), 0) AS draining_ips
-		FROM cidr_blocks c
-		WHERE network = ? AND ip_family = ? AND c.state != ?
-	`, network, StateDeleting, ipFamily, nowMilli, StateDraining, network, ipFamily, StateDeleting).Scan(&usage.Allocated, &usage.Cooldown, &usage.Total, &usage.Draining)
+			IFNULL(SUM(CASE WHEN state = ? THEN 1 ELSE 0 END), 0) AS ready_cidrs,
+			IFNULL(SUM(CASE WHEN state = ? THEN 1 ELSE 0 END), 0) AS draining_cidrs,
+			IFNULL(SUM(CASE WHEN state = ? THEN 1 ELSE 0 END), 0) AS deleting_cidrs
+		FROM cidr_blocks
+		WHERE network = ? AND ip_family = ?
+	`, StateDeleting, network, ipFamily, StateDeleting, nowMilli, StateDraining, StateDeleting, StateDeleting, StateReady, StateDraining, StateDeleting, network, ipFamily).Scan(
+		&usage.IPs.Allocated,
+		&usage.IPs.Cooldown,
+		&usage.IPs.Draining,
+		&usage.IPs.Deleting,
+		&usage.IPs.ActiveTotal,
+		&usage.IPs.Total,
+		&usage.CIDRs.Ready,
+		&usage.CIDRs.Draining,
+		&usage.CIDRs.Deleting,
+	)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

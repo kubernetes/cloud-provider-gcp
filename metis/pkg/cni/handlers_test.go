@@ -36,6 +36,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	pb "k8s.io/metis/api/adaptiveipam/v1"
@@ -535,5 +536,112 @@ func TestDirectFallback_DaemonUnavailable(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("CmdDel via direct fallback failed: %v", err)
+	}
+}
+
+func TestCNICommandMetrics(t *testing.T) {
+	mockClient := &mockAdaptiveIpamClient{
+		allocatePodIPFunc: func(_ context.Context, _ *pb.AllocatePodIPRequest) (*pb.AllocatePodIPResponse, error) {
+			return nil, fmt.Errorf("mock add error")
+		},
+		deallocatePodIPFunc: func(_ context.Context, _ *pb.DeallocatePodIPRequest) (*pb.DeallocatePodIPResponse, error) {
+			return nil, fmt.Errorf("mock del error")
+		},
+		checkPodIPFunc: func(_ context.Context, _ *pb.CheckPodIPRequest) (*pb.CheckPodIPResponse, error) {
+			return nil, fmt.Errorf("mock check error")
+		},
+	}
+
+	tempLogDir := t.TempDir()
+	logFile := filepath.Join(tempLogDir, "metis-cni.log")
+
+	plugin := NewPlugin(
+		WithClientFunc(func(_ string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error) {
+			return mockClient, nil, nil
+		}),
+		WithLogFile(logFile),
+	)
+
+	args := &skel.CmdArgs{
+		ContainerID: "test-container-metrics",
+		Netns:       "/var/run/netns/test",
+		IfName:      "eth0",
+		Args:        "K8S_POD_NAME=test-pod-metrics;K8S_POD_NAMESPACE=test-ns",
+		StdinData:   []byte(`{"cniVersion": "0.4.0", "name": "test-net", "type": "metis", "ipam": {"type": "metis", "ranges": [[{"subnet": "10.240.0.0/24"}]]}}`),
+	}
+
+	methods := []struct {
+		name string
+		fn   func(*skel.CmdArgs) error
+	}{
+		{name: "CmdAdd", fn: plugin.CmdAdd},
+		{name: "CmdDel", fn: plugin.CmdDel},
+		{name: "CmdCheck", fn: plugin.CmdCheck},
+	}
+
+	for _, m := range methods {
+		t.Run(m.name, func(t *testing.T) {
+			_, _, _ = runWithOutputCapture(t, func() error {
+				return m.fn(args)
+			})
+		})
+	}
+
+	metricFamilies, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("Failed to gather metrics: %v", err)
+	}
+
+	expectedLabels := map[string]map[string]map[string]bool{
+		"metis_cni_request_latency_seconds": {},
+		"metis_cni_request_error_total":     {},
+	}
+
+	for _, mf := range metricFamilies {
+		name := mf.GetName()
+		if name != "metis_cni_request_latency_seconds" && name != "metis_cni_request_error_total" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			labels := map[string]string{}
+			for _, l := range m.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			method := labels["method"]
+			if expectedLabels[name][method] == nil {
+				expectedLabels[name][method] = map[string]bool{}
+			}
+			for k, v := range labels {
+				expectedLabels[name][method][k+"="+v] = true
+			}
+		}
+	}
+
+	expectedMethods := []string{"CmdAdd", "CmdDel", "CmdCheck"}
+	for _, method := range expectedMethods {
+		for _, metricName := range []string{"metis_cni_request_latency_seconds", "metis_cni_request_error_total"} {
+			methodLabels := expectedLabels[metricName][method]
+			if methodLabels == nil {
+				t.Errorf("Metric %s for method %s not recorded", metricName, method)
+				continue
+			}
+
+			// Verify required labels
+			expectedKV := map[string]string{
+				"method":       method,
+				"network":      "test-net",
+				"container_id": "test-container-metrics",
+				"pod_name":     "test-pod-metrics",
+			}
+			if metricName == "metis_cni_request_error_total" {
+				expectedKV["error_code"] = "Unknown"
+			}
+
+			for k, v := range expectedKV {
+				if !methodLabels[k+"="+v] {
+					t.Errorf("Expected label %s=%s for metric %s method %s", k, v, metricName, method)
+				}
+			}
+		}
 	}
 }

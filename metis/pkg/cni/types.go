@@ -63,4 +63,5 @@ type Plugin struct {
 	socketPath    string
 	dbPath        string
 	logFile       string
+	enableMetrics bool
 }

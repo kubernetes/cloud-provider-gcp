@@ -27,42 +27,78 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 	"k8s.io/metis/api/adaptiveipam/v1"
 	adminv1 "k8s.io/metis/api/admin/v1"
 	"k8s.io/metis/pkg"
+	"k8s.io/metis/pkg/metrics"
 	"k8s.io/metis/pkg/store"
 )
 
 type adaptiveIpamServer struct {
 	adaptiveipam.UnimplementedAdaptiveIpamServer
 	adminv1.UnimplementedAdminServer
-	engine     *IPAMEngine
-	store      *store.Store
-	sockPath   string
-	grpcServer *grpc.Server
-	logger     logr.Logger
+	engine        *IPAMEngine
+	store         *store.Store
+	sockPath      string
+	grpcServer    *grpc.Server
+	logger        logr.Logger
+	enableMetrics bool
 }
 
-func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socketPath string, releaseCooldown time.Duration, busyTimeout time.Duration) *adaptiveIpamServer {
-	engine := NewIPAMEngine(logger, storeInstance, releaseCooldown, busyTimeout, nil)
+func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socketPath string, releaseCooldown time.Duration, busyTimeout time.Duration, enableMetrics bool) *adaptiveIpamServer {
+	engine := NewIPAMEngine(logger, storeInstance, releaseCooldown, busyTimeout, nil, enableMetrics)
 	return &adaptiveIpamServer{
-		engine:   engine,
-		store:    storeInstance,
-		sockPath: socketPath,
-		logger:   logger,
+		engine:        engine,
+		store:         storeInstance,
+		sockPath:      socketPath,
+		logger:        logger,
+		enableMetrics: enableMetrics,
 	}
 }
 
+func (s *adaptiveIpamServer) recordMetrics(method, network, containerID, podName string, err error, start time.Time) {
+	if !s.enableMetrics {
+		return
+	}
+	duration := time.Since(start).Seconds()
+	code := status.Code(err).String()
+	metrics.GRPCServerHandledTotal.WithLabelValues(method, code, network, containerID, podName).Inc()
+	metrics.RPCLatencySeconds.WithLabelValues(method, network, containerID, podName).Observe(duration)
+}
+
 func (s *adaptiveIpamServer) AllocatePodIP(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest) (*adaptiveipam.AllocatePodIPResponse, error) {
-	return s.engine.AllocatePodIP(ctx, req)
+	start := time.Now()
+	resp, err := s.engine.AllocatePodIP(ctx, req)
+	s.recordMetrics("AllocatePodIP", req.Network, getContainerIDFromAllocate(req), req.PodName, err, start)
+	return resp, err
 }
 
 func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptiveipam.DeallocatePodIPRequest) (*adaptiveipam.DeallocatePodIPResponse, error) {
-	return s.engine.DeallocatePodIP(ctx, req)
+	start := time.Now()
+	resp, err := s.engine.DeallocatePodIP(ctx, req)
+	s.recordMetrics("DeallocatePodIP", req.Network, req.ContainerId, req.PodName, err, start)
+	return resp, err
 }
 
 func (s *adaptiveIpamServer) CheckPodIP(ctx context.Context, req *adaptiveipam.CheckPodIPRequest) (*adaptiveipam.CheckPodIPResponse, error) {
-	return s.engine.CheckPodIP(ctx, req)
+	start := time.Now()
+	resp, err := s.engine.CheckPodIP(ctx, req)
+	s.recordMetrics("CheckPodIP", req.Network, req.ContainerId, req.PodName, err, start)
+	return resp, err
+}
+
+func getContainerIDFromAllocate(req *adaptiveipam.AllocatePodIPRequest) string {
+	if req == nil {
+		return ""
+	}
+	if req.Ipv4Config != nil && req.Ipv4Config.ContainerId != "" {
+		return req.Ipv4Config.ContainerId
+	}
+	if req.Ipv6Config != nil && req.Ipv6Config.ContainerId != "" {
+		return req.Ipv6Config.ContainerId
+	}
+	return ""
 }
 
 func (s *adaptiveIpamServer) getPendingRequestsCount(network string) int {

@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/metis/pkg/metrics"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -48,24 +49,26 @@ type Watcher struct {
 	// syncHandler is the function called to sync a network work item. Decoupling this
 	// via a field function pointer allows unit tests to easily mock/override the sync
 	// logic without requiring full clients, informers, or stores.
-	syncHandler func(ctx context.Context, network string) error
-	nncClient   nncclientset.Interface
-	nodeName    string
-	nncLister   nnclisters.NodeNetworkConfigLister
-	nncSynced   cache.InformerSynced
-	store       *store.Store
-	logger      logr.Logger
-	OnCIDRAdded func(network string, availableIPs int)
+	syncHandler   func(ctx context.Context, network string) error
+	nncClient     nncclientset.Interface
+	nodeName      string
+	nncLister     nnclisters.NodeNetworkConfigLister
+	nncSynced     cache.InformerSynced
+	store         *store.Store
+	logger        logr.Logger
+	OnCIDRAdded   func(network string, availableIPs int)
+	enableMetrics bool
 }
 
 // WatcherConfig holds the configuration for the Watcher.
 type WatcherConfig struct {
-	Logger      logr.Logger
-	NNCClient   nncclientset.Interface
-	NNCInformer nncinformers.NodeNetworkConfigInformer
-	Store       *store.Store
-	NodeName    string
-	OnCIDRAdded func(network string, availableIPs int)
+	Logger        logr.Logger
+	NNCClient     nncclientset.Interface
+	NNCInformer   nncinformers.NodeNetworkConfigInformer
+	Store         *store.Store
+	NodeName      string
+	OnCIDRAdded   func(network string, availableIPs int)
+	EnableMetrics bool
 	// RateLimiter is optional and primarily used to override the queue's rate limiter for testing.
 	RateLimiter workqueue.TypedRateLimiter[string]
 }
@@ -89,14 +92,15 @@ func NewWatcher(cfg WatcherConfig) *Watcher {
 	}
 
 	w := &Watcher{
-		queue:       queue,
-		nncClient:   cfg.NNCClient,
-		nodeName:    cfg.NodeName,
-		nncLister:   nncLister,
-		nncSynced:   nncSynced,
-		store:       cfg.Store,
-		logger:      cfg.Logger,
-		OnCIDRAdded: cfg.OnCIDRAdded,
+		queue:         queue,
+		nncClient:     cfg.NNCClient,
+		nodeName:      cfg.NodeName,
+		nncLister:     nncLister,
+		nncSynced:     nncSynced,
+		store:         cfg.Store,
+		logger:        cfg.Logger,
+		OnCIDRAdded:   cfg.OnCIDRAdded,
+		enableMetrics: cfg.EnableMetrics,
 	}
 	w.syncHandler = w.syncCIDR
 
@@ -242,6 +246,9 @@ func (w *Watcher) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkConfig, net
 		w.logger.Info("Watcher adding new ready podCIDR to local DB", "cidr", podCIDR.CIDR, "network", podCIDR.Network, "availableIPs", availableIPs)
 		err = w.store.AddCIDR(ctx, podCIDR.Network, podCIDR.CIDR)
 		if err == nil {
+			if w.enableMetrics {
+				metrics.WatcherCIDROperationCount.WithLabelValues("add", network).Inc()
+			}
 			if w.OnCIDRAdded != nil {
 				w.OnCIDRAdded(podCIDR.Network, availableIPs)
 			}
@@ -281,6 +288,9 @@ func (w *Watcher) maybeDeleteCIDRs(ctx context.Context, nnc *nncv1.NodeNetworkCo
 		err = w.store.DeleteCIDRBlock(ctx, block.ID)
 		if err != nil {
 			return fmt.Errorf("failed to delete cidr block %d from store: %w", block.ID, err)
+		}
+		if w.enableMetrics {
+			metrics.WatcherCIDROperationCount.WithLabelValues("delete", network).Inc()
 		}
 		w.logger.Info("Watcher deleted CIDR block from local DB as GCE has released it", "cidrBlockID", block.ID, "cidr", block.CIDR, "network", network)
 	}

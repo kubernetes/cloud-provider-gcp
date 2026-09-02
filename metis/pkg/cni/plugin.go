@@ -70,6 +70,13 @@ func WithLogFile(path string) Option {
 	}
 }
 
+// WithEnableMetrics sets whether metrics recording is enabled for the CNI plugin.
+func WithEnableMetrics(enable bool) Option {
+	return func(p *Plugin) {
+		p.enableMetrics = enable
+	}
+}
+
 // NewPlugin creates a new Plugin with functional options.
 func NewPlugin(opts ...Option) *Plugin {
 	p := &Plugin{
@@ -77,6 +84,7 @@ func NewPlugin(opts ...Option) *Plugin {
 		socketPath:    pkg.DefaultSockPath,
 		dbPath:        pkg.DefaultDBPath,
 		logFile:       pkg.DefaultCNILogPath,
+		enableMetrics: true,
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -85,12 +93,13 @@ func NewPlugin(opts ...Option) *Plugin {
 }
 
 type pluginSession struct {
-	pluginConf *PluginConf
-	k8sArgs    *K8sArgs
-	client     pb.AdaptiveIpamClient
-	conn       *grpc.ClientConn
-	logger     logr.Logger
-	cleanup    func()
+	containerID string
+	pluginConf  *PluginConf
+	k8sArgs     *K8sArgs
+	client      pb.AdaptiveIpamClient
+	conn        *grpc.ClientConn
+	logger      logr.Logger
+	cleanup     func()
 }
 
 func (s *pluginSession) close() {
@@ -163,7 +172,7 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 			return nil, fmt.Errorf("metis cni fallback: failed to open store at %s: %w", dbPath, err)
 		}
 
-		engine := daemon.NewIPAMEngine(logger, storeInstance, 0, store.DefaultBusyTimeout, nil)
+		engine := daemon.NewIPAMEngine(logger, storeInstance, 0, store.DefaultBusyTimeout, nil, p.enableMetrics)
 		client = &directClientAdapter{engine: engine}
 
 		sessionCleanup = func() {
@@ -173,12 +182,13 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 	}
 
 	return &pluginSession{
-		pluginConf: conf,
-		k8sArgs:    k8sArgs,
-		client:     client,
-		conn:       conn,
-		logger:     logger,
-		cleanup:    sessionCleanup,
+		containerID: args.ContainerID,
+		pluginConf:  conf,
+		k8sArgs:     k8sArgs,
+		client:      client,
+		conn:        conn,
+		logger:      logger,
+		cleanup:     sessionCleanup,
 	}, nil
 }
 
