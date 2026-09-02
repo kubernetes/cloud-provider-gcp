@@ -24,10 +24,11 @@ func TestStartGKETenantControllerManager(t *testing.T) {
 	}()
 
 	testCases := []struct {
-		desc            string
-		enable          bool
-		wantRun         bool
-		wantControllers []string
+		desc                  string
+		enable                bool
+		enableMultiNetworking bool
+		wantRun               bool
+		wantControllers       []string
 	}{
 		{
 			desc:    "disabled",
@@ -39,6 +40,19 @@ func TestStartGKETenantControllerManager(t *testing.T) {
 			enable:  true,
 			wantRun: true,
 			wantControllers: []string{
+				"gke-network-paramset-controller",
+				"node-controller",
+				"node-ipam-controller",
+				"node-lifecycle-controller",
+			},
+		},
+		{
+			desc:                  "enabled with multinetworking",
+			enable:                true,
+			enableMultiNetworking: true,
+			wantRun:               true,
+			wantControllers: []string{
+				"gke-network-paramset-controller",
 				"node-controller",
 				"node-ipam-controller",
 				"node-lifecycle-controller",
@@ -75,7 +89,9 @@ func TestStartGKETenantControllerManager(t *testing.T) {
 			completedConfig := ccmConfig.Complete()
 
 			cloud := &fakeCloudProvider{}
-			nodeIPAMConfig := nodeipamconfig.NodeIPAMControllerConfiguration{}
+			nodeIPAMConfig := nodeipamconfig.NodeIPAMControllerConfiguration{
+				EnableMultiNetworking: tc.enableMultiNetworking,
+			}
 
 			_, starter, started, err := startGKETenantControllerManager(gkeTenantControllerManagerConfig{
 				ctx:               ctx,
@@ -113,14 +129,14 @@ func TestStartGKETenantControllerManager(t *testing.T) {
 	}
 }
 
-func TestGetClusterCIDRsFromProviderConfig(t *testing.T) {
+func TestGetCIDRsFromProviderConfig(t *testing.T) {
 	tests := []struct {
 		name          string
 		pc            *v1.ProviderConfig
 		expectedCIDRs string
 	}{
 		{
-			name: "Single Pod Range",
+			name: "Single IPv4 Pod Range",
 			pc: &v1.ProviderConfig{
 				Spec: v1.ProviderConfigSpec{
 					NetworkConfig: v1.ProviderNetworkConfig{
@@ -135,7 +151,22 @@ func TestGetClusterCIDRsFromProviderConfig(t *testing.T) {
 			expectedCIDRs: "10.100.0.0/16",
 		},
 		{
-			name: "Multiple Pod Ranges",
+			name: "Single IPv6 Pod Range",
+			pc: &v1.ProviderConfig{
+				Spec: v1.ProviderConfigSpec{
+					NetworkConfig: v1.ProviderNetworkConfig{
+						SubnetInfo: v1.ProviderConfigSubnetInfo{
+							PodRanges: []v1.ProviderConfigSecondaryRange{
+								{CIDR: "fd00::/64"},
+							},
+						},
+					},
+				},
+			},
+			expectedCIDRs: "fd00::/64",
+		},
+		{
+			name: "Dual-Stack Pod Ranges (IPv4 first)",
 			pc: &v1.ProviderConfig{
 				Spec: v1.ProviderConfigSpec{
 					NetworkConfig: v1.ProviderNetworkConfig{
@@ -150,12 +181,171 @@ func TestGetClusterCIDRsFromProviderConfig(t *testing.T) {
 			},
 			expectedCIDRs: "10.100.0.0/16,fd00::/64",
 		},
+		{
+			name: "Dual-Stack Pod Ranges (IPv6 first)",
+			pc: &v1.ProviderConfig{
+				Spec: v1.ProviderConfigSpec{
+					NetworkConfig: v1.ProviderNetworkConfig{
+						SubnetInfo: v1.ProviderConfigSubnetInfo{
+							PodRanges: []v1.ProviderConfigSecondaryRange{
+								{CIDR: "fd00::/64"},
+								{CIDR: "10.100.0.0/16"},
+							},
+						},
+					},
+				},
+			},
+			expectedCIDRs: "10.100.0.0/16,fd00::/64",
+		},
+		{
+			name: "Multiple IPv4 Ranges (picks first)",
+			pc: &v1.ProviderConfig{
+				Spec: v1.ProviderConfigSpec{
+					NetworkConfig: v1.ProviderNetworkConfig{
+						SubnetInfo: v1.ProviderConfigSubnetInfo{
+							PodRanges: []v1.ProviderConfigSecondaryRange{
+								{CIDR: "10.100.0.0/16"},
+								{CIDR: "10.200.0.0/16"},
+							},
+						},
+					},
+				},
+			},
+			expectedCIDRs: "10.100.0.0/16",
+		},
+		{
+			name: "Multiple IPv6 Ranges (picks first)",
+			pc: &v1.ProviderConfig{
+				Spec: v1.ProviderConfigSpec{
+					NetworkConfig: v1.ProviderNetworkConfig{
+						SubnetInfo: v1.ProviderConfigSubnetInfo{
+							PodRanges: []v1.ProviderConfigSecondaryRange{
+								{CIDR: "fd00::/64"},
+								{CIDR: "fd01::/64"},
+							},
+						},
+					},
+				},
+			},
+			expectedCIDRs: "fd00::/64",
+		},
+		{
+			name: "Early Break on Both Families with Excess Ranges",
+			pc: &v1.ProviderConfig{
+				Spec: v1.ProviderConfigSpec{
+					NetworkConfig: v1.ProviderNetworkConfig{
+						SubnetInfo: v1.ProviderConfigSubnetInfo{
+							PodRanges: []v1.ProviderConfigSecondaryRange{
+								{CIDR: "10.1.0.0/16"},
+								{CIDR: "fd00::/64"},
+								{CIDR: "10.2.0.0/16"},
+								{CIDR: "fd01::/64"},
+							},
+						},
+					},
+				},
+			},
+			expectedCIDRs: "10.1.0.0/16,fd00::/64",
+		},
+		{
+			name: "Empty Pod Ranges",
+			pc: &v1.ProviderConfig{
+				Spec: v1.ProviderConfigSpec{
+					NetworkConfig: v1.ProviderNetworkConfig{
+						SubnetInfo: v1.ProviderConfigSubnetInfo{
+							PodRanges: []v1.ProviderConfigSecondaryRange{},
+						},
+					},
+				},
+			},
+			expectedCIDRs: "",
+		},
+		{
+			name: "Nil Pod Ranges",
+			pc: &v1.ProviderConfig{
+				Spec: v1.ProviderConfigSpec{
+					NetworkConfig: v1.ProviderNetworkConfig{
+						SubnetInfo: v1.ProviderConfigSubnetInfo{
+							PodRanges: nil,
+						},
+					},
+				},
+			},
+			expectedCIDRs: "",
+		},
+		{
+			name: "Invalid CIDRs Ignored",
+			pc: &v1.ProviderConfig{
+				Spec: v1.ProviderConfigSpec{
+					NetworkConfig: v1.ProviderNetworkConfig{
+						SubnetInfo: v1.ProviderConfigSubnetInfo{
+							PodRanges: []v1.ProviderConfigSecondaryRange{
+								{CIDR: "invalid-cidr"},
+								{CIDR: "10.100.0.0/16"},
+							},
+						},
+					},
+				},
+			},
+			expectedCIDRs: "10.100.0.0/16",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cidrs := getCIDRsFromProviderConfig(tc.pc)
 			assert.Equal(t, tc.expectedCIDRs, cidrs)
+		})
+	}
+}
+
+func TestIsIPV6OnlyCluster(t *testing.T) {
+	tests := []struct {
+		name                 string
+		serviceCIDR          string
+		secondaryServiceCIDR string
+		want                 bool
+	}{
+		{
+			name:                 "IPv6 single-stack",
+			serviceCIDR:          "2001:db8::/112",
+			secondaryServiceCIDR: "",
+			want:                 true,
+		},
+		{
+			name:                 "Dual-stack (IPv6 primary, IPv4 secondary)",
+			serviceCIDR:          "2001:db8::/112",
+			secondaryServiceCIDR: "10.96.0.0/12",
+			want:                 false,
+		},
+		{
+			name:                 "Dual-stack (IPv4 primary, IPv6 secondary)",
+			serviceCIDR:          "10.96.0.0/12",
+			secondaryServiceCIDR: "2001:db8::/112",
+			want:                 false,
+		},
+		{
+			name:                 "IPv4 single-stack",
+			serviceCIDR:          "10.96.0.0/12",
+			secondaryServiceCIDR: "",
+			want:                 false,
+		},
+		{
+			name:                 "Empty configuration",
+			serviceCIDR:          "",
+			secondaryServiceCIDR: "",
+			want:                 false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := nodeipamconfig.NodeIPAMControllerConfiguration{
+				ServiceCIDR:          tc.serviceCIDR,
+				SecondaryServiceCIDR: tc.secondaryServiceCIDR,
+			}
+			got := isIPV6OnlyCluster(cfg)
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }
