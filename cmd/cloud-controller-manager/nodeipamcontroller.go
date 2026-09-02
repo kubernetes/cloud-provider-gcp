@@ -89,6 +89,7 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 		nodeTopologyClient,
 		ipam.CIDRAllocatorType(ccmConfig.ComponentConfig.KubeCloudShared.CIDRAllocatorType),
 		ctx.ControllerManagerMetrics,
+		"",
 	)
 
 	if err != nil {

@@ -104,9 +104,9 @@ type cloudCIDRAllocator struct {
 	queue             workqueue.RateLimitingInterface
 	nodeTopologyQueue *TaskQueue
 
-	stackType clusterStackType
-
+	stackType             clusterStackType
 	enableMultiNetworking bool
+	defaultNetworkName    string
 }
 
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
@@ -163,6 +163,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		),
 		stackType:             stackType,
 		enableMultiNetworking: enableMultiNetworking,
+		defaultNetworkName:    allocatorParams.DefaultNetworkName,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -666,4 +667,14 @@ func nodeMultiNetworkChanged(oldNode *v1.Node, newNode *v1.Node) bool {
 		return true
 	}
 	return false
+}
+
+// isDefaultNetwork checks if the network name corresponds to the default network for this allocator.
+// Under GKE Multi-Tenancy, the condition ca.defaultNetworkName != "" is a perfect proxy
+// for identifying whether the controller is executing within a tenant context.
+func (ca *cloudCIDRAllocator) isDefaultNetwork(name string) bool {
+	if ca.defaultNetworkName != "" {
+		return name == ca.defaultNetworkName
+	}
+	return networkv1.IsDefaultNetwork(name)
 }
