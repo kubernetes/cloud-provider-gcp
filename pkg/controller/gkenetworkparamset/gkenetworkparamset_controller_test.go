@@ -16,14 +16,18 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	condmeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	apitypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
+	consistencyutil "k8s.io/cloud-provider-gcp/pkg/controller/util/consistency"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/component-base/metrics/prometheus/controllers"
@@ -1976,4 +1980,116 @@ func TestRemoveTenantParamSetFinalizers(t *testing.T) {
 	if !slices.Contains(remainingGNP.Finalizers, GNPFinalizer) {
 		t.Errorf("expected tenant-2 GNP to retain finalizer, got %v", remainingGNP.Finalizers)
 	}
+}
+
+type fakeRVGetter struct {
+	rv string
+}
+
+func (f *fakeRVGetter) LastStoreSyncResourceVersion() string {
+	return f.rv
+}
+
+func (f *fakeRVGetter) setRV(rv string) {
+	f.rv = rv
+}
+
+type gnpTestFixture struct {
+	controller       *Controller
+	gnpGetter        *fakeRVGetter
+	netGetter        *fakeRVGetter
+	consistencyStore consistencyutil.ConsistencyStore
+	networkClient    *networkfake.Clientset
+	gnp              *networkv1.GKENetworkParamSet
+}
+
+func setupGNPTestFixture() *gnpTestFixture {
+	fakeNetworking := networkfake.NewSimpleClientset()
+	nwInfFactory := networkinformers.NewSharedInformerFactory(fakeNetworking, 0*time.Second)
+	nwInformer := nwInfFactory.Networking().V1().Networks()
+	gnpInformer := nwInfFactory.Networking().V1().GKENetworkParamSets()
+
+	testClusterValues := gce.DefaultTestClusterValues()
+	testClusterValues.NetworkURL = fmt.Sprintf("projects/%v/global/networks/%v", testClusterValues.ProjectID, defaultTestNetworkName)
+	testClusterValues.SubnetworkURL = fmt.Sprintf("projects/%v/regions/%v/subnetworks/%v", testClusterValues.ProjectID, testClusterValues.Region, defaultTestSubnetworkName)
+	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+
+	fakeInformerFactory := informers.NewSharedInformerFactory(&fake.Clientset{}, 0*time.Second)
+	fakeNodeInformer := fakeInformerFactory.Core().V1().Nodes()
+	_, ipnet, _ := net.ParseCIDR(defaultPodCIDR)
+
+	controller := NewGKENetworkParamSetController(
+		fakeNodeInformer,
+		fakeNetworking,
+		gnpInformer,
+		nwInformer,
+		fakeGCE,
+		nwInfFactory,
+		[]*net.IPNet{ipnet},
+		"",
+	)
+	controller.nodeInformerSynced = func() bool { return true }
+
+	gnpGetter := &fakeRVGetter{rv: "1"}
+	netGetter := &fakeRVGetter{rv: "1"}
+	consistencyStore := consistencyutil.NewConsistencyStore(map[schema.GroupResource]consistencyutil.LastSyncRVGetter{
+		{Group: "networking.gke.io", Resource: "gkenetworkparamsets"}: gnpGetter,
+		{Group: "networking.gke.io", Resource: "networks"}:            netGetter,
+	})
+	controller.consistencyStore = consistencyStore
+
+	gnp := &networkv1.GKENetworkParamSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-gnp",
+			UID:             apitypes.UID("gnp-uid-1"),
+			ResourceVersion: "1",
+		},
+		Spec: networkv1.GKENetworkParamSetSpec{
+			VPC:       defaultTestNetworkName,
+			VPCSubnet: defaultTestSubnetworkName,
+		},
+	}
+
+	return &gnpTestFixture{
+		controller:       controller,
+		gnpGetter:        gnpGetter,
+		netGetter:        netGetter,
+		consistencyStore: consistencyStore,
+		networkClient:    fakeNetworking,
+		gnp:              gnp,
+	}
+}
+
+func TestGKENetworkParamSetController_ConsistencyStoreStallAndCatchUp(t *testing.T) {
+	f := setupGNPTestFixture()
+	ctx := context.Background()
+
+	key := apitypes.NamespacedName{Name: f.gnp.Name}
+
+	// 1. Initially consistent
+	assert.NoError(t, f.consistencyStore.EnsureReady(key))
+
+	// 2. Add GNP to fake client and simulate an update with RV "2"
+	_, err := f.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, f.gnp, metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	f.gnp.ResourceVersion = "2"
+	err = f.controller.updateGKENetworkParamSet(ctx, f.gnp)
+	assert.NoError(t, err)
+
+	// 3. Reconciler stalls because informer is still at RV "1"
+	err = f.controller.reconcile(ctx, f.gnp.Name)
+	assert.Error(t, err)
+	assert.Error(t, f.consistencyStore.EnsureReady(key))
+
+	// 4. Informer catches up to RV "2"
+	f.gnpGetter.setRV("2")
+	assert.NoError(t, f.consistencyStore.EnsureReady(key))
+
+	// 5. Add GNP to informer cache and reconcile proceeds cleanly
+	err = f.controller.gkeNetworkParamsInformer.Informer().GetStore().Add(f.gnp)
+	assert.NoError(t, err)
+
+	err = f.controller.reconcile(ctx, f.gnp.Name)
+	assert.NoError(t, err)
 }
