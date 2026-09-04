@@ -5,11 +5,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	v1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
 	"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework"
 	providerconfigcr "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfigcr"
+	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	networkclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned"
 	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
 	topologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
@@ -17,10 +20,12 @@ import (
 	"k8s.io/client-go/rest"
 	cloudprovider "k8s.io/cloud-provider"
 	nodeipamcontrolleroptions "k8s.io/cloud-provider-gcp/cmd/cloud-controller-manager/options"
+	"k8s.io/cloud-provider-gcp/pkg/controller/gkenetworkparamset"
 	"k8s.io/cloud-provider-gcp/pkg/controller/gketenantcontrollers"
 	"k8s.io/cloud-provider-gcp/pkg/controller/gketenantcontrollers/utils"
 	nodeipamconfig "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/config"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
+	"k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/cloud-provider/app"
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	controllermanagerapp "k8s.io/controller-manager/app"
@@ -206,6 +211,65 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 			lifecycleController.Run(cfg.Context, cfg.ControllerContext.ControllerManagerMetrics)
 			return nil
 		},
+		"gke-network-paramset-controller": func(cfg *gketenantcontrollers.ControllerConfig) error {
+			klog.Infof("Starting GKE Network ParamSet Controller for %s...", cfg.ProviderConfig.Name)
+			gceCloud, ok := cfg.Cloud.(*gce.Cloud)
+			if !ok {
+				return fmt.Errorf("cloud provider is not GCE")
+			}
+
+			// Default GNP name is "default" for the supervisor,
+			// and "t<project_number>-<tenant_id>-default" for tenant
+			// which is also the provider config name
+			defaultGNPName := networkv1.DefaultPodNetworkName
+			if !utils.IsSupervisor(cfg.ProviderConfig) {
+				defaultGNPName = cfg.ProviderConfig.Name + "-default"
+			}
+
+			cidrsList := getCIDRsFromProviderConfig(cfg.ProviderConfig)
+			clusterCIDRs, _, err := nodeipam.ProcessCIDRs(cidrsList)
+			if err != nil {
+				return fmt.Errorf("failed to process tenant CIDRs: %w", err)
+			}
+
+			allowMissing := utils.IsSupervisor(cfg.ProviderConfig)
+			filteredFactory := utils.NewFilteredNetworkSharedInformerFactory(
+				networkInformerFactory,
+				"tenancy.gke.io/provider-config",
+				cfg.ProviderConfig.Name,
+				allowMissing,
+			)
+			cfg.RegisterCleanup(filteredFactory.Cleanup)
+
+			gnpController := gkenetworkparamset.NewGKENetworkParamSetController(
+				cfg.NodeInformer,
+				networkClient,
+				filteredFactory.Networking().V1().GKENetworkParamSets(),
+				filteredFactory.Networking().V1().Networks(),
+				gceCloud,
+				filteredFactory,
+				clusterCIDRs,
+				defaultGNPName,
+			)
+
+			go gnpController.Run(1, cfg.Context.Done(), cfg.ControllerContext.ControllerManagerMetrics)
+
+			<-cfg.Context.Done()
+
+			// Perform tenant-specific GNP resource cleanup on teardown
+			if !utils.IsSupervisor(cfg.ProviderConfig) {
+				klog.Infof("Cleaning up GKENetworkParamSet resources for tenant %s...", cfg.ProviderConfig.Name)
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if err := gnpController.RemoveTenantParamSetFinalizers(cleanupCtx, cfg.ProviderConfig.Name); err != nil {
+					klog.Errorf("Failed to clean up GNPs for tenant %s: %v", cfg.ProviderConfig.Name, err)
+				} else {
+					klog.Infof("Successfully cleaned up GNPs for tenant %s", cfg.ProviderConfig.Name)
+				}
+			}
+
+			return nil
+		},
 	}
 
 	// Create the starter
@@ -248,10 +312,33 @@ func isIPV6OnlyCluster(ipamCfg nodeipamconfig.NodeIPAMControllerConfiguration) b
 }
 
 // getCIDRsFromProviderConfig returns a comma-separated list of CIDRs from the given ProviderConfig.
+// To emulate standard cluster bootstrap limits and support dual-stack, it extracts at most
+// one IPv4 range and at most one IPv6 range.
 func getCIDRsFromProviderConfig(pc *v1.ProviderConfig) string {
-	var cidrs []string
+	var ipv4CIDR, ipv6CIDR string
+
 	for _, podRange := range pc.Spec.NetworkConfig.SubnetInfo.PodRanges {
-		cidrs = append(cidrs, podRange.CIDR)
+		family := netutils.IPFamilyOfCIDRString(podRange.CIDR)
+
+		if family == netutils.IPv4 && ipv4CIDR == "" {
+			ipv4CIDR = podRange.CIDR
+		}
+		if family == netutils.IPv6 && ipv6CIDR == "" {
+			ipv6CIDR = podRange.CIDR
+		}
+
+		// Break early if we have found one of each
+		if ipv4CIDR != "" && ipv6CIDR != "" {
+			break
+		}
+	}
+
+	var cidrs []string
+	if ipv4CIDR != "" {
+		cidrs = append(cidrs, ipv4CIDR)
+	}
+	if ipv6CIDR != "" {
+		cidrs = append(cidrs, ipv6CIDR)
 	}
 
 	return strings.Join(cidrs, ",")
