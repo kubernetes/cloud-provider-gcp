@@ -141,7 +141,7 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 				}
 				break
 			}
-			if networkv1.IsDefaultNetwork(network.Name) && !hasNodeLabels {
+			if ca.isDefaultNetwork(network.Name) && !hasNodeLabels {
 				ipv6Addr := ca.cloud.GetIPV6Address(inf)
 				if ipv6Addr != nil {
 					defaultNwCIDRs = append(defaultNwCIDRs, ipv6Addr.String())
