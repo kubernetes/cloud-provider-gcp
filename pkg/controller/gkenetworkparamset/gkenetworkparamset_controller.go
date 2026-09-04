@@ -81,6 +81,7 @@ type Controller struct {
 	nodeInformerSynced        cache.InformerSynced
 	clusterDefaultIPv4PodCIDR string
 	defaultGNPName            string
+	isIPv6OnlyCluster         bool
 }
 
 // NewGKENetworkParamSetController returns a new
@@ -192,7 +193,11 @@ func NewGKENetworkParamSetController(
 			c.clusterDefaultIPv4PodCIDR = clusterCIDR.String()
 		}
 	}
-	if c.clusterDefaultIPv4PodCIDR == "" {
+
+	// cluster is IPv6-only if it doesn't have any IPv4 cluster CIDRs.
+	c.isIPv6OnlyCluster = c.clusterDefaultIPv4PodCIDR == ""
+
+	if len(clusterCIDRs) == 0 {
 		klog.Fatal("Controller: Must specify --cluster-cidr for GKE VPC native cluster")
 	}
 
@@ -374,14 +379,17 @@ func (c *Controller) populateDesiredDefaultParamSet(ctx context.Context, params 
 		return fmt.Errorf("failed to get vpcSubnet %q compute subnetwork: %v, err: %v", vpcSubnet, subnet, err)
 	}
 	defaultPodRange := ""
-	for _, r := range subnet.SecondaryIpRanges {
-		if r.IpCidrRange == c.clusterDefaultIPv4PodCIDR {
-			defaultPodRange = r.RangeName
-			break
+	// if cluster is ipv6 only, then defaultPodRange should be empty
+	if !c.isIPv6OnlyCluster {
+		for _, r := range subnet.SecondaryIpRanges {
+			if r.IpCidrRange == c.clusterDefaultIPv4PodCIDR {
+				defaultPodRange = r.RangeName
+				break
+			}
 		}
-	}
-	if defaultPodRange == "" {
-		return fmt.Errorf("failed to find range name for cluster default IPv4 Pod CIDR %q in compute subnet: %q", c.clusterDefaultIPv4PodCIDR, subnet.Name)
+		if defaultPodRange == "" {
+			return fmt.Errorf("failed to find range name for cluster default IPv4 Pod CIDR %q in compute subnet: %q", c.clusterDefaultIPv4PodCIDR, subnet.Name)
+		}
 	}
 
 	// ensure Annotations and Labels
@@ -405,9 +413,11 @@ func (c *Controller) populateDesiredDefaultParamSet(ctx context.Context, params 
 	params.Spec = networkv1.GKENetworkParamSetSpec{
 		VPC:       vpc,
 		VPCSubnet: vpcSubnet,
-		PodIPv4Ranges: &networkv1.SecondaryRanges{
+	}
+	if defaultPodRange != "" {
+		params.Spec.PodIPv4Ranges = &networkv1.SecondaryRanges{
 			RangeNames: []string{defaultPodRange},
-		},
+		}
 	}
 	return nil
 }
@@ -438,7 +448,7 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 			return nil
 		}
 
-		return c.getAndSyncNetworkForGNP(ctx, params)
+		return c.getAndSyncNetworkForGNP(ctx, params, nil)
 	}
 
 	// Validate params with (VPC + VPCSubnet).
@@ -459,7 +469,7 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 
 	// update PodIPv4Ranges for the "default" paramset basing on all the nodes Pod ranges
 	// when the paramset is EnsureExists mode
-	if params.Name == c.defaultGNPName {
+	if params.Name == c.defaultGNPName && params.Spec.PodIPv4Ranges != nil {
 		if mode, ok := params.Labels[labelsAddonManagerMode]; ok && mode == ensureExistsMode {
 			if err = c.syncPodRanges(ctx, params); err != nil {
 				return err
@@ -467,18 +477,18 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 		}
 	}
 
-	cidrs := extractRelevantCidrs(subnet, params)
+	cidrs := extractRelevantCidrs(subnet, params, c.isIPv6OnlyCluster, c.defaultGNPName)
 	params.Status.PodCIDRs = &networkv1.NetworkRanges{
 		CIDRBlocks: cidrs,
 	}
 
-	return c.getAndSyncNetworkForGNP(ctx, params)
+	return c.getAndSyncNetworkForGNP(ctx, params, subnet)
 }
 
 // getAndSyncNetworkForGNP gets the network that refers to this GNP object, and
 // then does the cross sync of Network with GNP. GNP is guaranteed to have
 // minimum fields set (either NetworkAttachment or [VPC + VPCSubnet]).
-func (c *Controller) getAndSyncNetworkForGNP(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
+func (c *Controller) getAndSyncNetworkForGNP(ctx context.Context, params *networkv1.GKENetworkParamSet, subnet *compute.Subnetwork) error {
 	network, err := c.getNetworkReferringToGNP(params.Name)
 	if err != nil {
 		return err
@@ -487,7 +497,7 @@ func (c *Controller) getAndSyncNetworkForGNP(ctx context.Context, params *networ
 		return nil
 	}
 
-	if err = c.syncNetworkWithGNP(ctx, network, params); err != nil {
+	if err = c.syncNetworkWithGNP(ctx, network, params, subnet); err != nil {
 		return err
 	}
 	return nil
@@ -510,11 +520,11 @@ func (c *Controller) getNetworkReferringToGNP(gnpName string) (*networkv1.Networ
 
 // syncNetworkWithGNP does the cross sync of Network with GNP.
 // GNP can be mutated, while a copy of Network is both transformed AND updated in the cluster
-func (c *Controller) syncNetworkWithGNP(ctx context.Context, network *networkv1.Network, params *networkv1.GKENetworkParamSet) error {
+func (c *Controller) syncNetworkWithGNP(ctx context.Context, network *networkv1.Network, params *networkv1.GKENetworkParamSet, subnet *compute.Subnetwork) error {
 	newNetwork := network.DeepCopy()
 
 	// update the copy of old Network with new conditions to be new Network basing on the change of the GNP
-	networkCrossValidation := crossValidateNetworkAndGnp(newNetwork, params)
+	networkCrossValidation := crossValidateNetworkAndGnp(newNetwork, params, c.isIPv6OnlyCluster, c.defaultGNPName, subnet)
 	meta.SetStatusCondition(&newNetwork.Status.Conditions, networkCrossValidation.toCondition())
 
 	if !reflect.DeepEqual(newNetwork.Status.Conditions, network.Status.Conditions) {
@@ -584,24 +594,39 @@ func (c *Controller) cleanupGNPDeletion(ctx context.Context, gnpName string) err
 	return nil
 }
 
-// extractRelevantCidrs returns the CIDRS of the named ranges in paramset
-func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1.GKENetworkParamSet) []string {
+// extractRelevantCidrs returns the appropriate IPv4 and IPv6 CIDR blocks from the subnet based on the paramset configuration (including primary, secondary, and IPv6 prefixes)
+func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1.GKENetworkParamSet, isIPv6OnlyCluster bool, defaultGNPName string) []string {
 	cidrs := []string{}
 
-	// use the subnet cidr if there are no secondary ranges specified by user in params, this can only happen if the GNP is using deviceMode
-	if !hasRangeNames(paramset) {
-		cidrs = append(cidrs, subnet.IpCidrRange)
-		return cidrs
-	}
-
-	// get secondary ranges' corresponding cidrs
-	for _, sr := range subnet.SecondaryIpRanges {
-		if !paramSetIncludesRange(paramset, sr.RangeName) {
-			continue
+	isDefaultGNP := paramset.Name == defaultGNPName
+	canHaveIpv6OnlyNetworksOnly := isIPv6OnlyCluster && isDefaultGNP
+	if !canHaveIpv6OnlyNetworksOnly {
+		if hasRangeNames(paramset) {
+			// get secondary ranges' corresponding cidrs
+			for _, sr := range subnet.SecondaryIpRanges {
+				if paramSetIncludesRange(paramset, sr.RangeName) {
+					cidrs = append(cidrs, sr.IpCidrRange)
+				}
+			}
+		} else {
+			// use the subnet cidr if there are no secondary ranges specified by user in params,
+			// this can only happen if the GNP is using deviceMode.
+			if subnet.IpCidrRange != "" {
+				cidrs = append(cidrs, subnet.IpCidrRange)
+			}
 		}
-
-		cidrs = append(cidrs, sr.IpCidrRange)
 	}
+
+	// add IPv6 ranges if present
+	if subnet.InternalIpv6Prefix != "" {
+		cidrs = append(cidrs, subnet.InternalIpv6Prefix)
+	} else if subnet.ExternalIpv6Prefix != "" {
+		cidrs = append(cidrs, subnet.ExternalIpv6Prefix)
+	} else if subnet.Ipv6CidrRange != "" {
+		// legacy subnet case
+		cidrs = append(cidrs, subnet.Ipv6CidrRange)
+	}
+
 	return cidrs
 }
 

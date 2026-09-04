@@ -130,10 +130,6 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 				if ca.isDefaultNetwork(network.Name) && !hasNodeLabels {
 					klog.V(2).Infof("Default network %s found for node %s with CIDR %s", network.Name, node.Name, ipRange.IpCidrRange)
 					defaultNwCIDRs = append(defaultNwCIDRs, ipRange.IpCidrRange)
-					ipv6Addr := ca.cloud.GetIPV6Address(inf)
-					if ipv6Addr != nil {
-						defaultNwCIDRs = append(defaultNwCIDRs, ipv6Addr.String())
-					}
 				}
 				if !ca.isDefaultNetwork(network.Name) {
 					northInterfaces = append(northInterfaces, networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP})
@@ -144,6 +140,13 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 					}
 				}
 				break
+			}
+			if networkv1.IsDefaultNetwork(network.Name) && !hasNodeLabels {
+				ipv6Addr := ca.cloud.GetIPV6Address(inf)
+				if ipv6Addr != nil {
+					defaultNwCIDRs = append(defaultNwCIDRs, ipv6Addr.String())
+					processedNetworks[network.Name] = struct{}{}
+				}
 			}
 		}
 	}
