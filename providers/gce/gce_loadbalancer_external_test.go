@@ -31,6 +31,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
+	netutils "k8s.io/utils/net"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -41,7 +42,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
-	utilnet "k8s.io/utils/net"
 )
 
 const (
@@ -1561,10 +1561,10 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 	ipAddr := syncResult.status.Ingress[0].IP
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 
-	ipnet, err := utilnet.ParseIPNets("0.0.0.0/0")
+	ipnet, err := netutils.ParseIPNets("0.0.0.0/0")
 	require.NoError(t, err)
 
-	wrongIpnet, err := utilnet.ParseIPNets("1.0.0.0/10")
+	wrongIpnet, err := netutils.ParseIPNets("1.0.0.0/10")
 	require.NoError(t, err)
 
 	fwName := MakeFirewallName(lbName)
@@ -1575,7 +1575,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 		lbName       string
 		ipAddr       string
 		ports        []v1.ServicePort
-		ipnet        utilnet.IPNetSet
+		ipnet        netutils.IPNetSet
 		fwIPProtocol string
 		getHook      func(context.Context, *meta.Key, *cloud.MockFirewalls, ...cloud.Option) (bool, *compute.Firewall, error)
 		sourceRange  string
@@ -1907,7 +1907,7 @@ func TestCreateAndUpdateFirewallSucceedsOnXPN(t *testing.T) {
 	hostNames := nodeNames(nodes)
 	hosts, err := gce.getInstancesByNames(hostNames)
 	require.NoError(t, err)
-	ipnet, err := utilnet.ParseIPNets("10.0.0.0/20")
+	ipnet, err := netutils.ParseIPNets("10.0.0.0/20")
 	require.NoError(t, err)
 	gce.createFirewall(
 		svc,
@@ -2246,7 +2246,7 @@ func TestFirewallObject(t *testing.T) {
 	require.NoError(t, err)
 	dstIP := "10.0.0.1"
 	srcRanges := []string{"10.10.0.0/24", "10.20.0.0/24"}
-	sourceRanges, _ := utilnet.ParseIPNets(srcRanges...)
+	sourceRanges, _ := netutils.ParseIPNets(srcRanges...)
 	fwName := "test-fw"
 	fwDesc := "test-desc"
 	baseFw := compute.Firewall{
@@ -2266,14 +2266,14 @@ func TestFirewallObject(t *testing.T) {
 
 	for _, tc := range []struct {
 		desc             string
-		sourceRanges     utilnet.IPNetSet
+		sourceRanges     netutils.IPNetSet
 		destinationIP    string
 		svcPorts         []v1.ServicePort
 		expectedFirewall func(fw compute.Firewall) compute.Firewall
 	}{
 		{
 			desc:         "empty source ranges",
-			sourceRanges: utilnet.IPNetSet{},
+			sourceRanges: netutils.IPNetSet{},
 			svcPorts: []v1.ServicePort{
 				{Name: "port1", Protocol: v1.ProtocolTCP, Port: int32(80), TargetPort: intstr.FromInt(80)},
 			},
@@ -2294,7 +2294,7 @@ func TestFirewallObject(t *testing.T) {
 		},
 		{
 			desc:          "has destination IP",
-			sourceRanges:  utilnet.IPNetSet{},
+			sourceRanges:  netutils.IPNetSet{},
 			destinationIP: dstIP,
 			svcPorts: []v1.ServicePort{
 				{Name: "port1", Protocol: v1.ProtocolTCP, Port: int32(80), TargetPort: intstr.FromInt(80)},
