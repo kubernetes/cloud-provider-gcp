@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package daemon
+package ipam
 
 import (
 	"context"
@@ -33,6 +33,9 @@ import (
 )
 
 const (
+	// DefaultReleaseCooldown is the default period an unallocated IP stays in cooldown before reuse.
+	DefaultReleaseCooldown = 1 * time.Minute
+
 	defaultPollInterval = 50 * time.Millisecond
 	// scaleUpWaitTimeout is the maximum time to wait for a dynamic scale-up operation.
 	// It must be smaller than the CNI client-side RPC timeout (defaultRPCTimeout = 10s)
@@ -47,6 +50,12 @@ type cniClient struct {
 	podNamespace string
 }
 
+// ScaleUpNotifier notifies listeners when an IP allocation request cannot be satisfied
+// with existing CIDRs and requires dynamic scale-up.
+type ScaleUpNotifier interface {
+	Enqueue()
+}
+
 // IPAMEngine manages the core transport-agnostic business logic for IP address allocation,
 // deallocation, and validation against the local SQLite store.
 type IPAMEngine struct {
@@ -59,28 +68,34 @@ type IPAMEngine struct {
 	// to optimize lookups and avoid iterating over all waiting clients from other networks.
 	// The inner map associates each blocked cniClient to a channel that is closed to wake
 	// it up when new IPs become available.
-	requestsMap map[string]map[cniClient]chan struct{}
-	requestsMu  sync.RWMutex
-	monitor     *Monitor
+	requestsMap     map[string]map[cniClient]chan struct{}
+	requestsMu      sync.RWMutex
+	scaleUpNotifier ScaleUpNotifier
 }
 
 // NewIPAMEngine constructs a new IPAMEngine instance.
-func NewIPAMEngine(logger logr.Logger, storeInstance *store.Store, releaseCooldown time.Duration, busyTimeout time.Duration, monitor *Monitor) *IPAMEngine {
+func NewIPAMEngine(logger logr.Logger, storeInstance *store.Store, releaseCooldown time.Duration, busyTimeout time.Duration, notifier ScaleUpNotifier) *IPAMEngine {
 	return &IPAMEngine{
 		store:           storeInstance,
 		releaseCooldown: releaseCooldown,
 		busyTimeout:     busyTimeout,
 		logger:          logger,
 		requestsMap:     map[string]map[cniClient]chan struct{}{},
-		monitor:         monitor,
+		scaleUpNotifier: notifier,
 	}
 }
 
-// SetMonitor updates the monitor associated with the IPAMEngine.
-func (e *IPAMEngine) SetMonitor(m *Monitor) {
+// SetScaleUpNotifier updates the scale-up notifier associated with the IPAMEngine.
+func (e *IPAMEngine) SetScaleUpNotifier(n ScaleUpNotifier) {
 	e.requestsMu.Lock()
 	defer e.requestsMu.Unlock()
-	e.monitor = m
+	e.scaleUpNotifier = n
+}
+
+// SetMonitor updates the scale-up notifier associated with the IPAMEngine.
+// Kept for compatibility.
+func (e *IPAMEngine) SetMonitor(n ScaleUpNotifier) {
+	e.SetScaleUpNotifier(n)
 }
 
 // AllocatePodIP allocates IPv4 and/or IPv6 addresses for a pod request.
@@ -218,8 +233,8 @@ func (e *IPAMEngine) handleDynamicAllocation(ctx context.Context, req *adaptivei
 		podNamespace: req.PodNamespace,
 	}
 
-	if e.monitor == nil {
-		e.logger.V(2).Info("No monitor available, failing fast on exhaustion", "network", req.Network)
+	if e.scaleUpNotifier == nil {
+		e.logger.V(2).Info("No scale-up notifier available, failing fast on exhaustion", "network", req.Network)
 		return fmt.Errorf("failed to allocate ipv4 for pod %s/%s: %w", req.PodNamespace, req.PodName, store.ErrNoAvailableIPs)
 	}
 
@@ -228,7 +243,7 @@ func (e *IPAMEngine) handleDynamicAllocation(ctx context.Context, req *adaptivei
 	if !ok {
 		e.logger.Info("Local store IP exhaustion detected, requesting scale up", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 		// Enqueue the request to trigger the controller sync for dynamic allocation.
-		e.monitor.enqueue()
+		e.scaleUpNotifier.Enqueue()
 	} else {
 		e.logger.Info("Dynamic allocation request already pending, waiting on existing request", "network", req.Network, "podName", req.PodName, "podNamespace", req.PodNamespace)
 	}
@@ -323,14 +338,24 @@ func (e *IPAMEngine) DeallocatePodIP(ctx context.Context, req *adaptiveipam.Deal
 	return &adaptiveipam.DeallocatePodIPResponse{}, nil
 }
 
-func (e *IPAMEngine) getPendingRequestsCount(network string) int {
+// GetPendingRequestsCount returns the number of waiting requests for a network.
+func (e *IPAMEngine) GetPendingRequestsCount(network string) int {
 	e.requestsMu.RLock()
 	defer e.requestsMu.RUnlock()
 
 	return len(e.requestsMap[network])
 }
 
-func (e *IPAMEngine) onCIDRAdded(network string, availableIPs int) {
+// GetTotalPendingRequestsCount returns the total number of pending requests across all networks.
+func (e *IPAMEngine) GetTotalPendingRequestsCount() int {
+	e.requestsMu.RLock()
+	defer e.requestsMu.RUnlock()
+
+	return len(e.requestsMap)
+}
+
+// OnCIDRAdded is invoked when a new CIDR block is added to wake up waiting allocation requests.
+func (e *IPAMEngine) OnCIDRAdded(network string, availableIPs int) {
 	e.requestsMu.Lock()
 	defer e.requestsMu.Unlock()
 

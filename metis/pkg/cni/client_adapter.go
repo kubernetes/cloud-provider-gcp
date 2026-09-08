@@ -21,13 +21,13 @@ import (
 
 	"google.golang.org/grpc"
 	pb "k8s.io/metis/api/adaptiveipam/v1"
-	"k8s.io/metis/pkg/daemon"
+	"k8s.io/metis/pkg/ipam"
 )
 
 // directClientAdapter adapts an in-process IPAMEngine instance to satisfy the
 // gRPC pb.AdaptiveIpamClient interface without starting any network server or UDS listener.
 type directClientAdapter struct {
-	engine *daemon.IPAMEngine
+	engine *ipam.IPAMEngine
 }
 
 func (a *directClientAdapter) AllocatePodIP(ctx context.Context, in *pb.AllocatePodIPRequest, _ ...grpc.CallOption) (*pb.AllocatePodIPResponse, error) {

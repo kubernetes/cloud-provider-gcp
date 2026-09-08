@@ -715,9 +715,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 
 			// Verify that there is a pending request in map
-			server.engine.requestsMu.RLock()
-			mapLen := len(server.engine.requestsMap[network])
-			server.engine.requestsMu.RUnlock()
+			mapLen := server.engine.GetPendingRequestsCount(network)
 			if mapLen != 1 {
 				t.Errorf("Expected 1 pending request in requestsMap for network %s, got %d", network, mapLen)
 			}
@@ -751,9 +749,7 @@ func TestAdaptiveIpamServer_AllocatePodIP_DynamicAllocation(t *testing.T) {
 			}
 
 			// Verify requestsMap is empty
-			server.engine.requestsMu.RLock()
-			finalMapLen := len(server.engine.requestsMap)
-			server.engine.requestsMu.RUnlock()
+			finalMapLen := server.engine.GetTotalPendingRequestsCount()
 			if finalMapLen != 0 {
 				t.Errorf("Expected requestsMap to be empty (0 entries), but got %d entries", finalMapLen)
 			}

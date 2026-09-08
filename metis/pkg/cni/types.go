@@ -17,6 +17,8 @@ limitations under the License.
 package cni
 
 import (
+	"time"
+
 	"github.com/containernetworking/cni/pkg/types"
 	"google.golang.org/grpc"
 	pb "k8s.io/metis/api/adaptiveipam/v1"
@@ -42,10 +44,11 @@ type IPAM struct {
 // PluginConf extends standard CNI network configuration.
 type PluginConf struct {
 	types.PluginConf
-	IPAM         IPAM   `json:"ipam"`
-	DaemonSocket string `json:"daemonSocket,omitempty"`
-	DBPath       string `json:"dbPath,omitempty"`
-	LogFile      string `json:"logFile,omitempty"`
+	IPAM            IPAM   `json:"ipam"`
+	DaemonSocket    string `json:"daemonSocket,omitempty"`
+	DBPath          string `json:"dbPath,omitempty"`
+	LogFile         string `json:"logFile,omitempty"`
+	ReleaseCooldown string `json:"releaseCooldown,omitempty"`
 }
 
 // K8sArgs contains the standard Kubernetes CNI arguments.
@@ -59,8 +62,9 @@ type K8sArgs struct {
 
 // Plugin holds the runtime configuration and handlers for the CNI plugin.
 type Plugin struct {
-	newClientFunc func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error)
-	socketPath    string
-	dbPath        string
-	logFile       string
+	newClientFunc   func(socketPath string) (pb.AdaptiveIpamClient, *grpc.ClientConn, error)
+	socketPath      string
+	dbPath          string
+	logFile         string
+	releaseCooldown time.Duration
 }
