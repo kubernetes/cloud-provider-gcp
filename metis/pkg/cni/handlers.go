@@ -31,7 +31,7 @@ import (
 func (p *Plugin) CmdAdd(args *skel.CmdArgs) error {
 	result, err := p.cmdAdd(args)
 	if err != nil {
-		return err
+		return ToCNIError(err, "metis cni add: allocation via daemon failed")
 	}
 	return types.PrintResult(result, result.CNIVersion)
 }
