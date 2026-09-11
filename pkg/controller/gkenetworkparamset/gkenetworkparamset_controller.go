@@ -478,8 +478,12 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 	}
 
 	cidrs := extractRelevantCidrs(subnet, params, c.isIPv6OnlyCluster, c.defaultGNPName)
-	params.Status.PodCIDRs = &networkv1.NetworkRanges{
-		CIDRBlocks: cidrs,
+	if len(cidrs) > 0 {
+		params.Status.PodCIDRs = &networkv1.NetworkRanges{
+			CIDRBlocks: cidrs,
+		}
+	} else {
+		params.Status.PodCIDRs = nil
 	}
 
 	return c.getAndSyncNetworkForGNP(ctx, params, subnet)
@@ -615,16 +619,6 @@ func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1.GKENet
 				cidrs = append(cidrs, subnet.IpCidrRange)
 			}
 		}
-	}
-
-	// add IPv6 ranges if present
-	if subnet.InternalIpv6Prefix != "" {
-		cidrs = append(cidrs, subnet.InternalIpv6Prefix)
-	} else if subnet.ExternalIpv6Prefix != "" {
-		cidrs = append(cidrs, subnet.ExternalIpv6Prefix)
-	} else if subnet.Ipv6CidrRange != "" {
-		// legacy subnet case
-		cidrs = append(cidrs, subnet.Ipv6CidrRange)
 	}
 
 	return cidrs
