@@ -93,12 +93,13 @@ func NewPlugin(opts ...Option) *Plugin {
 }
 
 type pluginSession struct {
-	pluginConf *PluginConf
-	k8sArgs    *K8sArgs
-	client     pb.AdaptiveIpamClient
-	conn       *grpc.ClientConn
-	logger     logr.Logger
-	cleanup    func()
+	containerID string
+	pluginConf  *PluginConf
+	k8sArgs     *K8sArgs
+	client      pb.AdaptiveIpamClient
+	conn        *grpc.ClientConn
+	logger      logr.Logger
+	cleanup     func()
 }
 
 func (s *pluginSession) close() {
@@ -180,7 +181,7 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 			}
 		}
 
-		engine := ipam.NewIPAMEngine(logger, storeInstance, releaseCooldown, store.DefaultBusyTimeout, nil)
+		engine := ipam.NewIPAMEngine(logger, storeInstance, releaseCooldown, store.DefaultBusyTimeout, nil, nil)
 		client = &directClientAdapter{engine: engine}
 
 		sessionCleanup = func() {
@@ -190,12 +191,13 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 	}
 
 	return &pluginSession{
-		pluginConf: conf,
-		k8sArgs:    k8sArgs,
-		client:     client,
-		conn:       conn,
-		logger:     logger,
-		cleanup:    sessionCleanup,
+		containerID: args.ContainerID,
+		pluginConf:  conf,
+		k8sArgs:     k8sArgs,
+		client:      client,
+		conn:        conn,
+		logger:      logger,
+		cleanup:     sessionCleanup,
 	}, nil
 }
 

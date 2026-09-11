@@ -17,6 +17,9 @@ limitations under the License.
 package main
 
 import (
+	"fmt"
+	"net"
+
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/metis/pkg"
 	"k8s.io/metis/pkg/daemon"
@@ -47,6 +50,8 @@ func (o *daemonOptions) addFlags() cliflag.NamedFlagSets {
 	fs.DurationVar(&o.ReleaseCooldown, "release-cooldown", ipam.DefaultReleaseCooldown, "Release cooldown duration (e.g., 5m). 0 or negative values will be interpreted as the default value.")
 	fs.StringVar(&o.DBPath, "db-path", pkg.DefaultDBPath, "Path to the SQLite database file")
 	fs.StringVar(&o.SocketPath, "socket-path", pkg.DefaultSockPath, "Path to the Unix domain socket")
+	fs.StringVar(&o.BindAddress, "bind-address", "0.0.0.0", "IP address on which to listen for the metrics HTTP server.")
+	fs.IntVar(&o.MetricsPort, "metrics-port", pkg.DefaultMetricsPort, "Metrics HTTP server port (e.g., 9996). Set to 0 to disable.")
 	fs.DurationVar(&o.DrainingExpiration, "draining-expiration", daemon.DefaultDrainingExpiration, "Draining expiration duration (e.g., 5h). 0 or negative values will be interpreted as the default value.")
 	fs.DurationVar(&o.SustainedLowUtilizationDuration, "sustained-low-utilization-duration", daemon.DefaultSustainedLowUtilizationDuration, "Sustained low utilization duration (e.g., 8h). 0 or negative values will be interpreted as the default value.")
 
@@ -59,10 +64,20 @@ func (o *daemonOptions) applyTo(cfg *daemon.Config) error {
 		return nil
 	}
 
+	if o.MetricsPort < 0 || o.MetricsPort > 65535 {
+		return fmt.Errorf("invalid metrics-port %d: must be between 0 and 65535", o.MetricsPort)
+	}
+
+	if o.BindAddress != "" && net.ParseIP(o.BindAddress) == nil {
+		return fmt.Errorf("invalid bind-address %q: must be a valid IP address", o.BindAddress)
+	}
+
 	cfg.MonitorInterval = o.MonitorInterval
 	cfg.ReleaseCooldown = o.ReleaseCooldown
 	cfg.DBPath = o.DBPath
 	cfg.SocketPath = o.SocketPath
+	cfg.BindAddress = o.BindAddress
+	cfg.MetricsPort = o.MetricsPort
 	cfg.DrainingExpiration = o.DrainingExpiration
 	cfg.SustainedLowUtilizationDuration = o.SustainedLowUtilizationDuration
 

@@ -37,10 +37,12 @@ func newDaemonCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "daemon",
 		Short: "Run the metis daemon",
-		Run: func(cmd *cobra.Command, _ []string) {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			cliflag.PrintFlags(cmd.Flags())
 			var cfg daemon.Config
-			_ = opts.applyTo(&cfg)
+			if err := opts.applyTo(&cfg); err != nil {
+				return err
+			}
 			d := daemon.NewDaemon(cfg)
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -48,8 +50,9 @@ func newDaemonCommand() *cobra.Command {
 
 			if err := d.Run(ctx); err != nil {
 				klog.ErrorS(err, "Daemon failed to run")
-				os.Exit(1)
+				return err
 			}
+			return nil
 		},
 	}
 

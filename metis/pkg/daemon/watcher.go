@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/metis/pkg/metrics"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -56,16 +57,18 @@ type Watcher struct {
 	store       *store.Store
 	logger      logr.Logger
 	OnCIDRAdded func(network string, availableIPs int)
+	recorder    metrics.MetricsRecorder
 }
 
 // WatcherConfig holds the configuration for the Watcher.
 type WatcherConfig struct {
-	Logger      logr.Logger
-	NNCClient   nncclientset.Interface
-	NNCInformer nncinformers.NodeNetworkConfigInformer
-	Store       *store.Store
-	NodeName    string
-	OnCIDRAdded func(network string, availableIPs int)
+	Logger          logr.Logger
+	NNCClient       nncclientset.Interface
+	NNCInformer     nncinformers.NodeNetworkConfigInformer
+	Store           *store.Store
+	NodeName        string
+	OnCIDRAdded     func(network string, availableIPs int)
+	MetricsRecorder metrics.MetricsRecorder
 	// RateLimiter is optional and primarily used to override the queue's rate limiter for testing.
 	RateLimiter workqueue.TypedRateLimiter[string]
 }
@@ -88,6 +91,11 @@ func NewWatcher(cfg WatcherConfig) *Watcher {
 		nncSynced = cfg.NNCInformer.Informer().HasSynced
 	}
 
+	recorder := cfg.MetricsRecorder
+	if recorder == nil {
+		recorder = metrics.NewNoOpRecorder()
+	}
+
 	w := &Watcher{
 		queue:       queue,
 		nncClient:   cfg.NNCClient,
@@ -97,6 +105,7 @@ func NewWatcher(cfg WatcherConfig) *Watcher {
 		store:       cfg.Store,
 		logger:      cfg.Logger,
 		OnCIDRAdded: cfg.OnCIDRAdded,
+		recorder:    recorder,
 	}
 	w.syncHandler = w.syncCIDR
 
@@ -242,6 +251,7 @@ func (w *Watcher) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkConfig, net
 		w.logger.Info("Watcher adding new ready podCIDR to local DB", "cidr", podCIDR.CIDR, "network", podCIDR.Network, "availableIPs", availableIPs)
 		err = w.store.AddCIDR(ctx, podCIDR.Network, podCIDR.CIDR)
 		if err == nil {
+			w.recorder.RecordWatcherCIDROperation("add", network)
 			if w.OnCIDRAdded != nil {
 				w.OnCIDRAdded(podCIDR.Network, availableIPs)
 			}
@@ -282,6 +292,7 @@ func (w *Watcher) maybeDeleteCIDRs(ctx context.Context, nnc *nncv1.NodeNetworkCo
 		if err != nil {
 			return fmt.Errorf("failed to delete cidr block %d from store: %w", block.ID, err)
 		}
+		w.recorder.RecordWatcherCIDROperation("delete", network)
 		w.logger.Info("Watcher deleted CIDR block from local DB as GCE has released it", "cidrBlockID", block.ID, "cidr", block.CIDR, "network", network)
 	}
 

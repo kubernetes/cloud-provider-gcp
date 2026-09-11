@@ -63,7 +63,7 @@ func TestIPAMEngine_AllocatePodIP(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil)
+	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil, nil)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -104,7 +104,7 @@ func TestIPAMEngine_AllocatePodIP_Concurrency(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil)
+	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil, nil)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -211,7 +211,7 @@ func TestIPAMEngine_DeallocatePodIP(t *testing.T) {
 	}
 	defer s.Close()
 
-	engine := NewIPAMEngine(logger, s, 1*time.Minute, 0, nil)
+	engine := NewIPAMEngine(logger, s, 1*time.Minute, 0, nil, nil)
 
 	network := "gke-pod-network"
 	cidr := "10.0.1.0/24"
@@ -280,7 +280,7 @@ func TestIPAMEngine_AllocatePodIP_RetryOnDBError(t *testing.T) {
 		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	engine := NewIPAMEngine(logger, storeInstance, 0, 500*time.Millisecond, nil)
+	engine := NewIPAMEngine(logger, storeInstance, 0, 500*time.Millisecond, nil, nil)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -340,7 +340,7 @@ func TestIPAMEngine_AllocatePodIP_NoRetryOnExhaustion(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil)
+	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil, nil)
 
 	network := "test-network"
 
@@ -392,7 +392,7 @@ func TestIPAMEngine_AllocatePodIP_IPv6(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil)
+	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil, nil)
 
 	network := "test-network"
 	cidr := "2001:db8::/64"
@@ -439,7 +439,7 @@ func TestIPAMEngine_AllocatePodIP_IPv6_Idempotency_Release(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil)
+	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil, nil)
 
 	network := "test-network"
 	cidr := "2001:db8::/64"
@@ -512,7 +512,7 @@ func TestIPAMEngine_AllocatePodIP_DualStack(t *testing.T) {
 	}
 	defer storeInstance.Close()
 
-	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil)
+	engine := NewIPAMEngine(logger, storeInstance, 0, 0, nil, nil)
 
 	network := "test-network"
 	cidr4 := "10.0.1.0/24"
@@ -614,7 +614,7 @@ func TestIPAMEngine_AllocatePodIP_DynamicAllocation(t *testing.T) {
 			defer storeInstance.Close()
 
 			notifier := &mockScaleUpNotifier{}
-			engine := NewIPAMEngine(logger, storeInstance, 0, 0, notifier)
+			engine := NewIPAMEngine(logger, storeInstance, 0, 0, notifier, nil)
 
 			network := "test-network"
 			req := &adaptiveipam.AllocatePodIPRequest{
@@ -708,7 +708,7 @@ func TestIPAMEngine_AllocatePodIP_DynamicAllocation_MultipleRequests(t *testing.
 	defer storeInstance.Close()
 
 	notifier := &mockScaleUpNotifier{}
-	engine := NewIPAMEngine(logger, storeInstance, 0, 10*time.Second, notifier)
+	engine := NewIPAMEngine(logger, storeInstance, 0, 10*time.Second, notifier, nil)
 
 	network := "test-network"
 	numRequests := 10
@@ -790,7 +790,7 @@ func TestIPAMEngine_CheckPodIP(t *testing.T) {
 	}
 	defer s.Close()
 
-	engine := NewIPAMEngine(logger, s, 0, 0, nil)
+	engine := NewIPAMEngine(logger, s, 0, 0, nil, nil)
 
 	network := "test-network"
 	cidr := "10.0.1.0/24"
@@ -850,7 +850,7 @@ func TestIPAMEngine_CheckPodIP(t *testing.T) {
 }
 
 func TestIPAMEngine_AllocatePodIP_Validation(t *testing.T) {
-	engine := NewIPAMEngine(klog.Background(), nil, 0, 0, nil)
+	engine := NewIPAMEngine(klog.Background(), nil, 0, 0, nil, nil)
 
 	tests := []struct {
 		name          string
@@ -904,7 +904,7 @@ func TestIPAMEngine_AllocatePodIP_Validation(t *testing.T) {
 }
 
 func TestIPAMEngine_DeallocatePodIP_Validation(t *testing.T) {
-	engine := NewIPAMEngine(klog.Background(), nil, 0, 0, nil)
+	engine := NewIPAMEngine(klog.Background(), nil, 0, 0, nil, nil)
 
 	tests := []struct {
 		name          string

@@ -1743,40 +1743,75 @@ func TestStore_GetIPUsage(t *testing.T) {
 		t.Fatalf("IPv6 release failed: %v", err)
 	}
 
-	// 4. Mark ipv4Cidr2 and ipv6Cidr2 as Draining
+	// 4. Allocate an IP from ipv4Cidr2 before marking it as Draining
 	id4_2, exists, err := s.GetCIDRBlock(ctx, ipv4Cidr2, network)
 	if err != nil || !exists {
 		t.Fatalf("GetCIDRBlock failed for %s: %v, exists: %v", ipv4Cidr2, err, exists)
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("BeginTx failed: %v", err)
+	}
+	if _, _, err := s.allocateIPTx(ctx, tx, id4_2, "eth0", "c4-3"); err != nil {
+		tx.Rollback()
+		t.Fatalf("allocateIPTx failed for %s: %v", ipv4Cidr2, err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	// Mark ipv4Cidr2 as Draining
 	if err := s.DrainCIDRBlock(ctx, id4_2); err != nil {
 		t.Fatalf("DrainCIDRBlock failed for %s: %v", ipv4Cidr2, err)
 	}
 
-	id6_2, exists, err := s.GetCIDRBlock(ctx, ipv6Cidr2, network)
-	if err != nil || !exists {
-		t.Fatalf("GetCIDRBlock failed for %s: %v, exists: %v", ipv6Cidr2, err, exists)
-	}
-	if err := s.DrainCIDRBlock(ctx, id6_2); err != nil {
-		t.Fatalf("DrainCIDRBlock failed for %s: %v", ipv6Cidr2, err)
-	}
-
-	// 5. Query IPv4 Usage
+	// 5. Query IPv4 Usage (Option B: Draining IPs = unallocated & non-cooldown IPs in Draining blocks)
 	ipv4Usage, err := s.GetIPUsage(ctx, network, IPv4)
 	if err != nil {
 		t.Fatalf("GetIPUsage IPv4 failed: %v", err)
 	}
-	// Expected: Allocated: 4 (3 reserved + 1 active (c4-1)), Cooldown: 1 (c4-2), Total: 16 (8 + 8), Draining: 8
-	if ipv4Usage.Allocated != 4 {
-		t.Errorf("Expected IPv4 Allocated to be 4, got %d", ipv4Usage.Allocated)
+	// Expected: Allocated: 5 (c4-1, c4-3 + 3 reserved), Cooldown: 1 (c4-2), Total: 16 (8 + 8), Draining: 7 (8 - 1 allocated), Deleting: 0, ReadyCIDRs: 1, DrainingCIDRs: 1, DeletingCIDRs: 0
+	if ipv4Usage.IPs.Allocated != 5 {
+		t.Errorf("Expected IPv4 Allocated to be 5, got %d", ipv4Usage.IPs.Allocated)
 	}
-	if ipv4Usage.Cooldown != 1 {
-		t.Errorf("Expected IPv4 Cooldown to be 1, got %d", ipv4Usage.Cooldown)
+	if ipv4Usage.IPs.Cooldown != 1 {
+		t.Errorf("Expected IPv4 Cooldown to be 1, got %d", ipv4Usage.IPs.Cooldown)
 	}
-	if ipv4Usage.Total != 16 {
-		t.Errorf("Expected IPv4 Total to be 16, got %d", ipv4Usage.Total)
+	if ipv4Usage.IPs.ActiveTotal != 16 {
+		t.Errorf("Expected IPv4 ActiveTotal to be 16, got %d", ipv4Usage.IPs.ActiveTotal)
 	}
-	if ipv4Usage.Draining != 8 {
-		t.Errorf("Expected IPv4 Draining to be 8, got %d", ipv4Usage.Draining)
+	if ipv4Usage.IPs.Total != 16 {
+		t.Errorf("Expected IPv4 Total to be 16, got %d", ipv4Usage.IPs.Total)
+	}
+	if ipv4Usage.IPs.Draining != 7 {
+		t.Errorf("Expected IPv4 Draining to be 7 (8 total - 1 allocated), got %d", ipv4Usage.IPs.Draining)
+	}
+	if ipv4Usage.IPs.Deleting != 0 {
+		t.Errorf("Expected IPv4 Deleting to be 0, got %d", ipv4Usage.IPs.Deleting)
+	}
+	if ipv4Usage.CIDRs.Ready != 1 {
+		t.Errorf("Expected IPv4 ReadyCIDRs to be 1, got %d", ipv4Usage.CIDRs.Ready)
+	}
+	if ipv4Usage.CIDRs.Draining != 1 {
+		t.Errorf("Expected IPv4 DrainingCIDRs to be 1, got %d", ipv4Usage.CIDRs.Draining)
+	}
+	if ipv4Usage.CIDRs.Deleting != 0 {
+		t.Errorf("Expected IPv4 DeletingCIDRs to be 0, got %d", ipv4Usage.CIDRs.Deleting)
+	}
+
+	// Release c4-3 with 10s cooldown -> Cooldown count becomes 2, Draining IPs remains 7 (8 total - 0 allocated - 1 cooldown)
+	if _, err := s.ReleaseIPByOwner(ctx, network, "c4-3", "eth0", 10*time.Second); err != nil {
+		t.Fatalf("ReleaseIPByOwner c4-3 failed: %v", err)
+	}
+	ipv4UsageAfterRelease, err := s.GetIPUsage(ctx, network, IPv4)
+	if err != nil {
+		t.Fatalf("GetIPUsage IPv4 failed: %v", err)
+	}
+	if ipv4UsageAfterRelease.IPs.Draining != 7 {
+		t.Errorf("Expected IPv4 Draining to be 7 after release to cooldown, got %d", ipv4UsageAfterRelease.IPs.Draining)
+	}
+	if ipv4UsageAfterRelease.IPs.Cooldown != 2 {
+		t.Errorf("Expected IPv4 Cooldown to be 2, got %d", ipv4UsageAfterRelease.IPs.Cooldown)
 	}
 
 	// 6. Query IPv6 Usage
@@ -1784,18 +1819,18 @@ func TestStore_GetIPUsage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetIPUsage IPv6 failed: %v", err)
 	}
-	// Expected: Allocated: 2, Cooldown: 1, Total: 512 (256 + 256), Draining: 256
-	if ipv6Usage.Allocated != 2 {
-		t.Errorf("Expected IPv6 Allocated to be 2, got %d", ipv6Usage.Allocated)
+	// Lightweight IPv6 usage returns Allocated: 2, ActiveTotal: 512, Total: 512, ReadyCIDRs: 2
+	if ipv6Usage.IPs.Allocated != 2 {
+		t.Errorf("Expected IPv6 Allocated to be 2, got %d", ipv6Usage.IPs.Allocated)
 	}
-	if ipv6Usage.Cooldown != 1 {
-		t.Errorf("Expected IPv6 Cooldown to be 1, got %d", ipv6Usage.Cooldown)
+	if ipv6Usage.IPs.ActiveTotal != 512 {
+		t.Errorf("Expected IPv6 ActiveTotal to be 512, got %d", ipv6Usage.IPs.ActiveTotal)
 	}
-	if ipv6Usage.Total != 512 {
-		t.Errorf("Expected IPv6 Total to be 512, got %d", ipv6Usage.Total)
+	if ipv6Usage.IPs.Total != 512 {
+		t.Errorf("Expected IPv6 Total to be 512, got %d", ipv6Usage.IPs.Total)
 	}
-	if ipv6Usage.Draining != 256 {
-		t.Errorf("Expected IPv6 Draining to be 256, got %d", ipv6Usage.Draining)
+	if ipv6Usage.CIDRs.Ready != 2 {
+		t.Errorf("Expected IPv6 ReadyCIDRs to be 2, got %d", ipv6Usage.CIDRs.Ready)
 	}
 
 	// 7. Test UndrainOneCIDRBlock
@@ -1808,15 +1843,11 @@ func TestStore_GetIPUsage(t *testing.T) {
 		t.Error("Expected UndrainOneCIDRBlock IPv4 to return true, got false")
 	}
 
-	// Verify in DB that ipv4Cidr2 is now Ready, but ipv6Cidr2 is STILL Draining
-	var state1, state2 string
+	// Verify in DB that ipv4Cidr2 is now Ready
+	var state1 string
 	err = s.db.QueryRow("SELECT state FROM cidr_blocks WHERE id = ?", id4_2).Scan(&state1)
 	if err != nil || state1 != string(StateReady) {
 		t.Errorf("Expected ipv4Cidr2 to be Ready, got %q (err: %v)", state1, err)
-	}
-	err = s.db.QueryRow("SELECT state FROM cidr_blocks WHERE id = ?", id6_2).Scan(&state2)
-	if err != nil || state2 != string(StateDraining) {
-		t.Errorf("Expected ipv6Cidr2 to remain Draining, got %q (err: %v)", state2, err)
 	}
 
 	// 7.2. Try to undrain IPv4 again (should be false since no more draining IPv4 blocks)
@@ -1828,19 +1859,25 @@ func TestStore_GetIPUsage(t *testing.T) {
 		t.Error("Expected second UndrainOneCIDRBlock IPv4 call to return false, got true")
 	}
 
-	// 7.3. Undrain IPv6 block
-	undrained, err = s.UndrainOneCIDRBlock(ctx, network, IPv6)
+	// 8. Mark ipv4Cidr2 as Deleting and verify Deleting and Total counts
+	if err := s.MarkCIDRBlockAsDeletingForTest(ctx, id4_2); err != nil {
+		t.Fatalf("MarkCIDRBlockAsDeletingForTest failed: %v", err)
+	}
+	ipv4DeletingUsage, err := s.GetIPUsage(ctx, network, IPv4)
 	if err != nil {
-		t.Fatalf("UndrainOneCIDRBlock IPv6 failed: %v", err)
+		t.Fatalf("GetIPUsage IPv4 after deleting failed: %v", err)
 	}
-	if !undrained {
-		t.Error("Expected UndrainOneCIDRBlock IPv6 to return true, got false")
+	if ipv4DeletingUsage.IPs.ActiveTotal != 8 {
+		t.Errorf("Expected IPv4 ActiveTotal to be 8 after deleting, got %d", ipv4DeletingUsage.IPs.ActiveTotal)
 	}
-
-	// Verify in DB that ipv6Cidr2 is now Ready
-	err = s.db.QueryRow("SELECT state FROM cidr_blocks WHERE id = ?", id6_2).Scan(&state2)
-	if err != nil || state2 != string(StateReady) {
-		t.Errorf("Expected ipv6Cidr2 to be Ready, got %q (err: %v)", state2, err)
+	if ipv4DeletingUsage.IPs.Total != 16 {
+		t.Errorf("Expected IPv4 Total to be 16 after deleting, got %d", ipv4DeletingUsage.IPs.Total)
+	}
+	if ipv4DeletingUsage.IPs.Deleting != 8 {
+		t.Errorf("Expected IPv4 Deleting to be 8, got %d", ipv4DeletingUsage.IPs.Deleting)
+	}
+	if ipv4DeletingUsage.CIDRs.Deleting != 1 {
+		t.Errorf("Expected IPv4 DeletingCIDRs to be 1, got %d", ipv4DeletingUsage.CIDRs.Deleting)
 	}
 }
 

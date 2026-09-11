@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/metis/api/adaptiveipam/v1"
+	"k8s.io/metis/pkg/metrics"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -70,17 +71,22 @@ type IPAMEngine struct {
 	// it up when new IPs become available.
 	requestsMap     map[string]map[cniClient]chan struct{}
 	requestsMu      sync.RWMutex
+	recorder        metrics.MetricsRecorder
 	scaleUpNotifier ScaleUpNotifier
 }
 
 // NewIPAMEngine constructs a new IPAMEngine instance.
-func NewIPAMEngine(logger logr.Logger, storeInstance *store.Store, releaseCooldown time.Duration, busyTimeout time.Duration, notifier ScaleUpNotifier) *IPAMEngine {
+func NewIPAMEngine(logger logr.Logger, storeInstance *store.Store, releaseCooldown time.Duration, busyTimeout time.Duration, notifier ScaleUpNotifier, recorder metrics.MetricsRecorder) *IPAMEngine {
+	if recorder == nil {
+		recorder = metrics.NewNoOpRecorder()
+	}
 	return &IPAMEngine{
 		store:           storeInstance,
 		releaseCooldown: releaseCooldown,
 		busyTimeout:     busyTimeout,
 		logger:          logger,
 		requestsMap:     map[string]map[cniClient]chan struct{}{},
+		recorder:        recorder,
 		scaleUpNotifier: notifier,
 	}
 }
@@ -225,13 +231,28 @@ func (e *IPAMEngine) allocateIPWithRetry(ctx context.Context, params store.Alloc
 	return ip, cidr, nil
 }
 
-func (e *IPAMEngine) handleDynamicAllocation(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest) error {
-	clientKey := cniClient{
-		containerID:  req.Ipv4Config.ContainerId,
+func newCNIClient(req *adaptiveipam.AllocatePodIPRequest) cniClient {
+	containerID := ""
+	if req.Ipv4Config != nil {
+		containerID = req.Ipv4Config.ContainerId
+	} else if req.Ipv6Config != nil {
+		containerID = req.Ipv6Config.ContainerId
+	}
+	return cniClient{
+		containerID:  containerID,
 		network:      req.Network,
 		podName:      req.PodName,
 		podNamespace: req.PodNamespace,
 	}
+}
+
+func (e *IPAMEngine) handleDynamicAllocation(ctx context.Context, req *adaptiveipam.AllocatePodIPRequest) error {
+	clientKey := newCNIClient(req)
+
+	startDynamic := time.Now()
+	defer func() {
+		e.recorder.RecordDynamicAllocation(clientKey.network, clientKey.containerID, clientKey.podName, time.Since(startDynamic))
+	}()
 
 	if e.scaleUpNotifier == nil {
 		e.logger.V(2).Info("No scale-up notifier available, failing fast on exhaustion", "network", req.Network)

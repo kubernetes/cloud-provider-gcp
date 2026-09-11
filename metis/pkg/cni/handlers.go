@@ -36,7 +36,7 @@ func (p *Plugin) CmdAdd(args *skel.CmdArgs) error {
 	return types.PrintResult(result, result.CNIVersion)
 }
 
-func (p *Plugin) cmdAdd(args *skel.CmdArgs) (*current.Result, error) {
+func (p *Plugin) cmdAdd(args *skel.CmdArgs) (result *current.Result, err error) {
 	session, err := p.prepare(args, "ADD")
 	if err != nil {
 		return nil, fmt.Errorf("metis cni add: prepare failed: %w", err)
@@ -92,7 +92,7 @@ func (p *Plugin) cmdAdd(args *skel.CmdArgs) (*current.Result, error) {
 	}
 	session.logger.Info("AllocatePodIP response", "resp", resp)
 
-	result, err := toCNIResult(resp, session.pluginConf, args)
+	result, err = toCNIResult(resp, session.pluginConf, args)
 	if err != nil {
 		return nil, fmt.Errorf("metis cni add: build CNI result failed: %w", err)
 	}
@@ -105,7 +105,7 @@ func (p *Plugin) CmdDel(args *skel.CmdArgs) error {
 	return p.cmdDel(args)
 }
 
-func (p *Plugin) cmdDel(args *skel.CmdArgs) error {
+func (p *Plugin) cmdDel(args *skel.CmdArgs) (err error) {
 	session, err := p.prepare(args, "DEL")
 	if err != nil {
 		return fmt.Errorf("metis cni delete: prepare failed: %w", err)
@@ -141,7 +141,7 @@ func (p *Plugin) CmdCheck(args *skel.CmdArgs) error {
 	return p.cmdCheck(args)
 }
 
-func (p *Plugin) cmdCheck(args *skel.CmdArgs) error {
+func (p *Plugin) cmdCheck(args *skel.CmdArgs) (err error) {
 	session, err := p.prepare(args, "CHECK")
 	if err != nil {
 		return fmt.Errorf("metis cni check: prepare failed: %w", err)

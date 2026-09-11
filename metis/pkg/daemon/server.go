@@ -31,6 +31,7 @@ import (
 	adminv1 "k8s.io/metis/api/admin/v1"
 	"k8s.io/metis/pkg"
 	"k8s.io/metis/pkg/ipam"
+	"k8s.io/metis/pkg/metrics"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -42,15 +43,20 @@ type adaptiveIpamServer struct {
 	sockPath   string
 	grpcServer *grpc.Server
 	logger     logr.Logger
+	recorder   metrics.MetricsRecorder
 }
 
-func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socketPath string, releaseCooldown time.Duration, busyTimeout time.Duration) *adaptiveIpamServer {
-	engine := ipam.NewIPAMEngine(logger, storeInstance, releaseCooldown, busyTimeout, nil)
+func newAdaptiveIpamServer(logger logr.Logger, storeInstance *store.Store, socketPath string, releaseCooldown time.Duration, busyTimeout time.Duration, recorder metrics.MetricsRecorder) *adaptiveIpamServer {
+	if recorder == nil {
+		recorder = metrics.NewNoOpRecorder()
+	}
+	engine := ipam.NewIPAMEngine(logger, storeInstance, releaseCooldown, busyTimeout, nil, recorder)
 	return &adaptiveIpamServer{
 		engine:   engine,
 		store:    storeInstance,
 		sockPath: socketPath,
 		logger:   logger,
+		recorder: recorder,
 	}
 }
 
@@ -64,6 +70,19 @@ func (s *adaptiveIpamServer) DeallocatePodIP(ctx context.Context, req *adaptivei
 
 func (s *adaptiveIpamServer) CheckPodIP(ctx context.Context, req *adaptiveipam.CheckPodIPRequest) (*adaptiveipam.CheckPodIPResponse, error) {
 	return s.engine.CheckPodIP(ctx, req)
+}
+
+func getContainerIDFromAllocate(req *adaptiveipam.AllocatePodIPRequest) string {
+	if req == nil {
+		return ""
+	}
+	if req.Ipv4Config != nil && req.Ipv4Config.ContainerId != "" {
+		return req.Ipv4Config.ContainerId
+	}
+	if req.Ipv6Config != nil && req.Ipv6Config.ContainerId != "" {
+		return req.Ipv6Config.ContainerId
+	}
+	return ""
 }
 
 func (s *adaptiveIpamServer) getPendingRequestsCount(network string) int {
@@ -96,7 +115,9 @@ func (s *adaptiveIpamServer) start() error {
 		return fmt.Errorf("failed to set permissions on socket %s: %w", sockPath, err)
 	}
 
-	s.grpcServer = grpc.NewServer()
+	s.grpcServer = grpc.NewServer(
+		grpc.UnaryInterceptor(metricsUnaryInterceptor(s.recorder, s.logger)),
+	)
 	adaptiveipam.RegisterAdaptiveIpamServer(s.grpcServer, s)
 	adminv1.RegisterAdminServer(s.grpcServer, s)
 

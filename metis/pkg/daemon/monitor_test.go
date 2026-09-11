@@ -553,7 +553,7 @@ func TestMonitor_MaybeDrainExcessive(t *testing.T) {
 			timerDuration:       -9 * time.Hour,
 			utilization:         DefaultLowUtilizationThreshold - 0.1,
 			targetPods:          16,
-			usage:               store.NetworkIPUsage{Total: 32},
+			usage:               store.NetworkIPUsage{IPs: store.IPUsage{ActiveTotal: 32, Total: 32}},
 			blocksToAdd:         []string{"10.0.1.0/28", "10.0.2.0/28"},
 			expectedTimerExists: false,
 			expectedDrained:     true,

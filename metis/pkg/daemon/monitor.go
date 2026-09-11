@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/metis/pkg/metrics"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -126,6 +127,8 @@ type Monitor struct {
 
 	// sustainedLowUtilizationDuration is the duration utilization must remain low before triggering a drain.
 	sustainedLowUtilizationDuration time.Duration
+
+	recorder metrics.MetricsRecorder
 }
 
 // MonitorConfig holds the configuration for the Monitor.
@@ -143,6 +146,7 @@ type MonitorConfig struct {
 	LowUtilizationThreshold         float64
 	TargetUtilizationAfterScaleUp   float64
 	CooldownPushbackThreshold       int
+	MetricsRecorder                 metrics.MetricsRecorder
 	// RateLimiter is optional and primarily used to override the queue's rate limiter for testing.
 	RateLimiter workqueue.TypedRateLimiter[string]
 }
@@ -194,6 +198,11 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 		nncSynced = cfg.NNCInformer.Informer().HasSynced
 	}
 
+	recorder := cfg.MetricsRecorder
+	if recorder == nil {
+		recorder = metrics.NewNoOpRecorder()
+	}
+
 	return &Monitor{
 		queue:                           queue,
 		nncClient:                       cfg.NNCClient,
@@ -211,6 +220,7 @@ func NewMonitor(cfg MonitorConfig) *Monitor {
 		targetUtilizationAfterScaleUp:   cfg.TargetUtilizationAfterScaleUp,
 		cooldownPushbackThreshold:       cfg.CooldownPushbackThreshold,
 		sustainedLowUtilizationDuration: cfg.SustainedLowUtilizationDuration,
+		recorder:                        recorder,
 	}
 }
 
@@ -313,8 +323,8 @@ func (m *Monitor) syncAll(ctx context.Context) error {
 
 		// If the total IP capacity is 0, the initial CIDR has not yet been allocated
 		// or the network is not initialized. Skip dynamic allocation.
-		if info.Usage.Total == 0 {
-			m.logger.V(4).Info("Total IPs is 0, skipping dynamic allocation", "network", network)
+		if info.Usage.IPs.ActiveTotal == 0 {
+			m.logger.Info("Total IPs is 0, skipping dynamic allocation", "network", network)
 			continue
 		}
 
@@ -326,9 +336,10 @@ func (m *Monitor) syncAll(ctx context.Context) error {
 		m.logger.V(4).Info("Evaluating IP utilization and capacity requirements",
 			"network", network,
 			"crdSpecAllocatedPods", crdSpecAllocatedPods,
-			"dbAllocatedIPs", info.Usage.Allocated,
-			"dbCooldownIPs", info.Usage.Cooldown,
-			"dbTotalIPs", info.Usage.Total,
+			"dbAllocatedIPs", info.Usage.IPs.Allocated,
+			"dbCooldownIPs", info.Usage.IPs.Cooldown,
+			"dbActiveTotalIPs", info.Usage.IPs.ActiveTotal,
+			"dbTotalIPs", info.Usage.IPs.Total,
 			"inMemPendingRequests", info.PendingRequests,
 			"calculatedUtilization", fmt.Sprintf("%.2f%%", info.Utilization*100),
 		)
@@ -339,6 +350,7 @@ func (m *Monitor) syncAll(ctx context.Context) error {
 		// Scale-Down (Draining): Mark excess CIDR blocks as draining if utilization is low.
 		if m.maybeDrainExcessive(ctx, network, info) {
 			m.logger.Info("Scale-down triggered: one or more blocks are marked for draining", "network", network)
+			m.recorder.RecordMonitorAction("drain_excessive", network)
 		}
 
 		// Releasing: Reconcile CIDRs that are deleting/releasing. This returns the updated
@@ -447,9 +459,17 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string, nncCop
 	// Note that this includes CIDR blocks in Draining status in both used and total counts.
 	// This ensures that processing prefetch (dynamic allocation) is not interfered with
 	// (triggered unnecessarily) while we are trying to remove excessive capacity by draining blocks.
-	usage, err := m.store.GetIPUsage(ctx, network, store.IPv4)
+	v4Usage, err := m.store.GetIPUsage(ctx, network, store.IPv4)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query IP usage: %w", err)
+	}
+	m.emitLocalStoreIPAndCIDRMetrics(ctx, network, store.IPv4, v4Usage)
+
+	v6Usage, err := m.store.GetIPUsage(ctx, network, store.IPv6)
+	if err != nil {
+		m.logger.V(4).Info("failed to get IPv6 IP usage for metrics", "network", network, "error", err)
+	} else if v6Usage.IPs.Total > 0 {
+		m.emitLocalStoreIPAndCIDRMetrics(ctx, network, store.IPv6, v6Usage)
 	}
 
 	var currentReleasables []nncv1.PodCIDR
@@ -466,20 +486,22 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string, nncCop
 		}
 	}
 
-	usedIPs := usage.Allocated // Only allocated, not in cooldown
+	usedIPs := v4Usage.IPs.Allocated // Only allocated, not in cooldown
 
 	pendingRequests := 0
 	if m.GetPendingRequestsCount != nil {
 		pendingRequests = m.GetPendingRequestsCount(network)
 	}
 
-	utilization := m.calculateUtilization(usedIPs, pendingRequests, usage.Total)
+	m.recorder.RecordPendingRequests(network, pendingRequests)
 
-	m.logger.V(4).Info("Calculated utilization", "network", network, "used", usedIPs, "pending", pendingRequests, "total", usage.Total, "utilization", utilization)
+	utilization := m.calculateUtilization(usedIPs, pendingRequests, v4Usage.IPs.ActiveTotal)
+
+	m.logger.V(4).Info("Calculated utilization", "network", network, "used", usedIPs, "pending", pendingRequests, "activeTotal", v4Usage.IPs.ActiveTotal, "total", v4Usage.IPs.Total, "utilization", utilization)
 
 	return &UtilizationInfo{
 		Utilization:        utilization,
-		Usage:              usage,
+		Usage:              v4Usage,
 		PendingRequests:    pendingRequests,
 		CurrentReleasables: currentReleasables,
 		CurrentStatus:      currentStatus,
@@ -488,9 +510,9 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string, nncCop
 }
 
 func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) int {
-	usedIPs := info.Usage.Allocated
+	usedIPs := info.Usage.IPs.Allocated
 	pendingRequests := info.PendingRequests
-	localTotal := info.Usage.Total
+	localTotal := info.Usage.IPs.ActiveTotal
 
 	currentPods := 0
 	if info.CurrentAllocation != nil {
@@ -500,8 +522,8 @@ func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) int {
 	// TODO: In a burst of release immediately after dynamic allocation is triggered,
 	// there may never be new CIDRs to wake up the blocking requests from the daemon server.
 	// So we need to callback onCIDR when we check there are enough available IPs.
-	if info.Usage.Cooldown > m.cooldownPushbackThreshold {
-		m.logger.V(4).Info("Too many IPs in cooldown, holding on sending outgoing requests", "network", network, "cooldownCount", info.Usage.Cooldown)
+	if info.Usage.IPs.Cooldown > m.cooldownPushbackThreshold {
+		m.logger.V(4).Info("Too many IPs in cooldown, holding on sending outgoing requests", "network", network, "cooldownCount", info.Usage.IPs.Cooldown)
 		m.queue.AddAfter(syncKey, m.cooldownPushbackInterval)
 		return currentPods
 	}
@@ -514,6 +536,7 @@ func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) int {
 	desiredPods := max(newPods, currentPods)
 	if desiredPods > currentPods {
 		m.logger.Info("Scale-up triggered: capacity expansion requested", "network", network, "currentPods", currentPods, "desiredPods", desiredPods)
+		m.recorder.RecordMonitorAction("scale_up", network)
 	}
 	return desiredPods
 }
@@ -522,7 +545,7 @@ func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) int {
 // It is possible to drain a newly added block (less likely to happen due to small window), or drained more
 // or less blocks than strictly necessary, and that is still fine. The system will self-correct in subsequent cycles.
 func (m *Monitor) drainExcessive(ctx context.Context, network string, info *UtilizationInfo) (bool, error) {
-	usedIPs := info.Usage.Allocated // Only allocated, not in cooldown
+	usedIPs := info.Usage.IPs.Allocated // Only allocated, not in cooldown
 	m.logger.V(4).Info(fmt.Sprintf("Utilization falls below %d%% for %s, evaluating CIDR blocks to drain", int(m.lowUtilizationThreshold*100), m.sustainedLowUtilizationDuration), "network", network)
 
 	readyBlocks, err := m.store.GetReadyCIDRBlocksSorted(ctx, network, store.IPv4)
@@ -536,7 +559,7 @@ func (m *Monitor) drainExcessive(ctx context.Context, network string, info *Util
 	}
 
 	blocksToMark := readyBlocks[:len(readyBlocks)-1]
-	totalPods := info.Usage.Total + info.PendingRequests
+	totalPods := info.Usage.IPs.ActiveTotal + info.PendingRequests
 	totalUsedIPs := usedIPs + info.PendingRequests
 	targetUsedIPs := int(m.lowUtilizationThreshold * float64(totalPods))
 
@@ -595,8 +618,7 @@ func (m *Monitor) reconcileDeletingBlocks(
 	currentStatus []nncv1.PodCIDR,
 ) ([]nncv1.PodCIDR, int, error) {
 	// 1. Update local DB to mark expired draining blocks as deleting
-	_, err := m.store.ExpireDrainingCIDRBlocks(ctx, network, store.IPv4, m.drainingExpiration)
-	if err != nil {
+	if _, err := m.store.ExpireDrainingCIDRBlocks(ctx, network, store.IPv4, m.drainingExpiration); err != nil {
 		return nil, 0, fmt.Errorf("failed to expire draining CIDRs: %w", err)
 	}
 
@@ -629,6 +651,7 @@ func (m *Monitor) reconcileDeletingBlocks(
 				return nil, 0, fmt.Errorf("failed to delete released CIDR block %d from store: %w", block.ID, err)
 			}
 			m.logger.Info("Deleted CIDR block from local DB as it was released by GCE (reconciliation)", "cidrBlockID", block.ID, "cidr", block.CIDR, "network", network)
+			m.recorder.RecordMonitorAction("delete", network)
 		} else {
 			// Case B: Still in CR status -> keep it in ReleasableCIDRs
 			newReleasables = append(newReleasables, podCIDR)
@@ -638,6 +661,7 @@ func (m *Monitor) reconcileDeletingBlocks(
 				m.logger.Info("CIDR block is fully drained; requesting release by adding to releasableCIDRs list", "network", network, "cidr", block.CIDR, "totalIPs", block.TotalIPs)
 				reducePods += block.TotalIPs
 				releasableMap[block.CIDR] = true
+				m.recorder.RecordMonitorAction("release", network)
 			}
 		}
 	}
@@ -658,4 +682,8 @@ func getAllocationForNetwork(nnc *nncv1.NodeNetworkConfig, network string) *nncv
 		}
 	}
 	return nil
+}
+
+func (m *Monitor) emitLocalStoreIPAndCIDRMetrics(_ context.Context, network string, family store.IPFamily, usage store.NetworkIPUsage) {
+	m.recorder.RecordStoreUsage(network, family, usage)
 }

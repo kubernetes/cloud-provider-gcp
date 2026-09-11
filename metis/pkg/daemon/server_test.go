@@ -21,15 +21,47 @@ import (
 	"net"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"k8s.io/metis/api/adaptiveipam/v1"
+	"k8s.io/metis/pkg/metrics"
 	"k8s.io/metis/pkg/store"
 )
+
+type testMetricsRecorder struct {
+	metrics.MetricsRecorder
+	mu           sync.Mutex
+	grpcRequests []grpcReqRecord
+}
+
+type grpcReqRecord struct {
+	method      string
+	network     string
+	containerID string
+	podName     string
+	err         error
+}
+
+func (r *testMetricsRecorder) RecordGRPCRequest(method, network, containerID, podName string, err error, duration time.Duration) {
+	r.mu.Lock()
+	r.grpcRequests = append(r.grpcRequests, grpcReqRecord{
+		method:      method,
+		network:     network,
+		containerID: containerID,
+		podName:     podName,
+		err:         err,
+	})
+	r.mu.Unlock()
+	if r.MetricsRecorder != nil {
+		r.MetricsRecorder.RecordGRPCRequest(method, network, containerID, podName, err, duration)
+	}
+}
 
 func TestAdaptiveIpamServer_withGrpcClient(t *testing.T) {
 	logger := logr.Discard()
@@ -43,7 +75,8 @@ func TestAdaptiveIpamServer_withGrpcClient(t *testing.T) {
 	}
 	defer s.Close()
 
-	server := newAdaptiveIpamServer(logger, s, sockPath, 0, 0)
+	rec := &testMetricsRecorder{MetricsRecorder: metrics.NewPrometheusRecorder()}
+	server := newAdaptiveIpamServer(logger, s, sockPath, 0, 0, rec)
 	defer server.stop()
 
 	// 1. Start server in background
@@ -70,16 +103,18 @@ func TestAdaptiveIpamServer_withGrpcClient(t *testing.T) {
 
 	client := adaptiveipam.NewAdaptiveIpamClient(conn)
 
-	// 3. Prepare data and call
+	// 3. Prepare data and call AllocatePodIP
 	network := "integration-network"
 	cidr := "10.0.1.0/24"
+	containerID := "test-container-integration"
+	podName := "test-pod"
 	req := &adaptiveipam.AllocatePodIPRequest{
 		Network:      network,
-		PodName:      "test-pod",
+		PodName:      podName,
 		PodNamespace: "default",
 		Ipv4Config: &adaptiveipam.IPConfig{
 			InterfaceName:  "eth0",
-			ContainerId:    "test-container-integration",
+			ContainerId:    containerID,
 			InitialPodCidr: cidr,
 		},
 	}
@@ -97,8 +132,8 @@ func TestAdaptiveIpamServer_withGrpcClient(t *testing.T) {
 	checkReq := &adaptiveipam.CheckPodIPRequest{
 		Network:       network,
 		InterfaceName: "eth0",
-		ContainerId:   "test-container-integration",
-		PodName:       "test-pod",
+		ContainerId:   containerID,
+		PodName:       podName,
 		PodNamespace:  "default",
 	}
 	if _, err := client.CheckPodIP(ctx, checkReq); err != nil {
@@ -109,11 +144,32 @@ func TestAdaptiveIpamServer_withGrpcClient(t *testing.T) {
 	deallocReq := &adaptiveipam.DeallocatePodIPRequest{
 		Network:       network,
 		InterfaceName: "eth0",
-		ContainerId:   "test-container-integration",
-		PodName:       "test-pod",
+		ContainerId:   containerID,
+		PodName:       podName,
 		PodNamespace:  "default",
 	}
 	if _, err := client.DeallocatePodIP(ctx, deallocReq); err != nil {
 		t.Errorf("gRPC Client DeallocatePodIP failed: %v", err)
+	}
+
+	// 6. Verify interceptor recorded metrics on rec & Prometheus counters via testutil.ToFloat64
+	rec.mu.Lock()
+	reqs := rec.grpcRequests
+	rec.mu.Unlock()
+
+	if len(reqs) != 3 {
+		t.Fatalf("Expected 3 recorded gRPC requests from interceptor, got %d", len(reqs))
+	}
+	expectedMethods := []string{"AllocatePodIP", "CheckPodIP", "DeallocatePodIP"}
+	for i, expMethod := range expectedMethods {
+		got := reqs[i]
+		if got.method != expMethod || got.network != network || got.containerID != containerID || got.podName != podName || got.err != nil {
+			t.Errorf("Request %d: unexpected recorded gRPC request: %+v (expected method %s)", i, got, expMethod)
+		}
+
+		count := testutil.ToFloat64(metrics.GRPCServerHandledTotal.WithLabelValues(expMethod, "OK", network, containerID, podName))
+		if count < 1.0 {
+			t.Errorf("Expected Prometheus counter metis_daemon_grpc_server_handled_total to be >= 1 for method %s, got %v", expMethod, count)
+		}
 	}
 }
