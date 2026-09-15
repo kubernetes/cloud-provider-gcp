@@ -40,7 +40,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
-	utilnet "k8s.io/utils/net"
+	netutils "k8s.io/utils/net"
 )
 
 const (
@@ -110,7 +110,7 @@ func (g *Cloud) orderAddresses(addresses []v1.NodeAddress) []v1.NodeAddress {
 	for _, address := range addresses {
 		ip := net.ParseIP(address.Address)
 		// Non IP addresses as hostname will get a nil ip.
-		if ip == nil || utilnet.IsIPv6(ip) == preferIPv6 {
+		if ip == nil || netutils.IsIPv6(ip) == preferIPv6 {
 			sortedAddresses = append(sortedAddresses, address)
 		}
 	}
@@ -119,7 +119,7 @@ func (g *Cloud) orderAddresses(addresses []v1.NodeAddress) []v1.NodeAddress {
 	for _, address := range addresses {
 		ip := net.ParseIP(address.Address)
 		// Non IP addresses as hostname will get a nil ip.
-		if ip != nil && utilnet.IsIPv6(ip) != preferIPv6 {
+		if ip != nil && netutils.IsIPv6(ip) != preferIPv6 {
 			sortedAddresses = append(sortedAddresses, address)
 		}
 	}

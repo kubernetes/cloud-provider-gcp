@@ -84,6 +84,18 @@ var (
 
 	// enableL4ILBFineGrainedLocks enables resource-specific locking for L4 ILB.
 	enableL4ILBFineGrainedLocks bool
+
+	// overrideL4ILBHealthCheckSourceCIDRs overrides the default source IPv4 ranges
+	// used when configuring firewall rules to allow health check probes for L4 ILB
+	// load balancers. Provide the ranges as a comma-separated list of CIDRs.
+	// Example: --override-l4-ilb-health-check-src-cidrs=35.191.192.0/18
+	overrideL4ILBHealthCheckSourceCIDRs string
+
+	// overrideL4NetLBHealthCheckSourceCIDRs overrides the default source IPv4 ranges
+	// used when configuring firewall rules to allow health check probes for L4 NetLB
+	// load balancers. Provide the ranges as a comma-separated list of CIDRs.
+	// Example: --override-l4-netlb-health-check-src-cidrs=209.85.204.0/22
+	overrideL4NetLBHealthCheckSourceCIDRs string
 )
 
 func main() {
@@ -106,6 +118,8 @@ func main() {
 	cloudProviderFS.BoolVar(&enableL4DenyFirewallRollbackCleanup, "enable-l4-deny-firewall-rollback-cleanup", false, "Enable cleanup codepath of the deny firewalls for rollback. The reason for it not being enabled by default is the additional GCE API calls that are made for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.")
 	cloudProviderFS.BoolVar(&enableGKETenantController, "enable-gke-tenant-controller", false, "Enables the GKE Tenant Controller Manager for Multi-Tenancy.")
 	cloudProviderFS.BoolVar(&enableL4ILBFineGrainedLocks, "enable-l4-ilb-fine-grained-lock", false, "Enable resource-specific locking for L4 ILB")
+	cloudProviderFS.StringVar(&overrideL4ILBHealthCheckSourceCIDRs, "override-l4-ilb-health-check-src-cidrs", "", "Overrides the default source IPv4 ranges used when configuring firewall rules to allow health check probes for L4 ILB load balancers. Provide the ranges as a comma-separated list of CIDRs. Example: --override-l4-ilb-health-check-src-cidrs=35.191.192.0/18")
+	cloudProviderFS.StringVar(&overrideL4NetLBHealthCheckSourceCIDRs, "override-l4-netlb-health-check-src-cidrs", "", "Overrides the default source IPv4 ranges used when configuring firewall rules to allow health check probes for L4 NetLB load balancers. Provide the ranges as a comma-separated list of CIDRs. Example: --override-l4-netlb-health-check-src-cidrs=209.85.204.0/22")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
@@ -241,6 +255,13 @@ func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovid
 
 	// Record feature gate metrics
 	gce.RecordFeatureGateMetrics(enableL4ILBFineGrainedLocks)
+
+	if overrideL4ILBHealthCheckSourceCIDRs != "" {
+		gce.SetOverrideL4ILBHealthCheckSourceCIDRs(overrideL4ILBHealthCheckSourceCIDRs)
+	}
+	if overrideL4NetLBHealthCheckSourceCIDRs != "" {
+		gce.SetOverrideL4NetLBHealthCheckSourceCIDRs(overrideL4NetLBHealthCheckSourceCIDRs)
+	}
 
 	return cloud
 }

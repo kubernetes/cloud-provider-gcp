@@ -38,6 +38,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	servicehelpers "k8s.io/cloud-provider/service/helpers"
 	"k8s.io/klog/v2"
+	netutils "k8s.io/utils/net"
 )
 
 const (
@@ -613,7 +614,8 @@ func (g *Cloud) ensureInternalFirewalls(loadBalancerName, ipAddress, clusterID s
 
 	// Second firewall is for health checking nodes / services
 	fwHCName := makeHealthCheckFirewallName(loadBalancerName, clusterID, sharedHealthCheck)
-	hcSrcRanges := L4LoadBalancerSrcRanges()
+	isIPv6 := netutils.IsIPv6String(ipAddress)
+	hcSrcRanges := L4ILBHealthCheckSrcRanges(sharedHealthCheck, isIPv6).StringSlice()
 	return g.ensureInternalFirewall(svc, fwHCName, "", "", hcSrcRanges, []string{healthCheckPort}, v1.ProtocolTCP, nodes, "", sharedHealthCheck)
 }
 
