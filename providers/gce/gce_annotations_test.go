@@ -22,6 +22,7 @@ package gce
 import (
 	"maps"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -314,6 +315,90 @@ func TestComputeNewAnnotationsIfNeeded(t *testing.T) {
 					assert.True(t, reflect.DeepEqual(originalAnnotations, tc.svc.Annotations), "Original svc.Annotations instance should not change when no update is needed")
 				}
 			}
+		})
+	}
+}
+
+func TestGetLoadBalancerAnnotationSubnet(t *testing.T) {
+	testCases := []struct {
+		desc           string
+		annotations    map[string]string
+		expectedSubnet string
+	}{
+		{
+			desc:           "no annotation",
+			annotations:    nil,
+			expectedSubnet: "",
+		},
+		{
+			desc: "valid standard subnet name",
+			annotations: map[string]string{
+				ServiceAnnotationILBSubnet: "my-custom-subnet",
+			},
+			expectedSubnet: "my-custom-subnet",
+		},
+		{
+			desc: "valid subnet name ending in digit",
+			annotations: map[string]string{
+				ServiceAnnotationILBSubnet: "subnet-123",
+			},
+			expectedSubnet: "subnet-123",
+		},
+		{
+			desc: "malformed path with dots and slashes",
+			annotations: map[string]string{
+				ServiceAnnotationILBSubnet: "../../../other-project/regions/us-central1/subnetworks/other-subnet",
+			},
+			expectedSubnet: "",
+		},
+		{
+			desc: "invalid characters spaces",
+			annotations: map[string]string{
+				ServiceAnnotationILBSubnet: "my subnet",
+			},
+			expectedSubnet: "",
+		},
+		{
+			desc: "invalid starting character",
+			annotations: map[string]string{
+				ServiceAnnotationILBSubnet: "1-subnet",
+			},
+			expectedSubnet: "",
+		},
+		{
+			desc: "invalid uppercase character",
+			annotations: map[string]string{
+				ServiceAnnotationILBSubnet: "Subnet",
+			},
+			expectedSubnet: "",
+		},
+		{
+			desc: "exceeds 63 characters limit",
+			annotations: map[string]string{
+				ServiceAnnotationILBSubnet: strings.Repeat("a", 64),
+			},
+			expectedSubnet: "",
+		},
+		{
+			desc: "exactly 63 characters limit",
+			annotations: map[string]string{
+				ServiceAnnotationILBSubnet: strings.Repeat("a", 63),
+			},
+			expectedSubnet: strings.Repeat("a", 63),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			svc := &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test-svc",
+					Namespace:   "test-ns",
+					Annotations: tc.annotations,
+				},
+			}
+			actual := GetLoadBalancerAnnotationSubnet(svc)
+			assert.Equal(t, tc.expectedSubnet, actual)
 		})
 	}
 }
