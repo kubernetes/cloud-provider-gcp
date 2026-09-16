@@ -7,6 +7,7 @@ package gketenantcontrollers
 import (
 	"context"
 	"sort"
+	"sync"
 	"time"
 
 	v1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
@@ -49,6 +50,8 @@ type ControllerConfig struct {
 	ProviderConfig *v1.ProviderConfig
 	// ControllerContext is the controller manager context (contains metrics, etc.)
 	ControllerContext controllermanagerapp.ControllerContext
+	// RegisterCleanup registers a function to be executed when the tenant controller manager stops.
+	RegisterCleanup func(func())
 }
 
 // ControllerStartFunc is a function that starts a controller.
@@ -123,6 +126,15 @@ func (s *ControllersStarter) StartController(pc *v1.ProviderConfig) (chan<- stru
 
 	klog.Infof("[%s] Attempting to start scoped controller", pcKey)
 	var filteredFactory *filtered.FilteredSharedInformerFactory
+	var cleanups []func()
+	var cleanupsMu sync.Mutex
+	var wg sync.WaitGroup
+
+	registerCleanup := func(f func()) {
+		cleanupsMu.Lock()
+		defer cleanupsMu.Unlock()
+		cleanups = append(cleanups, f)
+	}
 
 	// Initialize asynchronously to avoid blocking the framework's event loop.
 	go func() {
@@ -130,9 +142,24 @@ func (s *ControllersStarter) StartController(pc *v1.ProviderConfig) (chan<- stru
 		defer func() {
 			klog.Infof("[%s] Scoped controller stopping", pcKey)
 			cancel()
+
+			// Wait for all running controller goroutines (and their cleanup) to finish
+			wg.Wait()
+			klog.Infof("[%s] All scoped controllers finished. Cleaning up informers and factories...", pcKey)
+
 			if filteredFactory != nil {
 				filteredFactory.Cleanup()
 			}
+			cleanupsMu.Lock()
+			cleanupsCopy := make([]func(), len(cleanups))
+			// It is safe here to create a copy because after wg.Wait() we can assume all child controllers are dead, so no one will add any more cleanups
+			copy(cleanupsCopy, cleanups)
+			cleanups = nil
+			cleanupsMu.Unlock()
+			for i := len(cleanupsCopy) - 1; i >= 0; i-- {
+				cleanupsCopy[i]()
+			}
+			klog.Infof("[%s] Scoped controller teardown complete", pcKey)
 		}()
 
 		// Create a customizable timeout context for the GCE Cloud Client initialization retry
@@ -192,13 +219,16 @@ func (s *ControllersStarter) StartController(pc *v1.ProviderConfig) (chan<- stru
 			KubeClient:        s.kubeClient,
 			ProviderConfig:    pc,
 			ControllerContext: s.controllerCtx,
+			RegisterCleanup:   registerCleanup,
 		}
 
 		// Start all registered controllers
 		for name, startFunc := range s.controllers {
 			klog.Infof("[%s] Starting controller: %s", pcKey, name)
+			wg.Add(1)
 			// Launch each controller in a separate goroutine
 			go func(controllerName string, fn ControllerStartFunc) {
+				defer wg.Done()
 				_ = s.runWithBackoff(ctx, 2*time.Minute, func(ctx context.Context) (bool, error) {
 					return s.runControllerWithRecovery(pc, controllerName, fn, cfg)
 				})
