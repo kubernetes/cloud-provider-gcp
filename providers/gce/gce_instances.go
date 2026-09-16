@@ -1033,3 +1033,160 @@ func (g *Cloud) InstanceByProviderID(providerID string) (res *compute.Instance, 
 	}
 	return res, nil
 }
+
+// UpdateInstanceAliasIPRanges updates the alias IP ranges for a specific network interface of an instance.
+// It takes the providerID, the target network URL, and the additions/removals.
+// It returns an error if the mutation fails.
+//
+// Additions and removals are applied as two separate updateNetworkInterface
+// calls. GCE rejects a single call that tries to do both, with
+// "Cannot simultaneously add and remove alias IP ranges", so batching them into
+// one request is not an option.
+//
+// Removals go first. The caller decides how much to add after discounting the
+// ranges it is about to release, so the additions it asks for already assume
+// the removals have happened; adding first would hold both sets at once and can
+// fail on a subnet with little headroom. Either order is safe to interrupt --
+// reconciliation is level-triggered, so a partially applied change is
+// recomputed on the next pass -- but this order keeps peak consumption at the
+// steady-state value.
+func (g *Cloud) UpdateInstanceAliasIPRanges(
+	ctx context.Context,
+	providerID string,
+	networkURL string,
+	additions []string, // e.g. ["/28"]
+	removals []string, // e.g. ["10.100.0.0/28"]
+) error {
+	klog.V(2).Infof("UpdateInstanceAliasIPRanges: providerID=%q, networkURL=%q, additions=%v, removals=%v", providerID, networkURL, additions, removals)
+
+	if len(removals) > 0 {
+		removalSet := sets.NewString(removals...)
+		err := g.mutateAliasIPRanges(ctx, providerID, networkURL, func(ifaceName string, current []*computebeta.AliasIpRange) []*computebeta.AliasIpRange {
+			kept := []*computebeta.AliasIpRange{}
+			for _, r := range current {
+				if removalSet.Has(r.IpCidrRange) {
+					klog.V(4).Infof("Removing alias IP range %q from interface %q", r.IpCidrRange, ifaceName)
+					continue
+				}
+				kept = append(kept, r)
+			}
+			return kept
+		})
+		if err != nil {
+			return fmt.Errorf("failed to remove alias IP ranges %v: %w", removals, err)
+		}
+	}
+
+	if len(additions) > 0 {
+		err := g.mutateAliasIPRanges(ctx, providerID, networkURL, func(ifaceName string, current []*computebeta.AliasIpRange) []*computebeta.AliasIpRange {
+			next := append([]*computebeta.AliasIpRange{}, current...)
+			// TODO: Look up the appropriate secondary range for each network.
+			for _, add := range additions {
+				klog.V(4).Infof("Adding alias IP range size %q to interface %q", add, ifaceName)
+				next = append(next, &computebeta.AliasIpRange{
+					IpCidrRange:         add,
+					SubnetworkRangeName: g.secondaryRangeName, // Use the configured secondary range name
+				})
+			}
+			return next
+		})
+		if err != nil {
+			return fmt.Errorf("failed to add alias IP ranges %v: %w", additions, err)
+		}
+	}
+
+	return nil
+}
+
+// mutateAliasIPRanges performs a single read-modify-write of one network
+// interface's alias IP ranges. mutate receives the interface's current ranges
+// and returns the complete desired list.
+//
+// The read is part of the write, not a caching opportunity:
+// updateNetworkInterface is guarded by the interface fingerprint, and every
+// successful update changes it. Two updates in sequence must therefore re-read
+// in between rather than reusing the first fingerprint.
+func (g *Cloud) mutateAliasIPRanges(
+	ctx context.Context,
+	providerID string,
+	networkURL string,
+	mutate func(ifaceName string, current []*computebeta.AliasIpRange) []*computebeta.AliasIpRange,
+) error {
+	project, zone, name, err := splitProviderID(providerID)
+	if err != nil {
+		return err
+	}
+	name = canonicalizeInstanceName(name)
+
+	// Get the GCE Instance to get current interfaces and fingerprints
+	var instance *computebeta.Instance
+	if g.projectFromNodeProviderID {
+		// TODO: Use v1 API once the client SDK starts generating it.
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
+	} else {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get GCE instance %q in zone %q: %w", name, zone, err)
+	}
+
+	// Find the target network interface by Network URL
+	var targetIface *computebeta.NetworkInterface
+	for _, iface := range instance.NetworkInterfaces {
+		if iface.Network == networkURL {
+			targetIface = iface
+			break
+		}
+	}
+
+	if targetIface == nil {
+		return fmt.Errorf("network interface for network %q not found on instance %q", networkURL, name)
+	}
+
+	newRanges := mutate(targetIface.Name, targetIface.AliasIpRanges)
+	if newRanges == nil {
+		newRanges = []*computebeta.AliasIpRange{}
+	}
+
+	// Prepare the update body
+	ifaceUpdate := &computebeta.NetworkInterface{
+		Name:          targetIface.Name,
+		Fingerprint:   targetIface.Fingerprint,
+		AliasIpRanges: newRanges,
+	}
+
+	// Call UpdateNetworkInterface (blocks until LRO completes)
+	mc := newInstancesMetricContext("update_instance_alias_ip_ranges", zone)
+	if g.projectFromNodeProviderID {
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate, cloud.ForceProjectID(project))
+	} else {
+		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate)
+	}
+	if err = mc.Observe(err); err != nil {
+		return fmt.Errorf("failed to update network interface %q on instance %q: %w", targetIface.Name, name, err)
+	}
+
+	return nil
+}
+
+// GetInstanceNetworkInterfaces retrieves the network interfaces for a given instance.
+// It is used by the controller's loading cache to fetch fresh GCE state.
+func (g *Cloud) GetInstanceNetworkInterfaces(ctx context.Context, providerID string) ([]*computebeta.NetworkInterface, error) {
+	project, zone, name, err := splitProviderID(providerID)
+	if err != nil {
+		return nil, err
+	}
+	name = canonicalizeInstanceName(name)
+
+	var instance *computebeta.Instance
+	if g.projectFromNodeProviderID {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
+	} else {
+		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GCE instance %q in zone %q: %w", name, zone, err)
+	}
+
+	return instance.NetworkInterfaces, nil
+}
