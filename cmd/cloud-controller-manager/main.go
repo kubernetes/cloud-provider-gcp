@@ -96,6 +96,12 @@ var (
 	// load balancers. Provide the ranges as a comma-separated list of CIDRs.
 	// Example: --override-l4-netlb-health-check-src-cidrs=209.85.204.0/22
 	overrideL4NetLBHealthCheckSourceCIDRs string
+
+	// enableDynamicPodIPController enables the dynamic-pod-ip-controller.
+	enableDynamicPodIPController bool
+
+	// populateNodeNetworkConfig enables the node-network-config-status-controller.
+	populateNodeNetworkConfig bool
 )
 
 func main() {
@@ -120,6 +126,8 @@ func main() {
 	cloudProviderFS.BoolVar(&enableL4ILBFineGrainedLocks, "enable-l4-ilb-fine-grained-lock", false, "Enable resource-specific locking for L4 ILB")
 	cloudProviderFS.StringVar(&overrideL4ILBHealthCheckSourceCIDRs, "override-l4-ilb-health-check-src-cidrs", "", "Overrides the default source IPv4 ranges used when configuring firewall rules to allow health check probes for L4 ILB load balancers. Provide the ranges as a comma-separated list of CIDRs. Example: --override-l4-ilb-health-check-src-cidrs=35.191.192.0/18")
 	cloudProviderFS.StringVar(&overrideL4NetLBHealthCheckSourceCIDRs, "override-l4-netlb-health-check-src-cidrs", "", "Overrides the default source IPv4 ranges used when configuring firewall rules to allow health check probes for L4 NetLB load balancers. Provide the ranges as a comma-separated list of CIDRs. Example: --override-l4-netlb-health-check-src-cidrs=209.85.204.0/22")
+	cloudProviderFS.BoolVar(&enableDynamicPodIPController, "enable-dynamic-pod-ip-controller", false, "Enables the GKE Dynamic Pod IP Controller.")
+	cloudProviderFS.BoolVar(&populateNodeNetworkConfig, "populate-node-network-config", false, "Enables population of NodeNetworkConfig status from GCE state.")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
@@ -147,6 +155,10 @@ func main() {
 		Constructor: startGkeNetworkParamSetControllerWrapper,
 	}
 
+	controllerInitializers["dynamicpodip"] = app.ControllerInitFuncConstructor{
+		Constructor: startDynamicPodIPControllerWrapper,
+	}
+
 	controllerInitializers[gkeServiceLBControllerName] = app.ControllerInitFuncConstructor{
 		InitContext: app.ControllerInitContext{
 			ClientName: gkeServiceControllerClientName,
@@ -167,6 +179,7 @@ func main() {
 	app.ControllersDisabledByDefault.Insert("gkenetworkparamset")
 	app.ControllersDisabledByDefault.Insert(gkeServiceLBControllerName)
 	app.ControllersDisabledByDefault.Insert(gkeTenantControllerManagerName)
+	app.ControllersDisabledByDefault.Insert("dynamicpodip")
 
 	aliasMap := names.CCMControllerAliases()
 	aliasMap["nodeipam"] = kcmnames.NodeIpamController

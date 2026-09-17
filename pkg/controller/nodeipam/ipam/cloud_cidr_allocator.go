@@ -51,6 +51,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	cloudprovider "k8s.io/cloud-provider"
+	dynamicpodip "k8s.io/cloud-provider-gcp/pkg/controller/dynamicpodip"
 	"k8s.io/cloud-provider-gcp/pkg/controllermetrics"
 	nodeutil "k8s.io/cloud-provider-gcp/pkg/util"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
@@ -372,6 +373,9 @@ func (ca *cloudCIDRAllocator) handleErr(err error, key interface{}) {
 		// an outdated error history.
 		ca.queue.Forget(key)
 		klog.V(3).Infof("Updated CIDR for %q", key)
+		if nodeName, ok := key.(string); ok {
+			dynamicpodip.GetStatusTrigger().EnqueueNode(nodeName)
+		}
 		return
 	}
 	klog.Errorf("Error updating CIDR for %q: %v", key, err)
