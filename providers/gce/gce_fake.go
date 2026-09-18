@@ -31,18 +31,19 @@ import (
 
 // TestClusterValues holds the config values for the fake/test gce cloud object.
 type TestClusterValues struct {
-	ProjectID         string
-	NetworkProjectID  string
-	Region            string
-	ZoneName          string
-	SecondaryZoneName string
-	ClusterID         string
-	ClusterName       string
-	OnXPN             bool
-	Regional          bool
-	NetworkURL        string
-	SubnetworkURL     string
-	StackType         StackType
+	ProjectID          string
+	NetworkProjectID   string
+	Region             string
+	ZoneName           string
+	SecondaryZoneName  string
+	ClusterID          string
+	ClusterName        string
+	OnXPN              bool
+	Regional           bool
+	NetworkURL         string
+	SubnetworkURL      string
+	StackType          StackType
+	SecondaryRangeName string
 }
 
 // DefaultTestClusterValues Creates a reasonable set of default cluster values
@@ -95,6 +96,7 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 		dynamicZones:        vals.Regional,
 		networkURL:          vals.NetworkURL,
 		unsafeSubnetworkURL: vals.SubnetworkURL,
+		secondaryRangeName:  vals.SecondaryRangeName,
 		stackType:           vals.StackType,
 		nodeZones:           map[string]sets.String{},
 	}
