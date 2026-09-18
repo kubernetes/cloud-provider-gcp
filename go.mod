@@ -11,7 +11,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.23.0 // indirect
-	google.golang.org/api v0.297.0
+	google.golang.org/api v0.298.0
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	k8s.io/api v0.37.0
@@ -32,7 +32,7 @@ require (
 
 require (
 	github.com/GoogleCloudPlatform/gke-enterprise-mt v0.1.0
-	github.com/GoogleCloudPlatform/gke-networking-api v0.2.5
+	github.com/GoogleCloudPlatform/gke-networking-api v0.2.6
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.37.0
@@ -66,7 +66,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/onsi/ginkgo/v2 v2.32.1 // indirect
+	github.com/onsi/ginkgo/v2 v2.32.2 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
