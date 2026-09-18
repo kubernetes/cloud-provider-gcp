@@ -3,7 +3,7 @@ module k8s.io/metis
 go 1.26.3
 
 require (
-	github.com/GoogleCloudPlatform/gke-networking-api v0.2.5
+	github.com/GoogleCloudPlatform/gke-networking-api v0.2.6
 	github.com/containernetworking/cni v1.3.1
 	github.com/go-logr/logr v1.4.4
 	github.com/mattn/go-sqlite3 v1.14.52
@@ -37,7 +37,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/onsi/ginkgo/v2 v2.32.1 // indirect
+	github.com/onsi/ginkgo/v2 v2.32.2 // indirect
 	github.com/onsi/gomega v1.43.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
