@@ -18,6 +18,7 @@ package dynamicpodip
 
 import (
 	"fmt"
+	"strings"
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	"k8s.io/cloud-provider-gcp/providers/gce"
@@ -69,4 +70,24 @@ func resolveKubernetesNetworkName(iface *networkInterface) (string, error) {
 		return networkv1.DefaultPodNetworkName, nil
 	}
 	return "", fmt.Errorf("unsupported interface %q: only primary interface (nic0) is currently supported", iface.Name)
+}
+
+// canonicalSubnetwork returns the subnetwork resource name (the last path
+// component) or an empty string if empty.
+func canonicalSubnetwork(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	return lastComponent(s)
+}
+
+// lastComponent returns the last component of a URL or path, i.e. anything
+// after the last slash. If there is no slash, returns the whole string.
+func lastComponent(s string) string {
+	lastSlash := strings.LastIndex(s, "/")
+	if lastSlash != -1 {
+		s = s[lastSlash+1:]
+	}
+	return s
 }

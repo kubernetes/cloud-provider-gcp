@@ -913,6 +913,16 @@ func (g *Cloud) IsLegacyNetwork() bool {
 	return g.unsafeIsLegacyNetwork
 }
 
+// SecondaryRangeName returns the secondary range name.
+func (g *Cloud) SecondaryRangeName() string {
+	return g.secondaryRangeName
+}
+
+// SetSecondaryRangeName sets the secondary range name.
+func (g *Cloud) SetSecondaryRangeName(name string) {
+	g.secondaryRangeName = name
+}
+
 // SetInformers sets up the zone handlers we need watching for node changes.
 func (g *Cloud) SetInformers(informerFactory informers.SharedInformerFactory) {
 	klog.Infof("Setting up informers for Cloud")
