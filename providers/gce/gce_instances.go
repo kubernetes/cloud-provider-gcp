@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
+	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/klog/v2"
@@ -1056,13 +1057,14 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 	networkURL string,
 	additions []string, // e.g. ["/28"]
 	removals []string, // e.g. ["10.100.0.0/28"]
+	candidateSubnetworkRangeNames []string, // e.g. ["pod-range-1", "pod-range-2"]
 ) error {
-	klog.V(2).Infof("UpdateInstanceAliasIPRanges: providerID=%q, networkURL=%q, additions=%v, removals=%v", providerID, networkURL, additions, removals)
+	klog.V(2).Infof("UpdateInstanceAliasIPRanges: providerID=%q, networkURL=%q, additions=%v, removals=%v, candidateSubnetworkRangeNames=%v", providerID, networkURL, additions, removals, candidateSubnetworkRangeNames)
 
 	if len(removals) > 0 {
 		removalSet := sets.NewString(removals...)
-		err := g.mutateAliasIPRanges(ctx, providerID, networkURL, func(ifaceName string, current []*computebeta.AliasIpRange) []*computebeta.AliasIpRange {
-			kept := []*computebeta.AliasIpRange{}
+		err := g.mutateAliasIPRanges(ctx, providerID, networkURL, func(ifaceName string, current []*computealpha.AliasIpRange) []*computealpha.AliasIpRange {
+			kept := []*computealpha.AliasIpRange{}
 			for _, r := range current {
 				if removalSet.Has(r.IpCidrRange) {
 					klog.V(4).Infof("Removing alias IP range %q from interface %q", r.IpCidrRange, ifaceName)
@@ -1078,15 +1080,19 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 	}
 
 	if len(additions) > 0 {
-		err := g.mutateAliasIPRanges(ctx, providerID, networkURL, func(ifaceName string, current []*computebeta.AliasIpRange) []*computebeta.AliasIpRange {
-			next := append([]*computebeta.AliasIpRange{}, current...)
-			// TODO: Look up the appropriate secondary range for each network.
+		err := g.mutateAliasIPRanges(ctx, providerID, networkURL, func(ifaceName string, current []*computealpha.AliasIpRange) []*computealpha.AliasIpRange {
+			next := append([]*computealpha.AliasIpRange{}, current...)
 			for _, add := range additions {
 				klog.V(4).Infof("Adding alias IP range size %q to interface %q", add, ifaceName)
-				next = append(next, &computebeta.AliasIpRange{
-					IpCidrRange:         add,
-					SubnetworkRangeName: g.secondaryRangeName, // Use the configured secondary range name
-				})
+				aliasRange := &computealpha.AliasIpRange{
+					IpCidrRange: add,
+				}
+				if len(candidateSubnetworkRangeNames) > 0 {
+					aliasRange.CandidateSubnetworkRangeNames = candidateSubnetworkRangeNames
+				} else {
+					aliasRange.SubnetworkRangeName = g.secondaryRangeName
+				}
+				next = append(next, aliasRange)
 			}
 			return next
 		})
@@ -1110,7 +1116,7 @@ func (g *Cloud) mutateAliasIPRanges(
 	ctx context.Context,
 	providerID string,
 	networkURL string,
-	mutate func(ifaceName string, current []*computebeta.AliasIpRange) []*computebeta.AliasIpRange,
+	mutate func(ifaceName string, current []*computealpha.AliasIpRange) []*computealpha.AliasIpRange,
 ) error {
 	project, zone, name, err := splitProviderID(providerID)
 	if err != nil {
@@ -1119,19 +1125,19 @@ func (g *Cloud) mutateAliasIPRanges(
 	name = canonicalizeInstanceName(name)
 
 	// Get the GCE Instance to get current interfaces and fingerprints
-	var instance *computebeta.Instance
+	var instance *computealpha.Instance
 	if g.projectFromNodeProviderID {
 		// TODO: Use v1 API once the client SDK starts generating it.
-		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
+		instance, err = g.c.AlphaInstances().Get(ctx, meta.ZonalKey(name, zone), cloud.ForceProjectID(project))
 	} else {
-		instance, err = g.c.BetaInstances().Get(ctx, meta.ZonalKey(name, zone))
+		instance, err = g.c.AlphaInstances().Get(ctx, meta.ZonalKey(name, zone))
 	}
 	if err != nil {
 		return fmt.Errorf("failed to get GCE instance %q in zone %q: %w", name, zone, err)
 	}
 
 	// Find the target network interface by Network URL
-	var targetIface *computebeta.NetworkInterface
+	var targetIface *computealpha.NetworkInterface
 	for _, iface := range instance.NetworkInterfaces {
 		if iface.Network == networkURL {
 			targetIface = iface
@@ -1145,11 +1151,11 @@ func (g *Cloud) mutateAliasIPRanges(
 
 	newRanges := mutate(targetIface.Name, targetIface.AliasIpRanges)
 	if newRanges == nil {
-		newRanges = []*computebeta.AliasIpRange{}
+		newRanges = []*computealpha.AliasIpRange{}
 	}
 
 	// Prepare the update body
-	ifaceUpdate := &computebeta.NetworkInterface{
+	ifaceUpdate := &computealpha.NetworkInterface{
 		Name:          targetIface.Name,
 		Fingerprint:   targetIface.Fingerprint,
 		AliasIpRanges: newRanges,
@@ -1158,9 +1164,9 @@ func (g *Cloud) mutateAliasIPRanges(
 	// Call UpdateNetworkInterface (blocks until LRO completes)
 	mc := newInstancesMetricContext("update_instance_alias_ip_ranges", zone)
 	if g.projectFromNodeProviderID {
-		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate, cloud.ForceProjectID(project))
+		err = g.c.AlphaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate, cloud.ForceProjectID(project))
 	} else {
-		err = g.c.BetaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate)
+		err = g.c.AlphaInstances().UpdateNetworkInterface(ctx, meta.ZonalKey(name, zone), targetIface.Name, ifaceUpdate)
 	}
 	if err = mc.Observe(err); err != nil {
 		return fmt.Errorf("failed to update network interface %q on instance %q: %w", targetIface.Name, name, err)

@@ -91,6 +91,7 @@ func NewController(
 		gceCloud,
 		gceCache,
 		statusCtrl,
+		NewStaticRangeProvider(nil),
 	)
 
 	return &Controller{

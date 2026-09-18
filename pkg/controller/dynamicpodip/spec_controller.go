@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
@@ -81,6 +82,7 @@ type NodeNetworkConfigSpecController struct {
 	nncSynced     cache.InformerSynced
 	nodeSynced    cache.InformerSynced
 	statusTrigger StatusTrigger
+	rangeProvider CandidateRangeProvider
 	queue         workqueue.TypedRateLimitingInterface[string]
 }
 
@@ -93,9 +95,13 @@ func NewSpecController(
 	gceCloud *gce.Cloud,
 	gceCache *GCECache,
 	statusTrigger StatusTrigger,
+	rangeProvider CandidateRangeProvider,
 ) *NodeNetworkConfigSpecController {
 	if statusTrigger == nil {
 		statusTrigger = &NoopStatusTrigger{}
+	}
+	if rangeProvider == nil {
+		rangeProvider = NewStaticRangeProvider(nil)
 	}
 
 	c := &NodeNetworkConfigSpecController{
@@ -111,6 +117,7 @@ func NewSpecController(
 		nncSynced:     nncInformer.Informer().HasSynced,
 		nodeSynced:    nodeInformer.Informer().HasSynced,
 		statusTrigger: statusTrigger,
+		rangeProvider: rangeProvider,
 		queue:         newNodeWorkqueue("dynamic-pod-ip-spec"),
 	}
 
@@ -218,6 +225,17 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		return fmt.Errorf("failed to update status condition to Updating: %w", err)
 	}
 
+	// Retrieve candidate secondary range names for alias IP allocation
+	var candidateRanges []string
+	if c.rangeProvider != nil {
+		ranges, err := c.rangeProvider.GetCandidateRanges(ctx)
+		if err != nil {
+			klog.Warningf("Failed to retrieve candidate pod secondary ranges for node %q: %v", nnc.Name, err)
+		} else {
+			candidateRanges = ranges
+		}
+	}
+
 	// Execute GCE VM alias IP mutations
 	for _, network := range changes.Networks() {
 		netChanges := changes.GetNetwork(network)
@@ -228,12 +246,16 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 			return fmt.Errorf("failed to resolve network URL for network %q: %w", network, err)
 		}
 
-		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v",
-			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals)
+		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v, candidateRanges=%v",
+			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
 
-		err = c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, networkURL, netChanges.additions, netChanges.removals)
+		err = c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
 		if err != nil {
 			klog.Errorf("GCE mutation failed for node %q network %q: %v", nnc.Name, network, err)
+			if c.rangeProvider != nil && isAllocationExhaustionError(err) {
+				klog.V(2).Infof("IP allocation failed with exhaustion for node %q; invalidating candidate range cache", nnc.Name)
+				c.rangeProvider.Invalidate()
+			}
 			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("GCE mutation failed: %v", err))
 			return fmt.Errorf("failed GCE mutation for network %q: %w", network, err)
 		}
@@ -432,4 +454,28 @@ func (c *NodeNetworkConfigSpecController) pruneReleasableCIDRs(ctx context.Conte
 func (c *NodeNetworkConfigSpecController) updateStatusError(ctx context.Context, nnc *nncv1.NodeNetworkConfig, reason, message string) error {
 	setNNCCondition(nnc, string(nncv1.NodeNetworkConfigConditionReady), metav1.ConditionFalse, reason, message)
 	return c.updateNNCStatus(ctx, nnc)
+}
+
+// isAllocationExhaustionError returns true if the error from GCE indicates
+// IP address or range exhaustion.
+func isAllocationExhaustionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	exhaustionKeywords := []string{
+		"exhausted",
+		"ip_space_exhausted",
+		"resource_pool_exhausted",
+		"free ip",
+		"not enough",
+		"quota",
+		"cannot allocate",
+	}
+	for _, kw := range exhaustionKeywords {
+		if strings.Contains(errStr, kw) {
+			return true
+		}
+	}
+	return false
 }
