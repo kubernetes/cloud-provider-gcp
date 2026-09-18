@@ -61,6 +61,13 @@ type Options struct {
 	// EnableDynamicPodIPController activates the "write" side (NodeNetworkConfigSpecController).
 	// Enabling this implicitly forces PopulateNodeNetworkConfig to true.
 	EnableDynamicPodIPController bool
+	// MultiSecondaryRanges provides secondary range names and their lifecycle
+	// statuses (e.g. "range1=ACTIVE,range2=DRAINING"). When provided, Container
+	// API discovery and periodic background refresh are bypassed.
+	MultiSecondaryRanges []string
+	// ClusterName is the name of the Kubernetes cluster (used to query
+	// Container API for candidate secondary ranges).
+	ClusterName string
 }
 
 // StartControllers initializes and starts the status and/or spec controllers based on the provided options.
@@ -116,6 +123,21 @@ func StartControllers(
 
 	if opts.EnableDynamicPodIPController {
 		klog.Info("Initializing NodeNetworkConfig Spec Controller")
+		var rangeProvider CandidateRangeProvider
+		if len(ParseSecondaryRangeConfigs(opts.MultiSecondaryRanges)) > 0 {
+			klog.Infof("Using configured multi secondary ranges: %v", opts.MultiSecondaryRanges)
+			defaultSubnet := ""
+			if gceCloud != nil {
+				defaultSubnet = gceCloud.SubnetworkURL()
+			}
+			rangeProvider = NewStaticRangeProviderWithDefaultSubnet(opts.MultiSecondaryRanges, defaultSubnet)
+		} else {
+			klog.Info("Initializing dynamic candidate pod secondary range refresher")
+			refresher := NewPodRangeRefresher(gceCloud, opts.ClusterName, DefaultPodRangeRefreshInterval, clock.RealClock{})
+			go refresher.Run(ctx.Done())
+			rangeProvider = refresher
+		}
+
 		specCtrl := NewSpecController(
 			kubeClient,
 			nncClient,
@@ -124,6 +146,7 @@ func StartControllers(
 			gceCloud,
 			gceCache,
 			statusTrigger,
+			rangeProvider,
 		)
 		go specCtrl.Run(DefaultSpecControllerWorkers, ctx.Done())
 	}

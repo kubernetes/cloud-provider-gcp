@@ -51,8 +51,8 @@ func ResolveNetworkURL(gceCloud *gce.Cloud, netName string) (string, error) {
 	return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", gceCloud.ProjectID(), netName), nil
 }
 
-// ExtractNetworkName extracts the network resource name from a full GCE network URL.
-// Returns an error if networkURL is empty.
+// ExtractNetworkName extracts the network resource name from a full GCE network
+// URL. Returns an error if networkURL is empty.
 func ExtractNetworkName(networkURL string) (string, error) {
 	if networkURL == "" {
 		return "", fmt.Errorf("network URL cannot be empty")
@@ -63,4 +63,24 @@ func ExtractNetworkName(networkURL string) (string, error) {
 		return "", fmt.Errorf("invalid network URL %q", networkURL)
 	}
 	return name, nil
+}
+
+// canonicalSubnetwork returns the subnetwork resource name (the last path
+// component) or an empty string if empty.
+func canonicalSubnetwork(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	return lastComponent(s)
+}
+
+// lastComponent returns the last component of a URL or path, i.e. anything
+// after the last slash. If there is no slash, returns the whole string.
+func lastComponent(s string) string {
+	lastSlash := strings.LastIndex(s, "/")
+	if lastSlash != -1 {
+		s = s[lastSlash+1:]
+	}
+	return s
 }

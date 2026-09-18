@@ -102,6 +102,11 @@ var (
 
 	// populateNodeNetworkConfig enables the node-network-config-status-controller.
 	populateNodeNetworkConfig bool
+
+	// multiSecondaryRanges specifies secondary IP range names and their
+	// lifecycle statuses (e.g. range1=ACTIVE,range2=DRAINING) for pod IP
+	// allocations in Adaptive Cluster IPAM mode.
+	multiSecondaryRanges []string
 )
 
 func main() {
@@ -128,6 +133,7 @@ func main() {
 	cloudProviderFS.StringVar(&overrideL4NetLBHealthCheckSourceCIDRs, "override-l4-netlb-health-check-src-cidrs", "", "Overrides the default source IPv4 ranges used when configuring firewall rules to allow health check probes for L4 NetLB load balancers. Provide the ranges as a comma-separated list of CIDRs. Example: --override-l4-netlb-health-check-src-cidrs=209.85.204.0/22")
 	cloudProviderFS.BoolVar(&enableDynamicPodIPController, "enable-dynamic-pod-ip-controller", false, "Enables the GKE Dynamic Pod IP Controller.")
 	cloudProviderFS.BoolVar(&populateNodeNetworkConfig, "populate-node-network-config", false, "Enables population of NodeNetworkConfig status from GCE state.")
+	cloudProviderFS.StringSliceVar(&multiSecondaryRanges, "multi-secondary-ranges", nil, "Comma-separated list of secondary range names with optional subnetwork and lifecycle status (e.g. --multi-secondary-ranges=[subnetwork/]range1=ACTIVE,range2=DRAINING or range1=ACTIVE) for pod IP allocations in Adaptive Cluster IPAM mode. Active ranges are used as candidates for pod IP allocations. If set, disables automatic Container API discovery.")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
