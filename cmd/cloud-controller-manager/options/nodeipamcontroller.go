@@ -41,6 +41,7 @@ func (o *NodeIPAMControllerOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.Int32Var(&o.NodeCIDRMaskSizeIPv6, "node-cidr-mask-size-ipv6", o.NodeCIDRMaskSizeIPv6, "Mask size for IPv6 node cidr in dual-stack cluster. Default is 64.")
 	fs.BoolVar(&o.EnableMultiSubnetCluster, "enable-multi-subnet-cluster", o.EnableMultiSubnetCluster, "Enabled multi-subnet cluster feature. This enables generating updated nodeTopology custom resource. ")
 	fs.BoolVar(&o.EnableMultiNetworking, "enable-multi-networking", o.EnableMultiNetworking, "Enabled multi-networking related logics such as multi-networking IPAM.")
+	fs.BoolVar(&o.EnableNodeNetworkConfig, "enable-node-network-config", o.EnableNodeNetworkConfig, "Enabled node network config feature. This enables generating nodeNetworkConfig custom resource for each node.")
 }
 
 // ApplyTo fills up NodeIpamController config with options.
@@ -63,6 +64,7 @@ func (o *NodeIPAMControllerOptions) ApplyTo(cfg *nodeipamconfig.NodeIPAMControll
 	cfg.NodeCIDRMaskSizeIPv6 = o.NodeCIDRMaskSizeIPv6
 	cfg.EnableMultiSubnetCluster = o.EnableMultiSubnetCluster
 	cfg.EnableMultiNetworking = o.EnableMultiNetworking
+	cfg.EnableNodeNetworkConfig = o.EnableNodeNetworkConfig
 
 	return nil
 }
