@@ -37,14 +37,17 @@ const (
 	DefaultCacheMaxAge = 10 * time.Minute
 )
 
-// networkInterface is a controller-internal, lightweight representation of a GCE network interface.
+// networkInterface is a controller-internal, lightweight representation
+// of a GCE network interface.
 type networkInterface struct {
 	Name          string
 	Network       string
+	Subnetwork    string
 	AliasIPRanges []string
 }
 
-// toNetworkInterfaces converts a slice of GCE API computebeta.NetworkInterface objects to controller-internal networkInterface objects.
+// toNetworkInterfaces converts a slice of GCE API computebeta.NetworkInterface
+// objects to controller-internal networkInterface objects.
 func toNetworkInterfaces(gceIfaces []*computebeta.NetworkInterface) []*networkInterface {
 	if gceIfaces == nil {
 		return nil
@@ -55,8 +58,9 @@ func toNetworkInterfaces(gceIfaces []*computebeta.NetworkInterface) []*networkIn
 			continue
 		}
 		ni := &networkInterface{
-			Name:    iface.Name,
-			Network: iface.Network,
+			Name:       iface.Name,
+			Network:    iface.Network,
+			Subnetwork: iface.Subnetwork,
 		}
 		for _, r := range iface.AliasIpRanges {
 			if r != nil && r.IpCidrRange != "" {
@@ -68,7 +72,8 @@ func toNetworkInterfaces(gceIfaces []*computebeta.NetworkInterface) []*networkIn
 	return res
 }
 
-// deepCopyInterfaces performs a deep copy of internal network interfaces to prevent data races.
+// deepCopyInterfaces performs a deep copy of internal network interfaces to
+// prevent data races.
 func deepCopyInterfaces(ifaces []*networkInterface) []*networkInterface {
 	if ifaces == nil {
 		return nil
@@ -79,8 +84,9 @@ func deepCopyInterfaces(ifaces []*networkInterface) []*networkInterface {
 			continue
 		}
 		niCopy := &networkInterface{
-			Name:    ni.Name,
-			Network: ni.Network,
+			Name:       ni.Name,
+			Network:    ni.Network,
+			Subnetwork: ni.Subnetwork,
 		}
 		if ni.AliasIPRanges != nil {
 			niCopy.AliasIPRanges = append([]string(nil), ni.AliasIPRanges...)

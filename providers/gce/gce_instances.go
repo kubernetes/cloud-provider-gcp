@@ -1056,8 +1056,9 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 	networkURL string,
 	additions []string, // e.g. ["/28"]
 	removals []string, // e.g. ["10.100.0.0/28"]
+	candidateSubnetworkRangeNames []string, // e.g. ["pod-range-1", "pod-range-2"]
 ) error {
-	klog.V(2).Infof("UpdateInstanceAliasIPRanges: providerID=%q, networkURL=%q, additions=%v, removals=%v", providerID, networkURL, additions, removals)
+	klog.V(2).Infof("UpdateInstanceAliasIPRanges: providerID=%q, networkURL=%q, additions=%v, removals=%v, candidateSubnetworkRangeNames=%v", providerID, networkURL, additions, removals, candidateSubnetworkRangeNames)
 
 	if len(removals) > 0 {
 		removalSet := sets.NewString(removals...)
@@ -1080,13 +1081,17 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 	if len(additions) > 0 {
 		err := g.mutateAliasIPRanges(ctx, providerID, networkURL, func(ifaceName string, current []*computebeta.AliasIpRange) []*computebeta.AliasIpRange {
 			next := append([]*computebeta.AliasIpRange{}, current...)
-			// TODO: Look up the appropriate secondary range for each network.
 			for _, add := range additions {
 				klog.V(4).Infof("Adding alias IP range size %q to interface %q", add, ifaceName)
-				next = append(next, &computebeta.AliasIpRange{
-					IpCidrRange:         add,
-					SubnetworkRangeName: g.secondaryRangeName, // Use the configured secondary range name
-				})
+				aliasRange := &computebeta.AliasIpRange{
+					IpCidrRange: add,
+				}
+				if len(candidateSubnetworkRangeNames) > 0 {
+					aliasRange.CandidateSubnetworkRangeNames = candidateSubnetworkRangeNames
+				} else {
+					aliasRange.SubnetworkRangeName = g.secondaryRangeName
+				}
+				next = append(next, aliasRange)
 			}
 			return next
 		})
