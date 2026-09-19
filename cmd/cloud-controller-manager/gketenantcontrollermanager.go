@@ -193,7 +193,7 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 		},
 		"node-lifecycle-controller": func(cfg *gketenantcontrollers.ControllerConfig) error {
 			klog.Infof("Creating Node Lifecycle Controller for %s...", cfg.ProviderConfig.Name)
-			nodeMonitorPeriod := mgrCfg.completedConfig.ComponentConfig.KubeCloudShared.NodeMonitorPeriod.Duration
+			nodeMonitorPeriod := mgrCfg.completedConfig.ComponentConfig.NodeLifecycleController.NodeMonitorPeriod.Duration
 			// Wrap the informer to filter nodes
 			filteringInformer := &utilnode.GKEFilteringNodeInformer{NodeInformer: cfg.NodeInformer}
 			lifecycleController, err := nodelifecycle.NewCloudNodeLifecycleController(
@@ -201,6 +201,7 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 				cfg.KubeClient,
 				cfg.Cloud,
 				nodeMonitorPeriod,
+				int(mgrCfg.completedConfig.ComponentConfig.NodeLifecycleController.ConcurrentNodeLifecycleSyncs),
 			)
 			if err != nil {
 				return err
@@ -319,13 +320,18 @@ func getCIDRsFromProviderConfig(pc *v1.ProviderConfig) string {
 	var ipv4CIDR, ipv6CIDR string
 
 	for _, podRange := range pc.Spec.NetworkConfig.SubnetInfo.PodRanges {
-		family := netutils.IPFamilyOfCIDRString(podRange.CIDR)
+		for _, candidate := range []string{podRange.CIDR, podRange.IPv6CIDR} {
+			if candidate == "" {
+				continue
+			}
+			family := netutils.IPFamilyOfCIDRString(candidate)
 
-		if family == netutils.IPv4 && ipv4CIDR == "" {
-			ipv4CIDR = podRange.CIDR
-		}
-		if family == netutils.IPv6 && ipv6CIDR == "" {
-			ipv6CIDR = podRange.CIDR
+			if family == netutils.IPv4 && ipv4CIDR == "" {
+				ipv4CIDR = candidate
+			}
+			if family == netutils.IPv6 && ipv6CIDR == "" {
+				ipv6CIDR = candidate
+			}
 		}
 
 		// Break early if we have found one of each

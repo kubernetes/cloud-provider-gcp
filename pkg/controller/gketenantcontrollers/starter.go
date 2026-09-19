@@ -6,13 +6,15 @@ package gketenantcontrollers
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
 
 	v1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
-	"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/filtered"
+	filtered "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/filteredinformer"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
@@ -115,7 +117,11 @@ func (s *ControllersStarter) ControllerNames() []string {
 
 // StartController starts a map of new scoped controllers for the given ProviderConfig.
 // It returns a release channel that can be closed to stop the controller.
-func (s *ControllersStarter) StartController(pc *v1.ProviderConfig) (chan<- struct{}, error) {
+func (s *ControllersStarter) StartController(unstructuredPC *unstructured.Unstructured) (chan<- struct{}, error) {
+	pc := &v1.ProviderConfig{}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredPC.Object, pc); err != nil {
+		return nil, fmt.Errorf("failed to convert unstructured ProviderConfig %s: %w", unstructuredPC.GetName(), err)
+	}
 	pcKey := pc.Name
 	stopCh := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
