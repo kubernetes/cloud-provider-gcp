@@ -141,7 +141,7 @@ func TestGetCIDRsFromProviderConfig(t *testing.T) {
 					NetworkConfig: v1.ProviderNetworkConfig{
 						SubnetInfo: v1.ProviderConfigSubnetInfo{
 							PodRanges: []v1.ProviderConfigSecondaryRange{
-								{CIDR: "10.100.0.0/16"},
+								{Range: v1.Range{CIDR: "10.100.0.0/16"}},
 							},
 						},
 					},
@@ -156,7 +156,7 @@ func TestGetCIDRsFromProviderConfig(t *testing.T) {
 					NetworkConfig: v1.ProviderNetworkConfig{
 						SubnetInfo: v1.ProviderConfigSubnetInfo{
 							PodRanges: []v1.ProviderConfigSecondaryRange{
-								{CIDR: "fd00::/64"},
+								{Range: v1.Range{CIDR: "fd00::/64"}},
 							},
 						},
 					},
@@ -171,8 +171,8 @@ func TestGetCIDRsFromProviderConfig(t *testing.T) {
 					NetworkConfig: v1.ProviderNetworkConfig{
 						SubnetInfo: v1.ProviderConfigSubnetInfo{
 							PodRanges: []v1.ProviderConfigSecondaryRange{
-								{CIDR: "10.100.0.0/16"},
-								{CIDR: "fd00::/64"},
+								{Range: v1.Range{CIDR: "10.100.0.0/16"}},
+								{Range: v1.Range{CIDR: "fd00::/64"}},
 							},
 						},
 					},
@@ -187,8 +187,8 @@ func TestGetCIDRsFromProviderConfig(t *testing.T) {
 					NetworkConfig: v1.ProviderNetworkConfig{
 						SubnetInfo: v1.ProviderConfigSubnetInfo{
 							PodRanges: []v1.ProviderConfigSecondaryRange{
-								{CIDR: "fd00::/64"},
-								{CIDR: "10.100.0.0/16"},
+								{Range: v1.Range{CIDR: "fd00::/64"}},
+								{Range: v1.Range{CIDR: "10.100.0.0/16"}},
 							},
 						},
 					},
@@ -203,8 +203,8 @@ func TestGetCIDRsFromProviderConfig(t *testing.T) {
 					NetworkConfig: v1.ProviderNetworkConfig{
 						SubnetInfo: v1.ProviderConfigSubnetInfo{
 							PodRanges: []v1.ProviderConfigSecondaryRange{
-								{CIDR: "10.100.0.0/16"},
-								{CIDR: "10.200.0.0/16"},
+								{Range: v1.Range{CIDR: "10.100.0.0/16"}},
+								{Range: v1.Range{CIDR: "10.200.0.0/16"}},
 							},
 						},
 					},
@@ -219,8 +219,8 @@ func TestGetCIDRsFromProviderConfig(t *testing.T) {
 					NetworkConfig: v1.ProviderNetworkConfig{
 						SubnetInfo: v1.ProviderConfigSubnetInfo{
 							PodRanges: []v1.ProviderConfigSecondaryRange{
-								{CIDR: "fd00::/64"},
-								{CIDR: "fd01::/64"},
+								{Range: v1.Range{CIDR: "fd00::/64"}},
+								{Range: v1.Range{CIDR: "fd01::/64"}},
 							},
 						},
 					},
@@ -235,10 +235,10 @@ func TestGetCIDRsFromProviderConfig(t *testing.T) {
 					NetworkConfig: v1.ProviderNetworkConfig{
 						SubnetInfo: v1.ProviderConfigSubnetInfo{
 							PodRanges: []v1.ProviderConfigSecondaryRange{
-								{CIDR: "10.1.0.0/16"},
-								{CIDR: "fd00::/64"},
-								{CIDR: "10.2.0.0/16"},
-								{CIDR: "fd01::/64"},
+								{Range: v1.Range{CIDR: "10.1.0.0/16"}},
+								{Range: v1.Range{CIDR: "fd00::/64"}},
+								{Range: v1.Range{CIDR: "10.2.0.0/16"}},
+								{Range: v1.Range{CIDR: "fd01::/64"}},
 							},
 						},
 					},
@@ -279,8 +279,8 @@ func TestGetCIDRsFromProviderConfig(t *testing.T) {
 					NetworkConfig: v1.ProviderNetworkConfig{
 						SubnetInfo: v1.ProviderConfigSubnetInfo{
 							PodRanges: []v1.ProviderConfigSecondaryRange{
-								{CIDR: "invalid-cidr"},
-								{CIDR: "10.100.0.0/16"},
+								{Range: v1.Range{CIDR: "invalid-cidr"}},
+								{Range: v1.Range{CIDR: "10.100.0.0/16"}},
 							},
 						},
 					},

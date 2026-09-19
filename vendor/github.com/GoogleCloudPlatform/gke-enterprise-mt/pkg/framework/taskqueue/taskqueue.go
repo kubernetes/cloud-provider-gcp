@@ -7,6 +7,7 @@ import (
 
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+
 	"k8s.io/klog/v2"
 )
 
@@ -76,12 +77,12 @@ func (t *PeriodicTaskQueueWithMultipleWorkers) runInternal(workerID int) {
 			close(t.workerDone[workerID])
 			return
 		}
-		klog.V(4).Info("Syncing", "workerId", workerID, "key", key, "resource", t.resource)
+		klog.V(4).InfoS("Syncing", "workerID", workerID, "key", key, "resource", t.resource)
 		if err := t.sync(ctx, key.(string)); err != nil {
-			klog.Errorf("Requeuing due to error: %v, workerId: %v, key: %v, resource: %v", err, workerID, key, t.resource)
+			klog.Errorf("Requeuing due to error: %v, workerID: %v, key: %v, resource: %v", err, workerID, key, t.resource)
 			t.queue.AddRateLimited(key)
 		} else {
-			klog.V(4).Info("Finished syncing", "workerId", workerID, "key", key)
+			klog.V(4).InfoS("Finished syncing", "workerID", workerID, "key", key)
 			t.queue.Forget(key)
 		}
 		t.queue.Done(key)
@@ -91,7 +92,7 @@ func (t *PeriodicTaskQueueWithMultipleWorkers) runInternal(workerID int) {
 // Run spawns off n parallel worker routines and returns immediately.
 func (t *PeriodicTaskQueueWithMultipleWorkers) Run() {
 	for worker := 0; worker < t.numWorkers; worker++ {
-		klog.Info("Spawning off worker for taskQueue", "workerId", worker, "resource", t.resource)
+		klog.InfoS("Spawning off worker for taskQueue", "workerID", worker, "resource", t.resource)
 		go t.runInternal(worker)
 	}
 }
@@ -104,14 +105,14 @@ func (t *PeriodicTaskQueueWithMultipleWorkers) Enqueue(objs ...any) {
 			klog.Errorf("Couldn't get key for object: %v, objectType: %T, error: %v", fmt.Sprintf("%+v", obj), obj, err)
 			return
 		}
-		klog.V(4).Info("Enqueue key", "key", key, "resource", t.resource)
+		klog.V(4).InfoS("Enqueue key", "key", key, "resource", t.resource)
 		t.queue.Add(key)
 	}
 }
 
 // Shutdown shuts down the work queue and waits for all the workers to ACK
 func (t *PeriodicTaskQueueWithMultipleWorkers) Shutdown() {
-	klog.V(2).Info("Shutting down task queue for resource", "resource", t.resource)
+	klog.V(2).InfoS("Shutting down task queue for resource", "resource", t.resource)
 	t.queue.ShutDown()
 	// wait for all workers to shutdown.
 	for _, workerDone := range t.workerDone {
