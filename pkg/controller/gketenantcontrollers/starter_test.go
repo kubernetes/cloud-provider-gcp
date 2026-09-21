@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/informers"
@@ -25,6 +26,15 @@ import (
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	controllermanagerapp "k8s.io/controller-manager/app"
 )
+
+func toUnstructured(t *testing.T, pc *v1.ProviderConfig) *unstructured.Unstructured {
+	t.Helper()
+	obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(pc)
+	if err != nil {
+		t.Fatalf("failed to convert ProviderConfig to unstructured: %v", err)
+	}
+	return &unstructured.Unstructured{Object: obj}
+}
 
 func TestNewControllersStarter(t *testing.T) {
 	kubeClient := fake.NewSimpleClientset()
@@ -204,7 +214,7 @@ func TestStartController_CloudClientRetry(t *testing.T) {
 			mainInformerFactory.Start(stopCh)
 
 			// Start the controller asynchronously
-			runStopCh, err := starter.StartController(pc)
+			runStopCh, err := starter.StartController(toUnstructured(t, pc))
 			assert.NoError(t, err)
 			defer close(runStopCh)
 
@@ -281,7 +291,7 @@ func TestStartController_RegisterCleanup(t *testing.T) {
 	mainInformerFactory.Start(stopCh)
 
 	// Start the controller asynchronously
-	runStopCh, err := starter.StartController(pc)
+	runStopCh, err := starter.StartController(toUnstructured(t, pc))
 	assert.NoError(t, err)
 
 	// Wait for the controller to start
@@ -361,7 +371,7 @@ func TestStartController_TeardownSynchronization(t *testing.T) {
 	defer close(stopCh)
 	mainInformerFactory.Start(stopCh)
 
-	runStopCh, err := starter.StartController(pc)
+	runStopCh, err := starter.StartController(toUnstructured(t, pc))
 	assert.NoError(t, err)
 
 	select {

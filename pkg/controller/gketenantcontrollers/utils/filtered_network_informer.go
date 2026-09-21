@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/filtered"
+	filtered "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/filteredinformer"
 	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
 	network "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network"
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1"
