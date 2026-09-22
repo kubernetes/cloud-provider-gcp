@@ -99,3 +99,55 @@ updates:
     - "*rc*"
     - "*beta*"
     - "*alpha*"
+- package-ecosystem: "github-actions"
+  directory: "/"
+  target-branch: "release-1.37"
+  schedule:
+    interval: "weekly"
+    day: "sunday"
+  labels:
+  - "ok-to-test"
+  - 'area/dependency'
+  - 'release-note-none'
+- package-ecosystem: gomod
+  directories:
+  - "/"
+  - "/providers"
+  - "/metis"
+  - "/test/e2e"
+  target-branch: "release-1.37"
+  schedule:
+    interval: weekly
+  labels:
+  - 'area/dependency'
+  - 'release-note-none'
+  - 'ok-to-test'
+  groups:
+    k8s-dependencies:
+      patterns:
+      - "k8s.io/*"
+      - "sigs.k8s.io/*"
+    workspace-deps:
+      patterns:
+        - "*"
+      exclude-patterns:
+        - "k8s.io/*"
+        - "sigs.k8s.io/*"
+- package-ecosystem: "docker"
+  directories:
+  - "/"
+  - "/metis"
+  target-branch: "release-1.37"
+  schedule:
+    interval: "weekly"
+  labels:
+  - "ok-to-test"
+  - 'area/dependency'
+  - 'release-note-none'
+  ignore:
+  - dependency-name: "golang"
+    versions:
+    - "*rc*"
+    - "*beta*"
+    - "*alpha*"
+
