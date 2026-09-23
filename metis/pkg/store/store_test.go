@@ -1869,3 +1869,101 @@ func setupStoreWithCIDRs(t *testing.T, network string, cidrs ...string) *Store {
 	}
 	return s
 }
+
+func TestStore_NonReusableCIDRBlock(t *testing.T) {
+	network := "non-reusable-net"
+	cidr := "10.1.3.1/32"
+	ctx := context.Background()
+	s, err := NewStore(ctx, logr.Discard(), ":memory:")
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	if err := s.AddCIDR(ctx, network, cidr, WithReusable(false)); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	blockID, _, err := s.GetCIDRBlock(ctx, cidr, network)
+	if err != nil {
+		t.Fatalf("GetCIDRBlock failed: %v", err)
+	}
+
+	// 1. Allocate IP to container
+	cid := "c1"
+	_, _, err = s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: cid, IPFamily: IPv4})
+	if err != nil {
+		t.Fatalf("AllocateIP %s failed: %v", cid, err)
+	}
+
+	// 2. Release the pod and check state transitions to Deleting immediately
+	_, err = s.ReleaseIPByOwner(ctx, network, cid, "eth0", 0)
+	if err != nil {
+		t.Fatalf("ReleaseIPByOwner %s failed: %v", cid, err)
+	}
+
+	var state string
+	err = s.db.QueryRowContext(ctx, "SELECT state FROM cidr_blocks WHERE id = ?", blockID).Scan(&state)
+	if err != nil || state != string(StateDeleting) {
+		t.Fatalf("Expected state=Deleting after releasing pod %s; got state=%s, err=%v", cid, state, err)
+	}
+
+	// 3. Verify no more IPs can be allocated from the block
+	_, _, err = s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "c-overflow", IPFamily: IPv4})
+	if err == nil {
+		t.Fatalf("Expected error when allocating from Deleting block, but succeeded")
+	}
+}
+
+func TestStore_NonReusableCIDRBlock_Validation(t *testing.T) {
+	tests := []struct {
+		name    string
+		cidr    string
+		wantErr bool
+	}{
+		{
+			name:    "valid /32",
+			cidr:    "10.1.3.1/32",
+			wantErr: false,
+		},
+		{
+			name:    "invalid /28",
+			cidr:    "10.4.0.0/28",
+			wantErr: true,
+		},
+		{
+			name:    "invalid /24",
+			cidr:    "10.0.0.0/24",
+			wantErr: true,
+		},
+		{
+			name:    "invalid IPv6 /128",
+			cidr:    "2001:db8::1/128",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			network := "net-" + tt.name
+			ctx := context.Background()
+			s, err := NewStore(ctx, logr.Discard(), ":memory:")
+			if err != nil {
+				t.Fatalf("NewStore failed: %v", err)
+			}
+
+			err = s.AddCIDR(ctx, network, tt.cidr, WithReusable(false))
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Expected error for non-reusable CIDR %s, got nil", tt.cidr)
+				}
+				if !errors.Is(err, ErrNonReusableNot32) {
+					t.Fatalf("Expected error wrapping ErrNonReusableNot32, got: %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Expected success for non-reusable CIDR %s, got: %v", tt.cidr, err)
+				}
+			}
+		})
+	}
+}
