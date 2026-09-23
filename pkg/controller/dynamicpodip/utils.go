@@ -18,9 +18,9 @@ package dynamicpodip
 
 import (
 	"fmt"
-	"strings"
 
-	gce "k8s.io/cloud-provider-gcp/providers/gce"
+	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
+	"k8s.io/cloud-provider-gcp/providers/gce"
 )
 
 // nodeNotReadyError is returned by a controller's syncNode when the Node backing a
@@ -39,28 +39,34 @@ func (e *nodeNotReadyError) Error() string {
 	return fmt.Sprintf("node %q is not ready for reconciliation: %s", e.nodeName, e.reason)
 }
 
-// ResolveNetworkURL converts a network name to a GCE network URL.
-// Returns an error if netName is empty or gceCloud is nil.
-func ResolveNetworkURL(gceCloud *gce.Cloud, netName string) (string, error) {
+// resolveGCENetworkURL converts a Kubernetes logical network name into a full GCE network URL.
+// Currently, only the primary network ("default" or empty) is supported, which resolves to the
+// cluster's primary NetworkURL().
+//
+// TODO: Support Multi-Network (MN) by resolving secondary networks via Network and
+// GKENetworkParamSet (GNP) informers instead of returning an error.
+func resolveGCENetworkURL(gceCloud *gce.Cloud, netName string) (string, error) {
 	if gceCloud == nil {
 		return "", fmt.Errorf("GCE cloud provider is nil")
 	}
-	if netName == "" {
-		return "", fmt.Errorf("network name cannot be empty")
+	if netName == "" || netName == networkv1.DefaultPodNetworkName {
+		url := gceCloud.NetworkURL()
+		if url == "" {
+			return "", fmt.Errorf("cluster network URL is not configured on GCE cloud provider")
+		}
+		return url, nil
 	}
-	return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", gceCloud.ProjectID(), netName), nil
+	return "", fmt.Errorf("unsupported network %q: only %q is currently supported", netName, networkv1.DefaultPodNetworkName)
 }
 
-// ExtractNetworkName extracts the network resource name from a full GCE network URL.
-// Returns an error if networkURL is empty.
-func ExtractNetworkName(networkURL string) (string, error) {
-	if networkURL == "" {
-		return "", fmt.Errorf("network URL cannot be empty")
+// resolveKubernetesNetworkName returns the Kubernetes network name for a GCE network interface.
+// Currently, only the primary interface (nic0) is supported, which maps to "default".
+//
+// TODO: Support Multi-Network (MN) by matching secondary interfaces (nic1+) against
+// Network and GKENetworkParamSet (GNP) informers instead of returning an error.
+func resolveKubernetesNetworkName(iface *networkInterface) (string, error) {
+	if iface.Name == "nic0" {
+		return networkv1.DefaultPodNetworkName, nil
 	}
-	parts := strings.Split(networkURL, "/")
-	name := parts[len(parts)-1]
-	if name == "" {
-		return "", fmt.Errorf("invalid network URL %q", networkURL)
-	}
-	return name, nil
+	return "", fmt.Errorf("unsupported interface %q: only primary interface (nic0) is currently supported", iface.Name)
 }

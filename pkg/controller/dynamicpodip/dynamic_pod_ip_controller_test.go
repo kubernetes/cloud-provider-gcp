@@ -72,6 +72,10 @@ type testFixture struct {
 }
 
 func newTestFixture(t *testing.T) *testFixture {
+	return newTestFixtureWithNetworkURL(t, testNetworkURL)
+}
+
+func newTestFixtureWithNetworkURL(t *testing.T, networkURL string) *testFixture {
 	kubeClient := k8sfake.NewSimpleClientset()
 	nncClient := nncfake.NewSimpleClientset()
 
@@ -125,7 +129,7 @@ func newTestFixture(t *testing.T) *testFixture {
 	testClusterValues := gce.DefaultTestClusterValues()
 	testClusterValues.ProjectID = testProject
 	testClusterValues.ZoneName = testZone
-	testClusterValues.NetworkURL = testNetworkURL
+	testClusterValues.NetworkURL = networkURL
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
 
 	// Register the UpdateNetworkInterface hook to simulate GCE mutation and allocation
@@ -968,7 +972,12 @@ func TestReconcile_IdempotentRetryOnStatusFailure(t *testing.T) {
 	}
 }
 
-func TestReconcile_MultiNetwork(t *testing.T) {
+// TestReconcile_MultiNIC_IgnoresSecondaryInterfaces verifies that on a node
+// with multiple network interfaces (nic0 and nic1+), the dynamic pod IP
+// controller only allocates and mutates alias IP ranges on the primary interface
+// (nic0) corresponding to the "default" network, leaving secondary interfaces
+// completely untouched and unmanaged.
+func TestReconcile_MultiNIC_IgnoresSecondaryInterfaces(t *testing.T) {
 	ctx := context.Background()
 	f := newTestFixture(t)
 	stopCh := make(chan struct{})
@@ -1001,7 +1010,7 @@ func TestReconcile_MultiNetwork(t *testing.T) {
 		t.Fatalf("Failed to insert fake GCE instance: %v", err)
 	}
 
-	// Create NodeNetworkConfig requesting allocations on BOTH networks
+	// Create NodeNetworkConfig requesting allocations on the default network
 	nnc := &nncv1.NodeNetworkConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNodeName,
@@ -1010,10 +1019,6 @@ func TestReconcile_MultiNetwork(t *testing.T) {
 			Allocations: []nncv1.Allocation{
 				{
 					Network: "default",
-					Pods:    32, // needs 2 blocks of /28
-				},
-				{
-					Network: customNetworkName,
 					Pods:    32, // needs 2 blocks of /28
 				},
 			},
@@ -1032,7 +1037,7 @@ func TestReconcile_MultiNetwork(t *testing.T) {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
 
-	// Verify GCE Instance has alias IPs on BOTH interfaces
+	// Verify GCE Instance has alias IPs on nic0, while nic1 is untouched
 	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
 	if err != nil {
 		t.Fatalf("Failed to get updated GCE instance: %v", err)
@@ -1048,36 +1053,189 @@ func TestReconcile_MultiNetwork(t *testing.T) {
 		t.Errorf("Expected 2 alias IP ranges on nic0, got %d: %v", len(nic0.AliasIpRanges), nic0.AliasIpRanges)
 	}
 
-	// nic1 (custom) - expects 2 blocks of /28 for 32 pods
+	// nic1 (custom) - untouched (0 alias IP ranges).
+	// Dynamic pod IP currently only allocates and publishes IP ranges on the primary
+	// interface (nic0) corresponding to the "default" network. Secondary interfaces
+	// (nic1+) are not mutated or managed by dynamic pod IP until Multi-Network CRD
+	// support is added, so nic1 must remain untouched.
 	nic1 := updatedInstance.NetworkInterfaces[1]
-	if len(nic1.AliasIpRanges) != 2 {
-		t.Errorf("Expected 2 alias IP ranges on nic1, got %d: %v", len(nic1.AliasIpRanges), nic1.AliasIpRanges)
+	if len(nic1.AliasIpRanges) != 0 {
+		t.Errorf("Expected 0 alias IP ranges on nic1, got %d: %v", len(nic1.AliasIpRanges), nic1.AliasIpRanges)
 	}
 
-	// Verify both allocations are in NNC Status
+	// Verify only default allocations are in NNC Status.
 	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Failed to get updated NodeNetworkConfig: %v", err)
 	}
 
-	if len(updatedNNC.Status.PodCIDRs) != 4 {
-		t.Errorf("Expected 4 PodCIDRs in status, got %d: %v", len(updatedNNC.Status.PodCIDRs), updatedNNC.Status.PodCIDRs)
+	if len(updatedNNC.Status.PodCIDRs) != 2 {
+		t.Errorf("Expected 2 PodCIDRs on default network in status, got %d: %v", len(updatedNNC.Status.PodCIDRs), updatedNNC.Status.PodCIDRs)
 	}
-
-	// Verify they are mapped to the correct networks
-	defaultCount := 0
-	customCount := 0
 	for _, pc := range updatedNNC.Status.PodCIDRs {
-		if pc.Network == "default" {
-			defaultCount++
-		} else if pc.Network == customNetworkName {
-			customCount++
-		} else {
-			t.Errorf("Unexpected network %q in status PodCIDR", pc.Network)
+		if pc.Network != "default" {
+			t.Errorf("Unexpected network %q in status PodCIDR, expected only default", pc.Network)
 		}
 	}
-	if defaultCount != 2 || customCount != 2 {
-		t.Errorf("Expected 2 default and 2 custom PodCIDRs, got default=%d, custom=%d", defaultCount, customCount)
+}
+
+// TestReconcile_UnsupportedNetwork verifies that when a NodeNetworkConfig requests
+// allocations for an unsupported network (anything other than the primary "default"
+// network), reconciliation fails with an error and sets the Ready condition to False
+// with reason NodeNetworkConfigInvalidParametersReason.
+func TestReconcile_UnsupportedNetwork(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{
+				Name:       "nic0",
+				Network:    testNetworkURL,
+				Subnetwork: "default",
+			},
+		},
+	}
+	err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance)
+	if err != nil {
+		t.Fatalf("Failed to insert fake GCE instance: %v", err)
+	}
+
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNodeName,
+		},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{
+					Network: "unsupported-network",
+					Pods:    32,
+				},
+			},
+		},
+	}
+	_, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+	}
+
+	f.informerFactory.WaitForCacheSync(stopCh)
+
+	// Reconcile should fail for unsupported network
+	err = f.reconcile(ctx, nnc, testProviderID)
+	if err == nil {
+		t.Fatalf("Expected reconcile to fail for unsupported network, but succeeded")
+	}
+
+	// Verify status condition is InvalidParameters
+	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get updated NodeNetworkConfig: %v", err)
+	}
+	cond := getCondition(updatedNNC.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
+	if cond == nil || cond.Reason != string(nncv1.NodeNetworkConfigInvalidParametersReason) {
+		t.Errorf("Expected condition reason %q, got %+v", nncv1.NodeNetworkConfigInvalidParametersReason, cond)
+	}
+}
+
+// TestReconcile_CustomVPC verifies end-to-end reconciliation for a cluster running on
+// a custom VPC or Shared VPC (where the VPC name is not "default" and the network project
+// differs from the cluster project). It confirms that:
+//  1. spec_controller resolves the logical "default" network to the cluster's custom network URL.
+//  2. The GCE driver matches nic0 via canonical resource URL matching and applies alias IP mutations.
+//  3. status_controller maps the custom VPC interface back to the Kubernetes "default" network
+//     and publishes Status.PodCIDRs.
+func TestReconcile_CustomVPC(t *testing.T) {
+	ctx := context.Background()
+	customNetURL := "https://www.googleapis.com/compute/v1/projects/custom-net-proj/global/networks/my-custom-vpc"
+	f := newTestFixtureWithNetworkURL(t, customNetURL)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	// Create a GCE instance on the custom VPC
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{
+				Name:       "nic0",
+				Network:    customNetURL,
+				Subnetwork: "my-custom-subnet",
+			},
+		},
+	}
+	err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance)
+	if err != nil {
+		t.Fatalf("Failed to insert fake GCE instance: %v", err)
+	}
+
+	// Create Kubernetes Node with testProviderID
+	if _, err := f.kubeClient.CoreV1().Nodes().Create(ctx, nodeWithProviderID(testProviderID), metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create Node: %v", err)
+	}
+	f.runNodeInformer(stopCh)
+
+	// Create NodeNetworkConfig requesting allocations on the Kubernetes "default" network
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNodeName,
+		},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{
+					Network: "default",
+					Pods:    16, // needs 1 block of /28
+				},
+			},
+		},
+	}
+	_, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+	}
+
+	f.informerFactory.WaitForCacheSync(stopCh)
+
+	// Reconcile: spec_controller should resolve "default" to the cluster's customNetURL,
+	// invoke GCE UpdateInstanceAliasIPRanges with customNetURL, which matches nic0 via
+	// equalResourceURLs and mutates GCE.
+	err = f.reconcile(ctx, nnc, testProviderID)
+	if err != nil {
+		t.Fatalf("Reconcile failed for custom VPC cluster: %v", err)
+	}
+
+	// Verify GCE Instance has alias IPs on nic0
+	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get updated GCE instance: %v", err)
+	}
+	if len(updatedInstance.NetworkInterfaces[0].AliasIpRanges) != 1 {
+		t.Fatalf("Expected 1 alias IP range on nic0, got %d", len(updatedInstance.NetworkInterfaces[0].AliasIpRanges))
+	}
+
+	// Run status controller to verify status is published with Network: "default"
+	err = f.statusCtrl.syncNode(testNodeName)
+	if err != nil {
+		t.Fatalf("Status sync failed: %v", err)
+	}
+
+	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get updated NNC: %v", err)
+	}
+	if len(updatedNNC.Status.PodCIDRs) != 1 {
+		t.Fatalf("Expected 1 PodCIDR in status, got %d", len(updatedNNC.Status.PodCIDRs))
+	}
+	if updatedNNC.Status.PodCIDRs[0].Network != "default" {
+		t.Errorf("Expected status PodCIDR to have Network %q, got %q", "default", updatedNNC.Status.PodCIDRs[0].Network)
 	}
 }
 
@@ -3069,5 +3227,139 @@ func TestUpdateAliasIPRanges_NoChangesIssuesNoCalls(t *testing.T) {
 
 	if calls := f.gceCalls.snapshot(); len(calls) != 0 {
 		t.Errorf("Expected no updateNetworkInterface calls, got %d: %+v", len(calls), calls)
+	}
+}
+
+// TestResolveKubernetesNetworkName verifies that resolveKubernetesNetworkName maps
+// the primary GCE interface (nic0) to the Kubernetes "default" network, and returns
+// an error for secondary interfaces (nic1+) or interfaces with an empty name.
+func TestResolveKubernetesNetworkName(t *testing.T) {
+	// nic0 maps to default
+	nic0 := &networkInterface{Name: "nic0", Network: "https://www.googleapis.com/compute/v1/projects/p/global/networks/custom-vpc"}
+	netName, err := resolveKubernetesNetworkName(nic0)
+	if err != nil {
+		t.Fatalf("unexpected error for nic0: %v", err)
+	}
+	if netName != "default" {
+		t.Errorf("expected Kubernetes network name %q, got %q", "default", netName)
+	}
+
+	// secondary interfaces return an unsupported error
+	nic1 := &networkInterface{Name: "nic1", Network: "https://www.googleapis.com/compute/v1/projects/p/global/networks/custom-vpc"}
+	if _, err := resolveKubernetesNetworkName(nic1); err == nil {
+		t.Errorf("expected error for nic1, got nil")
+	}
+
+	// interface with empty name returns an unsupported error
+	unnamed := &networkInterface{Name: "", Network: "https://www.googleapis.com/compute/v1/projects/p/global/networks/custom-vpc"}
+	if _, err := resolveKubernetesNetworkName(unnamed); err == nil {
+		t.Errorf("expected error for unnamed interface, got nil")
+	}
+}
+
+// TestForEachAliasRange verifies that forEachAliasRange visits all alias IP ranges
+// on supported interfaces (nic0 mapped to "default") and ignores alias IP ranges on
+// unmanaged secondary interfaces.
+func TestForEachAliasRange(t *testing.T) {
+	ifaces := []*networkInterface{
+		{
+			Name:          "nic0",
+			Network:       "https://www.googleapis.com/compute/v1/projects/p/global/networks/custom-vpc",
+			AliasIPRanges: []string{"10.4.0.0/28", "10.4.0.16/28"},
+		},
+		{
+			Name:          "nic1",
+			Network:       "https://www.googleapis.com/compute/v1/projects/p/global/networks/secondary-net",
+			AliasIPRanges: []string{"10.5.0.0/28"},
+		},
+	}
+
+	var visited []string
+	forEachAliasRange(ifaces, func(network, cidr string) {
+		visited = append(visited, fmt.Sprintf("%s:%s", network, cidr))
+	})
+
+	expected := []string{"default:10.4.0.0/28", "default:10.4.0.16/28"}
+	if len(visited) != len(expected) {
+		t.Fatalf("expected %d ranges, got %d: %v", len(expected), len(visited), visited)
+	}
+	for i, v := range visited {
+		if v != expected[i] {
+			t.Errorf("index %d: expected %q, got %q", i, expected[i], v)
+		}
+	}
+}
+
+// TestResolveGCENetworkURL verifies that resolveGCENetworkURL translates the Kubernetes
+// logical network "default" (or empty string) to the cluster's configured GCE network URL,
+// and returns an error for unsupported secondary networks or nil/unconfigured cloud providers.
+func TestResolveGCENetworkURL(t *testing.T) {
+	testClusterValues := gce.DefaultTestClusterValues()
+	testClusterValues.NetworkURL = "https://www.googleapis.com/compute/v1/projects/my-net-proj/global/networks/custom-vpc"
+	fakeCloud := gce.NewFakeGCECloud(testClusterValues)
+
+	// "default" resolves to cluster network URL
+	url, err := resolveGCENetworkURL(fakeCloud, "default")
+	if err != nil {
+		t.Fatalf("unexpected error resolving 'default': %v", err)
+	}
+	if url != testClusterValues.NetworkURL {
+		t.Errorf("expected %q, got %q", testClusterValues.NetworkURL, url)
+	}
+
+	// empty resolves to cluster network URL
+	url, err = resolveGCENetworkURL(fakeCloud, "")
+	if err != nil {
+		t.Fatalf("unexpected error resolving empty network: %v", err)
+	}
+	if url != testClusterValues.NetworkURL {
+		t.Errorf("expected %q, got %q", testClusterValues.NetworkURL, url)
+	}
+
+	// non-default returns an error
+	_, err = resolveGCENetworkURL(fakeCloud, "secondary-net")
+	if err == nil {
+		t.Errorf("expected error resolving secondary-net, got nil")
+	}
+
+	// nil gceCloud returns an error
+	_, err = resolveGCENetworkURL(nil, "default")
+	if err == nil {
+		t.Errorf("expected error for nil gceCloud, got nil")
+	}
+
+	// cloud without network URL returns an error
+	emptyCloudValues := gce.DefaultTestClusterValues()
+	emptyCloudValues.NetworkURL = ""
+	emptyCloud := gce.NewFakeGCECloud(emptyCloudValues)
+	_, err = resolveGCENetworkURL(emptyCloud, "default")
+	if err == nil {
+		t.Errorf("expected error when cluster network URL is empty, got nil")
+	}
+}
+
+// TestGCECIDRSet verifies that gceCIDRSet indexes alias IP ranges attached to the
+// primary interface (nic0) under the "default" network key and excludes ranges from
+// unmanaged secondary interfaces.
+func TestGCECIDRSet(t *testing.T) {
+	ifaces := []*networkInterface{
+		{
+			Name:          "nic0",
+			Network:       "https://www.googleapis.com/compute/v1/projects/p/global/networks/custom-vpc",
+			AliasIPRanges: []string{"10.4.0.0/28"},
+		},
+		{
+			Name:          "nic1",
+			Network:       "https://www.googleapis.com/compute/v1/projects/p/global/networks/secondary-net",
+			AliasIPRanges: []string{"10.5.0.0/28"},
+		},
+	}
+
+	active := gceCIDRSet(ifaces)
+	if !active.Has("default/10.4.0.0/28") {
+		t.Errorf("expected nic0 range to be in active set")
+	}
+	if active.Has("default/10.5.0.0/28") || active.Has("secondary-net/10.5.0.0/28") {
+		t.Errorf("nic1 range should be ignored, but was in active set: %v", active)
 	}
 }
