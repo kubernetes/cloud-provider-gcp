@@ -3071,3 +3071,20 @@ func TestUpdateAliasIPRanges_NoChangesIssuesNoCalls(t *testing.T) {
 		t.Errorf("Expected no updateNetworkInterface calls, got %d: %+v", len(calls), calls)
 	}
 }
+
+func TestResolveNetworkURL_SharedVPC(t *testing.T) {
+	vals := gce.DefaultTestClusterValues()
+	vals.ProjectID = "service-project-123"
+	vals.NetworkProjectID = "host-network-project-456"
+	fakeGCE := gce.NewFakeGCECloud(vals)
+
+	url, err := ResolveNetworkURL(fakeGCE, "default")
+	if err != nil {
+		t.Fatalf("ResolveNetworkURL failed: %v", err)
+	}
+
+	expectedURL := "https://www.googleapis.com/compute/v1/projects/host-network-project-456/global/networks/default"
+	if url != expectedURL {
+		t.Errorf("Expected URL %q, got %q", expectedURL, url)
+	}
+}

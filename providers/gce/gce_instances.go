@@ -1130,10 +1130,11 @@ func (g *Cloud) mutateAliasIPRanges(
 		return fmt.Errorf("failed to get GCE instance %q in zone %q: %w", name, zone, err)
 	}
 
-	// Find the target network interface by Network URL
+	// Find the target network interface by Network URL or network name
 	var targetIface *computebeta.NetworkInterface
+	targetNetName := lastComponent(networkURL)
 	for _, iface := range instance.NetworkInterfaces {
-		if iface.Network == networkURL {
+		if iface.Network == networkURL || lastComponent(iface.Network) == targetNetName {
 			targetIface = iface
 			break
 		}

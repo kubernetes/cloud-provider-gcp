@@ -879,3 +879,37 @@ func TestGetFoundInstanceByNamesDynamicRefresh(t *testing.T) {
 	assert.ElementsMatch(t, []string{"us-central1-b", "us-central1-c"}, foundZones)
 	assert.ElementsMatch(t, []string{"us-central1-b", "us-central1-c"}, gce.getManagedZones())
 }
+
+func TestUpdateInstanceAliasIPRanges_NetworkURLMatching(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodeName := "test-node-url-matching"
+	zone := vals.ZoneName
+	providerID := fmt.Sprintf("gce://%s/%s/%s", gce.ProjectID(), zone, nodeName)
+
+	// Create instance with Beta network URL format (e.g. /beta/)
+	betaNetworkURL := fmt.Sprintf("https://www.googleapis.com/compute/beta/projects/%s/global/networks/default", gce.ProjectID())
+	err = gce.InsertInstance(
+		gce.ProjectID(),
+		zone,
+		&ga.Instance{
+			Name: nodeName,
+			Zone: zone,
+			NetworkInterfaces: []*ga.NetworkInterface{
+				{
+					Name:    "nic0",
+					Network: betaNetworkURL,
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	// Call UpdateInstanceAliasIPRanges using a GA /v1/ network URL.
+	// It should match the interface via lastComponent network name fallback.
+	gaNetworkURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/default", gce.ProjectID())
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, gaNetworkURL, []string{"10.96.0.0/28"}, nil)
+	require.NoError(t, err)
+}

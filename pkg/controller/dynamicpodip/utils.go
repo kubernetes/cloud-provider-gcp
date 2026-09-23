@@ -48,7 +48,7 @@ func ResolveNetworkURL(gceCloud *gce.Cloud, netName string) (string, error) {
 	if netName == "" {
 		return "", fmt.Errorf("network name cannot be empty")
 	}
-	return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", gceCloud.ProjectID(), netName), nil
+	return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", gceCloud.NetworkProjectID(), netName), nil
 }
 
 // ExtractNetworkName extracts the network resource name from a full GCE network URL.
