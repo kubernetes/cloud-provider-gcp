@@ -294,3 +294,53 @@ func TestPodRangeRefresher_RetainsCacheOnAPIError(t *testing.T) {
 		t.Fatalf("expected cached ranges [pods-primary] to be retained on error, got %v", rangesAfterError)
 	}
 }
+
+func TestExtractContainerClusterName(t *testing.T) {
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{
+			input:    "gke-aci-test-cluster-ffca6e2d",
+			expected: "aci-test-cluster",
+		},
+		{
+			input:    "gke-prod-cluster-12345678",
+			expected: "prod-cluster",
+		},
+		{
+			input:    "gke-cluster-with-hyphens-abcdef01",
+			expected: "cluster-with-hyphens",
+		},
+		{
+			input:    "aci-test-cluster",
+			expected: "aci-test-cluster",
+		},
+		{
+			input:    "my-oss-cluster",
+			expected: "my-oss-cluster",
+		},
+		{
+			input:    "gke-invalid-short",
+			expected: "gke-invalid-short",
+		},
+		{
+			input:    "gke-invalid-hash-1234567z",
+			expected: "gke-invalid-hash-1234567z",
+		},
+		{
+			input:    "",
+			expected: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.input, func(t *testing.T) {
+			got := extractContainerClusterName(tc.input)
+			if got != tc.expected {
+				t.Errorf("extractContainerClusterName(%q) = %q, want %q", tc.input, got, tc.expected)
+			}
+		})
+	}
+}
+
