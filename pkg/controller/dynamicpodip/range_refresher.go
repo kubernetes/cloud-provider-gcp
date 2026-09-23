@@ -26,6 +26,7 @@ package dynamicpodip
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -98,9 +99,16 @@ func NewPodRangeRefresher(
 		if clusterName == "" {
 			return nil, fmt.Errorf("cluster name is empty")
 		}
-		clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, clusterName)
+		targetClusterName := extractContainerClusterName(clusterName)
+		clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, targetClusterName)
 		klog.V(4).Infof("Fetching cluster configuration from Container API: %s", clusterPath)
-		return svc.Projects.Locations.Clusters.Get(clusterPath).Context(ctx).Do()
+		cluster, err := svc.Projects.Locations.Clusters.Get(clusterPath).Context(ctx).Do()
+		if err != nil && targetClusterName != clusterName {
+			klog.V(4).Infof("Fetching cluster with extracted name %q failed (%v); falling back to raw cluster name %q", targetClusterName, err, clusterName)
+			fallbackPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, clusterName)
+			cluster, err = svc.Projects.Locations.Clusters.Get(fallbackPath).Context(ctx).Do()
+		}
+		return cluster, err
 	}
 
 	return NewPodRangeRefresherWithLoader(loader, refreshInterval, clk)
@@ -266,3 +274,19 @@ func deduplicateAndFilter(ranges []string) []string {
 	}
 	return result
 }
+
+var gkeInstancePrefixRegex = regexp.MustCompile(`^gke-(.+)-[0-9a-fA-F]{8}$`)
+
+// extractContainerClusterName extracts the user-facing GKE cluster name from an
+// instance prefix or cluster name formatted as "gke-<cluster-name>-<8-char-hash>".
+// In GKE, --cluster-name passed to CCM is names.InstancePrefix(o.Cluster) ("gke-%s-%s").
+// The Container API expects the user-facing cluster name ("%s").
+// If the input does not match this format, it is returned unchanged.
+func extractContainerClusterName(clusterName string) string {
+	matches := gkeInstancePrefixRegex.FindStringSubmatch(clusterName)
+	if len(matches) == 2 && len(matches[1]) > 0 {
+		return matches[1]
+	}
+	return clusterName
+}
+
