@@ -1869,3 +1869,87 @@ func setupStoreWithCIDRs(t *testing.T, network string, cidrs ...string) *Store {
 	}
 	return s
 }
+
+func TestStore_NonReusableCIDRBlock(t *testing.T) {
+	tests := []struct {
+		name           string
+		cidr           string
+		allocatableIPs int
+	}{
+		{
+			name:           "/32 block",
+			cidr:           "10.1.3.1/32",
+			allocatableIPs: 1,
+		},
+		{
+			name:           "/28 block",
+			cidr:           "10.4.0.0/28",
+			allocatableIPs: 13, // 16 total IPs - 3 initial default reservations (net, gw, broadcast)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			network := "non-reusable-net-" + tt.name
+			ctx := context.Background()
+			s, err := NewStore(ctx, logr.Discard(), ":memory:")
+			if err != nil {
+				t.Fatalf("NewStore failed: %v", err)
+			}
+
+			if err := s.AddCIDRWithReusable(ctx, network, tt.cidr, false); err != nil {
+				t.Fatalf("AddCIDRWithReusable failed: %v", err)
+			}
+
+			blockID, _, err := s.GetCIDRBlock(ctx, tt.cidr, network)
+			if err != nil {
+				t.Fatalf("GetCIDRBlock failed: %v", err)
+			}
+
+			// 1. Allocate IPs to all allocatable slots in the block
+			var containers []string
+			for i := 1; i <= tt.allocatableIPs; i++ {
+				cid := fmt.Sprintf("c%d", i)
+				_, _, err := s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: cid, IPFamily: IPv4})
+				if err != nil {
+					t.Fatalf("AllocateIP %s failed: %v", cid, err)
+				}
+				containers = append(containers, cid)
+			}
+
+			// 2. Release N = (allocatableIPs - 1) pods and check state remains Ready after each
+			for i := 0; i < tt.allocatableIPs-1; i++ {
+				cid := containers[i]
+				_, err := s.ReleaseIPByOwner(ctx, network, cid, "eth0", 0)
+				if err != nil {
+					t.Fatalf("ReleaseIPByOwner %s failed: %v", cid, err)
+				}
+
+				var state string
+				err = s.db.QueryRowContext(ctx, "SELECT state FROM cidr_blocks WHERE id = ?", blockID).Scan(&state)
+				if err != nil || state != string(StateReady) {
+					t.Fatalf("Expected state=Ready after releasing %s; got state=%s, err=%v", cid, state, err)
+				}
+			}
+
+			// 3. Release the last remaining pod and check state transitions to Deleting
+			lastCID := containers[tt.allocatableIPs-1]
+			_, err = s.ReleaseIPByOwner(ctx, network, lastCID, "eth0", 0)
+			if err != nil {
+				t.Fatalf("ReleaseIPByOwner last CID %s failed: %v", lastCID, err)
+			}
+
+			var state string
+			err = s.db.QueryRowContext(ctx, "SELECT state FROM cidr_blocks WHERE id = ?", blockID).Scan(&state)
+			if err != nil || state != string(StateDeleting) {
+				t.Fatalf("Expected state=Deleting after releasing last pod %s; got state=%s, err=%v", lastCID, state, err)
+			}
+
+			// 4. Verify no more IPs can be allocated from the block
+			_, _, err = s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "c-overflow", IPFamily: IPv4})
+			if err == nil {
+				t.Fatalf("Expected error when allocating from Deleting block, but succeeded")
+			}
+		})
+	}
+}
