@@ -220,13 +220,13 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 
 	// Execute GCE VM alias IP mutations
 	for _, network := range changes.Networks() {
-		netChanges := changes.GetNetwork(network)
-		networkURL, err := ResolveNetworkURL(c.gceCloud, network)
+		networkURL, err := resolveGCENetworkURL(c.gceCloud, network)
 		if err != nil {
-			klog.Errorf("Failed to resolve network URL for network %q: %v", network, err)
-			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("Failed to resolve network URL: %v", err))
-			return fmt.Errorf("failed to resolve network URL for network %q: %w", network, err)
+			klog.Errorf("Network %q is not supported for dynamic pod IP on node %q: %v", network, nnc.Name, err)
+			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("Network %q is not supported: %v", network, err))
+			return fmt.Errorf("network %q is not supported: %w", network, err)
 		}
+		netChanges := changes.GetNetwork(network)
 
 		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v",
 			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals)

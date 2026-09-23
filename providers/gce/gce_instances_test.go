@@ -29,6 +29,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	computebeta "google.golang.org/api/compute/v0.beta"
 	ga "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -878,4 +879,255 @@ func TestGetFoundInstanceByNamesDynamicRefresh(t *testing.T) {
 	foundZones := []string{instances[0].Zone, instances[1].Zone}
 	assert.ElementsMatch(t, []string{"us-central1-b", "us-central1-c"}, foundZones)
 	assert.ElementsMatch(t, []string{"us-central1-b", "us-central1-c"}, gce.getManagedZones())
+}
+
+// TestUpdateInstanceAliasIPRanges_NetworkURLMatching verifies that
+// UpdateInstanceAliasIPRanges matches the target network interface using
+// canonical resource URL comparison (e.g. matching an instance interface
+// created with a Compute /beta/ URL when invoked with a Compute /v1/ URL)
+// and rejects calls specifying an unrelated network URL.
+func TestUpdateInstanceAliasIPRanges_NetworkURLMatching(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodeName := "test-node-url-matching"
+	zone := vals.ZoneName
+	providerID := fmt.Sprintf("gce://%s/%s/%s", gce.ProjectID(), zone, nodeName)
+
+	// Create instance with Beta network URL format (e.g. /beta/)
+	betaNetworkURL := fmt.Sprintf("https://www.googleapis.com/compute/beta/projects/%s/global/networks/my-vpc", gce.ProjectID())
+	err = gce.InsertInstance(
+		gce.ProjectID(),
+		zone,
+		&ga.Instance{
+			Name: nodeName,
+			Zone: zone,
+			NetworkInterfaces: []*ga.NetworkInterface{
+				{
+					Name:    "nic0",
+					Network: betaNetworkURL,
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	// Call UpdateInstanceAliasIPRanges using a GA /v1/ network URL.
+	// It should match the interface via canonical resource URL matching (equalResourceURLs).
+	gaNetworkURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/my-vpc", gce.ProjectID())
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, gaNetworkURL, []string{"10.96.0.0/28"}, nil)
+	require.NoError(t, err)
+
+	// Calling with an unrelated network URL must fail with an error.
+	mismatchedNetworkURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/other-vpc", gce.ProjectID())
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, mismatchedNetworkURL, []string{"10.96.0.0/28"}, nil)
+	require.Error(t, err)
+}
+
+// TestEqualResourceURLs verifies the canonical GCP resource URL equality helper,
+// covering identical full URLs, version differences (v1 vs beta), domain differences
+// (compute.googleapis.com vs www.googleapis.com), relative path vs full URL resolution,
+// cross-project isolation (same VPC name in different projects), and malformed inputs.
+func TestEqualResourceURLs(t *testing.T) {
+	tests := []struct {
+		name     string
+		url1     string
+		url2     string
+		expected bool
+	}{
+		{
+			name:     "identical full URLs",
+			url1:     "https://www.googleapis.com/compute/v1/projects/my-proj/global/networks/my-vpc",
+			url2:     "https://www.googleapis.com/compute/v1/projects/my-proj/global/networks/my-vpc",
+			expected: true,
+		},
+		{
+			name:     "v1 vs beta version difference",
+			url1:     "https://www.googleapis.com/compute/v1/projects/my-proj/global/networks/my-vpc",
+			url2:     "https://www.googleapis.com/compute/beta/projects/my-proj/global/networks/my-vpc",
+			expected: true,
+		},
+		{
+			name:     "different domains (compute.googleapis.com vs www.googleapis.com)",
+			url1:     "https://compute.googleapis.com/compute/v1/projects/my-proj/global/networks/my-vpc",
+			url2:     "https://www.googleapis.com/compute/v1/projects/my-proj/global/networks/my-vpc",
+			expected: true,
+		},
+		{
+			name:     "relative path vs full URL",
+			url1:     "projects/my-proj/global/networks/my-vpc",
+			url2:     "https://www.googleapis.com/compute/v1/projects/my-proj/global/networks/my-vpc",
+			expected: true,
+		},
+		{
+			name:     "different network names",
+			url1:     "https://www.googleapis.com/compute/v1/projects/my-proj/global/networks/my-vpc",
+			url2:     "https://www.googleapis.com/compute/v1/projects/my-proj/global/networks/other-vpc",
+			expected: false,
+		},
+		{
+			name:     "same network name in different projects (cross-project / Shared VPC safety)",
+			url1:     "https://www.googleapis.com/compute/v1/projects/project-a/global/networks/my-vpc",
+			url2:     "https://www.googleapis.com/compute/v1/projects/project-b/global/networks/my-vpc",
+			expected: false,
+		},
+		{
+			name:     "both empty",
+			url1:     "",
+			url2:     "",
+			expected: true,
+		},
+		{
+			name:     "one empty",
+			url1:     "https://www.googleapis.com/compute/v1/projects/my-proj/global/networks/my-vpc",
+			url2:     "",
+			expected: false,
+		},
+		{
+			name:     "malformed URL",
+			url1:     "not-a-valid-gcp-url",
+			url2:     "https://www.googleapis.com/compute/v1/projects/my-proj/global/networks/my-vpc",
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := equalResourceURLs(tc.url1, tc.url2)
+			if got != tc.expected {
+				t.Errorf("equalResourceURLs(%q, %q) = %v, want %v", tc.url1, tc.url2, got, tc.expected)
+			}
+			// Commutative check: equalResourceURLs(a, b) == equalResourceURLs(b, a)
+			gotRev := equalResourceURLs(tc.url2, tc.url1)
+			if gotRev != tc.expected {
+				t.Errorf("equalResourceURLs(%q, %q) reversed = %v, want %v", tc.url2, tc.url1, gotRev, tc.expected)
+			}
+		})
+	}
+}
+
+// TestUpdateInstanceAliasIPRanges_MultiInterfaceTargeting verifies that on a multi-NIC VM,
+// UpdateInstanceAliasIPRanges correctly resolves and mutates alias IP ranges on the specific
+// interface matching the provided network URL (e.g. mutating nic1 when targeting netB),
+// without modifying or clobbering alias IP ranges on other interfaces (e.g. nic0 on netA).
+func TestUpdateInstanceAliasIPRanges_MultiInterfaceTargeting(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodeName := "test-node-multi-nic"
+	zone := vals.ZoneName
+	providerID := fmt.Sprintf("gce://%s/%s/%s", gce.ProjectID(), zone, nodeName)
+
+	netA := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/net-a", gce.ProjectID())
+	netB := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/net-b", gce.ProjectID())
+
+	err = gce.InsertInstance(
+		gce.ProjectID(),
+		zone,
+		&ga.Instance{
+			Name: nodeName,
+			Zone: zone,
+			NetworkInterfaces: []*ga.NetworkInterface{
+				{
+					Name:    "nic0",
+					Network: netA,
+				},
+				{
+					Name:    "nic1",
+					Network: netB,
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	mockInstances := gce.c.BetaInstances().(*cloud.MockBetaInstances)
+	mockInstances.UpdateNetworkInterfaceHook = func(
+		ctx context.Context,
+		key *meta.Key,
+		ifaceName string,
+		iface *computebeta.NetworkInterface,
+		m *cloud.MockBetaInstances,
+		options ...cloud.Option,
+	) error {
+		m.Lock.Lock()
+		defer m.Lock.Unlock()
+		obj, ok := m.Objects[*key]
+		if !ok {
+			return fmt.Errorf("instance %v not found", key)
+		}
+		inst := obj.ToBeta()
+		for _, ni := range inst.NetworkInterfaces {
+			if ni.Name == ifaceName {
+				ni.AliasIpRanges = iface.AliasIpRanges
+				break
+			}
+		}
+		m.Objects[*key] = &cloud.MockInstancesObj{Obj: inst}
+		return nil
+	}
+
+	// Mutate netB: should only affect nic1
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, netB, []string{"10.20.0.0/28"}, nil)
+	require.NoError(t, err)
+
+	ifaces, err := gce.GetInstanceNetworkInterfaces(context.Background(), providerID)
+	require.NoError(t, err)
+	require.Len(t, ifaces, 2)
+	assert.Empty(t, ifaces[0].AliasIpRanges, "nic0 should be untouched")
+	require.Len(t, ifaces[1].AliasIpRanges, 1, "nic1 should have the new range")
+	assert.Equal(t, "10.20.0.0/28", ifaces[1].AliasIpRanges[0].IpCidrRange)
+
+	// Mutate netA: should only affect nic0
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, netA, []string{"10.10.0.0/28"}, nil)
+	require.NoError(t, err)
+
+	ifaces, err = gce.GetInstanceNetworkInterfaces(context.Background(), providerID)
+	require.NoError(t, err)
+	require.Len(t, ifaces, 2)
+	assert.Equal(t, "10.10.0.0/28", ifaces[0].AliasIpRanges[0].IpCidrRange)
+	require.Len(t, ifaces[1].AliasIpRanges, 1, "nic1 should still have its range")
+}
+
+// TestUpdateInstanceAliasIPRanges_CrossProjectSafety verifies that in Shared VPC or
+// multi-tenant topologies, UpdateInstanceAliasIPRanges will not match an interface
+// if the project in the network URL does not match the interface's network project,
+// even if the VPC network name is identical.
+func TestUpdateInstanceAliasIPRanges_CrossProjectSafety(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodeName := "test-node-cross-project"
+	zone := vals.ZoneName
+	providerID := fmt.Sprintf("gce://%s/%s/%s", gce.ProjectID(), zone, nodeName)
+
+	hostProjectURL := "https://www.googleapis.com/compute/v1/projects/host-network-project/global/networks/my-vpc"
+	serviceProjectURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/my-vpc", gce.ProjectID())
+
+	err = gce.InsertInstance(
+		gce.ProjectID(),
+		zone,
+		&ga.Instance{
+			Name: nodeName,
+			Zone: zone,
+			NetworkInterfaces: []*ga.NetworkInterface{
+				{
+					Name:    "nic0",
+					Network: hostProjectURL,
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	// Calling with same VPC name but wrong project ID must fail and not match nic0
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, serviceProjectURL, []string{"10.96.0.0/28"}, nil)
+	require.Error(t, err)
+
+	// Calling with the correct host project URL must succeed
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, hostProjectURL, []string{"10.96.0.0/28"}, nil)
+	require.NoError(t, err)
 }
