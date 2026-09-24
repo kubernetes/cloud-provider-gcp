@@ -1133,7 +1133,7 @@ func (g *Cloud) mutateAliasIPRanges(
 	// Find the target network interface by Network URL
 	var targetIface *computebeta.NetworkInterface
 	for _, iface := range instance.NetworkInterfaces {
-		if iface.Network == networkURL {
+		if equalResourceURLs(iface.Network, networkURL) {
 			targetIface = iface
 			break
 		}
@@ -1189,4 +1189,25 @@ func (g *Cloud) GetInstanceNetworkInterfaces(ctx context.Context, providerID str
 	}
 
 	return instance.NetworkInterfaces, nil
+}
+
+// equalResourceURLs checks if two GCP resource URLs refer to the same resource,
+// taking into account URL formatting differences (e.g. API versions or domains).
+func equalResourceURLs(url1, url2 string) bool {
+	if url1 == url2 {
+		return true
+	}
+	r1, err1 := cloud.ParseResourceURL(url1)
+	r2, err2 := cloud.ParseResourceURL(url2)
+	if err1 == nil && err2 == nil {
+		if r1.Equal(r2) {
+			return true
+		}
+		// If one URL is a relative path without an API group (e.g. projects/.../global/networks/...),
+		// compare project, resource type, and key directly.
+		if r1.ProjectID == r2.ProjectID && r1.Resource == r2.Resource && r1.Key != nil && r2.Key != nil && *r1.Key == *r2.Key {
+			return true
+		}
+	}
+	return false
 }

@@ -240,15 +240,13 @@ func cidrKey(network, cidr string) string {
 // forEachAliasRange invokes fn for every (network name, CIDR) pair attached to
 // the instance.
 //
-// Interfaces whose network URL cannot be parsed are skipped with a warning, so
-// callers must treat the enumeration as "known to be present" rather than
-// exhaustive. In particular, never infer that a range is absent from GCE on the
-// strength of this alone when the consequence is destructive.
+// Interfaces that cannot be resolved to a valid Kubernetes network name are
+// skipped with a warning.
 func forEachAliasRange(ifaces []*networkInterface, fn func(network, cidr string)) {
 	for _, iface := range ifaces {
-		netName, err := ExtractNetworkName(iface.Network)
+		netName, err := resolveKubernetesNetworkName(iface)
 		if err != nil {
-			klog.Warningf("Failed to extract network name from URL %q: %v", iface.Network, err)
+			klog.Warningf("Skipping interface %q: %v", iface.Name, err)
 			continue
 		}
 		for _, cidr := range iface.AliasIPRanges {
