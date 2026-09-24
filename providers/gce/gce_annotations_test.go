@@ -20,8 +20,10 @@ limitations under the License.
 package gce
 
 import (
+	"fmt"
 	"maps"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -77,10 +79,11 @@ func TestServiceNetworkTierAnnotationKey(t *testing.T) {
 
 func TestGetLoadBalancerAnnotationResourceLabels(t *testing.T) {
 	for name, tc := range map[string]struct {
-		annotation string
-		expected   map[string]string
-		present    bool
-		err        string
+		annotation    string
+		expected      map[string]string
+		expectedCount int
+		present       bool
+		errContains   string
 	}{
 		"missing annotation": {},
 		"empty annotation":   {annotation: "", present: true, expected: map[string]string{}},
@@ -97,11 +100,28 @@ func TestGetLoadBalancerAnnotationResourceLabels(t *testing.T) {
 			},
 			present: true,
 		},
-		"malformed entry": {
-			annotation: "valid=value,malformed,=empty-key",
-			present:    true,
-			err:        "invalid forwarding rule resource label \"malformed\"",
+		"whitespace around key and value": {annotation: " environment = dev ", present: true, expected: map[string]string{"environment": "dev"}},
+		"empty value":                     {annotation: "environment=", present: true, expected: map[string]string{"environment": ""}},
+		"international characters":        {annotation: "équipe=東京", present: true, expected: map[string]string{"équipe": "東京"}},
+		"maximum number of labels": {
+			annotation:    validGCELabelAnnotation(maxGCELabelsPerResource),
+			expectedCount: maxGCELabelsPerResource,
+			present:       true,
 		},
+		"missing separator":       {annotation: "malformed", present: true, errContains: "must use key=value format"},
+		"empty key":               {annotation: "=value", present: true, errContains: "must contain 1 to 63 characters"},
+		"trailing comma":          {annotation: "key=value,", present: true, errContains: "must use key=value format"},
+		"multiple separators":     {annotation: "key=value=other", present: true, errContains: "contains invalid character '='"},
+		"duplicate key":           {annotation: "environment=dev,environment=prod", present: true, errContains: "duplicate label key \"environment\""},
+		"too many labels":         {annotation: validGCELabelAnnotation(maxGCELabelsPerResource + 1), present: true, errContains: "at most 64 labels"},
+		"key starts with digit":   {annotation: "1key=value", present: true, errContains: "must start with a lowercase or international letter"},
+		"uppercase key":           {annotation: "Key=value", present: true, errContains: "must start with a lowercase or international letter"},
+		"uppercase value":         {annotation: "key=Value", present: true, errContains: "contains invalid character 'V'"},
+		"invalid key character":   {annotation: "key.name=value", present: true, errContains: "contains invalid character '.'"},
+		"invalid value character": {annotation: "key=value.name", present: true, errContains: "contains invalid character '.'"},
+		"key too long":            {annotation: strings.Repeat("a", maxGCELabelLength+1) + "=value", present: true, errContains: "must contain 1 to 63 characters"},
+		"value too long":          {annotation: "key=" + strings.Repeat("a", maxGCELabelLength+1), present: true, errContains: "must contain at most 63 characters"},
+		"invalid UTF-8":           {annotation: "key=" + string([]byte{0xff}), present: true, errContains: "must be valid UTF-8"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			svc := &v1.Service{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}}
@@ -110,14 +130,26 @@ func TestGetLoadBalancerAnnotationResourceLabels(t *testing.T) {
 			}
 			labels, present, err := GetLoadBalancerAnnotationResourceLabels(svc)
 			assert.Equal(t, tc.present, present)
-			assert.Equal(t, tc.expected, labels)
-			if tc.err != "" {
-				assert.EqualError(t, err, tc.err)
+			if tc.expectedCount > 0 {
+				assert.Len(t, labels, tc.expectedCount)
+			} else {
+				assert.Equal(t, tc.expected, labels)
+			}
+			if tc.errContains != "" {
+				assert.ErrorContains(t, err, tc.errContains)
 			} else {
 				assert.NoError(t, err)
 			}
 		})
 	}
+}
+
+func validGCELabelAnnotation(count int) string {
+	labels := make([]string, count)
+	for i := range labels {
+		labels[i] = fmt.Sprintf("key%d=value", i)
+	}
+	return strings.Join(labels, ",")
 }
 
 func TestMergeMap(t *testing.T) {

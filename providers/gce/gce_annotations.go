@@ -22,11 +22,18 @@ package gce
 import (
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
+)
+
+const (
+	maxGCELabelsPerResource = 64
+	maxGCELabelLength       = 63
 )
 
 // LoadBalancerType defines a specific type for holding load balancer types (eg. Internal)
@@ -218,14 +225,61 @@ func GetLoadBalancerAnnotationResourceLabels(service *v1.Service) (map[string]st
 	if value == "" {
 		return labels, true, nil
 	}
-	for _, pair := range strings.Split(value, ",") {
-		key, value, found := strings.Cut(strings.TrimSpace(pair), "=")
-		if !found || key == "" {
-			return nil, true, fmt.Errorf("invalid forwarding rule resource label %q", pair)
+	pairs := strings.Split(value, ",")
+	if len(pairs) > maxGCELabelsPerResource {
+		return nil, true, fmt.Errorf("invalid %s annotation: at most %d labels are allowed", ServiceAnnotationLoadBalancerResourceLabels, maxGCELabelsPerResource)
+	}
+	for _, pair := range pairs {
+		key, labelValue, found := strings.Cut(pair, "=")
+		if !found {
+			return nil, true, fmt.Errorf("invalid %s annotation: label %q must use key=value format", ServiceAnnotationLoadBalancerResourceLabels, pair)
 		}
-		labels[key] = value
+		key = strings.TrimSpace(key)
+		labelValue = strings.TrimSpace(labelValue)
+		if err := validateGCELabel(key, labelValue); err != nil {
+			return nil, true, fmt.Errorf("invalid %s annotation: %w", ServiceAnnotationLoadBalancerResourceLabels, err)
+		}
+		if _, exists := labels[key]; exists {
+			return nil, true, fmt.Errorf("invalid %s annotation: duplicate label key %q", ServiceAnnotationLoadBalancerResourceLabels, key)
+		}
+		labels[key] = labelValue
 	}
 	return labels, true, nil
+}
+
+func validateGCELabel(key, value string) error {
+	if !utf8.ValidString(key) || !utf8.ValidString(value) {
+		return fmt.Errorf("label key and value must be valid UTF-8")
+	}
+	if utf8.RuneCountInString(key) == 0 || utf8.RuneCountInString(key) > maxGCELabelLength {
+		return fmt.Errorf("label key %q must contain 1 to %d characters", key, maxGCELabelLength)
+	}
+	if utf8.RuneCountInString(value) > maxGCELabelLength {
+		return fmt.Errorf("label value %q must contain at most %d characters", value, maxGCELabelLength)
+	}
+
+	for i, r := range key {
+		if i == 0 && !isGCELabelLetter(r) {
+			return fmt.Errorf("label key %q must start with a lowercase or international letter", key)
+		}
+		if !isGCELabelCharacter(r) {
+			return fmt.Errorf("label key %q contains invalid character %q", key, r)
+		}
+	}
+	for _, r := range value {
+		if !isGCELabelCharacter(r) {
+			return fmt.Errorf("label value %q contains invalid character %q", value, r)
+		}
+	}
+	return nil
+}
+
+func isGCELabelLetter(r rune) bool {
+	return unicode.IsLetter(r) && !unicode.IsUpper(r) && !unicode.IsTitle(r)
+}
+
+func isGCELabelCharacter(r rune) bool {
+	return isGCELabelLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-'
 }
 
 // mergeMap returns a new map containing the merged content of existing and update.
