@@ -500,31 +500,62 @@ func TestEnsureInternalLoadBalancerWithExistingResources(t *testing.T) {
 	assertILBSyncResultAnnotations(t, gce, svc, vals.ClusterID, syncResult)
 }
 
-func TestEnsureInternalLoadBalancerReconcilesForwardingRuleLabels(t *testing.T) {
+func TestEnsureInternalLoadBalancerUpdatesForwardingRuleLabelsWithoutRecreatingForwardingRule(t *testing.T) {
 	vals := DefaultTestClusterValues()
 	gce, err := fakeGCECloud(vals)
 	require.NoError(t, err)
 
 	svc := fakeLoadbalancerService(string(LBTypeInternal))
-	svc.Annotations[ServiceAnnotationLoadBalancerResourceLabels] = "goog-partner-solution=openshift"
+	svc.Annotations[ServiceAnnotationLoadBalancerResourceLabels] = "a=b"
 	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+	nodes, err := createAndInsertNodes(gce, []string{"test-node-1"}, vals.ZoneName)
 	require.NoError(t, err)
 
 	mockGCE := gce.c.(*cloud.MockGCE)
+	insertCalls := 0
+	deleteCalls := 0
 	mockGCE.MockForwardingRules.InsertHook = func(ctx context.Context, key *meta.Key, rule *compute.ForwardingRule, m *cloud.MockForwardingRules, options ...cloud.Option) (bool, error) {
+		insertCalls++
 		assert.Empty(t, rule.Labels, "labels must not be set during forwarding rule creation")
 		return mock.InsertFwdRuleHook(ctx, key, rule, m, options...)
 	}
-	var setLabelsRequest *compute.RegionSetLabelsRequest
-	mockGCE.MockForwardingRules.SetLabelsHook = func(_ context.Context, _ *meta.Key, request *compute.RegionSetLabelsRequest, _ *cloud.MockForwardingRules, _ ...cloud.Option) error {
-		setLabelsRequest = request
+	mockGCE.MockForwardingRules.DeleteHook = func(_ context.Context, _ *meta.Key, _ *cloud.MockForwardingRules, _ ...cloud.Option) (bool, error) {
+		deleteCalls++
+		return false, nil
+	}
+	var setLabelsRequests []*compute.RegionSetLabelsRequest
+	mockGCE.MockForwardingRules.SetLabelsHook = func(_ context.Context, key *meta.Key, request *compute.RegionSetLabelsRequest, rules *cloud.MockForwardingRules, _ ...cloud.Option) error {
+		setLabelsRequests = append(setLabelsRequests, request)
+		fwdRule := rules.Objects[*key].ToGA()
+		fwdRule.Labels = request.Labels
+		fwdRule.LabelFingerprint = "updated-label-fingerprint"
+		rules.Objects[*key] = rules.Obj(fwdRule)
 		return nil
 	}
 
-	_, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	require.NoError(t, err)
-	require.NotNil(t, setLabelsRequest)
-	assert.Equal(t, map[string]string{"goog-partner-solution": "openshift"}, setLabelsRequest.Labels)
+
+	lbName := gce.GetLoadBalancerName(context.TODO(), vals.ClusterName, svc)
+	existingFwdRule, err := gce.GetRegionForwardingRule(lbName, gce.region)
+	require.NoError(t, err)
+	originalIP := existingFwdRule.IPAddress
+
+	svc.Annotations[ServiceAnnotationLoadBalancerResourceLabels] = "c=d"
+	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
+	require.NoError(t, err)
+
+	require.Len(t, setLabelsRequests, 2)
+	assert.Equal(t, map[string]string{"a": "b"}, setLabelsRequests[0].Labels)
+	assert.Equal(t, map[string]string{"c": "d"}, setLabelsRequests[1].Labels)
+	assert.Equal(t, "updated-label-fingerprint", setLabelsRequests[1].LabelFingerprint)
+	assert.Equal(t, 1, insertCalls)
+	assert.Zero(t, deleteCalls)
+
+	updatedFwdRule, err := gce.GetRegionForwardingRule(lbName, gce.region)
+	require.NoError(t, err)
+	assert.Equal(t, originalIP, updatedFwdRule.IPAddress)
 }
 
 func TestEnsureInternalLoadBalancerLeavesLabelsUnmanagedWithoutAnnotation(t *testing.T) {
@@ -573,6 +604,7 @@ func TestEnsureInternalLoadBalancerRejectsMalformedForwardingRuleLabelsBeforeCre
 
 	_, err = createInternalLoadBalancer(gce, svc, nil, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
 	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to parse forwarding rule resource labels")
 	assert.False(t, forwardingRuleInserted)
 }
 

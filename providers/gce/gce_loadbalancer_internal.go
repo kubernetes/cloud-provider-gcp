@@ -244,7 +244,7 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	// Get the most recent forwarding rule for the address.
 	updatedFwdRule, err := g.GetRegionForwardingRule(loadBalancerName, g.region)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get forwarding rule for load balancer (%s): %w", nm, err)
 	}
 	ipToUse = updatedFwdRule.IPAddress
 	// Ensure firewall rules if necessary
@@ -257,12 +257,8 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 		g.clearPreviousInternalResources(svc, loadBalancerName, clusterID, existingBackendService, backendServiceName, hcName)
 	}
 	if labelsPresent {
-		updatedFwdRule, err := g.GetRegionForwardingRule(loadBalancerName, g.region)
-		if err != nil {
-			return nil, err
-		}
 		if err := g.SetRegionForwardingRuleLabels(updatedFwdRule, g.region, labels); err != nil {
-			return nil, fmt.Errorf("failed to reconcile forwarding rule labels: %w", err)
+			return nil, fmt.Errorf("failed to reconcile forwarding rule labels for load balancer (%s): %w", nm, err)
 		}
 	}
 
