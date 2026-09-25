@@ -20,6 +20,8 @@ limitations under the License.
 package gce
 
 import (
+	"maps"
+
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/filter"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -152,6 +154,23 @@ func (g *Cloud) CreateRegionForwardingRule(rule *compute.ForwardingRule, region 
 
 	mc := newForwardingRuleMetricContext("create", region)
 	return mc.Observe(g.c.ForwardingRules().Insert(ctx, meta.RegionalKey(rule.Name, region), rule))
+}
+
+// SetRegionForwardingRuleLabels replaces the labels on a regional forwarding rule.
+func (g *Cloud) SetRegionForwardingRuleLabels(rule *compute.ForwardingRule, region string, labels map[string]string) error {
+	if maps.Equal(rule.Labels, labels) {
+		return nil
+	}
+
+	ctx, cancel := cloud.ContextWithCallTimeout()
+	defer cancel()
+
+	mc := newForwardingRuleMetricContext("set_labels", region)
+	request := &compute.RegionSetLabelsRequest{
+		LabelFingerprint: rule.LabelFingerprint,
+		Labels:           labels,
+	}
+	return mc.Observe(g.c.ForwardingRules().SetLabels(ctx, meta.RegionalKey(rule.Name, region), request))
 }
 
 // CreateAlphaRegionForwardingRule creates and returns an Alpha
