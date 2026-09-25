@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS cidr_blocks (
     -- Expected values: 'Ready', 'Draining', 'Deleting'
     state TEXT NOT NULL DEFAULT 'Ready',
 
+    -- Represents whether this CIDR block can be reused or should be directly deleted upon release.
+    reusable BOOLEAN NOT NULL DEFAULT TRUE,
+
     -- Unix epoch timestamp in milliseconds when this block was successfully pulled from the CRD.
     created_at INTEGER DEFAULT (CAST(unixepoch('subsec') * 1000 AS INTEGER)),
 
