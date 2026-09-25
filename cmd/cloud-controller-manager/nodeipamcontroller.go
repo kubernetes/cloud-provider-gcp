@@ -22,6 +22,7 @@ import (
 
 	networkclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned"
 	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
+	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
@@ -66,6 +67,10 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 	if err != nil {
 		return nil, false, err
 	}
+	nncClient, err := nncclientset.NewForConfig(kubeConfig)
+	if err != nil {
+		return nil, false, err
+	}
 
 	nwInfFactory := networkinformers.NewSharedInformerFactory(networkClient, 30*time.Second)
 	nwInformer := nwInfFactory.Networking().V1().Networks()
@@ -87,6 +92,7 @@ func startNodeIpamController(ccmConfig *cloudcontrollerconfig.CompletedConfig, n
 		nwInformer,
 		gnpInformer,
 		nodeTopologyClient,
+		nncClient,
 		ipam.CIDRAllocatorType(ccmConfig.ComponentConfig.KubeCloudShared.CIDRAllocatorType),
 		ctx.ControllerManagerMetrics,
 		"",
