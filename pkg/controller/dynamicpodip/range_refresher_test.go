@@ -96,7 +96,6 @@ func TestExtractPodSecondaryRanges(t *testing.T) {
 }
 
 func TestPodRangeRefresher_InitialFetchAndCache(t *testing.T) {
-	ctx := context.Background()
 	fakeClock := testingclock.NewFakeClock(time.Now())
 
 	var calls int32
@@ -112,10 +111,10 @@ func TestPodRangeRefresher_InitialFetchAndCache(t *testing.T) {
 		}, nil
 	}
 
-	refresher := NewPodRangeRefresherWithLoader(loader, 5*time.Minute, fakeClock)
+	refresher := newPodRangeRefresherWithLoader(loader, 5*time.Minute, fakeClock)
 
 	// First call triggers synchronous fetch
-	ranges, err := refresher.GetCandidateRanges(ctx)
+	ranges, err := refresher.GetCandidateRanges()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -128,7 +127,7 @@ func TestPodRangeRefresher_InitialFetchAndCache(t *testing.T) {
 	}
 
 	// Subsequent call returns cached ranges without calling loader
-	rangesCached, err := refresher.GetCandidateRanges(ctx)
+	rangesCached, err := refresher.GetCandidateRanges()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -141,7 +140,6 @@ func TestPodRangeRefresher_InitialFetchAndCache(t *testing.T) {
 }
 
 func TestPodRangeRefresher_PeriodicRefresh(t *testing.T) {
-	ctx := context.Background()
 	fakeClock := testingclock.NewFakeClock(time.Now())
 
 	var rangeNames atomic.Value
@@ -157,14 +155,14 @@ func TestPodRangeRefresher_PeriodicRefresh(t *testing.T) {
 	}
 
 	interval := 5 * time.Minute
-	refresher := NewPodRangeRefresherWithLoader(loader, interval, fakeClock)
+	refresher := newPodRangeRefresherWithLoader(loader, interval, fakeClock)
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	go refresher.Run(stopCh)
 
 	// Initial fetch
-	ranges, err := refresher.GetCandidateRanges(ctx)
+	ranges, err := refresher.GetCandidateRanges()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -191,7 +189,7 @@ func TestPodRangeRefresher_PeriodicRefresh(t *testing.T) {
 
 	var rangesUpdated []string
 	for i := 0; i < 50; i++ {
-		rangesUpdated, _ = refresher.GetCandidateRanges(ctx)
+		rangesUpdated, _ = refresher.GetCandidateRanges()
 		if reflect.DeepEqual(rangesUpdated, []string{"pods-2"}) {
 			break
 		}
@@ -203,7 +201,6 @@ func TestPodRangeRefresher_PeriodicRefresh(t *testing.T) {
 }
 
 func TestPodRangeRefresher_InvalidateForcesRefresh(t *testing.T) {
-	ctx := context.Background()
 	fakeClock := testingclock.NewFakeClock(time.Now())
 
 	var rangeNames atomic.Value
@@ -219,13 +216,13 @@ func TestPodRangeRefresher_InvalidateForcesRefresh(t *testing.T) {
 	}
 
 	interval := 1 * time.Hour
-	refresher := NewPodRangeRefresherWithLoader(loader, interval, fakeClock)
+	refresher := newPodRangeRefresherWithLoader(loader, interval, fakeClock)
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	go refresher.Run(stopCh)
 
-	ranges, err := refresher.GetCandidateRanges(ctx)
+	ranges, err := refresher.GetCandidateRanges()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -242,7 +239,7 @@ func TestPodRangeRefresher_InvalidateForcesRefresh(t *testing.T) {
 
 	var rangesUpdated []string
 	for i := 0; i < 50; i++ {
-		rangesUpdated, _ = refresher.GetCandidateRanges(ctx)
+		rangesUpdated, _ = refresher.GetCandidateRanges()
 		if reflect.DeepEqual(rangesUpdated, []string{"pods-invalidated"}) {
 			break
 		}
@@ -254,7 +251,6 @@ func TestPodRangeRefresher_InvalidateForcesRefresh(t *testing.T) {
 }
 
 func TestPodRangeRefresher_RetainsCacheOnAPIError(t *testing.T) {
-	ctx := context.Background()
 	fakeClock := testingclock.NewFakeClock(time.Now())
 
 	var returnError atomic.Bool
@@ -269,10 +265,10 @@ func TestPodRangeRefresher_RetainsCacheOnAPIError(t *testing.T) {
 		}, nil
 	}
 
-	refresher := NewPodRangeRefresherWithLoader(loader, 5*time.Minute, fakeClock)
+	refresher := newPodRangeRefresherWithLoader(loader, 5*time.Minute, fakeClock)
 
 	// First fetch succeeds
-	ranges, err := refresher.GetCandidateRanges(ctx)
+	ranges, err := refresher.GetCandidateRanges()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -286,7 +282,7 @@ func TestPodRangeRefresher_RetainsCacheOnAPIError(t *testing.T) {
 	refresher.Invalidate()
 
 	// Should still return previously cached ranges
-	rangesAfterError, err := refresher.GetCandidateRanges(ctx)
+	rangesAfterError, err := refresher.GetCandidateRanges()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -343,4 +339,3 @@ func TestExtractContainerClusterName(t *testing.T) {
 		})
 	}
 }
-

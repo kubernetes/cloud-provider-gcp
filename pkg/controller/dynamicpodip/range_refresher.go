@@ -78,13 +78,6 @@ func NewPodRangeRefresher(
 	refreshInterval time.Duration,
 	clk clock.WithTicker,
 ) *PodRangeRefresher {
-	if clk == nil {
-		clk = clock.RealClock{}
-	}
-	if refreshInterval <= 0 {
-		refreshInterval = DefaultPodRangeRefreshInterval
-	}
-
 	projectID := gceCloud.ProjectID()
 	location := gceCloud.Region()
 	if !gceCloud.Regional() {
@@ -111,12 +104,12 @@ func NewPodRangeRefresher(
 		return cluster, err
 	}
 
-	return NewPodRangeRefresherWithLoader(loader, refreshInterval, clk)
+	return newPodRangeRefresherWithLoader(loader, refreshInterval, clk)
 }
 
-// NewPodRangeRefresherWithLoader constructs a PodRangeRefresher with a custom
+// newPodRangeRefresherWithLoader constructs a PodRangeRefresher with a custom
 // loader function (useful for testing).
-func NewPodRangeRefresherWithLoader(
+func newPodRangeRefresherWithLoader(
 	loader ContainerClusterLoader,
 	refreshInterval time.Duration,
 	clk clock.WithTicker,
@@ -139,7 +132,7 @@ func NewPodRangeRefresherWithLoader(
 // GetCandidateRanges returns the currently cached candidate ranges for the
 // cluster's default subnetwork. If no ranges have been cached yet, it triggers
 // a synchronous refresh before returning.
-func (r *PodRangeRefresher) GetCandidateRanges(ctx context.Context) ([]string, error) {
+func (r *PodRangeRefresher) GetCandidateRanges() ([]string, error) {
 	r.mu.RLock()
 	if !r.lastRefreshed.IsZero() {
 		ranges := append([]string{}, r.cachedRanges...)
@@ -149,7 +142,7 @@ func (r *PodRangeRefresher) GetCandidateRanges(ctx context.Context) ([]string, e
 	r.mu.RUnlock()
 
 	// Cache has not been populated yet: perform initial synchronous fetch
-	return r.refresh(ctx)
+	return r.refresh(context.Background())
 }
 
 // Invalidate triggers an on-demand refresh of candidate ranges, rate-limited
@@ -289,4 +282,3 @@ func extractContainerClusterName(clusterName string) string {
 	}
 	return clusterName
 }
-

@@ -1088,8 +1088,6 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 				}
 				if len(candidateSubnetworkRangeNames) > 0 {
 					aliasRange.CandidateSubnetworkRangeNames = candidateSubnetworkRangeNames
-				} else {
-					aliasRange.SubnetworkRangeName = g.secondaryRangeName
 				}
 				next = append(next, aliasRange)
 			}
