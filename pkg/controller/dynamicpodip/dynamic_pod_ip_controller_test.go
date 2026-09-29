@@ -186,6 +186,7 @@ func newTestFixtureWithNetworkURL(t *testing.T, networkURL string) *testFixture 
 		gceCache,
 		statusCtrl,
 		NewStaticRangeProvider(nil),
+		NewAliasRangesBackend(fakeGCE),
 	)
 
 	return &testFixture{
