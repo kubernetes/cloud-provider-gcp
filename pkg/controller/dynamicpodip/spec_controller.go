@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
@@ -250,7 +249,7 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 			if subProvider, ok := c.rangeProvider.(SubnetworkCandidateRangeProvider); ok {
 				candidateRanges = subProvider.GetCandidateRangesForSubnetwork(targetSubnet)
 			} else {
-				ranges, err := c.rangeProvider.GetCandidateRanges(ctx)
+				ranges, err := c.rangeProvider.GetCandidateRanges()
 				if err != nil {
 					klog.Warningf("Failed to retrieve candidate pod secondary ranges for node %q: %v", nnc.Name, err)
 				} else {
@@ -265,10 +264,6 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		err = c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
 		if err != nil {
 			klog.Errorf("GCE mutation failed for node %q network %q: %v", nnc.Name, network, err)
-			if c.rangeProvider != nil && isAllocationExhaustionError(err) {
-				klog.V(2).Infof("IP allocation failed with exhaustion for node %q; invalidating candidate range cache", nnc.Name)
-				c.rangeProvider.Invalidate()
-			}
 			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("GCE mutation failed: %v", err))
 			return fmt.Errorf("failed GCE mutation for network %q: %w", network, err)
 		}
@@ -467,28 +462,4 @@ func (c *NodeNetworkConfigSpecController) pruneReleasableCIDRs(ctx context.Conte
 func (c *NodeNetworkConfigSpecController) updateStatusError(ctx context.Context, nnc *nncv1.NodeNetworkConfig, reason, message string) error {
 	setNNCCondition(nnc, string(nncv1.NodeNetworkConfigConditionReady), metav1.ConditionFalse, reason, message)
 	return c.updateNNCStatus(ctx, nnc)
-}
-
-// isAllocationExhaustionError returns true if the error from GCE indicates
-// IP address or range exhaustion.
-func isAllocationExhaustionError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := strings.ToLower(err.Error())
-	exhaustionKeywords := []string{
-		"exhausted",
-		"ip_space_exhausted",
-		"resource_pool_exhausted",
-		"free ip",
-		"not enough",
-		"quota",
-		"cannot allocate",
-	}
-	for _, kw := range exhaustionKeywords {
-		if strings.Contains(errStr, kw) {
-			return true
-		}
-	}
-	return false
 }

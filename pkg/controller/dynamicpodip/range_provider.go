@@ -17,7 +17,6 @@ limitations under the License.
 package dynamicpodip
 
 import (
-	"context"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -29,7 +28,7 @@ import (
 type CandidateRangeProvider interface {
 	// GetCandidateRanges returns candidate secondary range names for pod IP
 	// allocation in the cluster's default subnetwork.
-	GetCandidateRanges(ctx context.Context) ([]string, error)
+	GetCandidateRanges() ([]string, error)
 	// Invalidate marks the candidate range cache as stale, triggering an
 	// immediate refresh.
 	Invalidate()
@@ -138,18 +137,6 @@ func ParseSecondaryRangeConfigs(entries []string) []SecondaryRangeConfig {
 	return configs
 }
 
-// FilterActiveSecondaryRanges returns only the names of secondary ranges that
-// are in ACTIVE status.
-func FilterActiveSecondaryRanges(configs []SecondaryRangeConfig) []string {
-	var active []string
-	for _, cfg := range configs {
-		if cfg.Status == SecondaryRangeActive {
-			active = append(active, cfg.Name)
-		}
-	}
-	return active
-}
-
 // StaticRangeProvider provides a static list of candidate secondary range
 // names, grouped by subnetwork, typically configured via CLI flag.
 type StaticRangeProvider struct {
@@ -186,8 +173,14 @@ func NewStaticRangeProviderWithDefaultSubnet(ranges []string, defaultSubnet stri
 }
 
 // GetCandidateRanges returns active candidate secondary ranges for pod IP
-// allocation in the default subnetwork.
-func (s *StaticRangeProvider) GetCandidateRanges(ctx context.Context) ([]string, error) {
+// allocation in the default subnetwork. Subnetwork resolution follows these rules:
+//   - If default subnet is explicitly specified, choose ranges keyed by default
+//     subnet and empty subnet "" from supplied ranges, e.g. RANGE1,DEFAULT_SUBNET/RANGE2.
+//   - If default subnet is not explicitly specified, choose ranges keyed by empty
+//     subnet "", ignoring ranges keyed by specific subnets as the default is unknown.
+//   - If no empty-subnet ranges are found and default subnet is not explicitly
+//     specified, fallback to all ranges if all configured ranges belong to a single subnet.
+func (s *StaticRangeProvider) GetCandidateRanges() ([]string, error) {
 	var candidates []string
 	seen := sets.NewString()
 
@@ -233,18 +226,11 @@ func (s *StaticRangeProvider) GetCandidateRanges(ctx context.Context) ([]string,
 func (s *StaticRangeProvider) GetCandidateRangesForSubnetwork(subnetwork string) []string {
 	canonical := canonicalSubnetwork(subnetwork)
 	if canonical == "" || (s.defaultSubnet != "" && canonical == s.defaultSubnet) {
-		ranges, _ := s.GetCandidateRanges(context.Background())
+		ranges, _ := s.GetCandidateRanges()
 		return ranges
 	}
 	if ranges, ok := s.activeBySubnet[canonical]; ok {
 		return append([]string{}, ranges...)
-	}
-	// Fallback: if defaultSubnet was unspecified (empty), unqualified ranges
-	// apply as default ranges across interfaces:
-	if s.defaultSubnet == "" {
-		if ranges, ok := s.activeBySubnet[""]; ok {
-			return append([]string{}, ranges...)
-		}
 	}
 	return nil
 }

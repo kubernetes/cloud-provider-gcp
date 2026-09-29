@@ -3392,7 +3392,7 @@ type trackingRangeProvider struct {
 	invalidated atomic.Bool
 }
 
-func (p *trackingRangeProvider) GetCandidateRanges(ctx context.Context) ([]string, error) {
+func (p *trackingRangeProvider) GetCandidateRanges() ([]string, error) {
 	return p.ranges, nil
 }
 
@@ -3413,7 +3413,7 @@ func TestSpecController_CandidateSubnetworkRangeNames_Propagated(t *testing.T) {
 
 	// Configure candidate ranges on spec controller
 	candidateRanges := []string{"pod-secondary-1", "pod-secondary-2"}
-	f.specCtrl.rangeProvider = NewStaticRangeProvider(candidateRanges)
+	f.specCtrl.rangeProvider = NewStaticRangeProviderWithDefaultSubnet(candidateRanges, "default")
 
 	// Create instance with empty alias IP ranges
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
@@ -3476,7 +3476,7 @@ func TestSpecController_CandidateSubnetworkRangeNames_ExcludesDrainingRanges(t *
 
 	// Configure static ranges with lifecycle states (ACTIVE vs DRAINING)
 	input := []string{"range-active-1=ACTIVE", "range-draining=DRAINING", "range-active-2"}
-	f.specCtrl.rangeProvider = NewStaticRangeProvider(input)
+	f.specCtrl.rangeProvider = NewStaticRangeProviderWithDefaultSubnet(input, "default")
 
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
 	instance := &compute.Instance{
@@ -3538,7 +3538,7 @@ func TestSpecController_DrainingRange_ExistingRangesAndRemovalsMaintained(t *tes
 	// All candidate ranges are DRAINING, meaning no new allocations allowed
 	// from them.
 	input := []string{"range-draining=DRAINING"}
-	f.specCtrl.rangeProvider = NewStaticRangeProvider(input)
+	f.specCtrl.rangeProvider = NewStaticRangeProviderWithDefaultSubnet(input, "default")
 
 	// Instance already has an existing alias IP from the draining range
 	instanceKey := meta.ZonalKey(testNodeName, testZone)
@@ -3592,194 +3592,6 @@ func TestSpecController_DrainingRange_ExistingRangesAndRemovalsMaintained(t *tes
 	}
 	if len(betaInst.NetworkInterfaces[0].AliasIpRanges) != 0 {
 		t.Errorf("Expected alias IP ranges to be empty after removal, got %v", betaInst.NetworkInterfaces[0].AliasIpRanges)
-	}
-}
-
-func TestSpecController_LegacySecondaryRange_WhenNoCandidates(t *testing.T) {
-	ctx := context.Background()
-	f := newTestFixture(t)
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-	f.run(ctx, stopCh)
-
-	// Static range provider with NO candidate ranges configured (legacy mode)
-	f.fakeGCE.SetSecondaryRangeName("test-secondary-range")
-	f.specCtrl.rangeProvider = NewStaticRangeProvider(nil)
-
-	instanceKey := meta.ZonalKey(testNodeName, testZone)
-	instance := &compute.Instance{
-		Name: testNodeName,
-		Zone: testZone,
-		NetworkInterfaces: []*compute.NetworkInterface{
-			{
-				Name:       "nic0",
-				Network:    testNetworkURL,
-				Subnetwork: "default",
-			},
-		},
-	}
-	if err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance); err != nil {
-		t.Fatalf("Failed to insert fake GCE instance: %v", err)
-	}
-
-	nnc := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
-		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{
-				{Network: "default", Pods: 16},
-			},
-		},
-	}
-	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
-		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
-	}
-	f.informerFactory.WaitForCacheSync(stopCh)
-
-	if err := f.reconcile(ctx, nnc, testProviderID); err != nil {
-		t.Fatalf("Reconcile failed: %v", err)
-	}
-
-	calls := f.gceCalls.snapshot()
-	if len(calls) != 1 {
-		t.Fatalf("Expected 1 updateNetworkInterface call, got %d", len(calls))
-	}
-
-	// Verify that CandidateSubnetworkRangeNames is empty and
-	// SubnetworkRangeName is set to secondaryRangeName.
-	if len(calls[0].candidateRanges[0]) != 0 {
-		t.Errorf("expected empty candidateRanges, got %v", calls[0].candidateRanges[0])
-	}
-	if calls[0].subnetworkNames[0] != f.fakeGCE.SecondaryRangeName() {
-		t.Errorf("subnetworkName = %q, want %q", calls[0].subnetworkNames[0], f.fakeGCE.SecondaryRangeName())
-	}
-}
-
-func TestSpecController_ExhaustionError_TriggersInvalidate(t *testing.T) {
-	ctx := context.Background()
-	f := newTestFixture(t)
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-	f.run(ctx, stopCh)
-
-	trackingProvider := &trackingRangeProvider{ranges: []string{"range-1"}}
-	f.specCtrl.rangeProvider = trackingProvider
-
-	// Simulate GCE IP_SPACE_EXHAUSTED error
-	mockBeta, ok := f.fakeGCE.Compute().BetaInstances().(*gcloud.MockBetaInstances)
-	if !ok {
-		t.Fatalf("Failed to cast BetaInstances to MockBetaInstances")
-	}
-	mockBeta.UpdateNetworkInterfaceHook = func(
-		ctx context.Context,
-		key *meta.Key,
-		ifaceName string,
-		iface *computebeta.NetworkInterface,
-		mock *gcloud.MockBetaInstances,
-		options ...gcloud.Option,
-	) error {
-		return fmt.Errorf("googleapi: Error 400: IP_SPACE_EXHAUSTED, subnetwork has no free IPs")
-	}
-
-	instanceKey := meta.ZonalKey(testNodeName, testZone)
-	instance := &compute.Instance{
-		Name: testNodeName,
-		Zone: testZone,
-		NetworkInterfaces: []*compute.NetworkInterface{
-			{
-				Name:       "nic0",
-				Network:    testNetworkURL,
-				Subnetwork: "default",
-			},
-		},
-	}
-	if err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance); err != nil {
-		t.Fatalf("Failed to insert fake GCE instance: %v", err)
-	}
-
-	nnc := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
-		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{
-				{Network: "default", Pods: 16},
-			},
-		},
-	}
-	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
-		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
-	}
-	f.informerFactory.WaitForCacheSync(stopCh)
-
-	err := f.reconcile(ctx, nnc, testProviderID)
-	if err == nil {
-		t.Fatal("expected reconcile error on GCE failure, got nil")
-	}
-
-	if !trackingProvider.invalidated.Load() {
-		t.Error("expected rangeProvider.Invalidate() to be called on IP_SPACE_EXHAUSTED error")
-	}
-}
-
-func TestSpecController_NonExhaustionError_DoesNotTriggerInvalidate(t *testing.T) {
-	ctx := context.Background()
-	f := newTestFixture(t)
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-	f.run(ctx, stopCh)
-
-	trackingProvider := &trackingRangeProvider{ranges: []string{"range-1"}}
-	f.specCtrl.rangeProvider = trackingProvider
-
-	mockBeta, ok := f.fakeGCE.Compute().BetaInstances().(*gcloud.MockBetaInstances)
-	if !ok {
-		t.Fatalf("Failed to cast BetaInstances to MockBetaInstances")
-	}
-	mockBeta.UpdateNetworkInterfaceHook = func(
-		ctx context.Context,
-		key *meta.Key,
-		ifaceName string,
-		iface *computebeta.NetworkInterface,
-		mock *gcloud.MockBetaInstances,
-		options ...gcloud.Option,
-	) error {
-		return fmt.Errorf("googleapi: Error 403: permission denied")
-	}
-
-	instanceKey := meta.ZonalKey(testNodeName, testZone)
-	instance := &compute.Instance{
-		Name: testNodeName,
-		Zone: testZone,
-		NetworkInterfaces: []*compute.NetworkInterface{
-			{
-				Name:       "nic0",
-				Network:    testNetworkURL,
-				Subnetwork: "default",
-			},
-		},
-	}
-	if err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance); err != nil {
-		t.Fatalf("Failed to insert fake GCE instance: %v", err)
-	}
-
-	nnc := &nncv1.NodeNetworkConfig{
-		ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
-		Spec: nncv1.NodeNetworkConfigSpec{
-			Allocations: []nncv1.Allocation{
-				{Network: "default", Pods: 16},
-			},
-		},
-	}
-	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
-		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
-	}
-	f.informerFactory.WaitForCacheSync(stopCh)
-
-	err := f.reconcile(ctx, nnc, testProviderID)
-	if err == nil {
-		t.Fatal("expected reconcile error on GCE failure, got nil")
-	}
-
-	if trackingProvider.invalidated.Load() {
-		t.Error("rangeProvider.Invalidate() should NOT be called on non-exhaustion error")
 	}
 }
 
