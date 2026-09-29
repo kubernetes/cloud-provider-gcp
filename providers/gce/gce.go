@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"runtime"
 	"slices"
 	"strconv"
@@ -41,6 +42,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
 	"google.golang.org/api/option"
+	httptransport "google.golang.org/api/transport/http"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 
@@ -217,6 +219,10 @@ type Cloud struct {
 
 	// the compute API endpoint with the `projects/` element.
 	projectsBasePath string
+	// httpClient is the authenticated HTTP client for GCE API calls.
+	httpClient *http.Client
+	// aneAPIVersion is the GCE API version used for Alias Network Endpoints.
+	aneAPIVersion string
 	// stackType indicates whether the cluster is a single stack IPv4, single
 	// stack IPv6 or a dual stack cluster
 	stackType StackType
@@ -379,6 +385,9 @@ type CloudConfig struct {
 	AlphaFeatureGate        *AlphaFeatureGate
 	StackType               string
 	FirewallRulesManagement string
+	// ANEAPIVersion is the GCE API version used for Alias Network Endpoints.
+	// Defaults to DefaultANEAPIVersion ("2026-10-01-preview").
+	ANEAPIVersion string
 }
 
 func init() {
@@ -615,6 +624,12 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		return nil, err
 	}
 
+	allClientOpts := append([]option.ClientOption{option.WithUserAgent(userAgent)}, clientOpts...)
+	httpClient, _, err := httptransport.NewClient(context.Background(), allClientOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create authenticated HTTP client: %w", err)
+	}
+
 	service, err := compute.NewService(context.Background(), clientOpts...)
 	if err != nil {
 		return nil, err
@@ -715,6 +730,8 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		nodeZones:                map[string]sets.String{},
 		metricsCollector:         newLoadBalancerMetrics(),
 		projectsBasePath:         getProjectsBasePath(service.BasePath),
+		httpClient:               httpClient,
+		aneAPIVersion:            config.ANEAPIVersion,
 		stackType:                StackType(config.StackType),
 		firewallRulesManagement:  FirewallRulesManagement(config.FirewallRulesManagement),
 	}
@@ -1208,4 +1225,118 @@ func (g *Cloud) syncManagedZonesPeriodically(stop <-chan struct{}) {
 			klog.Errorf("Periodic refresh of GCE managed zones failed: %v", err)
 		}
 	}, 5*time.Minute, stop)
+}
+
+// ProjectsBasePath returns the base path for projects API endpoint.
+func (g *Cloud) ProjectsBasePath() string {
+	return g.projectsBasePath
+}
+
+// HTTPClient returns an authenticated HTTP client for GCE API calls.
+func (g *Cloud) HTTPClient() *http.Client {
+	if g.httpClient != nil {
+		return g.httpClient
+	}
+	return http.DefaultClient
+}
+
+// SecondaryRangeName returns the configured secondary range name.
+func (g *Cloud) SecondaryRangeName() string {
+	return g.secondaryRangeName
+}
+
+// DefaultANEAPIVersion is the default GCE API version for Alias Network Endpoints.
+const DefaultANEAPIVersion = "2026-10-01-preview"
+
+// ANEAPIVersion returns the configured GCE API version for Alias Network Endpoints.
+func (g *Cloud) ANEAPIVersion() string {
+	if g.aneAPIVersion != "" {
+		return g.aneAPIVersion
+	}
+	return DefaultANEAPIVersion
+}
+
+// OperationPollRateLimiter returns the rate limiter used for operation polling.
+func (g *Cloud) OperationPollRateLimiter() flowcontrol.RateLimiter {
+	return g.operationPollRateLimiter
+}
+
+// WaitForZoneOperation blocks until a zonal operation completes using the default ANE API version.
+func (g *Cloud) WaitForZoneOperation(ctx context.Context, project, zone, opName string) error {
+	return g.WaitForZoneOperationWithVersion(ctx, project, zone, opName, g.ANEAPIVersion())
+}
+
+// WaitForZoneOperationWithVersion blocks until a zonal operation completes using the specified API version.
+func (g *Cloud) WaitForZoneOperationWithVersion(ctx context.Context, project, zone, opName, apiVersion string) error {
+	if apiVersion == "" {
+		apiVersion = g.ANEAPIVersion()
+	}
+	url := fmt.Sprintf("%s%s/zones/%s/operations/%s/wait?%%24apiVersion=%s", g.projectsBasePath, project, zone, opName, apiVersion)
+
+	return wait.PollUntilContextCancel(ctx, 1*time.Second, true, func(ctx context.Context) (bool, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+		if err != nil {
+			return false, fmt.Errorf("failed to create operation wait request: %w", err)
+		}
+		req.Header.Set("X-Goog-Api-Version", apiVersion)
+		if g.operationPollRateLimiter != nil {
+			g.operationPollRateLimiter.Accept()
+		}
+		resp, err := g.HTTPClient().Do(req)
+		if err != nil {
+			return false, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			body, _ := io.ReadAll(resp.Body)
+			return false, fmt.Errorf("operation %q wait returned HTTP %d: %s", opName, resp.StatusCode, string(body))
+		}
+
+		var op struct {
+			Status              string `json:"status"`
+			HttpErrorStatusCode int    `json:"httpErrorStatusCode"`
+			HttpErrorMessage   string `json:"httpErrorMessage"`
+			Error               *struct {
+				Errors []struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"errors"`
+				Details []struct {
+					Type     string            `json:"@type"`
+					Reason   string            `json:"reason"`
+					Domain   string            `json:"domain"`
+					Metadata map[string]string `json:"metadata"`
+				} `json:"details"`
+			} `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&op); err != nil {
+			return false, fmt.Errorf("failed to decode operation %q: %w", opName, err)
+		}
+
+		if op.Status != "DONE" {
+			return false, nil
+		}
+
+		if op.HttpErrorStatusCode >= 400 || (op.Error != nil && (len(op.Error.Errors) > 0 || len(op.Error.Details) > 0)) {
+			var detailStrs []string
+			if op.Error != nil {
+				for _, e := range op.Error.Errors {
+					if e.Message != "" {
+						detailStrs = append(detailStrs, e.Message)
+					}
+				}
+				for _, d := range op.Error.Details {
+					if d.Reason != "" {
+						detailStrs = append(detailStrs, fmt.Sprintf("reason=%s domain=%s", d.Reason, d.Domain))
+					}
+				}
+			}
+			if len(detailStrs) == 0 && op.HttpErrorMessage != "" {
+				detailStrs = append(detailStrs, op.HttpErrorMessage)
+			}
+			return false, fmt.Errorf("zone operation %q failed (HTTP %d): %s", opName, op.HttpErrorStatusCode, strings.Join(detailStrs, "; "))
+		}
+		return true, nil
+	})
 }

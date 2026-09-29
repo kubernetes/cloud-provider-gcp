@@ -18,6 +18,7 @@ package dynamicpodip
 
 import (
 	"context"
+	"net/http"
 	"sync"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	nncinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/cloud-provider-gcp/pkg/controller/dynamicpodip/ane"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/controller-manager/controller"
 	"k8s.io/klog/v2"
@@ -69,6 +71,10 @@ type Options struct {
 	// ClusterName is the name of the Kubernetes cluster (used to query
 	// Container API for candidate secondary ranges).
 	ClusterName string
+	// UseAliasNetworkEndpoints switches the backend from GCE VM alias IP ranges to Alias Network Endpoints (ANEs).
+	UseAliasNetworkEndpoints bool
+	// GCEANEAPIVersion specifies the GCE API version for Alias Network Endpoints (e.g. "2026-10-01-preview").
+	GCEANEAPIVersion string
 }
 
 // StartControllers initializes and starts the status and/or spec controllers based on the provided options.
@@ -94,12 +100,44 @@ func StartControllers(
 	nncInformerFactory := nncinformers.NewSharedInformerFactory(nncClient, 0)
 	nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
 
-	loader := func(ctx context.Context, providerID string) ([]*networkInterface, error) {
-		gceIfaces, err := gceCloud.GetInstanceNetworkInterfaces(ctx, providerID)
-		if err != nil {
-			return nil, err
+	var backend PodIPBackend
+	if opts.UseAliasNetworkEndpoints {
+		klog.Info("Using AliasNetworkEndpoint (ANE) backend for dynamic Pod IP controller")
+		apiVersion := opts.GCEANEAPIVersion
+		if apiVersion == "" && gceCloud != nil {
+			apiVersion = gceCloud.ANEAPIVersion()
 		}
-		return toNetworkInterfaces(gceIfaces), nil
+		if apiVersion == "" {
+			apiVersion = ane.PreviewAPIVersion
+		}
+		var clientOpts ane.ClientOptions
+		clientOpts.APIVersion = apiVersion
+		if gceCloud != nil {
+			clientOpts.RateLimiter = gceCloud.OperationPollRateLimiter()
+			clientOpts.MetricObserver = func(request, zone string, start time.Time, err error) {
+				gce.ObserveANEMetric(request, zone, apiVersion, start, err)
+			}
+		}
+		waiter := func(ctx context.Context, project, zone, opName string) error {
+			if gceCloud != nil {
+				return gceCloud.WaitForZoneOperationWithVersion(ctx, project, zone, opName, apiVersion)
+			}
+			return nil
+		}
+		var httpClient *http.Client
+		projectsBasePath := ""
+		if gceCloud != nil {
+			httpClient = gceCloud.HTTPClient()
+			projectsBasePath = gceCloud.ProjectsBasePath()
+		}
+		aneClient := ane.NewHTTPClientWithOptions(httpClient, projectsBasePath, waiter, clientOpts)
+		backend = NewANEBackend(gceCloud, aneClient)
+	} else {
+		backend = NewAliasRangesBackend(gceCloud)
+	}
+
+	loader := func(ctx context.Context, providerID string) ([]*networkInterface, error) {
+		return backend.GetNetworkInterfaces(ctx, providerID)
 	}
 
 	gceCache := NewGCECache(loader, 10*time.Second, clock.RealClock{})
@@ -147,7 +185,7 @@ func StartControllers(
 			rangeProvider = refresher
 		}
 
-		specCtrl := NewSpecController(
+		specCtrl := NewSpecControllerWithBackend(
 			kubeClient,
 			nncClient,
 			nncInformer,
@@ -156,6 +194,7 @@ func StartControllers(
 			gceCache,
 			statusTrigger,
 			rangeProvider,
+			backend,
 		)
 		go specCtrl.Run(DefaultSpecControllerWorkers, ctx.Done())
 	}

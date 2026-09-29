@@ -263,6 +263,11 @@ func canonicalizeInstanceName(name string) string {
 	return name
 }
 
+// CanonicalizeInstanceName reduces 'kubernetes-node-2.c.my-proj.internal' to 'kubernetes-node-2' if necessary.
+func CanonicalizeInstanceName(name string) string {
+	return canonicalizeInstanceName(name)
+}
+
 // Returns the last component of a URL, i.e. anything after the last slash
 // If there is no slash, returns the whole string
 func lastComponent(s string) string {
@@ -313,6 +318,11 @@ func splitProviderID(providerID string) (project, zone, instance string, err err
 		return "", "", "", errors.New("error splitting providerID")
 	}
 	return matches[1], matches[2], matches[3], nil
+}
+
+// SplitProviderID splits a provider's id into core components (project, zone, instance).
+func SplitProviderID(providerID string) (project, zone, instance string, err error) {
+	return splitProviderID(providerID)
 }
 
 func equalStringSets(x, y []string) bool {

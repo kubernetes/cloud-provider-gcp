@@ -85,6 +85,7 @@ type nodeSyncBase struct {
 	nodeLister corelisters.NodeLister
 	gceCloud   *gce.Cloud
 	gceCache   *GCECache
+	backend    PodIPBackend
 }
 
 // Name returns the name of the controller.
