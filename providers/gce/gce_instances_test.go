@@ -916,12 +916,12 @@ func TestUpdateInstanceAliasIPRanges_NetworkURLMatching(t *testing.T) {
 	// Call UpdateInstanceAliasIPRanges using a GA /v1/ network URL.
 	// It should match the interface via canonical resource URL matching (equalResourceURLs).
 	gaNetworkURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/my-vpc", gce.ProjectID())
-	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, gaNetworkURL, []string{"10.96.0.0/28"}, nil)
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, gaNetworkURL, []string{"10.96.0.0/28"}, nil, nil)
 	require.NoError(t, err)
 
 	// Calling with an unrelated network URL must fail with an error.
 	mismatchedNetworkURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/other-vpc", gce.ProjectID())
-	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, mismatchedNetworkURL, []string{"10.96.0.0/28"}, nil)
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, mismatchedNetworkURL, []string{"10.96.0.0/28"}, nil, nil)
 	require.Error(t, err)
 }
 
@@ -1070,7 +1070,7 @@ func TestUpdateInstanceAliasIPRanges_MultiInterfaceTargeting(t *testing.T) {
 	}
 
 	// Mutate netB: should only affect nic1
-	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, netB, []string{"10.20.0.0/28"}, nil)
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, netB, []string{"10.20.0.0/28"}, nil, nil)
 	require.NoError(t, err)
 
 	ifaces, err := gce.GetInstanceNetworkInterfaces(context.Background(), providerID)
@@ -1081,7 +1081,7 @@ func TestUpdateInstanceAliasIPRanges_MultiInterfaceTargeting(t *testing.T) {
 	assert.Equal(t, "10.20.0.0/28", ifaces[1].AliasIpRanges[0].IpCidrRange)
 
 	// Mutate netA: should only affect nic0
-	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, netA, []string{"10.10.0.0/28"}, nil)
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, netA, []string{"10.10.0.0/28"}, nil, nil)
 	require.NoError(t, err)
 
 	ifaces, err = gce.GetInstanceNetworkInterfaces(context.Background(), providerID)
@@ -1124,10 +1124,10 @@ func TestUpdateInstanceAliasIPRanges_CrossProjectSafety(t *testing.T) {
 	require.NoError(t, err)
 
 	// Calling with same VPC name but wrong project ID must fail and not match nic0
-	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, serviceProjectURL, []string{"10.96.0.0/28"}, nil)
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, serviceProjectURL, []string{"10.96.0.0/28"}, nil, nil)
 	require.Error(t, err)
 
 	// Calling with the correct host project URL must succeed
-	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, hostProjectURL, []string{"10.96.0.0/28"}, nil)
+	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, hostProjectURL, []string{"10.96.0.0/28"}, nil, nil)
 	require.NoError(t, err)
 }
