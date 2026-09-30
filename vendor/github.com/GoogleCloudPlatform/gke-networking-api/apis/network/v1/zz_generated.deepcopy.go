@@ -315,6 +315,11 @@ func (in *NetworkInterfaceStatus) DeepCopyInto(out *NetworkInterfaceStatus) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.Gateway6 != nil {
+		in, out := &in.Gateway6, &out.Gateway6
+		*out = new(string)
+		**out = **in
+	}
 	if in.DNSConfig != nil {
 		in, out := &in.DNSConfig, &out.DNSConfig
 		*out = new(DNSConfig)
