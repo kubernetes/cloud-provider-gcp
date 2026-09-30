@@ -38,7 +38,8 @@ import (
 )
 
 const (
-	// DefaultSpecControllerWorkers is the default number of worker goroutines for the spec controller.
+	// DefaultSpecControllerWorkers is the default number of worker goroutines
+	// for the spec controller.
 	DefaultSpecControllerWorkers = 4
 
 	specControllerName = "node-network-config-spec-controller"
@@ -81,6 +82,7 @@ type NodeNetworkConfigSpecController struct {
 	nncSynced     cache.InformerSynced
 	nodeSynced    cache.InformerSynced
 	statusTrigger StatusTrigger
+	rangeProvider CandidateRangeProvider
 	queue         workqueue.TypedRateLimitingInterface[string]
 }
 
@@ -93,9 +95,13 @@ func NewSpecController(
 	gceCloud *gce.Cloud,
 	gceCache *GCECache,
 	statusTrigger StatusTrigger,
+	rangeProvider CandidateRangeProvider,
 ) *NodeNetworkConfigSpecController {
 	if statusTrigger == nil {
 		statusTrigger = &NoopStatusTrigger{}
+	}
+	if rangeProvider == nil {
+		rangeProvider = NewStaticRangeProvider(nil)
 	}
 
 	c := &NodeNetworkConfigSpecController{
@@ -111,6 +117,7 @@ func NewSpecController(
 		nncSynced:     nncInformer.Informer().HasSynced,
 		nodeSynced:    nodeInformer.Informer().HasSynced,
 		statusTrigger: statusTrigger,
+		rangeProvider: rangeProvider,
 		queue:         newNodeWorkqueue("dynamic-pod-ip-spec"),
 	}
 
@@ -228,10 +235,33 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		}
 		netChanges := changes.GetNetwork(network)
 
-		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v",
-			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals)
+		// Retrieve candidate secondary range names for alias IP allocation on
+		// this interface's subnetwork.
+		var candidateRanges []string
+		if c.rangeProvider != nil {
+			var targetSubnet string
+			for _, iface := range ifaces {
+				if gce.EqualResourceURLs(iface.Network, networkURL) {
+					targetSubnet = iface.Subnetwork
+					break
+				}
+			}
+			if subProvider, ok := c.rangeProvider.(SubnetworkCandidateRangeProvider); ok {
+				candidateRanges = subProvider.GetCandidateRangesForSubnetwork(targetSubnet)
+			} else {
+				ranges, err := c.rangeProvider.GetCandidateRanges()
+				if err != nil {
+					klog.Warningf("Failed to retrieve candidate pod secondary ranges for node %q: %v", nnc.Name, err)
+				} else {
+					candidateRanges = ranges
+				}
+			}
+		}
 
-		err = c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, networkURL, netChanges.additions, netChanges.removals)
+		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v, candidateRanges=%v",
+			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
+
+		err = c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
 		if err != nil {
 			klog.Errorf("GCE mutation failed for node %q network %q: %v", nnc.Name, network, err)
 			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("GCE mutation failed: %v", err))
