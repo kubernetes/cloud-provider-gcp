@@ -400,7 +400,7 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 	}
 
 	rows, err := tx.QueryContext(ctx, `
-		SELECT i.id, i.cidr_block_id, i.address
+		SELECT i.id, i.cidr_block_id, i.address, c.reusable
 		FROM ip_addresses i
 		JOIN cidr_blocks c ON i.cidr_block_id = c.id
 		WHERE c.network = ? AND i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE
@@ -415,12 +415,13 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 		id          int64
 		cidrBlockID int64
 		address     string
+		reusable    bool
 	}
 	var releases []release
 
 	for rows.Next() {
 		var r release
-		if err := rows.Scan(&r.id, &r.cidrBlockID, &r.address); err != nil {
+		if err := rows.Scan(&r.id, &r.cidrBlockID, &r.address, &r.reusable); err != nil {
 			return nil, fmt.Errorf("failed to scan affected IP details: %w", err)
 		}
 		releases = append(releases, r)
@@ -431,13 +432,7 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 
 	var releasedIPs []string
 	for _, r := range releases {
-		var reusable bool
-		err = tx.QueryRowContext(ctx, `SELECT reusable FROM cidr_blocks WHERE id = ?`, r.cidrBlockID).Scan(&reusable)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check reusable status for cidr_block %d: %w", r.cidrBlockID, err)
-		}
-
-		if reusable {
+		if r.reusable {
 			_, err = tx.ExecContext(ctx, `
 				UPDATE ip_addresses
 				SET is_allocated = FALSE, release_at = ?
