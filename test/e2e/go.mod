@@ -5,7 +5,7 @@ go 1.26.3
 require (
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0
 	github.com/onsi/ginkgo/v2 v2.33.0
-	github.com/onsi/gomega v1.43.1
+	github.com/onsi/gomega v1.44.0
 	google.golang.org/api v0.299.0
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
@@ -20,7 +20,7 @@ require (
 	cel.dev/expr v0.25.2 // indirect
 	cloud.google.com/go/auth v0.23.3 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
-	cloud.google.com/go/compute/metadata v0.9.1 // indirect
+	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
