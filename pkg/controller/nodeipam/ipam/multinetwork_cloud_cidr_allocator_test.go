@@ -8,6 +8,7 @@ import (
 	clSetFake "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/fake"
 	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
 	ntfakeclient "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/fake"
+	"github.com/google/go-cmp/cmp"
 	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -850,5 +851,74 @@ func TestDefaultNetworkCIDRs_DefaultNetworkNotUp(t *testing.T) {
 	// Verify that missing default Network CR returns an empty slice safely instead of throwing a panic
 	if len(cidrs) != 0 {
 		t.Errorf("Expected empty CIDR blocks because default network was not in Informer (not up/ready), got: %v", cidrs)
+	}
+}
+
+// TestNorthInterfaceFor covers the rules for the address fields of a
+// north-interfaces entry: each is populated only from the interface's own
+// address, never with a malformed value, and independently of the cluster's
+// stack type.
+func TestNorthInterfaceFor(t *testing.T) {
+	const (
+		ipv4         = "10.1.1.1"
+		internalIPv6 = "2001:db8:0:2::10"
+		externalIPv6 = "2600:1900:4000:fd1::10"
+	)
+	nic := func(networkIP, ipv6Address string) *compute.NetworkInterface {
+		return interfacesWithIPv6(redVPCName, redVPCSubnetName, networkIP, ipv6Address, nil)
+	}
+	externalIPv6NIC := func() *compute.NetworkInterface {
+		n := nic(ipv4, "")
+		n.Ipv6AccessType = "EXTERNAL"
+		n.Ipv6AccessConfigs = []*compute.AccessConfig{{Type: "DIRECT_IPV6", ExternalIpv6: externalIPv6}}
+		return n
+	}
+	red := network(redNetworkName, redGKENetworkParamsName, true)
+	cloud := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	// An additional network's stack type follows its own subnet, not the
+	// cluster's, so the entry must be the same under every cluster stack type.
+	stackTypes := []clusterStackType{stackIPv4, stackIPv4IPv6, stackIPv6IPv4, stackIPv6}
+
+	testCases := []struct {
+		desc string
+		nic  *compute.NetworkInterface
+		want networkv1.NorthInterface
+	}{
+		{
+			desc: "dual-stack interface populates ipAddress and internal ipv6Address",
+			nic:  nic(ipv4, internalIPv6),
+			want: networkv1.NorthInterface{Network: redNetworkName, IpAddress: ipv4, IPv6Address: internalIPv6},
+		},
+		{
+			desc: "interface with external IPv6 falls back to external ipv6Address",
+			nic:  externalIPv6NIC(),
+			want: networkv1.NorthInterface{Network: redNetworkName, IpAddress: ipv4, IPv6Address: externalIPv6},
+		},
+		{
+			desc: "IPv4-only interface leaves ipv6Address empty",
+			nic:  nic(ipv4, ""),
+			want: networkv1.NorthInterface{Network: redNetworkName, IpAddress: ipv4},
+		},
+		{
+			desc: "IPv6-only interface leaves ipAddress empty",
+			nic:  nic("", internalIPv6),
+			want: networkv1.NorthInterface{Network: redNetworkName, IPv6Address: internalIPv6},
+		},
+		{
+			desc: "malformed IPv6 is dropped rather than published",
+			nic:  nic(ipv4, "2001:db8:0:2::/112"),
+			want: networkv1.NorthInterface{Network: redNetworkName, IpAddress: ipv4},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			for _, stackType := range stackTypes {
+				ca := &cloudCIDRAllocator{cloud: cloud, stackType: stackType}
+				got := ca.northInterfaceFor(red, tc.nic)
+				if diff := cmp.Diff(tc.want, got); diff != "" {
+					t.Fatalf("northInterfaceFor() on %q cluster mismatch (-want +got):\n%s", stackType, diff)
+				}
+			}
+		})
 	}
 }

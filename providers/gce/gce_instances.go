@@ -638,6 +638,26 @@ func (g *Cloud) GetIPV6Address(networkInterface *compute.NetworkInterface) *net.
 	}
 }
 
+// InterfaceIPv6Address returns the IPv6 address configured on a network
+// interface: the internal address, or the external one when Ipv6AccessType is
+// EXTERNAL. It returns "" if the interface has no IPv6 address or the value is
+// not a valid IPv6 address.
+//
+// Unlike GetIPV6Address, which derives the /112 pod range from the address,
+// this returns the interface's own address and is suitable for reporting the
+// node-side ("north") address of the interface.
+func (g *Cloud) InterfaceIPv6Address(networkInterface *compute.NetworkInterface) string {
+	ipv6Addr := getIPV6AddressFromInterface(networkInterface)
+	if ipv6Addr == "" {
+		return ""
+	}
+	if !netutils.IsIPv6String(ipv6Addr) {
+		klog.V(2).InfoS("Ignoring malformed IPv6 address on network interface", "interface", networkInterface.Name, "value", ipv6Addr)
+		return ""
+	}
+	return ipv6Addr
+}
+
 // AddAliasToInstanceByProviderID adds an alias to the given instance from the named
 // secondary range.
 func (g *Cloud) AddAliasToInstanceByProviderID(providerID string, alias *net.IPNet) error {
