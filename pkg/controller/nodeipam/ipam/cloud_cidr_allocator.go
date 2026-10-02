@@ -630,6 +630,13 @@ func isIP6(ipnet *net.IPNet) bool {
 	return ipnet.IP.To4() == nil && ipnet.IP.To16() != nil
 }
 
+// clusterHasIPv6 returns true if the cluster stack type includes an IPv6
+// family (IPv4_IPv6, IPv6_IPv4 or IPv6). Node-level IPv6 addresses are only
+// published in multi-network annotations on such clusters.
+func (ca *cloudCIDRAllocator) clusterHasIPv6() bool {
+	return ca.stackType != stackIPv4
+}
+
 // filterMultiNetworkAnnotations filters a node annotation with all multi-network annotations that is watched/updated by CCM
 func filterMultiNetworkAnnotations(annotations map[string]string) map[string]string {
 	if annotations == nil {

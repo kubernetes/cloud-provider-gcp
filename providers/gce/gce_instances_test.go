@@ -1131,3 +1131,91 @@ func TestUpdateInstanceAliasIPRanges_CrossProjectSafety(t *testing.T) {
 	err = gce.UpdateInstanceAliasIPRanges(context.Background(), providerID, hostProjectURL, []string{"10.96.0.0/28"}, nil, nil)
 	require.NoError(t, err)
 }
+
+func TestInterfaceIPv6Address(t *testing.T) {
+	gce, err := fakeGCECloud(DefaultTestClusterValues())
+	require.NoError(t, err)
+
+	testcases := []struct {
+		name string
+		nic  *ga.NetworkInterface
+		want string
+	}{
+		{
+			name: "internal IPv6 address",
+			nic: &ga.NetworkInterface{
+				NetworkIP:   "10.1.1.1",
+				StackType:   "IPV4_IPV6",
+				Ipv6Address: "2001:2d00::0:1",
+			},
+			want: "2001:2d00::0:1",
+		},
+		{
+			name: "external IPv6 address from access config",
+			nic: &ga.NetworkInterface{
+				NetworkIP:      "10.1.1.2",
+				StackType:      "IPV4_IPV6",
+				Ipv6AccessType: "EXTERNAL",
+				Ipv6AccessConfigs: []*ga.AccessConfig{
+					{ExternalIpv6: "2001:1900::0:2"},
+				},
+			},
+			want: "2001:1900::0:2",
+		},
+		{
+			name: "internal address takes precedence over access config",
+			nic: &ga.NetworkInterface{
+				Ipv6Address:    "2001:2d00::0:1",
+				Ipv6AccessType: "EXTERNAL",
+				Ipv6AccessConfigs: []*ga.AccessConfig{
+					{ExternalIpv6: "2001:1900::0:2"},
+				},
+			},
+			want: "2001:2d00::0:1",
+		},
+		{
+			name: "access config ignored when access type is not EXTERNAL",
+			nic: &ga.NetworkInterface{
+				Ipv6AccessType: "INTERNAL",
+				Ipv6AccessConfigs: []*ga.AccessConfig{
+					{ExternalIpv6: "2001:1900::0:2"},
+				},
+			},
+			want: "",
+		},
+		{
+			name: "IPv4-only interface",
+			nic: &ga.NetworkInterface{
+				NetworkIP: "10.1.1.5",
+				StackType: "IPV4",
+			},
+			want: "",
+		},
+		{
+			name: "CIDR in the address slot is rejected",
+			nic: &ga.NetworkInterface{
+				Ipv6Address: "2001:db9::/96",
+			},
+			want: "",
+		},
+		{
+			name: "IPv4 address in the IPv6 slot is rejected",
+			nic: &ga.NetworkInterface{
+				Ipv6Address: "10.1.1.1",
+			},
+			want: "",
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, gce.InterfaceIPv6Address(tc.nic))
+		})
+	}
+
+	// The bare address must not be confused with the /112 pod range that
+	// GetIPV6Address derives from the same interface.
+	nic := &ga.NetworkInterface{Ipv6Address: "2001:db9::110"}
+	assert.Equal(t, "2001:db9::110", gce.InterfaceIPv6Address(nic))
+	assert.Equal(t, "2001:db9::/112", gce.GetIPV6Address(nic).String())
+}
