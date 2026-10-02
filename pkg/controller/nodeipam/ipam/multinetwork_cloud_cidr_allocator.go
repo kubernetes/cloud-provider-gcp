@@ -23,6 +23,9 @@ import (
 //
 // NorthInterfacesAnnotationKey is modified on Network Ready condition changes.
 // MultiNetworkAnnotationKey is modified on Node's NodeNetworkAnnotationKey changes.
+//
+// Each north-interfaces entry carries the interface's primary IPv4 address and,
+// on IPv6 and dual-stack clusters only, its IPv6 address (see northInterfaceFor).
 func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, interfaces []*compute.NetworkInterface, hasNodeLabels bool) (defaultNwCIDRs []string, err error) {
 	northInterfaces := networkv1.NorthInterfacesAnnotation{}
 	additionalNodeNetworks := networkv1.MultiNetworkAnnotation{}
@@ -92,11 +95,10 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 				continue
 			}
 			klog.V(2).InfoS("interface matched, proceeding to find a pod range", "nodeName", node.Name, "networkInterface", inf.Name)
-			// TODO: Handle IPv6 in future.
 
 			if network.Spec.Type == networkv1.DeviceNetworkType {
 				processedNetworks[network.Name] = struct{}{}
-				northInterfaces = append(northInterfaces, networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP})
+				northInterfaces = append(northInterfaces, ca.northInterfaceFor(network, inf))
 				if _, ok := upStatusNetworks[network.Name]; ok {
 					additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{inf.NetworkIP + "/32"}})
 				} else {
@@ -132,7 +134,7 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 					defaultNwCIDRs = append(defaultNwCIDRs, ipRange.IpCidrRange)
 				}
 				if !ca.isDefaultNetwork(network.Name) {
-					northInterfaces = append(northInterfaces, networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP})
+					northInterfaces = append(northInterfaces, ca.northInterfaceFor(network, inf))
 					if _, ok := upStatusNetworks[network.Name]; ok {
 						additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{ipRange.IpCidrRange}})
 					} else {
@@ -190,6 +192,19 @@ out:
 		}
 	}
 	return defaultNwCIDRs
+}
+
+// northInterfaceFor builds the north-interfaces annotation entry for a Network
+// matched to a GCE interface on the node. IpAddress is the interface's primary
+// internal IPv4 address. IPv6Address is only populated on IPv6 and dual-stack
+// clusters, and only if the interface has an IPv6 address; an empty value is
+// omitted from the serialized annotation.
+func (ca *cloudCIDRAllocator) northInterfaceFor(network *networkv1.Network, inf *compute.NetworkInterface) networkv1.NorthInterface {
+	ni := networkv1.NorthInterface{Network: network.Name, IpAddress: inf.NetworkIP}
+	if ca.clusterHasIPv6() {
+		ni.IPv6Address = ca.cloud.InterfaceIPv6Address(inf)
+	}
+	return ni
 }
 
 func updateAnnotations(node *v1.Node, northInterfaces networkv1.NorthInterfacesAnnotation, additionalNodeNetworks networkv1.MultiNetworkAnnotation) error {
