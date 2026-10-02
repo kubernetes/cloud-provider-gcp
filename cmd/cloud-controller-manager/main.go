@@ -108,6 +108,12 @@ var (
 	// (e.g. [subnetwork/]range1=ACTIVE,range2=DRAINING), for pod IP
 	// allocations in Adaptive Cluster IPAM mode.
 	multiSecondaryRanges []string
+
+	// useAliasNetworkEndpoints switches dynamic-pod-ip-controller from GCE VM alias IP ranges to Alias Network Endpoints (ANEs).
+	useAliasNetworkEndpoints bool
+
+	// gceANEAPIVersion specifies the GCE API version for Alias Network Endpoints.
+	gceANEAPIVersion string
 )
 
 func main() {
@@ -135,6 +141,8 @@ func main() {
 	cloudProviderFS.BoolVar(&enableDynamicPodIPController, "enable-dynamic-pod-ip-controller", false, "Enables the GKE Dynamic Pod IP Controller.")
 	cloudProviderFS.BoolVar(&populateNodeNetworkConfig, "populate-node-network-config", false, "Enables population of NodeNetworkConfig status from GCE state.")
 	cloudProviderFS.StringSliceVar(&multiSecondaryRanges, "multi-secondary-ranges", nil, "Comma-separated list of secondary range names with optional subnetwork and lifecycle status (e.g. --multi-secondary-ranges=[subnetwork/]range1=ACTIVE,range2=DRAINING or range1=ACTIVE) for pod IP allocations in Adaptive Cluster IPAM mode. Active ranges are used as candidates for pod IP allocations. If set, disables automatic Container API discovery.")
+	cloudProviderFS.BoolVar(&useAliasNetworkEndpoints, "use-alias-network-endpoints", false, "Switches dynamic-pod-ip-controller to use Alias Network Endpoints (ANEs) instead of VM alias IP ranges.")
+	cloudProviderFS.StringVar(&gceANEAPIVersion, "gce-ane-api-version", "2026-10-01-preview", "GCE API version for Alias Network Endpoints (ANEs).")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}

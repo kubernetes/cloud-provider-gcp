@@ -109,3 +109,15 @@ func registerAPIMetrics() *apiCallMetrics {
 
 	return metrics
 }
+
+// ObserveANEMetric observes latency and errors for an Alias Network Endpoint API call.
+func ObserveANEMetric(request, zone, version string, start time.Time, err error) {
+	if len(zone) == 0 {
+		zone = unusedMetricLabel
+	}
+	mc := &metricContext{
+		start:      start,
+		attributes: []string{"ane_" + request, unusedMetricLabel, zone, version},
+	}
+	mc.Observe(err)
+}

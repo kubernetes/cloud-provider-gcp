@@ -97,11 +97,29 @@ func NewSpecController(
 	statusTrigger StatusTrigger,
 	rangeProvider CandidateRangeProvider,
 ) *NodeNetworkConfigSpecController {
+	return NewSpecControllerWithBackend(kubeClient, nncClient, nncInformer, nodeInformer, gceCloud, gceCache, statusTrigger, rangeProvider, nil)
+}
+
+// NewSpecControllerWithBackend constructs a new NodeNetworkConfigSpecController with explicit PodIPBackend.
+func NewSpecControllerWithBackend(
+	kubeClient kubernetes.Interface,
+	nncClient nncclientset.Interface,
+	nncInformer nncinformers.NodeNetworkConfigInformer,
+	nodeInformer coreinformers.NodeInformer,
+	gceCloud *gce.Cloud,
+	gceCache *GCECache,
+	statusTrigger StatusTrigger,
+	rangeProvider CandidateRangeProvider,
+	backend PodIPBackend,
+) *NodeNetworkConfigSpecController {
 	if statusTrigger == nil {
 		statusTrigger = &NoopStatusTrigger{}
 	}
 	if rangeProvider == nil {
 		rangeProvider = NewStaticRangeProvider(nil)
+	}
+	if backend == nil {
+		backend = NewAliasRangesBackend(gceCloud)
 	}
 
 	c := &NodeNetworkConfigSpecController{
@@ -113,6 +131,7 @@ func NewSpecController(
 			nodeLister: nodeInformer.Lister(),
 			gceCloud:   gceCloud,
 			gceCache:   gceCache,
+			backend:    backend,
 		},
 		nncSynced:     nncInformer.Informer().HasSynced,
 		nodeSynced:    nodeInformer.Informer().HasSynced,
@@ -261,7 +280,7 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v, candidateRanges=%v",
 			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
 
-		err = c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
+		err = c.backend.Mutate(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
 		if err != nil {
 			klog.Errorf("GCE mutation failed for node %q network %q: %v", nnc.Name, network, err)
 			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("GCE mutation failed: %v", err))
@@ -355,14 +374,20 @@ func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetwor
 
 		if desiredPods > currentCap {
 			neededIPs := desiredPods - currentCap
-			blocksNeeded := (neededIPs + DefaultCapacity - 1) / DefaultCapacity
 
 			entry := changes[network]
-			for i := 0; i < blocksNeeded; i++ {
-				entry.additions = append(entry.additions, DefaultBlockSize)
+			var additions []string
+			if c.backend != nil {
+				additions = c.backend.CalculateAdditions(network, neededIPs, ifaces)
+			} else {
+				blocksNeeded := (neededIPs + DefaultCapacity - 1) / DefaultCapacity
+				for i := 0; i < blocksNeeded; i++ {
+					additions = append(additions, DefaultBlockSize)
+				}
 			}
+			entry.additions = append(entry.additions, additions...)
 			changes[network] = entry
-			klog.V(3).Infof("Node %q network %q needs %d more IPs, requesting %d blocks of size %s", nnc.Name, network, neededIPs, blocksNeeded, DefaultBlockSize)
+			klog.V(3).Infof("Node %q network %q needs %d more IPs, requesting allocations: %v", nnc.Name, network, neededIPs, additions)
 		}
 	}
 
