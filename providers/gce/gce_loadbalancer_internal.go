@@ -85,6 +85,10 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	if err := g.processMixedProtocolCheck(context.TODO(), svc, false); err != nil {
 		return nil, err
 	}
+	labels, labelsPresent, err := GetLoadBalancerAnnotationResourceLabels(svc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse forwarding rule resource labels: %w", err)
+	}
 
 	nm := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
 
@@ -240,9 +244,8 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	// Get the most recent forwarding rule for the address.
 	updatedFwdRule, err := g.GetRegionForwardingRule(loadBalancerName, g.region)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get forwarding rule for load balancer (%s): %w", nm, err)
 	}
-
 	ipToUse = updatedFwdRule.IPAddress
 	// Ensure firewall rules if necessary
 	if err = g.ensureInternalFirewalls(loadBalancerName, ipToUse, clusterID, nm, svc, strconv.Itoa(int(hcPort)), sharedHealthCheck, nodes); err != nil {
@@ -252,6 +255,11 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	// Delete the previous internal load balancer resources if necessary
 	if existingBackendService != nil {
 		g.clearPreviousInternalResources(svc, loadBalancerName, clusterID, existingBackendService, backendServiceName, hcName)
+	}
+	if labelsPresent {
+		if err := g.SetRegionForwardingRuleLabels(updatedFwdRule, g.region, labels); err != nil {
+			return nil, fmt.Errorf("failed to reconcile forwarding rule labels for load balancer (%s): %w", nm, err)
+		}
 	}
 
 	serviceState.InSuccess = true
