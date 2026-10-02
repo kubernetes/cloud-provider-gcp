@@ -84,6 +84,11 @@ type PodCIDR struct {
 	// +required
 	CIDR string `json:"cidr"`
 
+	// ReusePolicy is the reuse policy of the pod CIDR. The default is "Reusable".
+	// +optional
+	// +kubebuilder:default="Reusable"
+	ReusePolicy PodCIDRType `json:"reusePolicy,omitempty"`
+
 	// Condition contains details for the current condition of this pod CIDR.
 	// +optional
 	Condition *metav1.Condition `json:"condition,omitempty"`
@@ -117,6 +122,17 @@ type NodeNetworkConfigList struct {
 	// Items is a list of NodeNetworkConfig.
 	Items []NodeNetworkConfig `json:"items"`
 }
+
+// PodCIDRType describes the reuse capability of a Pod CIDR.
+// +kubebuilder:validation:Enum=Reusable;NonReusable
+type PodCIDRType string
+
+const (
+	// PodCIDRTypeReusable means the pod CIDR can be reused after being released.
+	PodCIDRTypeReusable PodCIDRType = "Reusable"
+	// PodCIDRTypeNonReusable means the pod CIDR cannot be reused after being released.
+	PodCIDRTypeNonReusable PodCIDRType = "NonReusable"
+)
 
 // PodCIDRConditionType is a valid condition type that should be used in PodCIDR.Conditions.
 type PodCIDRConditionType string

@@ -3,7 +3,7 @@ module k8s.io/metis
 go 1.26.3
 
 require (
-	github.com/GoogleCloudPlatform/gke-networking-api v0.2.9
+	github.com/GoogleCloudPlatform/gke-networking-api v0.2.10
 	github.com/containernetworking/cni v1.3.1
 	github.com/go-logr/logr v1.4.4
 	github.com/mattn/go-sqlite3 v1.14.52
