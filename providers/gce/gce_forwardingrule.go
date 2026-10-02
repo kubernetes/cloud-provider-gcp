@@ -169,6 +169,8 @@ func (g *Cloud) SetRegionForwardingRuleLabels(rule *compute.ForwardingRule, regi
 	request := &compute.RegionSetLabelsRequest{
 		LabelFingerprint: rule.LabelFingerprint,
 		Labels:           labels,
+		// Labels must be sent even when empty: an empty annotation clears all labels.
+		ForceSendFields: []string{"Labels"},
 	}
 	return mc.Observe(g.c.ForwardingRules().SetLabels(ctx, meta.RegionalKey(rule.Name, region), request))
 }
