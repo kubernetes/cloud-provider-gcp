@@ -32,7 +32,7 @@ require (
 
 require (
 	github.com/GoogleCloudPlatform/gke-enterprise-mt v1.37.2
-	github.com/GoogleCloudPlatform/gke-networking-api v0.2.9
+	github.com/GoogleCloudPlatform/gke-networking-api v0.2.10
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.37.1
@@ -44,7 +44,7 @@ require (
 	cel.dev/expr v0.25.2 // indirect
 	cloud.google.com/go/auth v0.23.3 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
-	cloud.google.com/go/compute/metadata v0.9.1 // indirect
+	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
