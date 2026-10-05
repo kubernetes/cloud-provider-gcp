@@ -219,7 +219,13 @@ func (s *Store) GetCIDRBlock(ctx context.Context, cidr, network string) (int64, 
 
 // AddCIDR parses the CIDR, determines family, and inserts it + its constituent IP addresses into the store.
 // For IPv4, it populates all IPs. For IPv6, it only adds the CIDR block.
-func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
+// By default, reusable is true unless overridden by options (e.g. WithReusable(false)).
+func (s *Store) AddCIDR(ctx context.Context, network, cidr string, opts ...AddCIDROption) error {
+	options := DefaultCIDROptions()
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	prefix, err := netip.ParsePrefix(cidr)
 	if err != nil {
 		return fmt.Errorf("failed to parse cidr %s: %w", cidr, err)
@@ -230,6 +236,10 @@ func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 	if prefix.Addr().Is6() {
 		ipFamily = IPv6
 		isIPv6 = true
+	}
+
+	if !options.Reusable && (prefix.Bits() != 32 || isIPv6) {
+		return fmt.Errorf("%w: %s", ErrNonReusableNot32, cidr)
 	}
 
 	var totalIPs int64
@@ -253,9 +263,9 @@ func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 
 	// 1. Insert into cidr_blocks
 	res, err := tx.ExecContext(ctx, `
-		INSERT INTO cidr_blocks (cidr, network, ip_family, total_ips, allocated_ips, state)
-		VALUES (?, ?, ?, ?, 0, 'Ready')
-	`, cidr, network, ipFamily, totalIPs)
+		INSERT INTO cidr_blocks (cidr, network, ip_family, total_ips, allocated_ips, state, reusable)
+		VALUES (?, ?, ?, ?, 0, 'Ready', ?)
+	`, cidr, network, ipFamily, totalIPs, options.Reusable)
 
 	if err != nil {
 		if sqliteErr, ok := err.(sqlite3.Error); ok {
@@ -367,7 +377,14 @@ func (s *Store) AddCIDR(ctx context.Context, network, cidr string) error {
 	return nil
 }
 
-// ReleaseIPByOwner updates all IP addresses matching the network, container id and interface name to be is_allocated = FALSE, and sets release_at timestamp to be now + releaseCooldown. It also decrements allocated_ips count in cidr_blocks.
+// ReleaseIPByOwner releases all IP addresses matching the network, container id, and interface name.
+//
+// For reusable CIDR blocks:
+//   - Marks the IP address as is_allocated = FALSE and sets release_at timestamp to now + releaseCooldown.
+//   - Decrements the allocated_ips count in cidr_blocks.
+//
+// For non-reusable CIDR blocks:
+//   - Transitions the parent CIDR block to 'Deleting' state (assuming non-reusable block is always /32).
 func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, interfaceName string, releaseCooldown time.Duration) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -383,7 +400,7 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 	}
 
 	rows, err := tx.QueryContext(ctx, `
-		SELECT i.id, i.cidr_block_id, i.address
+		SELECT i.id, i.cidr_block_id, i.address, c.reusable
 		FROM ip_addresses i
 		JOIN cidr_blocks c ON i.cidr_block_id = c.id
 		WHERE c.network = ? AND i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE
@@ -398,12 +415,13 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 		id          int64
 		cidrBlockID int64
 		address     string
+		reusable    bool
 	}
 	var releases []release
 
 	for rows.Next() {
 		var r release
-		if err := rows.Scan(&r.id, &r.cidrBlockID, &r.address); err != nil {
+		if err := rows.Scan(&r.id, &r.cidrBlockID, &r.address, &r.reusable); err != nil {
 			return nil, fmt.Errorf("failed to scan affected IP details: %w", err)
 		}
 		releases = append(releases, r)
@@ -414,22 +432,33 @@ func (s *Store) ReleaseIPByOwner(ctx context.Context, network, containerID, inte
 
 	var releasedIPs []string
 	for _, r := range releases {
-		_, err = tx.ExecContext(ctx, `
-			UPDATE ip_addresses
-			SET is_allocated = FALSE, release_at = ?
-			WHERE id = ?
-		`, releaseAt, r.id)
-		if err != nil {
-			return nil, fmt.Errorf("failed to release IP %d: %w", r.id, err)
-		}
+		if r.reusable {
+			_, err = tx.ExecContext(ctx, `
+				UPDATE ip_addresses
+				SET is_allocated = FALSE, release_at = ?
+				WHERE id = ?
+			`, releaseAt, r.id)
+			if err != nil {
+				return nil, fmt.Errorf("failed to release IP %d: %w", r.id, err)
+			}
 
-		_, err = tx.ExecContext(ctx, `
-			UPDATE cidr_blocks
-			SET allocated_ips = allocated_ips - 1
-			WHERE id = ?
-		`, r.cidrBlockID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update cidr_block %d count: %w", r.cidrBlockID, err)
+			_, err = tx.ExecContext(ctx, `
+				UPDATE cidr_blocks
+				SET allocated_ips = allocated_ips - 1
+				WHERE id = ?
+			`, r.cidrBlockID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to update cidr_block %d count: %w", r.cidrBlockID, err)
+			}
+		} else {
+			_, err = tx.ExecContext(ctx, `
+				UPDATE cidr_blocks
+				SET state = 'Deleting'
+				WHERE id = ?
+			`, r.cidrBlockID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to update state for non-reusable cidr_block %d: %w", r.cidrBlockID, err)
+			}
 		}
 		releasedIPs = append(releasedIPs, r.address)
 	}
