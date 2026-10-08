@@ -11,6 +11,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 
 	networkinformer "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1"
+	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	cloudprovider "k8s.io/cloud-provider"
 	nodeipamconfig "k8s.io/cloud-provider-gcp/pkg/controller/nodeipam/config"
@@ -43,6 +44,7 @@ func StartNodeIpamController(
 	nwInformer networkinformer.NetworkInformer,
 	gnpInformer networkinformer.GKENetworkParamSetInformer,
 	nodeTopologyClient nodetopologyclientset.Interface,
+	nncClient nncclientset.Interface,
 	cidrAllocatorType ipam.CIDRAllocatorType,
 	controllerManagerMetrics *controllersmetrics.ControllerManagerMetrics,
 	defaultNetworkName string,
@@ -114,8 +116,10 @@ func StartNodeIpamController(
 		nwInformer,
 		gnpInformer,
 		nodeTopologyClient,
+		nncClient,
 		nodeIPAMConfig.EnableMultiSubnetCluster,
 		nodeIPAMConfig.EnableMultiNetworking,
+		nodeIPAMConfig.EnableNodeNetworkConfig,
 		clusterCIDRs,
 		serviceCIDR,
 		secondaryServiceCIDR,

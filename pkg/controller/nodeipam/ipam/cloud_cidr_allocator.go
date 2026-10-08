@@ -37,6 +37,7 @@ import (
 
 	networkinformer "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1"
 	networklister "github.com/GoogleCloudPlatform/gke-networking-api/client/network/listers/network/v1"
+	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -80,6 +81,10 @@ const (
 // nodeTopology CR named 'default' is already installed.
 var enableNodeTopology bool
 
+// enableNodeNetworkConfig is bound to a command-line flag. When true, it enables
+// generating NodeNetworkConfig custom resource for each node.
+var enableNodeNetworkConfig bool
+
 // cloudCIDRAllocator allocates node CIDRs according to IP address aliases
 // assigned by the cloud provider. In this case, the allocation and
 // deallocation is delegated to the external provider, and the controller
@@ -101,9 +106,11 @@ type cloudCIDRAllocator struct {
 	networksSynced cache.InformerSynced
 	gnpsSynced     cache.InformerSynced
 
-	recorder          record.EventRecorder
-	queue             workqueue.RateLimitingInterface
-	nodeTopologyQueue *TaskQueue
+	recorder               record.EventRecorder
+	queue                  workqueue.RateLimitingInterface
+	nodeTopologyQueue      *TaskQueue
+	nodeNetworkConfigQueue *TaskQueue
+	nncClient              nncclientset.Interface
 
 	stackType             clusterStackType
 	enableMultiNetworking bool
@@ -113,7 +120,7 @@ type cloudCIDRAllocator struct {
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
 
 // NewCloudCIDRAllocator creates a new cloud CIDR allocator.
-func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, enableMultiSubnetCluster bool, enableMultiNetworking bool, nodeInformer informers.NodeInformer, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
+func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Interface, nwInformer networkinformer.NetworkInformer, gnpInformer networkinformer.GKENetworkParamSetInformer, nodeTopologyClient nodetopologyclientset.Interface, nncClient nncclientset.Interface, enableMultiSubnetCluster bool, enableMultiNetworking bool, enableNNC bool, nodeInformer informers.NodeInformer, allocatorParams CIDRAllocatorParams) (CIDRAllocator, error) {
 	if client == nil {
 		klog.Fatalf("kubeClient is nil when starting NodeController")
 	}
@@ -165,6 +172,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		stackType:             stackType,
 		enableMultiNetworking: enableMultiNetworking,
 		defaultNetworkName:    allocatorParams.DefaultNetworkName,
+		nncClient:             nncClient,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -209,6 +217,23 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 			UpdateFunc: nodeutil.CreateUpdateNodeHandler(ca.updateUniqueNode),
 			DeleteFunc: nodeutil.CreateDeleteNodeHandler(func(node *v1.Node) error {
 				nodetopologyQueue.Enqueue(node)
+				return nil
+			}),
+		})
+	}
+
+	enableNodeNetworkConfig = enableNNC
+	if enableNodeNetworkConfig {
+		nncSyncer := NewNodeNetworkConfigSyncer(nncClient, nodeInformer.Lister())
+		ca.nodeNetworkConfigQueue = NewTaskQueue("nodeNetworkConfigTaskQueue", "nodeNetworkConfigCRD", nodeNetworkConfigWorkers, nodeNetworkConfigKeyFun, nncSyncer.sync)
+
+		nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: nodeutil.CreateAddNodeHandler(func(node *v1.Node) error {
+				ca.nodeNetworkConfigQueue.Enqueue(node)
+				return nil
+			}),
+			UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(oldNode, newNode *v1.Node) error {
+				ca.nodeNetworkConfigQueue.Enqueue(newNode)
 				return nil
 			}),
 		})
@@ -334,6 +359,13 @@ func (ca *cloudCIDRAllocator) Run(stopCh <-chan struct{}) {
 				},
 				nodeTopologyReconcileInterval, stopCh)
 		}()
+	}
+
+	if enableNodeNetworkConfig {
+		if ca.nodeNetworkConfigQueue != nil {
+			defer ca.nodeNetworkConfigQueue.Shutdown()
+			ca.nodeNetworkConfigQueue.Run()
+		}
 	}
 
 	<-stopCh

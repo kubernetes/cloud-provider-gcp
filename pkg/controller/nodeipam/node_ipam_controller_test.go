@@ -62,8 +62,8 @@ func newTestNodeIpamController(clusterCIDR []*net.IPNet, serviceCIDR *net.IPNet,
 	fakeGNPInformer := fakeNwInformerFactory.Networking().V1().GKENetworkParamSets()
 	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
 	return NewNodeIpamController(
-		fakeNodeInformer, fakeGCE, clientSet, fakeNwInformer, fakeGNPInformer, nodeTopologyFakeClient,
-		true, false, clusterCIDR, serviceCIDR, secondaryServiceCIDR, nodeCIDRMaskSizes, allocatorType, "",
+		fakeNodeInformer, fakeGCE, clientSet, fakeNwInformer, fakeGNPInformer, nodeTopologyFakeClient, nil,
+		true, false, false, clusterCIDR, serviceCIDR, secondaryServiceCIDR, nodeCIDRMaskSizes, allocatorType, "",
 	)
 }
 
