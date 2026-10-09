@@ -29,6 +29,21 @@ import (
 )
 
 const (
+	// DefaultANEAliasNameIPv4 is the client-chosen RFC 1035 map key used in
+	// AliasNetworkEndpoint.Aliases when creating an IPv4 Pod IP endpoint.
+	// The GCE API requires a user-provided RFC 1035 identifier as the map
+	// key and currently limits each endpoint to at most one entry
+	// (max_length: 1).
+	//
+	// WARNING: Do not change this value. Modifying this constant will
+	// prevent the controller from recognizing existing ANE aliases across
+	// upgrades, causing NodeNetworkConfig drift and Pod IP disruption.
+	DefaultANEAliasNameIPv4 = "ccm-adaptive-ipam-ipv4"
+
+	// DefaultANEDescription is the description set on AliasNetworkEndpoint
+	// resources created by the dynamic Pod IP controller.
+	DefaultANEDescription = "Managed by cloud-controller-manager for GKE Adaptive Cluster IPAM"
+
 	// defaultANEMutationConcurrency is the maximum number of concurrent ANE
 	// creation or deletion operations executed in parallel per node.
 	defaultANEMutationConcurrency = 8
@@ -76,9 +91,9 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 			// DELETING).
 			continue
 		}
-		alias := endpoint.Aliases[gce.DefaultANEAliasNameIPv4]
+		alias := endpoint.Aliases[DefaultANEAliasNameIPv4]
 		if alias == nil {
-			return nil, fmt.Errorf("active ANE %q on %q has no alias %q (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID, gce.DefaultANEAliasNameIPv4)
+			return nil, fmt.Errorf("active ANE %q on %q has no alias %q (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID, DefaultANEAliasNameIPv4)
 		}
 		if alias.EffectiveIPAddress == "" {
 			return nil, fmt.Errorf("active ANE %q on %q has empty IP address (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID)
@@ -117,7 +132,7 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 			if ep == nil {
 				continue
 			}
-			alias := ep.Aliases[gce.DefaultANEAliasNameIPv4]
+			alias := ep.Aliases[DefaultANEAliasNameIPv4]
 			if alias == nil || alias.EffectiveIPAddress == "" {
 				continue
 			}
@@ -172,12 +187,12 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 			aneName := generateANEName(providerID, i)
 			endpoint := &gce.AliasNetworkEndpoint{
 				Name:                   aneName,
-				Description:            gce.DefaultANEDescription,
+				Description:            DefaultANEDescription,
 				Subnetwork:             subnetURL,
 				SecurityTagInheritance: gce.ANESecurityTagInheritanceInherited,
 				Aliases: map[string]*gce.ANEAlias{
-					gce.DefaultANEAliasNameIPv4: {
-						IPVersion:            gce.DefaultANEIPVersion,
+					DefaultANEAliasNameIPv4: {
+						IPVersion:            gce.ANEIPVersionIPv4,
 						SubnetworkRangeNames: candidateRanges,
 					},
 				},
