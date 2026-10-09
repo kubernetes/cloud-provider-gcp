@@ -53,12 +53,19 @@ func (b *aneBackend) CalculateAdditions(network string, neededIPs int, currentIf
 }
 
 func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string) ([]*networkInterface, error) {
+	gceIfaces, err := b.gceCloud.GetInstanceNetworkInterfaces(ctx, providerID)
+	if err != nil {
+		return nil, err
+	}
+	ifaces := toNetworkInterfaces(gceIfaces)
+	if len(ifaces) == 0 {
+		return nil, fmt.Errorf("instance %q has no network interfaces", providerID)
+	}
+
 	anes, err := b.gceCloud.ListAliasNetworkEndpoints(ctx, providerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list ANEs for %q: %w", providerID, err)
 	}
-
-	ifaces := b.baseNetworkInterfaces(ctx, providerID)
 
 	for _, endpoint := range anes {
 		if endpoint == nil || endpoint.Status == nil {
@@ -201,20 +208,6 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 	}
 
 	return nil
-}
-
-// baseNetworkInterfaces returns the node's NIC topology (including any initial
-// VM alias IP ranges) ready to have active ANE CIDRs appended.
-func (b *aneBackend) baseNetworkInterfaces(ctx context.Context, providerID string) []*networkInterface {
-	if gceIfaces, err := b.gceCloud.GetInstanceNetworkInterfaces(ctx, providerID); err == nil && len(gceIfaces) > 0 {
-		return toNetworkInterfaces(gceIfaces)
-	}
-	return []*networkInterface{
-		{
-			Name:    "nic0",
-			Network: b.gceCloud.NetworkURL(),
-		},
-	}
 }
 
 func (b *aneBackend) resolveSubnetworkURL(ctx context.Context, providerID, networkURL string) string {
