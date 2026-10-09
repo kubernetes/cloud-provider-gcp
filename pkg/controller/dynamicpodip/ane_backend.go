@@ -76,18 +76,15 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 			// DELETING).
 			continue
 		}
-		alias, ok := endpoint.Aliases[gce.DefaultANEAliasNameIPv4]
-		if !ok || alias == nil {
+		alias := endpoint.Aliases[gce.DefaultANEAliasNameIPv4]
+		if alias == nil {
 			return nil, fmt.Errorf("active ANE %q on %q has no alias %q (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID, gce.DefaultANEAliasNameIPv4)
 		}
 		if alias.EffectiveIPAddress == "" {
 			return nil, fmt.Errorf("active ANE %q on %q has empty IP address (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID)
 		}
 
-		cidr := alias.EffectiveIPAddress
-		if !strings.Contains(cidr, "/") {
-			cidr += "/32"
-		}
+		cidr := alias.EffectiveIPAddress + "/32"
 		targetIface := ifaces[0]
 		if endpoint.Subnetwork != "" {
 			for _, iface := range ifaces {
@@ -108,29 +105,28 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 		return err
 	}
 
-	// Removals: find matching ANEs by IP and delete them concurrently.
+	// Removals: find matching ANEs by CIDR and delete them concurrently.
 	if len(removals) > 0 {
 		anes, err := b.gceCloud.ListAliasNetworkEndpoints(ctx, providerID)
 		if err != nil {
 			return fmt.Errorf("failed to list ANEs for removal on %q: %w", providerID, err)
 		}
 
-		ipToANEName := make(map[string]string)
+		cidrToANEName := make(map[string]string, len(anes))
 		for _, ep := range anes {
-			if ep != nil {
-				if alias, ok := ep.Aliases[gce.DefaultANEAliasNameIPv4]; ok && alias != nil && alias.EffectiveIPAddress != "" {
-					ipToANEName[alias.EffectiveIPAddress] = ep.Name
-					ipToANEName[alias.EffectiveIPAddress+"/32"] = ep.Name
-				}
+			if ep == nil {
+				continue
 			}
+			alias := ep.Aliases[gce.DefaultANEAliasNameIPv4]
+			if alias == nil || alias.EffectiveIPAddress == "" {
+				continue
+			}
+			cidrToANEName[alias.EffectiveIPAddress+"/32"] = ep.Name
 		}
 
 		toDelete := sets.NewString()
 		for _, rem := range removals {
-			aneName, ok := ipToANEName[rem]
-			if !ok {
-				aneName, ok = ipToANEName[strings.TrimSuffix(rem, "/32")]
-			}
+			aneName, ok := cidrToANEName[rem]
 			if !ok {
 				klog.Warningf("ANE for removal CIDR %q not found on %q, skipping", rem, providerID)
 				continue
