@@ -58,7 +58,8 @@ const (
 	// currently limits each endpoint to at most one entry (max_length: 1).
 	DefaultANEAliasName = "pod-ip"
 
-	// DefaultANEIPVersion is the IPv4 ipVersion value for ANEAlias.IPVersion.
+	// DefaultANEIPVersion is the IPv4 ipVersion value for
+	// ANEAlias.IPVersion.
 	DefaultANEIPVersion = "IPV4"
 
 	// ANESecurityTagInheritanceInherited configures the endpoint to inherit
@@ -102,7 +103,8 @@ type AliasNetworkEndpoint struct {
 	// compliant).
 	Name string `json:"name,omitempty"`
 
-	// Description is an optional user-provided description of this resource.
+	// Description is an optional user-provided description of this
+	// resource.
 	Description string `json:"description,omitempty"`
 
 	// Subnetwork is the URL of the subnetwork to which this alias network
@@ -113,8 +115,8 @@ type AliasNetworkEndpoint struct {
 	// endpoint is bound. Required on creation.
 	Host *ANEHost `json:"host,omitempty"`
 
-	// Aliases is the required map of IP aliases allocated for this endpoint,
-	// keyed by a client-provided RFC 1035 alias name (such as
+	// Aliases is the required map of IP aliases allocated for this
+	// endpoint, keyed by a client-provided RFC 1035 alias name (such as
 	// DefaultANEAliasName). The GCE API currently restricts this map to at
 	// most 1 entry per endpoint.
 	Aliases map[string]*ANEAlias `json:"aliases,omitempty"`

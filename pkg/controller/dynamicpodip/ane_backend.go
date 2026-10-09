@@ -65,7 +65,8 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 			continue
 		}
 		if endpoint.Status.State != gce.ANEStateActive {
-			// Skip endpoints in transient states (CREATING, DELETING).
+			// Skip endpoints in transient states (CREATING,
+			// DELETING).
 			continue
 		}
 		alias, ok := endpoint.Aliases[gce.DefaultANEAliasName]
