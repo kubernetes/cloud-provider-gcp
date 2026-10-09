@@ -183,6 +183,14 @@ func TestANEBackendMutateAdditionsAndRemovals(t *testing.T) {
 	if len(anes) != 2 {
 		t.Fatalf("expected 2 endpoints in fakeGCE, got %d", len(anes))
 	}
+	for _, ep := range anes {
+		if ep.Description != gce.DefaultANEDescription {
+			t.Errorf("expected Description %q, got %q", gce.DefaultANEDescription, ep.Description)
+		}
+		if _, ok := ep.Aliases[gce.DefaultANEAliasName]; !ok {
+			t.Errorf("expected alias key %q in %v", gce.DefaultANEAliasName, ep.Aliases)
+		}
+	}
 
 	ifaces, err := backend.GetNetworkInterfaces(ctx, testProviderID)
 	if err != nil {
