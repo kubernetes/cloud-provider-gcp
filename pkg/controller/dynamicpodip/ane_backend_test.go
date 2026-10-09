@@ -70,10 +70,12 @@ func TestNewPodIPBackendSelection(t *testing.T) {
 
 func newFakeGCEWithDefaultInstance(t *testing.T, initialCIDRs ...string) *gce.Cloud {
 	t.Helper()
+	testSubnetworkURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/us-central1/subnetworks/default", testProject)
 	testClusterValues := gce.DefaultTestClusterValues()
 	testClusterValues.ProjectID = testProject
 	testClusterValues.ZoneName = testZone
 	testClusterValues.NetworkURL = testNetworkURL
+	testClusterValues.SubnetworkURL = testSubnetworkURL
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
 
 	var aliasRanges []*computebeta.AliasIpRange
