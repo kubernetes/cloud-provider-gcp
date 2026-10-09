@@ -62,31 +62,22 @@ const (
 	ANEStateFrozen ANEState = "FROZEN"
 )
 
-// Configuration constants for AliasNetworkEndpoint lifecycle.
+// Configuration and GCE API enum constants for AliasNetworkEndpoint.
 const (
-	// DefaultANEAliasNameIPv4 is the client-chosen RFC 1035 map key used in
-	// AliasNetworkEndpoint.Aliases when creating an IPv4 Pod IP endpoint.
-	// The GCE API requires a user-provided RFC 1035 identifier as the map
-	// key and currently limits each endpoint to at most one entry
-	// (max_length: 1).
-	//
-	// WARNING: Do not change this value. Modifying this constant will
-	// prevent the controller from recognizing existing ANE aliases across
-	// upgrades, causing NodeNetworkConfig drift and Pod IP disruption.
-	DefaultANEAliasNameIPv4 = "ccm-adaptive-ipam-ipv4"
+	// ANEIPVersionIPv4 is the IPv4 ipVersion value for ANEAlias.IPVersion.
+	ANEIPVersionIPv4 = "IPV4"
 
-	// DefaultANEDescription is the description set on AliasNetworkEndpoint
-	// resources created by the dynamic Pod IP controller.
-	DefaultANEDescription = "Managed by cloud-controller-manager for GKE Adaptive Cluster IPAM"
-
-	// DefaultANEIPVersion is the IPv4 ipVersion value for
-	// ANEAlias.IPVersion.
-	DefaultANEIPVersion = "IPV4"
+	// ANEIPVersionIPv6 is the IPv6 ipVersion value for ANEAlias.IPVersion.
+	ANEIPVersionIPv6 = "IPV6"
 
 	// ANESecurityTagInheritanceInherited configures the endpoint to inherit
 	// security tags directly from its host VM instance so firewall rules
 	// targeting the host instance's tags apply to this endpoint.
 	ANESecurityTagInheritanceInherited = "INHERITED"
+
+	// ANESecurityTagInheritanceNotInherited configures the endpoint not to
+	// inherit security tags from its host VM instance.
+	ANESecurityTagInheritanceNotInherited = "NOT_INHERITED"
 
 	// DefaultANEOperationTimeout is the maximum time to wait for a zonal
 	// ANE operation to reach DONE. Healthy operations complete in 6-10s. If
@@ -137,14 +128,13 @@ type AliasNetworkEndpoint struct {
 	Host *ANEHost `json:"host,omitempty"`
 
 	// Aliases is the required map of IP aliases allocated for this
-	// endpoint, keyed by a client-provided RFC 1035 alias name (such as
-	// DefaultANEAliasNameIPv4). The GCE API currently restricts this map to
-	// at most 1 entry per endpoint.
+	// endpoint, keyed by a client-provided RFC 1035 alias name. The GCE API
+	// currently restricts this map to at most 1 entry per endpoint.
 	Aliases map[string]*ANEAlias `json:"aliases,omitempty"`
 
 	// SecurityTagInheritance controls whether security tags are inherited
 	// from the host VM instance (e.g. ANESecurityTagInheritanceInherited or
-	// "NOT_INHERITED").
+	// ANESecurityTagInheritanceNotInherited).
 	SecurityTagInheritance string `json:"securityTagInheritance,omitempty"`
 
 	// Status is the output-only current lifecycle status of the endpoint.
@@ -714,8 +704,8 @@ func (f *fakeANEService) CreateAliasNetworkEndpoint(ctx context.Context, project
 	epCopy := *endpoint
 	if epCopy.Status == nil {
 		epCopy.Status = &ANEStatus{State: ANEStateActive}
-		if alias, ok := epCopy.Aliases[DefaultANEAliasNameIPv4]; ok && alias != nil {
-			if alias.EffectiveIPAddress == "" {
+		for _, alias := range epCopy.Aliases {
+			if alias != nil && alias.EffectiveIPAddress == "" {
 				if alias.IPAddress != "" {
 					alias.EffectiveIPAddress = alias.IPAddress
 				} else {

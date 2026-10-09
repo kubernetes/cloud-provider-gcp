@@ -58,8 +58,10 @@ func TestGCEANEService_CreateGetListDelete(t *testing.T) {
 			}
 			ane.Status = &ANEStatus{State: ANEStateActive}
 			ane.ResourceMetadata = &ANEResourceMetadata{APIVersion: anePreviewAPIVersion}
-			if alias, ok := ane.Aliases[DefaultANEAliasNameIPv4]; ok && alias != nil {
-				alias.EffectiveIPAddress = "10.128.0.25"
+			for _, alias := range ane.Aliases {
+				if alias != nil {
+					alias.EffectiveIPAddress = "10.128.0.25"
+				}
 			}
 			endpoints[ane.Name] = &ane
 			w.Header().Set("Content-Type", "application/json")
@@ -107,11 +109,12 @@ func TestGCEANEService_CreateGetListDelete(t *testing.T) {
 
 	ctx := context.Background()
 	testProviderID := "gce://p/z/test-node"
+	const testAliasKey = "alias-ipv4"
 	ane := &AliasNetworkEndpoint{
 		Name: "test-ane-1",
 		Aliases: map[string]*ANEAlias{
-			DefaultANEAliasNameIPv4: {
-				IPVersion: DefaultANEIPVersion,
+			testAliasKey: {
+				IPVersion: ANEIPVersionIPv4,
 			},
 		},
 	}
@@ -124,8 +127,8 @@ func TestGCEANEService_CreateGetListDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAliasNetworkEndpoint failed: %v", err)
 	}
-	if got.Aliases[DefaultANEAliasNameIPv4].EffectiveIPAddress != "10.128.0.25" {
-		t.Errorf("Expected effective IP 10.128.0.25, got %q", got.Aliases[DefaultANEAliasNameIPv4].EffectiveIPAddress)
+	if got.Aliases[testAliasKey].EffectiveIPAddress != "10.128.0.25" {
+		t.Errorf("Expected effective IP 10.128.0.25, got %q", got.Aliases[testAliasKey].EffectiveIPAddress)
 	}
 
 	list, err := cloud.ListAliasNetworkEndpoints(ctx, testProviderID)
@@ -297,15 +300,5 @@ func TestGCEANEService_WaitForOperationDefaultPolling(t *testing.T) {
 	}
 	if polls != 1 {
 		t.Errorf("expected 1 poll, got %d", polls)
-	}
-}
-
-func TestDefaultANEAliasNameIPv4Immutable(t *testing.T) {
-	// DefaultANEAliasNameIPv4 is persisted as the map key on GCE
-	// AliasNetworkEndpoint resources. Changing it breaks recognition of
-	// existing endpoints across upgrades and causes Pod IP disruption.
-	const expectedAliasName = "ccm-adaptive-ipam-ipv4"
-	if DefaultANEAliasNameIPv4 != expectedAliasName {
-		t.Fatalf("DefaultANEAliasNameIPv4 = %q, want %q; changing this value is disallowed because it causes configuration drift and Pod IP disruption on existing clusters", DefaultANEAliasNameIPv4, expectedAliasName)
 	}
 }
