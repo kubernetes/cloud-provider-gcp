@@ -103,6 +103,7 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 	}
 	c := cloud.NewMockGCE(&gceProjectRouter{gce})
 	gce.c = c
+	gce.aneService = newFakeANEService()
 	return gce
 }
 

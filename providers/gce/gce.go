@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"runtime"
 	"slices"
 	"strconv"
@@ -41,6 +42,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	container "google.golang.org/api/container/v1"
 	"google.golang.org/api/option"
+	httptransport "google.golang.org/api/transport/http"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 
@@ -185,6 +187,7 @@ type Cloud struct {
 	useMetadataServer        bool
 	operationPollRateLimiter flowcontrol.RateLimiter
 	manager                  diskServiceManager
+	aneService               aneServiceManager
 	// Lock for access to nodeZones
 	nodeZonesLock sync.Mutex
 	// nodeZones maps GCE zones to active K8s Node names, dynamically
@@ -217,6 +220,8 @@ type Cloud struct {
 
 	// the compute API endpoint with the `projects/` element.
 	projectsBasePath string
+	// httpClient is the authenticated HTTP client for GCE API calls.
+	httpClient *http.Client
 	// stackType indicates whether the cluster is a single stack IPv4, single
 	// stack IPv6 or a dual stack cluster
 	stackType StackType
@@ -615,6 +620,12 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		return nil, err
 	}
 
+	allClientOpts := append([]option.ClientOption{option.WithUserAgent(userAgent)}, clientOpts...)
+	httpClient, _, err := httptransport.NewClient(context.Background(), allClientOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create authenticated HTTP client: %w", err)
+	}
+
 	service, err := compute.NewService(context.Background(), clientOpts...)
 	if err != nil {
 		return nil, err
@@ -715,11 +726,13 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		nodeZones:                map[string]sets.String{},
 		metricsCollector:         newLoadBalancerMetrics(),
 		projectsBasePath:         getProjectsBasePath(service.BasePath),
+		httpClient:               httpClient,
 		stackType:                StackType(config.StackType),
 		firewallRulesManagement:  FirewallRulesManagement(config.FirewallRulesManagement),
 	}
 
 	gce.manager = &gceServiceManager{gce}
+	gce.aneService = &gceANEService{gce: gce}
 	gce.s = &cloud.Service{
 		GA:            service,
 		Alpha:         serviceAlpha,

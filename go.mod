@@ -10,7 +10,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/oauth2 v0.37.0
-	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sync v0.23.0
 	google.golang.org/api v0.299.0
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/warnings.v0 v0.1.2 // indirect

@@ -85,6 +85,7 @@ type nodeSyncBase struct {
 	nodeLister corelisters.NodeLister
 	gceCloud   *gce.Cloud
 	gceCache   *GCECache
+	backend    PodIPBackend
 }
 
 // Name returns the name of the controller.
@@ -237,12 +238,12 @@ func cidrKey(network, cidr string) string {
 	return fmt.Sprintf("%s/%s", network, cidr)
 }
 
-// forEachAliasRange invokes fn for every (network name, CIDR) pair attached to
-// the instance.
+// forEachPodCIDR invokes fn for every (network name, CIDR) pair attached to
+// the instance, across both VM alias IP ranges and AliasNetworkEndpoints.
 //
 // Interfaces that cannot be resolved to a valid Kubernetes network name are
 // skipped with a warning.
-func forEachAliasRange(ifaces []*networkInterface, fn func(network, cidr string)) {
+func forEachPodCIDR(ifaces []*networkInterface, fn func(network, cidr string)) {
 	for _, iface := range ifaces {
 		netName, err := resolveKubernetesNetworkName(iface)
 		if err != nil {
@@ -252,14 +253,16 @@ func forEachAliasRange(ifaces []*networkInterface, fn func(network, cidr string)
 		for _, cidr := range iface.AliasIPRanges {
 			fn(netName, cidr)
 		}
+		for _, cidr := range iface.ANECIDRs {
+			fn(netName, cidr)
+		}
 	}
 }
 
-// gceCIDRSet returns the cidrKeys of every alias IP range attached to the
-// instance.
+// gceCIDRSet returns the cidrKeys of every Pod CIDR attached to the instance.
 func gceCIDRSet(ifaces []*networkInterface) sets.String {
 	active := sets.NewString()
-	forEachAliasRange(ifaces, func(network, cidr string) {
+	forEachPodCIDR(ifaces, func(network, cidr string) {
 		active.Insert(cidrKey(network, cidr))
 	})
 	return active
