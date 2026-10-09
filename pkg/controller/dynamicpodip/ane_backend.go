@@ -69,9 +69,9 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 			// DELETING).
 			continue
 		}
-		alias, ok := endpoint.Aliases[gce.DefaultANEAliasName]
+		alias, ok := endpoint.Aliases[gce.DefaultANEAliasNameIPv4]
 		if !ok || alias == nil {
-			return nil, fmt.Errorf("active ANE %q on %q has no alias %q (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID, gce.DefaultANEAliasName)
+			return nil, fmt.Errorf("active ANE %q on %q has no alias %q (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID, gce.DefaultANEAliasNameIPv4)
 		}
 		ip := effectiveAliasIP(alias)
 		if ip == "" {
@@ -112,7 +112,7 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 		ipToANEName := make(map[string]string)
 		for _, ep := range anes {
 			if ep != nil {
-				if alias, ok := ep.Aliases[gce.DefaultANEAliasName]; ok && alias != nil {
+				if alias, ok := ep.Aliases[gce.DefaultANEAliasNameIPv4]; ok && alias != nil {
 					if ip := effectiveAliasIP(alias); ip != "" {
 						ipToANEName[ip] = ep.Name
 						ipToANEName[ip+"/32"] = ep.Name
@@ -176,7 +176,7 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 				Subnetwork:             subnetURL,
 				SecurityTagInheritance: gce.ANESecurityTagInheritanceInherited,
 				Aliases: map[string]*gce.ANEAlias{
-					gce.DefaultANEAliasName: {
+					gce.DefaultANEAliasNameIPv4: {
 						IPVersion:            gce.DefaultANEIPVersion,
 						SubnetworkRangeNames: candidateRanges,
 					},
