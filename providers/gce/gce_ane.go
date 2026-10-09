@@ -39,19 +39,31 @@ import (
 // GCE Go compute client (google.golang.org/api/compute/v1.preview and v1).
 // Tracking issue: https://github.com/kubernetes/cloud-provider-gcp/issues/1383
 
-// State and configuration constants for AliasNetworkEndpoint lifecycle.
+// ANEState represents the lifecycle state of an AliasNetworkEndpoint.
+type ANEState string
+
 const (
+	// ANEStateUnspecified indicates an unspecified endpoint state.
+	ANEStateUnspecified ANEState = "STATE_UNSPECIFIED"
+
 	// ANEStateCreating indicates the endpoint is being created and is not
 	// yet ready to process traffic.
-	ANEStateCreating = "CREATING"
+	ANEStateCreating ANEState = "CREATING"
 
 	// ANEStateActive indicates the endpoint is active and programmed in the
 	// dataplane to process traffic.
-	ANEStateActive = "ACTIVE"
+	ANEStateActive ANEState = "ACTIVE"
 
 	// ANEStateDeleting indicates the endpoint is being deleted.
-	ANEStateDeleting = "DELETING"
+	ANEStateDeleting ANEState = "DELETING"
 
+	// ANEStateFrozen indicates the endpoint is frozen and deprogrammed from
+	// the dataplane.
+	ANEStateFrozen ANEState = "FROZEN"
+)
+
+// Configuration constants for AliasNetworkEndpoint lifecycle.
+const (
 	// DefaultANEAliasName is the client-chosen RFC 1035 map key used in
 	// AliasNetworkEndpoint.Aliases when creating a Pod IP endpoint. The GCE
 	// API requires a user-provided RFC 1035 identifier as the map key and
@@ -188,8 +200,8 @@ type ANEAlias struct {
 // AliasNetworkEndpoint.
 type ANEStatus struct {
 	// State is the output-only lifecycle state of the endpoint (e.g.
-	// ANEStateCreating, ANEStateActive, ANEStateDeleting).
-	State string `json:"state,omitempty"`
+	// ANEStateCreating, ANEStateActive, ANEStateDeleting, ANEStateFrozen).
+	State ANEState `json:"state,omitempty"`
 }
 
 type aneListResponse struct {
