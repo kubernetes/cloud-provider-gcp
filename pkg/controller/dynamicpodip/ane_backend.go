@@ -98,7 +98,7 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 				}
 			}
 		}
-		targetIface.AliasIPRanges = append(targetIface.AliasIPRanges, cidr)
+		targetIface.ANECIDRs = append(targetIface.ANECIDRs, cidr)
 	}
 
 	return ifaces, nil

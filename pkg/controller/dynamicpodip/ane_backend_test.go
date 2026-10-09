@@ -155,16 +155,16 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 	if len(ifaces) != 1 {
 		t.Fatalf("expected 1 interface, got %d", len(ifaces))
 	}
-	if len(ifaces[0].AliasIPRanges) != 1 {
-		t.Fatalf("expected 1 alias IP range, got %d: %v", len(ifaces[0].AliasIPRanges), ifaces[0].AliasIPRanges)
+	if len(ifaces[0].ANECIDRs) != 1 {
+		t.Fatalf("expected 1 ANE CIDR, got %d: %v", len(ifaces[0].ANECIDRs), ifaces[0].ANECIDRs)
 	}
 	expectedCIDR := "10.128.0.10/32"
-	if ifaces[0].AliasIPRanges[0] != expectedCIDR {
-		t.Fatalf("expected %q, got %q", expectedCIDR, ifaces[0].AliasIPRanges[0])
+	if ifaces[0].ANECIDRs[0] != expectedCIDR {
+		t.Fatalf("expected %q, got %q", expectedCIDR, ifaces[0].ANECIDRs[0])
 	}
 
 	// Verify that an initial allocation on the VM's aliasIpRanges is
-	// preserved alongside subsequent ANEs.
+	// preserved in AliasIPRanges alongside subsequent ANEs in ANECIDRs.
 	fakeGCEWithInitial := newFakeGCEWithDefaultInstance(t, "10.100.0.0/28")
 	if err := fakeGCEWithInitial.CreateAliasNetworkEndpoint(ctx, testProviderID, &gce.AliasNetworkEndpoint{
 		Name:       "ane-active-1",
@@ -183,11 +183,14 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces with initial alias IP range: %v", err)
 	}
-	if len(ifacesWithInitial) != 1 || len(ifacesWithInitial[0].AliasIPRanges) != 2 {
-		t.Fatalf("expected 2 alias IP ranges (1 initial VM range + 1 active ANE), got %v", ifacesWithInitial[0].AliasIPRanges)
+	if len(ifacesWithInitial) != 1 {
+		t.Fatalf("expected 1 interface, got %d", len(ifacesWithInitial))
 	}
-	if ifacesWithInitial[0].AliasIPRanges[0] != "10.100.0.0/28" || ifacesWithInitial[0].AliasIPRanges[1] != "10.128.0.10/32" {
-		t.Fatalf("unexpected AliasIPRanges: %v", ifacesWithInitial[0].AliasIPRanges)
+	if len(ifacesWithInitial[0].AliasIPRanges) != 1 || ifacesWithInitial[0].AliasIPRanges[0] != "10.100.0.0/28" {
+		t.Fatalf("expected initial VM AliasIPRanges [10.100.0.0/28], got %v", ifacesWithInitial[0].AliasIPRanges)
+	}
+	if len(ifacesWithInitial[0].ANECIDRs) != 1 || ifacesWithInitial[0].ANECIDRs[0] != "10.128.0.10/32" {
+		t.Fatalf("expected ANECIDRs [10.128.0.10/32], got %v", ifacesWithInitial[0].ANECIDRs)
 	}
 }
 
@@ -223,12 +226,12 @@ func TestANEBackendMutateAdditionsAndRemovals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces: %v", err)
 	}
-	if len(ifaces[0].AliasIPRanges) != 2 {
-		t.Fatalf("expected 2 alias ranges, got %d", len(ifaces[0].AliasIPRanges))
+	if len(ifaces[0].ANECIDRs) != 2 {
+		t.Fatalf("expected 2 ANE CIDRs, got %d", len(ifaces[0].ANECIDRs))
 	}
 
 	// Mutate: Remove 1 ANE
-	toRemove := ifaces[0].AliasIPRanges[0]
+	toRemove := ifaces[0].ANECIDRs[0]
 	err = backend.Mutate(ctx, testProviderID, testNetworkURL, nil, []string{toRemove}, nil)
 	if err != nil {
 		t.Fatalf("Mutate removals: %v", err)
@@ -238,10 +241,10 @@ func TestANEBackendMutateAdditionsAndRemovals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces after removal: %v", err)
 	}
-	if len(ifacesAfter[0].AliasIPRanges) != 1 {
-		t.Fatalf("expected 1 alias range remaining, got %d", len(ifacesAfter[0].AliasIPRanges))
+	if len(ifacesAfter[0].ANECIDRs) != 1 {
+		t.Fatalf("expected 1 ANE CIDR remaining, got %d", len(ifacesAfter[0].ANECIDRs))
 	}
-	if ifacesAfter[0].AliasIPRanges[0] == toRemove {
+	if ifacesAfter[0].ANECIDRs[0] == toRemove {
 		t.Fatalf("expected CIDR %q to be removed", toRemove)
 	}
 }
@@ -546,13 +549,13 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces failed: %v", err)
 	}
-	if len(ifaces) != 1 || len(ifaces[0].AliasIPRanges) != 16 {
-		t.Fatalf("expected 16 alias IP ranges, got %d", len(ifaces[0].AliasIPRanges))
+	if len(ifaces) != 1 || len(ifaces[0].ANECIDRs) != 16 {
+		t.Fatalf("expected 16 ANE CIDRs, got %d", len(ifaces[0].ANECIDRs))
 	}
 
 	// Verify all 16 IP CIDRs are unique
 	ipSet := make(map[string]bool)
-	for _, cidr := range ifaces[0].AliasIPRanges {
+	for _, cidr := range ifaces[0].ANECIDRs {
 		if ipSet[cidr] {
 			t.Errorf("duplicate IP CIDR found: %q", cidr)
 		}
@@ -562,7 +565,7 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 	// Test concurrent removal of 8 ANEs
 	var toRemove []string
 	for i := 0; i < 8; i++ {
-		toRemove = append(toRemove, ifaces[0].AliasIPRanges[i])
+		toRemove = append(toRemove, ifaces[0].ANECIDRs[i])
 	}
 
 	err = backend.Mutate(ctx, testProviderID, testNetworkURL, nil, toRemove, nil)
@@ -574,13 +577,13 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces after removal failed: %v", err)
 	}
-	if len(ifacesAfter[0].AliasIPRanges) != 8 {
-		t.Fatalf("expected 8 alias IP ranges remaining, got %d", len(ifacesAfter[0].AliasIPRanges))
+	if len(ifacesAfter[0].ANECIDRs) != 8 {
+		t.Fatalf("expected 8 ANE CIDRs remaining, got %d", len(ifacesAfter[0].ANECIDRs))
 	}
 
 	// Verify the removed CIDRs are actually gone
 	for _, rem := range toRemove {
-		for _, remaining := range ifacesAfter[0].AliasIPRanges {
+		for _, remaining := range ifacesAfter[0].ANECIDRs {
 			if remaining == rem {
 				t.Errorf("removed CIDR %q still found in interfaces", rem)
 			}
@@ -685,8 +688,8 @@ func TestANEBackendMutate_MultiInterfaceSubnetTargeting(t *testing.T) {
 	if len(ifaces) != 2 {
 		t.Fatalf("expected 2 interfaces, got %d", len(ifaces))
 	}
-	if len(ifaces[0].AliasIPRanges) != 1 || len(ifaces[1].AliasIPRanges) != 1 {
-		t.Fatalf("expected 1 IP on nic0 and 1 IP on nic1, got nic0=%v, nic1=%v", ifaces[0].AliasIPRanges, ifaces[1].AliasIPRanges)
+	if len(ifaces[0].ANECIDRs) != 1 || len(ifaces[1].ANECIDRs) != 1 {
+		t.Fatalf("expected 1 IP on nic0 and 1 IP on nic1, got nic0=%v, nic1=%v", ifaces[0].ANECIDRs, ifaces[1].ANECIDRs)
 	}
 }
 
@@ -779,7 +782,7 @@ func TestDefaultANEAliasNameIPv4Immutable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces failed to recognize ANE with key %q: %v", expectedAliasKey, err)
 	}
-	if len(ifaces) != 1 || len(ifaces[0].AliasIPRanges) != 1 || ifaces[0].AliasIPRanges[0] != "10.128.0.55/32" {
-		t.Fatalf("unexpected AliasIPRanges: %v", ifaces[0].AliasIPRanges)
+	if len(ifaces) != 1 || len(ifaces[0].ANECIDRs) != 1 || ifaces[0].ANECIDRs[0] != "10.128.0.55/32" {
+		t.Fatalf("unexpected ANECIDRs: %v", ifaces[0].ANECIDRs)
 	}
 }
