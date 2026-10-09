@@ -68,14 +68,53 @@ func TestNewPodIPBackendSelection(t *testing.T) {
 	}
 }
 
-func TestANEBackendGetNetworkInterfaces(t *testing.T) {
-	ctx := context.Background()
+func newFakeGCEWithDefaultInstance(t *testing.T, initialCIDRs ...string) *gce.Cloud {
+	t.Helper()
 	testClusterValues := gce.DefaultTestClusterValues()
 	testClusterValues.ProjectID = testProject
 	testClusterValues.ZoneName = testZone
 	testClusterValues.NetworkURL = testNetworkURL
 	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
 
+	var aliasRanges []*computebeta.AliasIpRange
+	for _, cidr := range initialCIDRs {
+		aliasRanges = append(aliasRanges, &computebeta.AliasIpRange{IpCidrRange: cidr})
+	}
+
+	mockInstances, ok := fakeGCE.Compute().BetaInstances().(*gcloud.MockBetaInstances)
+	if !ok {
+		t.Fatalf("Failed to cast BetaInstances to MockBetaInstances")
+	}
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	mockInstances.Objects[*instanceKey] = &gcloud.MockInstancesObj{
+		Obj: &computebeta.Instance{
+			Name: testNodeName,
+			Zone: testZone,
+			NetworkInterfaces: []*computebeta.NetworkInterface{
+				{
+					Name:          "nic0",
+					Network:       testNetworkURL,
+					Subnetwork:    fakeGCE.SubnetworkURL(),
+					AliasIpRanges: aliasRanges,
+				},
+			},
+		},
+	}
+	return fakeGCE
+}
+
+func TestANEBackendGetNetworkInterfaces(t *testing.T) {
+	ctx := context.Background()
+
+	// Verify that if GetInstanceNetworkInterfaces fails (e.g. VM not
+	// found), GetNetworkInterfaces returns the error instead of falling
+	// back to an empty synthetic interface.
+	emptyFakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	if _, err := NewANEBackend(emptyFakeGCE).GetNetworkInterfaces(ctx, testProviderID); err == nil {
+		t.Fatalf("expected error when VM instance does not exist, got nil")
+	}
+
+	fakeGCE := newFakeGCEWithDefaultInstance(t)
 	backend := NewANEBackend(fakeGCE)
 
 	// Add an active ANE
@@ -126,29 +165,21 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 
 	// Verify that an initial allocation on the VM's aliasIpRanges is
 	// preserved alongside subsequent ANEs.
-	mockInstances, ok := fakeGCE.Compute().BetaInstances().(*gcloud.MockBetaInstances)
-	if !ok {
-		t.Fatalf("Failed to cast BetaInstances to MockBetaInstances")
-	}
-	instanceKey := meta.ZonalKey(testNodeName, testZone)
-	mockInstances.Objects[*instanceKey] = &gcloud.MockInstancesObj{
-		Obj: &computebeta.Instance{
-			Name: testNodeName,
-			Zone: testZone,
-			NetworkInterfaces: []*computebeta.NetworkInterface{
-				{
-					Name:       "nic0",
-					Network:    testNetworkURL,
-					Subnetwork: fakeGCE.SubnetworkURL(),
-					AliasIpRanges: []*computebeta.AliasIpRange{
-						{IpCidrRange: "10.100.0.0/28"},
-					},
-				},
+	fakeGCEWithInitial := newFakeGCEWithDefaultInstance(t, "10.100.0.0/28")
+	if err := fakeGCEWithInitial.CreateAliasNetworkEndpoint(ctx, testProviderID, &gce.AliasNetworkEndpoint{
+		Name:       "ane-active-1",
+		Subnetwork: fakeGCEWithInitial.SubnetworkURL(),
+		Status:     &gce.ANEStatus{State: gce.ANEStateActive},
+		Aliases: map[string]*gce.ANEAlias{
+			gce.DefaultANEAliasNameIPv4: {
+				EffectiveIPAddress: "10.128.0.10",
 			},
 		},
+	}); err != nil {
+		t.Fatalf("Create active ANE: %v", err)
 	}
 
-	ifacesWithInitial, err := backend.GetNetworkInterfaces(ctx, testProviderID)
+	ifacesWithInitial, err := NewANEBackend(fakeGCEWithInitial).GetNetworkInterfaces(ctx, testProviderID)
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces with initial alias IP range: %v", err)
 	}
@@ -162,11 +193,7 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 
 func TestANEBackendMutateAdditionsAndRemovals(t *testing.T) {
 	ctx := context.Background()
-	testClusterValues := gce.DefaultTestClusterValues()
-	testClusterValues.ProjectID = testProject
-	testClusterValues.ZoneName = testZone
-	testClusterValues.NetworkURL = testNetworkURL
-	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+	fakeGCE := newFakeGCEWithDefaultInstance(t)
 
 	backend := NewANEBackend(fakeGCE)
 
@@ -232,11 +259,7 @@ func TestANEControllerReconcileFlow(t *testing.T) {
 	nncInformerFactory := nncinformers.NewSharedInformerFactory(nncClient, 0)
 	nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
 
-	testClusterValues := gce.DefaultTestClusterValues()
-	testClusterValues.ProjectID = testProject
-	testClusterValues.ZoneName = testZone
-	testClusterValues.NetworkURL = testNetworkURL
-	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+	fakeGCE := newFakeGCEWithDefaultInstance(t)
 	backend := NewANEBackend(fakeGCE)
 
 	loader := func(ctx context.Context, providerID string) ([]*networkInterface, error) {
@@ -504,11 +527,7 @@ func TestANEBackendMutate_IdempotentDelete(t *testing.T) {
 
 func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 	ctx := context.Background()
-	testClusterValues := gce.DefaultTestClusterValues()
-	testClusterValues.ProjectID = testProject
-	testClusterValues.ZoneName = testZone
-	testClusterValues.NetworkURL = testNetworkURL
-	fakeGCE := gce.NewFakeGCECloud(testClusterValues)
+	fakeGCE := newFakeGCEWithDefaultInstance(t)
 
 	backend := NewANEBackend(fakeGCE)
 
@@ -673,10 +692,8 @@ func TestANEBackendMutate_MultiInterfaceSubnetTargeting(t *testing.T) {
 
 func TestANEBackend_FailFastOnSilentScrubbing(t *testing.T) {
 	ctx := context.Background()
-	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	fakeGCE := newFakeGCEWithDefaultInstance(t)
 	backend := NewANEBackend(fakeGCE)
-
-	testProviderID := "gce://test-project/us-central1-b/test-node"
 
 	// Insert an active endpoint that has missing aliases (simulating silent
 	// scrubbing).
@@ -739,7 +756,7 @@ func TestDefaultANEAliasNameIPv4Immutable(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	fakeGCE := newFakeGCEWithDefaultInstance(t)
 	backend := NewANEBackend(fakeGCE)
 
 	// Verify that an existing ANE keyed with the literal
