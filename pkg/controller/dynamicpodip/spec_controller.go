@@ -325,7 +325,7 @@ func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetwor
 	releasable := releasableCIDRSet(nnc)
 
 	var capErr error
-	forEachAliasRange(ifaces, func(netName, cidr string) {
+	forEachPodCIDR(ifaces, func(netName, cidr string) {
 		if capErr != nil {
 			return
 		}

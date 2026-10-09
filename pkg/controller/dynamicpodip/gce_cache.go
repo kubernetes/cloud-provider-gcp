@@ -44,6 +44,7 @@ type networkInterface struct {
 	Network       string
 	Subnetwork    string
 	AliasIPRanges []string
+	ANECIDRs      []string
 }
 
 // toNetworkInterfaces converts a slice of GCE API computebeta.NetworkInterface
@@ -90,6 +91,9 @@ func deepCopyInterfaces(ifaces []*networkInterface) []*networkInterface {
 		}
 		if ni.AliasIPRanges != nil {
 			niCopy.AliasIPRanges = append([]string(nil), ni.AliasIPRanges...)
+		}
+		if ni.ANECIDRs != nil {
+			niCopy.ANECIDRs = append([]string(nil), ni.ANECIDRs...)
 		}
 		copy[i] = niCopy
 	}

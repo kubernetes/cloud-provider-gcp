@@ -280,7 +280,7 @@ func (c *NodeNetworkConfigStatusController) syncStatusToGCE(ctx context.Context,
 	readySince := podCIDRReadySince(nnc)
 	now := metav1.Now()
 
-	forEachAliasRange(ifaces, func(network, cidr string) {
+	forEachPodCIDR(ifaces, func(network, cidr string) {
 		transitioned := now
 		if prev, ok := readySince[cidrKey(network, cidr)]; ok {
 			transitioned = prev
