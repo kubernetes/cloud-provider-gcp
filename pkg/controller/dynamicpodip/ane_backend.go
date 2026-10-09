@@ -172,6 +172,7 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 			aneName := generateANEName(providerID, i)
 			endpoint := &gce.AliasNetworkEndpoint{
 				Name:                   aneName,
+				Description:            gce.DefaultANEDescription,
 				Subnetwork:             subnetURL,
 				SecurityTagInheritance: gce.ANESecurityTagInheritanceInherited,
 				Aliases: map[string]*gce.ANEAlias{

@@ -56,7 +56,15 @@ const (
 	// AliasNetworkEndpoint.Aliases when creating a Pod IP endpoint. The GCE
 	// API requires a user-provided RFC 1035 identifier as the map key and
 	// currently limits each endpoint to at most one entry (max_length: 1).
-	DefaultANEAliasName = "pod-ip"
+	//
+	// WARNING: Do not change this value. Modifying this constant will
+	// prevent the controller from recognizing existing ANE aliases across
+	// upgrades, causing NodeNetworkConfig drift and Pod IP disruption.
+	DefaultANEAliasName = "ccm-adaptive-ipam"
+
+	// DefaultANEDescription is the description set on AliasNetworkEndpoint
+	// resources created by the dynamic Pod IP controller.
+	DefaultANEDescription = "Managed by cloud-controller-manager for GKE Adaptive Cluster IPAM"
 
 	// DefaultANEIPVersion is the IPv4 ipVersion value for
 	// ANEAlias.IPVersion.
