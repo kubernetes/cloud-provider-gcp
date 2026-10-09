@@ -64,15 +64,16 @@ const (
 
 // Configuration constants for AliasNetworkEndpoint lifecycle.
 const (
-	// DefaultANEAliasName is the client-chosen RFC 1035 map key used in
-	// AliasNetworkEndpoint.Aliases when creating a Pod IP endpoint. The GCE
-	// API requires a user-provided RFC 1035 identifier as the map key and
-	// currently limits each endpoint to at most one entry (max_length: 1).
+	// DefaultANEAliasNameIPv4 is the client-chosen RFC 1035 map key used in
+	// AliasNetworkEndpoint.Aliases when creating an IPv4 Pod IP endpoint.
+	// The GCE API requires a user-provided RFC 1035 identifier as the map
+	// key and currently limits each endpoint to at most one entry
+	// (max_length: 1).
 	//
 	// WARNING: Do not change this value. Modifying this constant will
 	// prevent the controller from recognizing existing ANE aliases across
 	// upgrades, causing NodeNetworkConfig drift and Pod IP disruption.
-	DefaultANEAliasName = "ccm-adaptive-ipam"
+	DefaultANEAliasNameIPv4 = "ccm-adaptive-ipam-ipv4"
 
 	// DefaultANEDescription is the description set on AliasNetworkEndpoint
 	// resources created by the dynamic Pod IP controller.
@@ -137,8 +138,8 @@ type AliasNetworkEndpoint struct {
 
 	// Aliases is the required map of IP aliases allocated for this
 	// endpoint, keyed by a client-provided RFC 1035 alias name (such as
-	// DefaultANEAliasName). The GCE API currently restricts this map to at
-	// most 1 entry per endpoint.
+	// DefaultANEAliasNameIPv4). The GCE API currently restricts this map to
+	// at most 1 entry per endpoint.
 	Aliases map[string]*ANEAlias `json:"aliases,omitempty"`
 
 	// SecurityTagInheritance controls whether security tags are inherited
@@ -713,7 +714,7 @@ func (f *fakeANEService) CreateAliasNetworkEndpoint(ctx context.Context, project
 	epCopy := *endpoint
 	if epCopy.Status == nil {
 		epCopy.Status = &ANEStatus{State: ANEStateActive}
-		if alias, ok := epCopy.Aliases[DefaultANEAliasName]; ok && alias != nil {
+		if alias, ok := epCopy.Aliases[DefaultANEAliasNameIPv4]; ok && alias != nil {
 			if alias.EffectiveIPAddress == "" {
 				if alias.IPAddress != "" {
 					alias.EffectiveIPAddress = alias.IPAddress

@@ -84,7 +84,7 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 		Subnetwork: fakeGCE.SubnetworkURL(),
 		Status:     &gce.ANEStatus{State: gce.ANEStateActive},
 		Aliases: map[string]*gce.ANEAlias{
-			gce.DefaultANEAliasName: {
+			gce.DefaultANEAliasNameIPv4: {
 				EffectiveIPAddress: "10.128.0.10",
 			},
 		},
@@ -99,7 +99,7 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 		Subnetwork: fakeGCE.SubnetworkURL(),
 		Status:     &gce.ANEStatus{State: gce.ANEStateCreating},
 		Aliases: map[string]*gce.ANEAlias{
-			gce.DefaultANEAliasName: {
+			gce.DefaultANEAliasNameIPv4: {
 				EffectiveIPAddress: "10.128.0.20",
 			},
 		},
@@ -187,8 +187,8 @@ func TestANEBackendMutateAdditionsAndRemovals(t *testing.T) {
 		if ep.Description != gce.DefaultANEDescription {
 			t.Errorf("expected Description %q, got %q", gce.DefaultANEDescription, ep.Description)
 		}
-		if _, ok := ep.Aliases[gce.DefaultANEAliasName]; !ok {
-			t.Errorf("expected alias key %q in %v", gce.DefaultANEAliasName, ep.Aliases)
+		if _, ok := ep.Aliases[gce.DefaultANEAliasNameIPv4]; !ok {
+			t.Errorf("expected alias key %q in %v", gce.DefaultANEAliasNameIPv4, ep.Aliases)
 		}
 	}
 
@@ -710,7 +710,7 @@ func TestANEBackend_FailFastOnSilentScrubbing(t *testing.T) {
 			State: gce.ANEStateActive,
 		},
 		Aliases: map[string]*gce.ANEAlias{
-			gce.DefaultANEAliasName: {
+			gce.DefaultANEAliasNameIPv4: {
 				IPAddress: "",
 			},
 		},
@@ -728,13 +728,14 @@ func TestANEBackend_FailFastOnSilentScrubbing(t *testing.T) {
 	}
 }
 
-func TestDefaultANEAliasNameImmutable(t *testing.T) {
-	// Guard against accidental modification of DefaultANEAliasName, which
-	// would cause the controller to fail to recognize existing ANEs after
-	// an upgrade and lead to NodeNetworkConfig drift and Pod IP disruption.
-	const expectedAliasKey = "ccm-adaptive-ipam"
-	if gce.DefaultANEAliasName != expectedAliasKey {
-		t.Fatalf("gce.DefaultANEAliasName = %q, want %q; changing this constant is disallowed", gce.DefaultANEAliasName, expectedAliasKey)
+func TestDefaultANEAliasNameIPv4Immutable(t *testing.T) {
+	// Guard against accidental modification of DefaultANEAliasNameIPv4,
+	// which would cause the controller to fail to recognize existing ANEs
+	// after an upgrade and lead to NodeNetworkConfig drift and Pod IP
+	// disruption.
+	const expectedAliasKey = "ccm-adaptive-ipam-ipv4"
+	if gce.DefaultANEAliasNameIPv4 != expectedAliasKey {
+		t.Fatalf("gce.DefaultANEAliasNameIPv4 = %q, want %q; changing this constant is disallowed", gce.DefaultANEAliasNameIPv4, expectedAliasKey)
 	}
 
 	ctx := context.Background()
@@ -742,7 +743,8 @@ func TestDefaultANEAliasNameImmutable(t *testing.T) {
 	backend := NewANEBackend(fakeGCE)
 
 	// Verify that an existing ANE keyed with the literal
-	// "ccm-adaptive-ipam" is recognized by GetNetworkInterfaces and Mutate.
+	// "ccm-adaptive-ipam-ipv4" is recognized by GetNetworkInterfaces and
+	// Mutate.
 	err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &gce.AliasNetworkEndpoint{
 		Name:   "ane-existing-pre-upgrade",
 		Status: &gce.ANEStatus{State: gce.ANEStateActive},
