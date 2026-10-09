@@ -727,3 +727,40 @@ func TestANEBackend_FailFastOnSilentScrubbing(t *testing.T) {
 		t.Errorf("expected error to mention empty IP address, got: %v", err)
 	}
 }
+
+func TestDefaultANEAliasNameImmutable(t *testing.T) {
+	// Guard against accidental modification of DefaultANEAliasName, which
+	// would cause the controller to fail to recognize existing ANEs after
+	// an upgrade and lead to NodeNetworkConfig drift and Pod IP disruption.
+	const expectedAliasKey = "ccm-adaptive-ipam"
+	if gce.DefaultANEAliasName != expectedAliasKey {
+		t.Fatalf("gce.DefaultANEAliasName = %q, want %q; changing this constant is disallowed", gce.DefaultANEAliasName, expectedAliasKey)
+	}
+
+	ctx := context.Background()
+	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	backend := NewANEBackend(fakeGCE)
+
+	// Verify that an existing ANE keyed with the literal
+	// "ccm-adaptive-ipam" is recognized by GetNetworkInterfaces and Mutate.
+	err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &gce.AliasNetworkEndpoint{
+		Name:   "ane-existing-pre-upgrade",
+		Status: &gce.ANEStatus{State: gce.ANEStateActive},
+		Aliases: map[string]*gce.ANEAlias{
+			expectedAliasKey: {
+				EffectiveIPAddress: "10.128.0.55",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateAliasNetworkEndpoint failed: %v", err)
+	}
+
+	ifaces, err := backend.GetNetworkInterfaces(ctx, testProviderID)
+	if err != nil {
+		t.Fatalf("GetNetworkInterfaces failed to recognize ANE with key %q: %v", expectedAliasKey, err)
+	}
+	if len(ifaces) != 1 || len(ifaces[0].AliasIPRanges) != 1 || ifaces[0].AliasIPRanges[0] != "10.128.0.55/32" {
+		t.Fatalf("unexpected AliasIPRanges: %v", ifaces[0].AliasIPRanges)
+	}
+}

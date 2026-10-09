@@ -299,3 +299,13 @@ func TestGCEANEService_WaitForOperationDefaultPolling(t *testing.T) {
 		t.Errorf("expected 1 poll, got %d", polls)
 	}
 }
+
+func TestDefaultANEAliasNameImmutable(t *testing.T) {
+	// DefaultANEAliasName is persisted as the map key on GCE
+	// AliasNetworkEndpoint resources. Changing it breaks recognition of
+	// existing endpoints across upgrades and causes Pod IP disruption.
+	const expectedAliasName = "ccm-adaptive-ipam"
+	if DefaultANEAliasName != expectedAliasName {
+		t.Fatalf("DefaultANEAliasName = %q, want %q; changing this value is disallowed because it causes configuration drift and Pod IP disruption on existing clusters", DefaultANEAliasName, expectedAliasName)
+	}
+}
