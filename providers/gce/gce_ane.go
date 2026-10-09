@@ -41,13 +41,29 @@ import (
 
 // State and configuration constants for AliasNetworkEndpoint lifecycle.
 const (
+	// ANEStateCreating indicates the endpoint is being created and is not
+	// yet ready to process traffic.
 	ANEStateCreating = "CREATING"
-	ANEStateActive   = "ACTIVE"
+
+	// ANEStateActive indicates the endpoint is active and programmed in the
+	// dataplane to process traffic.
+	ANEStateActive = "ACTIVE"
+
+	// ANEStateDeleting indicates the endpoint is being deleted.
 	ANEStateDeleting = "DELETING"
 
+	// DefaultANEAliasName is the client-chosen RFC 1035 map key used in
+	// AliasNetworkEndpoint.Aliases when creating a Pod IP endpoint. The GCE
+	// API requires a user-provided RFC 1035 identifier as the map key and
+	// currently limits each endpoint to at most one entry (max_length: 1).
 	DefaultANEAliasName = "pod-ip"
+
+	// DefaultANEIPVersion is the IPv4 ipVersion value for ANEAlias.IPVersion.
 	DefaultANEIPVersion = "IPV4"
 
+	// ANESecurityTagInheritanceInherited configures the endpoint to inherit
+	// security tags directly from its host VM instance so firewall rules
+	// targeting the host instance's tags apply to this endpoint.
 	ANESecurityTagInheritanceInherited = "INHERITED"
 
 	// DefaultANEOperationTimeout is the maximum time to wait for a zonal
@@ -65,41 +81,104 @@ const (
 // ANEResourceMetadata contains metadata about the API resource, including the
 // resolved API version (AIP-185).
 type ANEResourceMetadata struct {
+	// APIVersion is the output-only API version resolved by the server for
+	// this resource (e.g. "2026-10-01-preview").
 	APIVersion string `json:"apiVersion,omitempty"`
 }
 
-// AliasNetworkEndpoint represents the GCE AliasNetworkEndpoint zonal resource.
+// AliasNetworkEndpoint represents a GCE zonal AliasNetworkEndpoint resource
+// (`projects/{project}/zones/{zone}/aliasNetworkEndpoints/{name}`), used for
+// GKE Pod-native IP endpoints in Andromeda.
 type AliasNetworkEndpoint struct {
-	Kind                   string               `json:"kind,omitempty"`
-	Id                     uint64               `json:"id,string,omitempty"`
-	Name                   string               `json:"name,omitempty"`
-	Description            string               `json:"description,omitempty"`
-	Subnetwork             string               `json:"subnetwork,omitempty"`
-	Host                   *ANEHost             `json:"host,omitempty"`
-	Aliases                map[string]*ANEAlias `json:"aliases,omitempty"`
-	SecurityTagInheritance string               `json:"securityTagInheritance,omitempty"`
-	Status                 *ANEStatus           `json:"status,omitempty"`
-	ResourceMetadata       *ANEResourceMetadata `json:"resourceMetadata,omitempty"`
-	CreationTimestamp      string               `json:"creationTimestamp,omitempty"`
-	SelfLink               string               `json:"selfLink,omitempty"`
+	// Kind is the output-only type of the resource
+	// ("compute#aliasNetworkEndpoint").
+	Kind string `json:"kind,omitempty"`
+
+	// Id is the output-only unique numeric identifier for the resource,
+	// defined by the server.
+	Id uint64 `json:"id,string,omitempty"`
+
+	// Name is the client-provided resource name (1-63 characters, RFC 1035
+	// compliant).
+	Name string `json:"name,omitempty"`
+
+	// Description is an optional user-provided description of this resource.
+	Description string `json:"description,omitempty"`
+
+	// Subnetwork is the URL of the subnetwork to which this alias network
+	// endpoint belongs. Required on creation.
+	Subnetwork string `json:"subnetwork,omitempty"`
+
+	// Host specifies the GCE VM instance to which this alias network
+	// endpoint is bound. Required on creation.
+	Host *ANEHost `json:"host,omitempty"`
+
+	// Aliases is the required map of IP aliases allocated for this endpoint,
+	// keyed by a client-provided RFC 1035 alias name (such as
+	// DefaultANEAliasName). The GCE API currently restricts this map to at
+	// most 1 entry per endpoint.
+	Aliases map[string]*ANEAlias `json:"aliases,omitempty"`
+
+	// SecurityTagInheritance controls whether security tags are inherited
+	// from the host VM instance (e.g. ANESecurityTagInheritanceInherited or
+	// "NOT_INHERITED").
+	SecurityTagInheritance string `json:"securityTagInheritance,omitempty"`
+
+	// Status is the output-only current lifecycle status of the endpoint.
+	Status *ANEStatus `json:"status,omitempty"`
+
+	// ResourceMetadata contains output-only API version metadata (AIP-185).
+	ResourceMetadata *ANEResourceMetadata `json:"resourceMetadata,omitempty"`
+
+	// CreationTimestamp is the output-only creation timestamp in RFC 3339
+	// text format.
+	CreationTimestamp string `json:"creationTimestamp,omitempty"`
+
+	// SelfLink is the output-only server-defined URL for this resource.
+	SelfLink string `json:"selfLink,omitempty"`
 }
 
-// ANEHost represents the binding to a VM instance.
+// ANEHost represents the binding of an AliasNetworkEndpoint to a GCE VM
+// instance.
 type ANEHost struct {
+	// Instance is the required URL of the GCE VM instance that this alias
+	// network endpoint is bound to
+	// (e.g. "projects/{project}/zones/{zone}/instances/{instance}").
 	Instance string `json:"instance,omitempty"`
 }
 
-// ANEAlias represents an IP alias configuration on the endpoint.
+// ANEAlias represents an IP alias configuration and its allocated IP within
+// AliasNetworkEndpoint.Aliases.
 type ANEAlias struct {
-	IPAddress                    string   `json:"ipAddress,omitempty"`
-	IPVersion                    string   `json:"ipVersion,omitempty"`
-	SubnetworkRangeNames         []string `json:"subnetworkRangeNames,omitempty"`
-	EffectiveIPAddress           string   `json:"effectiveIpAddress,omitempty"`
-	EffectiveSubnetworkRangeName string   `json:"effectiveSubnetworkRangeName,omitempty"`
+	// IPAddress is an optional input-only IP address to request for the
+	// endpoint. If omitted on creation, GCE automatically allocates an IP
+	// and populates EffectiveIPAddress.
+	IPAddress string `json:"ipAddress,omitempty"`
+
+	// IPVersion is the required IP version of the alias IP ("IPV4" or
+	// "IPV6").
+	IPVersion string `json:"ipVersion,omitempty"`
+
+	// SubnetworkRangeNames is an optional input-only list of candidate
+	// secondary range names in the subnetwork from which to allocate the
+	// alias IP. If empty, the IP is allocated from the subnetwork's primary
+	// range.
+	SubnetworkRangeNames []string `json:"subnetworkRangeNames,omitempty"`
+
+	// EffectiveIPAddress is the output-only actual IP address allocated by
+	// GCE for this alias.
+	EffectiveIPAddress string `json:"effectiveIpAddress,omitempty"`
+
+	// EffectiveSubnetworkRangeName is the output-only secondary subnetwork
+	// range name from which the IP address was allocated.
+	EffectiveSubnetworkRangeName string `json:"effectiveSubnetworkRangeName,omitempty"`
 }
 
-// ANEStatus represents the lifecycle state of the endpoint.
+// ANEStatus represents the output-only lifecycle status of an
+// AliasNetworkEndpoint.
 type ANEStatus struct {
+	// State is the output-only lifecycle state of the endpoint (e.g.
+	// ANEStateCreating, ANEStateActive, ANEStateDeleting).
 	State string `json:"state,omitempty"`
 }
 
