@@ -731,7 +731,7 @@ func TestANEBackend_FailFastOnSilentScrubbing(t *testing.T) {
 		},
 		Aliases: map[string]*gce.ANEAlias{
 			gce.DefaultANEAliasNameIPv4: {
-				IPAddress: "",
+				EffectiveIPAddress: "",
 			},
 		},
 	})

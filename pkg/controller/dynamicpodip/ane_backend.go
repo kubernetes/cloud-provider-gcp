@@ -80,12 +80,11 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 		if !ok || alias == nil {
 			return nil, fmt.Errorf("active ANE %q on %q has no alias %q (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID, gce.DefaultANEAliasNameIPv4)
 		}
-		ip := effectiveAliasIP(alias)
-		if ip == "" {
+		if alias.EffectiveIPAddress == "" {
 			return nil, fmt.Errorf("active ANE %q on %q has empty IP address (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID)
 		}
 
-		cidr := ip
+		cidr := alias.EffectiveIPAddress
 		if !strings.Contains(cidr, "/") {
 			cidr += "/32"
 		}
@@ -119,11 +118,9 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 		ipToANEName := make(map[string]string)
 		for _, ep := range anes {
 			if ep != nil {
-				if alias, ok := ep.Aliases[gce.DefaultANEAliasNameIPv4]; ok && alias != nil {
-					if ip := effectiveAliasIP(alias); ip != "" {
-						ipToANEName[ip] = ep.Name
-						ipToANEName[ip+"/32"] = ep.Name
-					}
+				if alias, ok := ep.Aliases[gce.DefaultANEAliasNameIPv4]; ok && alias != nil && alias.EffectiveIPAddress != "" {
+					ipToANEName[alias.EffectiveIPAddress] = ep.Name
+					ipToANEName[alias.EffectiveIPAddress+"/32"] = ep.Name
 				}
 			}
 		}
@@ -222,16 +219,6 @@ func (b *aneBackend) resolveSubnetworkURL(ctx context.Context, providerID, netwo
 		}
 	}
 	return subnetURL
-}
-
-func effectiveAliasIP(alias *gce.ANEAlias) string {
-	if alias == nil {
-		return ""
-	}
-	if alias.EffectiveIPAddress != "" {
-		return alias.EffectiveIPAddress
-	}
-	return alias.IPAddress
 }
 
 // generateANEName creates an RFC 1035 compliant resource name for an ANE that
