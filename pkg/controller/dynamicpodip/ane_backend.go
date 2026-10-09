@@ -173,11 +173,9 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 
 	// Additions: create new ANEs for the instance concurrently.
 	if len(additions) > 0 {
-		subnetURL := b.resolveSubnetworkURL(ctx, providerID, networkURL)
-		if len(candidateRanges) == 0 {
-			if secRange := b.gceCloud.SecondaryRangeName(); secRange != "" {
-				candidateRanges = []string{secRange}
-			}
+		subnetURL, err := b.resolveSubnetworkURL(ctx, providerID, networkURL)
+		if err != nil {
+			return err
 		}
 
 		g, gCtx := errgroup.WithContext(ctx)
@@ -218,18 +216,19 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 	return nil
 }
 
-func (b *aneBackend) resolveSubnetworkURL(ctx context.Context, providerID, networkURL string) string {
-	subnetURL := b.gceCloud.SubnetworkURL()
-	if gceIfaces, err := b.gceCloud.GetInstanceNetworkInterfaces(ctx, providerID); err == nil {
-		for _, iface := range gceIfaces {
-			if iface != nil && (networkURL == "" || gce.EqualResourceURLs(iface.Network, networkURL)) {
-				if iface.Subnetwork != "" {
-					return iface.Subnetwork
-				}
+func (b *aneBackend) resolveSubnetworkURL(ctx context.Context, providerID, networkURL string) (string, error) {
+	gceIfaces, err := b.gceCloud.GetInstanceNetworkInterfaces(ctx, providerID)
+	if err != nil {
+		return "", err
+	}
+	for _, iface := range gceIfaces {
+		if iface != nil && (networkURL == "" || gce.EqualResourceURLs(iface.Network, networkURL)) {
+			if iface.Subnetwork != "" {
+				return iface.Subnetwork, nil
 			}
 		}
 	}
-	return subnetURL
+	return "", fmt.Errorf("no subnetwork found on instance %q for network %q", providerID, networkURL)
 }
 
 // generateANEName creates an RFC 1035 compliant resource name for an ANE that

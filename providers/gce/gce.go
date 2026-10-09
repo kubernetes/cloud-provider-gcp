@@ -1222,8 +1222,3 @@ func (g *Cloud) syncManagedZonesPeriodically(stop <-chan struct{}) {
 		}
 	}, 5*time.Minute, stop)
 }
-
-// SecondaryRangeName returns the configured secondary range name.
-func (g *Cloud) SecondaryRangeName() string {
-	return g.secondaryRangeName
-}
