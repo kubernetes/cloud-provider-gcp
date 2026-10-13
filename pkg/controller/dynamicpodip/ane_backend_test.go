@@ -30,6 +30,7 @@ import (
 	gcloud "github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	computebeta "google.golang.org/api/compute/v0.beta"
+	computepreview "google.golang.org/api/compute/v1.preview"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -120,13 +121,13 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 	backend := NewANEBackend(fakeGCE)
 
 	// Add an active ANE
-	err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &gce.AliasNetworkEndpoint{
+	err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
 		Name:       "ane-active-1",
 		Subnetwork: fakeGCE.SubnetworkURL(),
-		Status:     &gce.ANEStatus{State: gce.ANEStateActive},
-		Aliases: map[string]*gce.ANEAlias{
+		Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
 			DefaultANEAliasNameIPv4: {
-				EffectiveIPAddress: "10.128.0.10",
+				EffectiveIpAddress: "10.128.0.10",
 			},
 		},
 	})
@@ -135,13 +136,13 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 	}
 
 	// Add a creating/inactive ANE (should be skipped)
-	err = fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &gce.AliasNetworkEndpoint{
+	err = fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
 		Name:       "ane-creating-2",
 		Subnetwork: fakeGCE.SubnetworkURL(),
-		Status:     &gce.ANEStatus{State: gce.ANEStateCreating},
-		Aliases: map[string]*gce.ANEAlias{
+		Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateCreating},
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
 			DefaultANEAliasNameIPv4: {
-				EffectiveIPAddress: "10.128.0.20",
+				EffectiveIpAddress: "10.128.0.20",
 			},
 		},
 	})
@@ -168,13 +169,13 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 	// Verify that an initial allocation on the VM's aliasIpRanges is
 	// preserved in AliasIPRanges alongside subsequent ANEs in ANECIDRs.
 	fakeGCEWithInitial := newFakeGCEWithDefaultInstance(t, "10.100.0.0/28")
-	if err := fakeGCEWithInitial.CreateAliasNetworkEndpoint(ctx, testProviderID, &gce.AliasNetworkEndpoint{
+	if err := fakeGCEWithInitial.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
 		Name:       "ane-active-1",
 		Subnetwork: fakeGCEWithInitial.SubnetworkURL(),
-		Status:     &gce.ANEStatus{State: gce.ANEStateActive},
-		Aliases: map[string]*gce.ANEAlias{
+		Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
 			DefaultANEAliasNameIPv4: {
-				EffectiveIPAddress: "10.128.0.10",
+				EffectiveIpAddress: "10.128.0.10",
 			},
 		},
 	}); err != nil {
@@ -702,9 +703,9 @@ func TestANEBackend_FailFastOnSilentScrubbing(t *testing.T) {
 
 	// Insert an active endpoint that has missing aliases (simulating silent
 	// scrubbing).
-	err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &gce.AliasNetworkEndpoint{
+	err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
 		Name: "scrubbed-ane",
-		Status: &gce.ANEStatus{
+		Status: &computepreview.AliasNetworkEndpointStatus{
 			State: gce.ANEStateActive,
 		},
 		// Aliases is nil/empty due to silent scrubbing
@@ -726,14 +727,14 @@ func TestANEBackend_FailFastOnSilentScrubbing(t *testing.T) {
 	}
 
 	// Now insert an active endpoint that has an alias with an empty IP
-	err = fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &gce.AliasNetworkEndpoint{
+	err = fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
 		Name: "scrubbed-ane-empty-ip",
-		Status: &gce.ANEStatus{
+		Status: &computepreview.AliasNetworkEndpointStatus{
 			State: gce.ANEStateActive,
 		},
-		Aliases: map[string]*gce.ANEAlias{
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
 			DefaultANEAliasNameIPv4: {
-				EffectiveIPAddress: "",
+				EffectiveIpAddress: "",
 			},
 		},
 	})
@@ -767,12 +768,12 @@ func TestDefaultANEAliasNameIPv4Immutable(t *testing.T) {
 	// Verify that an existing ANE keyed with the literal
 	// "ccm-adaptive-ipam-ipv4" is recognized by GetNetworkInterfaces and
 	// Mutate.
-	err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &gce.AliasNetworkEndpoint{
+	err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
 		Name:   "ane-existing-pre-upgrade",
-		Status: &gce.ANEStatus{State: gce.ANEStateActive},
-		Aliases: map[string]*gce.ANEAlias{
+		Status: &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
 			expectedAliasKey: {
-				EffectiveIPAddress: "10.128.0.55",
+				EffectiveIpAddress: "10.128.0.55",
 			},
 		},
 	})

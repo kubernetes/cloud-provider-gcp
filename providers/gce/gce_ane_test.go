@@ -27,20 +27,34 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	computepreview "google.golang.org/api/compute/v1.preview"
+	"google.golang.org/api/option"
 )
 
+func newTestCloudWithServer(t *testing.T, server *httptest.Server) *Cloud {
+	t.Helper()
+	svc, err := computepreview.NewService(
+		context.Background(),
+		option.WithoutAuthentication(),
+		option.WithHTTPClient(server.Client()),
+		option.WithEndpoint(server.URL+"/"),
+	)
+	if err != nil {
+		t.Fatalf("computepreview.NewService failed: %v", err)
+	}
+	return &Cloud{
+		servicePreview: svc,
+	}
+}
+
 func TestGCEANEService_CreateGetListDelete(t *testing.T) {
-	endpoints := make(map[string]*AliasNetworkEndpoint)
+	endpoints := make(map[string]*computepreview.AliasNetworkEndpoint)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify preview API version header is present.
-		if v := r.Header.Get(anePreviewAPIVersionHeader); v != anePreviewAPIVersion {
-			http.Error(w, "missing or invalid "+anePreviewAPIVersionHeader+": "+v, http.StatusBadRequest)
-			return
-		}
-		// Verify $apiVersion query param is present on every request.
-		if !strings.Contains(r.URL.RawQuery, "%24apiVersion="+anePreviewAPIVersion) && !strings.Contains(r.URL.RawQuery, "$apiVersion="+anePreviewAPIVersion) {
-			http.Error(w, "missing or invalid $apiVersion in query: "+r.URL.RawQuery, http.StatusBadRequest)
+		if v := r.Header.Get("X-Goog-Api-Version"); v != anePreviewAPIVersion {
+			http.Error(w, "missing or invalid X-Goog-Api-Version: "+v, http.StatusBadRequest)
 			return
 		}
 
@@ -48,24 +62,22 @@ func TestGCEANEService_CreateGetListDelete(t *testing.T) {
 		case http.MethodPost:
 			if strings.HasSuffix(r.URL.Path, "/wait") {
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(aneOperation{Name: "op-wait", Status: "DONE"})
+				json.NewEncoder(w).Encode(computepreview.Operation{Name: "op-wait", Status: "DONE"})
 				return
 			}
-			var ane AliasNetworkEndpoint
+			var ane computepreview.AliasNetworkEndpoint
 			if err := json.NewDecoder(r.Body).Decode(&ane); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			ane.Status = &ANEStatus{State: ANEStateActive}
-			ane.ResourceMetadata = &ANEResourceMetadata{APIVersion: anePreviewAPIVersion}
-			for _, alias := range ane.Aliases {
-				if alias != nil {
-					alias.EffectiveIPAddress = "10.128.0.25"
-				}
+			ane.Status = &computepreview.AliasNetworkEndpointStatus{State: ANEStateActive}
+			for k, alias := range ane.Aliases {
+				alias.EffectiveIpAddress = "10.128.0.25"
+				ane.Aliases[k] = alias
 			}
 			endpoints[ane.Name] = &ane
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(aneOperation{Name: "op-insert-" + ane.Name, Status: "DONE"})
+			json.NewEncoder(w).Encode(computepreview.Operation{Name: "op-insert-" + ane.Name, Status: "DONE"})
 
 		case http.MethodGet:
 			path := r.URL.Path
@@ -81,12 +93,12 @@ func TestGCEANEService_CreateGetListDelete(t *testing.T) {
 				return
 			}
 			// List
-			var list []*AliasNetworkEndpoint
+			var list []*computepreview.AliasNetworkEndpoint
 			for _, ep := range endpoints {
 				list = append(list, ep)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(aneListResponse{Items: list})
+			json.NewEncoder(w).Encode(computepreview.AliasNetworkEndpointList{Items: list})
 
 		case http.MethodDelete:
 			path := r.URL.Path
@@ -97,24 +109,21 @@ func TestGCEANEService_CreateGetListDelete(t *testing.T) {
 			}
 			delete(endpoints, name)
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(aneOperation{Name: "op-delete-" + name, Status: "DONE"})
+			json.NewEncoder(w).Encode(computepreview.Operation{Name: "op-delete-" + name, Status: "DONE"})
 		}
 	}))
 	defer server.Close()
 
-	cloud := &Cloud{
-		httpClient:       server.Client(),
-		projectsBasePath: server.URL + "/projects/",
-	}
+	cloud := newTestCloudWithServer(t, server)
 
 	ctx := context.Background()
 	testProviderID := "gce://p/z/test-node"
 	const testAliasKey = "alias-ipv4"
-	ane := &AliasNetworkEndpoint{
+	ane := &computepreview.AliasNetworkEndpoint{
 		Name: "test-ane-1",
-		Aliases: map[string]*ANEAlias{
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
 			testAliasKey: {
-				IPVersion: ANEIPVersionIPv4,
+				IpVersion: ANEIPVersionIPv4,
 			},
 		},
 	}
@@ -127,8 +136,8 @@ func TestGCEANEService_CreateGetListDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAliasNetworkEndpoint failed: %v", err)
 	}
-	if got.Aliases[testAliasKey].EffectiveIPAddress != "10.128.0.25" {
-		t.Errorf("Expected effective IP 10.128.0.25, got %q", got.Aliases[testAliasKey].EffectiveIPAddress)
+	if got.Aliases[testAliasKey].EffectiveIpAddress != "10.128.0.25" {
+		t.Errorf("Expected effective IP 10.128.0.25, got %q", got.Aliases[testAliasKey].EffectiveIpAddress)
 	}
 
 	list, err := cloud.ListAliasNetworkEndpoints(ctx, testProviderID)
@@ -163,7 +172,7 @@ func TestGCEANEService_TransientRetryAndRetryAfter(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/wait") {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(aneOperation{Name: "op-insert-retry-success", Status: "DONE"})
+			json.NewEncoder(w).Encode(computepreview.Operation{Name: "op-insert-retry-success", Status: "DONE"})
 			return
 		}
 		attempts++
@@ -175,15 +184,12 @@ func TestGCEANEService_TransientRetryAndRetryAfter(t *testing.T) {
 		}
 		// Second attempt succeeds.
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(aneOperation{Name: "op-insert-retry-success", Status: "DONE"})
+		json.NewEncoder(w).Encode(computepreview.Operation{Name: "op-insert-retry-success", Status: "DONE"})
 	}))
 	defer server.Close()
 
-	cloud := &Cloud{
-		httpClient:       server.Client(),
-		projectsBasePath: server.URL + "/projects/",
-	}
-	ane := &AliasNetworkEndpoint{
+	cloud := newTestCloudWithServer(t, server)
+	ane := &computepreview.AliasNetworkEndpoint{
 		Name: "test-ane-retry",
 	}
 
@@ -203,10 +209,7 @@ func TestGCEANEService_Delete_UnallowlistedMethodNotFound(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cloud := &Cloud{
-		httpClient:       server.Client(),
-		projectsBasePath: server.URL + "/projects/",
-	}
+	cloud := newTestCloudWithServer(t, server)
 	err := cloud.DeleteAliasNetworkEndpoint(context.Background(), "gce://p/z/test-node", "test-ane")
 	if err == nil {
 		t.Fatal("expected error on ESF Method not found 404, got nil")
@@ -220,25 +223,24 @@ func TestGCEANEService_AIP193StructuredError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		errResp := aneAPIErrorResponse{}
-		errResp.Error.Code = 400
-		errResp.Error.Message = "Invalid API version"
-		errResp.Error.Details = []aneErrorInfo{
-			{
-				Type:   "type.googleapis.com/google.rpc.ErrorInfo",
-				Reason: "API_VERSION_NOT_SUPPORTED",
-				Domain: "compute.googleapis.com",
-			},
-		}
-		json.NewEncoder(w).Encode(errResp)
+		w.Write([]byte(`{
+			"error": {
+				"code": 400,
+				"message": "Invalid API version",
+				"details": [
+					{
+						"@type": "type.googleapis.com/google.rpc.ErrorInfo",
+						"reason": "API_VERSION_NOT_SUPPORTED",
+						"domain": "compute.googleapis.com"
+					}
+				]
+			}
+		}`))
 	}))
 	defer server.Close()
 
-	cloud := &Cloud{
-		httpClient:       server.Client(),
-		projectsBasePath: server.URL + "/projects/",
-	}
-	err := cloud.CreateAliasNetworkEndpoint(context.Background(), "gce://p/z/test-node", &AliasNetworkEndpoint{Name: "test"})
+	cloud := newTestCloudWithServer(t, server)
+	err := cloud.CreateAliasNetworkEndpoint(context.Background(), "gce://p/z/test-node", &computepreview.AliasNetworkEndpoint{Name: "test"})
 	if err == nil {
 		t.Fatal("expected AIP-193 structured error, got nil")
 	}
@@ -248,12 +250,8 @@ func TestGCEANEService_AIP193StructuredError(t *testing.T) {
 }
 
 func TestGCEANEService_WaitForOperationTimeout(t *testing.T) {
-	// Use mock/parameterized test URL instead of hardcoded
-	// compute.googleapis.com.
 	svc := &gceANEService{
-		gce: &Cloud{
-			projectsBasePath: "http://127.0.0.1:8080/projects/",
-		},
+		gce: &Cloud{},
 		waiter: func(ctx context.Context, p, z, op string) error {
 			<-ctx.Done()
 			return ctx.Err()
@@ -282,7 +280,7 @@ func TestGCEANEService_WaitForOperationDefaultPolling(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(aneOperation{
+		json.NewEncoder(w).Encode(computepreview.Operation{
 			Name:   "op-123",
 			Status: "DONE",
 		})
@@ -290,10 +288,7 @@ func TestGCEANEService_WaitForOperationDefaultPolling(t *testing.T) {
 	defer server.Close()
 
 	svc := &gceANEService{
-		gce: &Cloud{
-			httpClient:       server.Client(),
-			projectsBasePath: server.URL + "/projects/",
-		},
+		gce: newTestCloudWithServer(t, server),
 	}
 	if err := svc.waitForOperation(context.Background(), "p", "z", "op-123"); err != nil {
 		t.Fatalf("expected waitForOperation to succeed, got error: %v", err)

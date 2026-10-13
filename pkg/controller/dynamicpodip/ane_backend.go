@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+	computepreview "google.golang.org/api/compute/v1.preview"
 	"k8s.io/apimachinery/pkg/util/sets"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/klog/v2"
@@ -91,15 +92,15 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 			// DELETING).
 			continue
 		}
-		alias := endpoint.Aliases[DefaultANEAliasNameIPv4]
-		if alias == nil {
+		alias, ok := endpoint.Aliases[DefaultANEAliasNameIPv4]
+		if !ok {
 			return nil, fmt.Errorf("active ANE %q on %q has no alias %q (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID, DefaultANEAliasNameIPv4)
 		}
-		if alias.EffectiveIPAddress == "" {
+		if alias.EffectiveIpAddress == "" {
 			return nil, fmt.Errorf("active ANE %q on %q has empty IP address (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID)
 		}
 
-		cidr := alias.EffectiveIPAddress + "/32"
+		cidr := alias.EffectiveIpAddress + "/32"
 		targetIface := ifaces[0]
 		if endpoint.Subnetwork != "" {
 			for _, iface := range ifaces {
@@ -132,11 +133,11 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 			if ep == nil {
 				continue
 			}
-			alias := ep.Aliases[DefaultANEAliasNameIPv4]
-			if alias == nil || alias.EffectiveIPAddress == "" {
+			alias, ok := ep.Aliases[DefaultANEAliasNameIPv4]
+			if !ok || alias.EffectiveIpAddress == "" {
 				continue
 			}
-			cidrToANEName[alias.EffectiveIPAddress+"/32"] = ep.Name
+			cidrToANEName[alias.EffectiveIpAddress+"/32"] = ep.Name
 		}
 
 		toDelete := sets.NewString()
@@ -183,14 +184,14 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 
 		for i := range additions {
 			aneName := generateANEName(providerID, i)
-			endpoint := &gce.AliasNetworkEndpoint{
+			endpoint := &computepreview.AliasNetworkEndpoint{
 				Name:                   aneName,
 				Description:            DefaultANEDescription,
 				Subnetwork:             subnetURL,
 				SecurityTagInheritance: gce.ANESecurityTagInheritanceInherited,
-				Aliases: map[string]*gce.ANEAlias{
+				Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
 					DefaultANEAliasNameIPv4: {
-						IPVersion:            gce.ANEIPVersionIPv4,
+						IpVersion:            gce.ANEIPVersionIPv4,
 						SubnetworkRangeNames: candidateRanges,
 					},
 				},
@@ -237,7 +238,7 @@ func (b *aneBackend) resolveSubnetworkURL(ctx context.Context, providerID, netwo
 //
 // Note: The generated name is only used at creation time to ensure zonal name
 // uniqueness. Lookups and deletions always match ANEs by Host.Instance and
-// EffectiveIPAddress rather than parsing or reconstructing the resource name,
+// EffectiveIpAddress rather than parsing or reconstructing the resource name,
 // so future changes to this format will not affect existing endpoints.
 func generateANEName(nodeOrProviderID string, index int) string {
 	nodeName := nodeOrProviderID

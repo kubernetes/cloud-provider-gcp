@@ -24,6 +24,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	compute "google.golang.org/api/compute/v1"
+	computepreview "google.golang.org/api/compute/v1.preview"
 	option "google.golang.org/api/option"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
@@ -78,6 +79,10 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 	if err != nil {
 		panic(err)
 	}
+	servicePreview, err := computepreview.NewService(context.Background(), option.WithoutAuthentication())
+	if err != nil {
+		panic(err)
+	}
 	netProjID := vals.NetworkProjectID
 	if netProjID == "" {
 		netProjID = vals.ProjectID
@@ -85,6 +90,7 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 	gce := &Cloud{
 		region:                  vals.Region,
 		service:                 service,
+		servicePreview:          servicePreview,
 		managedZones:            []string{vals.ZoneName},
 		localZone:               vals.ZoneName,
 		projectID:               vals.ProjectID,

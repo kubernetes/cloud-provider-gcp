@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"runtime"
 	"slices"
 	"strconv"
@@ -40,9 +39,9 @@ import (
 	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
+	computepreview "google.golang.org/api/compute/v1.preview"
 	container "google.golang.org/api/container/v1"
 	"google.golang.org/api/option"
-	httptransport "google.golang.org/api/transport/http"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 
@@ -149,6 +148,7 @@ type Cloud struct {
 	service          *compute.Service
 	serviceBeta      *computebeta.Service
 	serviceAlpha     *computealpha.Service
+	servicePreview   *computepreview.Service
 	containerService *container.Service
 	tpuService       *tpuService
 	client           clientset.Interface
@@ -220,8 +220,6 @@ type Cloud struct {
 
 	// the compute API endpoint with the `projects/` element.
 	projectsBasePath string
-	// httpClient is the authenticated HTTP client for GCE API calls.
-	httpClient *http.Client
 	// stackType indicates whether the cluster is a single stack IPv4, single
 	// stack IPv6 or a dual stack cluster
 	stackType StackType
@@ -620,12 +618,6 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		return nil, err
 	}
 
-	allClientOpts := append([]option.ClientOption{option.WithUserAgent(userAgent)}, clientOpts...)
-	httpClient, _, err := httptransport.NewClient(context.Background(), allClientOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create authenticated HTTP client: %w", err)
-	}
-
 	service, err := compute.NewService(context.Background(), clientOpts...)
 	if err != nil {
 		return nil, err
@@ -644,15 +636,23 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 	}
 	serviceAlpha.UserAgent = userAgent
 
+	servicePreview, err := computepreview.NewService(context.Background(), clientOpts...)
+	if err != nil {
+		return nil, err
+	}
+	servicePreview.UserAgent = userAgent
+
 	if config.APIEndpoint != "" {
 		if strings.HasSuffix(service.BasePath, "/projects/") {
 			service.BasePath = getProjectsBasePath(config.APIEndpoint)
 			serviceBeta.BasePath = getProjectsBasePath(strings.Replace(config.APIEndpoint, "v1", "beta", -1))
 			serviceAlpha.BasePath = getProjectsBasePath(strings.Replace(config.APIEndpoint, "v1", "alpha", -1))
+			servicePreview.BasePath = getProjectsBasePath(config.APIEndpoint)
 		} else {
 			service.BasePath = config.APIEndpoint
 			serviceBeta.BasePath = strings.Replace(config.APIEndpoint, "v1", "beta", -1)
 			serviceAlpha.BasePath = strings.Replace(config.APIEndpoint, "v1", "alpha", -1)
+			servicePreview.BasePath = config.APIEndpoint
 		}
 	}
 
@@ -705,6 +705,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		service:                  service,
 		serviceAlpha:             serviceAlpha,
 		serviceBeta:              serviceBeta,
+		servicePreview:           servicePreview,
 		containerService:         containerService,
 		tpuService:               tpuService,
 		projectID:                projID,
@@ -726,7 +727,6 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		nodeZones:                map[string]sets.String{},
 		metricsCollector:         newLoadBalancerMetrics(),
 		projectsBasePath:         getProjectsBasePath(service.BasePath),
-		httpClient:               httpClient,
 		stackType:                StackType(config.StackType),
 		firewallRulesManagement:  FirewallRulesManagement(config.FirewallRulesManagement),
 	}
