@@ -20,10 +20,18 @@ limitations under the License.
 package gce
 
 import (
+	"errors"
+
 	compute "google.golang.org/api/compute/v1"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+)
+
+var (
+	// ErrFirewallManagementDisabled is returned when a firewall operation
+	// is attempted but firewall rules management has been disabled.
+	ErrFirewallManagementDisabled = errors.New("firewall rules management is disabled")
 )
 
 func newFirewallMetricContext(request string) *metricContext {
@@ -32,6 +40,10 @@ func newFirewallMetricContext(request string) *metricContext {
 
 // GetFirewall returns the Firewall by name.
 func (g *Cloud) GetFirewall(name string) (*compute.Firewall, error) {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		return nil, ErrFirewallManagementDisabled
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -42,6 +54,10 @@ func (g *Cloud) GetFirewall(name string) (*compute.Firewall, error) {
 
 // CreateFirewall creates the passed firewall
 func (g *Cloud) CreateFirewall(f *compute.Firewall) error {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -51,6 +67,10 @@ func (g *Cloud) CreateFirewall(f *compute.Firewall) error {
 
 // DeleteFirewall deletes the given firewall rule.
 func (g *Cloud) DeleteFirewall(name string) error {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -60,6 +80,10 @@ func (g *Cloud) DeleteFirewall(name string) error {
 
 // UpdateFirewall applies the given firewall as an update to an existing service.
 func (g *Cloud) UpdateFirewall(f *compute.Firewall) error {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 
@@ -69,6 +93,10 @@ func (g *Cloud) UpdateFirewall(f *compute.Firewall) error {
 
 // PatchFirewall applies the given firewall as an update to an existing service.
 func (g *Cloud) PatchFirewall(f *compute.Firewall) error {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		return nil
+	}
+
 	ctx, cancel := cloud.ContextWithCallTimeout()
 	defer cancel()
 

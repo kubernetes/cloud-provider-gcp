@@ -2,15 +2,12 @@
 package providerconfig
 
 import (
-	"context"
 	"fmt"
 
-	providerconfigv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/dynamic"
+	providerconfigv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
 )
 
 var (
@@ -44,13 +41,4 @@ func NewProviderConfig(obj any) (*providerconfigv1.ProviderConfig, error) {
 		return nil, err
 	}
 	return pc, nil
-}
-
-// NewProviderConfigFromClient fetches a ProviderConfig from the client and returns it as a struct.
-func NewProviderConfigFromClient(ctx context.Context, client dynamic.Interface, name string) (*providerconfigv1.ProviderConfig, error) {
-	u, err := client.Resource(ProviderConfigGVR).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return NewProviderConfig(u)
 }

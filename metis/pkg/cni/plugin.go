@@ -30,7 +30,7 @@ import (
 
 	pb "k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg"
-	"k8s.io/metis/pkg/daemon"
+	"k8s.io/metis/pkg/ipam"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -70,13 +70,21 @@ func WithLogFile(path string) Option {
 	}
 }
 
+// WithReleaseCooldown overrides the default release cooldown duration for fallback mode.
+func WithReleaseCooldown(d time.Duration) Option {
+	return func(p *Plugin) {
+		p.releaseCooldown = d
+	}
+}
+
 // NewPlugin creates a new Plugin with functional options.
 func NewPlugin(opts ...Option) *Plugin {
 	p := &Plugin{
-		newClientFunc: getGrpcClient,
-		socketPath:    pkg.DefaultSockPath,
-		dbPath:        pkg.DefaultDBPath,
-		logFile:       pkg.DefaultCNILogPath,
+		newClientFunc:   getGrpcClient,
+		socketPath:      pkg.DefaultSockPath,
+		dbPath:          pkg.DefaultDBPath,
+		logFile:         pkg.DefaultCNILogPath,
+		releaseCooldown: ipam.DefaultReleaseCooldown,
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -163,7 +171,16 @@ func (p *Plugin) prepare(args *skel.CmdArgs, command string) (*pluginSession, er
 			return nil, fmt.Errorf("metis cni fallback: failed to open store at %s: %w", dbPath, err)
 		}
 
-		engine := daemon.NewIPAMEngine(logger, storeInstance, 0, store.DefaultBusyTimeout, nil)
+		releaseCooldown := p.releaseCooldown
+		if conf.ReleaseCooldown != "" {
+			if d, err := time.ParseDuration(conf.ReleaseCooldown); err == nil {
+				releaseCooldown = d
+			} else {
+				logger.Error(err, "Failed to parse releaseCooldown from CNI config, falling back to default", "raw", conf.ReleaseCooldown, "default", releaseCooldown)
+			}
+		}
+
+		engine := ipam.NewIPAMEngine(logger, storeInstance, releaseCooldown, store.DefaultBusyTimeout, nil)
 		client = &directClientAdapter{engine: engine}
 
 		sessionCleanup = func() {

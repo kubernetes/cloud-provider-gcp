@@ -363,9 +363,10 @@ func TestGenerateCloudConfigs(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name   string
-		config func() ConfigGlobal
-		cloud  func() CloudConfig
+		name    string
+		config  func() ConfigGlobal
+		cloud   func() CloudConfig
+		wantErr bool
 	}{
 		{
 			name:   "Empty Config",
@@ -483,11 +484,61 @@ func TestGenerateCloudConfigs(t *testing.T) {
 				return v
 			},
 		},
+		{
+			name: "Firewall Rules Management Enabled",
+			config: func() ConfigGlobal {
+				v := configBoilerplate
+				v.FirewallRulesManagement = string(firewallRulesManagementEnabled)
+				return v
+			},
+			cloud: func() CloudConfig {
+				v := cloudBoilerplate
+				v.FirewallRulesManagement = string(firewallRulesManagementEnabled)
+				return v
+			},
+		},
+		{
+			name: "Firewall Rules Management Disabled",
+			config: func() ConfigGlobal {
+				v := configBoilerplate
+				v.FirewallRulesManagement = string(firewallRulesManagementDisabled)
+				return v
+			},
+			cloud: func() CloudConfig {
+				v := cloudBoilerplate
+				v.FirewallRulesManagement = string(firewallRulesManagementDisabled)
+				return v
+			},
+		},
+		{
+			name: "Firewall Rules Management wrong case",
+			config: func() ConfigGlobal {
+				v := configBoilerplate
+				v.FirewallRulesManagement = "disabled"
+				return v
+			},
+			wantErr: true,
+		},
+		{
+			name: "Firewall Rules Management unknown value",
+			config: func() ConfigGlobal {
+				v := configBoilerplate
+				v.FirewallRulesManagement = "Off"
+				return v
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			resultCloud, err := GenerateCloudConfig(&ConfigFile{Global: tc.config()})
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("GenerateCloudConfig() = %v, want error", resultCloud)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("Unexpect error: %v", err)
 			}

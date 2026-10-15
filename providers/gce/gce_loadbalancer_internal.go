@@ -38,6 +38,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	servicehelpers "k8s.io/cloud-provider/service/helpers"
 	"k8s.io/klog/v2"
+	netutils "k8s.io/utils/net"
 )
 
 const (
@@ -421,6 +422,10 @@ func (g *Cloud) ensureInternalLoadBalancerDeleted(clusterName, clusterID string,
 	}
 
 	deleteFunc := func(fwName string) error {
+		if g.firewallRulesManagement == firewallRulesManagementDisabled {
+			klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): firewall rules are unmanaged", fwName)
+			return nil
+		}
 		if err := ignoreNotFound(g.DeleteFirewall(fwName)); err != nil {
 			if isForbidden(err) && g.OnXPN() {
 				klog.V(2).Infof("ensureInternalLoadBalancerDeleted(%v): could not delete traffic firewall on XPN cluster. Raising event.", loadBalancerName)
@@ -504,6 +509,11 @@ func (g *Cloud) teardownInternalHealthCheckAndFirewall(svc *v1.Service, hcName s
 	}
 	klog.V(2).Infof("teardownInternalHealthCheckAndFirewall(%v): health check deleted", hcName)
 
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		klog.V(2).Infof("teardownInternalHealthCheckAndFirewall(%v): unmanaged firewall rules", hcName)
+		return nil
+	}
+
 	if err := ignoreNotFound(g.DeleteFirewall(hcFirewallName)); err != nil {
 		if isForbidden(err) && g.OnXPN() {
 			klog.V(2).Infof("teardownInternalHealthCheckAndFirewall(%v): could not delete health check traffic firewall on XPN cluster. Raising Event.", hcName)
@@ -521,6 +531,11 @@ func (g *Cloud) ensureInternalFirewall(svc *v1.Service, fwName, fwDesc, destinat
 	defer g.lockFirewall(fwName, shared)()
 
 	klog.V(2).Infof("ensureInternalFirewall(%v): checking existing firewall", fwName)
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		klog.V(2).Infof("ensureInternalFirewall(%v): firewall rules are unmanaged", fwName)
+		return nil
+	}
+
 	targetTags, err := g.GetNodeTags(nodeNames(nodes))
 	if err != nil {
 		return err
@@ -613,7 +628,8 @@ func (g *Cloud) ensureInternalFirewalls(loadBalancerName, ipAddress, clusterID s
 
 	// Second firewall is for health checking nodes / services
 	fwHCName := makeHealthCheckFirewallName(loadBalancerName, clusterID, sharedHealthCheck)
-	hcSrcRanges := L4LoadBalancerSrcRanges()
+	isIPv6 := netutils.IsIPv6String(ipAddress)
+	hcSrcRanges := L4ILBHealthCheckSrcRanges(sharedHealthCheck, isIPv6).StringSlice()
 	return g.ensureInternalFirewall(svc, fwHCName, "", "", hcSrcRanges, []string{healthCheckPort}, v1.ProtocolTCP, nodes, "", sharedHealthCheck)
 }
 

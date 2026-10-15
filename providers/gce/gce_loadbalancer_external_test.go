@@ -31,6 +31,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
+	netutils "k8s.io/utils/net"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -41,7 +42,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
-	utilnet "k8s.io/utils/net"
 )
 
 const (
@@ -1561,10 +1561,10 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 	ipAddr := syncResult.status.Ingress[0].IP
 	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
 
-	ipnet, err := utilnet.ParseIPNets("0.0.0.0/0")
+	ipnet, err := netutils.ParseIPNets("0.0.0.0/0")
 	require.NoError(t, err)
 
-	wrongIpnet, err := utilnet.ParseIPNets("1.0.0.0/10")
+	wrongIpnet, err := netutils.ParseIPNets("1.0.0.0/10")
 	require.NoError(t, err)
 
 	fwName := MakeFirewallName(lbName)
@@ -1575,7 +1575,7 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 		lbName       string
 		ipAddr       string
 		ports        []v1.ServicePort
-		ipnet        utilnet.IPNetSet
+		ipnet        netutils.IPNetSet
 		fwIPProtocol string
 		getHook      func(context.Context, *meta.Key, *cloud.MockFirewalls, ...cloud.Option) (bool, *compute.Firewall, error)
 		sourceRange  string
@@ -1795,6 +1795,130 @@ func TestFirewallNeedsUpdate(t *testing.T) {
 	}
 }
 
+func TestDisabledFirewallOperations(t *testing.T) {
+	vals := DefaultTestClusterValues()
+	vals.FirewallRulesManagement = firewallRulesManagementDisabled
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	gce.nodeTags = []string{"node-tags"}
+
+	fw, err := gce.GetFirewall(MakeFirewallName("test"))
+	assert.ErrorIs(t, err, ErrFirewallManagementDisabled)
+	assert.Nil(t, fw)
+
+	ipnet, err := netutils.ParseIPNets("0.0.0.0/0")
+	require.NoError(t, err)
+
+	ports := []v1.ServicePort{
+		{Name: "port1", Protocol: v1.ProtocolTCP, Port: int32(80), TargetPort: intstr.FromInt(80)},
+		{Name: "port2", Protocol: v1.ProtocolTCP, Port: int32(81), TargetPort: intstr.FromInt(81)},
+		{Name: "port3", Protocol: v1.ProtocolTCP, Port: int32(82), TargetPort: intstr.FromInt(82)},
+		{Name: "port4", Protocol: v1.ProtocolTCP, Port: int32(84), TargetPort: intstr.FromInt(84)},
+		{Name: "port5", Protocol: v1.ProtocolTCP, Port: int32(85), TargetPort: intstr.FromInt(85)},
+		{Name: "port6", Protocol: v1.ProtocolTCP, Port: int32(86), TargetPort: intstr.FromInt(86)},
+		{Name: "port7", Protocol: v1.ProtocolTCP, Port: int32(88), TargetPort: intstr.FromInt(87)},
+	}
+
+	firewall, err := gce.firewallObject(MakeFirewallName("test"), "Test Description", "0.0.0.0/0", ipnet, ports, nil, firewallPriorityDefault)
+	require.NoError(t, err)
+
+	err = gce.CreateFirewall(firewall)
+	assert.NoError(t, err)
+
+	err = gce.UpdateFirewall(firewall)
+	assert.NoError(t, err)
+
+	err = gce.PatchFirewall(firewall)
+	assert.NoError(t, err)
+
+	err = gce.DeleteFirewall(MakeFirewallName("test"))
+	assert.NoError(t, err)
+}
+
+func TestDisabledFirewallEnsureDenyNodeFirewall(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	vals.FirewallRulesManagement = firewallRulesManagementDisabled
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	gce.nodeTags = []string{"node-tags"}
+
+	svc := fakeLoadbalancerService("")
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(
+		context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	// Must not panic when firewall management is disabled.
+	// Regression test for nil-pointer deref in firewallsEqual
+	// when GetFirewall returns (nil, ErrFirewallManagementDisabled).
+	err = gce.ensureDenyNodeFirewall(
+		svc, "test-lb", "10.0.0.1", "test-lb(/test-svc)", nil)
+	assert.NoError(t, err)
+}
+
+func TestDisabledFirewallNeedsUpdate(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	vals.FirewallRulesManagement = firewallRulesManagementDisabled
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	svc := fakeLoadbalancerService("")
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	svc.Spec.Ports = []v1.ServicePort{
+		{Name: "port1", Protocol: v1.ProtocolTCP, Port: int32(80), TargetPort: intstr.FromInt(80)},
+		{Name: "port2", Protocol: v1.ProtocolTCP, Port: int32(81), TargetPort: intstr.FromInt(81)},
+		{Name: "port3", Protocol: v1.ProtocolTCP, Port: int32(82), TargetPort: intstr.FromInt(82)},
+		{Name: "port4", Protocol: v1.ProtocolTCP, Port: int32(84), TargetPort: intstr.FromInt(84)},
+		{Name: "port5", Protocol: v1.ProtocolTCP, Port: int32(85), TargetPort: intstr.FromInt(85)},
+		{Name: "port6", Protocol: v1.ProtocolTCP, Port: int32(86), TargetPort: intstr.FromInt(86)},
+		{Name: "port7", Protocol: v1.ProtocolTCP, Port: int32(88), TargetPort: intstr.FromInt(87)},
+	}
+
+	status, err := createExternalLoadBalancer(gce, svc, []string{"test-node-1"}, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	require.NotNil(t, status)
+	require.NoError(t, err)
+	svcName := "/" + svc.ObjectMeta.Name
+
+	ipAddr := status.status.Ingress[0].IP
+	lbName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+
+	ipnet, err := netutils.ParseIPNets("0.0.0.0/0")
+	require.NoError(t, err)
+
+	fw, err := gce.GetFirewall(MakeFirewallName(lbName))
+	require.ErrorIs(t, err, ErrFirewallManagementDisabled)
+	require.Nil(t, fw)
+
+	for desc := range map[string]struct {
+		hasErr bool
+	}{
+		"need to update port-ranges ": {},
+	} {
+		t.Run(desc, func(t *testing.T) {
+			fw, err = gce.GetFirewall(MakeFirewallName(lbName))
+			assert.ErrorIs(t, err, ErrFirewallManagementDisabled)
+			assert.Nil(t, fw)
+
+			exists, needsUpdate, err := gce.firewallNeedsUpdate(
+				lbName,
+				svcName,
+				ipAddr,
+				svc.Spec.Ports,
+				ipnet,
+				int64(firewallPriorityDefault))
+
+			assert.Equal(t, false, exists, "firewall should not exist")
+			assert.Equal(t, false, needsUpdate, "firewall should not exist, no update needed")
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func TestDeleteWrongNetworkTieredResourcesSucceedsWhenNotFound(t *testing.T) {
 	t.Parallel()
 
@@ -1907,7 +2031,7 @@ func TestCreateAndUpdateFirewallSucceedsOnXPN(t *testing.T) {
 	hostNames := nodeNames(nodes)
 	hosts, err := gce.getInstancesByNames(hostNames)
 	require.NoError(t, err)
-	ipnet, err := utilnet.ParseIPNets("10.0.0.0/20")
+	ipnet, err := netutils.ParseIPNets("10.0.0.0/20")
 	require.NoError(t, err)
 	gce.createFirewall(
 		svc,
@@ -2246,7 +2370,7 @@ func TestFirewallObject(t *testing.T) {
 	require.NoError(t, err)
 	dstIP := "10.0.0.1"
 	srcRanges := []string{"10.10.0.0/24", "10.20.0.0/24"}
-	sourceRanges, _ := utilnet.ParseIPNets(srcRanges...)
+	sourceRanges, _ := netutils.ParseIPNets(srcRanges...)
 	fwName := "test-fw"
 	fwDesc := "test-desc"
 	baseFw := compute.Firewall{
@@ -2266,14 +2390,14 @@ func TestFirewallObject(t *testing.T) {
 
 	for _, tc := range []struct {
 		desc             string
-		sourceRanges     utilnet.IPNetSet
+		sourceRanges     netutils.IPNetSet
 		destinationIP    string
 		svcPorts         []v1.ServicePort
 		expectedFirewall func(fw compute.Firewall) compute.Firewall
 	}{
 		{
 			desc:         "empty source ranges",
-			sourceRanges: utilnet.IPNetSet{},
+			sourceRanges: netutils.IPNetSet{},
 			svcPorts: []v1.ServicePort{
 				{Name: "port1", Protocol: v1.ProtocolTCP, Port: int32(80), TargetPort: intstr.FromInt(80)},
 			},
@@ -2294,7 +2418,7 @@ func TestFirewallObject(t *testing.T) {
 		},
 		{
 			desc:          "has destination IP",
-			sourceRanges:  utilnet.IPNetSet{},
+			sourceRanges:  netutils.IPNetSet{},
 			destinationIP: dstIP,
 			svcPorts: []v1.ServicePort{
 				{Name: "port1", Protocol: v1.ProtocolTCP, Port: int32(80), TargetPort: intstr.FromInt(80)},

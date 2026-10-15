@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"reflect"
 	"sort"
 	"strings"
@@ -66,7 +67,20 @@ func newLBSyncResult() *lbSyncResult {
 var (
 	l4LbSrcRngsFlag cidrs
 	l7lbSrcRngsFlag cidrs
+
+	overrideL4ILBHealthCheckSourceCIDRs   string
+	overrideL4NetLBHealthCheckSourceCIDRs string
 )
+
+// SetOverrideL4ILBHealthCheckSourceCIDRs sets the override source CIDRs for L4 ILB health checks.
+func SetOverrideL4ILBHealthCheckSourceCIDRs(cidrs string) {
+	overrideL4ILBHealthCheckSourceCIDRs = cidrs
+}
+
+// SetOverrideL4NetLBHealthCheckSourceCIDRs sets the override source CIDRs for L4 NetLB health checks.
+func SetOverrideL4NetLBHealthCheckSourceCIDRs(cidrs string) {
+	overrideL4NetLBHealthCheckSourceCIDRs = cidrs
+}
 
 func init() {
 	var err error
@@ -111,6 +125,117 @@ func (c *cidrs) Set(value string) error {
 		c.ipn.Insert(ipnet)
 	}
 	return nil
+}
+
+// parseHealthCheckCIDRs parses a comma-separated string of CIDRs and returns an IPNetSet.
+// Invalid CIDRs are logged and skipped.
+func parseHealthCheckCIDRs(cidrs string) netutils.IPNetSet {
+	if cidrs == "" {
+		return nil
+	}
+	ipNetSet := make(netutils.IPNetSet)
+	for _, c := range strings.Split(cidrs, ",") {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			continue
+		}
+		_, ipnet, err := net.ParseCIDR(c)
+		if err != nil {
+			klog.Warningf("Ignoring invalid health check CIDR: %v", c)
+			continue
+		}
+		ipNetSet.Insert(ipnet)
+	}
+	return ipNetSet
+}
+
+func filterIPNetSetByFamily(ipns netutils.IPNetSet, isIPv6 bool) netutils.IPNetSet {
+	filtered := make(netutils.IPNetSet)
+	for _, ipn := range ipns {
+		if netutils.IsIPv6(ipn.IP) == isIPv6 {
+			filtered.Insert(ipn)
+		}
+	}
+	return filtered
+}
+
+// L4LBType represents the type of L4 load balancer.
+type L4LBType string
+
+const (
+	// L4LBTypeILB is the constant for Internal Load Balancer.
+	L4LBTypeILB L4LBType = "ILB"
+	// L4LBTypeNetLB is the constant for Network Load Balancer.
+	L4LBTypeNetLB L4LBType = "NetLB"
+)
+
+// getHCFirewallSourceRanges returns the list of source CIDR ranges for the health check firewall rule.
+//
+// Arguments:
+// l4Type: The type of L4 load balancer (ILB or XLB/NetLB).
+// shared: Indicates whether the firewall rule is shared between different K8s Services (e.g., when ExternalTrafficPolicy=Cluster).
+//
+//	If shared is true, the firewall rule must include the ranges for both ILB and NetLB because a single global firewall rule is used.
+//
+// isIPv6: Specifies if we are retrieving ranges for an IPv6 firewall rule. If false, we return IPv4 ranges.
+//
+// Logic:
+// The function gathers the appropriate CIDR ranges based on the LB type(s). If 'shared' is true, it aggregates
+// the CIDRs for both ILB and NetLB.
+// For each LB type, it parses the override flag (if provided) and extracts the requested IP family.
+// If the flag is not provided, or if the extracted ranges are empty (meaning the flag was missing that specific IP family),
+// it falls back to the default GCP health check ranges (l4LbSrcRngsFlag). Note that these default ranges only
+// contain IPv4 addresses because the controller's default configuration does not currently support IPv6.
+// Finally, it removes duplicates from the aggregated ranges.
+func getHCFirewallSourceRanges(l4Type L4LBType, shared bool, isIPv6 bool) netutils.IPNetSet {
+	ranges := make(netutils.IPNetSet)
+
+	lbTypesToProcess := []L4LBType{l4Type}
+	if shared {
+		lbTypesToProcess = []L4LBType{L4LBTypeILB, L4LBTypeNetLB}
+	}
+
+	for _, lbType := range lbTypesToProcess {
+		currentRanges := make(netutils.IPNetSet)
+
+		// use custom HC ranges if provided (could contain IPv4/v6 ranges)
+		var overrideStr string
+		switch lbType {
+		case L4LBTypeILB:
+			overrideStr = overrideL4ILBHealthCheckSourceCIDRs
+		case L4LBTypeNetLB:
+			overrideStr = overrideL4NetLBHealthCheckSourceCIDRs
+		}
+		if overrideStr != "" {
+			ipns := parseHealthCheckCIDRs(overrideStr)
+			currentRanges = filterIPNetSetByFamily(ipns, isIPv6)
+		}
+
+		// use the default HC ranges
+		if len(currentRanges) == 0 {
+			// l4LbSrcRngsFlag contains IPv4 only ranges for both ILB and NetLB
+			// Controller does not support IPv6
+			currentRanges = filterIPNetSetByFamily(l4LbSrcRngsFlag.ipn, isIPv6)
+		}
+
+		for _, ipn := range currentRanges {
+			ranges.Insert(ipn)
+		}
+	}
+
+	return ranges
+}
+
+// L4ILBHealthCheckSrcRanges returns the ranges of ips used by the GCE L4 ILB load balancers
+// for performing health checks.
+func L4ILBHealthCheckSrcRanges(shared bool, isIPv6 bool) netutils.IPNetSet {
+	return getHCFirewallSourceRanges(L4LBTypeILB, shared, isIPv6)
+}
+
+// L4NetLBHealthCheckSrcRanges returns the ranges of ips used by the GCE L4 NetLB load balancers
+// for performing health checks.
+func L4NetLBHealthCheckSrcRanges(shared bool, isIPv6 bool) netutils.IPNetSet {
+	return getHCFirewallSourceRanges(L4LBTypeNetLB, shared, isIPv6)
 }
 
 // L4LoadBalancerSrcRanges contains the ranges of ips used by the L3/L4 GCE load balancers

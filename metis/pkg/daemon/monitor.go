@@ -39,7 +39,6 @@ import (
 
 const (
 	DefaultMonitorInterval         = 2 * time.Second
-	DefaultReleaseCooldown         = 1 * time.Minute
 	DefaultLowUtilizationThreshold = 0.50
 
 	DefaultTargetUtilizationAfterScaleUp   = 0.75
@@ -230,7 +229,7 @@ func (m *Monitor) Run(ctx context.Context) {
 
 	// Periodic enqueuer
 	go wait.UntilWithContext(ctx, func(_ context.Context) {
-		m.enqueue()
+		m.Enqueue()
 	}, m.monitorInterval)
 
 	// We lock the monitor worker count to 1 internally because the monitor reconciles all
@@ -273,8 +272,8 @@ func (m *Monitor) processNextWorkItem(ctx context.Context) bool {
 	return true
 }
 
-// enqueue adds a sync request to the queue.
-func (m *Monitor) enqueue() {
+// Enqueue adds a sync request to the queue.
+func (m *Monitor) Enqueue() {
 	m.queue.Add(syncKey)
 }
 

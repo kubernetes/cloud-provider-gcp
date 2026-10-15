@@ -36,7 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	cloudprovider "k8s.io/cloud-provider"
 	servicehelpers "k8s.io/cloud-provider/service/helpers"
-	utilnet "k8s.io/utils/net"
+	netutils "k8s.io/utils/net"
 
 	"google.golang.org/api/compute/v1"
 	"k8s.io/klog/v2"
@@ -983,7 +983,12 @@ func translateAffinityType(affinityType v1.ServiceAffinity) string {
 	}
 }
 
-func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports []v1.ServicePort, sourceRanges utilnet.IPNetSet, priority int64) (exists bool, needsUpdate bool, err error) {
+func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports []v1.ServicePort, sourceRanges netutils.IPNetSet, priority int64) (exists bool, needsUpdate bool, err error) {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		klog.V(2).Infof("firewallNeedsUpdate(%v): firewall rules are unmanaged", name)
+		return false, false, nil
+	}
+
 	fw, err := g.GetFirewall(MakeFirewallName(name))
 	if err != nil {
 		if isHTTPErrorCode(err, http.StatusNotFound) {
@@ -1007,7 +1012,7 @@ func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports [
 	}
 
 	// The service controller already verified that the protocol matches on all ports, no need to check.
-	actualSourceRanges, err := utilnet.ParseIPNets(fw.SourceRanges...)
+	actualSourceRanges, err := netutils.ParseIPNets(fw.SourceRanges...)
 	if err != nil {
 		// This really shouldn't happen... GCE has returned something unexpected
 		klog.Warningf("Error parsing firewall SourceRanges: %v", fw.SourceRanges)
@@ -1033,12 +1038,18 @@ func (g *Cloud) firewallNeedsUpdate(name, serviceName, ipAddress string, ports [
 }
 
 func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAddress, region, clusterID string, hosts []*gceInstance, hcName string, hcPort int32, isNodesHealthCheck bool) error {
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		klog.V(2).Infof("ensureHTTPHealthCheckFirewall(%v): firewall rules are unmanaged", hcName)
+		return nil
+	}
+
 	// Prepare the firewall params for creating / checking.
 	desc := fmt.Sprintf(`{"kubernetes.io/cluster-id":"%s"}`, clusterID)
 	if !isNodesHealthCheck {
 		desc = makeFirewallDescription(serviceName, ipAddress)
 	}
-	sourceRanges := l4LbSrcRngsFlag.ipn
+	isIPv6 := netutils.IsIPv6String(ipAddress)
+	sourceRanges := L4NetLBHealthCheckSrcRanges(isNodesHealthCheck, isIPv6)
 	ports := []v1.ServicePort{{Protocol: "tcp", Port: hcPort}}
 	allowPriority := firewallPriorityDefault
 	if g.enableL4DenyFirewallRule {
@@ -1048,6 +1059,9 @@ func (g *Cloud) ensureHTTPHealthCheckFirewall(svc *v1.Service, serviceName, ipAd
 	fwName := MakeHealthCheckFirewallName(clusterID, hcName, isNodesHealthCheck)
 	fw, err := g.GetFirewall(fwName)
 	if err != nil {
+		if errors.Is(err, ErrFirewallManagementDisabled) {
+			return nil
+		}
 		if !isHTTPErrorCode(err, http.StatusNotFound) {
 			return fmt.Errorf("error getting firewall for health checks: %v", err)
 		}
@@ -1105,11 +1119,22 @@ func createForwardingRule(s CloudForwardingRuleService, name, serviceName, regio
 	return nil
 }
 
-func (g *Cloud) createFirewall(svc *v1.Service, name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance, priority int) error {
+func (g *Cloud) createFirewall(svc *v1.Service, name, desc, destinationIP string, sourceRanges netutils.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance, priority int) error {
 	firewall, err := g.firewallObject(name, desc, destinationIP, sourceRanges, ports, hosts, priority)
 	if err != nil {
 		return err
 	}
+
+	if g.firewallRulesManagement == firewallRulesManagementDisabled {
+		klog.V(2).Infof("createFirewall(%v): firewall rules are unmanaged", name)
+		project := g.NetworkProjectID()
+		if project == "" {
+			project = g.ProjectID()
+		}
+		g.raiseFirewallChangeNeededEvent(svc, FirewallToGCloudCreateCmd(firewall, project))
+		return nil
+	}
+
 	if err = g.CreateFirewall(firewall); err != nil {
 		if isHTTPErrorCode(err, http.StatusConflict) {
 			return nil
@@ -1123,7 +1148,7 @@ func (g *Cloud) createFirewall(svc *v1.Service, name, desc, destinationIP string
 	return nil
 }
 
-func (g *Cloud) updateFirewall(svc *v1.Service, name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance, priority int) error {
+func (g *Cloud) updateFirewall(svc *v1.Service, name, desc, destinationIP string, sourceRanges netutils.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance, priority int) error {
 	firewall, err := g.firewallObject(name, desc, destinationIP, sourceRanges, ports, hosts, priority)
 	if err != nil {
 		return err
@@ -1142,7 +1167,7 @@ func (g *Cloud) updateFirewall(svc *v1.Service, name, desc, destinationIP string
 	return nil
 }
 
-func (g *Cloud) firewallObject(name, desc, destinationIP string, sourceRanges utilnet.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance, priority int) (*compute.Firewall, error) {
+func (g *Cloud) firewallObject(name, desc, destinationIP string, sourceRanges netutils.IPNetSet, ports []v1.ServicePort, hosts []*gceInstance, priority int) (*compute.Firewall, error) {
 	// destinationIP can be empty string "" and this means that it is not set.
 	// GCE considers empty destinationRanges as "all" for ingress firewall-rules.
 	// Concatenate service ports into port ranges. This help to workaround the gce firewall limitation where only
@@ -1253,6 +1278,10 @@ func (g *Cloud) ensureDenyNodeFirewall(apiService *v1.Service, loadBalancerName,
 	}
 
 	got, err := g.GetFirewall(name)
+	if err != nil && errors.Is(err, ErrFirewallManagementDisabled) {
+		klog.V(4).Infof("ensureDenyNodeFirewall(%q): Firewall rules management is disabled.", name)
+		return nil
+	}
 	if ignoreNotFound(err) != nil {
 		return err
 	}
@@ -1299,6 +1328,10 @@ func (g *Cloud) ensureFirewallDeleted(fwName string) error {
 	// If it isn't there we don't call delete which will leave the
 	// 404 in the project Audit Logs.
 	_, err := g.GetFirewall(fwName)
+	if err != nil && errors.Is(err, ErrFirewallManagementDisabled) {
+		klog.V(4).Infof("ensureFirewallDeleted(%q): Firewall rules management is disabled. Skipping deletion.", fwName)
+		return nil
+	}
 	if isNotFound(err) || (isForbidden(err) && g.OnXPN()) {
 		klog.V(4).Infof("ensureFirewallDeleted(%q): Firewall does not exist or do not have permission to delete (on XPN) %q. Skipping deletion.", fwName, err)
 		return nil
@@ -1410,11 +1443,11 @@ func parsePort(portStr string) (int, int, error) {
 }
 
 func ipRangesEqual(a, b []string) (bool, error) {
-	as, err := utilnet.ParseIPNets(a...)
+	as, err := netutils.ParseIPNets(a...)
 	if err != nil {
 		return false, err
 	}
-	bs, err := utilnet.ParseIPNets(b...)
+	bs, err := netutils.ParseIPNets(b...)
 	if err != nil {
 		return false, err
 	}

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"slices"
 
-	pcv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
+	"k8s.io/klog/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/klog/v2"
+	pcv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
 )
 
 // EnsureFinalizer adds the given finalizer to ProviderConfig if it is not
@@ -32,9 +32,6 @@ func AddFinalizer(ctx context.Context, pc *pcv1.ProviderConfig, dynamicClient dy
 	client := dynamicClient.Resource(ProviderConfigGVR).Namespace(pc.Namespace)
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
 		obj, err := client.Get(ctx, pc.Name, metav1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to get ProviderConfig %s: %w", pc.Name, err)
@@ -53,7 +50,7 @@ func AddFinalizer(ctx context.Context, pc *pcv1.ProviderConfig, dynamicClient dy
 		}
 		return nil
 	})
-	if err == nil {
+	if err == nil && ctx.Err() != nil {
 		return ctx.Err()
 	}
 	return err
@@ -64,9 +61,6 @@ func RemoveFinalizer(ctx context.Context, pc *pcv1.ProviderConfig, dynamicClient
 	client := dynamicClient.Resource(ProviderConfigGVR).Namespace(pc.Namespace)
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
 		obj, err := client.Get(ctx, pc.Name, metav1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to get ProviderConfig %s: %w", pc.Name, err)
@@ -85,7 +79,7 @@ func RemoveFinalizer(ctx context.Context, pc *pcv1.ProviderConfig, dynamicClient
 		}
 		return nil
 	})
-	if err == nil {
+	if err == nil && ctx.Err() != nil {
 		return ctx.Err()
 	}
 	return err

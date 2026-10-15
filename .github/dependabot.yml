@@ -42,15 +42,9 @@ updates:
   - "ok-to-test"
   - 'area/dependency'
   - 'release-note-none'
-  ignore:
-  - dependency-name: "golang"
-    versions:
-    - "*rc*"
-    - "*beta*"
-    - "*alpha*"
 - package-ecosystem: "github-actions"
   directory: "/"
-  target-branch: "release-1.36"
+  target-branch: "release-1.37"
   schedule:
     interval: "weekly"
     day: "sunday"
@@ -64,7 +58,7 @@ updates:
   - "/providers"
   - "/metis"
   - "/test/e2e"
-  target-branch: "release-1.36"
+  target-branch: "release-1.37"
   schedule:
     interval: weekly
   labels:
@@ -86,16 +80,11 @@ updates:
   directories:
   - "/"
   - "/metis"
-  target-branch: "release-1.36"
+  target-branch: "release-1.37"
   schedule:
     interval: "weekly"
   labels:
   - "ok-to-test"
   - 'area/dependency'
   - 'release-note-none'
-  ignore:
-  - dependency-name: "golang"
-    versions:
-    - "*rc*"
-    - "*beta*"
-    - "*alpha*"
+

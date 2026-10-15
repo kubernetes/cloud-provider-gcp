@@ -264,6 +264,7 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 		expectedErr         bool
 		closeDB             bool
 		lockDB              bool
+		expectedReusable    bool
 	}{
 		{
 			desc:   "Add new CIDR from NNC status",
@@ -279,6 +280,7 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 			cidrToCheck:         "10.0.1.0/28",
 			expectedExists:      true,
 			expectedOnCIDRAdded: true,
+			expectedReusable:    true,
 		},
 		{
 			desc:   "Ignore unready CIDR from NNC status",
@@ -369,6 +371,36 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 			expectedOnCIDRAdded: false,
 			expectedErr:         true,
 			lockDB:              true,
+		},
+		{
+			desc: "Add new CIDR with NonReusable policy",
+			mockNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.1.1/32", Network: network, ReusePolicy: nncv1.PodCIDRTypeNonReusable, Condition: &metav1.Condition{Status: metav1.ConditionTrue}},
+					},
+				},
+			},
+			cidrToCheck:         "10.0.1.1/32",
+			expectedExists:      true,
+			expectedOnCIDRAdded: true,
+			expectedReusable:    false,
+		},
+		{
+			desc: "Add new CIDR with Reusable policy",
+			mockNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.1.2/32", Network: network, ReusePolicy: nncv1.PodCIDRTypeReusable, Condition: &metav1.Condition{Status: metav1.ConditionTrue}},
+					},
+				},
+			},
+			cidrToCheck:         "10.0.1.2/32",
+			expectedExists:      true,
+			expectedOnCIDRAdded: true,
+			expectedReusable:    true,
 		},
 	}
 
@@ -468,6 +500,17 @@ func TestWatcher_SyncCIDR(t *testing.T) {
 
 			if onCIDRAddedCalled != tc.expectedOnCIDRAdded {
 				t.Errorf("Expected onCIDRAddedCalled %v, got %v", tc.expectedOnCIDRAdded, onCIDRAddedCalled)
+			}
+
+			if tc.expectedExists {
+				var reusable bool
+				err = storeInstance.DB().QueryRowContext(context.Background(), "SELECT reusable FROM cidr_blocks WHERE cidr = ? AND network = ?", tc.cidrToCheck, network).Scan(&reusable)
+				if err != nil {
+					t.Fatalf("Failed to query reusable column from DB: %v", err)
+				}
+				if reusable != tc.expectedReusable {
+					t.Errorf("Expected reusable %v, got %v for CIDR %s", tc.expectedReusable, reusable, tc.cidrToCheck)
+				}
 			}
 		})
 	}

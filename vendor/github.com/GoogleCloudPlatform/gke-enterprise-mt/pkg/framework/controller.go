@@ -8,17 +8,18 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"runtime/debug"
 
-	providerconfigv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/apis/providerconfig/v1"
-	"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/mtcontext"
-	"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/taskqueue"
-	crv1 "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfigcr"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
+
 	"k8s.io/klog/v2"
+	mtcontext "github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/mtcontext"
+	"github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/taskqueue"
 )
 
 // ControllerStarter defines the interface for starting a controller for a ProviderConfig.
@@ -31,7 +32,7 @@ type ControllerStarter interface {
 	//
 	// The returned stop channel will be closed by the framework when the
 	// ProviderConfig is deleted or the controller needs to shut down.
-	StartController(pc *providerconfigv1.ProviderConfig) (chan<- struct{}, error)
+	StartController(pc *unstructured.Unstructured) (chan<- struct{}, error)
 }
 
 const (
@@ -42,8 +43,9 @@ const (
 
 // controllerManager implements the logic for starting and stopping controllers for each ProviderConfig.
 type controllerManager interface {
-	StartControllersForProviderConfig(ctx context.Context, pc *providerconfigv1.ProviderConfig) error
-	StopControllersForProviderConfig(ctx context.Context, pc *providerconfigv1.ProviderConfig) error
+	StartControllersForProviderConfig(ctx context.Context, pc *unstructured.Unstructured) error
+	StopControllersForProviderConfig(ctx context.Context, pc *unstructured.Unstructured) error
+	ForceCleanupTenant(pcKey string)
 }
 
 // Controller manages the ProviderConfig resource lifecycle.
@@ -85,16 +87,20 @@ func newController(manager controllerManager, providerConfigInformer cache.Share
 	providerConfigInformer.AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj any) {
-				klog.V(4).Info("Enqueue add event", "object", obj)
+				klog.V(4).InfoS("Enqueue add event", "object", obj)
 				c.providerConfigQueue.Enqueue(obj)
 			},
 			UpdateFunc: func(old, cur any) {
-				klog.V(4).Info("Enqueue update event", "old", old, "new", cur)
+				klog.V(4).InfoS("Enqueue update event", "old", old, "new", cur)
 				c.providerConfigQueue.Enqueue(cur)
+			},
+			DeleteFunc: func(obj any) {
+				klog.V(4).InfoS("Enqueue delete event", "object", obj)
+				c.providerConfigQueue.Enqueue(obj)
 			},
 		})
 
-	klog.Info("ProviderConfig controller created")
+	klog.InfoS("ProviderConfig controller created")
 	return c
 }
 
@@ -102,95 +108,93 @@ func newController(manager controllerManager, providerConfigInformer cache.Share
 func (c *Controller) Run() {
 	defer c.shutdown()
 
-	klog.Info("Starting ProviderConfig controller")
+	klog.InfoS("Starting ProviderConfig controller")
 
-	klog.Info("Waiting for initial cache sync before starting ProviderConfig Controller")
+	klog.InfoS("Waiting for initial cache sync before starting ProviderConfig Controller")
 	ok := cache.WaitForCacheSync(c.stopCh, c.hasSynced)
 	if !ok {
 		klog.Error("Failed to wait for initial cache sync before starting ProviderConfig Controller")
 		return
 	}
 
-	klog.Info("Started ProviderConfig Controller", "numWorkers", c.workersCount)
+	klog.InfoS("Started ProviderConfig Controller", "numWorkers", c.workersCount)
 	c.providerConfigQueue.Run()
 
 	<-c.stopCh
-	klog.Info("ProviderConfig Controller exited")
+	klog.InfoS("ProviderConfig Controller exited")
 }
 
 func (c *Controller) shutdown() {
-	klog.Info("Shutting down ProviderConfig Controller")
+	klog.InfoS("Shutting down ProviderConfig Controller")
 	c.providerConfigQueue.Shutdown()
 }
 
 func (c *Controller) syncWrapper(ctx context.Context, key string) (err error) {
+	// For cluster-scoped resources, the key is the resource name, which is the tenant UID.
+	tenantUID := key
 	syncID := rand.Int31()
 
 	defer func() {
 		if r := recover(); r != nil {
 			stack := string(debug.Stack())
-			ctxErrorf(ctx, "panic in ProviderConfig sync worker goroutine: %v, stack: %s, syncId: %d", r, stack, syncID)
+			klog.ErrorS(errors.New("panic in ProviderConfig sync worker goroutine"), "Recovered from panic", "panic", r, "stack", stack, "syncID", syncID, "tenant", tenantUID)
 			err = fmt.Errorf("panic in sync worker: %v", r)
 		}
 	}()
+
 	err = c.sync(ctx, key, syncID)
 	if err != nil {
-		ctxErrorf(ctx, "Error syncing providerConfig key: %s, syncId: %d, err: %v", key, syncID, err)
+		klog.ErrorS(err, "Error syncing providerConfig", "key", key, "syncID", syncID, "tenant", tenantUID)
 	}
 	return err
 }
 
-func (c *Controller) sync(ctx context.Context, key string, syncID int32) error {
+func (c *Controller) sync(ctx context.Context, key string, syncID int32) (err error) {
+	// Tenant UID is not available from context yet. The key itself is the tenant UID.
+	tenantUID := key
+
 	obj, exists, err := c.providerConfigLister.GetByKey(key)
 	if err != nil {
 		return fmt.Errorf("failed to lookup providerConfig for key %s: %w", key, err)
 	}
 	if !exists || obj == nil {
-		ctxInfoDepth(ctx, 3, fmt.Sprintf("ProviderConfig does not exist anymore (syncId: %d)", syncID))
+		klog.InfoS("ProviderConfig does not exist anymore", "key", key, "syncID", syncID, "tenant", tenantUID)
+		c.manager.ForceCleanupTenant(key)
 		return nil
 	}
 
-	pc, err := crv1.NewProviderConfig(obj)
-	if err != nil {
-		return fmt.Errorf("failed to convert object to ProviderConfig: %w", err)
+	u, ok := obj.(*unstructured.Unstructured)
+	if !ok {
+		return fmt.Errorf("expected *unstructured.Unstructured but got %T", obj)
+	}
+
+	// The tenant UID is the name of the ProviderConfig.
+	if tenantUID != u.GetName() {
+		err := fmt.Errorf("mismatched tenant UID: %s != %s", tenantUID, u.GetName())
+		klog.ErrorS(err, "Mismatched tenant UID", "key", key, "pcName", u.GetName(), "syncID", syncID)
+		return err
 	}
 
 	// Populate tenant context
-	ctx = mtcontext.ContextWithTenantUID(ctx, pc.Name)
-	logger := klog.FromContext(ctx).WithValues("tenantUID", pc.Name)
-	ctx = klog.NewContext(ctx, logger)
+	ctx = mtcontext.ContextWithTenantUID(ctx, u.GetName())
 
-	if pc.DeletionTimestamp != nil {
-		ctxInfo(ctx, "ProviderConfig is being deleted, stopping controllers", "providerConfig", pc, "syncId", syncID)
+	if !u.GetDeletionTimestamp().IsZero() {
+		klog.InfoS("ProviderConfig is being deleted, stopping controllers", "providerConfig", u, "syncID", syncID, "tenant", tenantUID)
 
-		// Important: We assume that the tenancy service will delete all resources associated with this
-		// ProviderConfig before the ProviderConfig itself is deleted. Thus, it is safe to just stop
-		// the controllers without performing any resource cleanup here.
-		err := c.manager.StopControllersForProviderConfig(ctx, pc)
+		err := c.manager.StopControllersForProviderConfig(ctx, u)
 		if err != nil {
-			return fmt.Errorf("failed to stop controllers for providerConfig %v: %w", pc, err)
+			return fmt.Errorf("failed to stop controllers for providerConfig %s: %w", u.GetName(), err)
 		}
 		return nil
 	}
 
-	ctxInfo(ctx, "Syncing providerConfig", "providerConfig", pc, "syncId", syncID)
-	err = c.manager.StartControllersForProviderConfig(ctx, pc)
+	klog.InfoS("Syncing providerConfig", "providerConfig", u, "syncID", syncID, "tenant", tenantUID)
+	err = c.manager.StartControllersForProviderConfig(ctx, u)
 	if err != nil {
-		return fmt.Errorf("failed to start controllers for providerConfig %v: %w", pc, err)
+		return fmt.Errorf("failed to start controllers for providerConfig %s: %w", u.GetName(), err)
 	}
 
-	ctxInfo(ctx, "Successfully synced providerConfig", "providerConfig", pc, "syncId", syncID)
+	klog.InfoS("Successfully synced providerConfig", "providerConfig", u, "syncID", syncID, "tenant", tenantUID)
 	return nil
-}
 
-func ctxInfo(ctx context.Context, msg string, keysAndValues ...interface{}) {
-	klog.FromContext(ctx).Info(msg, keysAndValues...)
-}
-
-func ctxErrorf(ctx context.Context, format string, args ...interface{}) {
-	klog.FromContext(ctx).Error(nil, fmt.Sprintf(format, args...))
-}
-
-func ctxInfoDepth(ctx context.Context, depth int, msg string, keysAndValues ...interface{}) {
-	klog.FromContext(ctx).Info(msg, keysAndValues...)
 }

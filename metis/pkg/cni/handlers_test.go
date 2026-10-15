@@ -19,6 +19,7 @@ package cni
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -38,8 +39,10 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubefake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/klog/v2"
 	pb "k8s.io/metis/api/adaptiveipam/v1"
 	"k8s.io/metis/pkg/daemon"
+	"k8s.io/metis/pkg/store"
 )
 
 type mockAdaptiveIpamClient struct {
@@ -535,5 +538,26 @@ func TestDirectFallback_DaemonUnavailable(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("CmdDel via direct fallback failed: %v", err)
+	}
+
+	// 4. Verify in SQLite that the deallocated IP was put into cooldown (release_at > now)
+	storeInstance, err := store.NewStore(context.Background(), klog.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("Failed to open store for cooldown verification: %v", err)
+	}
+	defer storeInstance.Close()
+
+	allocatedIP := result.IPs[0].Address.IP.String()
+	var isAlloc bool
+	var releaseAt sql.NullInt64
+	err = storeInstance.DB().QueryRow("SELECT is_allocated, release_at FROM ip_addresses WHERE address = ?", allocatedIP).Scan(&isAlloc, &releaseAt)
+	if err != nil {
+		t.Fatalf("Failed to query IP address from store: %v", err)
+	}
+	if isAlloc {
+		t.Errorf("Expected is_allocated=false after CmdDel, got true")
+	}
+	if !releaseAt.Valid || releaseAt.Int64 <= time.Now().UnixMilli() {
+		t.Errorf("Expected valid future release_at timestamp for cooldown, got %v", releaseAt)
 	}
 }

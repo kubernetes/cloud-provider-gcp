@@ -239,8 +239,10 @@ func (w *Watcher) addCIDR(ctx context.Context, nnc *nncv1.NodeNetworkConfig, net
 			continue
 		}
 
-		w.logger.Info("Watcher adding new ready podCIDR to local DB", "cidr", podCIDR.CIDR, "network", podCIDR.Network, "availableIPs", availableIPs)
-		err = w.store.AddCIDR(ctx, podCIDR.Network, podCIDR.CIDR)
+		// Default to reusable (true) if ReusePolicy is empty or explicitly set to "Reusable"
+		reusable := podCIDR.ReusePolicy != nncv1.PodCIDRTypeNonReusable
+		w.logger.Info("Watcher adding new ready podCIDR to local DB", "cidr", podCIDR.CIDR, "network", podCIDR.Network, "availableIPs", availableIPs, "reusable", reusable)
+		err = w.store.AddCIDR(ctx, podCIDR.Network, podCIDR.CIDR, store.WithReusable(reusable))
 		if err == nil {
 			if w.OnCIDRAdded != nil {
 				w.OnCIDRAdded(podCIDR.Network, availableIPs)

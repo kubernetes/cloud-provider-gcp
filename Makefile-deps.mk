@@ -14,7 +14,7 @@
 
 # This file contains targets for installing external tools and dependencies.
 
-GOLANGCI_LINT_VERSION ?= v1.64.5
+GOLANGCI_LINT_VERSION ?= v2.13.2
 GOLANGCI_LINT := $(LOCAL_BIN)/golangci-lint
 
 .PHONY: golangci-lint
@@ -27,7 +27,7 @@ golangci-lint:
 	fi; \
 	echo "Installing golangci-lint $(GOLANGCI_LINT_VERSION)..."; \
 	mkdir -p $(LOCAL_BIN); \
-	GOBIN=$(LOCAL_BIN) GO111MODULE=on go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	GOBIN=$(LOCAL_BIN) GO111MODULE=on go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 .PHONY: install-test-cluster-deps
 install-test-cluster-deps: ## Install kubetest2 and other dependencies.

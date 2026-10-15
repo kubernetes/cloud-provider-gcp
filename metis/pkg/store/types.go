@@ -29,6 +29,9 @@ var (
 
 	// ErrCidrBlockExhausted is returned when an IPv6 CIDR block cannot be expanded further.
 	ErrCidrBlockExhausted = errors.New("ipv6 cidr block exhausted and cannot be expanded")
+
+	// ErrNonReusableNot32 is returned when a non-reusable CIDR block is not a /32 prefix.
+	ErrNonReusableNot32 = errors.New("non-reusable CIDR blocks only support /32 prefix")
 )
 
 // IPFamily represents the IP protocol family.
@@ -57,3 +60,25 @@ const (
 	// This state is part of the dynamic allocation lifecycle and is only applicable to IPv4.
 	StateDeleting CidrBlockState = "Deleting"
 )
+
+// CIDROptions holds configuration options for adding a CIDR block to the store.
+type CIDROptions struct {
+	Reusable bool
+}
+
+// AddCIDROption configures CIDROptions for AddCIDR.
+type AddCIDROption func(*CIDROptions)
+
+// WithReusable configures whether the CIDR block is reusable.
+func WithReusable(reusable bool) AddCIDROption {
+	return func(o *CIDROptions) {
+		o.Reusable = reusable
+	}
+}
+
+// DefaultCIDROptions returns the default options for adding a CIDR block.
+func DefaultCIDROptions() CIDROptions {
+	return CIDROptions{
+		Reusable: true,
+	}
+}

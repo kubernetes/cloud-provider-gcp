@@ -51,6 +51,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	cloudprovider "k8s.io/cloud-provider"
+	dynamicpodip "k8s.io/cloud-provider-gcp/pkg/controller/dynamicpodip"
 	"k8s.io/cloud-provider-gcp/pkg/controllermetrics"
 	nodeutil "k8s.io/cloud-provider-gcp/pkg/util"
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
@@ -104,9 +105,9 @@ type cloudCIDRAllocator struct {
 	queue             workqueue.RateLimitingInterface
 	nodeTopologyQueue *TaskQueue
 
-	stackType clusterStackType
-
+	stackType             clusterStackType
 	enableMultiNetworking bool
+	defaultNetworkName    string
 }
 
 var _ CIDRAllocator = (*cloudCIDRAllocator)(nil)
@@ -163,6 +164,7 @@ func NewCloudCIDRAllocator(client clientset.Interface, cloud cloudprovider.Inter
 		),
 		stackType:             stackType,
 		enableMultiNetworking: enableMultiNetworking,
+		defaultNetworkName:    allocatorParams.DefaultNetworkName,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -371,6 +373,9 @@ func (ca *cloudCIDRAllocator) handleErr(err error, key interface{}) {
 		// an outdated error history.
 		ca.queue.Forget(key)
 		klog.V(3).Infof("Updated CIDR for %q", key)
+		if nodeName, ok := key.(string); ok {
+			dynamicpodip.GetStatusTrigger().EnqueueNode(nodeName)
+		}
 		return
 	}
 	klog.Errorf("Error updating CIDR for %q: %v", key, err)
@@ -666,4 +671,14 @@ func nodeMultiNetworkChanged(oldNode *v1.Node, newNode *v1.Node) bool {
 		return true
 	}
 	return false
+}
+
+// isDefaultNetwork checks if the network name corresponds to the default network for this allocator.
+// Under GKE Multi-Tenancy, the condition ca.defaultNetworkName != "" is a perfect proxy
+// for identifying whether the controller is executing within a tenant context.
+func (ca *cloudCIDRAllocator) isDefaultNetwork(name string) bool {
+	if ca.defaultNetworkName != "" {
+		return name == ca.defaultNetworkName
+	}
+	return networkv1.IsDefaultNetwork(name)
 }

@@ -97,7 +97,7 @@ func TestMonitorNodes_FilterLabel(t *testing.T) {
 	// Wrap the informer to filter nodes
 	filteringInformer := &node.GKEFilteringNodeInformer{NodeInformer: nodeInformer}
 
-	c, err := nodelifecycle.NewCloudNodeLifecycleController(filteringInformer, fakeClient, mockCl, 5*time.Minute)
+	c, err := nodelifecycle.NewCloudNodeLifecycleController(filteringInformer, fakeClient, mockCl, 5*time.Minute, 1)
 	if err != nil {
 		t.Fatalf("failed to create controller: %v", err)
 	}

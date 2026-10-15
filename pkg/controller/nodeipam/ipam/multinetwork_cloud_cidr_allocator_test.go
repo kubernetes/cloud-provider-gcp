@@ -5,9 +5,15 @@ import (
 	"testing"
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
+	clSetFake "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/fake"
+	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
+	ntfakeclient "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned/fake"
+	"github.com/google/go-cmp/cmp"
 	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/cloud-provider-gcp/pkg/controller/testutil"
@@ -441,5 +447,478 @@ func TestExtractDefaultNwCIDRs(t *testing.T) {
 	res := ca.extractDefaultNwCIDRs(interfaces, "default", "RangeA")
 	if len(res) != 1 || res[0] != "10.0.0.0/24" {
 		t.Errorf("Expected [10.0.0.0/24], got %v", res)
+	}
+}
+
+func TestDefaultNetworkCIDRs_IPv4Only(t *testing.T) {
+	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	clientSet := clSetFake.NewSimpleClientset()
+	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, 0).Networking()
+
+	// Default Network
+	defaultNetwork := networkAll("default", "default", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(defaultNetwork)
+	defaultGNP := gkeNetworkParams("default", "projects/testProject/global/networks/default", "projects/testProject/regions/us-central1/subnetworks/default", []string{"test-pod-range"})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(defaultGNP)
+
+	// Additional non-default network with same VPC but different subnet
+	secondary1 := networkAll("secondary1", "secondary1-params", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondary1)
+	sec1GNP := gkeNetworkParams("secondary1-params", "projects/testProject/global/networks/default", "projects/testProject/regions/us-central1/subnetworks/secondary-subnet", []string{"sec1-pod-range"})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(sec1GNP)
+
+	// Additional non-default network with different VPC
+	secondary2 := networkAll("secondary2", "secondary2-params", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondary2)
+	sec2GNP := gkeNetworkParams("secondary2-params", "projects/testProject/global/networks/other-vpc", "projects/testProject/regions/us-central1/subnetworks/other-vpc-subnet", []string{"sec2-pod-range"})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(sec2GNP)
+
+	kubeClient := fake.NewSimpleClientset()
+	k8sInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	nodeInformer := k8sInformerFactory.Core().V1().Nodes()
+
+	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), false, true, nodeInformer, CIDRAllocatorParams{})
+	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
+
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ipv4-node",
+			Annotations: map[string]string{
+				// Mark default and additional networks as ready
+				networkv1.NodeNetworkAnnotationKey: `[{"name":"default"}, {"name":"secondary1"}, {"name":"secondary2"}]`,
+			},
+		},
+	}
+
+	interfaces := []*compute.NetworkInterface{
+		{
+			Name:       "nic0",
+			Network:    "projects/testProject/global/networks/default",
+			Subnetwork: "projects/testProject/regions/us-central1/subnetworks/default",
+			NetworkIP:  "10.0.0.1",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.1.0/24",
+					SubnetworkRangeName: "test-pod-range",
+				},
+			},
+		},
+		{
+			Name:       "nic1",
+			Network:    "projects/testProject/global/networks/default",
+			Subnetwork: "projects/testProject/regions/us-central1/subnetworks/secondary-subnet",
+			NetworkIP:  "10.0.2.1",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.5.0/24",
+					SubnetworkRangeName: "sec1-pod-range",
+				},
+			},
+		},
+		{
+			Name:       "nic2",
+			Network:    "projects/testProject/global/networks/other-vpc",
+			Subnetwork: "projects/testProject/regions/us-central1/subnetworks/other-vpc-subnet",
+			NetworkIP:  "10.0.3.1",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.4.0/24",
+					SubnetworkRangeName: "sec2-pod-range",
+				},
+			},
+		},
+	}
+
+	cidrs, err := cloudAllocator.performMultiNetworkCIDRAllocation(node, interfaces, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cidrs) != 1 || cidrs[0] != "10.0.1.0/24" {
+		t.Errorf("Expected exact 1 CIDR block string for IPv4 podCIDR [10.0.1.0/24], got: %v", cidrs)
+	}
+}
+
+func TestDefaultNetworkCIDRs_DualStack_NoLabels(t *testing.T) {
+	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	clientSet := clSetFake.NewSimpleClientset()
+	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, 0).Networking()
+
+	defaultNetwork := networkAll("default", "default", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(defaultNetwork)
+
+	// Initialize mock for default network - with IPv4 parameters
+	defaultGNP := gkeNetworkParams("default", "projects/testProject/global/networks/default", "projects/testProject/regions/us-central1/subnetworks/default", []string{"test-pod-range"})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(defaultGNP)
+
+	// Additional networks
+	secondary1 := networkAll("secondary1", "secondary1-params", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondary1)
+	sec1GNP := gkeNetworkParams("secondary1-params", "projects/testProject/global/networks/default", "projects/testProject/regions/us-central1/subnetworks/secondary-subnet", []string{"sec1-pod-range"})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(sec1GNP)
+
+	secondary2 := networkAll("secondary2", "secondary2-params", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondary2)
+	sec2GNP := gkeNetworkParams("secondary2-params", "projects/testProject/global/networks/other-vpc", "projects/testProject/regions/us-central1/subnetworks/other-vpc-subnet", []string{"sec2-pod-range"})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(sec2GNP)
+
+	kubeClient := fake.NewSimpleClientset()
+	k8sInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	nodeInformer := k8sInformerFactory.Core().V1().Nodes()
+
+	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), false, true, nodeInformer, CIDRAllocatorParams{})
+	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
+
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "dual-stack-node",
+			Annotations: map[string]string{
+				networkv1.NodeNetworkAnnotationKey: `[{"name":"default"}, {"name":"secondary1"}, {"name":"secondary2"}]`,
+			},
+		},
+	}
+
+	// Simulate node using v4/v6 stack on default network
+	interfaces := []*compute.NetworkInterface{
+		{
+			Name:        "nic0",
+			Network:     "projects/testProject/global/networks/default",
+			Subnetwork:  "projects/testProject/regions/us-central1/subnetworks/default",
+			NetworkIP:   "10.0.0.1",
+			Ipv6Address: "2600:1900:4000:fd1::110",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.1.0/24",
+					SubnetworkRangeName: "test-pod-range",
+				},
+			},
+		},
+		{
+			Name:        "nic1",
+			Network:     "projects/testProject/global/networks/default",
+			Subnetwork:  "projects/testProject/regions/us-central1/subnetworks/secondary-subnet",
+			NetworkIP:   "10.0.2.1",
+			Ipv6Address: "2001:db9:1::110",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.5.0/24",
+					SubnetworkRangeName: "sec1-pod-range",
+				},
+			},
+		},
+		{
+			Name:       "nic2",
+			Network:    "projects/testProject/global/networks/other-vpc",
+			Subnetwork: "projects/testProject/regions/us-central1/subnetworks/other-vpc-subnet",
+			NetworkIP:  "10.0.3.1",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.4.0/24",
+					SubnetworkRangeName: "sec2-pod-range",
+				},
+			},
+		},
+	}
+
+	// Test case without node labels (hasNodeLabels = false)
+	cidrs, err := cloudAllocator.performMultiNetworkCIDRAllocation(node, interfaces, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Without labels, the function should extract both IPv4 and IPv6 CIDRs
+	if len(cidrs) != 2 || cidrs[0] != "10.0.1.0/24" || cidrs[1] != "2600:1900:4000:fd1::/112" {
+		t.Errorf("Expected exactly IPv4 and IPv6 CIDR blocks from dual-stack, got: %v", cidrs)
+	}
+}
+
+func TestDefaultNetworkCIDRs_DualStack_WithLabels(t *testing.T) {
+	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	clientSet := clSetFake.NewSimpleClientset()
+	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, 0).Networking()
+
+	defaultNetwork := networkAll("default", "default", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(defaultNetwork)
+
+	defaultGNP := gkeNetworkParams("default", "projects/testProject/global/networks/default", "projects/testProject/regions/us-central1/subnetworks/default", []string{"test-pod-range"})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(defaultGNP)
+
+	secondary1 := networkAll("secondary1", "secondary1-params", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondary1)
+	sec1GNP := gkeNetworkParams("secondary1-params", "projects/testProject/global/networks/default", "projects/testProject/regions/us-central1/subnetworks/secondary-subnet", []string{"sec1-pod-range"})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(sec1GNP)
+
+	secondary2 := networkAll("secondary2", "secondary2-params", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondary2)
+	sec2GNP := gkeNetworkParams("secondary2-params", "projects/testProject/global/networks/other-vpc", "projects/testProject/regions/us-central1/subnetworks/other-vpc-subnet", []string{"sec2-pod-range"})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(sec2GNP)
+
+	kubeClient := fake.NewSimpleClientset()
+	k8sInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	nodeInformer := k8sInformerFactory.Core().V1().Nodes()
+
+	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), false, true, nodeInformer, CIDRAllocatorParams{})
+	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
+
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "dual-stack-node-labeled",
+			Annotations: map[string]string{
+				networkv1.NodeNetworkAnnotationKey: `[{"name":"default"}, {"name":"secondary1"}, {"name":"secondary2"}]`,
+			},
+		},
+	}
+
+	interfaces := []*compute.NetworkInterface{
+		{
+			Name:        "nic0",
+			Network:     "projects/testProject/global/networks/default",
+			Subnetwork:  "projects/testProject/regions/us-central1/subnetworks/default",
+			NetworkIP:   "10.0.0.1",
+			Ipv6Address: "2600:1900:4000:fd1::110",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.1.0/24",
+					SubnetworkRangeName: "test-pod-range",
+				},
+			},
+		},
+		{
+			Name:        "nic1",
+			Network:     "projects/testProject/global/networks/default",
+			Subnetwork:  "projects/testProject/regions/us-central1/subnetworks/secondary-subnet",
+			NetworkIP:   "10.0.2.1",
+			Ipv6Address: "2001:db9:1::110",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.5.0/24",
+					SubnetworkRangeName: "sec1-pod-range",
+				},
+			},
+		},
+		{
+			Name:       "nic2",
+			Network:    "projects/testProject/global/networks/other-vpc",
+			Subnetwork: "projects/testProject/regions/us-central1/subnetworks/other-vpc-subnet",
+			NetworkIP:  "10.0.3.1",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.4.0/24",
+					SubnetworkRangeName: "sec2-pod-range",
+				},
+			},
+		},
+	}
+
+	// Test case WITH known node labels (hasNodeLabels = true)
+	cidrs, err := cloudAllocator.performMultiNetworkCIDRAllocation(node, interfaces, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// With hasNodeLabels==true, the function drops default network allocation, leaving an empty slice
+	if len(cidrs) != 0 {
+		t.Errorf("Expected empty CIDR blocks because node has labels, got: %v", cidrs)
+	}
+}
+
+func TestDefaultNetworkCIDRs_IPv6Only(t *testing.T) {
+	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	clientSet := clSetFake.NewSimpleClientset()
+	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, 0).Networking()
+
+	// Default Network
+	defaultNetwork := networkAll("default", "default", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(defaultNetwork)
+	defaultGNP := gkeNetworkParams("default", "projects/testProject/global/networks/default", "projects/testProject/regions/us-central1/subnetworks/default", []string{})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(defaultGNP)
+
+	// Additional non-default network with same VPC but different subnet
+	secondary1 := networkAll("secondary1", "secondary1-params", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondary1)
+	sec1GNP := gkeNetworkParams("secondary1-params", "projects/testProject/global/networks/default", "projects/testProject/regions/us-central1/subnetworks/secondary-subnet", []string{"sec1-pod-range"})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(sec1GNP)
+
+	// Additional non-default network with different VPC
+	secondary2 := networkAll("secondary2", "secondary2-params", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondary2)
+	sec2GNP := gkeNetworkParams("secondary2-params", "projects/testProject/global/networks/other-vpc", "projects/testProject/regions/us-central1/subnetworks/other-vpc-subnet", []string{"sec2-pod-range"})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(sec2GNP)
+
+	kubeClient := fake.NewSimpleClientset()
+	k8sInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	nodeInformer := k8sInformerFactory.Core().V1().Nodes()
+
+	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), false, true, nodeInformer, CIDRAllocatorParams{})
+	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
+
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ipv6-node",
+			Annotations: map[string]string{
+				// Mark default and additional networks as ready
+				networkv1.NodeNetworkAnnotationKey: `[{"name":"default"}, {"name":"secondary1"}, {"name":"secondary2"}]`,
+			},
+		},
+	}
+
+	interfaces := []*compute.NetworkInterface{
+		{
+			Name:        "nic0",
+			Network:     "projects/testProject/global/networks/default",
+			Subnetwork:  "projects/testProject/regions/us-central1/subnetworks/default",
+			Ipv6Address: "2600:1900:4000:fd1::110",
+		},
+		{
+			Name:        "nic1",
+			Network:     "projects/testProject/global/networks/default",
+			Subnetwork:  "projects/testProject/regions/us-central1/subnetworks/secondary-subnet",
+			NetworkIP:   "10.0.1.1",
+			Ipv6Address: "2001:db9:1::110",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.5.0/24",
+					SubnetworkRangeName: "sec1-pod-range",
+				},
+			},
+		},
+		{
+			Name:       "nic2",
+			Network:    "projects/testProject/global/networks/other-vpc",
+			Subnetwork: "projects/testProject/regions/us-central1/subnetworks/other-vpc-subnet",
+			NetworkIP:  "10.0.3.1",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.4.0/24",
+					SubnetworkRangeName: "sec2-pod-range",
+				},
+			},
+		},
+	}
+
+	cidrs, err := cloudAllocator.performMultiNetworkCIDRAllocation(node, interfaces, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cidrs) != 1 || cidrs[0] != "2600:1900:4000:fd1::/112" {
+		t.Errorf("Expected exactly 1 CIDR block string for IPv6 podCIDR [2600:1900:4000:fd1::/112], got: %v", cidrs)
+	}
+}
+
+func TestDefaultNetworkCIDRs_DefaultNetworkNotUp(t *testing.T) {
+	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	clientSet := clSetFake.NewSimpleClientset()
+	// Empty informer - no default network added
+	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, 0).Networking()
+
+	kubeClient := fake.NewSimpleClientset()
+	k8sInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	nodeInformer := k8sInformerFactory.Core().V1().Nodes()
+
+	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), false, true, nodeInformer, CIDRAllocatorParams{})
+	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
+
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "missing-network-node",
+			Annotations: map[string]string{
+				networkv1.NodeNetworkAnnotationKey: `[{"name":"default"}]`,
+			},
+		},
+	}
+
+	interfaces := []*compute.NetworkInterface{
+		{
+			Name:       "nic0",
+			Network:    "projects/testProject/global/networks/default",
+			Subnetwork: "projects/testProject/regions/us-central1/subnetworks/default",
+			NetworkIP:  "10.0.0.1",
+			AliasIpRanges: []*compute.AliasIpRange{
+				{
+					IpCidrRange:         "10.0.1.0/24",
+					SubnetworkRangeName: "test-pod-range",
+				},
+			},
+		},
+	}
+
+	cidrs, err := cloudAllocator.performMultiNetworkCIDRAllocation(node, interfaces, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify that missing default Network CR returns an empty slice safely instead of throwing a panic
+	if len(cidrs) != 0 {
+		t.Errorf("Expected empty CIDR blocks because default network was not in Informer (not up/ready), got: %v", cidrs)
+	}
+}
+
+// TestNorthInterfaceFor covers the rules for the address fields of a
+// north-interfaces entry: each is populated only from the interface's own
+// address, never with a malformed value, and independently of the cluster's
+// stack type.
+func TestNorthInterfaceFor(t *testing.T) {
+	const (
+		ipv4         = "10.1.1.1"
+		internalIPv6 = "2001:db8:0:2::10"
+		externalIPv6 = "2600:1900:4000:fd1::10"
+	)
+	nic := func(networkIP, ipv6Address string) *compute.NetworkInterface {
+		return interfacesWithIPv6(redVPCName, redVPCSubnetName, networkIP, ipv6Address, nil)
+	}
+	externalIPv6NIC := func() *compute.NetworkInterface {
+		n := nic(ipv4, "")
+		n.Ipv6AccessType = "EXTERNAL"
+		n.Ipv6AccessConfigs = []*compute.AccessConfig{{Type: "DIRECT_IPV6", ExternalIpv6: externalIPv6}}
+		return n
+	}
+	red := network(redNetworkName, redGKENetworkParamsName, true)
+	cloud := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	// An additional network's stack type follows its own subnet, not the
+	// cluster's, so the entry must be the same under every cluster stack type.
+	stackTypes := []clusterStackType{stackIPv4, stackIPv4IPv6, stackIPv6IPv4, stackIPv6}
+
+	testCases := []struct {
+		desc string
+		nic  *compute.NetworkInterface
+		want networkv1.NorthInterface
+	}{
+		{
+			desc: "dual-stack interface populates ipAddress and internal ipv6Address",
+			nic:  nic(ipv4, internalIPv6),
+			want: networkv1.NorthInterface{Network: redNetworkName, IpAddress: ipv4, IPv6Address: internalIPv6},
+		},
+		{
+			desc: "interface with external IPv6 falls back to external ipv6Address",
+			nic:  externalIPv6NIC(),
+			want: networkv1.NorthInterface{Network: redNetworkName, IpAddress: ipv4, IPv6Address: externalIPv6},
+		},
+		{
+			desc: "IPv4-only interface leaves ipv6Address empty",
+			nic:  nic(ipv4, ""),
+			want: networkv1.NorthInterface{Network: redNetworkName, IpAddress: ipv4},
+		},
+		{
+			desc: "IPv6-only interface leaves ipAddress empty",
+			nic:  nic("", internalIPv6),
+			want: networkv1.NorthInterface{Network: redNetworkName, IPv6Address: internalIPv6},
+		},
+		{
+			desc: "malformed IPv6 is dropped rather than published",
+			nic:  nic(ipv4, "2001:db8:0:2::/112"),
+			want: networkv1.NorthInterface{Network: redNetworkName, IpAddress: ipv4},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			for _, stackType := range stackTypes {
+				ca := &cloudCIDRAllocator{cloud: cloud, stackType: stackType}
+				got := ca.northInterfaceFor(red, tc.nic)
+				if diff := cmp.Diff(tc.want, got); diff != "" {
+					t.Fatalf("northInterfaceFor() on %q cluster mismatch (-want +got):\n%s", stackType, diff)
+				}
+			}
+		})
 	}
 }

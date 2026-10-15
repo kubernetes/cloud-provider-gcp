@@ -112,6 +112,8 @@ type CIDRAllocatorParams struct {
 	SecondaryServiceCIDR *net.IPNet
 	// NodeCIDRMaskSizes is list of node cidr mask sizes
 	NodeCIDRMaskSizes []int
+	// DefaultNetworkName is the name of the default network for the tenant/cluster
+	DefaultNetworkName string
 }
 
 // New creates a new CIDR range allocator.

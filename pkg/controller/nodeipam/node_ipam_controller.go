@@ -90,7 +90,8 @@ func NewNodeIpamController(
 	serviceCIDR *net.IPNet,
 	secondaryServiceCIDR *net.IPNet,
 	nodeCIDRMaskSizes []int,
-	allocatorType ipam.CIDRAllocatorType) (*Controller, error) {
+	allocatorType ipam.CIDRAllocatorType,
+	defaultNetworkName string) (*Controller, error) {
 
 	if kubeClient == nil {
 		klog.Fatalf("kubeClient is nil when starting Controller")
@@ -140,6 +141,7 @@ func NewNodeIpamController(
 			ServiceCIDR:          ic.serviceCIDR,
 			SecondaryServiceCIDR: ic.secondaryServiceCIDR,
 			NodeCIDRMaskSizes:    nodeCIDRMaskSizes,
+			DefaultNetworkName:   defaultNetworkName,
 		}
 
 		ic.cidrAllocator, err = ipam.New(kubeClient, cloud, nodeInformer, nwInformer, gnpInformer, nodeTopologyClient, enableMultiSubnetCluster, enableMultiNetworking, ic.allocatorType, allocatorParams)

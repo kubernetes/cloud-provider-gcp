@@ -990,7 +990,7 @@ func runMonitorTestHelper(t *testing.T, tc monitorTestParams) {
 		close(runFinished)
 	}()
 
-	m.enqueue()
+	m.Enqueue()
 
 	waitFinished := make(chan struct{})
 	go func() {
