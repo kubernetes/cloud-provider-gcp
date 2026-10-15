@@ -11,6 +11,7 @@ require (
 	k8s.io/apimachinery v0.37.1
 	k8s.io/client-go v0.37.1
 	k8s.io/cloud-provider v0.37.1
+	k8s.io/cloud-provider-gcp v0.0.0-00010101000000-000000000000
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
 	k8s.io/kubelet v0.37.0
 	k8s.io/kubernetes v1.37.1
@@ -157,9 +158,8 @@ require (
 )
 
 replace (
-	k8s.io/cloud-provider-gcp => ../..
-
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.37.0
+	k8s.io/cloud-provider-gcp => ../..
 	k8s.io/cloud-provider-gcp/providers => ../../providers
 	k8s.io/kubectl => k8s.io/kubectl v0.37.0
 )
