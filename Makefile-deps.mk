@@ -14,7 +14,7 @@
 
 # This file contains targets for installing external tools and dependencies.
 
-GOLANGCI_LINT_VERSION ?= v2.13.2
+GOLANGCI_LINT_VERSION ?= v2.15.0
 GOLANGCI_LINT := $(LOCAL_BIN)/golangci-lint
 
 .PHONY: golangci-lint
