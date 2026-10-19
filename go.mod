@@ -23,7 +23,6 @@ require (
 	k8s.io/component-helpers v0.37.1
 	k8s.io/controller-manager v0.37.1
 	k8s.io/klog/v2 v2.140.0
-	k8s.io/kube-controller-manager v0.37.0
 	k8s.io/kubelet v0.37.0
 	k8s.io/metrics v0.37.0
 	k8s.io/utils v0.0.0-20260626114624-be93311217bd
@@ -37,6 +36,7 @@ require (
 	github.com/natefinch/atomic v1.0.1
 	k8s.io/cloud-provider v0.37.1
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
+	k8s.io/kube-controller-manager v0.0.0
 	k8s.io/kubernetes v1.37.1
 )
 
