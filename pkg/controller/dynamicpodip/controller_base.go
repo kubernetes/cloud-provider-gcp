@@ -244,19 +244,48 @@ func cidrKey(network, cidr string) string {
 // Interfaces that cannot be resolved to a valid Kubernetes network name are
 // skipped with a warning.
 func forEachPodCIDR(ifaces []*networkInterface, fn func(network, cidr string)) {
+	forEachPodCIDREntry(ifaces, func(network, _, cidr string, _ nncv1.PodCIDRType) {
+		fn(network, cidr)
+	})
+}
+
+// forEachPodCIDREntry invokes fn for every Pod CIDR attached to the instance,
+// providing its Kubernetes network name, PodCIDR ID (the CIDR itself for VM
+// alias IP ranges, or the ANE resource name for AliasNetworkEndpoints), CIDR
+// string, and reuse policy (Reusable for alias IP ranges, NonReusable for
+// ANEs).
+func forEachPodCIDREntry(ifaces []*networkInterface, fn func(network, id, cidr string, reusePolicy nncv1.PodCIDRType)) {
 	for _, iface := range ifaces {
+		if iface == nil {
+			continue
+		}
 		netName, err := resolveKubernetesNetworkName(iface)
 		if err != nil {
 			klog.Warningf("Skipping interface %q: %v", iface.Name, err)
 			continue
 		}
 		for _, cidr := range iface.AliasIPRanges {
-			fn(netName, cidr)
+			fn(netName, cidr, cidr, nncv1.PodCIDRTypeReusable)
 		}
 		for _, cidr := range iface.ANECIDRs {
-			fn(netName, cidr)
+			id := cidr
+			if name := iface.ANENames[cidr]; name != "" {
+				id = name
+			}
+			fn(netName, id, cidr, nncv1.PodCIDRTypeNonReusable)
 		}
 	}
+}
+
+// hasTransientANE reports whether any interface on the instance observed an
+// AliasNetworkEndpoint in a transient (non-ACTIVE) state.
+func hasTransientANE(ifaces []*networkInterface) bool {
+	for _, iface := range ifaces {
+		if iface != nil && iface.HasTransientANE {
+			return true
+		}
+	}
+	return false
 }
 
 // gceCIDRSet returns the cidrKeys of every Pod CIDR attached to the instance.

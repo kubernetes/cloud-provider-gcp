@@ -165,6 +165,12 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 	if ifaces[0].ANECIDRs[0] != expectedCIDR {
 		t.Fatalf("expected %q, got %q", expectedCIDR, ifaces[0].ANECIDRs[0])
 	}
+	if ifaces[0].ANENames[expectedCIDR] != "ane-active-1" {
+		t.Fatalf("expected ANENames[%q] = %q, got %q", expectedCIDR, "ane-active-1", ifaces[0].ANENames[expectedCIDR])
+	}
+	if !ifaces[0].HasTransientANE {
+		t.Fatalf("expected HasTransientANE to be true when CREATING ANE is present")
+	}
 
 	// Verify that an initial allocation on the VM's aliasIpRanges is
 	// preserved in AliasIPRanges alongside subsequent ANEs in ANECIDRs.
@@ -357,6 +363,34 @@ func TestANEControllerReconcileFlow(t *testing.T) {
 		if cidr.Condition == nil || cidr.Condition.Status != metav1.ConditionTrue {
 			t.Errorf("expected PodCIDR %q condition to be True, got %v", cidr.CIDR, cidr.Condition)
 		}
+		if cidr.ReusePolicy != nncv1.PodCIDRTypeNonReusable {
+			t.Errorf("expected PodCIDR %q ReusePolicy %q, got %q", cidr.CIDR, nncv1.PodCIDRTypeNonReusable, cidr.ReusePolicy)
+		}
+		if !strings.HasPrefix(cidr.Id, "ane-") {
+			t.Errorf("expected PodCIDR %q Id to be ANE resource name (ane-...), got %q", cidr.CIDR, cidr.Id)
+		}
+	}
+
+	// Verify transient ANE handling in status controller: if an ANE is in
+	// CREATING state, statusCtrl.syncNode returns an error to trigger a
+	// workqueue retry.
+	if err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
+		Name:       "ane-transient-creating",
+		Subnetwork: fakeGCE.SubnetworkURL(),
+		Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateCreating},
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+			DefaultANEAliasNameIPv4: {
+				EffectiveIpAddress: "10.128.0.99",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Create transient ANE: %v", err)
+	}
+	if err := statusCtrl.syncNode(testNodeName); err == nil {
+		t.Fatalf("expected statusCtrl.syncNode to return error for transient CREATING ANE, got nil")
+	}
+	if err := fakeGCE.DeleteAliasNetworkEndpoint(ctx, testProviderID, "ane-transient-creating"); err != nil {
+		t.Fatalf("Delete transient ANE: %v", err)
 	}
 
 	// Now release 1 Pod IP: Pods requested goes down to 1, and 1 CIDR is
@@ -593,6 +627,31 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 		}
 	}
 
+	// Test simultaneous additions and removals in a single Mutate call:
+	// remove 4 of the remaining 8 ANEs while adding 6 new ANEs -> expect 10
+	// total ANEs.
+	simultaneousRemove := append([]string(nil), ifacesAfter[0].ANECIDRs[:4]...)
+	simultaneousAdd := []string{"/32", "/32", "/32", "/32", "/32", "/32"}
+	err = backend.Mutate(ctx, testProviderID, testNetworkURL, simultaneousAdd, simultaneousRemove, nil)
+	if err != nil {
+		t.Fatalf("Mutate simultaneous additions and removals failed: %v", err)
+	}
+
+	ifacesSimultaneous, err := backend.GetNetworkInterfaces(ctx, testProviderID)
+	if err != nil {
+		t.Fatalf("GetNetworkInterfaces after simultaneous mutate failed: %v", err)
+	}
+	if len(ifacesSimultaneous[0].ANECIDRs) != 10 {
+		t.Fatalf("expected 10 ANE CIDRs after simultaneous +6/-4, got %d", len(ifacesSimultaneous[0].ANECIDRs))
+	}
+	for _, rem := range simultaneousRemove {
+		for _, remaining := range ifacesSimultaneous[0].ANECIDRs {
+			if remaining == rem {
+				t.Errorf("simultaneously removed CIDR %q still found in interfaces", rem)
+			}
+		}
+	}
+
 	// Test context cancellation during mutation
 	canceledCtx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
@@ -756,7 +815,7 @@ func TestDefaultANEAliasNameIPv4Immutable(t *testing.T) {
 	// which would cause the controller to fail to recognize existing ANEs
 	// after an upgrade and lead to NodeNetworkConfig drift and Pod IP
 	// disruption.
-	const expectedAliasKey = "ccm-adaptive-ipam-ipv4"
+	const expectedAliasKey = "gke-pod-ipv4"
 	if DefaultANEAliasNameIPv4 != expectedAliasKey {
 		t.Fatalf("DefaultANEAliasNameIPv4 = %q, want %q; changing this constant is disallowed", DefaultANEAliasNameIPv4, expectedAliasKey)
 	}
@@ -766,7 +825,7 @@ func TestDefaultANEAliasNameIPv4Immutable(t *testing.T) {
 	backend := NewANEBackend(fakeGCE)
 
 	// Verify that an existing ANE keyed with the literal
-	// "ccm-adaptive-ipam-ipv4" is recognized by GetNetworkInterfaces and
+	// "gke-pod-ipv4" is recognized by GetNetworkInterfaces and
 	// Mutate.
 	err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
 		Name:   "ane-existing-pre-upgrade",

@@ -39,7 +39,7 @@ const (
 	// WARNING: Do not change this value. Modifying this constant will
 	// prevent the controller from recognizing existing ANE aliases across
 	// upgrades, causing NodeNetworkConfig drift and Pod IP disruption.
-	DefaultANEAliasNameIPv4 = "ccm-adaptive-ipam-ipv4"
+	DefaultANEAliasNameIPv4 = "gke-pod-ipv4"
 
 	// DefaultANEDescription is the description set on AliasNetworkEndpoint
 	// resources created by the dynamic Pod IP controller.
@@ -89,7 +89,10 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 		}
 		if endpoint.Status.State != gce.ANEStateActive {
 			// Skip endpoints in transient states (CREATING,
-			// DELETING).
+			// DELETING) and mark the interface so the status
+			// controller requeues until they settle.
+			klog.Warningf("Skipping non-active ANE %q on %q (state=%q); will retry reconciliation", endpoint.Name, providerID, endpoint.Status.State)
+			ifaces[0].HasTransientANE = true
 			continue
 		}
 		alias, ok := endpoint.Aliases[DefaultANEAliasNameIPv4]
@@ -111,6 +114,10 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 			}
 		}
 		targetIface.ANECIDRs = append(targetIface.ANECIDRs, cidr)
+		if targetIface.ANENames == nil {
+			targetIface.ANENames = make(map[string]string)
+		}
+		targetIface.ANENames[cidr] = endpoint.Name
 	}
 
 	return ifaces, nil

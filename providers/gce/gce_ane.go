@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	computepreview "google.golang.org/api/compute/v1.preview"
@@ -388,95 +387,4 @@ func (s *gceANEService) waitForZoneOperation(ctx context.Context, project, zone,
 		}
 		return true, nil
 	})
-}
-
-type fakeANEService struct {
-	mu        sync.RWMutex
-	endpoints map[string]*computepreview.AliasNetworkEndpoint
-	nextIP    int
-}
-
-func newFakeANEService() *fakeANEService {
-	return &fakeANEService{
-		endpoints: make(map[string]*computepreview.AliasNetworkEndpoint),
-	}
-}
-
-func (f *fakeANEService) CreateAliasNetworkEndpoint(ctx context.Context, project, zone string, endpoint *computepreview.AliasNetworkEndpoint) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	if _, exists := f.endpoints[endpoint.Name]; exists {
-		return fmt.Errorf("AliasNetworkEndpoint %q already exists", endpoint.Name)
-	}
-
-	epCopy := *endpoint
-	if len(endpoint.Aliases) > 0 {
-		epCopy.Aliases = make(map[string]computepreview.AliasNetworkEndpointAlias, len(endpoint.Aliases))
-		for k, v := range endpoint.Aliases {
-			epCopy.Aliases[k] = v
-		}
-	}
-	if epCopy.Status == nil {
-		epCopy.Status = &computepreview.AliasNetworkEndpointStatus{State: ANEStateActive}
-		for k, alias := range epCopy.Aliases {
-			if alias.EffectiveIpAddress == "" {
-				if alias.IpAddress != "" {
-					alias.EffectiveIpAddress = alias.IpAddress
-				} else {
-					f.nextIP++
-					alias.EffectiveIpAddress = fmt.Sprintf("10.128.0.%d", f.nextIP)
-				}
-				epCopy.Aliases[k] = alias
-			}
-		}
-	}
-	f.endpoints[endpoint.Name] = &epCopy
-	return nil
-}
-
-func (f *fakeANEService) DeleteAliasNetworkEndpoint(ctx context.Context, project, zone, name string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	delete(f.endpoints, name)
-	return nil
-}
-
-func (f *fakeANEService) GetAliasNetworkEndpoint(ctx context.Context, project, zone, name string) (*computepreview.AliasNetworkEndpoint, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-
-	ep, exists := f.endpoints[name]
-	if !exists {
-		return nil, fmt.Errorf("AliasNetworkEndpoint %q not found", name)
-	}
-	epCopy := *ep
-	return &epCopy, nil
-}
-
-func (f *fakeANEService) ListAliasNetworkEndpoints(ctx context.Context, project, zone, instanceURL string) ([]*computepreview.AliasNetworkEndpoint, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-
-	var result []*computepreview.AliasNetworkEndpoint
-	for _, ep := range f.endpoints {
-		if ep.Host != nil && EqualResourceURLs(ep.Host.Instance, instanceURL) {
-			epCopy := *ep
-			result = append(result, &epCopy)
-		}
-	}
-	return result, nil
 }

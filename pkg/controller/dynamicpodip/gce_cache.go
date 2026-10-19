@@ -40,11 +40,13 @@ const (
 // networkInterface is a controller-internal, lightweight representation
 // of a GCE network interface.
 type networkInterface struct {
-	Name          string
-	Network       string
-	Subnetwork    string
-	AliasIPRanges []string
-	ANECIDRs      []string
+	Name            string
+	Network         string
+	Subnetwork      string
+	AliasIPRanges   []string
+	ANECIDRs        []string
+	ANENames        map[string]string
+	HasTransientANE bool
 }
 
 // toNetworkInterfaces converts a slice of GCE API computebeta.NetworkInterface
@@ -85,15 +87,22 @@ func deepCopyInterfaces(ifaces []*networkInterface) []*networkInterface {
 			continue
 		}
 		niCopy := &networkInterface{
-			Name:       ni.Name,
-			Network:    ni.Network,
-			Subnetwork: ni.Subnetwork,
+			Name:            ni.Name,
+			Network:         ni.Network,
+			Subnetwork:      ni.Subnetwork,
+			HasTransientANE: ni.HasTransientANE,
 		}
 		if ni.AliasIPRanges != nil {
 			niCopy.AliasIPRanges = append([]string(nil), ni.AliasIPRanges...)
 		}
 		if ni.ANECIDRs != nil {
 			niCopy.ANECIDRs = append([]string(nil), ni.ANECIDRs...)
+		}
+		if ni.ANENames != nil {
+			niCopy.ANENames = make(map[string]string, len(ni.ANENames))
+			for k, v := range ni.ANENames {
+				niCopy.ANENames[k] = v
+			}
 		}
 		copy[i] = niCopy
 	}
