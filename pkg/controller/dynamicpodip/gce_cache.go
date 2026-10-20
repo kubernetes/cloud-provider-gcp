@@ -308,6 +308,24 @@ func (c *GCECache) ForceGet(ctx context.Context, nodeName string, providerID str
 	return c.get(ctx, nodeName, providerID, true)
 }
 
+// Invalidate marks the cached observation for nodeName as stale so that the
+// next Get reloads fresh state from GCE instead of serving a pre-mutation
+// cached snapshot within the TTL window.
+func (c *GCECache) Invalidate(nodeName string) {
+	c.mapLock.Lock()
+	entry, ok := c.entries[nodeName]
+	if !ok {
+		c.mapLock.Unlock()
+		return
+	}
+	inst := entry.inst
+	c.mapLock.Unlock()
+
+	inst.mu.Lock()
+	inst.lastUpdated = time.Time{}
+	inst.mu.Unlock()
+}
+
 func (c *GCECache) get(ctx context.Context, nodeName string, providerID string, force bool) ([]*networkInterface, error) {
 	inst := c.getOrCreateInstance(nodeName)
 

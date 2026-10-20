@@ -12,8 +12,8 @@ github.com/GoogleCloudPlatform/gke-enterprise-mt v1.37.2 h1:45in3OaCx+DPOd5GhZNy
 github.com/GoogleCloudPlatform/gke-enterprise-mt v1.37.2/go.mod h1:5LMqDKn/lEyLICHH79hP/tiWcxg6ulH3gxjVvm0KBrc=
 github.com/GoogleCloudPlatform/gke-networking-api v0.2.10 h1:sh5pMX7XtRBYm1woVoCatQpG01Kpy6qsxlbp0lFkmL4=
 github.com/GoogleCloudPlatform/gke-networking-api v0.2.10/go.mod h1:jC8/IazDeY3D4zTcEsZK6WiwbmqSTYjGNTZqXucxVVU=
-github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0 h1:SvXmA79s+vlNlViAh6r+1rNODTOfkmZ7tIUEoTBNvC8=
-github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0/go.mod h1:+s19ozAkr5hJxWUFg5YB9XpGhArKdVUmtbItQicBYU0=
+github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.1-0.20261020180100-7d497f3cc90c h1:5h29G9EG//mV6eO/iuFpsRPoEaVE0CtU0XvgmA7So8M=
+github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.1-0.20261020180100-7d497f3cc90c/go.mod h1:AaFNMxJKoGZyetXmNfXCdl7d5qI86OqYRqtm283WeaA=
 github.com/NYTimes/gziphandler v1.1.1 h1:ZUDjpQae29j0ryrS0u/B8HZfJBtBQHjqw2rQ2cqUQ3I=
 github.com/NYTimes/gziphandler v1.1.1/go.mod h1:n/CVRwUEOgIxrgPvAQhUUr9oeUtvrhMomdKFjzJNB0c=
 github.com/antlr4-go/antlr/v4 v4.13.1 h1:SqQKkuVZ+zWkMMNkjy5FZe5mr5WURWnlpmOuzYWrPrQ=

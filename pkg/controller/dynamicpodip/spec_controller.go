@@ -267,6 +267,11 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
 
 		err = c.backend.Mutate(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
+		// Invalidate the cached GCE observation for this node whenever a
+		// mutation is attempted so that subsequent spec reconciles or
+		// workqueue retries do not reuse pre-mutation state within the
+		// cache TTL window.
+		c.gceCache.Invalidate(nnc.Name)
 		if err != nil {
 			klog.Errorf("GCE mutation failed for node %q network %q: %v", nnc.Name, network, err)
 			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("GCE mutation failed: %v", err))

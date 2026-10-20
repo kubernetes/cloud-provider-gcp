@@ -973,6 +973,24 @@ func TestEqualResourceURLs(t *testing.T) {
 			expected: false,
 		},
 		{
+			name:     "numeric project number vs project ID in relative instance URLs (ANE host.instance)",
+			url1:     "projects/231279945827/zones/asia-east1-andromedath/instances/gke-node-1",
+			url2:     "projects/arvindbright-gke-dev/zones/asia-east1-andromedath/instances/gke-node-1",
+			expected: true,
+		},
+		{
+			name:     "numeric project number in relative subnetwork URL vs staging_beta full URL (ANE subnetwork)",
+			url1:     "projects/231279945827/regions/asia-east1/subnetworks/ane-cluster-subnet",
+			url2:     "https://www.googleapis.com/compute/staging_beta/projects/arvindbright-gke-dev/regions/asia-east1/subnetworks/ane-cluster-subnet",
+			expected: true,
+		},
+		{
+			name:     "different numeric project numbers",
+			url1:     "projects/111111111111/zones/us-central1-a/instances/gke-node-1",
+			url2:     "projects/222222222222/zones/us-central1-a/instances/gke-node-1",
+			expected: false,
+		},
+		{
 			name:     "both empty",
 			url1:     "",
 			url2:     "",

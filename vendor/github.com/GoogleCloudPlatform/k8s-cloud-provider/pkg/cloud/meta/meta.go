@@ -33,6 +33,9 @@ const (
 	AggregatedList = 1 << iota
 	// ListUsable will generate a method for ListUsable().
 	ListUsable = 1 << iota
+	// NoReturnPartialSuccess omits the ReturnPartialSuccess call from generated
+	// AggregatedList methods for APIs that do not support that parameter.
+	NoReturnPartialSuccess = 1 << iota
 
 	// ReadOnly specifies that the given resource is read-only and should not
 	// have insert() or delete() methods generated for the wrapper.

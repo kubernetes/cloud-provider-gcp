@@ -4,8 +4,8 @@ cloud.google.com/go/auth/oauth2adapt v0.3.0 h1:FY8oSZpCYoUNv6QxVODuMjQz4IlSOVeiQ
 cloud.google.com/go/auth/oauth2adapt v0.3.0/go.mod h1:7+2uCm7++XFO+/lN06c2HXpDXb/NMNn2/UwyBPbTnkk=
 cloud.google.com/go/compute/metadata v0.10.0 h1:pyKMUQSwchgkIBBJGdILqQbs/BNJXqwSA7Ej6LAvvtY=
 cloud.google.com/go/compute/metadata v0.10.0/go.mod h1:rGFHRrIif570kSibjFTMbt6/4/tzgJWFGI/HVol4GIk=
-github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0 h1:SvXmA79s+vlNlViAh6r+1rNODTOfkmZ7tIUEoTBNvC8=
-github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0/go.mod h1:+s19ozAkr5hJxWUFg5YB9XpGhArKdVUmtbItQicBYU0=
+github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.1-0.20261020180100-7d497f3cc90c h1:5h29G9EG//mV6eO/iuFpsRPoEaVE0CtU0XvgmA7So8M=
+github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.1-0.20261020180100-7d497f3cc90c/go.mod h1:AaFNMxJKoGZyetXmNfXCdl7d5qI86OqYRqtm283WeaA=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/blang/semver/v4 v4.0.0 h1:1PFHFE6yCCTv8C1TeyNNarDzntLi7wMI5i/pzqYIsAM=

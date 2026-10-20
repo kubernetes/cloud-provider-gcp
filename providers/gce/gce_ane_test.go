@@ -86,6 +86,33 @@ func TestGCEANEService_CreateGetListDelete(t *testing.T) {
 	if len(listAfter) != 0 {
 		t.Fatalf("Expected 0 items after delete, got %d", len(listAfter))
 	}
+
+	// Verify that when GCE normalizes Host.Instance in the returned ANE to
+	// use a numeric project number (e.g. "projects/231279945827/...") while
+	// providerID uses the alphanumeric project ID ("gce://p/z/test-node"),
+	// ListAliasNetworkEndpoints still matches the endpoint for that node.
+	aneNumericProj := &computepreview.AliasNetworkEndpoint{
+		Name: "test-ane-numeric-proj",
+		Host: &computepreview.AliasNetworkEndpointHost{
+			Instance: "projects/231279945827/zones/z/instances/test-node",
+		},
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+			testAliasKey: {
+				IpVersion: ANEIPVersionIPv4,
+				IpAddress: "10.128.0.26",
+			},
+		},
+	}
+	if err := cloud.CreateAliasNetworkEndpoint(ctx, testProviderID, aneNumericProj); err != nil {
+		t.Fatalf("CreateAliasNetworkEndpoint with numeric project number failed: %v", err)
+	}
+	listNumeric, err := cloud.ListAliasNetworkEndpoints(ctx, testProviderID)
+	if err != nil {
+		t.Fatalf("ListAliasNetworkEndpoints with numeric project number failed: %v", err)
+	}
+	if len(listNumeric) != 1 || listNumeric[0].Name != "test-ane-numeric-proj" {
+		t.Fatalf("Expected test-ane-numeric-proj in list when Host.Instance uses project number, got %+v", listNumeric)
+	}
 }
 
 func TestGCEANEService_TransientRetry(t *testing.T) {

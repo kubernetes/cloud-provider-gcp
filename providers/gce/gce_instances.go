@@ -1221,7 +1221,8 @@ func EqualResourceURLs(url1, url2 string) bool {
 }
 
 // equalResourceURLs checks if two GCP resource URLs refer to the same resource,
-// taking into account URL formatting differences (e.g. API versions or domains).
+// taking into account URL formatting differences (e.g. API versions, domains,
+// or project ID vs numeric project number in resource references).
 func equalResourceURLs(url1, url2 string) bool {
 	if url1 == url2 {
 		return true
@@ -1233,10 +1234,32 @@ func equalResourceURLs(url1, url2 string) bool {
 			return true
 		}
 		// If one URL is a relative path without an API group (e.g. projects/.../global/networks/...),
+		// or if one URL uses a numeric project number while the other uses an alphanumeric project ID
+		// (as GCE AliasNetworkEndpoints returns in host.instance and subnetwork),
 		// compare project, resource type, and key directly.
-		if r1.ProjectID == r2.ProjectID && r1.Resource == r2.Resource && r1.Key != nil && r2.Key != nil && *r1.Key == *r2.Key {
+		if (r1.APIGroup == "" || r2.APIGroup == "" || r1.APIGroup == r2.APIGroup) &&
+			projectsMatch(r1.ProjectID, r2.ProjectID) &&
+			r1.Resource == r2.Resource &&
+			r1.Key != nil && r2.Key != nil && *r1.Key == *r2.Key {
 			return true
 		}
 	}
 	return false
+}
+
+// projectsMatch reports whether two parsed GCP project identifiers can refer to
+// the same project. In addition to exact equality, it returns true when one
+// identifier is a numeric project number (e.g. "231279945827", returned by GCE
+// AliasNetworkEndpoints in host.instance and subnetwork fields) and the other
+// is an alphanumeric project ID (e.g. "my-project", which GCP requires to start
+// with a lowercase letter). Two distinct project IDs or two distinct project
+// numbers always return false.
+func projectsMatch(p1, p2 string) bool {
+	if p1 == p2 {
+		return true
+	}
+	if p1 == "" || p2 == "" {
+		return false
+	}
+	return isProjectNumber(p1) != isProjectNumber(p2)
 }

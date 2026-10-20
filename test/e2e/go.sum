@@ -8,8 +8,8 @@ cloud.google.com/go/compute/metadata v0.10.0 h1:pyKMUQSwchgkIBBJGdILqQbs/BNJXqwS
 cloud.google.com/go/compute/metadata v0.10.0/go.mod h1:rGFHRrIif570kSibjFTMbt6/4/tzgJWFGI/HVol4GIk=
 github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c h1:udKWzYgxTojEKWjV8V+WSxDXJ4NFATAsZjh8iIbsQIg=
 github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
-github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0 h1:SvXmA79s+vlNlViAh6r+1rNODTOfkmZ7tIUEoTBNvC8=
-github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.0/go.mod h1:+s19ozAkr5hJxWUFg5YB9XpGhArKdVUmtbItQicBYU0=
+github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.1-0.20261020180100-7d497f3cc90c h1:5h29G9EG//mV6eO/iuFpsRPoEaVE0CtU0XvgmA7So8M=
+github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.1-0.20261020180100-7d497f3cc90c/go.mod h1:AaFNMxJKoGZyetXmNfXCdl7d5qI86OqYRqtm283WeaA=
 github.com/MakeNowJust/heredoc v1.0.0 h1:cXCdzVdstXyiTqTvfqk9SDHpKNjxuom+DOlyEeQ4pzQ=
 github.com/MakeNowJust/heredoc v1.0.0/go.mod h1:mG5amYoWBHf8vpLOuehzbGGw0EHxpZZ6lCpQ4fNJ8LE=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=

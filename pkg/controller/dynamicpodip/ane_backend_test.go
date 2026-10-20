@@ -173,11 +173,16 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 	}
 
 	// Verify that an initial allocation on the VM's aliasIpRanges is
-	// preserved in AliasIPRanges alongside subsequent ANEs in ANECIDRs.
+	// preserved in AliasIPRanges alongside subsequent ANEs in ANECIDRs,
+	// including when GCE normalizes Host.Instance and Subnetwork on the ANE
+	// to use a numeric project number (e.g. "projects/231279945827/...").
 	fakeGCEWithInitial := newFakeGCEWithDefaultInstance(t, "10.100.0.0/28")
 	if err := fakeGCEWithInitial.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
-		Name:       "ane-active-1",
-		Subnetwork: fakeGCEWithInitial.SubnetworkURL(),
+		Name: "ane-active-1",
+		Host: &computepreview.AliasNetworkEndpointHost{
+			Instance: fmt.Sprintf("projects/231279945827/zones/%s/instances/%s", testZone, testNodeName),
+		},
+		Subnetwork: "projects/231279945827/regions/us-central1/subnetworks/default",
 		Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
 		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
 			DefaultANEAliasNameIPv4: {
