@@ -61,9 +61,12 @@ func NewANEBackend(gceCloud *gce.Cloud) PodIPBackend {
 }
 
 func (b *aneBackend) CalculateAdditions(network string, neededIPs int, currentIfaces []*networkInterface) []string {
-	var additions []string
-	for i := 0; i < neededIPs; i++ {
-		additions = append(additions, "/32")
+	if neededIPs <= 0 {
+		return nil
+	}
+	additions := make([]string, neededIPs)
+	for i := range additions {
+		additions[i] = "/32"
 	}
 	return additions
 }
@@ -89,8 +92,8 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 		}
 		if endpoint.Status.State != gce.ANEStateActive {
 			// Skip endpoints in transient states (CREATING,
-			// DELETING) and mark the interface so the status
-			// controller requeues until they settle.
+			// DELETING) and mark the interface so the spec and
+			// status controllers requeue until they settle.
 			klog.Warningf("Skipping non-active ANE %q on %q (state=%q); will retry reconciliation", endpoint.Name, providerID, endpoint.Status.State)
 			ifaces[0].HasTransientANE = true
 			continue
@@ -106,12 +109,18 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 		cidr := alias.EffectiveIpAddress + "/32"
 		targetIface := ifaces[0]
 		if endpoint.Subnetwork != "" {
+			var matched *networkInterface
 			for _, iface := range ifaces {
 				if iface != nil && gce.EqualResourceURLs(iface.Subnetwork, endpoint.Subnetwork) {
-					targetIface = iface
+					matched = iface
 					break
 				}
 			}
+			if matched == nil {
+				klog.Warningf("Skipping ANE %q on %q: subnetwork %q does not match any network interface on instance", endpoint.Name, providerID, endpoint.Subnetwork)
+				continue
+			}
+			targetIface = matched
 		}
 		targetIface.ANECIDRs = append(targetIface.ANECIDRs, cidr)
 		if targetIface.ANENames == nil {
@@ -248,10 +257,7 @@ func (b *aneBackend) resolveSubnetworkURL(ctx context.Context, providerID, netwo
 // EffectiveIpAddress rather than parsing or reconstructing the resource name,
 // so future changes to this format will not affect existing endpoints.
 func generateANEName(nodeOrProviderID string, index int) string {
-	nodeName := nodeOrProviderID
-	if slash := strings.LastIndex(nodeName, "/"); slash >= 0 {
-		nodeName = nodeName[slash+1:]
-	}
+	nodeName := lastComponent(nodeOrProviderID)
 	if dot := strings.Index(nodeName, "."); dot >= 0 {
 		nodeName = nodeName[:dot]
 	}
@@ -275,9 +281,5 @@ func generateANEName(nodeOrProviderID string, index int) string {
 	if cleanNode == "" {
 		cleanNode = "node"
 	}
-	name := fmt.Sprintf("ane-%s%s", cleanNode, suffix)
-	if len(name) > 63 {
-		name = name[:63]
-	}
-	return name
+	return fmt.Sprintf("ane-%s%s", cleanNode, suffix)
 }

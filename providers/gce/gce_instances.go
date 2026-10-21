@@ -1233,13 +1233,14 @@ func equalResourceURLs(url1, url2 string) bool {
 		if r1.Equal(r2) {
 			return true
 		}
-		// If one URL is a relative path without an API group (e.g. projects/.../global/networks/...),
-		// or mixes project ID with project number (e.g. ANE host.instance/subnetwork fields),
+		// If one URL is a relative path without an API group (e.g.
+		// projects/.../global/networks/...), or mixes project ID with
+		// project number (e.g. ANE host.instance/subnetwork fields),
 		// compare project, resource type, and key directly.
 		//
-		// TODO: Once the GCE ANE API returns project IDs per AIP-122
-		// (https://github.com/kubernetes/cloud-provider-gcp/issues/1399),
-		// remove projectsMatch and replace with r1.ProjectID == r2.ProjectID.
+		// TODO(https://github.com/kubernetes/cloud-provider-gcp/issues/1399):
+		// Once the GCE ANE API returns project IDs per AIP-122, remove
+		// projectsMatch and replace with r1.ProjectID == r2.ProjectID.
 		if (r1.APIGroup == "" || r2.APIGroup == "" || r1.APIGroup == r2.APIGroup) &&
 			projectsMatch(r1.ProjectID, r2.ProjectID) &&
 			r1.Resource == r2.Resource &&
@@ -1250,10 +1251,11 @@ func equalResourceURLs(url1, url2 string) bool {
 	return false
 }
 
-// projectsMatch reports whether two GCP project identifiers can refer to the same project.
-// It returns true for identical values or when comparing a numeric project number (returned
-// by GCE ANE) against an alphanumeric project ID. Caller (equalResourceURLs) guarantees
-// safety by additionally matching resource type, zone, and name within the cluster's scoped project.
+// projectsMatch reports whether two GCP project identifiers can refer to the
+// same project. It returns true for identical values or when comparing a
+// numeric project number (returned by GCE ANE) against an alphanumeric project
+// ID. Caller (equalResourceURLs) guarantees safety by additionally matching
+// resource type, zone, and name within the cluster's scoped project.
 func projectsMatch(p1, p2 string) bool {
 	if p1 == p2 {
 		return true

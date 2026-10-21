@@ -150,6 +150,22 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 		t.Fatalf("Create inactive ANE: %v", err)
 	}
 
+	// Add an active ANE with a non-matching Subnetwork (should be skipped
+	// and not silently attributed to nic0).
+	err = fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
+		Name:       "ane-unmatched-subnet-3",
+		Subnetwork: "https://www.googleapis.com/compute/v1/projects/test-project/regions/us-central1/subnetworks/other-subnet",
+		Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+			DefaultANEAliasNameIPv4: {
+				EffectiveIpAddress: "10.128.0.30",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create unmatched-subnet ANE: %v", err)
+	}
+
 	ifaces, err := backend.GetNetworkInterfaces(ctx, testProviderID)
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces: %v", err)
@@ -376,9 +392,12 @@ func TestANEControllerReconcileFlow(t *testing.T) {
 		}
 	}
 
-	// Verify transient ANE handling in status controller: if an ANE is in
-	// CREATING state, statusCtrl.syncNode returns an error to trigger a
-	// workqueue retry.
+	// Verify transient ANE handling in status and spec controllers:
+	// 1. If an ANE is in CREATING/DELETING state, statusCtrl.syncNode returns
+	//    *transientANEError BEFORE calling syncStatusToGCE so Status.PodCIDRs
+	//    is never overwritten from a partial/transient snapshot.
+	// 2. specCtrl.syncNode also returns *transientANEError, invalidates
+	//    gceCache, and does not allocate duplicate ANEs.
 	if err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
 		Name:       "ane-transient-creating",
 		Subnetwork: fakeGCE.SubnetworkURL(),
@@ -391,8 +410,27 @@ func TestANEControllerReconcileFlow(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Create transient ANE: %v", err)
 	}
-	if err := statusCtrl.syncNode(testNodeName); err == nil {
+	statusErr := statusCtrl.syncNode(testNodeName)
+	if statusErr == nil {
 		t.Fatalf("expected statusCtrl.syncNode to return error for transient CREATING ANE, got nil")
+	}
+	if _, ok := statusErr.(*transientANEError); !ok {
+		t.Fatalf("expected *transientANEError from statusCtrl.syncNode, got %T: %v", statusErr, statusErr)
+	}
+	specErr := specCtrl.syncNode(testNodeName)
+	if specErr == nil {
+		t.Fatalf("expected specCtrl.syncNode to return error for transient CREATING ANE, got nil")
+	}
+	if _, ok := specErr.(*transientANEError); !ok {
+		t.Fatalf("expected *transientANEError from specCtrl.syncNode, got %T: %v", specErr, specErr)
+	}
+	// Ensure specCtrl did not allocate any additional ANEs while transient ANE was present
+	anesDuringTransient, err := fakeGCE.ListAliasNetworkEndpoints(ctx, testProviderID)
+	if err != nil {
+		t.Fatalf("ListAliasNetworkEndpoints during transient: %v", err)
+	}
+	if len(anesDuringTransient) != 3 { // 2 active + 1 transient
+		t.Fatalf("expected 3 ANEs (2 active + 1 transient), got %d", len(anesDuringTransient))
 	}
 	if err := fakeGCE.DeleteAliasNetworkEndpoint(ctx, testProviderID, "ane-transient-creating"); err != nil {
 		t.Fatalf("Delete transient ANE: %v", err)
@@ -480,10 +518,31 @@ func TestStartControllersANEActivation(t *testing.T) {
 		t.Fatalf("expected non-nil ctrl")
 	}
 
+	// PopulateNodeNetworkConfig-only mode with BackendTypeANE should succeed
+	triggerStatusOnly, ctrlStatusOnly, startedStatusOnly, err := StartControllers(
+		ctx,
+		Options{
+			EnableDynamicPodIPController: false,
+			PopulateNodeNetworkConfig:    true,
+			PodIPBackend:                 BackendTypeANE,
+		},
+		kubeClient,
+		nncClient,
+		nodeInformer,
+		fakeGCE,
+	)
+	if err != nil {
+		t.Fatalf("StartControllers (status-only with ANE) failed: %v", err)
+	}
+	if !startedStatusOnly || triggerStatusOnly == nil || ctrlStatusOnly == nil {
+		t.Fatalf("expected status-only ANE controller to start: started=%v, trigger=%v, ctrl=%v", startedStatusOnly, triggerStatusOnly, ctrlStatusOnly)
+	}
+
 	_, _, started, err = StartControllers(
 		ctx,
 		Options{
 			EnableDynamicPodIPController: false,
+			PopulateNodeNetworkConfig:    false,
 			PodIPBackend:                 BackendTypeANE,
 		},
 		kubeClient,
@@ -492,7 +551,7 @@ func TestStartControllersANEActivation(t *testing.T) {
 		fakeGCE,
 	)
 	if err == nil {
-		t.Fatalf("expected error when PodIPBackend is set without EnableDynamicPodIPController")
+		t.Fatalf("expected error when PodIPBackend is set without EnableDynamicPodIPController or PopulateNodeNetworkConfig")
 	}
 	if started {
 		t.Fatalf("expected started == false when StartControllers returns an error")
@@ -748,6 +807,22 @@ func TestANEBackendMutate_MultiInterfaceSubnetTargeting(t *testing.T) {
 
 	// GetNetworkInterfaces should return both nic0 and nic1 with their
 	// respective ANE IPs.
+	// Add an active ANE with a non-matching Subnetwork (should be skipped
+	// and not silently attributed to nic0).
+	err = fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
+		Name:       "ane-unmatched-subnet-3",
+		Subnetwork: "https://www.googleapis.com/compute/v1/projects/test-project/regions/us-central1/subnetworks/other-subnet",
+		Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+			DefaultANEAliasNameIPv4: {
+				EffectiveIpAddress: "10.128.0.30",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create unmatched-subnet ANE: %v", err)
+	}
+
 	ifaces, err := backend.GetNetworkInterfaces(ctx, testProviderID)
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces failed: %v", err)

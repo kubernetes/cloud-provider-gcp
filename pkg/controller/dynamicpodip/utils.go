@@ -40,6 +40,18 @@ func (e *nodeNotReadyError) Error() string {
 	return fmt.Sprintf("node %q is not ready for reconciliation: %s", e.nodeName, e.reason)
 }
 
+// transientANEError is returned by a controller's syncNode when one or more
+// AliasNetworkEndpoints on the node are in a transient (non-ACTIVE) state
+// such as CREATING or DELETING. Callers requeue the key with backoff instead
+// of treating it as a controller error.
+type transientANEError struct {
+	nodeName string
+}
+
+func (e *transientANEError) Error() string {
+	return fmt.Sprintf("node %q has ANEs in transient state, deferring sync", e.nodeName)
+}
+
 // resolveGCENetworkURL converts a Kubernetes logical network name into a full GCE network URL.
 // Currently, only the primary network ("default" or empty) is supported, which resolves to the
 // cluster's primary NetworkURL().

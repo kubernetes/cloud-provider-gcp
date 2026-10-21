@@ -21,17 +21,20 @@ package gce
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	computepreview "google.golang.org/api/compute/v1.preview"
 	"google.golang.org/api/googleapi"
+	"google.golang.org/api/option"
 )
 
-func TestGCEANEService_CreateGetListDelete(t *testing.T) {
+func TestGCEANEService_CreateListDelete(t *testing.T) {
 	cloud := NewFakeGCECloud(DefaultTestClusterValues())
 
 	ctx := context.Background()
@@ -54,20 +57,15 @@ func TestGCEANEService_CreateGetListDelete(t *testing.T) {
 		t.Errorf("Expected Host.Instance to be populated from providerID, got: %+v", ane.Host)
 	}
 
-	got, err := cloud.GetAliasNetworkEndpoint(ctx, testProviderID, "test-ane-1")
-	if err != nil {
-		t.Fatalf("GetAliasNetworkEndpoint failed: %v", err)
-	}
-	if got.Aliases[testAliasKey].EffectiveIpAddress != "10.128.0.25" {
-		t.Errorf("Expected effective IP 10.128.0.25, got %q", got.Aliases[testAliasKey].EffectiveIpAddress)
-	}
-
 	list, err := cloud.ListAliasNetworkEndpoints(ctx, testProviderID)
 	if err != nil {
 		t.Fatalf("ListAliasNetworkEndpoints failed: %v", err)
 	}
 	if len(list) != 1 {
 		t.Fatalf("Expected 1 item in list, got %d", len(list))
+	}
+	if list[0].Aliases[testAliasKey].EffectiveIpAddress != "10.128.0.25" {
+		t.Errorf("Expected effective IP 10.128.0.25, got %q", list[0].Aliases[testAliasKey].EffectiveIpAddress)
 	}
 
 	if err := cloud.DeleteAliasNetworkEndpoint(ctx, testProviderID, "test-ane-1"); err != nil {
@@ -233,5 +231,60 @@ func TestGCEANEService_WaitForOperationTimeout(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "deadline exceeded") && !strings.Contains(err.Error(), "canceled") {
 		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestGCEANEService_ListServerSideFilter(t *testing.T) {
+	var receivedFilter string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedFilter = r.URL.Query().Get("filter")
+		w.Header().Set("Content-Type", "application/json")
+		resp := &computepreview.AliasNetworkEndpointList{
+			Items: []*computepreview.AliasNetworkEndpoint{
+				{
+					Name: "ane-node-1",
+					Host: &computepreview.AliasNetworkEndpointHost{
+						Instance: "projects/231279945827/zones/us-central1-b/instances/test-node",
+					},
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	httpClient := &http.Client{
+		Transport: &http.Transport{Proxy: nil},
+	}
+	previewSvc, err := computepreview.NewService(
+		context.Background(),
+		option.WithEndpoint(ts.URL),
+		option.WithHTTPClient(httpClient),
+	)
+	if err != nil {
+		t.Fatalf("computepreview.NewService: %v", err)
+	}
+
+	svc := &gceANEService{
+		gce: &Cloud{
+			servicePreview: previewSvc,
+		},
+	}
+
+	items, err := svc.ListAliasNetworkEndpoints(
+		context.Background(),
+		"my-project",
+		"us-central1-b",
+		"projects/my-project/zones/us-central1-b/instances/test-node",
+	)
+	if err != nil {
+		t.Fatalf("ListAliasNetworkEndpoints failed: %v", err)
+	}
+	wantFilter := `host.instance eq ".*zones/us-central1-b/instances/test-node$"`
+	if receivedFilter != wantFilter {
+		t.Errorf("filter query param = %q, want %q", receivedFilter, wantFilter)
+	}
+	if len(items) != 1 || items[0].Name != "ane-node-1" {
+		t.Fatalf("expected 1 matching item 'ane-node-1', got %+v", items)
 	}
 }

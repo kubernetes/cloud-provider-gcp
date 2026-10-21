@@ -184,21 +184,6 @@ func (f *fakeANEService) DeleteAliasNetworkEndpoint(ctx context.Context, project
 	return nil
 }
 
-func (f *fakeANEService) GetAliasNetworkEndpoint(ctx context.Context, project, zone, name string) (*computepreview.AliasNetworkEndpoint, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-
-	ep, exists := f.endpoints[name]
-	if !exists {
-		return nil, fmt.Errorf("AliasNetworkEndpoint %q not found", name)
-	}
-	epCopy := *ep
-	return &epCopy, nil
-}
-
 func (f *fakeANEService) ListAliasNetworkEndpoints(ctx context.Context, project, zone, instanceURL string) ([]*computepreview.AliasNetworkEndpoint, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

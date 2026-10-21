@@ -47,10 +47,13 @@ func (b *aliasRangesBackend) Mutate(ctx context.Context, providerID, networkURL 
 }
 
 func (b *aliasRangesBackend) CalculateAdditions(network string, neededIPs int, currentIfaces []*networkInterface) []string {
+	if neededIPs <= 0 {
+		return nil
+	}
 	blocksNeeded := (neededIPs + DefaultCapacity - 1) / DefaultCapacity
-	var additions []string
-	for i := 0; i < blocksNeeded; i++ {
-		additions = append(additions, DefaultBlockSize)
+	additions := make([]string, blocksNeeded)
+	for i := range additions {
+		additions[i] = DefaultBlockSize
 	}
 	return additions
 }

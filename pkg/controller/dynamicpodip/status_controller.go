@@ -18,7 +18,6 @@ package dynamicpodip
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"strings"
 
@@ -239,15 +238,13 @@ func (c *NodeNetworkConfigStatusController) reconcile(ctx context.Context, nnc *
 		return err
 	}
 
-	// Sync status if needed
-	if c.statusNeedsSync(nnc, ifaces) {
-		if err := c.syncStatusToGCE(ctx, nnc, ifaces); err != nil {
-			return err
-		}
+	if hasTransientANE(ifaces) {
+		return &transientANEError{nodeName: nnc.Name}
 	}
 
-	if hasTransientANE(ifaces) {
-		return fmt.Errorf("node %q has ANEs in transient state, requeuing status sync", nnc.Name)
+	// Sync status if needed
+	if c.statusNeedsSync(nnc, ifaces) {
+		return c.syncStatusToGCE(ctx, nnc, ifaces)
 	}
 
 	return nil

@@ -83,6 +83,7 @@ type NodeNetworkConfigSpecController struct {
 	nodeSynced    cache.InformerSynced
 	statusTrigger StatusTrigger
 	rangeProvider CandidateRangeProvider
+	backend       PodIPBackend
 	queue         workqueue.TypedRateLimitingInterface[string]
 }
 
@@ -117,12 +118,12 @@ func NewSpecController(
 			nodeLister: nodeInformer.Lister(),
 			gceCloud:   gceCloud,
 			gceCache:   gceCache,
-			backend:    backend,
 		},
 		nncSynced:     nncInformer.Informer().HasSynced,
 		nodeSynced:    nodeInformer.Informer().HasSynced,
 		statusTrigger: statusTrigger,
 		rangeProvider: rangeProvider,
+		backend:       backend,
 		queue:         newNodeWorkqueue("dynamic-pod-ip-spec"),
 	}
 
@@ -202,6 +203,14 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		klog.Errorf("Failed to get GCE state for node %q: %v", nnc.Name, err)
 		c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("Failed to get GCE instance: %v", err))
 		return err
+	}
+
+	// Defer mutations and releasable CIDR pruning while any ANE on the node
+	// is in a transient (CREATING/DELETING) state so we do not over-allocate
+	// duplicate ANEs or prune CIDRs whose deletion has not completed.
+	if hasTransientANE(ifaces) {
+		c.gceCache.Invalidate(nnc.Name)
+		return &transientANEError{nodeName: nnc.Name}
 	}
 
 	// Calculate changes needed between Spec and GCE

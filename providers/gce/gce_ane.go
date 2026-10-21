@@ -91,7 +91,6 @@ func newANEMetricContext(request, zone string) *metricContext {
 type aneServiceManager interface {
 	CreateAliasNetworkEndpoint(ctx context.Context, project, zone string, endpoint *computepreview.AliasNetworkEndpoint) error
 	DeleteAliasNetworkEndpoint(ctx context.Context, project, zone, name string) error
-	GetAliasNetworkEndpoint(ctx context.Context, project, zone, name string) (*computepreview.AliasNetworkEndpoint, error)
 	ListAliasNetworkEndpoints(ctx context.Context, project, zone, instanceURL string) ([]*computepreview.AliasNetworkEndpoint, error)
 }
 
@@ -115,11 +114,14 @@ func parseInstanceProviderID(providerID string) (project, zone, name, instanceUR
 // CreateAliasNetworkEndpoint creates an AliasNetworkEndpoint for the instance
 // identified by providerID and waits for the operation to complete.
 func (g *Cloud) CreateAliasNetworkEndpoint(ctx context.Context, providerID string, endpoint *computepreview.AliasNetworkEndpoint) error {
+	if endpoint == nil {
+		return fmt.Errorf("endpoint cannot be nil")
+	}
 	project, zone, _, instanceURL, err := parseInstanceProviderID(providerID)
 	if err != nil {
 		return err
 	}
-	if endpoint != nil && endpoint.Host == nil {
+	if endpoint.Host == nil {
 		endpoint.Host = &computepreview.AliasNetworkEndpointHost{Instance: instanceURL}
 	}
 	mc := newANEMetricContext("create", zone)
@@ -135,18 +137,6 @@ func (g *Cloud) DeleteAliasNetworkEndpoint(ctx context.Context, providerID, name
 	}
 	mc := newANEMetricContext("delete", zone)
 	return mc.Observe(g.getANEService().DeleteAliasNetworkEndpoint(ctx, project, zone, name))
-}
-
-// GetAliasNetworkEndpoint retrieves an AliasNetworkEndpoint by name in the
-// project and zone of the instance identified by providerID.
-func (g *Cloud) GetAliasNetworkEndpoint(ctx context.Context, providerID, name string) (*computepreview.AliasNetworkEndpoint, error) {
-	project, zone, _, _, err := parseInstanceProviderID(providerID)
-	if err != nil {
-		return nil, err
-	}
-	mc := newANEMetricContext("get", zone)
-	ep, err := g.getANEService().GetAliasNetworkEndpoint(ctx, project, zone, name)
-	return ep, mc.Observe(err)
 }
 
 // ListAliasNetworkEndpoints lists all AliasNetworkEndpoints bound to the
@@ -185,12 +175,12 @@ func isTransientHTTPStatus(statusCode int) bool {
 
 func isUnallowlistedOrMethodNotFound(apiErr *googleapi.Error) bool {
 	errStr := apiErr.Error()
-	return strings.Contains(errStr, "Method not found") ||
-		strings.Contains(errStr, "METHOD_NOT_FOUND") ||
-		strings.Contains(errStr, "API_VERSION_NOT_SUPPORTED") ||
-		strings.Contains(apiErr.Body, "Method not found") ||
-		strings.Contains(apiErr.Body, "METHOD_NOT_FOUND") ||
-		strings.Contains(apiErr.Body, "API_VERSION_NOT_SUPPORTED")
+	for _, token := range []string{"Method not found", "METHOD_NOT_FOUND", "API_VERSION_NOT_SUPPORTED"} {
+		if strings.Contains(errStr, token) || strings.Contains(apiErr.Body, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func sleepRetryAfter(ctx context.Context, header http.Header) error {
@@ -218,8 +208,6 @@ func (s *gceANEService) doWithRetry(ctx context.Context, call func() error) erro
 	}
 
 	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
-		s.acceptRateLimit()
-
 		lastErr = call()
 		if lastErr == nil {
 			return true, nil
@@ -237,6 +225,9 @@ func (s *gceANEService) doWithRetry(ctx context.Context, call func() error) erro
 	})
 
 	if ctx.Err() != nil {
+		if lastErr != nil && !errors.Is(lastErr, ctx.Err()) {
+			return fmt.Errorf("%w (last error: %w)", ctx.Err(), lastErr)
+		}
 		return ctx.Err()
 	}
 	if wait.Interrupted(err) && lastErr != nil {
@@ -290,26 +281,29 @@ func (s *gceANEService) DeleteAliasNetworkEndpoint(ctx context.Context, project,
 	return nil
 }
 
-func (s *gceANEService) GetAliasNetworkEndpoint(ctx context.Context, project, zone, name string) (*computepreview.AliasNetworkEndpoint, error) {
-	var ane *computepreview.AliasNetworkEndpoint
-	err := s.doWithRetry(ctx, func() error {
-		var callErr error
-		ane, callErr = s.gce.servicePreview.AliasNetworkEndpoints.Get(project, zone, name).Context(ctx).Do()
-		return callErr
-	})
-	if err != nil {
-		return nil, fmt.Errorf("GCE ANE get request failed: %w", err)
-	}
-	return ane, nil
-}
-
 func (s *gceANEService) ListAliasNetworkEndpoints(ctx context.Context, project, zone, instanceURL string) ([]*computepreview.AliasNetworkEndpoint, error) {
 	var result []*computepreview.AliasNetworkEndpoint
+	// Use a regex suffix filter rather than an exact `host.instance = instanceURL`
+	// match because `instanceURL` contains the alphanumeric project ID, whereas
+	// GCE normalizes `host.instance` to the numeric project number, causing an
+	// exact filter with the project ID to return 0 items.
+	//
+	// TODO(#1399): Once the GCE ANE API returns project IDs in `host.instance`
+	// per AIP-122 (https://github.com/kubernetes/cloud-provider-gcp/issues/1399),
+	// replace this regex suffix filter with an exact match:
+	// `fmt.Sprintf("host.instance = %q", instanceURL)`.
+	instanceFilter := ""
+	if instanceName := lastComponent(instanceURL); zone != "" && instanceName != "" {
+		instanceFilter = fmt.Sprintf(`host.instance eq ".*zones/%s/instances/%s$"`, zone, instanceName)
+	}
 	pageToken := ""
 	for {
 		var listResp *computepreview.AliasNetworkEndpointList
 		err := s.doWithRetry(ctx, func() error {
 			call := s.gce.servicePreview.AliasNetworkEndpoints.List(project, zone).Context(ctx)
+			if instanceFilter != "" {
+				call = call.Filter(instanceFilter)
+			}
 			if pageToken != "" {
 				call = call.PageToken(pageToken)
 			}

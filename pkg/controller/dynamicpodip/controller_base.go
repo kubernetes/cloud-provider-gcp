@@ -85,7 +85,6 @@ type nodeSyncBase struct {
 	nodeLister corelisters.NodeLister
 	gceCloud   *gce.Cloud
 	gceCache   *GCECache
-	backend    PodIPBackend
 }
 
 // Name returns the name of the controller.
@@ -184,7 +183,9 @@ func runNodeWorkers(
 // A nodeNotReadyError is requeued with backoff but not reported as a controller
 // error: it is the expected state while a node bootstraps. Requeuing is what
 // makes it recoverable, since neither controller watches Nodes -- forgetting
-// the key would strand that node's NodeNetworkConfig indefinitely.
+// the key would strand that node's NodeNetworkConfig indefinitely. A
+// transientANEError is handled the same way while GCE finishes creating or
+// deleting an AliasNetworkEndpoint.
 func processNextNodeWorkItem(
 	name string,
 	queue workqueue.TypedRateLimitingInterface[string],
@@ -202,8 +203,9 @@ func processNextNodeWorkItem(
 		return true
 	}
 
-	if notReady, ok := err.(*nodeNotReadyError); ok {
-		klog.V(4).Infof("%s: deferring sync for %q: %v", name, key, notReady)
+	switch err.(type) {
+	case *nodeNotReadyError, *transientANEError:
+		klog.V(4).Infof("%s: deferring sync for %q: %v", name, key, err)
 		queue.AddRateLimited(key)
 		return true
 	}
