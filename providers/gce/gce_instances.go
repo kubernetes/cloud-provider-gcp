@@ -1234,9 +1234,12 @@ func equalResourceURLs(url1, url2 string) bool {
 			return true
 		}
 		// If one URL is a relative path without an API group (e.g. projects/.../global/networks/...),
-		// or if one URL uses a numeric project number while the other uses an alphanumeric project ID
-		// (as GCE AliasNetworkEndpoints returns in host.instance and subnetwork),
+		// or mixes project ID with project number (e.g. ANE host.instance/subnetwork fields),
 		// compare project, resource type, and key directly.
+		//
+		// TODO: Once the GCE ANE API returns project IDs per AIP-122
+		// (https://github.com/kubernetes/cloud-provider-gcp/issues/TODO),
+		// remove projectsMatch and replace with r1.ProjectID == r2.ProjectID.
 		if (r1.APIGroup == "" || r2.APIGroup == "" || r1.APIGroup == r2.APIGroup) &&
 			projectsMatch(r1.ProjectID, r2.ProjectID) &&
 			r1.Resource == r2.Resource &&
@@ -1247,13 +1250,10 @@ func equalResourceURLs(url1, url2 string) bool {
 	return false
 }
 
-// projectsMatch reports whether two parsed GCP project identifiers can refer to
-// the same project. In addition to exact equality, it returns true when one
-// identifier is a numeric project number (e.g. "231279945827", returned by GCE
-// AliasNetworkEndpoints in host.instance and subnetwork fields) and the other
-// is an alphanumeric project ID (e.g. "my-project", which GCP requires to start
-// with a lowercase letter). Two distinct project IDs or two distinct project
-// numbers always return false.
+// projectsMatch reports whether two GCP project identifiers can refer to the same project.
+// It returns true for identical values or when comparing a numeric project number (returned
+// by GCE ANE) against an alphanumeric project ID. Caller (equalResourceURLs) guarantees
+// safety by additionally matching resource type, zone, and name within the cluster's scoped project.
 func projectsMatch(p1, p2 string) bool {
 	if p1 == p2 {
 		return true

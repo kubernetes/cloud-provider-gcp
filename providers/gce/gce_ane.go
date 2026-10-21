@@ -179,7 +179,8 @@ func isTransientHTTPStatus(statusCode int) bool {
 		statusCode == http.StatusInternalServerError ||
 		statusCode == http.StatusBadGateway ||
 		statusCode == http.StatusGatewayTimeout ||
-		statusCode == http.StatusTooManyRequests
+		statusCode == http.StatusTooManyRequests ||
+		statusCode == http.StatusRequestTimeout
 }
 
 func isUnallowlistedOrMethodNotFound(apiErr *googleapi.Error) bool {
@@ -190,6 +191,21 @@ func isUnallowlistedOrMethodNotFound(apiErr *googleapi.Error) bool {
 		strings.Contains(apiErr.Body, "Method not found") ||
 		strings.Contains(apiErr.Body, "METHOD_NOT_FOUND") ||
 		strings.Contains(apiErr.Body, "API_VERSION_NOT_SUPPORTED")
+}
+
+func sleepRetryAfter(ctx context.Context, header http.Header) error {
+	seconds, err := strconv.Atoi(header.Get("Retry-After"))
+	if err != nil || seconds <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(time.Duration(seconds) * time.Second)
+	select {
+	case <-ctx.Done():
+		timer.Stop()
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *gceANEService) doWithRetry(ctx context.Context, call func() error) error {
@@ -210,34 +226,23 @@ func (s *gceANEService) doWithRetry(ctx context.Context, call func() error) erro
 		}
 
 		var apiErr *googleapi.Error
-		if errors.As(lastErr, &apiErr) {
-			if isTransientHTTPStatus(apiErr.Code) {
-				if retryAfter := apiErr.Header.Get("Retry-After"); retryAfter != "" {
-					if seconds, err := strconv.Atoi(retryAfter); err == nil && seconds > 0 {
-						select {
-						case <-ctx.Done():
-							return false, ctx.Err()
-						case <-time.After(time.Duration(seconds) * time.Second):
-						}
-					}
-				}
-				return false, nil
+		if errors.As(lastErr, &apiErr) && isTransientHTTPStatus(apiErr.Code) {
+			if err := sleepRetryAfter(ctx, apiErr.Header); err != nil {
+				return false, err
 			}
-			return false, lastErr
+			return false, nil
 		}
 
-		if ctx.Err() != nil {
-			return false, ctx.Err()
-		}
-		return false, nil
+		return false, lastErr
 	})
-	if err != nil {
-		if lastErr != nil {
-			return lastErr
-		}
-		return err
+
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
-	return nil
+	if wait.Interrupted(err) && lastErr != nil {
+		return lastErr
+	}
+	return err
 }
 
 func (s *gceANEService) CreateAliasNetworkEndpoint(ctx context.Context, project, zone string, endpoint *computepreview.AliasNetworkEndpoint) error {

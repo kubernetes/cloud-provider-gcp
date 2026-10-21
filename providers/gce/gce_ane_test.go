@@ -21,6 +21,7 @@ package gce
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -135,6 +136,61 @@ func TestGCEANEService_TransientRetry(t *testing.T) {
 	}
 	if attempts != 2 {
 		t.Errorf("expected exactly 2 attempts, got %d", attempts)
+	}
+}
+
+func TestGCEANEService_RetryAfterContextCancelled(t *testing.T) {
+	svc := &gceANEService{
+		gce: &Cloud{},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	header := make(http.Header)
+	header.Set("Retry-After", "10") // 10 seconds, but context expires in 20ms
+
+	err := svc.doWithRetry(ctx, func() error {
+		return &googleapi.Error{
+			Code:   http.StatusTooManyRequests,
+			Header: header,
+		}
+	})
+	if err == nil {
+		t.Fatal("expected error due to context cancellation, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) && !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Errorf("expected context deadline exceeded error, got: %v", err)
+	}
+}
+
+func TestGCEANEService_NonTransientErrorDoesNotRetry(t *testing.T) {
+	svc := &gceANEService{
+		gce: &Cloud{},
+	}
+	attempts := 0
+	nonAPIErr := errors.New("generic non-API error")
+	err := svc.doWithRetry(context.Background(), func() error {
+		attempts++
+		return nonAPIErr
+	})
+	if !errors.Is(err, nonAPIErr) {
+		t.Fatalf("expected non-API error, got: %v", err)
+	}
+	if attempts != 1 {
+		t.Errorf("expected exactly 1 attempt for non-API error, got %d", attempts)
+	}
+
+	attempts = 0
+	apiErr := &googleapi.Error{Code: http.StatusBadRequest, Message: "bad request"}
+	err = svc.doWithRetry(context.Background(), func() error {
+		attempts++
+		return apiErr
+	})
+	if !errors.Is(err, apiErr) {
+		t.Fatalf("expected apiErr, got: %v", err)
+	}
+	if attempts != 1 {
+		t.Errorf("expected exactly 1 attempt for 400 Bad Request, got %d", attempts)
 	}
 }
 
