@@ -81,14 +81,27 @@ type NetworkResolver struct {
 	byNetworkName    map[string]NetworkParams
 	byAttachment     map[string]string
 	byVPCSubnetRange map[vpcSubnetRangeKey]string
+
+	// onChange is invoked, outside the lock, after every index rebuild. It is
+	// fixed at construction and never mutated, so it needs no locking.
+	onChange []func()
 }
 
 // NewNetworkResolver creates a NetworkResolver fed by the given informers.
 // Either informer may be nil, in which case the resolver can still be
 // populated directly through UpsertNetwork and UpsertGNP (used by tests).
+//
+// Each onChange function is called after any Network or GKENetworkParamSet
+// change has been folded into the index. They run synchronously on the
+// informer goroutine, after the resolver's lock has been released, so they may
+// call back into the resolver but must return quickly. This is how the status
+// controller learns that a Network has become Ready, stopped being Ready, or
+// disappeared -- events that change which nodes should have a
+// NodeNetworkConfig but are invisible to its Node watch.
 func NewNetworkResolver(
 	networkInformer networkinformer.NetworkInformer,
 	gnpInformer networkinformer.GKENetworkParamSetInformer,
+	onChange ...func(),
 ) *NetworkResolver {
 	r := &NetworkResolver{
 		networks:         make(map[string]*networkv1.Network),
@@ -96,6 +109,7 @@ func NewNetworkResolver(
 		byNetworkName:    make(map[string]NetworkParams),
 		byAttachment:     make(map[string]string),
 		byVPCSubnetRange: make(map[vpcSubnetRangeKey]string),
+		onChange:         append([]func(){}, onChange...),
 	}
 
 	if networkInformer != nil {
@@ -169,15 +183,28 @@ func (r *NetworkResolver) handleGNPDelete(obj interface{}) {
 	}
 }
 
+// mutate applies fn to the raw Network/GNP maps under the write lock, rebuilds
+// the index, and then -- with the lock released -- runs the onChange
+// functions. It is the single path through which the index changes, so the
+// "notify outside the lock" invariant lives in exactly one place.
+func (r *NetworkResolver) mutate(fn func()) {
+	func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		fn()
+		r.rebuildIndexLocked()
+	}()
+	for _, notify := range r.onChange {
+		notify()
+	}
+}
+
 // UpsertNetwork adds or replaces a Network in the index.
 func (r *NetworkResolver) UpsertNetwork(nw *networkv1.Network) {
 	if r == nil || nw == nil {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.networks[nw.Name] = nw.DeepCopy()
-	r.rebuildIndexLocked()
+	r.mutate(func() { r.networks[nw.Name] = nw.DeepCopy() })
 }
 
 // DeleteNetwork removes a Network from the index.
@@ -185,10 +212,7 @@ func (r *NetworkResolver) DeleteNetwork(name string) {
 	if r == nil {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	delete(r.networks, name)
-	r.rebuildIndexLocked()
+	r.mutate(func() { delete(r.networks, name) })
 }
 
 // UpsertGNP adds or replaces a GKENetworkParamSet in the index.
@@ -196,10 +220,7 @@ func (r *NetworkResolver) UpsertGNP(gnp *networkv1.GKENetworkParamSet) {
 	if r == nil || gnp == nil {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.gnps[gnp.Name] = gnp.DeepCopy()
-	r.rebuildIndexLocked()
+	r.mutate(func() { r.gnps[gnp.Name] = gnp.DeepCopy() })
 }
 
 // DeleteGNP removes a GKENetworkParamSet from the index.
@@ -207,10 +228,7 @@ func (r *NetworkResolver) DeleteGNP(name string) {
 	if r == nil {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	delete(r.gnps, name)
-	r.rebuildIndexLocked()
+	r.mutate(func() { delete(r.gnps, name) })
 }
 
 // rebuildIndexLocked reconstructs the lookup tables from networks and gnps.
@@ -311,6 +329,36 @@ func (r *NetworkResolver) LookupNetworkParams(netName string) (NetworkParams, bo
 	}
 	params.PodIPv4RangeNames = append([]string(nil), params.PodIPv4RangeNames...)
 	return params, true
+}
+
+// ReadyAdditionalNetworks returns the resolved parameters of every indexed
+// Network that is Ready, excluding the default network, in name order.
+//
+// "Additional" matters: the default Network CR exists in every multi-network
+// cluster (and is always considered Ready), so including it would make "does
+// this node participate in any Ready Network" trivially true. It is safe to
+// call on a nil resolver, which returns nothing.
+func (r *NetworkResolver) ReadyAdditionalNetworks() []NetworkParams {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	names := make([]string, 0, len(r.byNetworkName))
+	for name, params := range r.byNetworkName {
+		if name == networkv1.DefaultPodNetworkName || !params.Ready {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]NetworkParams, 0, len(names))
+	for _, name := range names {
+		params := r.byNetworkName[name]
+		params.PodIPv4RangeNames = append([]string(nil), params.PodIPv4RangeNames...)
+		out = append(out, params)
+	}
+	return out
 }
 
 // networkByAttachment returns the Network whose GNP references the given

@@ -308,7 +308,8 @@ func TestANEControllerReconcileFlow(t *testing.T) {
 		fakeGCE,
 		gceCache,
 		clock.RealClock{},
-		nil, // no multi-networking: nic0 is the default network
+		nil,  // no multi-networking: nic0 is the default network
+		true, // ANEs imply the spec controller, so every node wants an NNC
 	)
 
 	specCtrl := NewSpecController(

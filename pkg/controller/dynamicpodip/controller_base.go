@@ -35,6 +35,7 @@ import (
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nnclisters "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/listers/nodenetworkconfig/v1"
 	"golang.org/x/time/rate"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -97,11 +98,6 @@ func (b *nodeSyncBase) Name() string {
 // resolveNode turns a workqueue key into the NodeNetworkConfig to reconcile and
 // the provider ID of its backing Node.
 //
-// Both lookups consult the lister first and fall back to a live read, because a
-// key can be enqueued before the informer has caught up -- most often by the
-// spec controller triggering the status controller immediately after its own
-// write.
-//
 // A nil NodeNetworkConfig with a nil error means the object is gone and the key
 // should be dropped. A *nodeNotReadyError means the Node has not finished
 // bootstrapping and the key should be requeued with backoff.
@@ -109,40 +105,67 @@ func (b *nodeSyncBase) Name() string {
 // The returned object is a deep copy, so callers may mutate it freely without
 // corrupting the informer cache.
 func (b *nodeSyncBase) resolveNode(ctx context.Context, key string) (*nncv1.NodeNetworkConfig, string, error) {
-	nnc, err := b.nncLister.Get(key)
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return nil, "", err
-		}
-		nnc, err = b.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, key, metav1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				klog.V(4).Infof("%s: NodeNetworkConfig %q not found, skipping sync", b.name, key)
-				return nil, "", nil
-			}
-			return nil, "", err
-		}
+	nnc, err := b.getNodeNetworkConfig(ctx, key)
+	if err != nil || nnc == nil {
+		return nil, "", err
 	}
+	node, err := b.getReadyNode(ctx, key)
+	if err != nil {
+		return nil, "", err
+	}
+	return nnc, node.Spec.ProviderID, nil
+}
 
-	node, err := b.nodeLister.Get(nnc.Name)
+// getNodeNetworkConfig returns a deep copy of the named NodeNetworkConfig, or
+// nil with a nil error if it does not exist.
+//
+// The lister is consulted first with a fall back to a live read, because a key
+// can be enqueued before the informer has caught up -- most often by the spec
+// controller triggering the status controller immediately after its own write,
+// or by the status controller having just created the object itself.
+func (b *nodeSyncBase) getNodeNetworkConfig(ctx context.Context, name string) (*nncv1.NodeNetworkConfig, error) {
+	nnc, err := b.nncLister.Get(name)
+	if err == nil {
+		return nnc.DeepCopy(), nil
+	}
+	if !errors.IsNotFound(err) {
+		return nil, err
+	}
+	klog.V(4).Infof("%s: NodeNetworkConfig %q not in informer cache (%v), falling back to a live read", b.name, name, err)
+	nnc, err = b.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			klog.V(4).Infof("%s: NodeNetworkConfig %q not found", b.name, name)
+			return nil, nil
+		}
+		return nil, err
+	}
+	return nnc.DeepCopy(), nil
+}
+
+// getReadyNode returns the named Node once it is far enough through bootstrap
+// to be reconciled, i.e. it exists and has a ProviderID. Otherwise it returns a
+// *nodeNotReadyError so the caller requeues with backoff.
+//
+// As with getNodeNetworkConfig, the lister is tried first and a live read
+// second.
+func (b *nodeSyncBase) getReadyNode(ctx context.Context, name string) (*v1.Node, error) {
+	node, err := b.nodeLister.Get(name)
 	if err != nil {
 		if errors.IsNotFound(err) && b.kubeClient != nil {
-			node, err = b.kubeClient.CoreV1().Nodes().Get(ctx, nnc.Name, metav1.GetOptions{})
+			node, err = b.kubeClient.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
 		}
 		if err != nil {
 			if errors.IsNotFound(err) {
-				return nil, "", &nodeNotReadyError{nodeName: nnc.Name, reason: "node not found"}
+				return nil, &nodeNotReadyError{nodeName: name, reason: "node not found"}
 			}
-			return nil, "", fmt.Errorf("failed to get node %q: %w", nnc.Name, err)
+			return nil, fmt.Errorf("failed to get node %q: %w", name, err)
 		}
 	}
-
-	providerID := node.Spec.ProviderID
-	if providerID == "" {
-		return nil, "", &nodeNotReadyError{nodeName: nnc.Name, reason: "node has empty Spec.ProviderID"}
+	if node.Spec.ProviderID == "" {
+		return nil, &nodeNotReadyError{nodeName: name, reason: "node has empty Spec.ProviderID"}
 	}
-
-	return nnc.DeepCopy(), providerID, nil
+	return node, nil
 }
 
 // updateNNCStatus writes the status subresource, retrying on 409 Conflict by

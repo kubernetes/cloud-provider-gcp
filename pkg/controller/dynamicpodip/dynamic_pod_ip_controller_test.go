@@ -84,17 +84,26 @@ func newTestFixture(t *testing.T) *testFixture {
 }
 
 func newTestFixtureWithNetworkURL(t *testing.T, networkURL string) *testFixture {
-	return newTestFixtureWithOptions(t, networkURL, true)
+	return newTestFixtureWithOptions(t, networkURL, true, true)
 }
 
 // newTestFixtureWithoutResolver builds the controllers as StartControllers
 // does when --enable-multi-networking is off: no Network/GKENetworkParamSet
 // informers and a nil resolver.
 func newTestFixtureWithoutResolver(t *testing.T) *testFixture {
-	return newTestFixtureWithOptions(t, testNetworkURL, false)
+	return newTestFixtureWithOptions(t, testNetworkURL, false, true)
 }
 
-func newTestFixtureWithOptions(t *testing.T, networkURL string, withResolver bool) *testFixture {
+// newTestFixtureMultiNetworkOnly builds the status controller as
+// StartControllers does in a multi-networking cluster without Adaptive Cluster
+// IPAM: a resolver is present but the spec controller is off, so a
+// NodeNetworkConfig is wanted only while the node participates in a Ready
+// additional Network.
+func newTestFixtureMultiNetworkOnly(t *testing.T) *testFixture {
+	return newTestFixtureWithOptions(t, testNetworkURL, true, false)
+}
+
+func newTestFixtureWithOptions(t *testing.T, networkURL string, withResolver, nncAlwaysWanted bool) *testFixture {
 	kubeClient := k8sfake.NewSimpleClientset()
 	nncClient := nncfake.NewSimpleClientset()
 	networkClient := networkfake.NewSimpleClientset()
@@ -144,11 +153,13 @@ func newTestFixtureWithOptions(t *testing.T, networkURL string, withResolver boo
 
 	var networkInformerFactory networkinformers.SharedInformerFactory
 	var networkResolver *NetworkResolver
+	var statusCtrl *NodeNetworkConfigStatusController // wired into the resolver as StartControllers does
 	if withResolver {
 		networkInformerFactory = networkinformers.NewSharedInformerFactory(networkClient, 0)
 		networkResolver = NewNetworkResolver(
 			networkInformerFactory.Networking().V1().Networks(),
 			networkInformerFactory.Networking().V1().GKENetworkParamSets(),
+			func() { statusCtrl.EnqueueAllNodes() },
 		)
 	}
 
@@ -196,7 +207,7 @@ func newTestFixtureWithOptions(t *testing.T, networkURL string, withResolver boo
 
 	gceCache := NewGCECache(loader, 10*time.Second, fakeClock)
 
-	statusCtrl := NewStatusController(
+	statusCtrl = NewStatusController(
 		kubeClient,
 		nncClient,
 		nncInformer.Lister(),
@@ -205,6 +216,7 @@ func newTestFixtureWithOptions(t *testing.T, networkURL string, withResolver boo
 		gceCache,
 		fakeClock,
 		networkResolver,
+		nncAlwaysWanted,
 	)
 
 	specCtrl := NewSpecController(

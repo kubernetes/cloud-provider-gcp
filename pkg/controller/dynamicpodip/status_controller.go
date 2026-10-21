@@ -18,6 +18,7 @@ package dynamicpodip
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -26,7 +27,9 @@ import (
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nnclisters "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/listers/nodenetworkconfig/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -42,6 +45,13 @@ const (
 	DefaultStatusControllerWorkers = 4
 
 	statusControllerName = "node-network-config-status-controller"
+
+	// ManagedByLabelKey marks NodeNetworkConfigs whose existence the CCM owns.
+	// The status controller only ever deletes objects carrying
+	// ManagedByLabelValue, so an NNC created by anything else is left alone.
+	ManagedByLabelKey = "networking.gke.io/managed-by"
+	// ManagedByLabelValue is the value the CCM stamps on NodeNetworkConfigs it creates.
+	ManagedByLabelValue = "cloud-controller-manager"
 )
 
 // StatusTrigger defines an asynchronous interface to request an NNC status refresh for a node.
@@ -57,15 +67,28 @@ type NoopStatusTrigger struct{}
 // EnqueueNode performs a no-op when status population is disabled.
 func (n *NoopStatusTrigger) EnqueueNode(nodeName string) {}
 
-// NodeNetworkConfigStatusController reconciles the status section of NodeNetworkConfig CRDs to
-// match actual GCE VM alias IP range state.
+// NodeNetworkConfigStatusController owns the existence of NodeNetworkConfig objects and reconciles
+// their status section to match actual GCE VM alias IP range state.
 //
-// It is driven from two directions. It watches Nodes itself, which is what keeps it alive in
-// multi-networking clusters where the spec controller is not enabled; and it exposes EnqueueNode so
-// that the spec controller can hand it a node the moment it has finished mutating GCE, rather than
-// waiting for that change to show up indirectly.
+// Whether a node should have a NodeNetworkConfig is a single predicate (see nncWanted): always,
+// when the spec controller is enabled; otherwise exactly while the node participates in at least
+// one Ready additional Network. The controller creates the object when the predicate holds and it
+// is missing, and deletes it -- provided it created it -- when the predicate no longer holds. It
+// never writes to GCE.
+//
+// It is driven from three directions. It watches Nodes itself, which is what keeps it alive in
+// multi-networking clusters where the spec controller is not enabled; it re-evaluates every node
+// when a Network or GKENetworkParamSet changes, since that is what moves the predicate; and it
+// exposes EnqueueNode so that the spec controller can hand it a node the moment it has finished
+// mutating GCE, rather than waiting for that change to show up indirectly.
 type NodeNetworkConfigStatusController struct {
 	nodeSyncBase
+
+	// nncAlwaysWanted short-circuits nncWanted to true. It is set when Adaptive
+	// Cluster IPAM is enabled: Metis is then present and needs a
+	// NodeNetworkConfig on every node for the default network, whether or not
+	// any additional Network exists.
+	nncAlwaysWanted bool
 
 	nodeSynced cache.InformerSynced
 	queue      workqueue.TypedRateLimitingInterface[string]
@@ -75,7 +98,13 @@ type NodeNetworkConfigStatusController struct {
 // NewStatusController constructs a new NodeNetworkConfigStatusController.
 //
 // networkResolver may be nil, in which case only nic0 ranges are published, as
-// the default network.
+// the default network, and no NodeNetworkConfig is created unless
+// nncAlwaysWanted is set. When it is non-nil the caller must have wired
+// EnqueueAllNodes in as one of its onChange functions, since Network changes
+// are otherwise invisible to this controller.
+//
+// nncAlwaysWanted must be set when the spec controller runs alongside this one;
+// see the field for why.
 func NewStatusController(
 	kubeClient kubernetes.Interface,
 	nncClient nncclientset.Interface,
@@ -85,6 +114,7 @@ func NewStatusController(
 	gceCache *GCECache,
 	clk clock.Clock,
 	networkResolver *NetworkResolver,
+	nncAlwaysWanted bool,
 ) *NodeNetworkConfigStatusController {
 	if clk == nil {
 		clk = clock.RealClock{}
@@ -101,16 +131,18 @@ func NewStatusController(
 			gceCache:        gceCache,
 			networkResolver: networkResolver,
 		},
-		nodeSynced: nodeInformer.Informer().HasSynced,
-		queue:      newNodeWorkqueue("nnc-status-populator"),
-		clock:      clk,
+		nncAlwaysWanted: nncAlwaysWanted,
+		nodeSynced:      nodeInformer.Informer().HasSynced,
+		queue:           newNodeWorkqueue("nnc-status-populator"),
+		clock:           clk,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueNode,
 		UpdateFunc: c.handleNodeUpdate,
 		// No DeleteFunc: there is no status left to publish for a node that is
-		// gone, and the NodeNetworkConfig is removed along with it.
+		// gone, and the NodeNetworkConfig is removed along with it through its
+		// owner reference.
 	})
 
 	return c
@@ -132,6 +164,33 @@ func (c *NodeNetworkConfigStatusController) enqueueNode(obj interface{}) {
 		return
 	}
 	c.queue.Add(key)
+}
+
+// EnqueueAllNodes enqueues every Node currently in the lister. It is meant to
+// be the NetworkResolver's onChange function: a Network appearing, becoming
+// Ready, ceasing to be Ready, or disappearing can change which nodes want a
+// NodeNetworkConfig and which ranges are publishable on all of them. Networks
+// are few and change rarely, so re-evaluating every node is cheap, and far
+// simpler than working out which nodes a given Network could affect.
+//
+// Before the Node informer has synced the lister may be incomplete; that is
+// fine, because the informer's own Add events cover whatever it has not
+// delivered yet, and workers do not start until both caches are synced.
+//
+// It is safe to call on a nil controller, which is what lets the resolver be
+// constructed, with this wired in, before the controller that owns it.
+func (c *NodeNetworkConfigStatusController) EnqueueAllNodes() {
+	if c == nil || c.queue == nil {
+		return
+	}
+	nodes, err := c.nodeLister.List(labels.Everything())
+	if err != nil {
+		runtime.HandleError(fmt.Errorf("%s: failed to list nodes after a network change: %v", c.name, err))
+		return
+	}
+	for _, node := range nodes {
+		c.queue.Add(node.Name)
+	}
 }
 
 // handleNodeUpdate enqueues a Node only when something this controller could act on has changed.
@@ -228,14 +287,141 @@ func (c *NodeNetworkConfigStatusController) syncNode(key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), reconcileTimeout)
 	defer cancel()
 
-	nnc, providerID, err := c.resolveNode(ctx, key)
-	if err != nil || nnc == nil {
+	node, err := c.getReadyNode(ctx, key)
+	if err != nil {
+		return err
+	}
+	nnc, err := c.getNodeNetworkConfig(ctx, key)
+	if err != nil {
 		return err
 	}
 
-	return c.reconcile(ctx, nnc, providerID)
+	// Retrieve GCE actual state via ForceGet to ensure fresh status population.
+	// This is needed both to decide whether the node wants a NodeNetworkConfig
+	// and, if so, to publish its ranges.
+	ifaces, err := c.gceCache.ForceGet(ctx, node.Name, node.Spec.ProviderID)
+	if err != nil {
+		klog.Errorf("Failed to get GCE state for node %q: %v", node.Name, err)
+		return err
+	}
+
+	wanted := c.nncWanted(ifaces)
+	switch {
+	case nnc == nil && !wanted:
+		klog.V(4).Infof("%s: node %q wants no NodeNetworkConfig and has none, skipping sync", c.name, node.Name)
+		return nil
+	case nnc == nil:
+		nnc, err = c.createNodeNetworkConfig(ctx, node)
+		if err != nil {
+			return err
+		}
+	case !wanted && isManagedByCCM(nnc):
+		return c.deleteNodeNetworkConfig(ctx, nnc)
+	}
+
+	return c.publishStatus(ctx, nnc, ifaces)
 }
 
+// nncWanted reports whether a node with the given interfaces should have a
+// NodeNetworkConfig:
+//
+//	nncWanted = nncAlwaysWanted || node has >= 1 Ready additional Network
+//	                               matching one of its interfaces
+//
+// The second clause is evaluated over Networks rather than alias IP ranges: a
+// Ready Network whose interface has no range attached yet still warrants an
+// object for the ranges to be published into. Matching uses the same
+// NetworkAttachment / (VPC, VPCSubnet) rules as range attribution.
+//
+// Because nncAlwaysWanted is fixed for the life of the process, the predicate
+// can only go false when the spec controller is off -- i.e. in multi-network
+// clusters without Adaptive Cluster IPAM -- which is exactly the configuration
+// where the CCM is the sole writer and must clean up after a Network is
+// rolled back or removed.
+func (c *NodeNetworkConfigStatusController) nncWanted(ifaces []*networkInterface) bool {
+	if c.nncAlwaysWanted {
+		return true
+	}
+	for _, params := range c.networkResolver.ReadyAdditionalNetworks() {
+		if findMatchingInterface(params, ifaces) != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// isManagedByCCM reports whether the CCM created this NodeNetworkConfig, and
+// so may delete it.
+//
+// TODO: remove this check, and the label, once the removal of Metis's
+// NodeNetworkConfig creation has merged and fully rolled out. At that point
+// the CCM is the only creator and every NodeNetworkConfig is its own.
+func isManagedByCCM(nnc *nncv1.NodeNetworkConfig) bool {
+	return nnc != nil && nnc.Labels[ManagedByLabelKey] == ManagedByLabelValue
+}
+
+// createNodeNetworkConfig creates an empty NodeNetworkConfig for node, owned by
+// it so that Kubernetes garbage collection removes the object when the node
+// goes away, and labelled so that this controller knows it may delete it.
+//
+// AlreadyExists is not an error: the object may have been created by a
+// concurrent worker, or by Metis in clusters that still run its creation path.
+// Either way the live object is returned for reconciliation to continue.
+func (c *NodeNetworkConfigStatusController) createNodeNetworkConfig(ctx context.Context, node *v1.Node) (*nncv1.NodeNetworkConfig, error) {
+	// Deliberately not metav1.NewControllerRef: that sets blockOwnerDeletion,
+	// which (a) would make a stuck NodeNetworkConfig hold up Node deletion,
+	// the opposite of what we want, and (b) requires update on
+	// nodes/finalizers when the OwnerReferencesPermissionEnforcement
+	// admission plugin is on, a permission the CCM is not guaranteed to have.
+	isController := true
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   node.Name,
+			Labels: map[string]string{ManagedByLabelKey: ManagedByLabelValue},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: v1.SchemeGroupVersion.String(),
+				Kind:       "Node",
+				Name:       node.Name,
+				UID:        node.UID,
+				Controller: &isController,
+			}},
+		},
+	}
+	created, err := c.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{})
+	if err == nil {
+		klog.Infof("%s: created NodeNetworkConfig for node %q", c.name, node.Name)
+		return created, nil
+	}
+	if !errors.IsAlreadyExists(err) {
+		return nil, fmt.Errorf("failed to create NodeNetworkConfig for node %q: %w", node.Name, err)
+	}
+	klog.V(4).Infof("%s: NodeNetworkConfig for node %q was created concurrently", c.name, node.Name)
+	existing, err := c.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, node.Name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return existing, nil
+}
+
+// deleteNodeNetworkConfig removes a NodeNetworkConfig this controller created
+// and that its node no longer wants. The UID precondition guards against
+// deleting a replacement object created in the meantime; a precondition
+// failure or NotFound simply means there is nothing left to do.
+func (c *NodeNetworkConfigStatusController) deleteNodeNetworkConfig(ctx context.Context, nnc *nncv1.NodeNetworkConfig) error {
+	klog.Infof("%s: node %q no longer participates in any Ready additional Network, deleting its NodeNetworkConfig", c.name, nnc.Name)
+	uid := nnc.UID
+	err := c.nncClient.NetworkingV1().NodeNetworkConfigs().Delete(ctx, nnc.Name, metav1.DeleteOptions{
+		Preconditions: &metav1.Preconditions{UID: &uid},
+	})
+	if err != nil && !errors.IsNotFound(err) && !errors.IsConflict(err) {
+		return fmt.Errorf("failed to delete NodeNetworkConfig %q: %w", nnc.Name, err)
+	}
+	return nil
+}
+
+// reconcile publishes the GCE state of providerID into nnc's status. It is the
+// entry point for callers that already hold a NodeNetworkConfig and do not need
+// the existence decision made by syncNode.
 func (c *NodeNetworkConfigStatusController) reconcile(ctx context.Context, nnc *nncv1.NodeNetworkConfig, providerID string) error {
 	// Retrieve GCE actual state via ForceGet to ensure fresh status population.
 	ifaces, err := c.gceCache.ForceGet(ctx, nnc.Name, providerID)
@@ -243,16 +429,25 @@ func (c *NodeNetworkConfigStatusController) reconcile(ctx context.Context, nnc *
 		klog.Errorf("Failed to get GCE state for node %q: %v", nnc.Name, err)
 		return err
 	}
+	return c.publishStatus(ctx, nnc, ifaces)
+}
 
+// publishStatus writes Status.PodCIDRs from ifaces if it differs from what is
+// already published.
+//
+// While any AliasNetworkEndpoint on the node is still CREATING or DELETING the
+// snapshot is incomplete, so publication is deferred with a transientANEError
+// (requeued with backoff). This is checked here rather than before the
+// existence decision in syncNode: creating the NodeNetworkConfig is inert and
+// need not wait for ANEs to settle, and deletion cannot coincide with ANEs
+// (ANEs imply the spec controller, which implies nncAlwaysWanted).
+func (c *NodeNetworkConfigStatusController) publishStatus(ctx context.Context, nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) error {
 	if hasTransientANE(ifaces) {
 		return &transientANEError{nodeName: nnc.Name}
 	}
-
-	// Sync status if needed
 	if c.statusNeedsSync(nnc, ifaces) {
 		return c.syncStatusToGCE(ctx, nnc, ifaces)
 	}
-
 	return nil
 }
 

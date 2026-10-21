@@ -118,11 +118,17 @@ func StartControllers(
 
 	var networkInformerFactory networkinformers.SharedInformerFactory
 	var networkResolver *NetworkResolver
+	// Declared ahead of the resolver so that its onChange function can refer
+	// to the controller before it exists. EnqueueAllNodes is nil-safe, and the
+	// informers that drive onChange are not started until after the controller
+	// has been assigned below.
+	var statusCtrl *NodeNetworkConfigStatusController
 	if opts.NetworkClient != nil {
 		networkInformerFactory = networkinformers.NewSharedInformerFactory(opts.NetworkClient, 0)
 		networkResolver = NewNetworkResolver(
 			networkInformerFactory.Networking().V1().Networks(),
 			networkInformerFactory.Networking().V1().GKENetworkParamSets(),
+			func() { statusCtrl.EnqueueAllNodes() },
 		)
 	}
 
@@ -133,7 +139,6 @@ func StartControllers(
 	gceCache := NewGCECache(loader, 10*time.Second, clock.RealClock{})
 
 	var statusTrigger StatusTrigger = &NoopStatusTrigger{}
-	var statusCtrl *NodeNetworkConfigStatusController
 
 	if opts.PopulateNodeNetworkConfig {
 		klog.Info("Initializing NodeNetworkConfig Status Controller")
@@ -146,6 +151,9 @@ func StartControllers(
 			gceCache,
 			clock.RealClock{},
 			networkResolver,
+			// With the spec controller on, Metis is present and needs a
+			// NodeNetworkConfig on every node.
+			opts.EnableDynamicPodIPController,
 		)
 		statusTrigger = statusCtrl
 		SetStatusTrigger(statusTrigger)
