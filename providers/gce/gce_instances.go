@@ -1238,7 +1238,7 @@ func equalResourceURLs(url1, url2 string) bool {
 		// compare project, resource type, and key directly.
 		//
 		// TODO: Once the GCE ANE API returns project IDs per AIP-122
-		// (https://github.com/kubernetes/cloud-provider-gcp/issues/TODO),
+		// (https://github.com/kubernetes/cloud-provider-gcp/issues/1399),
 		// remove projectsMatch and replace with r1.ProjectID == r2.ProjectID.
 		if (r1.APIGroup == "" || r2.APIGroup == "" || r1.APIGroup == r2.APIGroup) &&
 			projectsMatch(r1.ProjectID, r2.ProjectID) &&
