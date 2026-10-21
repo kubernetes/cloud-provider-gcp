@@ -29,6 +29,8 @@ import (
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
+	networkfake "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned/fake"
+	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
 	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
 	nncinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions"
 	gcloud "github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -45,6 +47,7 @@ import (
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	clientgotesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/cache"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	clocktesting "k8s.io/utils/clock/testing"
 )
@@ -61,16 +64,19 @@ var (
 )
 
 type testFixture struct {
-	t                   *testing.T
-	kubeClient          *k8sfake.Clientset
-	nncClient           *nncfake.Clientset
-	informerFactory     nncinformers.SharedInformerFactory
-	nodeInformerFactory informers.SharedInformerFactory
-	fakeGCE             *gce.Cloud
-	specCtrl            *NodeNetworkConfigSpecController
-	statusCtrl          *NodeNetworkConfigStatusController
-	fakeClock           *clocktesting.FakeClock
-	gceCalls            *ifaceUpdateRecorder
+	t                      *testing.T
+	kubeClient             *k8sfake.Clientset
+	nncClient              *nncfake.Clientset
+	networkClient          *networkfake.Clientset
+	informerFactory        nncinformers.SharedInformerFactory
+	networkInformerFactory networkinformers.SharedInformerFactory
+	nodeInformerFactory    informers.SharedInformerFactory
+	networkResolver        *NetworkResolver
+	fakeGCE                *gce.Cloud
+	specCtrl               *NodeNetworkConfigSpecController
+	statusCtrl             *NodeNetworkConfigStatusController
+	fakeClock              *clocktesting.FakeClock
+	gceCalls               *ifaceUpdateRecorder
 }
 
 func newTestFixture(t *testing.T) *testFixture {
@@ -78,8 +84,20 @@ func newTestFixture(t *testing.T) *testFixture {
 }
 
 func newTestFixtureWithNetworkURL(t *testing.T, networkURL string) *testFixture {
+	return newTestFixtureWithOptions(t, networkURL, true)
+}
+
+// newTestFixtureWithoutResolver builds the controllers as StartControllers
+// does when --enable-multi-networking is off: no Network/GKENetworkParamSet
+// informers and a nil resolver.
+func newTestFixtureWithoutResolver(t *testing.T) *testFixture {
+	return newTestFixtureWithOptions(t, testNetworkURL, false)
+}
+
+func newTestFixtureWithOptions(t *testing.T, networkURL string, withResolver bool) *testFixture {
 	kubeClient := k8sfake.NewSimpleClientset()
 	nncClient := nncfake.NewSimpleClientset()
+	networkClient := networkfake.NewSimpleClientset()
 
 	// The fake tracker replaces the entire stored object on a subresource
 	// write, unlike a real apiserver, which discards spec changes sent to
@@ -123,6 +141,16 @@ func newTestFixtureWithNetworkURL(t *testing.T, networkURL string) *testFixture 
 
 	informerFactory := nncinformers.NewSharedInformerFactory(nncClient, 0)
 	nncInformer := informerFactory.Networking().V1().NodeNetworkConfigs()
+
+	var networkInformerFactory networkinformers.SharedInformerFactory
+	var networkResolver *NetworkResolver
+	if withResolver {
+		networkInformerFactory = networkinformers.NewSharedInformerFactory(networkClient, 0)
+		networkResolver = NewNetworkResolver(
+			networkInformerFactory.Networking().V1().Networks(),
+			networkInformerFactory.Networking().V1().GKENetworkParamSets(),
+		)
+	}
 
 	// Create fake Node informer
 	fakeInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
@@ -176,6 +204,7 @@ func newTestFixtureWithNetworkURL(t *testing.T, networkURL string) *testFixture 
 		fakeGCE,
 		gceCache,
 		fakeClock,
+		networkResolver,
 	)
 
 	specCtrl := NewSpecController(
@@ -188,24 +217,42 @@ func newTestFixtureWithNetworkURL(t *testing.T, networkURL string) *testFixture 
 		statusCtrl,
 		NewStaticRangeProvider(nil),
 		NewAliasRangesBackend(fakeGCE),
+		networkResolver,
 	)
 
 	return &testFixture{
-		t:                   t,
-		kubeClient:          kubeClient,
-		nncClient:           nncClient,
-		informerFactory:     informerFactory,
-		nodeInformerFactory: fakeInformerFactory,
-		fakeGCE:             fakeGCE,
-		specCtrl:            specCtrl,
-		statusCtrl:          statusCtrl,
-		fakeClock:           fakeClock,
-		gceCalls:            recorder,
+		t:                      t,
+		kubeClient:             kubeClient,
+		nncClient:              nncClient,
+		networkClient:          networkClient,
+		informerFactory:        informerFactory,
+		networkInformerFactory: networkInformerFactory,
+		nodeInformerFactory:    fakeInformerFactory,
+		networkResolver:        networkResolver,
+		fakeGCE:                fakeGCE,
+		specCtrl:               specCtrl,
+		statusCtrl:             statusCtrl,
+		fakeClock:              fakeClock,
+		gceCalls:               recorder,
 	}
 }
 
 func (f *testFixture) run(ctx context.Context, stopCh <-chan struct{}) {
 	f.informerFactory.Start(stopCh)
+	if f.networkInformerFactory != nil {
+		f.networkInformerFactory.Start(stopCh)
+	}
+}
+
+// waitForNetworkResolver blocks until the Network and GKENetworkParamSet
+// informers have delivered their initial events to the resolver. Waiting on
+// the factory's WaitForCacheSync is not enough: that only covers the store,
+// and the resolver's index is built by event handlers that run after it.
+func (f *testFixture) waitForNetworkResolver(stopCh <-chan struct{}) {
+	f.t.Helper()
+	if !cache.WaitForCacheSync(stopCh, f.networkResolver.Synced()...) {
+		f.t.Fatalf("Timed out waiting for the network resolver to sync")
+	}
 }
 
 // runNodeInformer starts and syncs the Node informer. Kept separate from run so
@@ -605,9 +652,13 @@ func resolveMockAliasIPs(ranges []*computebeta.AliasIpRange) []*computebeta.Alia
 					break
 				}
 			}
+			rangeName := r.SubnetworkRangeName
+			if rangeName == "" && len(r.CandidateSubnetworkRangeNames) > 0 {
+				rangeName = r.CandidateSubnetworkRangeNames[0]
+			}
 			result = append(result, &computebeta.AliasIpRange{
 				IpCidrRange:                   candidate,
-				SubnetworkRangeName:           r.SubnetworkRangeName,
+				SubnetworkRangeName:           rangeName,
 				CandidateSubnetworkRangeNames: r.CandidateSubnetworkRangeNames,
 			})
 			existingMap[candidate] = true
@@ -2053,7 +2104,7 @@ func newCountingLoader() (GCEInstanceLoader, map[string]int) {
 			{
 				Name:          "nic0",
 				Network:       testNetworkURL,
-				AliasIPRanges: []string{"10.100.0.0/28"},
+				AliasIPRanges: []aliasIPRange{{IPCIDRRange: "10.100.0.0/28"}},
 			},
 		}, nil
 	}
@@ -2208,7 +2259,7 @@ func TestGCECache_ConcurrentAccessRespectsBounds(t *testing.T) {
 			{
 				Name:          "nic0",
 				Network:       testNetworkURL,
-				AliasIPRanges: []string{"10.100.0.0/28"},
+				AliasIPRanges: []aliasIPRange{{IPCIDRRange: "10.100.0.0/28"}},
 			},
 		}, nil
 	}
@@ -2486,7 +2537,7 @@ func TestGCECache_EvictionMatchesModel(t *testing.T) {
 				{
 					Name:          "nic0",
 					Network:       testNetworkURL,
-					AliasIPRanges: []string{"10.100.0.0/28"},
+					AliasIPRanges: []aliasIPRange{{IPCIDRRange: "10.100.0.0/28"}},
 				},
 			}, nil
 		}
@@ -3255,141 +3306,6 @@ func TestUpdateAliasIPRanges_NoChangesIssuesNoCalls(t *testing.T) {
 	}
 }
 
-// TestResolveKubernetesNetworkName verifies that resolveKubernetesNetworkName maps
-// the primary GCE interface (nic0) to the Kubernetes "default" network, and returns
-// an error for secondary interfaces (nic1+) or interfaces with an empty name.
-func TestResolveKubernetesNetworkName(t *testing.T) {
-	// nic0 maps to default
-	nic0 := &networkInterface{Name: "nic0", Network: "https://www.googleapis.com/compute/v1/projects/p/global/networks/custom-vpc"}
-	netName, err := resolveKubernetesNetworkName(nic0)
-	if err != nil {
-		t.Fatalf("unexpected error for nic0: %v", err)
-	}
-	if netName != "default" {
-		t.Errorf("expected Kubernetes network name %q, got %q", "default", netName)
-	}
-
-	// secondary interfaces return an unsupported error
-	nic1 := &networkInterface{Name: "nic1", Network: "https://www.googleapis.com/compute/v1/projects/p/global/networks/custom-vpc"}
-	if _, err := resolveKubernetesNetworkName(nic1); err == nil {
-		t.Errorf("expected error for nic1, got nil")
-	}
-
-	// interface with empty name returns an unsupported error
-	unnamed := &networkInterface{Name: "", Network: "https://www.googleapis.com/compute/v1/projects/p/global/networks/custom-vpc"}
-	if _, err := resolveKubernetesNetworkName(unnamed); err == nil {
-		t.Errorf("expected error for unnamed interface, got nil")
-	}
-}
-
-// TestForEachPodCIDR verifies that forEachPodCIDR visits all Pod CIDRs
-// (both VM alias IP ranges and ANE CIDRs) on supported interfaces (nic0
-// mapped to "default") and ignores unmanaged secondary interfaces.
-func TestForEachPodCIDR(t *testing.T) {
-	ifaces := []*networkInterface{
-		{
-			Name:          "nic0",
-			Network:       "https://www.googleapis.com/compute/v1/projects/p/global/networks/custom-vpc",
-			AliasIPRanges: []string{"10.4.0.0/28", "10.4.0.16/28"},
-			ANECIDRs:      []string{"10.4.0.32/32"},
-		},
-		{
-			Name:          "nic1",
-			Network:       "https://www.googleapis.com/compute/v1/projects/p/global/networks/secondary-net",
-			AliasIPRanges: []string{"10.5.0.0/28"},
-		},
-	}
-
-	var visited []string
-	forEachPodCIDR(ifaces, func(network, cidr string) {
-		visited = append(visited, fmt.Sprintf("%s:%s", network, cidr))
-	})
-
-	expected := []string{"default:10.4.0.0/28", "default:10.4.0.16/28", "default:10.4.0.32/32"}
-	if len(visited) != len(expected) {
-		t.Fatalf("expected %d ranges, got %d: %v", len(expected), len(visited), visited)
-	}
-	for i, v := range visited {
-		if v != expected[i] {
-			t.Errorf("index %d: expected %q, got %q", i, expected[i], v)
-		}
-	}
-}
-
-// TestResolveGCENetworkURL verifies that resolveGCENetworkURL translates the Kubernetes
-// logical network "default" (or empty string) to the cluster's configured GCE network URL,
-// and returns an error for unsupported secondary networks or nil/unconfigured cloud providers.
-func TestResolveGCENetworkURL(t *testing.T) {
-	testClusterValues := gce.DefaultTestClusterValues()
-	testClusterValues.NetworkURL = "https://www.googleapis.com/compute/v1/projects/my-net-proj/global/networks/custom-vpc"
-	fakeCloud := gce.NewFakeGCECloud(testClusterValues)
-
-	// "default" resolves to cluster network URL
-	url, err := resolveGCENetworkURL(fakeCloud, "default")
-	if err != nil {
-		t.Fatalf("unexpected error resolving 'default': %v", err)
-	}
-	if url != testClusterValues.NetworkURL {
-		t.Errorf("expected %q, got %q", testClusterValues.NetworkURL, url)
-	}
-
-	// empty resolves to cluster network URL
-	url, err = resolveGCENetworkURL(fakeCloud, "")
-	if err != nil {
-		t.Fatalf("unexpected error resolving empty network: %v", err)
-	}
-	if url != testClusterValues.NetworkURL {
-		t.Errorf("expected %q, got %q", testClusterValues.NetworkURL, url)
-	}
-
-	// non-default returns an error
-	_, err = resolveGCENetworkURL(fakeCloud, "secondary-net")
-	if err == nil {
-		t.Errorf("expected error resolving secondary-net, got nil")
-	}
-
-	// nil gceCloud returns an error
-	_, err = resolveGCENetworkURL(nil, "default")
-	if err == nil {
-		t.Errorf("expected error for nil gceCloud, got nil")
-	}
-
-	// cloud without network URL returns an error
-	emptyCloudValues := gce.DefaultTestClusterValues()
-	emptyCloudValues.NetworkURL = ""
-	emptyCloud := gce.NewFakeGCECloud(emptyCloudValues)
-	_, err = resolveGCENetworkURL(emptyCloud, "default")
-	if err == nil {
-		t.Errorf("expected error when cluster network URL is empty, got nil")
-	}
-}
-
-// TestGCECIDRSet verifies that gceCIDRSet indexes alias IP ranges attached to the
-// primary interface (nic0) under the "default" network key and excludes ranges from
-// unmanaged secondary interfaces.
-func TestGCECIDRSet(t *testing.T) {
-	ifaces := []*networkInterface{
-		{
-			Name:          "nic0",
-			Network:       "https://www.googleapis.com/compute/v1/projects/p/global/networks/custom-vpc",
-			AliasIPRanges: []string{"10.4.0.0/28"},
-		},
-		{
-			Name:          "nic1",
-			Network:       "https://www.googleapis.com/compute/v1/projects/p/global/networks/secondary-net",
-			AliasIPRanges: []string{"10.5.0.0/28"},
-		},
-	}
-
-	active := gceCIDRSet(ifaces)
-	if !active.Has("default/10.4.0.0/28") {
-		t.Errorf("expected nic0 range to be in active set")
-	}
-	if active.Has("default/10.5.0.0/28") || active.Has("secondary-net/10.5.0.0/28") {
-		t.Errorf("nic1 range should be ignored, but was in active set: %v", active)
-	}
-}
-
 type trackingRangeProvider struct {
 	ranges      []string
 	invalidated atomic.Bool
@@ -3951,5 +3867,624 @@ func TestProcessNextNodeWorkItem_ConflictDeferredWithoutUnhandledError(t *testin
 	}
 	if len(unhandled) != 1 {
 		t.Fatalf("expected 1 unhandled error for non-conflict failure, got %v", unhandled)
+	}
+}
+
+// TestReconcile_MultiNIC_AdditionalNetwork verifies end-to-end allocation, status
+// publication, and release on an additional L3 Network backed by a secondary NIC (nic1)
+// alongside the default network on nic0.
+func TestReconcile_MultiNIC_AdditionalNetwork(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+	blueVPCURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/blue-vpc", testProject)
+	blueSubnetURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/us-central1/subnetworks/blue-subnet", testProject)
+
+	// Create Network and GKENetworkParamSet CRs for "blue-net"
+	gnp := &networkv1.GKENetworkParamSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "blue-gnp"},
+		Spec: networkv1.GKENetworkParamSetSpec{
+			VPC:       "blue-vpc",
+			VPCSubnet: "blue-subnet",
+			PodIPv4Ranges: &networkv1.SecondaryRanges{
+				RangeNames: []string{"blue-pods-1", "blue-pods-2"},
+			},
+		},
+	}
+	nw := readyL3Network("blue-net", "blue-gnp")
+	if _, err := f.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, gnp, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create GKENetworkParamSet: %v", err)
+	}
+	if _, err := f.networkClient.NetworkingV1().Networks().Create(ctx, nw, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create Network: %v", err)
+	}
+
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{
+				Name:       "nic0",
+				Network:    testNetworkURL,
+				Subnetwork: "default",
+			},
+			{
+				Name:       "nic1",
+				Network:    blueVPCURL,
+				Subnetwork: blueSubnetURL,
+			},
+		},
+	}
+	if err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance); err != nil {
+		t.Fatalf("Failed to insert fake GCE instance: %v", err)
+	}
+
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{Network: "default", Pods: 16},
+				{Network: "blue-net", Pods: 32},
+			},
+		},
+	}
+	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+	}
+
+	f.informerFactory.WaitForCacheSync(stopCh)
+	f.waitForNetworkResolver(stopCh)
+
+	if err := f.reconcile(ctx, nnc, testProviderID); err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	// Verify GCE mutations on nic0 (1 block) and nic1 (2 blocks with candidateRanges from GNP)
+	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get updated GCE instance: %v", err)
+	}
+	if len(updatedInstance.NetworkInterfaces[0].AliasIpRanges) != 1 {
+		t.Fatalf("Expected 1 alias IP range on nic0, got %d", len(updatedInstance.NetworkInterfaces[0].AliasIpRanges))
+	}
+	if len(updatedInstance.NetworkInterfaces[1].AliasIpRanges) != 2 {
+		t.Fatalf("Expected 2 alias IP ranges on nic1, got %d", len(updatedInstance.NetworkInterfaces[1].AliasIpRanges))
+	}
+	for _, r := range updatedInstance.NetworkInterfaces[1].AliasIpRanges {
+		if !reflect.DeepEqual(r.CandidateSubnetworkRangeNames, []string{"blue-pods-1", "blue-pods-2"}) {
+			t.Errorf("Expected candidate ranges [blue-pods-1 blue-pods-2] on nic1, got %v", r.CandidateSubnetworkRangeNames)
+		}
+	}
+
+	// Verify Status.PodCIDRs contains 1 default and 2 blue-net CIDRs
+	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get updated NNC: %v", err)
+	}
+	if len(updatedNNC.Status.PodCIDRs) != 3 {
+		t.Fatalf("Expected 3 PodCIDRs in status, got %d: %v", len(updatedNNC.Status.PodCIDRs), updatedNNC.Status.PodCIDRs)
+	}
+	countsByNet := map[string]int{}
+	var blueCIDRToRelease string
+	for _, pc := range updatedNNC.Status.PodCIDRs {
+		countsByNet[pc.Network]++
+		if pc.Network == "blue-net" && blueCIDRToRelease == "" {
+			blueCIDRToRelease = pc.CIDR
+		}
+	}
+	if countsByNet["default"] != 1 || countsByNet["blue-net"] != 2 {
+		t.Errorf("Unexpected PodCIDR counts by network: %v", countsByNet)
+	}
+
+	// Now release one CIDR from blue-net and reduce its pod allocation to 16
+	updatedNNC.Spec.Allocations = []nncv1.Allocation{
+		{Network: "default", Pods: 16},
+		{Network: "blue-net", Pods: 16},
+	}
+	updatedNNC.Spec.ReleasableCIDRs = []nncv1.PodCIDR{
+		{Id: blueCIDRToRelease, Network: "blue-net", CIDR: blueCIDRToRelease},
+	}
+	updatedNNC, err = f.nncClient.NetworkingV1().NodeNetworkConfigs().Update(ctx, updatedNNC, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to update NNC: %v", err)
+	}
+	f.fakeClock.Step(11 * time.Second)
+
+	if err := f.reconcile(ctx, updatedNNC, testProviderID); err != nil {
+		t.Fatalf("Second reconcile failed: %v", err)
+	}
+
+	afterReleaseInst, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get GCE instance: %v", err)
+	}
+	if len(afterReleaseInst.NetworkInterfaces[1].AliasIpRanges) != 1 {
+		t.Errorf("Expected 1 alias IP range remaining on nic1 after release, got %d", len(afterReleaseInst.NetworkInterfaces[1].AliasIpRanges))
+	}
+	if got := releasableCIDRsOf(ctx, t, f); len(got) != 0 {
+		t.Errorf("Expected Spec.ReleasableCIDRs to be pruned, got %v", got)
+	}
+}
+
+// TestReconcile_MultiNIC_SharedSecondaryNICMultipleNetworks verifies that multiple L3
+// Network CRs sharing the same secondary NIC (same VPC and VPCSubnet, differentiated by
+// PodIPv4Ranges.RangeNames) are allocated, reported in status, and released independently.
+func TestReconcile_MultiNIC_SharedSecondaryNICMultipleNetworks(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	secVPCURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/shared-sec-vpc", testProject)
+	secSubnetURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/us-central1/subnetworks/shared-sec-subnet", testProject)
+
+	for _, cfg := range []struct {
+		netName   string
+		gnpName   string
+		rangeName string
+	}{
+		{netName: "blue-net", gnpName: "blue-gnp", rangeName: "blue-pods"},
+		{netName: "green-net", gnpName: "green-gnp", rangeName: "green-pods"},
+	} {
+		gnp := &networkv1.GKENetworkParamSet{
+			ObjectMeta: metav1.ObjectMeta{Name: cfg.gnpName},
+			Spec: networkv1.GKENetworkParamSetSpec{
+				VPC:       "shared-sec-vpc",
+				VPCSubnet: "shared-sec-subnet",
+				PodIPv4Ranges: &networkv1.SecondaryRanges{
+					RangeNames: []string{cfg.rangeName},
+				},
+			},
+		}
+		nw := readyL3Network(cfg.netName, cfg.gnpName)
+		if _, err := f.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, gnp, metav1.CreateOptions{}); err != nil {
+			t.Fatalf("Failed to create GKENetworkParamSet %q: %v", cfg.gnpName, err)
+		}
+		if _, err := f.networkClient.NetworkingV1().Networks().Create(ctx, nw, metav1.CreateOptions{}); err != nil {
+			t.Fatalf("Failed to create Network %q: %v", cfg.netName, err)
+		}
+	}
+
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{
+				Name:       "nic0",
+				Network:    testNetworkURL,
+				Subnetwork: "default",
+			},
+			{
+				Name:       "nic1",
+				Network:    secVPCURL,
+				Subnetwork: secSubnetURL,
+			},
+		},
+	}
+	if err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance); err != nil {
+		t.Fatalf("Failed to insert fake GCE instance: %v", err)
+	}
+
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{Network: "blue-net", Pods: 16},
+				{Network: "green-net", Pods: 32},
+			},
+		},
+	}
+	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+	}
+	f.informerFactory.WaitForCacheSync(stopCh)
+	f.waitForNetworkResolver(stopCh)
+
+	if err := f.reconcile(ctx, nnc, testProviderID); err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	// Verify nic1 now holds 3 alias IP ranges (1 for blue-pods, 2 for green-pods)
+	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get updated GCE instance: %v", err)
+	}
+	if len(updatedInstance.NetworkInterfaces[1].AliasIpRanges) != 3 {
+		t.Fatalf("Expected 3 alias IP ranges on shared nic1, got %d: %v",
+			len(updatedInstance.NetworkInterfaces[1].AliasIpRanges), updatedInstance.NetworkInterfaces[1].AliasIpRanges)
+	}
+
+	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get updated NNC: %v", err)
+	}
+	countsByNet := map[string]int{}
+	for _, pc := range updatedNNC.Status.PodCIDRs {
+		countsByNet[pc.Network]++
+	}
+	if countsByNet["blue-net"] != 1 || countsByNet["green-net"] != 2 {
+		t.Errorf("Expected 1 blue-net and 2 green-net PodCIDRs in status, got %v (PodCIDRs=%v)", countsByNet, updatedNNC.Status.PodCIDRs)
+	}
+
+	// Verify a subsequent reconcile after cache expiry is a no-op (capacity for both networks is satisfied)
+	f.gceCalls.clear()
+	f.fakeClock.Step(11 * time.Second)
+	if err := f.reconcile(ctx, updatedNNC, testProviderID); err != nil {
+		t.Fatalf("Second reconcile failed: %v", err)
+	}
+	if calls := f.gceCalls.snapshot(); len(calls) != 0 {
+		t.Errorf("Expected 0 GCE calls when shared NIC networks are already at desired capacity, got %d: %+v", len(calls), calls)
+	}
+}
+
+// TestReconcile_AdditionalNetworkOnPrimaryNIC verifies that an additional L3 Network CR
+// attached to nic0's subnet (DefaultNodeInterface: true) is allocated and tracked on nic0
+// alongside the "default" network via its distinct SubnetworkRangeName.
+func TestReconcile_AdditionalNetworkOnPrimaryNIC(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	// Configure rangeProvider for "default" network (simulating Adaptive Cluster IPAM)
+	f.specCtrl.rangeProvider = NewStaticRangeProviderWithDefaultSubnet([]string{"default-pods=ACTIVE"}, "default")
+
+	// Configure additional Network "red-net" on nic0's (default, default) VPC/subnet
+	gnp := &networkv1.GKENetworkParamSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "red-gnp"},
+		Spec: networkv1.GKENetworkParamSetSpec{
+			VPC:       "default",
+			VPCSubnet: "default",
+			PodIPv4Ranges: &networkv1.SecondaryRanges{
+				RangeNames: []string{"red-pods"},
+			},
+		},
+	}
+	nw := readyL3Network("red-net", "red-gnp")
+	if _, err := f.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, gnp, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create GKENetworkParamSet: %v", err)
+	}
+	if _, err := f.networkClient.NetworkingV1().Networks().Create(ctx, nw, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create Network: %v", err)
+	}
+
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{
+				Name:       "nic0",
+				Network:    testNetworkURL,
+				Subnetwork: "default",
+			},
+		},
+	}
+	if err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance); err != nil {
+		t.Fatalf("Failed to insert fake GCE instance: %v", err)
+	}
+
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{Network: "default", Pods: 16},
+				{Network: "red-net", Pods: 16},
+			},
+		},
+	}
+	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+	}
+	f.informerFactory.WaitForCacheSync(stopCh)
+	f.waitForNetworkResolver(stopCh)
+
+	if err := f.reconcile(ctx, nnc, testProviderID); err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get updated NNC: %v", err)
+	}
+	if len(updatedNNC.Status.PodCIDRs) != 2 {
+		t.Fatalf("Expected 2 PodCIDRs on nic0 (1 default, 1 red-net), got %d: %v", len(updatedNNC.Status.PodCIDRs), updatedNNC.Status.PodCIDRs)
+	}
+	countsByNet := map[string]int{}
+	for _, pc := range updatedNNC.Status.PodCIDRs {
+		countsByNet[pc.Network]++
+	}
+	if countsByNet["default"] != 1 || countsByNet["red-net"] != 1 {
+		t.Errorf("Expected 1 default and 1 red-net PodCIDR in status, got %v", countsByNet)
+	}
+}
+
+// TestReconcile_DefaultNetworkCandidateRanges pins candidate-range precedence
+// for the default network when a default GNP exists.
+//
+// The GNP controller folds every node pool's pod-range label into the default
+// GNP as a flat union, so on a node outside the cluster default subnet the GNP
+// names ranges that nic0's subnet does not have. The subnet-qualified
+// rangeProvider must therefore win for "default", with the GNP only used when
+// the provider has nothing for the node's subnet.
+func TestReconcile_DefaultNetworkCandidateRanges(t *testing.T) {
+	// Default GNP as the GNP controller leaves it on a two-subnet cluster.
+	defaultGNP := &networkv1.GKENetworkParamSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+		Spec: networkv1.GKENetworkParamSetSpec{
+			VPC:           "default",
+			VPCSubnet:     "subnet-a",
+			PodIPv4Ranges: podRanges("pods-a1", "pods-b1"),
+		},
+	}
+
+	tests := []struct {
+		name           string
+		rangeProvider  CandidateRangeProvider
+		nodeSubnet     string
+		wantCandidates []string
+	}{
+		{
+			name:           "provider has ranges for the node's subnet: provider wins over GNP union",
+			rangeProvider:  NewStaticRangeProviderWithDefaultSubnet([]string{"subnet-a/pods-a1", "subnet-b/pods-b1"}, "subnet-a"),
+			nodeSubnet:     "subnet-b",
+			wantCandidates: []string{"pods-b1"},
+		},
+		{
+			name:           "provider has nothing: fall back to GNP ranges",
+			rangeProvider:  NewStaticRangeProvider(nil),
+			nodeSubnet:     "subnet-a",
+			wantCandidates: []string{"pods-a1", "pods-b1"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			f := newTestFixture(t)
+			stopCh := make(chan struct{})
+			defer close(stopCh)
+			f.run(ctx, stopCh)
+			f.specCtrl.rangeProvider = tc.rangeProvider
+
+			if _, err := f.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, defaultGNP, metav1.CreateOptions{}); err != nil {
+				t.Fatalf("Failed to create GKENetworkParamSet: %v", err)
+			}
+			// The default Network is indexed without a Ready condition.
+			if _, err := f.networkClient.NetworkingV1().Networks().Create(ctx, l3Network("default", "default"), metav1.CreateOptions{}); err != nil {
+				t.Fatalf("Failed to create Network: %v", err)
+			}
+
+			instanceKey := meta.ZonalKey(testNodeName, testZone)
+			instance := &compute.Instance{
+				Name: testNodeName,
+				Zone: testZone,
+				NetworkInterfaces: []*compute.NetworkInterface{
+					{Name: "nic0", Network: testNetworkURL, Subnetwork: tc.nodeSubnet},
+				},
+			}
+			if err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance); err != nil {
+				t.Fatalf("Failed to insert fake GCE instance: %v", err)
+			}
+
+			nnc := &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{{Network: "default", Pods: 16}},
+				},
+			}
+			if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
+				t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+			}
+			f.informerFactory.WaitForCacheSync(stopCh)
+			f.waitForNetworkResolver(stopCh)
+
+			if err := f.reconcile(ctx, nnc, testProviderID); err != nil {
+				t.Fatalf("Reconcile failed: %v", err)
+			}
+
+			calls := f.gceCalls.snapshot()
+			if len(calls) != 1 || len(calls[0].candidateRanges) != 1 {
+				t.Fatalf("Expected 1 updateNetworkInterface call with 1 alias range, got %+v", calls)
+			}
+			if got := calls[0].candidateRanges[0]; !reflect.DeepEqual(got, tc.wantCandidates) {
+				t.Errorf("candidateRanges = %v, want %v", got, tc.wantCandidates)
+			}
+		})
+	}
+}
+
+// TestReconcile_NotReadyNetworkIsLeftAlone covers a Network that has allocated
+// ranges and then loses Ready (for example its GNP was deleted). Until it is
+// Ready again the controllers must not touch its ranges in GCE, must not prune
+// the daemon's release request for them, and must not publish them in status.
+func TestReconcile_NotReadyNetworkIsLeftAlone(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	blueVPCURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/blue-vpc", testProject)
+	blueSubnetURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/us-central1/subnetworks/blue-subnet", testProject)
+	const blueCIDR = "10.200.0.0/28"
+
+	if _, err := f.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, gnp("blue-gnp", "blue-vpc", "blue-subnet", "blue-pods"), metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	// Not Ready.
+	if _, err := f.networkClient.NetworkingV1().Networks().Create(ctx, l3Network("blue-net", "blue-gnp"), metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{Name: "nic0", Network: testNetworkURL, Subnetwork: "default"},
+			{
+				Name: "nic1", Network: blueVPCURL, Subnetwork: blueSubnetURL,
+				AliasIpRanges: []*compute.AliasIpRange{{IpCidrRange: blueCIDR, SubnetworkRangeName: "blue-pods"}},
+			},
+		},
+	}
+	if err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance); err != nil {
+		t.Fatal(err)
+	}
+
+	// The daemon has asked to release the blue range; default has nothing to do.
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			ReleasableCIDRs: []nncv1.PodCIDR{{Id: blueCIDR, Network: "blue-net", CIDR: blueCIDR}},
+		},
+		Status: nncv1.NodeNetworkConfigStatus{
+			PodCIDRs: []nncv1.PodCIDR{{Id: blueCIDR, Network: "blue-net", CIDR: blueCIDR}},
+		},
+	}
+	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	f.informerFactory.WaitForCacheSync(stopCh)
+	f.waitForNetworkResolver(stopCh)
+
+	gceWrites := countGCEWrites(t, f)
+	if err := f.reconcile(ctx, nnc, testProviderID); err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	if *gceWrites != 0 {
+		t.Errorf("Expected no GCE writes while blue-net is not Ready, got %d", *gceWrites)
+	}
+	if got := releasableCIDRsOf(ctx, t, f); !reflect.DeepEqual(got, []string{blueCIDR}) {
+		t.Errorf("Expected release request to be preserved, got %v", got)
+	}
+	final, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(final.Status.PodCIDRs) != 0 {
+		t.Errorf("Expected not-Ready network's range to be withheld from status, got %v", final.Status.PodCIDRs)
+	}
+
+	// Once Ready, the release goes through and the entry is pruned.
+	nw, err := f.networkClient.NetworkingV1().Networks().Get(ctx, "blue-net", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nw.Status.Conditions = readyL3Network("blue-net", "blue-gnp").Status.Conditions
+	if _, err := f.networkClient.NetworkingV1().Networks().UpdateStatus(ctx, nw, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if p, ok := f.networkResolver.LookupNetworkParams("blue-net"); ok && p.Ready {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	f.fakeClock.Step(11 * time.Second)
+	if err := f.reconcile(ctx, final, testProviderID); err != nil {
+		t.Fatalf("Reconcile after Ready failed: %v", err)
+	}
+	if *gceWrites != 1 {
+		t.Errorf("Expected exactly one GCE write (the removal) once Ready, got %d", *gceWrites)
+	}
+	if got := releasableCIDRsOf(ctx, t, f); len(got) != 0 {
+		t.Errorf("Expected release request to be pruned once Ready, got %v", got)
+	}
+}
+
+// TestReconcile_WithoutMultiNetworking pins the behaviour when
+// --enable-multi-networking is off, which must be indistinguishable from the
+// controllers before multi-network support existed: nic0 is the default
+// network, every other interface is ignored, any other network name is
+// rejected, and candidate ranges come from the rangeProvider alone.
+func TestReconcile_WithoutMultiNetworking(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixtureWithoutResolver(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	if f.specCtrl.networkResolver != nil || f.statusCtrl.networkResolver != nil {
+		t.Fatal("fixture should have no resolver")
+	}
+	if got := f.specCtrl.networkResolver.Synced(); len(got) != 0 {
+		t.Fatalf("Run must not wait on any Network informer, got %d sync funcs", len(got))
+	}
+	f.specCtrl.rangeProvider = NewStaticRangeProviderWithDefaultSubnet([]string{"pods-a"}, "default")
+
+	instanceKey := meta.ZonalKey(testNodeName, testZone)
+	instance := &compute.Instance{
+		Name: testNodeName,
+		Zone: testZone,
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{Name: "nic0", Network: testNetworkURL, Subnetwork: "default"},
+			{
+				Name:          "nic1",
+				Network:       fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/blue-vpc", testProject),
+				Subnetwork:    "blue-subnet",
+				AliasIpRanges: []*compute.AliasIpRange{{IpCidrRange: "10.200.0.0/28", SubnetworkRangeName: "blue-pods"}},
+			},
+		},
+	}
+	if err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance); err != nil {
+		t.Fatal(err)
+	}
+
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{{Network: "default", Pods: 16}},
+		},
+	}
+	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	f.informerFactory.WaitForCacheSync(stopCh)
+
+	if err := f.reconcile(ctx, nnc, testProviderID); err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	calls := f.gceCalls.snapshot()
+	if len(calls) != 1 || calls[0].ifaceName != "nic0" {
+		t.Fatalf("Expected exactly one write to nic0, got %+v", calls)
+	}
+	if got := calls[0].candidateRanges[0]; !reflect.DeepEqual(got, []string{"pods-a"}) {
+		t.Errorf("candidateRanges = %v, want [pods-a] from the rangeProvider", got)
+	}
+
+	final, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(final.Status.PodCIDRs) != 1 || final.Status.PodCIDRs[0].Network != "default" {
+		t.Errorf("Expected only nic0's range published as default, got %v", final.Status.PodCIDRs)
+	}
+
+	// Any non-default network is rejected, exactly as before.
+	final.Spec.Allocations = append(final.Spec.Allocations, nncv1.Allocation{Network: "blue-net", Pods: 16})
+	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Update(ctx, final, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	f.fakeClock.Step(11 * time.Second)
+	if err := f.specCtrl.reconcile(ctx, final, testProviderID); err == nil {
+		t.Error("Expected reconcile to reject blue-net without multi-networking")
+	}
+	rejected, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cond := getCondition(rejected.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
+	if cond == nil || cond.Reason != string(nncv1.NodeNetworkConfigInvalidParametersReason) {
+		t.Errorf("Expected InvalidParameters condition, got %+v", cond)
 	}
 }

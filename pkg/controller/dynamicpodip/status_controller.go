@@ -73,6 +73,9 @@ type NodeNetworkConfigStatusController struct {
 }
 
 // NewStatusController constructs a new NodeNetworkConfigStatusController.
+//
+// networkResolver may be nil, in which case only nic0 ranges are published, as
+// the default network.
 func NewStatusController(
 	kubeClient kubernetes.Interface,
 	nncClient nncclientset.Interface,
@@ -81,6 +84,7 @@ func NewStatusController(
 	gceCloud *gce.Cloud,
 	gceCache *GCECache,
 	clk clock.Clock,
+	networkResolver *NetworkResolver,
 ) *NodeNetworkConfigStatusController {
 	if clk == nil {
 		clk = clock.RealClock{}
@@ -88,13 +92,14 @@ func NewStatusController(
 
 	c := &NodeNetworkConfigStatusController{
 		nodeSyncBase: nodeSyncBase{
-			name:       statusControllerName,
-			kubeClient: kubeClient,
-			nncClient:  nncClient,
-			nncLister:  nncLister,
-			nodeLister: nodeInformer.Lister(),
-			gceCloud:   gceCloud,
-			gceCache:   gceCache,
+			name:            statusControllerName,
+			kubeClient:      kubeClient,
+			nncClient:       nncClient,
+			nncLister:       nncLister,
+			nodeLister:      nodeInformer.Lister(),
+			gceCloud:        gceCloud,
+			gceCache:        gceCache,
+			networkResolver: networkResolver,
 		},
 		nodeSynced: nodeInformer.Informer().HasSynced,
 		queue:      newNodeWorkqueue("nnc-status-populator"),
@@ -206,7 +211,8 @@ func multiNetworkCapacity(capacity v1.ResourceList) v1.ResourceList {
 
 // Run starts the status controller workers.
 func (c *NodeNetworkConfigStatusController) Run(workers int, stopCh <-chan struct{}) {
-	runNodeWorkers(c.name, c.queue, workers, stopCh, c.runWorker, c.nodeSynced)
+	syncs := append([]cache.InformerSynced{c.nodeSynced}, c.networkResolver.Synced()...)
+	runNodeWorkers(c.name, c.queue, workers, stopCh, c.runWorker, syncs...)
 }
 
 func (c *NodeNetworkConfigStatusController) runWorker() {
@@ -252,7 +258,7 @@ func (c *NodeNetworkConfigStatusController) reconcile(ctx context.Context, nnc *
 
 // statusNeedsSync checks if the NNC Status PodCIDRs set differs from the actual GCE alias IP ranges.
 func (c *NodeNetworkConfigStatusController) statusNeedsSync(nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) bool {
-	return !gceCIDRSet(ifaces).Equal(statusCIDRSet(nnc))
+	return !c.gceCIDRSet(ifaces).Equal(statusCIDRSet(nnc))
 }
 
 // podCIDRReadySince indexes, by range, the time at which each currently
@@ -284,7 +290,7 @@ func (c *NodeNetworkConfigStatusController) syncStatusToGCE(ctx context.Context,
 		var allActualCIDRs []nncv1.PodCIDR
 		readySince := podCIDRReadySince(target)
 
-		forEachPodCIDREntry(ifaces, func(network, id, cidr string, reusePolicy nncv1.PodCIDRType) {
+		c.forEachPodCIDREntry(ifaces, func(network, id, cidr string, reusePolicy nncv1.PodCIDRType) {
 			transitioned := now
 			if prev, ok := readySince[cidrKey(network, cidr)]; ok {
 				transitioned = prev

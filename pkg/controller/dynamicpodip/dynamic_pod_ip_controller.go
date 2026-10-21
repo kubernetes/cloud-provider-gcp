@@ -27,6 +27,12 @@ limitations under the License.
 //     secondary ranges via CandidateRangeProvider (range_provider.go /
 //     range_refresher.go), and mutates GCE instance alias IP ranges.
 //
+// Both consult a NetworkResolver (network_resolver.go), an in-memory index
+// over Network and GKENetworkParamSet CRs, to map the network names in a
+// NodeNetworkConfig onto the node's GCE interfaces and alias IP ranges. The
+// resolver, and the informers behind it, exist only when multi-networking is
+// enabled; otherwise only the default network, on nic0, is managed.
+//
 // This file defines shared package-level constants and default configuration.
 package dynamicpodip
 

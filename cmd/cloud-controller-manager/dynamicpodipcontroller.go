@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	networkclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	cloudprovider "k8s.io/cloud-provider"
 	dynamicpodip "k8s.io/cloud-provider-gcp/pkg/controller/dynamicpodip"
@@ -35,9 +36,10 @@ func startDynamicPodIPControllerWrapper(
 	initContext app.ControllerInitContext,
 	completedConfig *cloudcontrollerconfig.CompletedConfig,
 	cloud cloudprovider.Interface,
+	enableMultiNetworking bool,
 ) app.InitFunc {
 	return func(ctx context.Context, controllerContext genericcontrollermanager.ControllerContext) (controller.Interface, bool, error) {
-		return startDynamicPodIPController(completedConfig, ctx, cloud)
+		return startDynamicPodIPController(completedConfig, ctx, cloud, enableMultiNetworking)
 	}
 }
 
@@ -45,6 +47,7 @@ func startDynamicPodIPController(
 	ccmConfig *cloudcontrollerconfig.CompletedConfig,
 	ctx context.Context,
 	cloud cloudprovider.Interface,
+	enableMultiNetworking bool,
 ) (controller.Interface, bool, error) {
 	klog.Info("Starting Dynamic Pod IP Controller")
 
@@ -61,6 +64,18 @@ func startDynamicPodIPController(
 		return nil, false, fmt.Errorf("failed to create NodeNetworkConfig clientset: %w", err)
 	}
 
+	// Network and GKENetworkParamSet are only watched when multi-networking is
+	// enabled, mirroring nodeipam. Without the flag the controllers manage
+	// the default network on nic0 only and never touch those CRDs, which need
+	// not be installed.
+	var networkClient networkclientset.Interface
+	if enableMultiNetworking {
+		networkClient, err = networkclientset.NewForConfig(kubeConfig)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to create Network clientset: %w", err)
+		}
+	}
+
 	_, ctrl, started, err := dynamicpodip.StartControllers(
 		ctx,
 		dynamicpodip.Options{
@@ -69,6 +84,7 @@ func startDynamicPodIPController(
 			MultiSecondaryRanges:         multiSecondaryRanges,
 			ClusterName:                  ccmConfig.ComponentConfig.KubeCloudShared.ClusterName,
 			PodIPBackend:                 dynamicpodip.BackendType(dynamicPodIPBackend),
+			NetworkClient:                networkClient,
 		},
 		ccmConfig.ClientBuilder.ClientOrDie("dynamic-pod-ip-controller"),
 		nncClient,

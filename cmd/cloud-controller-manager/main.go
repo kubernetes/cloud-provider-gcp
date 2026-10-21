@@ -175,7 +175,12 @@ func main() {
 	}
 
 	controllerInitializers["dynamicpodip"] = app.ControllerInitFuncConstructor{
-		Constructor: startDynamicPodIPControllerWrapper,
+		Constructor: func(initContext app.ControllerInitContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) app.InitFunc {
+			// Flags are parsed before constructors run, so the nodeipam
+			// --enable-multi-networking option is readable here; the same
+			// pattern is used for the tenant controller manager below.
+			return startDynamicPodIPControllerWrapper(initContext, completedConfig, cloud, nodeIpamController.nodeIPAMControllerOptions.EnableMultiNetworking)
+		},
 	}
 
 	controllerInitializers[gkeServiceLBControllerName] = app.ControllerInitFuncConstructor{

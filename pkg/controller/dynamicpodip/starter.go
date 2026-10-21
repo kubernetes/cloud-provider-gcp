@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 
+	networkclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned"
+	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nncinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -73,6 +75,11 @@ type Options struct {
 	// PodIPBackend selects the Pod IP allocation backend ("alias-ranges" or
 	// "ane"). Defaults to BackendTypeAliasRanges when empty.
 	PodIPBackend BackendType
+	// NetworkClient enables multi-network support: when set, Network and
+	// GKENetworkParamSet are watched to resolve additional networks. When nil,
+	// no informers for those CRDs are created and only the default network on
+	// nic0 is managed.
+	NetworkClient networkclientset.Interface
 }
 
 // StartControllers initializes and starts the status and/or spec controllers
@@ -109,6 +116,16 @@ func StartControllers(
 	nncInformerFactory := nncinformers.NewSharedInformerFactory(nncClient, 0)
 	nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
 
+	var networkInformerFactory networkinformers.SharedInformerFactory
+	var networkResolver *NetworkResolver
+	if opts.NetworkClient != nil {
+		networkInformerFactory = networkinformers.NewSharedInformerFactory(opts.NetworkClient, 0)
+		networkResolver = NewNetworkResolver(
+			networkInformerFactory.Networking().V1().Networks(),
+			networkInformerFactory.Networking().V1().GKENetworkParamSets(),
+		)
+	}
+
 	loader := func(ctx context.Context, providerID string) ([]*networkInterface, error) {
 		return backend.GetNetworkInterfaces(ctx, providerID)
 	}
@@ -128,6 +145,7 @@ func StartControllers(
 			gceCloud,
 			gceCache,
 			clock.RealClock{},
+			networkResolver,
 		)
 		statusTrigger = statusCtrl
 		SetStatusTrigger(statusTrigger)
@@ -168,6 +186,7 @@ func StartControllers(
 			statusTrigger,
 			rangeProvider,
 			backend,
+			networkResolver,
 		)
 		go specCtrl.Run(DefaultSpecControllerWorkers, ctx.Done())
 	}
@@ -177,6 +196,9 @@ func StartControllers(
 	}
 
 	go nncInformerFactory.Start(ctx.Done())
+	if networkInformerFactory != nil {
+		go networkInformerFactory.Start(ctx.Done())
+	}
 
 	return statusTrigger, statusCtrl, true, nil
 }

@@ -80,12 +80,13 @@ type nodeSyncBase struct {
 	// name identifies the controller in logs and requeue messages.
 	name string
 
-	kubeClient kubernetes.Interface
-	nncClient  nncclientset.Interface
-	nncLister  nnclisters.NodeNetworkConfigLister
-	nodeLister corelisters.NodeLister
-	gceCloud   *gce.Cloud
-	gceCache   *GCECache
+	kubeClient      kubernetes.Interface
+	nncClient       nncclientset.Interface
+	nncLister       nnclisters.NodeNetworkConfigLister
+	nodeLister      corelisters.NodeLister
+	gceCloud        *gce.Cloud
+	gceCache        *GCECache
+	networkResolver *NetworkResolver
 }
 
 // Name returns the name of the controller.
@@ -268,10 +269,10 @@ func cidrKey(network, cidr string) string {
 // forEachPodCIDR invokes fn for every (network name, CIDR) pair attached to
 // the instance, across both VM alias IP ranges and AliasNetworkEndpoints.
 //
-// Interfaces that cannot be resolved to a valid Kubernetes network name are
-// skipped with a warning.
-func forEachPodCIDR(ifaces []*networkInterface, fn func(network, cidr string)) {
-	forEachPodCIDREntry(ifaces, func(network, _, cidr string, _ nncv1.PodCIDRType) {
+// Pod CIDRs that cannot be attributed to a Kubernetes network are skipped with
+// a warning.
+func (b *nodeSyncBase) forEachPodCIDR(ifaces []*networkInterface, fn func(network, cidr string)) {
+	b.forEachPodCIDREntry(ifaces, func(network, _, cidr string, _ nncv1.PodCIDRType) {
 		fn(network, cidr)
 	})
 }
@@ -279,27 +280,36 @@ func forEachPodCIDR(ifaces []*networkInterface, fn func(network, cidr string)) {
 // forEachPodCIDREntry invokes fn for every Pod CIDR attached to the instance,
 // providing its Kubernetes network name, PodCIDR ID (the CIDR itself for VM
 // alias IP ranges, or the ANE resource name for AliasNetworkEndpoints), CIDR
-// string, and reuse policy (Reusable for alias IP ranges, NonReusable for
-// ANEs).
-func forEachPodCIDREntry(ifaces []*networkInterface, fn func(network, id, cidr string, reusePolicy nncv1.PodCIDRType)) {
+// string, and reuse policy.
+//
+// The reuse policy says only what kind of GCE resource backs the CIDR: alias
+// IP ranges are Reusable, AliasNetworkEndpoints are NonReusable. Alias ranges
+// and ANEs are attributed to Kubernetes networks the same way, through the
+// subnet secondary range each came from (see resolveKubernetesNetworkName).
+func (b *nodeSyncBase) forEachPodCIDREntry(ifaces []*networkInterface, fn func(network, id, cidr string, reusePolicy nncv1.PodCIDRType)) {
 	for _, iface := range ifaces {
 		if iface == nil {
 			continue
 		}
-		netName, err := resolveKubernetesNetworkName(iface)
-		if err != nil {
-			klog.Warningf("Skipping interface %q: %v", iface.Name, err)
-			continue
-		}
-		for _, cidr := range iface.AliasIPRanges {
-			fn(netName, cidr, cidr, nncv1.PodCIDRTypeReusable)
-		}
-		for _, cidr := range iface.ANECIDRs {
-			id := cidr
-			if name := iface.ANENames[cidr]; name != "" {
-				id = name
+		for _, r := range iface.AliasIPRanges {
+			netName, err := resolveKubernetesNetworkName(b.networkResolver, iface, r.SubnetworkRangeName)
+			if err != nil {
+				klog.Warningf("Skipping alias range %q (subnetworkRangeName=%q) on interface %q: %v", r.IPCIDRRange, r.SubnetworkRangeName, iface.Name, err)
+				continue
 			}
-			fn(netName, id, cidr, nncv1.PodCIDRTypeNonReusable)
+			fn(netName, r.IPCIDRRange, r.IPCIDRRange, nncv1.PodCIDRTypeReusable)
+		}
+		for _, ane := range iface.ANEs {
+			netName, err := resolveKubernetesNetworkName(b.networkResolver, iface, ane.SubnetworkRangeName)
+			if err != nil {
+				klog.Warningf("Skipping AliasNetworkEndpoint %q (%s, subnetworkRangeName=%q) on interface %q: %v", ane.Name, ane.IPCIDRRange, ane.SubnetworkRangeName, iface.Name, err)
+				continue
+			}
+			id := ane.Name
+			if id == "" {
+				id = ane.IPCIDRRange
+			}
+			fn(netName, id, ane.IPCIDRRange, nncv1.PodCIDRTypeNonReusable)
 		}
 	}
 }
@@ -316,9 +326,9 @@ func hasTransientANE(ifaces []*networkInterface) bool {
 }
 
 // gceCIDRSet returns the cidrKeys of every Pod CIDR attached to the instance.
-func gceCIDRSet(ifaces []*networkInterface) sets.String {
+func (b *nodeSyncBase) gceCIDRSet(ifaces []*networkInterface) sets.String {
 	active := sets.NewString()
-	forEachPodCIDR(ifaces, func(network, cidr string) {
+	b.forEachPodCIDR(ifaces, func(network, cidr string) {
 		active.Insert(cidrKey(network, cidr))
 	})
 	return active

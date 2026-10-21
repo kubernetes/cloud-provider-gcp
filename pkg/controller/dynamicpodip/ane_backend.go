@@ -90,12 +90,33 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 		if endpoint == nil || endpoint.Status == nil {
 			continue
 		}
+		// Attribute the endpoint to the interface in its subnetwork; an
+		// endpoint without a subnetwork belongs to the primary interface.
+		targetIface := ifaces[0]
+		if endpoint.Subnetwork != "" {
+			targetIface = nil
+			for _, iface := range ifaces {
+				if iface != nil && gce.EqualResourceURLs(iface.Subnetwork, endpoint.Subnetwork) {
+					targetIface = iface
+					break
+				}
+			}
+		}
 		if endpoint.Status.State != gce.ANEStateActive {
 			// Skip endpoints in transient states (CREATING,
 			// DELETING) and mark the interface so the spec and
-			// status controllers requeue until they settle.
+			// status controllers requeue until they settle. If the
+			// endpoint cannot be placed, flag the primary interface so
+			// the deferral still happens.
 			klog.Warningf("Skipping non-active ANE %q on %q (state=%q); will retry reconciliation", endpoint.Name, providerID, endpoint.Status.State)
-			ifaces[0].HasTransientANE = true
+			if targetIface == nil {
+				targetIface = ifaces[0]
+			}
+			targetIface.HasTransientANE = true
+			continue
+		}
+		if targetIface == nil {
+			klog.Warningf("Skipping ANE %q on %q: subnetwork %q does not match any network interface on instance", endpoint.Name, providerID, endpoint.Subnetwork)
 			continue
 		}
 		alias, ok := endpoint.Aliases[DefaultANEAliasNameIPv4]
@@ -106,27 +127,11 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 			return nil, fmt.Errorf("active ANE %q on %q has empty IP address (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID)
 		}
 
-		cidr := alias.EffectiveIpAddress + "/32"
-		targetIface := ifaces[0]
-		if endpoint.Subnetwork != "" {
-			var matched *networkInterface
-			for _, iface := range ifaces {
-				if iface != nil && gce.EqualResourceURLs(iface.Subnetwork, endpoint.Subnetwork) {
-					matched = iface
-					break
-				}
-			}
-			if matched == nil {
-				klog.Warningf("Skipping ANE %q on %q: subnetwork %q does not match any network interface on instance", endpoint.Name, providerID, endpoint.Subnetwork)
-				continue
-			}
-			targetIface = matched
-		}
-		targetIface.ANECIDRs = append(targetIface.ANECIDRs, cidr)
-		if targetIface.ANENames == nil {
-			targetIface.ANENames = make(map[string]string)
-		}
-		targetIface.ANENames[cidr] = endpoint.Name
+		targetIface.ANEs = append(targetIface.ANEs, aliasNetworkEndpoint{
+			Name:                endpoint.Name,
+			IPCIDRRange:         alias.EffectiveIpAddress + "/32",
+			SubnetworkRangeName: alias.EffectiveSubnetworkRangeName,
+		})
 	}
 
 	return ifaces, nil

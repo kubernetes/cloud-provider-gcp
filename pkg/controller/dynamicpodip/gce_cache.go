@@ -37,15 +37,45 @@ const (
 	DefaultCacheMaxAge = 10 * time.Minute
 )
 
+// aliasIPRange is one alias IP range on a GCE network interface.
+//
+// SubnetworkRangeName is the subnet secondary range the CIDR was carved from,
+// and is what distinguishes the Kubernetes networks that share an interface.
+// It is empty for ranges allocated from the subnet's primary range.
+type aliasIPRange struct {
+	IPCIDRRange         string
+	SubnetworkRangeName string
+}
+
+// aliasNetworkEndpoint is one ACTIVE AliasNetworkEndpoint (ANE) attached to a
+// GCE network interface: a single /32 (or /128) Pod IP that, unlike an alias
+// IP range, is not reusable once released.
+//
+// SubnetworkRangeName is the subnet secondary range the IP was allocated
+// from (the alias's effectiveSubnetworkRangeName), and plays the same role as
+// aliasIPRange.SubnetworkRangeName in attributing the IP to a Kubernetes
+// network.
+type aliasNetworkEndpoint struct {
+	// Name is the ANE resource name; it is the PodCIDR Id in
+	// NodeNetworkConfig status.
+	Name                string
+	IPCIDRRange         string
+	SubnetworkRangeName string
+}
+
 // networkInterface is a controller-internal, lightweight representation
 // of a GCE network interface.
 type networkInterface struct {
-	Name            string
-	Network         string
-	Subnetwork      string
-	AliasIPRanges   []string
-	ANECIDRs        []string
-	ANENames        map[string]string
+	Name              string
+	Network           string
+	Subnetwork        string
+	NetworkAttachment string
+	AliasIPRanges     []aliasIPRange
+	// ANEs are the ACTIVE AliasNetworkEndpoints attached to this interface.
+	ANEs []aliasNetworkEndpoint
+	// HasTransientANE records that an AliasNetworkEndpoint on this interface
+	// was observed in a transient (CREATING/DELETING) state and was left out
+	// of ANEs; the controllers defer until it settles.
 	HasTransientANE bool
 }
 
@@ -61,13 +91,17 @@ func toNetworkInterfaces(gceIfaces []*computebeta.NetworkInterface) []*networkIn
 			continue
 		}
 		ni := &networkInterface{
-			Name:       iface.Name,
-			Network:    iface.Network,
-			Subnetwork: iface.Subnetwork,
+			Name:              iface.Name,
+			Network:           iface.Network,
+			Subnetwork:        iface.Subnetwork,
+			NetworkAttachment: iface.NetworkAttachment,
 		}
 		for _, r := range iface.AliasIpRanges {
 			if r != nil && r.IpCidrRange != "" {
-				ni.AliasIPRanges = append(ni.AliasIPRanges, r.IpCidrRange)
+				ni.AliasIPRanges = append(ni.AliasIPRanges, aliasIPRange{
+					IPCIDRRange:         r.IpCidrRange,
+					SubnetworkRangeName: r.SubnetworkRangeName,
+				})
 			}
 		}
 		res[i] = ni
@@ -87,22 +121,17 @@ func deepCopyInterfaces(ifaces []*networkInterface) []*networkInterface {
 			continue
 		}
 		niCopy := &networkInterface{
-			Name:            ni.Name,
-			Network:         ni.Network,
-			Subnetwork:      ni.Subnetwork,
-			HasTransientANE: ni.HasTransientANE,
+			Name:              ni.Name,
+			Network:           ni.Network,
+			Subnetwork:        ni.Subnetwork,
+			NetworkAttachment: ni.NetworkAttachment,
+			HasTransientANE:   ni.HasTransientANE,
 		}
 		if ni.AliasIPRanges != nil {
-			niCopy.AliasIPRanges = append([]string(nil), ni.AliasIPRanges...)
+			niCopy.AliasIPRanges = append([]aliasIPRange(nil), ni.AliasIPRanges...)
 		}
-		if ni.ANECIDRs != nil {
-			niCopy.ANECIDRs = append([]string(nil), ni.ANECIDRs...)
-		}
-		if ni.ANENames != nil {
-			niCopy.ANENames = make(map[string]string, len(ni.ANENames))
-			for k, v := range ni.ANENames {
-				niCopy.ANENames[k] = v
-			}
+		if ni.ANEs != nil {
+			niCopy.ANEs = append([]aliasNetworkEndpoint(nil), ni.ANEs...)
 		}
 		copy[i] = niCopy
 	}

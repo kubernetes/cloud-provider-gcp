@@ -174,22 +174,22 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 	if len(ifaces) != 1 {
 		t.Fatalf("expected 1 interface, got %d", len(ifaces))
 	}
-	if len(ifaces[0].ANECIDRs) != 1 {
-		t.Fatalf("expected 1 ANE CIDR, got %d: %v", len(ifaces[0].ANECIDRs), ifaces[0].ANECIDRs)
+	if len(aneCIDRs(ifaces[0])) != 1 {
+		t.Fatalf("expected 1 ANE CIDR, got %d: %v", len(aneCIDRs(ifaces[0])), aneCIDRs(ifaces[0]))
 	}
 	expectedCIDR := "10.128.0.10/32"
-	if ifaces[0].ANECIDRs[0] != expectedCIDR {
-		t.Fatalf("expected %q, got %q", expectedCIDR, ifaces[0].ANECIDRs[0])
+	if aneCIDRs(ifaces[0])[0] != expectedCIDR {
+		t.Fatalf("expected %q, got %q", expectedCIDR, aneCIDRs(ifaces[0])[0])
 	}
-	if ifaces[0].ANENames[expectedCIDR] != "ane-active-1" {
-		t.Fatalf("expected ANENames[%q] = %q, got %q", expectedCIDR, "ane-active-1", ifaces[0].ANENames[expectedCIDR])
+	if aneName(ifaces[0], expectedCIDR) != "ane-active-1" {
+		t.Fatalf("expected ANENames[%q] = %q, got %q", expectedCIDR, "ane-active-1", aneName(ifaces[0], expectedCIDR))
 	}
 	if !ifaces[0].HasTransientANE {
 		t.Fatalf("expected HasTransientANE to be true when CREATING ANE is present")
 	}
 
 	// Verify that an initial allocation on the VM's aliasIpRanges is
-	// preserved in AliasIPRanges alongside subsequent ANEs in ANECIDRs,
+	// preserved in AliasIPRanges alongside subsequent ANEs in ANEs,
 	// including when GCE normalizes Host.Instance and Subnetwork on the ANE
 	// to use a numeric project number (e.g. "projects/231279945827/...").
 	fakeGCEWithInitial := newFakeGCEWithDefaultInstance(t, "10.100.0.0/28")
@@ -216,11 +216,11 @@ func TestANEBackendGetNetworkInterfaces(t *testing.T) {
 	if len(ifacesWithInitial) != 1 {
 		t.Fatalf("expected 1 interface, got %d", len(ifacesWithInitial))
 	}
-	if len(ifacesWithInitial[0].AliasIPRanges) != 1 || ifacesWithInitial[0].AliasIPRanges[0] != "10.100.0.0/28" {
+	if len(ifacesWithInitial[0].AliasIPRanges) != 1 || ifacesWithInitial[0].AliasIPRanges[0].IPCIDRRange != "10.100.0.0/28" {
 		t.Fatalf("expected initial VM AliasIPRanges [10.100.0.0/28], got %v", ifacesWithInitial[0].AliasIPRanges)
 	}
-	if len(ifacesWithInitial[0].ANECIDRs) != 1 || ifacesWithInitial[0].ANECIDRs[0] != "10.128.0.10/32" {
-		t.Fatalf("expected ANECIDRs [10.128.0.10/32], got %v", ifacesWithInitial[0].ANECIDRs)
+	if len(aneCIDRs(ifacesWithInitial[0])) != 1 || aneCIDRs(ifacesWithInitial[0])[0] != "10.128.0.10/32" {
+		t.Fatalf("expected ANECIDRs [10.128.0.10/32], got %v", aneCIDRs(ifacesWithInitial[0]))
 	}
 }
 
@@ -256,12 +256,12 @@ func TestANEBackendMutateAdditionsAndRemovals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces: %v", err)
 	}
-	if len(ifaces[0].ANECIDRs) != 2 {
-		t.Fatalf("expected 2 ANE CIDRs, got %d", len(ifaces[0].ANECIDRs))
+	if len(aneCIDRs(ifaces[0])) != 2 {
+		t.Fatalf("expected 2 ANE CIDRs, got %d", len(aneCIDRs(ifaces[0])))
 	}
 
 	// Mutate: Remove 1 ANE
-	toRemove := ifaces[0].ANECIDRs[0]
+	toRemove := aneCIDRs(ifaces[0])[0]
 	err = backend.Mutate(ctx, testProviderID, testNetworkURL, nil, []string{toRemove}, nil)
 	if err != nil {
 		t.Fatalf("Mutate removals: %v", err)
@@ -271,10 +271,10 @@ func TestANEBackendMutateAdditionsAndRemovals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces after removal: %v", err)
 	}
-	if len(ifacesAfter[0].ANECIDRs) != 1 {
-		t.Fatalf("expected 1 ANE CIDR remaining, got %d", len(ifacesAfter[0].ANECIDRs))
+	if len(aneCIDRs(ifacesAfter[0])) != 1 {
+		t.Fatalf("expected 1 ANE CIDR remaining, got %d", len(aneCIDRs(ifacesAfter[0])))
 	}
-	if ifacesAfter[0].ANECIDRs[0] == toRemove {
+	if aneCIDRs(ifacesAfter[0])[0] == toRemove {
 		t.Fatalf("expected CIDR %q to be removed", toRemove)
 	}
 }
@@ -308,6 +308,7 @@ func TestANEControllerReconcileFlow(t *testing.T) {
 		fakeGCE,
 		gceCache,
 		clock.RealClock{},
+		nil, // no multi-networking: nic0 is the default network
 	)
 
 	specCtrl := NewSpecController(
@@ -320,6 +321,7 @@ func TestANEControllerReconcileFlow(t *testing.T) {
 		statusCtrl,
 		nil,
 		backend,
+		nil,
 	)
 
 	// Create Node
@@ -651,13 +653,13 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces failed: %v", err)
 	}
-	if len(ifaces) != 1 || len(ifaces[0].ANECIDRs) != 16 {
-		t.Fatalf("expected 16 ANE CIDRs, got %d", len(ifaces[0].ANECIDRs))
+	if len(ifaces) != 1 || len(aneCIDRs(ifaces[0])) != 16 {
+		t.Fatalf("expected 16 ANE CIDRs, got %d", len(aneCIDRs(ifaces[0])))
 	}
 
 	// Verify all 16 IP CIDRs are unique
 	ipSet := make(map[string]bool)
-	for _, cidr := range ifaces[0].ANECIDRs {
+	for _, cidr := range aneCIDRs(ifaces[0]) {
 		if ipSet[cidr] {
 			t.Errorf("duplicate IP CIDR found: %q", cidr)
 		}
@@ -667,7 +669,7 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 	// Test concurrent removal of 8 ANEs
 	var toRemove []string
 	for i := 0; i < 8; i++ {
-		toRemove = append(toRemove, ifaces[0].ANECIDRs[i])
+		toRemove = append(toRemove, aneCIDRs(ifaces[0])[i])
 	}
 
 	err = backend.Mutate(ctx, testProviderID, testNetworkURL, nil, toRemove, nil)
@@ -679,13 +681,13 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces after removal failed: %v", err)
 	}
-	if len(ifacesAfter[0].ANECIDRs) != 8 {
-		t.Fatalf("expected 8 ANE CIDRs remaining, got %d", len(ifacesAfter[0].ANECIDRs))
+	if len(aneCIDRs(ifacesAfter[0])) != 8 {
+		t.Fatalf("expected 8 ANE CIDRs remaining, got %d", len(aneCIDRs(ifacesAfter[0])))
 	}
 
 	// Verify the removed CIDRs are actually gone
 	for _, rem := range toRemove {
-		for _, remaining := range ifacesAfter[0].ANECIDRs {
+		for _, remaining := range aneCIDRs(ifacesAfter[0]) {
 			if remaining == rem {
 				t.Errorf("removed CIDR %q still found in interfaces", rem)
 			}
@@ -695,7 +697,7 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 	// Test simultaneous additions and removals in a single Mutate call:
 	// remove 4 of the remaining 8 ANEs while adding 6 new ANEs -> expect 10
 	// total ANEs.
-	simultaneousRemove := append([]string(nil), ifacesAfter[0].ANECIDRs[:4]...)
+	simultaneousRemove := append([]string(nil), aneCIDRs(ifacesAfter[0])[:4]...)
 	simultaneousAdd := []string{"/32", "/32", "/32", "/32", "/32", "/32"}
 	err = backend.Mutate(ctx, testProviderID, testNetworkURL, simultaneousAdd, simultaneousRemove, nil)
 	if err != nil {
@@ -706,11 +708,11 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces after simultaneous mutate failed: %v", err)
 	}
-	if len(ifacesSimultaneous[0].ANECIDRs) != 10 {
-		t.Fatalf("expected 10 ANE CIDRs after simultaneous +6/-4, got %d", len(ifacesSimultaneous[0].ANECIDRs))
+	if len(aneCIDRs(ifacesSimultaneous[0])) != 10 {
+		t.Fatalf("expected 10 ANE CIDRs after simultaneous +6/-4, got %d", len(aneCIDRs(ifacesSimultaneous[0])))
 	}
 	for _, rem := range simultaneousRemove {
-		for _, remaining := range ifacesSimultaneous[0].ANECIDRs {
+		for _, remaining := range aneCIDRs(ifacesSimultaneous[0]) {
 			if remaining == rem {
 				t.Errorf("simultaneously removed CIDR %q still found in interfaces", rem)
 			}
@@ -831,8 +833,8 @@ func TestANEBackendMutate_MultiInterfaceSubnetTargeting(t *testing.T) {
 	if len(ifaces) != 2 {
 		t.Fatalf("expected 2 interfaces, got %d", len(ifaces))
 	}
-	if len(ifaces[0].ANECIDRs) != 1 || len(ifaces[1].ANECIDRs) != 1 {
-		t.Fatalf("expected 1 IP on nic0 and 1 IP on nic1, got nic0=%v, nic1=%v", ifaces[0].ANECIDRs, ifaces[1].ANECIDRs)
+	if len(aneCIDRs(ifaces[0])) != 1 || len(aneCIDRs(ifaces[1])) != 1 {
+		t.Fatalf("expected 1 IP on nic0 and 1 IP on nic1, got nic0=%v, nic1=%v", aneCIDRs(ifaces[0]), aneCIDRs(ifaces[1]))
 	}
 }
 
@@ -925,7 +927,28 @@ func TestDefaultANEAliasNameIPv4Immutable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkInterfaces failed to recognize ANE with key %q: %v", expectedAliasKey, err)
 	}
-	if len(ifaces) != 1 || len(ifaces[0].ANECIDRs) != 1 || ifaces[0].ANECIDRs[0] != "10.128.0.55/32" {
-		t.Fatalf("unexpected ANECIDRs: %v", ifaces[0].ANECIDRs)
+	if len(ifaces) != 1 || len(aneCIDRs(ifaces[0])) != 1 || aneCIDRs(ifaces[0])[0] != "10.128.0.55/32" {
+		t.Fatalf("unexpected ANECIDRs: %v", aneCIDRs(ifaces[0]))
 	}
+}
+
+// aneCIDRs returns the CIDRs of the ACTIVE AliasNetworkEndpoints on iface, in
+// order.
+func aneCIDRs(iface *networkInterface) []string {
+	var out []string
+	for _, ane := range iface.ANEs {
+		out = append(out, ane.IPCIDRRange)
+	}
+	return out
+}
+
+// aneName returns the name of the AliasNetworkEndpoint on iface carrying cidr,
+// or "".
+func aneName(iface *networkInterface, cidr string) string {
+	for _, ane := range iface.ANEs {
+		if ane.IPCIDRRange == cidr {
+			return ane.Name
+		}
+	}
+	return ""
 }
