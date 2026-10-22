@@ -454,6 +454,8 @@ func TestNetworkResolver_ReadyAdditionalNetworks(t *testing.T) {
 	r := NewNetworkResolver(nil, nil)
 	r.UpsertGNP(gnp("default-gnp", "default", "default", "pods"))
 	r.UpsertNetwork(l3Network(networkv1.DefaultPodNetworkName, "default-gnp")) // Ready by fiat, but excluded
+	r.UpsertGNP(gnp("legacy-gnp", "default", "default", "pods-legacy"))
+	r.UpsertNetwork(l3Network(networkv1.DefaultNetworkName, "legacy-gnp")) // legacy default name, also excluded
 	r.UpsertGNP(gnp("b-gnp", "vpc-b", "subnet-b", "pods-b"))
 	r.UpsertNetwork(readyL3Network("net-b", "b-gnp"))
 	r.UpsertGNP(gnp("c-gnp", "vpc-c", "subnet-c", "pods-c"))

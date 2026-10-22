@@ -77,6 +77,11 @@ type networkInterface struct {
 	// was observed in a transient (CREATING/DELETING) state and was left out
 	// of ANEs; the controllers defer until it settles.
 	HasTransientANE bool
+	// IPv6Address is the interface's IPv6 address, if any: the internal one,
+	// or the external one when Ipv6AccessType is EXTERNAL, as the cloud
+	// provider's GetIPV6Address resolves it. GCE assigns each interface a /96
+	// of which this is the first address.
+	IPv6Address string
 }
 
 // toNetworkInterfaces converts a slice of GCE API computebeta.NetworkInterface
@@ -95,6 +100,7 @@ func toNetworkInterfaces(gceIfaces []*computebeta.NetworkInterface) []*networkIn
 			Network:           iface.Network,
 			Subnetwork:        iface.Subnetwork,
 			NetworkAttachment: iface.NetworkAttachment,
+			IPv6Address:       interfaceIPv6Address(iface),
 		}
 		for _, r := range iface.AliasIpRanges {
 			if r != nil && r.IpCidrRange != "" {
@@ -107,6 +113,22 @@ func toNetworkInterfaces(gceIfaces []*computebeta.NetworkInterface) []*networkIn
 		res[i] = ni
 	}
 	return res
+}
+
+// interfaceIPv6Address mirrors the cloud provider's getIPV6AddressFromInterface
+// for the beta API type: the internal IPv6 address, or the external one when
+// the interface's IPv6 access type is EXTERNAL.
+func interfaceIPv6Address(iface *computebeta.NetworkInterface) string {
+	if iface.Ipv6Address != "" || iface.Ipv6AccessType != "EXTERNAL" {
+		return iface.Ipv6Address
+	}
+	addr := ""
+	for _, ac := range iface.Ipv6AccessConfigs {
+		if ac != nil {
+			addr = ac.ExternalIpv6
+		}
+	}
+	return addr
 }
 
 // deepCopyInterfaces performs a deep copy of internal network interfaces to
@@ -126,6 +148,7 @@ func deepCopyInterfaces(ifaces []*networkInterface) []*networkInterface {
 			Subnetwork:        ni.Subnetwork,
 			NetworkAttachment: ni.NetworkAttachment,
 			HasTransientANE:   ni.HasTransientANE,
+			IPv6Address:       ni.IPv6Address,
 		}
 		if ni.AliasIPRanges != nil {
 			niCopy.AliasIPRanges = append([]aliasIPRange(nil), ni.AliasIPRanges...)

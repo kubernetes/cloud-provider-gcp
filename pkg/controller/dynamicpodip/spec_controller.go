@@ -309,7 +309,7 @@ func (c *NodeNetworkConfigSpecController) candidateRanges(network, networkURL st
 	if params, ok := c.networkResolver.LookupNetworkParams(network); ok {
 		gnpRanges = params.PodIPv4RangeNames
 	}
-	isDefault := network == networkv1.DefaultPodNetworkName
+	isDefault := networkv1.IsDefaultNetwork(network)
 	if !isDefault && len(gnpRanges) > 0 {
 		return gnpRanges
 	}

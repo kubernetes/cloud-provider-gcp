@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -451,9 +452,73 @@ func (c *NodeNetworkConfigStatusController) publishStatus(ctx context.Context, n
 	return nil
 }
 
-// statusNeedsSync checks if the NNC Status PodCIDRs set differs from the actual GCE alias IP ranges.
+// statusNeedsSync checks if the NNC Status PodCIDRs set differs from the pod
+// ranges derivable from the node's interfaces.
 func (c *NodeNetworkConfigStatusController) statusNeedsSync(nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) bool {
-	return !c.gceCIDRSet(ifaces).Equal(statusCIDRSet(nnc))
+	return !c.publishableCIDRSet(ifaces).Equal(statusCIDRSet(nnc))
+}
+
+// forEachPublishedPodCIDR invokes fn for every Pod CIDR this controller
+// publishes for the node: the IPv4 alias IP ranges and AliasNetworkEndpoints
+// from forEachPodCIDREntry, followed by the IPv6 pod ranges from
+// forEachIPv6PodRange.
+//
+// An IPv6 range's ID is its CIDR and its reuse policy is Reusable: the reuse
+// policy records only what kind of GCE resource backs the CIDR (alias IP
+// range vs. AliasNetworkEndpoint), and an interface's IPv6 /96 is neither an
+// ANE nor dynamically allocated.
+func (c *NodeNetworkConfigStatusController) forEachPublishedPodCIDR(ifaces []*networkInterface, fn func(network, id, cidr string, reusePolicy nncv1.PodCIDRType)) {
+	c.forEachPodCIDREntry(ifaces, fn)
+	c.forEachIPv6PodRange(ifaces, func(network, cidr string) {
+		fn(network, cidr, cidr, nncv1.PodCIDRTypeReusable)
+	})
+}
+
+// forEachIPv6PodRange invokes fn for every (network name, IPv6 /112) pair on
+// the node.
+//
+// IPv6 is attributed the other way round from IPv4. An alias IP range names
+// the subnet range it came from, which identifies its Network; an interface's
+// IPv6 /96 names nothing, it simply belongs to the interface. So instead of
+// walking ranges and asking which Network owns each, this walks Ready Networks
+// and asks which interface carries each: if that interface has an IPv6
+// address and the Network's StackType includes IPv6, the interface's /112 is
+// published under that Network. Several Networks sharing an interface each
+// get the same /112, and an IPv4-only Network on a dual-stack interface gets
+// nothing, both deliberately.
+//
+// Networks that are not Ready are skipped, exactly as their IPv4 ranges are:
+// NCM sets Ready=False on a Network when IPv6 multi-networking is rolled back,
+// and the CCM follows.
+func (c *NodeNetworkConfigStatusController) forEachIPv6PodRange(ifaces []*networkInterface, fn func(network, cidr string)) {
+	for _, params := range c.networkResolver.ReadyNetworks() {
+		if !stackTypeHasIPv6(params.StackType) {
+			continue
+		}
+		iface := interfaceForNetwork(params, ifaces)
+		if iface == nil {
+			continue
+		}
+		cidr, ok := ipv6PodRange(iface.IPv6Address)
+		if !ok {
+			if iface.IPv6Address != "" {
+				klog.Warningf("Skipping malformed IPv6 address %q on interface %q for network %q", iface.IPv6Address, iface.Name, params.NetworkName)
+			}
+			continue
+		}
+		fn(params.NetworkName, cidr)
+	}
+}
+
+// publishableCIDRSet returns the cidrKeys of every pod range this controller
+// would publish for the node. Unlike gceCIDRSet, which the spec controller
+// uses to account for alias IP ranges it manages, this includes IPv6 ranges.
+func (c *NodeNetworkConfigStatusController) publishableCIDRSet(ifaces []*networkInterface) sets.String {
+	all := sets.NewString()
+	c.forEachPublishedPodCIDR(ifaces, func(network, _, cidr string, _ nncv1.PodCIDRType) {
+		all.Insert(cidrKey(network, cidr))
+	})
+	return all
 }
 
 // podCIDRReadySince indexes, by range, the time at which each currently
@@ -485,7 +550,7 @@ func (c *NodeNetworkConfigStatusController) syncStatusToGCE(ctx context.Context,
 		var allActualCIDRs []nncv1.PodCIDR
 		readySince := podCIDRReadySince(target)
 
-		c.forEachPodCIDREntry(ifaces, func(network, id, cidr string, reusePolicy nncv1.PodCIDRType) {
+		c.forEachPublishedPodCIDR(ifaces, func(network, id, cidr string, reusePolicy nncv1.PodCIDRType) {
 			transitioned := now
 			if prev, ok := readySince[cidrKey(network, cidr)]; ok {
 				transitioned = prev

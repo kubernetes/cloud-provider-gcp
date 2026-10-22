@@ -40,6 +40,12 @@ type NetworkParams struct {
 	VPCSubnet         string
 	NetworkAttachment string
 	PodIPv4RangeNames []string
+	// StackType is the Network's IP stack mode; empty in the API means IPv4
+	// and is normalised to IPv4StackType here. IPv6 pod ranges are published
+	// only for Networks whose StackType includes IPv6: the /96 belongs to the
+	// interface, several Networks may share an interface, and a dual-stack
+	// subnet can host Networks that are deliberately IPv4-only.
+	StackType networkv1.StackType
 	// Ready reports whether the Network carries Ready=True (the default
 	// network is always considered Ready). A Network that is indexed but not
 	// Ready still *claims* its ranges, so that nothing else can absorb them,
@@ -270,8 +276,13 @@ func (r *NetworkResolver) rebuildIndexLocked() {
 		// The default network is treated as Ready unconditionally, as it is
 		// in the multi-network CIDR allocator: it is in use before NCM ever
 		// marks it Ready, and in IPv6-only clusters it never is.
-		ready := nw.Name == networkv1.DefaultPodNetworkName ||
+		ready := networkv1.IsDefaultNetwork(nw.Name) ||
 			apimeta.IsStatusConditionTrue(nw.Status.Conditions, string(networkv1.NetworkConditionStatusReady))
+
+		stackType := nw.Spec.StackType
+		if stackType == "" {
+			stackType = networkv1.IPv4StackType
+		}
 
 		byNetworkName[nw.Name] = NetworkParams{
 			NetworkName:       nw.Name,
@@ -280,6 +291,7 @@ func (r *NetworkResolver) rebuildIndexLocked() {
 			VPCSubnet:         gnp.Spec.VPCSubnet,
 			NetworkAttachment: gnp.Spec.NetworkAttachment,
 			PodIPv4RangeNames: rangeNames,
+			StackType:         stackType,
 			Ready:             ready,
 		}
 
@@ -331,14 +343,30 @@ func (r *NetworkResolver) LookupNetworkParams(netName string) (NetworkParams, bo
 	return params, true
 }
 
+// ReadyNetworks returns the resolved parameters of every indexed Network that
+// is Ready, including the default network, in name order. It is safe to call
+// on a nil resolver, which returns nothing.
+func (r *NetworkResolver) ReadyNetworks() []NetworkParams {
+	return r.readyNetworks(false)
+}
+
 // ReadyAdditionalNetworks returns the resolved parameters of every indexed
 // Network that is Ready, excluding the default network, in name order.
 //
 // "Additional" matters: the default Network CR exists in every multi-network
 // cluster (and is always considered Ready), so including it would make "does
-// this node participate in any Ready Network" trivially true. It is safe to
-// call on a nil resolver, which returns nothing.
+// this node participate in any Ready Network" trivially true.
+//
+// The default Network is identified by name through networkv1.IsDefaultNetwork.
+// Its name is not user-configurable: NCM creates it as "default" (or the
+// legacy "pod-network"); what the user configures is the VPC and subnet, which
+// live in its GKENetworkParamSet. It is safe to call on a nil resolver, which
+// returns nothing.
 func (r *NetworkResolver) ReadyAdditionalNetworks() []NetworkParams {
+	return r.readyNetworks(true)
+}
+
+func (r *NetworkResolver) readyNetworks(excludeDefault bool) []NetworkParams {
 	if r == nil {
 		return nil
 	}
@@ -346,7 +374,7 @@ func (r *NetworkResolver) ReadyAdditionalNetworks() []NetworkParams {
 	defer r.mu.RUnlock()
 	names := make([]string, 0, len(r.byNetworkName))
 	for name, params := range r.byNetworkName {
-		if name == networkv1.DefaultPodNetworkName || !params.Ready {
+		if !params.Ready || (excludeDefault && networkv1.IsDefaultNetwork(name)) {
 			continue
 		}
 		names = append(names, name)
