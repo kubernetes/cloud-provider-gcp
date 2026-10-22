@@ -238,6 +238,10 @@ func (c *NodeNetworkConfigStatusController) reconcile(ctx context.Context, nnc *
 		return err
 	}
 
+	if hasTransientANE(ifaces) {
+		return &transientANEError{nodeName: nnc.Name}
+	}
+
 	// Sync status if needed
 	if c.statusNeedsSync(nnc, ifaces) {
 		return c.syncStatusToGCE(ctx, nnc, ifaces)
@@ -280,15 +284,16 @@ func (c *NodeNetworkConfigStatusController) syncStatusToGCE(ctx context.Context,
 	readySince := podCIDRReadySince(nnc)
 	now := metav1.Now()
 
-	forEachAliasRange(ifaces, func(network, cidr string) {
+	forEachPodCIDREntry(ifaces, func(network, id, cidr string, reusePolicy nncv1.PodCIDRType) {
 		transitioned := now
 		if prev, ok := readySince[cidrKey(network, cidr)]; ok {
 			transitioned = prev
 		}
 		allActualCIDRs = append(allActualCIDRs, nncv1.PodCIDR{
-			Id:      cidr,
-			Network: network,
-			CIDR:    cidr,
+			Id:          id,
+			Network:     network,
+			CIDR:        cidr,
+			ReusePolicy: reusePolicy,
 			Condition: &metav1.Condition{
 				Type:               string(nncv1.PodCIDRConditionReady),
 				Status:             metav1.ConditionTrue,

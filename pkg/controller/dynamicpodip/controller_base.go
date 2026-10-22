@@ -183,7 +183,9 @@ func runNodeWorkers(
 // A nodeNotReadyError is requeued with backoff but not reported as a controller
 // error: it is the expected state while a node bootstraps. Requeuing is what
 // makes it recoverable, since neither controller watches Nodes -- forgetting
-// the key would strand that node's NodeNetworkConfig indefinitely.
+// the key would strand that node's NodeNetworkConfig indefinitely. A
+// transientANEError is handled the same way while GCE finishes creating or
+// deleting an AliasNetworkEndpoint.
 func processNextNodeWorkItem(
 	name string,
 	queue workqueue.TypedRateLimitingInterface[string],
@@ -201,8 +203,9 @@ func processNextNodeWorkItem(
 		return true
 	}
 
-	if notReady, ok := err.(*nodeNotReadyError); ok {
-		klog.V(4).Infof("%s: deferring sync for %q: %v", name, key, notReady)
+	switch err.(type) {
+	case *nodeNotReadyError, *transientANEError:
+		klog.V(4).Infof("%s: deferring sync for %q: %v", name, key, err)
 		queue.AddRateLimited(key)
 		return true
 	}
@@ -237,29 +240,60 @@ func cidrKey(network, cidr string) string {
 	return fmt.Sprintf("%s/%s", network, cidr)
 }
 
-// forEachAliasRange invokes fn for every (network name, CIDR) pair attached to
-// the instance.
+// forEachPodCIDR invokes fn for every (network name, CIDR) pair attached to
+// the instance, across both VM alias IP ranges and AliasNetworkEndpoints.
 //
 // Interfaces that cannot be resolved to a valid Kubernetes network name are
 // skipped with a warning.
-func forEachAliasRange(ifaces []*networkInterface, fn func(network, cidr string)) {
+func forEachPodCIDR(ifaces []*networkInterface, fn func(network, cidr string)) {
+	forEachPodCIDREntry(ifaces, func(network, _, cidr string, _ nncv1.PodCIDRType) {
+		fn(network, cidr)
+	})
+}
+
+// forEachPodCIDREntry invokes fn for every Pod CIDR attached to the instance,
+// providing its Kubernetes network name, PodCIDR ID (the CIDR itself for VM
+// alias IP ranges, or the ANE resource name for AliasNetworkEndpoints), CIDR
+// string, and reuse policy (Reusable for alias IP ranges, NonReusable for
+// ANEs).
+func forEachPodCIDREntry(ifaces []*networkInterface, fn func(network, id, cidr string, reusePolicy nncv1.PodCIDRType)) {
 	for _, iface := range ifaces {
+		if iface == nil {
+			continue
+		}
 		netName, err := resolveKubernetesNetworkName(iface)
 		if err != nil {
 			klog.Warningf("Skipping interface %q: %v", iface.Name, err)
 			continue
 		}
 		for _, cidr := range iface.AliasIPRanges {
-			fn(netName, cidr)
+			fn(netName, cidr, cidr, nncv1.PodCIDRTypeReusable)
+		}
+		for _, cidr := range iface.ANECIDRs {
+			id := cidr
+			if name := iface.ANENames[cidr]; name != "" {
+				id = name
+			}
+			fn(netName, id, cidr, nncv1.PodCIDRTypeNonReusable)
 		}
 	}
 }
 
-// gceCIDRSet returns the cidrKeys of every alias IP range attached to the
-// instance.
+// hasTransientANE reports whether any interface on the instance observed an
+// AliasNetworkEndpoint in a transient (non-ACTIVE) state.
+func hasTransientANE(ifaces []*networkInterface) bool {
+	for _, iface := range ifaces {
+		if iface != nil && iface.HasTransientANE {
+			return true
+		}
+	}
+	return false
+}
+
+// gceCIDRSet returns the cidrKeys of every Pod CIDR attached to the instance.
 func gceCIDRSet(ifaces []*networkInterface) sets.String {
 	active := sets.NewString()
-	forEachAliasRange(ifaces, func(network, cidr string) {
+	forEachPodCIDR(ifaces, func(network, cidr string) {
 		active.Insert(cidrKey(network, cidr))
 	})
 	return active

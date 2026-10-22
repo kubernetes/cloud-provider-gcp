@@ -38,7 +38,7 @@ var ComputeServices = []*ServiceInfo{
 		Resource:    "addresses",
 		keyType:     Regional,
 		serviceType: reflect.TypeOf(&ga.AddressesService{}),
-		options:     AggregatedList,
+		options:     AggregatedList | NoReturnPartialSuccess,
 	},
 	{
 		Object:      "Address",
@@ -95,7 +95,7 @@ var ComputeServices = []*ServiceInfo{
 			"AddSignedUrlKey",
 			"DeleteSignedUrlKey",
 		},
-		options: AggregatedList,
+		options: AggregatedList | NoReturnPartialSuccess,
 	},
 	{
 		Object:      "BackendService",
@@ -613,7 +613,7 @@ var ComputeServices = []*ServiceInfo{
 			"DetachNetworkEndpoints",
 			"ListNetworkEndpoints",
 		},
-		options: AggregatedList,
+		options: AggregatedList | NoReturnPartialSuccess,
 	},
 	{
 		Object:      "NetworkEndpointGroup",
@@ -746,7 +746,7 @@ var ComputeServices = []*ServiceInfo{
 		Resource:    "routers",
 		keyType:     Regional,
 		version:     VersionGA,
-		options:     AggregatedList,
+		options:     AggregatedList | NoReturnPartialSuccess,
 		serviceType: reflect.TypeOf(&ga.RoutersService{}),
 		additionalMethods: []string{
 			"Patch",
