@@ -186,6 +186,7 @@ func newTestFixtureWithNetworkURL(t *testing.T, networkURL string) *testFixture 
 		gceCache,
 		statusCtrl,
 		NewStaticRangeProvider(nil),
+		NewAliasRangesBackend(fakeGCE),
 	)
 
 	return &testFixture{
@@ -3280,15 +3281,16 @@ func TestResolveKubernetesNetworkName(t *testing.T) {
 	}
 }
 
-// TestForEachAliasRange verifies that forEachAliasRange visits all alias IP ranges
-// on supported interfaces (nic0 mapped to "default") and ignores alias IP ranges on
-// unmanaged secondary interfaces.
-func TestForEachAliasRange(t *testing.T) {
+// TestForEachPodCIDR verifies that forEachPodCIDR visits all Pod CIDRs
+// (both VM alias IP ranges and ANE CIDRs) on supported interfaces (nic0
+// mapped to "default") and ignores unmanaged secondary interfaces.
+func TestForEachPodCIDR(t *testing.T) {
 	ifaces := []*networkInterface{
 		{
 			Name:          "nic0",
 			Network:       "https://www.googleapis.com/compute/v1/projects/p/global/networks/custom-vpc",
 			AliasIPRanges: []string{"10.4.0.0/28", "10.4.0.16/28"},
+			ANECIDRs:      []string{"10.4.0.32/32"},
 		},
 		{
 			Name:          "nic1",
@@ -3298,11 +3300,11 @@ func TestForEachAliasRange(t *testing.T) {
 	}
 
 	var visited []string
-	forEachAliasRange(ifaces, func(network, cidr string) {
+	forEachPodCIDR(ifaces, func(network, cidr string) {
 		visited = append(visited, fmt.Sprintf("%s:%s", network, cidr))
 	})
 
-	expected := []string{"default:10.4.0.0/28", "default:10.4.0.16/28"}
+	expected := []string{"default:10.4.0.0/28", "default:10.4.0.16/28", "default:10.4.0.32/32"}
 	if len(visited) != len(expected) {
 		t.Fatalf("expected %d ranges, got %d: %v", len(expected), len(visited), visited)
 	}

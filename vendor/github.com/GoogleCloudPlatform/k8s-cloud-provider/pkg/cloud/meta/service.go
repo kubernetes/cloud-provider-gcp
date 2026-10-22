@@ -268,6 +268,12 @@ func (i *ServiceInfo) AggregatedList() bool {
 	return i.options&AggregatedList != 0
 }
 
+// AggregatedListSupportsPartialSuccess reports whether the generated API call
+// for AggregatedList supports the ReturnPartialSuccess option.
+func (i *ServiceInfo) AggregatedListSupportsPartialSuccess() bool {
+	return i.AggregatedList() && i.options&NoReturnPartialSuccess == 0
+}
+
 // AggregatedListField is the name of the field used for the aggregated list
 // call. This is typically the same as the name of the service, but can be
 // customized by setting the aggregatedListField field.

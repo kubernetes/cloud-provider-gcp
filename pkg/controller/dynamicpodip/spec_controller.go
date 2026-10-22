@@ -83,6 +83,7 @@ type NodeNetworkConfigSpecController struct {
 	nodeSynced    cache.InformerSynced
 	statusTrigger StatusTrigger
 	rangeProvider CandidateRangeProvider
+	backend       PodIPBackend
 	queue         workqueue.TypedRateLimitingInterface[string]
 }
 
@@ -96,12 +97,16 @@ func NewSpecController(
 	gceCache *GCECache,
 	statusTrigger StatusTrigger,
 	rangeProvider CandidateRangeProvider,
+	backend PodIPBackend,
 ) *NodeNetworkConfigSpecController {
 	if statusTrigger == nil {
 		statusTrigger = &NoopStatusTrigger{}
 	}
 	if rangeProvider == nil {
 		rangeProvider = NewStaticRangeProvider(nil)
+	}
+	if backend == nil {
+		backend = NewAliasRangesBackend(gceCloud)
 	}
 
 	c := &NodeNetworkConfigSpecController{
@@ -118,6 +123,7 @@ func NewSpecController(
 		nodeSynced:    nodeInformer.Informer().HasSynced,
 		statusTrigger: statusTrigger,
 		rangeProvider: rangeProvider,
+		backend:       backend,
 		queue:         newNodeWorkqueue("dynamic-pod-ip-spec"),
 	}
 
@@ -199,6 +205,14 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		return err
 	}
 
+	// Defer mutations and releasable CIDR pruning while any ANE on the node
+	// is in a transient (CREATING/DELETING) state so we do not over-allocate
+	// duplicate ANEs or prune CIDRs whose deletion has not completed.
+	if hasTransientANE(ifaces) {
+		c.gceCache.Invalidate(nnc.Name)
+		return &transientANEError{nodeName: nnc.Name}
+	}
+
 	// Calculate changes needed between Spec and GCE
 	changes, err := c.calculateChanges(nnc, ifaces)
 	if err != nil {
@@ -261,7 +275,12 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v, candidateRanges=%v",
 			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
 
-		err = c.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
+		err = c.backend.Mutate(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
+		// Invalidate the cached GCE observation for this node whenever a
+		// mutation is attempted so that subsequent spec reconciles or
+		// workqueue retries do not reuse pre-mutation state within the
+		// cache TTL window.
+		c.gceCache.Invalidate(nnc.Name)
 		if err != nil {
 			klog.Errorf("GCE mutation failed for node %q network %q: %v", nnc.Name, network, err)
 			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("GCE mutation failed: %v", err))
@@ -320,7 +339,7 @@ func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetwor
 	releasable := releasableCIDRSet(nnc)
 
 	var capErr error
-	forEachAliasRange(ifaces, func(netName, cidr string) {
+	forEachPodCIDR(ifaces, func(netName, cidr string) {
 		if capErr != nil {
 			return
 		}
@@ -355,14 +374,12 @@ func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetwor
 
 		if desiredPods > currentCap {
 			neededIPs := desiredPods - currentCap
-			blocksNeeded := (neededIPs + DefaultCapacity - 1) / DefaultCapacity
 
 			entry := changes[network]
-			for i := 0; i < blocksNeeded; i++ {
-				entry.additions = append(entry.additions, DefaultBlockSize)
-			}
+			additions := c.backend.CalculateAdditions(network, neededIPs, ifaces)
+			entry.additions = append(entry.additions, additions...)
 			changes[network] = entry
-			klog.V(3).Infof("Node %q network %q needs %d more IPs, requesting %d blocks of size %s", nnc.Name, network, neededIPs, blocksNeeded, DefaultBlockSize)
+			klog.V(3).Infof("Node %q network %q needs %d more IPs, requesting allocations: %v", nnc.Name, network, neededIPs, additions)
 		}
 	}
 

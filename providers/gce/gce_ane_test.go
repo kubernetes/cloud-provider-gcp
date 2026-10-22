@@ -1,0 +1,290 @@
+//go:build !providerless
+// +build !providerless
+
+/*
+Copyright 2026 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package gce
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	computepreview "google.golang.org/api/compute/v1.preview"
+	"google.golang.org/api/googleapi"
+	"google.golang.org/api/option"
+)
+
+func TestGCEANEService_CreateListDelete(t *testing.T) {
+	cloud := NewFakeGCECloud(DefaultTestClusterValues())
+
+	ctx := context.Background()
+	testProviderID := "gce://p/z/test-node"
+	const testAliasKey = "gke-pod-ipv4"
+	ane := &computepreview.AliasNetworkEndpoint{
+		Name: "test-ane-1",
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+			testAliasKey: {
+				IpVersion: ANEIPVersionIPv4,
+				IpAddress: "10.128.0.25",
+			},
+		},
+	}
+
+	if err := cloud.CreateAliasNetworkEndpoint(ctx, testProviderID, ane); err != nil {
+		t.Fatalf("CreateAliasNetworkEndpoint failed: %v", err)
+	}
+	if ane.Host == nil || ane.Host.Instance != "projects/p/zones/z/instances/test-node" {
+		t.Errorf("Expected Host.Instance to be populated from providerID, got: %+v", ane.Host)
+	}
+
+	list, err := cloud.ListAliasNetworkEndpoints(ctx, testProviderID)
+	if err != nil {
+		t.Fatalf("ListAliasNetworkEndpoints failed: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("Expected 1 item in list, got %d", len(list))
+	}
+	if list[0].Aliases[testAliasKey].EffectiveIpAddress != "10.128.0.25" {
+		t.Errorf("Expected effective IP 10.128.0.25, got %q", list[0].Aliases[testAliasKey].EffectiveIpAddress)
+	}
+
+	if err := cloud.DeleteAliasNetworkEndpoint(ctx, testProviderID, "test-ane-1"); err != nil {
+		t.Fatalf("DeleteAliasNetworkEndpoint failed: %v", err)
+	}
+
+	// Idempotent delete on non-existent resource should succeed without
+	// error.
+	if err := cloud.DeleteAliasNetworkEndpoint(ctx, testProviderID, "test-ane-nonexistent"); err != nil {
+		t.Fatalf("DeleteAliasNetworkEndpoint non-existent ANE returned error: %v", err)
+	}
+
+	listAfter, err := cloud.ListAliasNetworkEndpoints(ctx, testProviderID)
+	if err != nil {
+		t.Fatalf("ListAliasNetworkEndpoints after delete failed: %v", err)
+	}
+	if len(listAfter) != 0 {
+		t.Fatalf("Expected 0 items after delete, got %d", len(listAfter))
+	}
+
+	// Verify that when GCE normalizes Host.Instance in the returned ANE to
+	// use a numeric project number (e.g. "projects/231279945827/...") while
+	// providerID uses the alphanumeric project ID ("gce://p/z/test-node"),
+	// ListAliasNetworkEndpoints still matches the endpoint for that node.
+	aneNumericProj := &computepreview.AliasNetworkEndpoint{
+		Name: "test-ane-numeric-proj",
+		Host: &computepreview.AliasNetworkEndpointHost{
+			Instance: "projects/231279945827/zones/z/instances/test-node",
+		},
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+			testAliasKey: {
+				IpVersion: ANEIPVersionIPv4,
+				IpAddress: "10.128.0.26",
+			},
+		},
+	}
+	if err := cloud.CreateAliasNetworkEndpoint(ctx, testProviderID, aneNumericProj); err != nil {
+		t.Fatalf("CreateAliasNetworkEndpoint with numeric project number failed: %v", err)
+	}
+	listNumeric, err := cloud.ListAliasNetworkEndpoints(ctx, testProviderID)
+	if err != nil {
+		t.Fatalf("ListAliasNetworkEndpoints with numeric project number failed: %v", err)
+	}
+	if len(listNumeric) != 1 || listNumeric[0].Name != "test-ane-numeric-proj" {
+		t.Fatalf("Expected test-ane-numeric-proj in list when Host.Instance uses project number, got %+v", listNumeric)
+	}
+}
+
+func TestGCEANEService_TransientRetry(t *testing.T) {
+	svc := &gceANEService{
+		gce: &Cloud{},
+	}
+	attempts := 0
+	err := svc.doWithRetry(context.Background(), func() error {
+		attempts++
+		if attempts == 1 {
+			return &googleapi.Error{
+				Code:    http.StatusTooManyRequests,
+				Message: "RESOURCE_EXHAUSTED: rate limited",
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("expected retry to succeed on 2nd attempt, got error: %v", err)
+	}
+	if attempts != 2 {
+		t.Errorf("expected exactly 2 attempts, got %d", attempts)
+	}
+}
+
+func TestGCEANEService_RetryAfterContextCancelled(t *testing.T) {
+	svc := &gceANEService{
+		gce: &Cloud{},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	header := make(http.Header)
+	header.Set("Retry-After", "10") // 10 seconds, but context expires in 20ms
+
+	err := svc.doWithRetry(ctx, func() error {
+		return &googleapi.Error{
+			Code:   http.StatusTooManyRequests,
+			Header: header,
+		}
+	})
+	if err == nil {
+		t.Fatal("expected error due to context cancellation, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) && !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Errorf("expected context deadline exceeded error, got: %v", err)
+	}
+}
+
+func TestGCEANEService_NonTransientErrorDoesNotRetry(t *testing.T) {
+	svc := &gceANEService{
+		gce: &Cloud{},
+	}
+	attempts := 0
+	nonAPIErr := errors.New("generic non-API error")
+	err := svc.doWithRetry(context.Background(), func() error {
+		attempts++
+		return nonAPIErr
+	})
+	if !errors.Is(err, nonAPIErr) {
+		t.Fatalf("expected non-API error, got: %v", err)
+	}
+	if attempts != 1 {
+		t.Errorf("expected exactly 1 attempt for non-API error, got %d", attempts)
+	}
+
+	attempts = 0
+	apiErr := &googleapi.Error{Code: http.StatusBadRequest, Message: "bad request"}
+	err = svc.doWithRetry(context.Background(), func() error {
+		attempts++
+		return apiErr
+	})
+	if !errors.Is(err, apiErr) {
+		t.Fatalf("expected apiErr, got: %v", err)
+	}
+	if attempts != 1 {
+		t.Errorf("expected exactly 1 attempt for 400 Bad Request, got %d", attempts)
+	}
+}
+
+func TestGCEANEService_UnallowlistedMethodNotFound(t *testing.T) {
+	apiErr := &googleapi.Error{
+		Code:    http.StatusNotFound,
+		Message: "Method not found.",
+		Body:    "Method not found.",
+	}
+	if !isUnallowlistedOrMethodNotFound(apiErr) {
+		t.Error("expected isUnallowlistedOrMethodNotFound to return true for ESF Method not found 404")
+	}
+
+	normalNotFound := &googleapi.Error{
+		Code:    http.StatusNotFound,
+		Message: "The resource 'projects/p/zones/z/aliasNetworkEndpoints/test-ane' was not found",
+	}
+	if isUnallowlistedOrMethodNotFound(normalNotFound) {
+		t.Error("expected isUnallowlistedOrMethodNotFound to return false for normal resource 404")
+	}
+}
+
+func TestGCEANEService_WaitForOperationTimeout(t *testing.T) {
+	svc := &gceANEService{
+		gce: &Cloud{},
+		waiter: func(ctx context.Context, p, z, op string) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	// When using a context with 50ms deadline, waiter should fail fast with
+	// context error.
+	shortCtx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err := svc.waitForOperation(shortCtx, "p", "z", "op-stalled")
+	if err == nil {
+		t.Fatal("expected error waiting on stalled operation, got nil")
+	}
+	if !strings.Contains(err.Error(), "deadline exceeded") && !strings.Contains(err.Error(), "canceled") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestGCEANEService_ListServerSideFilter(t *testing.T) {
+	var receivedFilter string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedFilter = r.URL.Query().Get("filter")
+		w.Header().Set("Content-Type", "application/json")
+		resp := &computepreview.AliasNetworkEndpointList{
+			Items: []*computepreview.AliasNetworkEndpoint{
+				{
+					Name: "ane-node-1",
+					Host: &computepreview.AliasNetworkEndpointHost{
+						Instance: "projects/231279945827/zones/us-central1-b/instances/test-node",
+					},
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	httpClient := &http.Client{
+		Transport: &http.Transport{Proxy: nil},
+	}
+	previewSvc, err := computepreview.NewService(
+		context.Background(),
+		option.WithEndpoint(ts.URL),
+		option.WithHTTPClient(httpClient),
+	)
+	if err != nil {
+		t.Fatalf("computepreview.NewService: %v", err)
+	}
+
+	svc := &gceANEService{
+		gce: &Cloud{
+			servicePreview: previewSvc,
+		},
+	}
+
+	items, err := svc.ListAliasNetworkEndpoints(
+		context.Background(),
+		"my-project",
+		"us-central1-b",
+		"projects/my-project/zones/us-central1-b/instances/test-node",
+	)
+	if err != nil {
+		t.Fatalf("ListAliasNetworkEndpoints failed: %v", err)
+	}
+	wantFilter := `host.instance eq ".*zones/us-central1-b/instances/test-node$"`
+	if receivedFilter != wantFilter {
+		t.Errorf("filter query param = %q, want %q", receivedFilter, wantFilter)
+	}
+	if len(items) != 1 || items[0].Name != "ane-node-1" {
+		t.Fatalf("expected 1 matching item 'ane-node-1', got %+v", items)
+	}
+}
