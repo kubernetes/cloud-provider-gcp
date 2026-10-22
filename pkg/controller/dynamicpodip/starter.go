@@ -18,6 +18,7 @@ package dynamicpodip
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -69,10 +70,15 @@ type Options struct {
 	// ClusterName is the name of the Kubernetes cluster (used to query
 	// Container API for candidate secondary ranges).
 	ClusterName string
+	// PodIPBackend selects the Pod IP allocation backend ("alias-ranges" or
+	// "ane"). Defaults to BackendTypeAliasRanges when empty.
+	PodIPBackend BackendType
 }
 
-// StartControllers initializes and starts the status and/or spec controllers based on the provided options.
-// Returns the status trigger interface (which can be passed to Node IPAM or other callers), whether any controller was started, and any error.
+// StartControllers initializes and starts the status and/or spec controllers
+// based on the provided options. Returns the status trigger interface (which
+// can be passed to Node IPAM or other callers), whether any controller was
+// started, and any error.
 func StartControllers(
 	ctx context.Context,
 	opts Options,
@@ -86,20 +92,25 @@ func StartControllers(
 		opts.PopulateNodeNetworkConfig = true
 	}
 
+	if !opts.EnableDynamicPodIPController && opts.PodIPBackend != "" {
+		return GetStatusTrigger(), nil, false, fmt.Errorf("dynamic-pod-ip-backend %q requires --enable-dynamic-pod-ip-controller to be true", opts.PodIPBackend)
+	}
+
 	if !opts.PopulateNodeNetworkConfig && !opts.EnableDynamicPodIPController {
 		klog.Info("Neither --populate-node-network-config nor --enable-dynamic-pod-ip-controller is set; dynamic pod IP controllers will not be started")
 		return GetStatusTrigger(), nil, false, nil
+	}
+
+	backend, err := newPodIPBackend(opts, gceCloud)
+	if err != nil {
+		return GetStatusTrigger(), nil, false, err
 	}
 
 	nncInformerFactory := nncinformers.NewSharedInformerFactory(nncClient, 0)
 	nncInformer := nncInformerFactory.Networking().V1().NodeNetworkConfigs()
 
 	loader := func(ctx context.Context, providerID string) ([]*networkInterface, error) {
-		gceIfaces, err := gceCloud.GetInstanceNetworkInterfaces(ctx, providerID)
-		if err != nil {
-			return nil, err
-		}
-		return toNetworkInterfaces(gceIfaces), nil
+		return backend.GetNetworkInterfaces(ctx, providerID)
 	}
 
 	gceCache := NewGCECache(loader, 10*time.Second, clock.RealClock{})
@@ -156,6 +167,7 @@ func StartControllers(
 			gceCache,
 			statusTrigger,
 			rangeProvider,
+			backend,
 		)
 		go specCtrl.Run(DefaultSpecControllerWorkers, ctx.Done())
 	}
@@ -169,7 +181,8 @@ func StartControllers(
 	return statusTrigger, statusCtrl, true, nil
 }
 
-// StartDynamicPodIPController is a backwards-compatible helper that starts both controllers with --enable-dynamic-pod-ip-controller=true.
+// StartDynamicPodIPController is a backwards-compatible helper that starts
+// both controllers with --enable-dynamic-pod-ip-controller=true.
 func StartDynamicPodIPController(
 	ctx context.Context,
 	kubeClient kubernetes.Interface,

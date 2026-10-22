@@ -1221,7 +1221,8 @@ func EqualResourceURLs(url1, url2 string) bool {
 }
 
 // equalResourceURLs checks if two GCP resource URLs refer to the same resource,
-// taking into account URL formatting differences (e.g. API versions or domains).
+// taking into account URL formatting differences (e.g. API versions, domains,
+// or project ID vs numeric project number in resource references).
 func equalResourceURLs(url1, url2 string) bool {
 	if url1 == url2 {
 		return true
@@ -1232,11 +1233,35 @@ func equalResourceURLs(url1, url2 string) bool {
 		if r1.Equal(r2) {
 			return true
 		}
-		// If one URL is a relative path without an API group (e.g. projects/.../global/networks/...),
+		// If one URL is a relative path without an API group (e.g.
+		// projects/.../global/networks/...), or mixes project ID with
+		// project number (e.g. ANE host.instance/subnetwork fields),
 		// compare project, resource type, and key directly.
-		if r1.ProjectID == r2.ProjectID && r1.Resource == r2.Resource && r1.Key != nil && r2.Key != nil && *r1.Key == *r2.Key {
+		//
+		// TODO(https://github.com/kubernetes/cloud-provider-gcp/issues/1399):
+		// Once the GCE ANE API returns project IDs per AIP-122, remove
+		// projectsMatch and replace with r1.ProjectID == r2.ProjectID.
+		if (r1.APIGroup == "" || r2.APIGroup == "" || r1.APIGroup == r2.APIGroup) &&
+			projectsMatch(r1.ProjectID, r2.ProjectID) &&
+			r1.Resource == r2.Resource &&
+			r1.Key != nil && r2.Key != nil && *r1.Key == *r2.Key {
 			return true
 		}
 	}
 	return false
+}
+
+// projectsMatch reports whether two GCP project identifiers can refer to the
+// same project. It returns true for identical values or when comparing a
+// numeric project number (returned by GCE ANE) against an alphanumeric project
+// ID. Caller (equalResourceURLs) guarantees safety by additionally matching
+// resource type, zone, and name within the cluster's scoped project.
+func projectsMatch(p1, p2 string) bool {
+	if p1 == p2 {
+		return true
+	}
+	if p1 == "" || p2 == "" {
+		return false
+	}
+	return isProjectNumber(p1) != isProjectNumber(p2)
 }

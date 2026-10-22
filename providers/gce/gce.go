@@ -39,6 +39,7 @@ import (
 	computealpha "google.golang.org/api/compute/v0.alpha"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
+	computepreview "google.golang.org/api/compute/v1.preview"
 	container "google.golang.org/api/container/v1"
 	"google.golang.org/api/option"
 
@@ -147,6 +148,7 @@ type Cloud struct {
 	service          *compute.Service
 	serviceBeta      *computebeta.Service
 	serviceAlpha     *computealpha.Service
+	servicePreview   *computepreview.Service
 	containerService *container.Service
 	tpuService       *tpuService
 	client           clientset.Interface
@@ -185,6 +187,7 @@ type Cloud struct {
 	useMetadataServer        bool
 	operationPollRateLimiter flowcontrol.RateLimiter
 	manager                  diskServiceManager
+	aneService               aneServiceManager
 	// Lock for access to nodeZones
 	nodeZonesLock sync.Mutex
 	// nodeZones maps GCE zones to active K8s Node names, dynamically
@@ -633,15 +636,23 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 	}
 	serviceAlpha.UserAgent = userAgent
 
+	servicePreview, err := computepreview.NewService(context.Background(), clientOpts...)
+	if err != nil {
+		return nil, err
+	}
+	servicePreview.UserAgent = userAgent
+
 	if config.APIEndpoint != "" {
 		if strings.HasSuffix(service.BasePath, "/projects/") {
 			service.BasePath = getProjectsBasePath(config.APIEndpoint)
 			serviceBeta.BasePath = getProjectsBasePath(strings.Replace(config.APIEndpoint, "v1", "beta", -1))
 			serviceAlpha.BasePath = getProjectsBasePath(strings.Replace(config.APIEndpoint, "v1", "alpha", -1))
+			servicePreview.BasePath = getProjectsBasePath(config.APIEndpoint)
 		} else {
 			service.BasePath = config.APIEndpoint
 			serviceBeta.BasePath = strings.Replace(config.APIEndpoint, "v1", "beta", -1)
 			serviceAlpha.BasePath = strings.Replace(config.APIEndpoint, "v1", "alpha", -1)
+			servicePreview.BasePath = config.APIEndpoint
 		}
 	}
 
@@ -694,6 +705,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 		service:                  service,
 		serviceAlpha:             serviceAlpha,
 		serviceBeta:              serviceBeta,
+		servicePreview:           servicePreview,
 		containerService:         containerService,
 		tpuService:               tpuService,
 		projectID:                projID,
@@ -720,6 +732,7 @@ func CreateGCECloud(config *CloudConfig) (*Cloud, error) {
 	}
 
 	gce.manager = &gceServiceManager{gce}
+	gce.aneService = &gceANEService{gce: gce}
 	gce.s = &cloud.Service{
 		GA:            service,
 		Alpha:         serviceAlpha,
