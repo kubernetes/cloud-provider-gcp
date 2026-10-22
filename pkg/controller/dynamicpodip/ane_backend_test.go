@@ -518,8 +518,9 @@ func TestStartControllersANEActivation(t *testing.T) {
 		t.Fatalf("expected non-nil ctrl")
 	}
 
-	// PopulateNodeNetworkConfig-only mode with BackendTypeANE should succeed
-	triggerStatusOnly, ctrlStatusOnly, startedStatusOnly, err := StartControllers(
+	// Specifying PodIPBackend requires EnableDynamicPodIPController to be true,
+	// even if PopulateNodeNetworkConfig is true.
+	_, _, startedStatusOnly, err := StartControllers(
 		ctx,
 		Options{
 			EnableDynamicPodIPController: false,
@@ -531,11 +532,11 @@ func TestStartControllersANEActivation(t *testing.T) {
 		nodeInformer,
 		fakeGCE,
 	)
-	if err != nil {
-		t.Fatalf("StartControllers (status-only with ANE) failed: %v", err)
+	if err == nil {
+		t.Fatalf("expected error when PodIPBackend is set without EnableDynamicPodIPController")
 	}
-	if !startedStatusOnly || triggerStatusOnly == nil || ctrlStatusOnly == nil {
-		t.Fatalf("expected status-only ANE controller to start: started=%v, trigger=%v, ctrl=%v", startedStatusOnly, triggerStatusOnly, ctrlStatusOnly)
+	if startedStatusOnly {
+		t.Fatalf("expected started == false when StartControllers returns an error")
 	}
 
 	_, _, started, err = StartControllers(
@@ -551,7 +552,7 @@ func TestStartControllersANEActivation(t *testing.T) {
 		fakeGCE,
 	)
 	if err == nil {
-		t.Fatalf("expected error when PodIPBackend is set without EnableDynamicPodIPController or PopulateNodeNetworkConfig")
+		t.Fatalf("expected error when PodIPBackend is set without EnableDynamicPodIPController")
 	}
 	if started {
 		t.Fatalf("expected started == false when StartControllers returns an error")

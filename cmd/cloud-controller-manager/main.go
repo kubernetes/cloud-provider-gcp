@@ -139,7 +139,7 @@ func main() {
 	cloudProviderFS.BoolVar(&enableDynamicPodIPController, "enable-dynamic-pod-ip-controller", false, "Enables the GKE Dynamic Pod IP Controller.")
 	cloudProviderFS.BoolVar(&populateNodeNetworkConfig, "populate-node-network-config", false, "Enables population of NodeNetworkConfig status from GCE state.")
 	cloudProviderFS.StringSliceVar(&multiSecondaryRanges, "multi-secondary-ranges", nil, "Comma-separated list of secondary range names with optional subnetwork and lifecycle status (e.g. --multi-secondary-ranges=[subnetwork/]range1=ACTIVE,range2=DRAINING or range1=ACTIVE) for pod IP allocations in Adaptive Cluster IPAM mode. Active ranges are used as candidates for pod IP allocations. If set, disables automatic Container API discovery.")
-	cloudProviderFS.StringVar(&dynamicPodIPBackend, "dynamic-pod-ip-backend", "", "Selects the Pod IP allocation backend for the dynamic-pod-ip-controller ('alias-ranges' or 'ane'). Defaults to 'alias-ranges'. Requires --enable-dynamic-pod-ip-controller or --populate-node-network-config to be true.")
+	cloudProviderFS.StringVar(&dynamicPodIPBackend, "dynamic-pod-ip-backend", "", "Selects the Pod IP allocation backend for the dynamic-pod-ip-controller ('alias-ranges' or 'ane'). Defaults to 'alias-ranges'. Requires --enable-dynamic-pod-ip-controller to be true.")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
@@ -288,8 +288,8 @@ func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovid
 		gce.SetOverrideL4NetLBHealthCheckSourceCIDRs(overrideL4NetLBHealthCheckSourceCIDRs)
 	}
 
-	if dynamicPodIPBackend != "" && !enableDynamicPodIPController && !populateNodeNetworkConfig {
-		klog.Fatal("dynamic-pod-ip-backend requires enable-dynamic-pod-ip-controller or populate-node-network-config to be true")
+	if dynamicPodIPBackend != "" && !enableDynamicPodIPController {
+		klog.Fatal("dynamic-pod-ip-backend requires enable-dynamic-pod-ip-controller to be true")
 	}
 
 	return cloud

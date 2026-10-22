@@ -92,8 +92,8 @@ func StartControllers(
 		opts.PopulateNodeNetworkConfig = true
 	}
 
-	if !opts.EnableDynamicPodIPController && !opts.PopulateNodeNetworkConfig && opts.PodIPBackend != "" {
-		return GetStatusTrigger(), nil, false, fmt.Errorf("dynamic-pod-ip-backend %q requires --enable-dynamic-pod-ip-controller or --populate-node-network-config to be true", opts.PodIPBackend)
+	if !opts.EnableDynamicPodIPController && opts.PodIPBackend != "" {
+		return GetStatusTrigger(), nil, false, fmt.Errorf("dynamic-pod-ip-backend %q requires --enable-dynamic-pod-ip-controller to be true", opts.PodIPBackend)
 	}
 
 	if !opts.PopulateNodeNetworkConfig && !opts.EnableDynamicPodIPController {
