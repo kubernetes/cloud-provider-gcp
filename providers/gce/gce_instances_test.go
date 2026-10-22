@@ -34,6 +34,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 )
 
 func TestInstanceExists(t *testing.T) {
@@ -165,6 +166,27 @@ func TestNodeAddresses(t *testing.T) {
 	}
 	instanceMap["n7"] = instance
 
+	// n8 is a dual stack instance that carries both an internal IPv6 address and
+	// an external IPv6 access config. GCE does not produce this today (a NIC
+	// has a single IPv6 access type, derived from its subnet) but the API
+	// shape allows it, so make sure both addresses are reported.
+	instance = &ga.Instance{
+		Name: "n8",
+		Zone: "us-central1-b",
+		NetworkInterfaces: []*ga.NetworkInterface{
+			{
+				NetworkIP:      "10.1.1.8",
+				StackType:      "IPV4_IPV6",
+				Ipv6Address:    "2001:2d00::0:8",
+				Ipv6AccessType: "EXTERNAL",
+				Ipv6AccessConfigs: []*ga.AccessConfig{
+					{ExternalIpv6: "2001:1900::0:8"},
+				},
+			},
+		},
+	}
+	instanceMap["n8"] = instance
+
 	mockGCE := gce.c.(*cloud.MockGCE)
 	mi := mockGCE.Instances().(*cloud.MockInstances)
 	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
@@ -179,8 +201,11 @@ func TestNodeAddresses(t *testing.T) {
 		name      string
 		nodeName  string
 		stackType StackType
-		wantErr   string
-		wantAddrs []v1.NodeAddress
+		// reportExternalIPv6 controls the reportExternalIPv6NodeAddress option;
+		// nil means enabled.
+		reportExternalIPv6 *bool
+		wantErr            string
+		wantAddrs          []v1.NodeAddress
 	}{
 		{
 			name:      "internal dual stack instance with cluster stack type IPv4",
@@ -217,6 +242,7 @@ func TestNodeAddresses(t *testing.T) {
 				{Type: v1.NodeInternalIP, Address: "10.1.1.2"},
 				{Type: v1.NodeExternalIP, Address: "20.1.1.2"},
 				{Type: v1.NodeInternalIP, Address: "2001:1900::0:2"},
+				{Type: v1.NodeExternalIP, Address: "2001:1900::0:2"},
 			},
 		},
 		{
@@ -227,6 +253,7 @@ func TestNodeAddresses(t *testing.T) {
 				{Type: v1.NodeInternalIP, Address: "10.1.1.2"},
 				{Type: v1.NodeExternalIP, Address: "20.1.1.2"},
 				{Type: v1.NodeInternalIP, Address: "2001:1900::0:2"},
+				{Type: v1.NodeExternalIP, Address: "2001:1900::0:2"},
 			},
 		},
 		{
@@ -235,6 +262,7 @@ func TestNodeAddresses(t *testing.T) {
 			stackType: clusterStackIPV6,
 			wantAddrs: []v1.NodeAddress{
 				{Type: v1.NodeInternalIP, Address: "2001:1900::0:2"},
+				{Type: v1.NodeExternalIP, Address: "2001:1900::0:2"},
 				{Type: v1.NodeInternalIP, Address: "10.1.1.2"},
 				{Type: v1.NodeExternalIP, Address: "20.1.1.2"},
 			},
@@ -298,6 +326,37 @@ func TestNodeAddresses(t *testing.T) {
 			stackType: clusterStackIPV6,
 			wantAddrs: []v1.NodeAddress{
 				{Type: v1.NodeInternalIP, Address: "2001:1900::0:2"},
+				{Type: v1.NodeExternalIP, Address: "2001:1900::0:2"},
+			},
+		},
+		{
+			name:      "dual stack instance with both internal and external IPv6 addresses and cluster stack type dual",
+			nodeName:  "n8",
+			stackType: clusterStackDualStack,
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "10.1.1.8"},
+				{Type: v1.NodeInternalIP, Address: "2001:2d00::0:8"},
+				{Type: v1.NodeExternalIP, Address: "2001:1900::0:8"},
+			},
+		},
+		{
+			name:               "external dual stack instance with external IPv6 node address reporting disabled",
+			nodeName:           "n2",
+			stackType:          clusterStackDualStack,
+			reportExternalIPv6: ptr.To(false),
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "10.1.1.2"},
+				{Type: v1.NodeExternalIP, Address: "20.1.1.2"},
+				{Type: v1.NodeInternalIP, Address: "2001:1900::0:2"},
+			},
+		},
+		{
+			name:               "single stack IPv6 instance with external IPv6 node address reporting disabled",
+			nodeName:           "n7",
+			stackType:          clusterStackIPV6,
+			reportExternalIPv6: ptr.To(false),
+			wantAddrs: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: "2001:1900::0:2"},
 			},
 		},
 	}
@@ -305,6 +364,7 @@ func TestNodeAddresses(t *testing.T) {
 	for _, test := range testcases {
 		t.Run(test.name, func(t *testing.T) {
 			SetFakeStackType(gce, test.stackType)
+			gce.SetReportExternalIPv6NodeAddress(test.reportExternalIPv6 == nil || *test.reportExternalIPv6)
 
 			gotAddrs, err := gce.NodeAddresses(context.Background(), types.NodeName(test.nodeName))
 			if err != nil && (test.wantErr == "" || !strings.Contains(err.Error(), test.wantErr)) {
@@ -815,6 +875,57 @@ func TestInstanceMetadataUninitializedNodeDynamicRefresh(t *testing.T) {
 
 	expectedZones := []string{"us-central1-b", "us-central1-c"}
 	assert.ElementsMatch(t, expectedZones, gce.getManagedZones())
+}
+
+// TestInstanceMetadataExternalIPv6 exercises the InstancesV2 path used by the
+// cloud-node controller and checks that an external IPv6 address is reported
+// both as NodeInternalIP (unchanged behaviour) and as NodeExternalIP.
+func TestInstanceMetadataExternalIPv6(t *testing.T) {
+	gce, err := fakeGCECloud(DefaultTestClusterValues())
+	require.NoError(t, err)
+	SetFakeStackType(gce, clusterStackDualStack)
+	gce.SetReportExternalIPv6NodeAddress(true)
+
+	err = gce.InsertInstance(
+		gce.ProjectID(),
+		"us-central1-b",
+		&ga.Instance{
+			Name:        "dual-stack-external",
+			Zone:        "us-central1-b",
+			MachineType: "zones/us-central1-b/machineTypes/e2-medium",
+			NetworkInterfaces: []*ga.NetworkInterface{
+				{
+					NetworkIP:      "10.168.0.7",
+					StackType:      "IPV4_IPV6",
+					Ipv6AccessType: "EXTERNAL",
+					Ipv6AccessConfigs: []*ga.AccessConfig{
+						{ExternalIpv6: "2600:1900:4000:5587:0:4::"},
+					},
+					AccessConfigs: []*ga.AccessConfig{
+						{NatIP: "34.72.106.72"},
+					},
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "dual-stack-external"},
+		Spec: v1.NodeSpec{
+			ProviderID: "gce://" + gce.ProjectID() + "/us-central1-b/dual-stack-external",
+		},
+	}
+
+	metadata, err := gce.InstanceMetadata(context.Background(), node)
+	require.NoError(t, err)
+	require.NotNil(t, metadata)
+	assert.Equal(t, []v1.NodeAddress{
+		{Type: v1.NodeInternalIP, Address: "10.168.0.7"},
+		{Type: v1.NodeExternalIP, Address: "34.72.106.72"},
+		{Type: v1.NodeInternalIP, Address: "2600:1900:4000:5587:0:4::"},
+		{Type: v1.NodeExternalIP, Address: "2600:1900:4000:5587:0:4::"},
+	}, metadata.NodeAddresses)
 }
 
 func TestGetZoneProviderIDFallback(t *testing.T) {

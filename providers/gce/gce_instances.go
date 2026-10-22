@@ -164,7 +164,13 @@ func (g *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v
 					nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: internalIP})
 				}
 
-				// Both internal and external IPv6 addresses are written to this array
+				// Both internal and external IPv6 addresses are written to this array.
+				// The metadata server does not expose the interface's IPv6 access type,
+				// so this path cannot tell an internal IPv6 address from an external one
+				// and reports whichever it finds as NodeInternalIP. This branch is only
+				// reachable when the caller runs on the instance it is asking about
+				// (the legacy in-tree kubelet layout); the cloud-controller-manager uses
+				// the Compute API path (nodeAddressesFromInstance) instead.
 				ipv6s, err := metadata.Get(fmt.Sprintf(networkInterfaceIPV6, nic))
 				if err != nil || ipv6s == "" {
 					klog.Infof("No internal IPV6 addresses found for node %v: %v.", nodeName, err)
@@ -302,9 +308,25 @@ func (g *Cloud) nodeAddressesFromInstance(instance *compute.Instance) ([]v1.Node
 		for _, config := range nic.AccessConfigs {
 			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: config.NatIP})
 		}
+		// The IPv6 address configured on the interface (internal, or external
+		// when the interface has no internal IPv6) is always reported as
+		// NodeInternalIP: it is assigned directly to the NIC and is the address
+		// nodes use to reach each other, and every node is expected to have at
+		// least one NodeInternalIP.
 		ipv6Addr := getIPV6AddressFromInterface(nic)
 		if ipv6Addr != "" {
 			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: ipv6Addr})
+		}
+		// An external IPv6 address is additionally reported as NodeExternalIP so
+		// that consumers looking for an externally reachable address find it.
+		// The same address may therefore appear under both types; the Kubernetes
+		// API only forbids duplicate (type, address) pairs.
+		if g.reportExternalIPv6NodeAddress {
+			for _, ac := range nic.Ipv6AccessConfigs {
+				if ac.ExternalIpv6 != "" {
+					nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: ac.ExternalIpv6})
+				}
+			}
 		}
 	}
 

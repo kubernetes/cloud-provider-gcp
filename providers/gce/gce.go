@@ -244,6 +244,12 @@ type Cloud struct {
 	// enableL4ILBFineGrainedLocks enables fine-grained resource-specific locking
 	enableL4ILBFineGrainedLocks bool
 
+	// reportExternalIPv6NodeAddress controls whether an external IPv6 address
+	// on a node's network interface is additionally reported as a
+	// NodeExternalIP node address. The address is always reported as a
+	// NodeInternalIP regardless of this option. See b/259716190.
+	reportExternalIPv6NodeAddress bool
+
 	firewallRulesManagement FirewallRulesManagement
 }
 
@@ -1062,6 +1068,13 @@ func (g *Cloud) SetEnableL4DenyFirewallRule(firewallEnabled, rollbackEnabled boo
 
 func (g *Cloud) SetEnableL4ILBFineGrainedLocks(enabled bool) {
 	g.enableL4ILBFineGrainedLocks = enabled
+}
+
+// SetReportExternalIPv6NodeAddress configures whether an external IPv6
+// address on a node's network interface is additionally reported as a
+// NodeExternalIP node address.
+func (g *Cloud) SetReportExternalIPv6NodeAddress(enabled bool) {
+	g.reportExternalIPv6NodeAddress = enabled
 }
 
 // getProjectsBasePath returns the compute API endpoint with the `projects/` element.
