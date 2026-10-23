@@ -85,6 +85,12 @@ var (
 	// enableL4ILBFineGrainedLocks enables resource-specific locking for L4 ILB.
 	enableL4ILBFineGrainedLocks bool
 
+	// enableExternalIPv6NodeAddress makes the cloud provider additionally report
+	// a node's external IPv6 address as a NodeExternalIP node address. The
+	// address keeps being reported as NodeInternalIP regardless of this flag.
+	// See b/259716190.
+	enableExternalIPv6NodeAddress bool
+
 	// overrideL4ILBHealthCheckSourceCIDRs overrides the default source IPv4 ranges
 	// used when configuring firewall rules to allow health check probes for L4 ILB
 	// load balancers. Provide the ranges as a comma-separated list of CIDRs.
@@ -134,6 +140,7 @@ func main() {
 	cloudProviderFS.BoolVar(&enableL4DenyFirewallRollbackCleanup, "enable-l4-deny-firewall-rollback-cleanup", false, "Enable cleanup codepath of the deny firewalls for rollback. The reason for it not being enabled by default is the additional GCE API calls that are made for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.")
 	cloudProviderFS.BoolVar(&enableGKETenantController, "enable-gke-tenant-controller", false, "Enables the GKE Tenant Controller Manager for Multi-Tenancy.")
 	cloudProviderFS.BoolVar(&enableL4ILBFineGrainedLocks, "enable-l4-ilb-fine-grained-lock", false, "Enable resource-specific locking for L4 ILB")
+	cloudProviderFS.BoolVar(&enableExternalIPv6NodeAddress, "enable-external-ipv6-node-address", false, "Additionally report a node's external IPv6 address (ipv6AccessType EXTERNAL) as a NodeExternalIP node address. The address is always reported as NodeInternalIP.")
 	cloudProviderFS.StringVar(&overrideL4ILBHealthCheckSourceCIDRs, "override-l4-ilb-health-check-src-cidrs", "", "Overrides the default source IPv4 ranges used when configuring firewall rules to allow health check probes for L4 ILB load balancers. Provide the ranges as a comma-separated list of CIDRs. Example: --override-l4-ilb-health-check-src-cidrs=35.191.192.0/18")
 	cloudProviderFS.StringVar(&overrideL4NetLBHealthCheckSourceCIDRs, "override-l4-netlb-health-check-src-cidrs", "", "Overrides the default source IPv4 ranges used when configuring firewall rules to allow health check probes for L4 NetLB load balancers. Provide the ranges as a comma-separated list of CIDRs. Example: --override-l4-netlb-health-check-src-cidrs=209.85.204.0/22")
 	cloudProviderFS.BoolVar(&enableDynamicPodIPController, "enable-dynamic-pod-ip-controller", false, "Enables the GKE Dynamic Pod IP Controller.")
@@ -276,6 +283,14 @@ func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovid
 			klog.Fatalf("enable-l4-ilb-fine-grained-lock requires GCE cloud provider, but got %T", cloud)
 		}
 		gceCloud.SetEnableL4ILBFineGrainedLocks(true)
+	}
+
+	if enableExternalIPv6NodeAddress {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			klog.Fatalf("enable-external-ipv6-node-address requires GCE cloud provider, but got %T", cloud)
+		}
+		gceCloud.SetReportExternalIPv6NodeAddress(true)
 	}
 
 	// Record feature gate metrics
