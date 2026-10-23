@@ -27,6 +27,10 @@ source "${KUBE_ROOT}/tools/lib/util.sh"
 KUBE_ROOT_ABSOLUTE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 export GOBIN="${KUBE_ROOT_ABSOLUTE}/bin"
 export PATH="${GOBIN}:${PATH}"
+# golangci-lint must analyze the project with the Go version declared by the
+# module. Newer toolchains may emit export data that the pinned linter cannot
+# read yet.
+export GOTOOLCHAIN="go$(awk '/^go / { print $2; exit }' "${KUBE_ROOT_ABSOLUTE}/go.mod")"
 
 if ! command -v golangci-lint &>/dev/null; then
   echo "golangci-lint not found. Installing via make..."
