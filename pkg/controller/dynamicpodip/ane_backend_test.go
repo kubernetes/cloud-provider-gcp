@@ -847,7 +847,8 @@ func TestANEBackend_FailFastOnSilentScrubbing(t *testing.T) {
 	// Insert an active endpoint that has missing aliases (simulating silent
 	// scrubbing).
 	err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
-		Name: "scrubbed-ane",
+		Name:       "scrubbed-ane",
+		Subnetwork: fakeGCE.SubnetworkURL(),
 		Status: &computepreview.AliasNetworkEndpointStatus{
 			State: gce.ANEStateActive,
 		},
@@ -871,7 +872,8 @@ func TestANEBackend_FailFastOnSilentScrubbing(t *testing.T) {
 
 	// Now insert an active endpoint that has an alias with an empty IP
 	err = fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
-		Name: "scrubbed-ane-empty-ip",
+		Name:       "scrubbed-ane-empty-ip",
+		Subnetwork: fakeGCE.SubnetworkURL(),
 		Status: &computepreview.AliasNetworkEndpointStatus{
 			State: gce.ANEStateActive,
 		},
@@ -912,8 +914,9 @@ func TestDefaultANEAliasNameIPv4Immutable(t *testing.T) {
 	// "gke-pod-ipv4" is recognized by GetNetworkInterfaces and
 	// Mutate.
 	err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
-		Name:   "ane-existing-pre-upgrade",
-		Status: &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
+		Name:       "ane-existing-pre-upgrade",
+		Subnetwork: fakeGCE.SubnetworkURL(),
+		Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
 		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
 			expectedAliasKey: {
 				EffectiveIpAddress: "10.128.0.55",
@@ -952,4 +955,175 @@ func aneName(iface *networkInterface, cidr string) string {
 		}
 	}
 	return ""
+}
+
+// TestANEBackend_IgnoresIPv6Endpoints pins the policy for IPv6
+// AliasNetworkEndpoints, which GCE does not support and this controller never
+// creates: should one ever appear it is ignored, not published and not an
+// error, so a stray endpoint cannot wedge the node.
+func TestANEBackend_IgnoresIPv6Endpoints(t *testing.T) {
+	ctx := context.Background()
+	fakeGCE := newFakeGCEWithDefaultInstance(t)
+	backend := NewANEBackend(fakeGCE)
+
+	endpoints := []*computepreview.AliasNetworkEndpoint{
+		{
+			// Declared IPv6 under the IPv4 alias key.
+			Name:       "ane-v6-declared",
+			Subnetwork: fakeGCE.SubnetworkURL(),
+			Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
+			Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+				DefaultANEAliasNameIPv4: {IpVersion: gce.ANEIPVersionIPv6, EffectiveIpAddress: "2600:1900:4000:1::5"},
+			},
+		},
+		{
+			// IPv6 address family without a declared version.
+			Name:       "ane-v6-address",
+			Subnetwork: fakeGCE.SubnetworkURL(),
+			Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
+			Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+				DefaultANEAliasNameIPv4: {EffectiveIpAddress: "2600:1900:4000:1::6"},
+			},
+		},
+		{
+			// Only an IPv6 alias under some other key: not scrubbing.
+			Name:       "ane-v6-other-key",
+			Subnetwork: fakeGCE.SubnetworkURL(),
+			Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
+			Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+				"some-ipv6-alias": {IpVersion: gce.ANEIPVersionIPv6, EffectiveIpAddress: "2600:1900:4000:1::7"},
+			},
+		},
+		{
+			Name:       "ane-v4",
+			Subnetwork: fakeGCE.SubnetworkURL(),
+			Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
+			Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+				DefaultANEAliasNameIPv4: {IpVersion: gce.ANEIPVersionIPv4, EffectiveIpAddress: "10.128.0.9"},
+			},
+		},
+	}
+	for _, ep := range endpoints {
+		if err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, ep); err != nil {
+			t.Fatalf("CreateAliasNetworkEndpoint(%s) failed: %v", ep.Name, err)
+		}
+	}
+
+	ifaces, err := backend.GetNetworkInterfaces(ctx, testProviderID)
+	if err != nil {
+		t.Fatalf("GetNetworkInterfaces failed: %v", err)
+	}
+	if got := aneCIDRs(ifaces[0]); len(got) != 1 || got[0] != "10.128.0.9/32" {
+		t.Errorf("expected only the IPv4 endpoint to be visible, got %v", got)
+	}
+	if ifaces[0].HasTransientANE {
+		t.Errorf("IPv6 endpoints must not be reported as transient")
+	}
+}
+
+// TestANEBackend_ActiveEndpointWithoutSubnetworkFailsFast: subnetwork is a
+// required field on AliasNetworkEndpoint, so its absence on an ACTIVE endpoint
+// is a scrubbed response. As with a missing alias, fail fast rather than lose
+// track of an allocated IP.
+func TestANEBackend_ActiveEndpointWithoutSubnetworkFailsFast(t *testing.T) {
+	ctx := context.Background()
+	fakeGCE := newFakeGCEWithDefaultInstance(t)
+	backend := NewANEBackend(fakeGCE)
+
+	if err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
+		Name:   "ane-no-subnet",
+		Status: &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateActive},
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+			DefaultANEAliasNameIPv4: {EffectiveIpAddress: "10.128.0.9"},
+		},
+	}); err != nil {
+		t.Fatalf("CreateAliasNetworkEndpoint failed: %v", err)
+	}
+	_, err := backend.GetNetworkInterfaces(ctx, testProviderID)
+	if err == nil || !strings.Contains(err.Error(), "no subnetwork") {
+		t.Fatalf("expected a fail-fast error about the missing subnetwork, got %v", err)
+	}
+
+	// A transient endpoint without a subnetwork still defers reconciliation.
+	if err := fakeGCE.DeleteAliasNetworkEndpoint(ctx, testProviderID, "ane-no-subnet"); err != nil {
+		t.Fatalf("DeleteAliasNetworkEndpoint failed: %v", err)
+	}
+	if err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
+		Name:   "ane-creating-no-subnet",
+		Status: &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateCreating},
+	}); err != nil {
+		t.Fatalf("CreateAliasNetworkEndpoint failed: %v", err)
+	}
+	ifaces, err := backend.GetNetworkInterfaces(ctx, testProviderID)
+	if err != nil {
+		t.Fatalf("GetNetworkInterfaces failed: %v", err)
+	}
+	if !ifaces[0].HasTransientANE {
+		t.Errorf("expected the transient endpoint to flag the primary interface")
+	}
+}
+
+// TestANEBackend_TransientFlagFollowsSubnetwork: a transient endpoint is
+// flagged on the interface in its subnetwork, not blindly on nic0, so that a
+// future per-interface consumer sees the right one.
+func TestANEBackend_TransientFlagFollowsSubnetwork(t *testing.T) {
+	ctx := context.Background()
+	fakeGCE := newFakeGCEWithDefaultInstance(t)
+	backend := NewANEBackend(fakeGCE)
+
+	subnetB := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/us-central1/subnetworks/subnet-b", testProject)
+	mockInstances := fakeGCE.Compute().BetaInstances().(*gcloud.MockBetaInstances)
+	inst := mockInstances.Objects[*meta.ZonalKey(testNodeName, testZone)].Obj.(*computebeta.Instance)
+	inst.NetworkInterfaces = append(inst.NetworkInterfaces, &computebeta.NetworkInterface{
+		Name:       "nic1",
+		Network:    fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/vpc-b", testProject),
+		Subnetwork: subnetB,
+	})
+
+	if err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
+		Name:       "ane-creating-on-nic1",
+		Subnetwork: subnetB,
+		Status:     &computepreview.AliasNetworkEndpointStatus{State: gce.ANEStateCreating},
+	}); err != nil {
+		t.Fatalf("CreateAliasNetworkEndpoint failed: %v", err)
+	}
+	ifaces, err := backend.GetNetworkInterfaces(ctx, testProviderID)
+	if err != nil {
+		t.Fatalf("GetNetworkInterfaces failed: %v", err)
+	}
+	if ifaces[0].HasTransientANE || !ifaces[1].HasTransientANE {
+		t.Errorf("expected the transient flag on nic1 only, got nic0=%v nic1=%v", ifaces[0].HasTransientANE, ifaces[1].HasTransientANE)
+	}
+}
+
+// TestANEBackend_ResolveSubnetworkURLByAttachment: for a PSC interface,
+// resolveGCENetworkURL hands Mutate the interface's network attachment URL
+// rather than a VPC network URL, and the subnetwork lookup must accept it.
+func TestANEBackend_ResolveSubnetworkURLByAttachment(t *testing.T) {
+	ctx := context.Background()
+	fakeGCE := newFakeGCEWithDefaultInstance(t)
+	backend := NewANEBackend(fakeGCE).(*aneBackend)
+
+	attachment := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/us-central1/networkAttachments/psc-attach", testProject)
+	subnetPSC := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/us-central1/subnetworks/psc-subnet", testProject)
+	mockInstances := fakeGCE.Compute().BetaInstances().(*gcloud.MockBetaInstances)
+	inst := mockInstances.Objects[*meta.ZonalKey(testNodeName, testZone)].Obj.(*computebeta.Instance)
+	inst.NetworkInterfaces = append(inst.NetworkInterfaces, &computebeta.NetworkInterface{
+		Name:              "nic1",
+		NetworkAttachment: attachment,
+		Subnetwork:        subnetPSC,
+	})
+
+	got, err := backend.resolveSubnetworkURL(ctx, testProviderID, attachment)
+	if err != nil {
+		t.Fatalf("resolveSubnetworkURL(attachment) failed: %v", err)
+	}
+	if got != subnetPSC {
+		t.Errorf("resolveSubnetworkURL(attachment) = %q, want %q", got, subnetPSC)
+	}
+	// The VPC network URL path still works.
+	got, err = backend.resolveSubnetworkURL(ctx, testProviderID, testNetworkURL)
+	if err != nil || got != fakeGCE.SubnetworkURL() {
+		t.Errorf("resolveSubnetworkURL(network) = (%q, %v), want %q", got, err, fakeGCE.SubnetworkURL())
+	}
 }
