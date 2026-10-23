@@ -170,7 +170,7 @@ func hasOnlyIPv6Aliases(aliases map[string]computepreview.AliasNetworkEndpointAl
 	return true
 }
 
-func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, additions []string, removals []string, candidateRanges []string) error {
+func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, additions []string, removals []string, sel rangeSelection) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -245,8 +245,10 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 				SecurityTagInheritance: gce.ANESecurityTagInheritanceInherited,
 				Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
 					DefaultANEAliasNameIPv4: {
-						IpVersion:            gce.ANEIPVersionIPv4,
-						SubnetworkRangeNames: candidateRanges,
+						IpVersion: gce.ANEIPVersionIPv4,
+						// The ANE API only takes a list; a pinned range is a
+						// one-element list.
+						SubnetworkRangeNames: sel.names(),
 					},
 				},
 			}

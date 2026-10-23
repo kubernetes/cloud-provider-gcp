@@ -1098,9 +1098,13 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 	networkURL string,
 	additions []string, // e.g. ["/28"]
 	removals []string, // e.g. ["10.100.0.0/28"]
-	candidateSubnetworkRangeNames []string, // e.g. ["pod-range-1", "pod-range-2"]
+	subnetworkRangeName string, // e.g. "pod-range-1"; pins additions to one range
+	candidateSubnetworkRangeNames []string, // e.g. ["pod-range-1", "pod-range-2"]; lets GCE choose
 ) error {
-	klog.V(2).Infof("UpdateInstanceAliasIPRanges: providerID=%q, networkURL=%q, additions=%v, removals=%v, candidateSubnetworkRangeNames=%v", providerID, networkURL, additions, removals, candidateSubnetworkRangeNames)
+	if subnetworkRangeName != "" && len(candidateSubnetworkRangeNames) > 0 {
+		return fmt.Errorf("subnetworkRangeName %q and candidateSubnetworkRangeNames %v are mutually exclusive", subnetworkRangeName, candidateSubnetworkRangeNames)
+	}
+	klog.V(2).Infof("UpdateInstanceAliasIPRanges: providerID=%q, networkURL=%q, additions=%v, removals=%v, subnetworkRangeName=%q, candidateSubnetworkRangeNames=%v", providerID, networkURL, additions, removals, subnetworkRangeName, candidateSubnetworkRangeNames)
 
 	if len(removals) > 0 {
 		removalSet := sets.NewString(removals...)
@@ -1128,7 +1132,9 @@ func (g *Cloud) UpdateInstanceAliasIPRanges(
 				aliasRange := &computebeta.AliasIpRange{
 					IpCidrRange: add,
 				}
-				if len(candidateSubnetworkRangeNames) > 0 {
+				if subnetworkRangeName != "" {
+					aliasRange.SubnetworkRangeName = subnetworkRangeName
+				} else if len(candidateSubnetworkRangeNames) > 0 {
 					aliasRange.CandidateSubnetworkRangeNames = candidateSubnetworkRangeNames
 				}
 				next = append(next, aliasRange)

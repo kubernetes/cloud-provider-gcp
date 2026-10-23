@@ -231,7 +231,7 @@ func TestANEBackendMutateAdditionsAndRemovals(t *testing.T) {
 	backend := NewANEBackend(fakeGCE)
 
 	// Mutate: Add 2 ANEs
-	err := backend.Mutate(ctx, testProviderID, testNetworkURL, []string{"/32", "/32"}, nil, nil)
+	err := backend.Mutate(ctx, testProviderID, testNetworkURL, []string{"/32", "/32"}, nil, rangeSelection{})
 	if err != nil {
 		t.Fatalf("Mutate additions: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestANEBackendMutateAdditionsAndRemovals(t *testing.T) {
 
 	// Mutate: Remove 1 ANE
 	toRemove := aneCIDRs(ifaces[0])[0]
-	err = backend.Mutate(ctx, testProviderID, testNetworkURL, nil, []string{toRemove}, nil)
+	err = backend.Mutate(ctx, testProviderID, testNetworkURL, nil, []string{toRemove}, rangeSelection{})
 	if err != nil {
 		t.Fatalf("Mutate removals: %v", err)
 	}
@@ -627,7 +627,7 @@ func TestANEBackendMutate_IdempotentDelete(t *testing.T) {
 
 	// Removing an IP with no corresponding ANE in GCE should be a silent
 	// no-op (no error).
-	err := backend.Mutate(ctx, testProviderID, testNetworkURL, nil, []string{"10.128.0.99/32"}, nil)
+	err := backend.Mutate(ctx, testProviderID, testNetworkURL, nil, []string{"10.128.0.99/32"}, rangeSelection{})
 	if err != nil {
 		t.Fatalf("expected idempotent removal to succeed, got: %v", err)
 	}
@@ -645,7 +645,7 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 		additions = append(additions, "/32")
 	}
 
-	err := backend.Mutate(ctx, testProviderID, testNetworkURL, additions, nil, nil)
+	err := backend.Mutate(ctx, testProviderID, testNetworkURL, additions, nil, rangeSelection{})
 	if err != nil {
 		t.Fatalf("Mutate concurrent additions failed: %v", err)
 	}
@@ -673,7 +673,7 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 		toRemove = append(toRemove, aneCIDRs(ifaces[0])[i])
 	}
 
-	err = backend.Mutate(ctx, testProviderID, testNetworkURL, nil, toRemove, nil)
+	err = backend.Mutate(ctx, testProviderID, testNetworkURL, nil, toRemove, rangeSelection{})
 	if err != nil {
 		t.Fatalf("Mutate concurrent removals failed: %v", err)
 	}
@@ -700,7 +700,7 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 	// total ANEs.
 	simultaneousRemove := append([]string(nil), aneCIDRs(ifacesAfter[0])[:4]...)
 	simultaneousAdd := []string{"/32", "/32", "/32", "/32", "/32", "/32"}
-	err = backend.Mutate(ctx, testProviderID, testNetworkURL, simultaneousAdd, simultaneousRemove, nil)
+	err = backend.Mutate(ctx, testProviderID, testNetworkURL, simultaneousAdd, simultaneousRemove, rangeSelection{})
 	if err != nil {
 		t.Fatalf("Mutate simultaneous additions and removals failed: %v", err)
 	}
@@ -723,7 +723,7 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 	// Test context cancellation during mutation
 	canceledCtx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
-	err = backend.Mutate(canceledCtx, testProviderID, testNetworkURL, []string{"/32"}, nil, nil)
+	err = backend.Mutate(canceledCtx, testProviderID, testNetworkURL, []string{"/32"}, nil, rangeSelection{})
 	if err == nil {
 		t.Fatal("expected error on canceled context, got nil")
 	}
@@ -768,7 +768,7 @@ func TestANEBackendMutate_MultiInterfaceSubnetTargeting(t *testing.T) {
 	backend := NewANEBackend(fakeGCE)
 
 	// Mutate targeting netB -> should resolve subnetB for the ANE
-	err := backend.Mutate(ctx, testProviderID, netB, []string{"/32"}, nil, nil)
+	err := backend.Mutate(ctx, testProviderID, netB, []string{"/32"}, nil, rangeSelection{})
 	if err != nil {
 		t.Fatalf("Mutate netB failed: %v", err)
 	}
@@ -789,7 +789,7 @@ func TestANEBackendMutate_MultiInterfaceSubnetTargeting(t *testing.T) {
 	}
 
 	// Mutate targeting netA -> should resolve subnetA for the ANE
-	err = backend.Mutate(ctx, testProviderID, netA, []string{"/32"}, nil, nil)
+	err = backend.Mutate(ctx, testProviderID, netA, []string{"/32"}, nil, rangeSelection{})
 	if err != nil {
 		t.Fatalf("Mutate netA failed: %v", err)
 	}
@@ -1125,5 +1125,43 @@ func TestANEBackend_ResolveSubnetworkURLByAttachment(t *testing.T) {
 	got, err = backend.resolveSubnetworkURL(ctx, testProviderID, testNetworkURL)
 	if err != nil || got != fakeGCE.SubnetworkURL() {
 		t.Errorf("resolveSubnetworkURL(network) = (%q, %v), want %q", got, err, fakeGCE.SubnetworkURL())
+	}
+}
+
+// TestANEBackend_MutateEncodesRangeSelection: the ANE API only has a list of
+// subnetwork range names, so a pinned range (additional networks) becomes a
+// one-element list and candidates (default network) are passed through.
+func TestANEBackend_MutateEncodesRangeSelection(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name string
+		sel  rangeSelection
+		want []string
+	}{
+		{name: "pinned", sel: rangeSelection{Range: "blue-pods"}, want: []string{"blue-pods"}},
+		{name: "candidates", sel: rangeSelection{Candidates: []string{"pods-a", "pods-b"}}, want: []string{"pods-a", "pods-b"}},
+		{name: "unspecified", sel: rangeSelection{}, want: nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeGCE := newFakeGCEWithDefaultInstance(t)
+			backend := NewANEBackend(fakeGCE)
+			if err := backend.Mutate(ctx, testProviderID, testNetworkURL, []string{"/32"}, nil, tc.sel); err != nil {
+				t.Fatalf("Mutate failed: %v", err)
+			}
+			anes, err := fakeGCE.ListAliasNetworkEndpoints(ctx, testProviderID)
+			if err != nil || len(anes) != 1 {
+				t.Fatalf("expected 1 ANE, got %d (err=%v)", len(anes), err)
+			}
+			got := anes[0].Aliases[DefaultANEAliasNameIPv4].SubnetworkRangeNames
+			if len(got) != len(tc.want) {
+				t.Fatalf("SubnetworkRangeNames = %v, want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("SubnetworkRangeNames = %v, want %v", got, tc.want)
+				}
+			}
+		})
 	}
 }

@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -3885,6 +3886,12 @@ func TestProcessNextNodeWorkItem_ConflictDeferredWithoutUnhandledError(t *testin
 // TestReconcile_MultiNIC_AdditionalNetwork verifies end-to-end allocation, status
 // publication, and release on an additional L3 Network backed by a secondary NIC (nic1)
 // alongside the default network on nic0.
+//
+// As Cluster Server does, nic1 starts with the one alias range the node pool's
+// --additional-pod-network named (blue-pods-1). Every further allocation for
+// blue-net must be pinned to that same range, even though the GNP also lists
+// blue-pods-2: the GNP says which ranges belong to the network, the node pool
+// says which one this node uses.
 func TestReconcile_MultiNIC_AdditionalNetwork(t *testing.T) {
 	ctx := context.Background()
 	f := newTestFixture(t)
@@ -3927,6 +3934,8 @@ func TestReconcile_MultiNIC_AdditionalNetwork(t *testing.T) {
 				Name:       "nic1",
 				Network:    blueVPCURL,
 				Subnetwork: blueSubnetURL,
+				// The template-provisioned range for blue-net on this node pool.
+				AliasIpRanges: []*compute.AliasIpRange{{IpCidrRange: "10.5.0.0/28", SubnetworkRangeName: "blue-pods-1"}},
 			},
 		},
 	}
@@ -3954,7 +3963,9 @@ func TestReconcile_MultiNIC_AdditionalNetwork(t *testing.T) {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
 
-	// Verify GCE mutations on nic0 (1 block) and nic1 (2 blocks with candidateRanges from GNP)
+	// Verify GCE mutations on nic0 (1 block) and nic1 (the template block plus
+	// 1 more, pinned to the node pool's range rather than offered the GNP's
+	// candidates).
 	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
 	if err != nil {
 		t.Fatalf("Failed to get updated GCE instance: %v", err)
@@ -3966,8 +3977,8 @@ func TestReconcile_MultiNIC_AdditionalNetwork(t *testing.T) {
 		t.Fatalf("Expected 2 alias IP ranges on nic1, got %d", len(updatedInstance.NetworkInterfaces[1].AliasIpRanges))
 	}
 	for _, r := range updatedInstance.NetworkInterfaces[1].AliasIpRanges {
-		if !reflect.DeepEqual(r.CandidateSubnetworkRangeNames, []string{"blue-pods-1", "blue-pods-2"}) {
-			t.Errorf("Expected candidate ranges [blue-pods-1 blue-pods-2] on nic1, got %v", r.CandidateSubnetworkRangeNames)
+		if r.SubnetworkRangeName != "blue-pods-1" || len(r.CandidateSubnetworkRangeNames) != 0 {
+			t.Errorf("Expected nic1 range %s pinned to blue-pods-1 with no candidates, got subnetworkRangeName=%q candidates=%v", r.IpCidrRange, r.SubnetworkRangeName, r.CandidateSubnetworkRangeNames)
 		}
 	}
 
@@ -4075,6 +4086,13 @@ func TestReconcile_MultiNIC_SharedSecondaryNICMultipleNetworks(t *testing.T) {
 				Name:       "nic1",
 				Network:    secVPCURL,
 				Subnetwork: secSubnetURL,
+				// One template-provisioned range per additional pod network
+				// on this node pool, as two --additional-pod-network entries
+				// on the same subnetwork produce.
+				AliasIpRanges: []*compute.AliasIpRange{
+					{IpCidrRange: "10.5.0.0/28", SubnetworkRangeName: "blue-pods"},
+					{IpCidrRange: "10.6.0.0/28", SubnetworkRangeName: "green-pods"},
+				},
 			},
 		},
 	}
@@ -4101,7 +4119,8 @@ func TestReconcile_MultiNIC_SharedSecondaryNICMultipleNetworks(t *testing.T) {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
 
-	// Verify nic1 now holds 3 alias IP ranges (1 for blue-pods, 2 for green-pods)
+	// Verify nic1 now holds 3 alias IP ranges (1 for blue-pods, 2 for
+	// green-pods), the new green one pinned to green-pods.
 	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
 	if err != nil {
 		t.Fatalf("Failed to get updated GCE instance: %v", err)
@@ -4109,6 +4128,16 @@ func TestReconcile_MultiNIC_SharedSecondaryNICMultipleNetworks(t *testing.T) {
 	if len(updatedInstance.NetworkInterfaces[1].AliasIpRanges) != 3 {
 		t.Fatalf("Expected 3 alias IP ranges on shared nic1, got %d: %v",
 			len(updatedInstance.NetworkInterfaces[1].AliasIpRanges), updatedInstance.NetworkInterfaces[1].AliasIpRanges)
+	}
+	rangesByName := map[string]int{}
+	for _, r := range updatedInstance.NetworkInterfaces[1].AliasIpRanges {
+		rangesByName[r.SubnetworkRangeName]++
+		if len(r.CandidateSubnetworkRangeNames) != 0 {
+			t.Errorf("Expected no candidate ranges on additional-network range %s, got %v", r.IpCidrRange, r.CandidateSubnetworkRangeNames)
+		}
+	}
+	if rangesByName["blue-pods"] != 1 || rangesByName["green-pods"] != 2 {
+		t.Errorf("Expected 1 blue-pods and 2 green-pods ranges on nic1, got %v", rangesByName)
 	}
 
 	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
@@ -4175,6 +4204,10 @@ func TestReconcile_AdditionalNetworkOnPrimaryNIC(t *testing.T) {
 				Name:       "nic0",
 				Network:    testNetworkURL,
 				Subnetwork: "default",
+				// red-net's template-provisioned range shares nic0 with the
+				// default network (an --additional-pod-network without a
+				// subnetwork).
+				AliasIpRanges: []*compute.AliasIpRange{{IpCidrRange: "10.7.0.0/28", SubnetworkRangeName: "red-pods"}},
 			},
 		},
 	}
@@ -4187,7 +4220,7 @@ func TestReconcile_AdditionalNetworkOnPrimaryNIC(t *testing.T) {
 		Spec: nncv1.NodeNetworkConfigSpec{
 			Allocations: []nncv1.Allocation{
 				{Network: "default", Pods: 16},
-				{Network: "red-net", Pods: 16},
+				{Network: "red-net", Pods: 32},
 			},
 		},
 	}
@@ -4201,30 +4234,45 @@ func TestReconcile_AdditionalNetworkOnPrimaryNIC(t *testing.T) {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
 
+	// nic0 now carries default's block (from the provider's candidates) and
+	// two red-net blocks (the template one and one pinned to red-pods).
+	updatedInstance, err := f.fakeGCE.Compute().BetaInstances().Get(ctx, instanceKey)
+	if err != nil {
+		t.Fatalf("Failed to get updated GCE instance: %v", err)
+	}
+	rangesByName := map[string]int{}
+	for _, r := range updatedInstance.NetworkInterfaces[0].AliasIpRanges {
+		rangesByName[r.SubnetworkRangeName]++
+		if r.SubnetworkRangeName == "red-pods" && len(r.CandidateSubnetworkRangeNames) != 0 {
+			t.Errorf("Expected red-net range %s to be pinned, got candidates %v", r.IpCidrRange, r.CandidateSubnetworkRangeNames)
+		}
+	}
+	if rangesByName["default-pods"] != 1 || rangesByName["red-pods"] != 2 {
+		t.Errorf("Expected 1 default-pods and 2 red-pods ranges on nic0, got %v", rangesByName)
+	}
+
 	updatedNNC, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Failed to get updated NNC: %v", err)
-	}
-	if len(updatedNNC.Status.PodCIDRs) != 2 {
-		t.Fatalf("Expected 2 PodCIDRs on nic0 (1 default, 1 red-net), got %d: %v", len(updatedNNC.Status.PodCIDRs), updatedNNC.Status.PodCIDRs)
 	}
 	countsByNet := map[string]int{}
 	for _, pc := range updatedNNC.Status.PodCIDRs {
 		countsByNet[pc.Network]++
 	}
-	if countsByNet["default"] != 1 || countsByNet["red-net"] != 1 {
-		t.Errorf("Expected 1 default and 1 red-net PodCIDR in status, got %v", countsByNet)
+	if countsByNet["default"] != 1 || countsByNet["red-net"] != 2 {
+		t.Errorf("Expected 1 default and 2 red-net PodCIDRs in status, got %v (PodCIDRs=%v)", countsByNet, updatedNNC.Status.PodCIDRs)
 	}
 }
 
-// TestReconcile_DefaultNetworkCandidateRanges pins candidate-range precedence
-// for the default network when a default GNP exists.
+// TestReconcile_DefaultNetworkCandidateRanges pins where the default
+// network's candidate ranges come from when a default GNP exists.
 //
 // The GNP controller folds every node pool's pod-range label into the default
 // GNP as a flat union, so on a node outside the cluster default subnet the GNP
-// names ranges that nic0's subnet does not have. The subnet-qualified
-// rangeProvider must therefore win for "default", with the GNP only used when
-// the provider has nothing for the node's subnet.
+// names ranges that nic0's subnet does not have. The GNP must therefore never
+// be the source: the subnet-qualified rangeProvider is, and when it has
+// nothing for the node's subnet the ranges already on nic0 -- in its subnet by
+// construction -- are offered instead.
 func TestReconcile_DefaultNetworkCandidateRanges(t *testing.T) {
 	// Default GNP as the GNP controller leaves it on a two-subnet cluster.
 	defaultGNP := &networkv1.GKENetworkParamSet{
@@ -4240,19 +4288,31 @@ func TestReconcile_DefaultNetworkCandidateRanges(t *testing.T) {
 		name           string
 		rangeProvider  CandidateRangeProvider
 		nodeSubnet     string
+		existingRanges []*compute.AliasIpRange
 		wantCandidates []string
+		wantPinned     string
 	}{
 		{
-			name:           "provider has ranges for the node's subnet: provider wins over GNP union",
+			name:           "provider has ranges for the node's subnet: provider wins",
 			rangeProvider:  NewStaticRangeProviderWithDefaultSubnet([]string{"subnet-a/pods-a1", "subnet-b/pods-b1"}, "subnet-a"),
 			nodeSubnet:     "subnet-b",
+			existingRanges: []*compute.AliasIpRange{{IpCidrRange: "10.1.0.0/28", SubnetworkRangeName: "pods-b1"}},
 			wantCandidates: []string{"pods-b1"},
 		},
 		{
-			name:           "provider has nothing: fall back to GNP ranges",
+			// The GNP union [pods-a1 pods-b1] must not be offered: pods-a1 is
+			// not in subnet-b.
+			name:           "provider has nothing: ranges already on the interface, not the GNP union",
+			rangeProvider:  NewStaticRangeProvider(nil),
+			nodeSubnet:     "subnet-b",
+			existingRanges: []*compute.AliasIpRange{{IpCidrRange: "10.1.0.0/28", SubnetworkRangeName: "pods-b1"}},
+			wantCandidates: []string{"pods-b1"},
+		},
+		{
+			name:           "provider has nothing and nothing is on the interface: GCE chooses",
 			rangeProvider:  NewStaticRangeProvider(nil),
 			nodeSubnet:     "subnet-a",
-			wantCandidates: []string{"pods-a1", "pods-b1"},
+			wantCandidates: nil,
 		},
 	}
 	for _, tc := range tests {
@@ -4277,7 +4337,7 @@ func TestReconcile_DefaultNetworkCandidateRanges(t *testing.T) {
 				Name: testNodeName,
 				Zone: testZone,
 				NetworkInterfaces: []*compute.NetworkInterface{
-					{Name: "nic0", Network: testNetworkURL, Subnetwork: tc.nodeSubnet},
+					{Name: "nic0", Network: testNetworkURL, Subnetwork: tc.nodeSubnet, AliasIpRanges: tc.existingRanges},
 				},
 			}
 			if err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance); err != nil {
@@ -4287,7 +4347,8 @@ func TestReconcile_DefaultNetworkCandidateRanges(t *testing.T) {
 			nnc := &nncv1.NodeNetworkConfig{
 				ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
 				Spec: nncv1.NodeNetworkConfigSpec{
-					Allocations: []nncv1.Allocation{{Network: "default", Pods: 16}},
+					// One more block than is already there.
+					Allocations: []nncv1.Allocation{{Network: "default", Pods: int32(16 * (len(tc.existingRanges) + 1))}},
 				},
 			}
 			if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
@@ -4301,11 +4362,99 @@ func TestReconcile_DefaultNetworkCandidateRanges(t *testing.T) {
 			}
 
 			calls := f.gceCalls.snapshot()
-			if len(calls) != 1 || len(calls[0].candidateRanges) != 1 {
-				t.Fatalf("Expected 1 updateNetworkInterface call with 1 alias range, got %+v", calls)
+			if len(calls) != 1 {
+				t.Fatalf("Expected 1 updateNetworkInterface call, got %+v", calls)
 			}
-			if got := calls[0].candidateRanges[0]; !reflect.DeepEqual(got, tc.wantCandidates) {
+			// The last range in the request is the new one.
+			n := len(calls[0].candidateRanges) - 1
+			if got := calls[0].candidateRanges[n]; !reflect.DeepEqual(got, tc.wantCandidates) {
 				t.Errorf("candidateRanges = %v, want %v", got, tc.wantCandidates)
+			}
+			if got := calls[0].subnetworkNames[n]; got != tc.wantPinned {
+				t.Errorf("subnetworkRangeName = %q, want %q", got, tc.wantPinned)
+			}
+		})
+	}
+}
+
+// TestReconcile_AdditionalNetworkRequiresTemplateRange pins the failure mode
+// for an additional network whose range cannot be determined: with no range
+// for the network on the node there is nothing to pin to, and with two the
+// node pool's intent is ambiguous. Either way the controller refuses to guess
+// (in particular it must not fall back to the GNP's podIPv4Ranges) and reports
+// the error on the NodeNetworkConfig.
+func TestReconcile_AdditionalNetworkRequiresTemplateRange(t *testing.T) {
+	blueVPCURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/blue-vpc", testProject)
+	blueSubnetURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/us-central1/subnetworks/blue-subnet", testProject)
+
+	cases := []struct {
+		name     string
+		existing []*compute.AliasIpRange
+		wantErr  string
+	}{
+		{name: "no range on the node", existing: nil, wantErr: "no secondary range"},
+		{
+			name: "two ranges on the node",
+			existing: []*compute.AliasIpRange{
+				{IpCidrRange: "10.5.0.0/28", SubnetworkRangeName: "blue-pods-1"},
+				{IpCidrRange: "10.5.1.0/28", SubnetworkRangeName: "blue-pods-2"},
+			},
+			wantErr: "expected exactly one",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			f := newTestFixture(t)
+			stopCh := make(chan struct{})
+			defer close(stopCh)
+			f.run(ctx, stopCh)
+
+			if _, err := f.networkClient.NetworkingV1().GKENetworkParamSets().Create(ctx, gnp("blue-gnp", "blue-vpc", "blue-subnet", "blue-pods-1", "blue-pods-2"), metav1.CreateOptions{}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.networkClient.NetworkingV1().Networks().Create(ctx, readyL3Network("blue-net", "blue-gnp"), metav1.CreateOptions{}); err != nil {
+				t.Fatal(err)
+			}
+			instanceKey := meta.ZonalKey(testNodeName, testZone)
+			instance := &compute.Instance{
+				Name: testNodeName,
+				Zone: testZone,
+				NetworkInterfaces: []*compute.NetworkInterface{
+					{Name: "nic0", Network: testNetworkURL, Subnetwork: "default"},
+					{Name: "nic1", Network: blueVPCURL, Subnetwork: blueSubnetURL, AliasIpRanges: tc.existing},
+				},
+			}
+			if err := f.fakeGCE.Compute().Instances().Insert(ctx, instanceKey, instance); err != nil {
+				t.Fatal(err)
+			}
+			nnc := &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{{Network: "blue-net", Pods: int32(16 * (len(tc.existing) + 1))}},
+				},
+			}
+			if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
+				t.Fatal(err)
+			}
+			f.informerFactory.WaitForCacheSync(stopCh)
+			f.waitForNetworkResolver(stopCh)
+
+			gceWrites := countGCEWrites(t, f)
+			err := f.specCtrl.reconcile(ctx, nnc, testProviderID)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("Expected an error containing %q, got %v", tc.wantErr, err)
+			}
+			if *gceWrites != 0 {
+				t.Errorf("Expected no GCE writes, got %d", *gceWrites)
+			}
+			updated, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cond := getCondition(updated.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
+			if cond == nil || cond.Status != metav1.ConditionFalse || !strings.Contains(cond.Message, tc.wantErr) {
+				t.Errorf("Expected Ready=False with the error in the message, got %+v", cond)
 			}
 		})
 	}

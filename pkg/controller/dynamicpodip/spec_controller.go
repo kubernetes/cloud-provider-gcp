@@ -256,12 +256,17 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		}
 		netChanges := changes.GetNetwork(network)
 
-		candidateRanges := c.candidateRanges(network, networkURL, ifaces)
+		sel, err := c.rangeSelectionFor(network, networkURL, ifaces)
+		if err != nil {
+			klog.Errorf("Cannot allocate for network %q on node %q: %v", network, nnc.Name, err)
+			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("Network %q: %v", network, err))
+			return fmt.Errorf("cannot allocate for network %q: %w", network, err)
+		}
 
-		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v, candidateRanges=%v",
-			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
+		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v, range=%q, candidateRanges=%v",
+			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals, sel.Range, sel.Candidates)
 
-		err = c.backend.Mutate(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
+		err = c.backend.Mutate(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, sel)
 		// Invalidate the cached GCE observation for this node whenever a
 		// mutation is attempted so that subsequent spec reconciles or
 		// workqueue retries do not reuse pre-mutation state within the
@@ -292,26 +297,41 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 	return c.pruneReleasableCIDRs(ctx, nnc, postMutation)
 }
 
-// candidateRanges returns the secondary range names GCE may allocate a new
-// alias range from for network on this node, or nil to let GCE choose.
+// rangeSelectionFor decides which subnet secondary range(s) a new Pod CIDR
+// for network may be allocated from on this node. See rangeSelection for why
+// the two cases differ.
 //
-// Additional networks take them from their GKENetworkParamSet, whose
-// PodIPv4Ranges all belong to its single VPCSubnet. The default network does
-// not: the GNP controller folds every node pool's gke-np-default-pod-range
-// label into the default GNP as a flat, cross-subnet union, so on a node
-// outside the cluster default subnet that list names ranges its nic0 cannot
-// allocate from. The rangeProvider is subnet-qualified, so it goes first for
-// "default", and is also all there is in Adaptive Cluster IPAM without
-// multi-networking, where no Network CRs exist. Each path falls back to the
-// other if it comes up empty.
-func (c *NodeNetworkConfigSpecController) candidateRanges(network, networkURL string, ifaces []*networkInterface) []string {
-	var gnpRanges []string
-	if params, ok := c.networkResolver.LookupNetworkParams(network); ok {
-		gnpRanges = params.PodIPv4RangeNames
-	}
-	isDefault := networkv1.IsDefaultNetwork(network)
-	if !isDefault && len(gnpRanges) > 0 {
-		return gnpRanges
+// Additional networks are pinned to the single range already on the node for
+// that network. The node pool's --additional-pod-network names exactly one
+// pod-ipv4-range per network and Cluster Server provisions the instance
+// template with it, so the range on the interface *is* the user's choice, and
+// it is read from there rather than from the GKENetworkParamSet: the GNP's
+// podIPv4Ranges is a membership set that may legitimately list more ranges
+// than this node pool uses, and nothing forces the two to agree. Finding no
+// such range, or more than one, means the node is not in the shape the
+// template guarantees, and allocation is refused rather than guessed.
+//
+// The default network takes candidates from the subnet-qualified
+// rangeProvider (the cluster's additionalPodRangesConfig, as Cluster Server
+// passes it in --multi-secondary-ranges). The default GNP is deliberately not
+// used: the GNP controller folds every node pool's gke-np-default-pod-range
+// label into it as a flat, cross-subnet union, so on a node outside the
+// cluster default subnet it names ranges nic0 cannot allocate from. If the
+// provider has nothing, the ranges already in use on the interface -- which
+// are in its subnet by construction -- are offered instead; failing that the
+// choice is left to GCE, as before multi-networking support.
+func (c *NodeNetworkConfigSpecController) rangeSelectionFor(network, networkURL string, ifaces []*networkInterface) (rangeSelection, error) {
+	inUse := c.rangeNamesInUse(network, ifaces)
+
+	if !networkv1.IsDefaultNetwork(network) {
+		switch len(inUse) {
+		case 1:
+			return rangeSelection{Range: inUse[0]}, nil
+		case 0:
+			return rangeSelection{}, fmt.Errorf("no secondary range for network %q is present on the node, so the node pool's range for it cannot be determined", network)
+		default:
+			return rangeSelection{}, fmt.Errorf("secondary ranges %v for network %q are present on the node; expected exactly one", inUse, network)
+		}
 	}
 
 	var fromProvider []string
@@ -325,9 +345,42 @@ func (c *NodeNetworkConfigSpecController) candidateRanges(network, networkURL st
 		}
 	}
 	if len(fromProvider) > 0 {
-		return fromProvider
+		return rangeSelection{Candidates: fromProvider}, nil
 	}
-	return gnpRanges
+	if len(inUse) > 0 {
+		return rangeSelection{Candidates: inUse}, nil
+	}
+	return rangeSelection{}, nil
+}
+
+// rangeNamesInUse returns, sorted and without duplicates, the subnet secondary
+// range names of the Pod CIDRs (alias IP ranges and AliasNetworkEndpoints) on
+// the node that are attributed to network. Pod CIDRs with no range name --
+// allocated from a subnet's primary range -- are not counted.
+func (c *NodeNetworkConfigSpecController) rangeNamesInUse(network string, ifaces []*networkInterface) []string {
+	names := sets.NewString()
+	for _, iface := range ifaces {
+		if iface == nil {
+			continue
+		}
+		for _, r := range iface.AliasIPRanges {
+			if r.SubnetworkRangeName == "" {
+				continue
+			}
+			if n, err := resolveKubernetesNetworkName(c.networkResolver, iface, r.SubnetworkRangeName); err == nil && n == network {
+				names.Insert(r.SubnetworkRangeName)
+			}
+		}
+		for _, ane := range iface.ANEs {
+			if ane.SubnetworkRangeName == "" {
+				continue
+			}
+			if n, err := resolveKubernetesNetworkName(c.networkResolver, iface, ane.SubnetworkRangeName); err == nil && n == network {
+				names.Insert(ane.SubnetworkRangeName)
+			}
+		}
+	}
+	return names.List()
 }
 
 // subnetworkForURL returns the subnetwork of the interface that
