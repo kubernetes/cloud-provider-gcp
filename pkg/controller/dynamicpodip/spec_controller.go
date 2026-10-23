@@ -233,9 +233,9 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 	}
 
 	// Set status condition to Updating before mutating GCE
-	nncCopy := nnc.DeepCopy()
-	setNNCCondition(nncCopy, string(nncv1.NodeNetworkConfigConditionReady), metav1.ConditionFalse, "Updating", "Updating GCE VM IP alias ranges")
-	if err := c.updateNNCStatus(ctx, nncCopy); err != nil {
+	if err := c.updateNNCStatus(ctx, nnc, func(target *nncv1.NodeNetworkConfig) {
+		setNNCCondition(target, string(nncv1.NodeNetworkConfigConditionReady), metav1.ConditionFalse, "Updating", "Updating GCE VM IP alias ranges")
+	}); err != nil {
 		return fmt.Errorf("failed to update status condition to Updating: %w", err)
 	}
 
@@ -477,6 +477,7 @@ func (c *NodeNetworkConfigSpecController) pruneReleasableCIDRs(ctx context.Conte
 }
 
 func (c *NodeNetworkConfigSpecController) updateStatusError(ctx context.Context, nnc *nncv1.NodeNetworkConfig, reason, message string) error {
-	setNNCCondition(nnc, string(nncv1.NodeNetworkConfigConditionReady), metav1.ConditionFalse, reason, message)
-	return c.updateNNCStatus(ctx, nnc)
+	return c.updateNNCStatus(ctx, nnc, func(target *nncv1.NodeNetworkConfig) {
+		setNNCCondition(target, string(nncv1.NodeNetworkConfigConditionReady), metav1.ConditionFalse, reason, message)
+	})
 }
