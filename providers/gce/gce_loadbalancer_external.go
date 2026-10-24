@@ -375,8 +375,11 @@ func (g *Cloud) ensureExternalLoadBalancerDeleted(clusterName, clusterID string,
 		// using local traffic health check or nodes health check. Attempt to delete
 		// both to prevent leaking.
 		hcNames = append(hcNames, loadBalancerName)
-		hcNames = append(hcNames, MakeNodesHealthCheckName(clusterID))
 	}
+	// Attempt to delete nodes health check as well to prevent leaking.
+	// DeleteExternalTargetPoolAndChecks safely checks if any other target pool
+	// is still using it before deleting it and its firewall rule.
+	hcNames = append(hcNames, MakeNodesHealthCheckName(clusterID))
 
 	errs := utilerrors.AggregateGoroutines(
 		func() error {
