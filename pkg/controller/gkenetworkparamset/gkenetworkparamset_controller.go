@@ -614,7 +614,8 @@ func extractRelevantCidrs(subnet *compute.Subnetwork, paramset *networkv1.GKENet
 			}
 		} else {
 			// use the subnet cidr if there are no secondary ranges specified by user in params,
-			// this can only happen if the GNP is using deviceMode.
+			// this can happen if the GNP is using deviceMode or refers to an IPV6_ONLY subnet
+			// (which has no IPv4 primary range, so nothing is added).
 			if subnet.IpCidrRange != "" {
 				cidrs = append(cidrs, subnet.IpCidrRange)
 			}
