@@ -3953,4 +3953,3 @@ func TestProcessNextNodeWorkItem_ConflictDeferredWithoutUnhandledError(t *testin
 		t.Fatalf("expected 1 unhandled error for non-conflict failure, got %v", unhandled)
 	}
 }
-
