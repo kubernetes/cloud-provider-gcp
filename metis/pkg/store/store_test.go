@@ -1907,6 +1907,11 @@ func TestStore_NonReusableCIDRBlock(t *testing.T) {
 		t.Fatalf("Expected state=Deleting after releasing pod %s; got state=%s, err=%v", cid, state, err)
 	}
 
+	// CheckAllocation only considers Ready and Draining blocks, so it must fail for the Deleting block.
+	if err := s.CheckAllocation(ctx, network, cid, "eth0"); err == nil {
+		t.Fatalf("Expected CheckAllocation to fail after releasing pod %s, but succeeded", cid)
+	}
+
 	// 3. Verify no more IPs can be allocated from the block
 	_, _, err = s.AllocateIP(ctx, AllocateIPParams{Network: network, InterfaceName: "eth0", ContainerID: "c-overflow", IPFamily: IPv4})
 	if err == nil {
@@ -1966,4 +1971,406 @@ func TestStore_NonReusableCIDRBlock_Validation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestStore_GetNonDeletingCIDRBlocks verifies the query the out-of-sync
+// reconciler is built on: it returns every block the daemon still considers its
+// own (Ready, Draining, Unknown), each with its state, and leaves out blocks
+// already on their way out (Deleting). It also checks that the other
+// block-returning queries report State, so no caller ever sees a block without
+// one.
+func TestStore_GetNonDeletingCIDRBlocks(t *testing.T) {
+	ctx := context.Background()
+	s := setupTestStore(t)
+	network := "test-net"
+
+	// Add 4 CIDR blocks
+	if err := s.AddCIDR(ctx, network, "10.0.1.0/28"); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+	if err := s.AddCIDR(ctx, network, "10.0.2.0/28"); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+	if err := s.AddCIDR(ctx, network, "10.0.3.0/28"); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+	if err := s.AddCIDR(ctx, network, "10.0.4.0/28"); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+
+	id1, _, _ := s.GetCIDRBlock(ctx, "10.0.1.0/28", network)
+	id2, _, _ := s.GetCIDRBlock(ctx, "10.0.2.0/28", network)
+	id3, _, _ := s.GetCIDRBlock(ctx, "10.0.3.0/28", network)
+	id4, _, _ := s.GetCIDRBlock(ctx, "10.0.4.0/28", network)
+
+	// Keep block 1 Ready, mark block 2 Draining, mark block 3 Deleting, mark block 4 Unknown
+	if err := s.DrainCIDRBlock(ctx, id2); err != nil {
+		t.Fatalf("DrainCIDRBlock failed: %v", err)
+	}
+	if err := s.MarkCIDRBlockAsDeletingForTest(ctx, id3); err != nil {
+		t.Fatalf("MarkCIDRBlockAsDeletingForTest failed: %v", err)
+	}
+	if err := s.MarkCIDRBlockUnknown(ctx, id4); err != nil {
+		t.Fatalf("MarkCIDRBlockUnknown failed: %v", err)
+	}
+
+	blocks, err := s.GetNonDeletingCIDRBlocks(ctx, network, IPv4)
+	if err != nil {
+		t.Fatalf("GetNonDeletingCIDRBlocks failed: %v", err)
+	}
+
+	if len(blocks) != 3 {
+		t.Fatalf("Expected 3 non-deleting blocks, got %d", len(blocks))
+	}
+
+	foundMap := map[int64]CIDRBlock{}
+	for _, b := range blocks {
+		foundMap[b.ID] = b
+	}
+
+	b1, ok1 := foundMap[id1]
+	if !ok1 || b1.State != StateReady {
+		t.Errorf("Expected block 1 to be returned with StateReady, got: %+v", b1)
+	}
+
+	b2, ok2 := foundMap[id2]
+	if !ok2 || b2.State != StateDraining {
+		t.Errorf("Expected block 2 to be returned with StateDraining, got: %+v", b2)
+	}
+
+	if _, ok3 := foundMap[id3]; ok3 {
+		t.Errorf("Block 3 is in Deleting state and should not be returned by GetNonDeletingCIDRBlocks")
+	}
+
+	b4, ok4 := foundMap[id4]
+	if !ok4 || b4.State != StateUnknown {
+		t.Errorf("Expected block 4 to be returned with StateUnknown, got: %+v", b4)
+	}
+
+	// Every query that returns a CIDRBlock reports its State, so a caller can never see a
+	// block without knowing what state it is in.
+	ready, err := s.GetReadyCIDRBlocksSorted(ctx, network, IPv4)
+	if err != nil {
+		t.Fatalf("GetReadyCIDRBlocksSorted failed: %v", err)
+	}
+	if len(ready) != 1 || ready[0].ID != id1 || ready[0].State != StateReady {
+		t.Errorf("Expected GetReadyCIDRBlocksSorted to return block 1 with StateReady, got: %+v", ready)
+	}
+	deleting, err := s.GetDeletingCIDRBlocks(ctx, network, IPv4)
+	if err != nil {
+		t.Fatalf("GetDeletingCIDRBlocks failed: %v", err)
+	}
+	if len(deleting) != 1 || deleting[0].ID != id3 || deleting[0].State != StateDeleting {
+		t.Errorf("Expected GetDeletingCIDRBlocks to return block 3 with StateDeleting, got: %+v", deleting)
+	}
+	// Block 2 is Draining with no allocations, so an immediate expiration moves it to Deleting.
+	expired, err := s.ExpireDrainingCIDRBlocks(ctx, network, IPv4, 0)
+	if err != nil {
+		t.Fatalf("ExpireDrainingCIDRBlocks failed: %v", err)
+	}
+	if len(expired) != 1 || expired[0].ID != id2 || expired[0].State != StateDeleting {
+		t.Errorf("Expected ExpireDrainingCIDRBlocks to return block 2 with StateDeleting, got: %+v", expired)
+	}
+}
+
+// TestStore_UnknownCIDRBlock_ExcludedFromUsageAndUndrain pins what Unknown
+// means at the store level: the block is invisible to usage accounting, cannot
+// be undrained back into service, cannot serve new allocations, and its
+// existing allocations fail CheckAllocation -- until it is restored to Ready,
+// after which the allocation is valid again.
+func TestStore_UnknownCIDRBlock_ExcludedFromUsageAndUndrain(t *testing.T) {
+	ctx := context.Background()
+	s := setupTestStore(t)
+	network := "test-net"
+
+	if err := s.AddCIDR(ctx, network, "10.0.1.0/28"); err != nil {
+		t.Fatalf("AddCIDR block 1 failed: %v", err)
+	}
+	if err := s.AddCIDR(ctx, network, "10.0.2.0/28"); err != nil {
+		t.Fatalf("AddCIDR block 2 failed: %v", err)
+	}
+
+	// Exhaust block 1 (13 allocations + 3 reserved = 16)
+	for i := 0; i < 13; i++ {
+		_, _, err := s.AllocateIP(ctx, AllocateIPParams{
+			Network:       network,
+			InterfaceName: "eth0",
+			ContainerID:   fmt.Sprintf("b1-c-%d", i),
+			IPFamily:      IPv4,
+		})
+		if err != nil {
+			t.Fatalf("AllocateIP on block 1 failed: %v", err)
+		}
+	}
+
+	// Allocate 1 IP on block 2
+	_, cidr, err := s.AllocateIP(ctx, AllocateIPParams{
+		Network:       network,
+		InterfaceName: "eth0",
+		ContainerID:   "b2-c-1",
+		IPFamily:      IPv4,
+	})
+	if err != nil || cidr != "10.0.2.0/28" {
+		t.Fatalf("Expected allocation on block 2, got cidr=%s, err=%v", cidr, err)
+	}
+
+	id2, _, _ := s.GetCIDRBlock(ctx, "10.0.2.0/28", network)
+	if err := s.MarkCIDRBlockUnknown(ctx, id2); err != nil {
+		t.Fatalf("MarkCIDRBlockUnknown failed: %v", err)
+	}
+
+	// GetIPUsage excludes block 2 (StateUnknown) from Total and Allocated.
+	usage, err := s.GetIPUsage(ctx, network, IPv4)
+	if err != nil {
+		t.Fatalf("GetIPUsage failed: %v", err)
+	}
+	if usage.Total != 16 {
+		t.Errorf("Expected usage.Total to be 16 (excluding Unknown block), got %d", usage.Total)
+	}
+	if usage.Allocated != 16 {
+		t.Errorf("Expected usage.Allocated to be 16 (excluding Unknown block), got %d", usage.Allocated)
+	}
+
+	// UndrainOneCIDRBlock must not undrain a StateUnknown block.
+	undrained, err := s.UndrainOneCIDRBlock(ctx, network, IPv4)
+	if err != nil {
+		t.Fatalf("UndrainOneCIDRBlock failed: %v", err)
+	}
+	if undrained {
+		t.Errorf("Expected UndrainOneCIDRBlock to return false for Unknown block, got true")
+	}
+
+	// AllocateIP must not allocate from the Unknown block.
+	_, _, err = s.AllocateIP(ctx, AllocateIPParams{
+		Network:       network,
+		InterfaceName: "eth0",
+		ContainerID:   "b2-c-2",
+		IPFamily:      IPv4,
+	})
+	if !errors.Is(err, ErrNoAvailableIPs) {
+		t.Errorf("Expected ErrNoAvailableIPs when only Unknown block has free IPs, got: %v", err)
+	}
+
+	// CheckAllocation fails for a container on the Unknown block, and succeeds once it is restored to Ready.
+	if err := s.CheckAllocation(ctx, network, "b2-c-1", "eth0"); err == nil {
+		t.Errorf("Expected CheckAllocation to fail for container on Unknown block, got nil")
+	}
+	if err := s.MarkCIDRBlockReady(ctx, id2); err != nil {
+		t.Fatalf("MarkCIDRBlockReady failed: %v", err)
+	}
+	if err := s.CheckAllocation(ctx, network, "b2-c-1", "eth0"); err != nil {
+		t.Errorf("Expected CheckAllocation to succeed once block is restored to Ready, got: %v", err)
+	}
+}
+
+// TestStore_DeleteCIDRBlockImmediately covers the removal path for an
+// out-of-sync block that has no pods on it: the call is a no-op (not an error)
+// while any IP is still allocated, and otherwise removes the block together
+// with its ip_addresses rows in one step, bypassing the Deleting state.
+func TestStore_DeleteCIDRBlockImmediately(t *testing.T) {
+	ctx := context.Background()
+	s := setupTestStore(t)
+	network := "test-net"
+
+	cidr1 := "10.0.1.0/28"
+	if err := s.AddCIDR(ctx, network, cidr1); err != nil {
+		t.Fatalf("AddCIDR failed: %v", err)
+	}
+	id1, _, err := s.GetCIDRBlock(ctx, cidr1, network)
+	if err != nil {
+		t.Fatalf("GetCIDRBlock failed: %v", err)
+	}
+
+	// Allocate an IP from cidr1
+	containerID := "test-c1"
+	_, _, err = s.AllocateIP(ctx, AllocateIPParams{
+		Network:       network,
+		InterfaceName: "eth0",
+		ContainerID:   containerID,
+		IPFamily:      IPv4,
+	})
+	if err != nil {
+		t.Fatalf("AllocateIP failed: %v", err)
+	}
+
+	// A block with active allocations is not deleted.
+	if err := s.DeleteCIDRBlockImmediately(ctx, id1); err != nil {
+		t.Fatalf("DeleteCIDRBlockImmediately returned unexpected error: %v", err)
+	}
+	_, exists, err := s.GetCIDRBlock(ctx, cidr1, network)
+	if err != nil || !exists {
+		t.Fatalf("Block should still exist because it has active allocations, exists: %v, err: %v", exists, err)
+	}
+
+	// Block 1 can never reach allocated_ips == 0 because AddCIDR reserves 3 IPs on the first
+	// block of a network, so use a second block, which starts with no allocations at all.
+	cidr2 := "10.0.2.0/28"
+	if err := s.AddCIDR(ctx, network, cidr2); err != nil {
+		t.Fatalf("AddCIDR block 2 failed: %v", err)
+	}
+	id2, _, err := s.GetCIDRBlock(ctx, cidr2, network)
+	if err != nil {
+		t.Fatalf("GetCIDRBlock block 2 failed: %v", err)
+	}
+
+	// Block 2 has 0 allocated IPs
+	var alloc2 int
+	err = s.db.QueryRowContext(ctx, "SELECT allocated_ips FROM cidr_blocks WHERE id = ?", id2).Scan(&alloc2)
+	if err != nil || alloc2 != 0 {
+		t.Fatalf("Expected allocated_ips to be 0 for block 2, got %d, err: %v", alloc2, err)
+	}
+
+	// Verify ip_addresses count for block 2 before deletion
+	var ipCountBefore int
+	err = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM ip_addresses WHERE cidr_block_id = ?", id2).Scan(&ipCountBefore)
+	if err != nil || ipCountBefore != 16 {
+		t.Fatalf("Expected 16 IPs in ip_addresses for block 2, got %d", ipCountBefore)
+	}
+
+	// Call DeleteCIDRBlockImmediately on block 2
+	if err := s.DeleteCIDRBlockImmediately(ctx, id2); err != nil {
+		t.Fatalf("DeleteCIDRBlockImmediately failed for block 2: %v", err)
+	}
+
+	// Verify block 2 is completely gone from cidr_blocks
+	_, exists, err = s.GetCIDRBlock(ctx, cidr2, network)
+	if err != nil || exists {
+		t.Fatalf("Expected block 2 to be deleted from cidr_blocks, but exists: %v", exists)
+	}
+
+	// Verify all ip_addresses were cascaded and deleted
+	var ipCountAfter int
+	err = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM ip_addresses WHERE cidr_block_id = ?", id2).Scan(&ipCountAfter)
+	if err != nil || ipCountAfter != 0 {
+		t.Fatalf("Expected 0 IPs in ip_addresses after cascading delete, got %d", ipCountAfter)
+	}
+}
+
+// TestStore_StateWriters_RespectPreconditions verifies that the by-id state
+// writers are compare-and-set operations: a block that is not in the expected
+// source state is left untouched instead of being overwritten.
+func TestStore_StateWriters_RespectPreconditions(t *testing.T) {
+	ctx := context.Background()
+	network := "precondition-net"
+
+	getState := func(t *testing.T, s *Store, id int64) CidrBlockState {
+		t.Helper()
+		var state CidrBlockState
+		if err := s.db.QueryRowContext(ctx, "SELECT state FROM cidr_blocks WHERE id = ?", id).Scan(&state); err != nil {
+			t.Fatalf("failed to read state of block %d: %v", id, err)
+		}
+		return state
+	}
+
+	newBlock := func(t *testing.T, s *Store, cidr string) int64 {
+		t.Helper()
+		if err := s.AddCIDR(ctx, network, cidr); err != nil {
+			t.Fatalf("AddCIDR %s failed: %v", cidr, err)
+		}
+		id, _, err := s.GetCIDRBlock(ctx, cidr, network)
+		if err != nil {
+			t.Fatalf("GetCIDRBlock %s failed: %v", cidr, err)
+		}
+		return id
+	}
+
+	t.Run("DrainCIDRBlock only drains Ready blocks", func(t *testing.T) {
+		s := setupTestStore(t)
+		deleting := newBlock(t, s, "10.0.1.0/28")
+		if err := s.MarkCIDRBlockAsDeletingForTest(ctx, deleting); err != nil {
+			t.Fatalf("MarkCIDRBlockAsDeletingForTest failed: %v", err)
+		}
+		if err := s.DrainCIDRBlock(ctx, deleting); err != nil {
+			t.Fatalf("DrainCIDRBlock returned unexpected error: %v", err)
+		}
+		if got := getState(t, s, deleting); got != StateDeleting {
+			t.Errorf("Expected Deleting block to stay Deleting, got %s", got)
+		}
+
+		unknown := newBlock(t, s, "10.0.2.0/28")
+		if err := s.MarkCIDRBlockUnknown(ctx, unknown); err != nil {
+			t.Fatalf("MarkCIDRBlockUnknown failed: %v", err)
+		}
+		if err := s.DrainCIDRBlock(ctx, unknown); err != nil {
+			t.Fatalf("DrainCIDRBlock returned unexpected error: %v", err)
+		}
+		if got := getState(t, s, unknown); got != StateUnknown {
+			t.Errorf("Expected Unknown block to stay Unknown, got %s", got)
+		}
+	})
+
+	t.Run("MarkCIDRBlockUnknown only marks Ready or Draining blocks", func(t *testing.T) {
+		s := setupTestStore(t)
+		ready := newBlock(t, s, "10.0.1.0/28")
+		draining := newBlock(t, s, "10.0.2.0/28")
+		deleting := newBlock(t, s, "10.0.3.0/28")
+		if err := s.DrainCIDRBlock(ctx, draining); err != nil {
+			t.Fatalf("DrainCIDRBlock failed: %v", err)
+		}
+		if err := s.MarkCIDRBlockAsDeletingForTest(ctx, deleting); err != nil {
+			t.Fatalf("MarkCIDRBlockAsDeletingForTest failed: %v", err)
+		}
+
+		for _, id := range []int64{ready, draining, deleting} {
+			if err := s.MarkCIDRBlockUnknown(ctx, id); err != nil {
+				t.Fatalf("MarkCIDRBlockUnknown(%d) returned unexpected error: %v", id, err)
+			}
+		}
+		if got := getState(t, s, ready); got != StateUnknown {
+			t.Errorf("Expected Ready block to become Unknown, got %s", got)
+		}
+		if got := getState(t, s, draining); got != StateUnknown {
+			t.Errorf("Expected Draining block to become Unknown, got %s", got)
+		}
+		if got := getState(t, s, deleting); got != StateDeleting {
+			t.Errorf("Expected Deleting block to stay Deleting, got %s", got)
+		}
+	})
+
+	t.Run("MarkCIDRBlockReady only restores Unknown blocks", func(t *testing.T) {
+		s := setupTestStore(t)
+		unknown := newBlock(t, s, "10.0.1.0/28")
+		if err := s.MarkCIDRBlockUnknown(ctx, unknown); err != nil {
+			t.Fatalf("MarkCIDRBlockUnknown failed: %v", err)
+		}
+		if err := s.MarkCIDRBlockReady(ctx, unknown); err != nil {
+			t.Fatalf("MarkCIDRBlockReady failed: %v", err)
+		}
+		if got := getState(t, s, unknown); got != StateReady {
+			t.Errorf("Expected Unknown block to become Ready, got %s", got)
+		}
+
+		// A released non-reusable /32 that was Unknown must not be resurrected to Ready.
+		// Use a dedicated network so the /32 is the only block allocations can come from.
+		aneNetwork := network + "-ane"
+		cidr := "10.1.3.1/32"
+		if err := s.AddCIDR(ctx, aneNetwork, cidr, WithReusable(false)); err != nil {
+			t.Fatalf("AddCIDR non-reusable failed: %v", err)
+		}
+		released, _, err := s.GetCIDRBlock(ctx, cidr, aneNetwork)
+		if err != nil {
+			t.Fatalf("GetCIDRBlock failed: %v", err)
+		}
+		if _, _, err := s.AllocateIP(ctx, AllocateIPParams{Network: aneNetwork, InterfaceName: "eth0", ContainerID: "c1", IPFamily: IPv4}); err != nil {
+			t.Fatalf("AllocateIP failed: %v", err)
+		}
+		if err := s.MarkCIDRBlockUnknown(ctx, released); err != nil {
+			t.Fatalf("MarkCIDRBlockUnknown failed: %v", err)
+		}
+		if _, err := s.ReleaseIPByOwner(ctx, aneNetwork, "c1", "eth0", 0); err != nil {
+			t.Fatalf("ReleaseIPByOwner failed: %v", err)
+		}
+		if got := getState(t, s, released); got != StateDeleting {
+			t.Fatalf("Expected released /32 to be Deleting, got %s", got)
+		}
+		if err := s.MarkCIDRBlockReady(ctx, released); err != nil {
+			t.Fatalf("MarkCIDRBlockReady returned unexpected error: %v", err)
+		}
+		if got := getState(t, s, released); got != StateDeleting {
+			t.Errorf("Expected released /32 to stay Deleting, got %s", got)
+		}
+		if _, _, err := s.AllocateIP(ctx, AllocateIPParams{Network: aneNetwork, InterfaceName: "eth0", ContainerID: "c2", IPFamily: IPv4}); err == nil {
+			t.Error("Expected allocation from the released /32 to fail, but it succeeded")
+		}
+	})
 }
