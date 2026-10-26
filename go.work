@@ -3,6 +3,7 @@ go 1.26.3
 use (
 	.
 	./metis
+	./metis/test/integration
 	./providers
 	./test/e2e
 )
