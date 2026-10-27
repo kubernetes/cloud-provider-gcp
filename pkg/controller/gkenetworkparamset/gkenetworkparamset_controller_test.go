@@ -961,7 +961,7 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 					Annotations: map[string]string{},
 				},
 				Spec: networkv1.GKENetworkParamSetSpec{
-					VPC:       "test-vpc",
+					VPC:       defaultTestNetworkName,
 					VPCSubnet: "test-subnet",
 				},
 			},
@@ -1012,6 +1012,46 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 				Reason: "SecondaryRangeAndDeviceModeUnspecified",
 			},
 		},
+		{
+			name: "IPv6-only cluster allows unset GNP.Spec.PodIPv4Ranges for custom Network on IPV6_ONLY subnet",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "custom-network",
+					Labels:      map[string]string{},
+					Annotations: map[string]string{},
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:       defaultTestNetworkName,
+					VPCSubnet: "test-ipv6-only-subnet",
+				},
+			},
+			isIPv6OnlyCluster: true,
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionTrue,
+				Reason: "GNPReady",
+			},
+		},
+		{
+			name: "IPv4/Dual-stack cluster allows unset GNP.Spec.PodIPv4Ranges for custom Network on IPV6_ONLY subnet",
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "custom-network",
+					Labels:      map[string]string{},
+					Annotations: map[string]string{},
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:       defaultTestNetworkName,
+					VPCSubnet: "test-ipv6-only-subnet",
+				},
+			},
+			isIPv6OnlyCluster: false,
+			expectedCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionTrue,
+				Reason: "GNPReady",
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -1058,6 +1098,17 @@ func TestGKENetworkParamSetValidations(t *testing.T) {
 			}
 
 			testVals.runGKENetworkParamSetController(ctx)
+
+			ipv6OnlySubnet := &compute.Subnetwork{
+				Name:               "test-ipv6-only-subnet",
+				StackType:          "IPV6_ONLY",
+				Ipv6AccessType:     "INTERNAL",
+				InternalIpv6Prefix: "fd20:fb0:588b::/64",
+			}
+			ipv6OnlySubnetKey := meta.RegionalKey(ipv6OnlySubnet.Name, testVals.clusterValues.Region)
+			if err := testVals.cloud.Compute().Subnetworks().Insert(ctx, ipv6OnlySubnetKey, ipv6OnlySubnet); err != nil {
+				t.Error(err)
+			}
 
 			// Create network resources used by duplicate gnps
 			duplicateNetworkKey := meta.GlobalKey(duplicateVPCName)
@@ -1169,7 +1220,7 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 			},
 		},
 		{
-			name: "L3NetworkType with IPV6_ONLY subnet",
+			name: "L3NetworkType with IPV6_ONLY subnet without PodIPv4Ranges",
 			network: &networkv1.Network{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: networkName,
@@ -1184,12 +1235,68 @@ func TestCrossValidateNetworkAndGnp(t *testing.T) {
 					Name: gkeNetworkParamSetName,
 				},
 				Spec: networkv1.GKENetworkParamSetSpec{
-					VPC:           nonDefaultTestNetworkName,
-					VPCSubnet:     subnetName,
-					PodIPv4Ranges: &networkv1.SecondaryRanges{RangeNames: []string{subnetSecondaryRangeName}},
+					VPC:       nonDefaultTestNetworkName,
+					VPCSubnet: subnetName,
 				},
 			},
 			subnetStackType: "IPV6_ONLY",
+			expectedCondition: metav1.Condition{
+				Type:   "ParamsReady",
+				Status: metav1.ConditionTrue,
+				Reason: "GNPParamsReady",
+			},
+		},
+		{
+			name: "L3NetworkType with IPV6_ONLY subnet without PodIPv4Ranges on IPv6Only Cluster",
+			network: &networkv1.Network{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: networkName,
+				},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.L3NetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: gkeNetworkParamSetName, Kind: gnpKind},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:       nonDefaultTestNetworkName,
+					VPCSubnet: subnetName,
+				},
+			},
+			subnetStackType:   "IPV6_ONLY",
+			isIPv6OnlyCluster: true,
+			expectedCondition: metav1.Condition{
+				Type:   "ParamsReady",
+				Status: metav1.ConditionTrue,
+				Reason: "GNPParamsReady",
+			},
+		},
+		{
+			name: "DeviceNetworkType with IPV6_ONLY subnet",
+			network: &networkv1.Network{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: networkName,
+				},
+				Spec: networkv1.NetworkSpec{
+					Type:          networkv1.DeviceNetworkType,
+					ParametersRef: &networkv1.NetworkParametersReference{Name: gkeNetworkParamSetName, Kind: gnpKind},
+				},
+			},
+			paramSet: &networkv1.GKENetworkParamSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gkeNetworkParamSetName,
+				},
+				Spec: networkv1.GKENetworkParamSetSpec{
+					VPC:        nonDefaultTestNetworkName,
+					VPCSubnet:  subnetName,
+					DeviceMode: networkv1.NetDevice,
+				},
+			},
+			subnetStackType:   "IPV6_ONLY",
+			isIPv6OnlyCluster: true,
 			expectedCondition: metav1.Condition{
 				Type:   "ParamsReady",
 				Status: metav1.ConditionFalse,

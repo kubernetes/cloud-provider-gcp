@@ -347,35 +347,33 @@ func podCIDRReadySince(nnc *nncv1.NodeNetworkConfig) map[string]metav1.Time {
 
 // syncStatusToGCE updates the NNC Status PodCIDRs to match the actual GCE state.
 func (c *NodeNetworkConfigStatusController) syncStatusToGCE(ctx context.Context, nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) error {
-	var allActualCIDRs []nncv1.PodCIDR
-
-	readySince := podCIDRReadySince(nnc)
 	now := metav1.Now()
+	return c.updateNNCStatus(ctx, nnc, func(target *nncv1.NodeNetworkConfig) {
+		var allActualCIDRs []nncv1.PodCIDR
+		readySince := podCIDRReadySince(target)
 
-	forEachPodCIDREntry(ifaces, func(network, id, cidr string, reusePolicy nncv1.PodCIDRType) {
-		transitioned := now
-		if prev, ok := readySince[cidrKey(network, cidr)]; ok {
-			transitioned = prev
-		}
-		allActualCIDRs = append(allActualCIDRs, nncv1.PodCIDR{
-			Id:          id,
-			Network:     network,
-			CIDR:        cidr,
-			ReusePolicy: reusePolicy,
-			Condition: &metav1.Condition{
-				Type:               string(nncv1.PodCIDRConditionReady),
-				Status:             metav1.ConditionTrue,
-				LastTransitionTime: transitioned,
-				Reason:             string(nncv1.PodCIDRReadyConditionReady),
-				Message:            "Pod CIDR is ready and routed",
-			},
+		forEachPodCIDREntry(ifaces, func(network, id, cidr string, reusePolicy nncv1.PodCIDRType) {
+			transitioned := now
+			if prev, ok := readySince[cidrKey(network, cidr)]; ok {
+				transitioned = prev
+			}
+			allActualCIDRs = append(allActualCIDRs, nncv1.PodCIDR{
+				Id:          id,
+				Network:     network,
+				CIDR:        cidr,
+				ReusePolicy: reusePolicy,
+				Condition: &metav1.Condition{
+					Type:               string(nncv1.PodCIDRConditionReady),
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: transitioned,
+					Reason:             string(nncv1.PodCIDRReadyConditionReady),
+					Message:            "Pod CIDR is ready and routed",
+				},
+			})
 		})
+
+		target.Status.PodCIDRs = allActualCIDRs
+		_ = setNNCCondition(target, string(nncv1.NodeNetworkConfigConditionReady), metav1.ConditionTrue, string(nncv1.NodeNetworkConfigReadyReason), "Node network config is ready")
+		klog.Infof("Syncing NNC status to GCE state for %q (CIDRs: %d)", target.Name, len(allActualCIDRs))
 	})
-
-	nncCopy := nnc.DeepCopy()
-	nncCopy.Status.PodCIDRs = allActualCIDRs
-	_ = setNNCCondition(nncCopy, string(nncv1.NodeNetworkConfigConditionReady), metav1.ConditionTrue, string(nncv1.NodeNetworkConfigReadyReason), "Node network config is ready")
-
-	klog.Infof("Syncing NNC status to GCE state for %q (CIDRs: %d)", nncCopy.Name, len(allActualCIDRs))
-	return c.updateNNCStatus(ctx, nncCopy)
 }
