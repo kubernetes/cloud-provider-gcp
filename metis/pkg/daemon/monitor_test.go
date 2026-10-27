@@ -165,6 +165,36 @@ func TestMonitor_DynamicAllocation_ScaleUp(t *testing.T) {
 			expectedQueueLen:    1,
 		},
 		{
+			desc: "Cooldown IPs within threshold count toward scale-up watermark",
+			blocks: []struct {
+				cidr  string
+				drain bool
+			}{
+				{"10.0.1.0/28", false},
+			},
+			allocations:     3,
+			cooldowns:       10,
+			pendingRequests: 0,
+			mockNNC: &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{{Network: network, Pods: 16}},
+				},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.1.0/28", Network: network},
+					},
+				},
+			},
+			expectedPatchCalled: true,
+			// Expected pods calculation:
+			// allocated = 3 (allocations) + 3 (reserved) = 6 (< 12 watermark).
+			// cooldown = 10 (<= 10 threshold).
+			// used = 6 + 10 = 16.
+			// desired = ceil(16/0.75) = ceil(21.33) = 22.
+			expectedPatchedPods: 22,
+		},
+		{
 			desc: "Patch failure returns error",
 			blocks: []struct {
 				cidr  string

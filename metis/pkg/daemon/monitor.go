@@ -68,8 +68,10 @@ const (
 // Key Behaviors:
 //
 // 1. Dynamic Scale-Up (Prefetching):
-//   - Calculates utilization as: (AllocatedIPs + PendingRequests) / TotalCapacity.
-//   - If utilization exceeds the target, it increases requested pod capacity in the
+//   - Calculates scale-up demand using (AllocatedIPs + CooldownIPs + PendingRequests) / TotalCapacity.
+//     CooldownIPs are included because they cannot be assigned to new pods and treating them as
+//     free could cause CNI exhaustion during pod churn before hitting the scale-up watermark.
+//   - If demand exceeds the target watermark, it increases requested pod capacity in the
 //     NodeNetworkConfig (NNC) CRD (modifying Spec.Allocations[].Pods) aiming for a
 //     target utilization (default 75%).
 //   - Pushes back and defers new requests if the number of IPs currently in a release
@@ -488,7 +490,11 @@ func (m *Monitor) getUtilizationInfo(ctx context.Context, network string, nncCop
 }
 
 func (m *Monitor) maybeScaleUp(network string, info *UtilizationInfo) int {
-	usedIPs := info.Usage.Allocated
+	// IPs in cooldown cannot be assigned to new pods. Treating them as free would
+	// prevent prefetch scale-up and cause CNI exhaustion during pod churn when
+	// allocated < watermark but allocated + cooldown reaches total capacity.
+	// Over-allocation during large release bursts is still bounded by cooldownPushbackThreshold below.
+	usedIPs := info.Usage.Allocated + info.Usage.Cooldown
 	pendingRequests := info.PendingRequests
 	localTotal := info.Usage.Total
 
