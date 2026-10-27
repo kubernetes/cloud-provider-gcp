@@ -44,6 +44,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/klog/v2"
@@ -143,10 +144,28 @@ func (b *nodeSyncBase) resolveNode(ctx context.Context, key string) (*nncv1.Node
 	return nnc.DeepCopy(), providerID, nil
 }
 
-// updateNNCStatus writes the status subresource.
-func (b *nodeSyncBase) updateNNCStatus(ctx context.Context, nnc *nncv1.NodeNetworkConfig) error {
-	_, err := b.nncClient.NetworkingV1().NodeNetworkConfigs().UpdateStatus(ctx, nnc, metav1.UpdateOptions{})
-	return err
+// updateNNCStatus writes the status subresource, retrying on 409 Conflict by
+// re-fetching the latest NodeNetworkConfig and re-applying mutate to its status.
+func (b *nodeSyncBase) updateNNCStatus(ctx context.Context, nnc *nncv1.NodeNetworkConfig, mutate func(*nncv1.NodeNetworkConfig)) error {
+	firstAttempt := true
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var target *nncv1.NodeNetworkConfig
+		if firstAttempt {
+			firstAttempt = false
+			target = nnc.DeepCopy()
+		} else {
+			live, err := b.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, nnc.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			target = live.DeepCopy()
+		}
+		if mutate != nil {
+			mutate(target)
+		}
+		_, err := b.nncClient.NetworkingV1().NodeNetworkConfigs().UpdateStatus(ctx, target, metav1.UpdateOptions{})
+		return err
+	})
 }
 
 // runNodeWorkers is the Run body shared by both controllers. cacheSyncs may be
@@ -185,7 +204,8 @@ func runNodeWorkers(
 // makes it recoverable, since neither controller watches Nodes -- forgetting
 // the key would strand that node's NodeNetworkConfig indefinitely. A
 // transientANEError is handled the same way while GCE finishes creating or
-// deleting an AliasNetworkEndpoint.
+// deleting an AliasNetworkEndpoint, as are transient 409 Conflict errors if a
+// retry loop still exhausts its attempts under heavy contention.
 func processNextNodeWorkItem(
 	name string,
 	queue workqueue.TypedRateLimitingInterface[string],
@@ -206,6 +226,11 @@ func processNextNodeWorkItem(
 	switch err.(type) {
 	case *nodeNotReadyError, *transientANEError:
 		klog.V(4).Infof("%s: deferring sync for %q: %v", name, key, err)
+		queue.AddRateLimited(key)
+		return true
+	}
+	if errors.IsConflict(err) {
+		klog.V(4).Infof("%s: conflict syncing %q, will retry: %v", name, key, err)
 		queue.AddRateLimited(key)
 		return true
 	}

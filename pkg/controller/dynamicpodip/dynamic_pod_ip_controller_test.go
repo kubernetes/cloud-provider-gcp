@@ -41,6 +41,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	clientgotesting "k8s.io/client-go/testing"
@@ -3718,5 +3719,237 @@ func TestSpecController_NonDefaultSubnetCandidatesApplied(t *testing.T) {
 	wantCandidates := []string{"range-2a"}
 	if !reflect.DeepEqual(calls[0].candidateRanges[0], wantCandidates) {
 		t.Errorf("Candidates = %v, want %v", calls[0].candidateRanges[0], wantCandidates)
+	}
+}
+
+// TestStatusController_SyncStatusToGCE_RetriesOnConflict verifies that a 409
+// Conflict on UpdateStatus is retried against the latest NodeNetworkConfig from
+// the API server without re-issuing an uncached GCE ForceGet, and preserves
+// concurrent updates (including LastTransitionTime on already-Ready CIDRs).
+func TestStatusController_SyncStatusToGCE_RetriesOnConflict(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	const (
+		existingCIDR = "10.100.0.0/28"
+		newCIDR      = "10.100.1.0/28"
+	)
+	insertInstanceWithRanges(ctx, t, f, existingCIDR, newCIDR)
+
+	backdated := metav1.NewTime(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{{Network: "default", Pods: 16}},
+		},
+	}
+	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+	}
+	f.informerFactory.WaitForCacheSync(stopCh)
+
+	// Fail the first status write with a 409 Conflict and simulate a concurrent
+	// update in the tracker (bumping Spec.Allocations and publishing existingCIDR
+	// with a backdated LastTransitionTime) so the retry must re-read the live
+	// object and preserve both.
+	statusWrites := 0
+	f.nncClient.PrependReactor("update", "nodenetworkconfigs", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "status" {
+			return false, nil, nil
+		}
+		statusWrites++
+		if statusWrites != 1 {
+			return false, nil, nil
+		}
+
+		gvr := action.GetResource()
+		obj, err := f.nncClient.Tracker().Get(gvr, action.GetNamespace(), testNodeName)
+		if err != nil {
+			return true, nil, err
+		}
+		live, ok := obj.(*nncv1.NodeNetworkConfig)
+		if !ok {
+			return true, nil, fmt.Errorf("unexpected object type %T in tracker", obj)
+		}
+		live = live.DeepCopy()
+		live.Spec.Allocations[0].Pods = 64
+		live.Status.PodCIDRs = []nncv1.PodCIDR{
+			{
+				Id:      existingCIDR,
+				Network: "default",
+				CIDR:    existingCIDR,
+				Condition: &metav1.Condition{
+					Type:               string(nncv1.PodCIDRConditionReady),
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: backdated,
+					Reason:             string(nncv1.PodCIDRReadyConditionReady),
+					Message:            "Pod CIDR is ready and routed",
+				},
+			},
+		}
+		if err := f.nncClient.Tracker().Update(gvr, live, action.GetNamespace()); err != nil {
+			return true, nil, err
+		}
+		return true, nil, apierrors.NewConflict(
+			schema.GroupResource{Group: "networking.gke.io", Resource: "nodenetworkconfigs"},
+			testNodeName, fmt.Errorf("simulated status conflict"))
+	})
+
+	if err := f.statusCtrl.reconcile(ctx, nnc, testProviderID); err != nil {
+		t.Fatalf("Status reconcile failed despite conflict retry: %v", err)
+	}
+
+	if statusWrites != 2 {
+		t.Errorf("Expected 2 status write attempts (initial + 1 conflict retry), got %d", statusWrites)
+	}
+
+	final, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get NodeNetworkConfig: %v", err)
+	}
+	if final.Spec.Allocations[0].Pods != 64 {
+		t.Errorf("Expected concurrent Spec.Allocations[0].Pods=64 to be preserved, got %d", final.Spec.Allocations[0].Pods)
+	}
+	if len(final.Status.PodCIDRs) != 2 {
+		t.Fatalf("Expected 2 PodCIDRs in status after retry, got %d: %v", len(final.Status.PodCIDRs), final.Status.PodCIDRs)
+	}
+	for _, pc := range final.Status.PodCIDRs {
+		if pc.CIDR == existingCIDR && !pc.Condition.LastTransitionTime.Equal(&backdated) {
+			t.Errorf("Expected retry to preserve LastTransitionTime %v from live object for %s, got %v",
+				backdated, existingCIDR, pc.Condition.LastTransitionTime)
+		}
+	}
+}
+
+// TestSpecController_UpdateNNCStatus_RetriesOnConflictWithoutClobberingStatus
+// verifies that when the spec controller sets the Ready=False ("Updating")
+// condition on a stale NodeNetworkConfig copy and encounters a 409 Conflict
+// because the status controller concurrently populated Status.PodCIDRs, the
+// conflict retry applies the condition change onto the fresh object without
+// wiping out Status.PodCIDRs.
+func TestSpecController_UpdateNNCStatus_RetriesOnConflictWithoutClobberingStatus(t *testing.T) {
+	ctx := context.Background()
+	f := newTestFixture(t)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	f.run(ctx, stopCh)
+
+	const existingCIDR = "10.100.0.0/28"
+	insertInstanceWithRanges(ctx, t, f, existingCIDR)
+
+	// Start with an NNC whose Status.PodCIDRs is empty in the caller's snapshot.
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: testNodeName},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{{Network: "default", Pods: 32}},
+		},
+	}
+	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Create(ctx, nnc, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create NodeNetworkConfig: %v", err)
+	}
+	f.informerFactory.WaitForCacheSync(stopCh)
+
+	// On the first status update ("Updating" condition write), simulate a
+	// concurrent status write that populated Status.PodCIDRs, and return 409.
+	statusWrites := 0
+	var updatingWritePodCIDRs []nncv1.PodCIDR
+	f.nncClient.PrependReactor("update", "nodenetworkconfigs", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "status" {
+			return false, nil, nil
+		}
+		statusWrites++
+		if statusWrites == 1 {
+			gvr := action.GetResource()
+			obj, err := f.nncClient.Tracker().Get(gvr, action.GetNamespace(), testNodeName)
+			if err != nil {
+				return true, nil, err
+			}
+			live := obj.(*nncv1.NodeNetworkConfig).DeepCopy()
+			live.Status.PodCIDRs = []nncv1.PodCIDR{
+				{Id: existingCIDR, Network: "default", CIDR: existingCIDR},
+			}
+			if err := f.nncClient.Tracker().Update(gvr, live, action.GetNamespace()); err != nil {
+				return true, nil, err
+			}
+			return true, nil, apierrors.NewConflict(
+				schema.GroupResource{Group: "networking.gke.io", Resource: "nodenetworkconfigs"},
+				testNodeName, fmt.Errorf("simulated conflict on Updating condition"))
+		}
+		if statusWrites == 2 {
+			updateAction := action.(clientgotesting.UpdateAction)
+			incoming := updateAction.GetObject().(*nncv1.NodeNetworkConfig)
+			updatingWritePodCIDRs = append([]nncv1.PodCIDR(nil), incoming.Status.PodCIDRs...)
+		}
+		return false, nil, nil
+	})
+
+	if err := f.specCtrl.reconcile(ctx, nnc, testProviderID); err != nil {
+		t.Fatalf("Spec reconcile failed despite conflict retry: %v", err)
+	}
+
+	if statusWrites < 2 {
+		t.Fatalf("Expected at least 2 status writes (initial + retry), got %d", statusWrites)
+	}
+	if len(updatingWritePodCIDRs) != 1 || updatingWritePodCIDRs[0].CIDR != existingCIDR {
+		t.Errorf("Expected retry of Updating status write to preserve concurrently populated PodCIDRs [%s], got %v",
+			existingCIDR, updatingWritePodCIDRs)
+	}
+}
+
+// TestProcessNextNodeWorkItem_ConflictDeferredWithoutUnhandledError verifies
+// that if a conflict error still escapes syncNode (including wrapped via %w),
+// processNextNodeWorkItem requeues the key with backoff at V(4) rather than
+// reporting it via runtime.HandleError ("Unhandled Error").
+func TestProcessNextNodeWorkItem_ConflictDeferredWithoutUnhandledError(t *testing.T) {
+	origHandlers := utilruntime.ErrorHandlers
+	defer func() {
+		utilruntime.ErrorHandlers = origHandlers
+	}()
+
+	var unhandled []error
+	utilruntime.ErrorHandlers = []utilruntime.ErrorHandler{
+		func(_ context.Context, err error, _ string, _ ...interface{}) {
+			unhandled = append(unhandled, err)
+		},
+	}
+
+	queue := newNodeWorkqueue("test-conflict-requeue")
+	defer queue.ShutDown()
+
+	conflictErr := apierrors.NewConflict(
+		schema.GroupResource{Group: "networking.gke.io", Resource: "nodenetworkconfigs"},
+		testNodeName, fmt.Errorf("object has been modified"))
+
+	// Direct and wrapped 409 Conflict errors must be requeued without calling runtime.HandleError.
+	for i, syncErr := range []error{
+		conflictErr,
+		fmt.Errorf("failed to update status condition to Updating: %w", conflictErr),
+	} {
+		queue.Add(testNodeName)
+		if ok := processNextNodeWorkItem("test-controller", queue, func(key string) error {
+			return syncErr
+		}); !ok {
+			t.Fatalf("case %d: expected processNextNodeWorkItem to return true", i)
+		}
+		if len(unhandled) != 0 {
+			t.Fatalf("case %d: expected 0 unhandled errors for conflict, got %v", i, unhandled)
+		}
+		if got := queue.NumRequeues(testNodeName); got != i+1 {
+			t.Fatalf("case %d: expected NumRequeues=%d, got %d", i, i+1, got)
+		}
+	}
+
+	// Non-conflict errors must still be reported via runtime.HandleError.
+	queue.Add("other-node")
+	if ok := processNextNodeWorkItem("test-controller", queue, func(key string) error {
+		return fmt.Errorf("permanent GCE error")
+	}); !ok {
+		t.Fatal("expected processNextNodeWorkItem to return true")
+	}
+	if len(unhandled) != 1 {
+		t.Fatalf("expected 1 unhandled error for non-conflict failure, got %v", unhandled)
 	}
 }
