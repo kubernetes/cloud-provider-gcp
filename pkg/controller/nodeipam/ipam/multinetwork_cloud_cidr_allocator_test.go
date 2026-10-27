@@ -2,6 +2,7 @@ package ipam
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
@@ -803,6 +804,118 @@ func TestDefaultNetworkCIDRs_IPv6Only(t *testing.T) {
 
 	if len(cidrs) != 1 || cidrs[0] != "2600:1900:4000:fd1::/112" {
 		t.Errorf("Expected exactly 1 CIDR block string for IPv6 podCIDR [2600:1900:4000:fd1::/112], got: %v", cidrs)
+	}
+}
+
+// TestAdditionalNetwork_IPv6OnlyL3 verifies that an L3 additional network on an
+// IPv6-only interface (GNP without secondary ranges, NIC without an IPv4
+// address) is published in north-interfaces with the interface's IPv6 address,
+// so that consumers such as the L4 LB controller can find the node on that
+// network. Its Pod range is intentionally not published in the networks
+// annotation (that is owned by the NodeNetworkConfig status controller for
+// IPv6 multi-networking), regardless of the network-status on the node.
+func TestAdditionalNetwork_IPv6OnlyL3(t *testing.T) {
+	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
+	clientSet := clSetFake.NewSimpleClientset()
+	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, 0).Networking()
+
+	defaultNetwork := networkAll("default", "default", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(defaultNetwork)
+	defaultGNP := gkeNetworkParams("default", "projects/testProject/global/networks/default", "projects/testProject/regions/us-central1/subnetworks/default", []string{})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(defaultGNP)
+
+	// IPv6-only L3 network: GNP without secondary ranges.
+	secondaryV6 := networkAll("secondary-v6", "secondary-v6-params", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondaryV6)
+	secV6GNP := gkeNetworkParams("secondary-v6-params", "projects/testProject/global/networks/v6-vpc", "projects/testProject/regions/us-central1/subnetworks/v6-subnet", []string{})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(secV6GNP)
+
+	// L3 network without ranges on a dual-stack interface: must not be matched.
+	secondaryDS := networkAll("secondary-ds", "secondary-ds-params", networkv1.L3NetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondaryDS)
+	secDSGNP := gkeNetworkParams("secondary-ds-params", "projects/testProject/global/networks/ds-vpc", "projects/testProject/regions/us-central1/subnetworks/ds-subnet", []string{})
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(secDSGNP)
+
+	interfaces := []*compute.NetworkInterface{
+		{
+			Name:        "nic0",
+			Network:     "projects/testProject/global/networks/default",
+			Subnetwork:  "projects/testProject/regions/us-central1/subnetworks/default",
+			Ipv6Address: "2600:1900:4000:fd1::110",
+		},
+		{
+			Name:        "nic1",
+			Network:     "projects/testProject/global/networks/v6-vpc",
+			Subnetwork:  "projects/testProject/regions/us-central1/subnetworks/v6-subnet",
+			Ipv6Address: "fd20:fb0:588b:0:0:2::",
+		},
+		{
+			Name:        "nic2",
+			Network:     "projects/testProject/global/networks/ds-vpc",
+			Subnetwork:  "projects/testProject/regions/us-central1/subnetworks/ds-subnet",
+			NetworkIP:   "10.0.3.1",
+			Ipv6Address: "2001:db9:1::110",
+		},
+	}
+	wantNorthIntf, _ := networkv1.ParseNorthInterfacesAnnotation(`[{"network":"secondary-v6","ipv6Address":"fd20:fb0:588b:0:0:2::"}]`)
+
+	for _, tc := range []struct {
+		desc          string
+		networkStatus string
+	}{
+		{
+			desc:          "network up on node",
+			networkStatus: `[{"name":"default"}, {"name":"secondary-v6"}, {"name":"secondary-ds"}]`,
+		},
+		{
+			desc:          "network not up on node",
+			networkStatus: `[{"name":"default"}]`,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			kubeClient := fake.NewSimpleClientset()
+			nodeInformer := informers.NewSharedInformerFactory(kubeClient, 0).Core().V1().Nodes()
+			ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), false, true, nodeInformer, CIDRAllocatorParams{})
+			cloudAllocator, _ := ca.(*cloudCIDRAllocator)
+
+			node := &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ipv6-multinic-node",
+					Annotations: map[string]string{
+						networkv1.NodeNetworkAnnotationKey: tc.networkStatus,
+					},
+				},
+			}
+
+			cidrs, err := cloudAllocator.performMultiNetworkCIDRAllocation(node, interfaces, false)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(cidrs) != 1 || cidrs[0] != "2600:1900:4000:fd1::/112" {
+				t.Errorf("default network CIDRs = %v, want [2600:1900:4000:fd1::/112]", cidrs)
+			}
+
+			gotNorthIntf, err := networkv1.ParseNorthInterfacesAnnotation(node.Annotations[networkv1.NorthInterfacesAnnotationKey])
+			if err != nil {
+				t.Fatalf("failed to parse north-interfaces annotation %q: %v", node.Annotations[networkv1.NorthInterfacesAnnotationKey], err)
+			}
+			if diff := cmp.Diff(wantNorthIntf, gotNorthIntf); diff != "" {
+				t.Errorf("north-interfaces annotation mismatch (-want +got):\n%s", diff)
+			}
+
+			gotNodeNetworks, err := networkv1.ParseMultiNetworkAnnotation(node.Annotations[networkv1.MultiNetworkAnnotationKey])
+			if err != nil {
+				t.Fatalf("failed to parse networks annotation %q: %v", node.Annotations[networkv1.MultiNetworkAnnotationKey], err)
+			}
+			if len(gotNodeNetworks) != 0 {
+				t.Errorf("networks annotation = %v, want no entries (IPv6 Pod ranges are published via NodeNetworkConfig)", gotNodeNetworks)
+			}
+			for name := range node.Status.Capacity {
+				if strings.HasPrefix(name.String(), networkv1.NetworkResourceKeyPrefix) {
+					t.Errorf("unexpected IP capacity %s on node", name)
+				}
+			}
+		})
 	}
 }
 
