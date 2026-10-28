@@ -30,11 +30,6 @@ go work use ./providers
 go work use ./test/e2e
 go work use ./metis
 
-# Copy over replace directives from go.mod to go.work
-echo -e "\nreplace (" >> go.work
-cat go.mod | grep '=>' | sort | uniq | grep -v "k8s.io/cloud-provider-gcp/providers" >> go.work
-echo -e ")" >> go.work
-
 # sync go.md of providers
 go work sync
 

@@ -156,8 +156,4 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace (
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.37.0
-	k8s.io/cloud-provider-gcp/providers => ../../providers
-	k8s.io/kubectl => k8s.io/kubectl v0.37.0
-)
+replace k8s.io/cloud-provider-gcp/providers => ../../providers
