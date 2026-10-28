@@ -2,6 +2,8 @@ module k8s.io/cloud-provider-gcp/providers
 
 go 1.26.3
 
+toolchain go1.27.3
+
 require (
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.1-0.20261020180100-7d497f3cc90c
 	github.com/google/go-cmp v0.7.0

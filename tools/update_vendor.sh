@@ -24,7 +24,7 @@ cd "$(pwd -P)"
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
 # rebuild go.work
-cat go.mod | grep '^go' > go.work
+grep -E '^(go|toolchain) ' go.mod > go.work
 go work use .
 go work use ./providers
 go work use ./test/e2e
