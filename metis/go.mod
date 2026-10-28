@@ -2,6 +2,8 @@ module k8s.io/metis
 
 go 1.26.3
 
+toolchain go1.27.3
+
 require (
 	github.com/GoogleCloudPlatform/gke-networking-api v0.2.10
 	github.com/containernetworking/cni v1.3.1
