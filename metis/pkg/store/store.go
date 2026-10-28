@@ -477,12 +477,11 @@ type CIDRBlock struct {
 	AllocatedIPs int
 	CIDR         string
 	Network      string
-	State        CidrBlockState
 }
 
 // GetDeletingCIDRBlocks fetches all CIDR blocks in Deleting state for a specific network and IP family.
 func (s *Store) GetDeletingCIDRBlocks(ctx context.Context, network string, ipFamily IPFamily) ([]CIDRBlock, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, total_ips, allocated_ips, cidr, network, state FROM cidr_blocks WHERE state = ? AND network = ? AND ip_family = ?", StateDeleting, network, ipFamily)
+	rows, err := s.db.QueryContext(ctx, "SELECT id, total_ips, cidr, network FROM cidr_blocks WHERE state = ? AND network = ? AND ip_family = ?", StateDeleting, network, ipFamily)
 	if err != nil {
 		return nil, err
 	}
@@ -491,7 +490,7 @@ func (s *Store) GetDeletingCIDRBlocks(ctx context.Context, network string, ipFam
 	var result []CIDRBlock
 	for rows.Next() {
 		var r CIDRBlock
-		if err := rows.Scan(&r.ID, &r.TotalIPs, &r.AllocatedIPs, &r.CIDR, &r.Network, &r.State); err != nil {
+		if err := rows.Scan(&r.ID, &r.TotalIPs, &r.CIDR, &r.Network); err != nil {
 			return nil, err
 		}
 		result = append(result, r)
@@ -519,51 +518,10 @@ func (s *Store) DeleteCIDRBlock(ctx context.Context, id int64) error {
 	return nil
 }
 
-// DeleteCIDRBlockImmediately deletes a specific CIDR block from the local store
-// regardless of its state, provided it has no active allocations (allocated_ips
-// == 0).
-func (s *Store) DeleteCIDRBlockImmediately(ctx context.Context, id int64) error {
-	res, err := s.db.ExecContext(ctx, "DELETE FROM cidr_blocks WHERE id = ? AND allocated_ips = 0", id)
-	if err != nil {
-		return err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		s.log.Error(nil, "cannot delete CIDR block immediately: block has active allocations or already deleted", "id", id)
-		return nil
-	}
-	return nil
-}
-
-// DrainCIDRBlock transitions a Ready CIDR block to the Draining state. The
-// state precondition makes this a compare-and-set: if the block left Ready
-// between the caller's read and this write (e.g. a non-reusable /32 whose pod
-// just exited moved it to Deleting), the update is a no-op and the next monitor
-// cycle re-evaluates the block.
+// DrainCIDRBlock transitions a CIDR block to the Draining state.
 func (s *Store) DrainCIDRBlock(ctx context.Context, id int64) error {
 	nowMilli := time.Now().UTC().UnixMilli()
-	_, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = ?, updated_at = ? WHERE id = ? AND state = ?", StateDraining, nowMilli, id, StateReady)
-	return err
-}
-
-// MarkCIDRBlockUnknown transitions an out-of-sync Ready or Draining CIDR block
-// to the Unknown state. Blocks in any other state are left untouched.
-func (s *Store) MarkCIDRBlockUnknown(ctx context.Context, id int64) error {
-	nowMilli := time.Now().UTC().UnixMilli()
-	_, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = ?, updated_at = ? WHERE id = ? AND state IN (?, ?)", StateUnknown, nowMilli, id, StateReady, StateDraining)
-	return err
-}
-
-// MarkCIDRBlockReady transitions an Unknown CIDR block back to the Ready state
-// once it reappears in the NodeNetworkConfig status. The state precondition
-// guards against resurrecting a block that concurrently moved on, e.g. a
-// non-reusable /32 released to Deleting while reconciliation was running.
-func (s *Store) MarkCIDRBlockReady(ctx context.Context, id int64) error {
-	nowMilli := time.Now().UTC().UnixMilli()
-	_, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = ?, updated_at = ? WHERE id = ? AND state = ?", StateReady, nowMilli, id, StateUnknown)
+	_, err := s.db.ExecContext(ctx, "UPDATE cidr_blocks SET state = 'Draining', updated_at = ? WHERE id = ?", nowMilli, id)
 	return err
 }
 
@@ -599,7 +557,7 @@ func (s *Store) ExpireDrainingCIDRBlocks(ctx context.Context, network string, ip
 		UPDATE cidr_blocks
 		SET state = ?, updated_at = ?
 		WHERE network = ? AND ip_family = ? AND state = ? AND allocated_ips = 0 AND updated_at + ? <= ?
-		RETURNING id, total_ips, allocated_ips, cidr, state
+		RETURNING id, total_ips, cidr
 	`, StateDeleting, nowMilli, network, ipFamily, StateDraining, expMs, nowMilli)
 	if err != nil {
 		return nil, fmt.Errorf("failed to expire draining blocks: %w", err)
@@ -609,7 +567,7 @@ func (s *Store) ExpireDrainingCIDRBlocks(ctx context.Context, network string, ip
 	var result []CIDRBlock
 	for rows.Next() {
 		var r CIDRBlock
-		if err := rows.Scan(&r.ID, &r.TotalIPs, &r.AllocatedIPs, &r.CIDR, &r.State); err != nil {
+		if err := rows.Scan(&r.ID, &r.TotalIPs, &r.CIDR); err != nil {
 			return nil, fmt.Errorf("failed to scan expired block: %w", err)
 		}
 		r.Network = network
@@ -922,9 +880,7 @@ type NetworkIPUsage struct {
 }
 
 // GetIPUsage fetches the allocated, cooldown, total, and draining IP counts for a specific network and IP family.
-// Only Ready and Draining CIDR blocks are included; Deleting and Unknown
-// (out-of-sync) blocks are excluded since they are either scheduled for removal
-// or already absent from GCE.
+// CIDR blocks marked as Deleting are excluded from all counts since they are scheduled for removal by GCE.
 func (s *Store) GetIPUsage(ctx context.Context, network string, ipFamily IPFamily) (NetworkIPUsage, error) {
 	var usage NetworkIPUsage
 	nowMilli := time.Now().UTC().UnixMilli()
@@ -935,13 +891,13 @@ func (s *Store) GetIPUsage(ctx context.Context, network string, ipFamily IPFamil
 				SELECT COUNT(i.id)
 				FROM ip_addresses i
 				JOIN cidr_blocks cb ON i.cidr_block_id = cb.id
-				WHERE cb.network = ? AND cb.state IN (?, ?) AND cb.ip_family = ? AND i.is_allocated = FALSE AND i.release_at > ?
+				WHERE cb.network = ? AND cb.state != ? AND cb.ip_family = ? AND i.is_allocated = FALSE AND i.release_at > ?
 			) AS cooldown,
 			IFNULL(SUM(total_ips), 0) AS total_ips,
 			IFNULL(SUM(CASE WHEN state = ? THEN total_ips ELSE 0 END), 0) AS draining_ips
 		FROM cidr_blocks c
-		WHERE network = ? AND ip_family = ? AND c.state IN (?, ?)
-	`, network, StateReady, StateDraining, ipFamily, nowMilli, StateDraining, network, ipFamily, StateReady, StateDraining).Scan(&usage.Allocated, &usage.Cooldown, &usage.Total, &usage.Draining)
+		WHERE network = ? AND ip_family = ? AND c.state != ?
+	`, network, StateDeleting, ipFamily, nowMilli, StateDraining, network, ipFamily, StateDeleting).Scan(&usage.Allocated, &usage.Cooldown, &usage.Total, &usage.Draining)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -954,7 +910,7 @@ func (s *Store) GetIPUsage(ctx context.Context, network string, ipFamily IPFamil
 
 // GetReadyCIDRBlocksSorted fetches all Ready CIDR blocks for a network and IP family, sorted by created_at DESC.
 func (s *Store) GetReadyCIDRBlocksSorted(ctx context.Context, network string, ipFamily IPFamily) ([]CIDRBlock, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, total_ips, allocated_ips, cidr, state FROM cidr_blocks WHERE network = ? AND ip_family = ? AND state = 'Ready' ORDER BY created_at DESC, id DESC", network, ipFamily)
+	rows, err := s.db.QueryContext(ctx, "SELECT id, total_ips, allocated_ips, cidr FROM cidr_blocks WHERE network = ? AND ip_family = ? AND state = 'Ready' ORDER BY created_at DESC, id DESC", network, ipFamily)
 	if err != nil {
 		return nil, err
 	}
@@ -963,32 +919,7 @@ func (s *Store) GetReadyCIDRBlocksSorted(ctx context.Context, network string, ip
 	var result []CIDRBlock
 	for rows.Next() {
 		var r CIDRBlock
-		if err := rows.Scan(&r.ID, &r.TotalIPs, &r.AllocatedIPs, &r.CIDR, &r.State); err != nil {
-			return nil, err
-		}
-		r.Network = network
-		result = append(result, r)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate rows: %w", err)
-	}
-	return result, nil
-}
-
-// GetNonDeletingCIDRBlocks fetches every CIDR block that is not yet Deleting
-// (Ready, Draining, or Unknown), with its state, for a specific network and IP
-// family.
-func (s *Store) GetNonDeletingCIDRBlocks(ctx context.Context, network string, ipFamily IPFamily) ([]CIDRBlock, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, total_ips, allocated_ips, cidr, state FROM cidr_blocks WHERE network = ? AND ip_family = ? AND state != ? ORDER BY created_at ASC, id ASC", network, ipFamily, StateDeleting)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var result []CIDRBlock
-	for rows.Next() {
-		var r CIDRBlock
-		if err := rows.Scan(&r.ID, &r.TotalIPs, &r.AllocatedIPs, &r.CIDR, &r.State); err != nil {
+		if err := rows.Scan(&r.ID, &r.TotalIPs, &r.AllocatedIPs, &r.CIDR); err != nil {
 			return nil, err
 		}
 		r.Network = network
@@ -1001,9 +932,6 @@ func (s *Store) GetNonDeletingCIDRBlocks(ctx context.Context, network string, ip
 }
 
 // GetAllNetworks fetches all unique networks from cidr_blocks, excluding those in Deleting state.
-// Networks whose blocks are Unknown are intentionally included so that the
-// monitor keeps reconciling them until the Unknown blocks are removed from the
-// store.
 func (s *Store) GetAllNetworks(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT DISTINCT network FROM cidr_blocks WHERE state != 'Deleting'")
 	if err != nil {
@@ -1025,15 +953,14 @@ func (s *Store) GetAllNetworks(ctx context.Context) ([]string, error) {
 	return result, nil
 }
 
-// CheckAllocation verifies that an IP address is assigned to the specified
-// container interface on a given network in a Ready or Draining CIDR block.
+// CheckAllocation verifies that an IP address is assigned to the specified container interface on a given network.
 func (s *Store) CheckAllocation(ctx context.Context, network, containerID, interfaceName string) error {
 	var id int64
 	err := s.db.QueryRowContext(ctx, `
 		SELECT i.id
 		FROM ip_addresses i
 		JOIN cidr_blocks c ON i.cidr_block_id = c.id
-		WHERE c.network = ? AND i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE AND c.state IN ('Ready', 'Draining')
+		WHERE c.network = ? AND i.container_id = ? AND i.interface_name = ? AND i.is_allocated = TRUE
 		LIMIT 1
 	`, network, containerID, interfaceName).Scan(&id)
 

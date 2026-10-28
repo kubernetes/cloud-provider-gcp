@@ -35,7 +35,6 @@ import (
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nnclisters "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/listers/nodenetworkconfig/v1"
 	"golang.org/x/time/rate"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,7 +44,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
@@ -88,9 +86,6 @@ type nodeSyncBase struct {
 	nodeLister corelisters.NodeLister
 	gceCloud   *gce.Cloud
 	gceCache   *GCECache
-
-	// recorder emits events against Nodes; see recordNodeEvent. Nil disables events.
-	recorder record.EventRecorder
 }
 
 // Name returns the name of the controller.
@@ -128,12 +123,17 @@ func (b *nodeSyncBase) resolveNode(ctx context.Context, key string) (*nncv1.Node
 		}
 	}
 
-	node, err := b.getNode(ctx, nnc.Name)
+	node, err := b.nodeLister.Get(nnc.Name)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			return nil, "", &nodeNotReadyError{nodeName: nnc.Name, reason: "node not found"}
+		if errors.IsNotFound(err) && b.kubeClient != nil {
+			node, err = b.kubeClient.CoreV1().Nodes().Get(ctx, nnc.Name, metav1.GetOptions{})
 		}
-		return nil, "", fmt.Errorf("failed to get node %q: %w", nnc.Name, err)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return nil, "", &nodeNotReadyError{nodeName: nnc.Name, reason: "node not found"}
+			}
+			return nil, "", fmt.Errorf("failed to get node %q: %w", nnc.Name, err)
+		}
 	}
 
 	providerID := node.Spec.ProviderID
@@ -142,31 +142,6 @@ func (b *nodeSyncBase) resolveNode(ctx context.Context, key string) (*nncv1.Node
 	}
 
 	return nnc.DeepCopy(), providerID, nil
-}
-
-// getNode returns the Node from the informer cache, falling back to the API
-// when the cache does not have it yet (it can trail a freshly registered node).
-func (b *nodeSyncBase) getNode(ctx context.Context, name string) (*v1.Node, error) {
-	node, err := b.nodeLister.Get(name)
-	if errors.IsNotFound(err) && b.kubeClient != nil {
-		return b.kubeClient.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
-	}
-	return node, err
-}
-
-// recordNodeEvent records an event against the Node object itself rather than
-// a bare reference, so the event carries the Node's UID and is found by
-// `kubectl describe node`. A node that cannot be resolved gets no event.
-func (b *nodeSyncBase) recordNodeEvent(ctx context.Context, nodeName, eventType, reason, format string, args ...any) {
-	if b.recorder == nil {
-		return
-	}
-	node, err := b.getNode(ctx, nodeName)
-	if err != nil {
-		klog.Warningf("%s: not recording %s event for node %q: %v", b.name, reason, nodeName, err)
-		return
-	}
-	b.recorder.Eventf(node, eventType, reason, format, args...)
 }
 
 // updateNNCStatus writes the status subresource, retrying on 409 Conflict by

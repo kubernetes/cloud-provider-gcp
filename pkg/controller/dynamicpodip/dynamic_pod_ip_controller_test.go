@@ -45,7 +45,6 @@ import (
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	clientgotesting "k8s.io/client-go/testing"
-	"k8s.io/client-go/tools/record"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	clocktesting "k8s.io/utils/clock/testing"
 )
@@ -72,8 +71,6 @@ type testFixture struct {
 	statusCtrl          *NodeNetworkConfigStatusController
 	fakeClock           *clocktesting.FakeClock
 	gceCalls            *ifaceUpdateRecorder
-	// events receives the Node events recorded by the status controller.
-	events *record.FakeRecorder
 }
 
 func newTestFixture(t *testing.T) *testFixture {
@@ -171,8 +168,6 @@ func newTestFixtureWithNetworkURL(t *testing.T, networkURL string) *testFixture 
 
 	gceCache := NewGCECache(loader, 10*time.Second, fakeClock)
 
-	eventRecorder := record.NewFakeRecorder(100)
-
 	statusCtrl := NewStatusController(
 		kubeClient,
 		nncClient,
@@ -180,7 +175,6 @@ func newTestFixtureWithNetworkURL(t *testing.T, networkURL string) *testFixture 
 		nodeInformer,
 		fakeGCE,
 		gceCache,
-		eventRecorder,
 		fakeClock,
 	)
 
@@ -207,7 +201,6 @@ func newTestFixtureWithNetworkURL(t *testing.T, networkURL string) *testFixture 
 		statusCtrl:          statusCtrl,
 		fakeClock:           fakeClock,
 		gceCalls:            recorder,
-		events:              eventRecorder,
 	}
 }
 

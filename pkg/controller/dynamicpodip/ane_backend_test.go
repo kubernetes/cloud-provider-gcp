@@ -307,7 +307,6 @@ func TestANEControllerReconcileFlow(t *testing.T) {
 		nodeInformer,
 		fakeGCE,
 		gceCache,
-		nil, // no event recorder
 		clock.RealClock{},
 	)
 

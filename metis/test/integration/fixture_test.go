@@ -112,22 +112,68 @@ type fixture struct {
 	fingerprintSeq atomic.Int64
 }
 
+type fixtureConfig struct {
+	nodeProviderID       string
+	daemonConfigModifier func(*daemon.Config)
+	nncReactors          []customReactor
+}
+
+type customReactor struct {
+	verb     string
+	resource string
+	reaction clientgotesting.ReactionFunc
+}
+
+type fixtureOption func(*fixtureConfig)
+
+func withNodeProviderID(id string) fixtureOption {
+	return func(cfg *fixtureConfig) {
+		cfg.nodeProviderID = id
+	}
+}
+
+func withDaemonConfig(modifier func(*daemon.Config)) fixtureOption {
+	return func(cfg *fixtureConfig) {
+		cfg.daemonConfigModifier = modifier
+	}
+}
+
+func withPrependReactor(verb, resource string, reaction clientgotesting.ReactionFunc) fixtureOption {
+	return func(cfg *fixtureConfig) {
+		cfg.nncReactors = append(cfg.nncReactors, customReactor{
+			verb:     verb,
+			resource: resource,
+			reaction: reaction,
+		})
+	}
+}
+
 // newFixture brings up fake GCE, the CCM controllers and the metis daemon, and
 // returns once the daemon's gRPC socket accepts connections.
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
+
+	cfg := &fixtureConfig{
+		nodeProviderID: providerID,
+	}
+	for _, opt := range opts {
+		opt(cfg)
+	}
 
 	f := &fixture{t: t, ctx: ctx}
 
 	// --- Fake Kubernetes API ---------------------------------------------------
 	f.kubeClient = k8sfake.NewSimpleClientset(&corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{Name: nodeName, UID: "node-uid"},
-		Spec:       corev1.NodeSpec{ProviderID: providerID},
+		Spec:       corev1.NodeSpec{ProviderID: cfg.nodeProviderID},
 	})
 	f.nncClient = nncfake.NewSimpleClientset()
 	emulateAPIServerSemantics(f.nncClient)
+	for _, r := range cfg.nncReactors {
+		f.nncClient.PrependReactor(r.verb, r.resource, r.reaction)
+	}
 
 	// --- Fake GCE ----------------------------------------------------------------
 	values := gce.DefaultTestClusterValues()
@@ -179,11 +225,20 @@ func newFixture(t *testing.T) *fixture {
 	socketPath := filepath.Join(dir, "metis.sock")
 	t.Setenv("NODE_NAME", nodeName)
 
-	d := daemon.NewDaemon(daemon.Config{
-		DBPath:          dbPath,
-		SocketPath:      socketPath,
-		MonitorInterval: monitorInterval,
-	})
+	dConfig := daemon.Config{
+		DBPath:                          dbPath,
+		SocketPath:                      socketPath,
+		MonitorInterval:                 monitorInterval,
+		ReleaseCooldown:                 100 * time.Millisecond,
+		DrainingExpiration:              200 * time.Millisecond,
+		SustainedLowUtilizationDuration: 100 * time.Millisecond,
+		LowUtilizationThreshold:         0.3,
+	}
+	if cfg.daemonConfigModifier != nil {
+		cfg.daemonConfigModifier(&dConfig)
+	}
+
+	d := daemon.NewDaemon(dConfig)
 	d.NNCClient = f.nncClient
 	d.KubeClient = f.kubeClient
 	go func() {
@@ -397,37 +452,54 @@ func (f *fixture) gceAliasRanges() []string {
 	return ranges
 }
 
-// removeAliasRangeOutOfBand deletes a range straight from the fake GCE
-// instance, bypassing NodeNetworkConfig.spec.releasableCIDRs entirely -- the
-// equivalent of someone removing the range in the Cloud Console. It then pokes
-// the status controller the way a Node event would.
-func (f *fixture) removeAliasRangeOutOfBand(cidr string) {
+// updateNodeProviderID updates the Node's Spec.ProviderID in the fake kube client.
+func (f *fixture) updateNodeProviderID(id string) {
 	f.t.Helper()
-	f.mockInstances.Lock.Lock()
-	obj, ok := f.mockInstances.Objects[*instanceKey]
-	if !ok {
-		f.mockInstances.Lock.Unlock()
-		f.t.Fatalf("instance %v missing from fake GCE", instanceKey)
+	node, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		f.t.Fatalf("failed to get node: %v", err)
 	}
-	instance := obj.ToBeta()
-	iface := instance.NetworkInterfaces[0]
-	kept := iface.AliasIpRanges[:0]
-	removed := false
-	for _, r := range iface.AliasIpRanges {
-		if r.IpCidrRange == cidr {
-			removed = true
-			continue
+	node = node.DeepCopy()
+	node.Spec.ProviderID = id
+	if _, err := f.kubeClient.CoreV1().Nodes().Update(f.ctx, node, metav1.UpdateOptions{}); err != nil {
+		f.t.Fatalf("failed to update node providerID: %v", err)
+	}
+}
+
+// addReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs.
+func (f *fixture) addReleasableCIDR(cidr string) {
+	f.t.Helper()
+	nnc := f.nnc().DeepCopy()
+	nnc.Spec.ReleasableCIDRs = append(nnc.Spec.ReleasableCIDRs, nncv1.PodCIDR{
+		Network: network,
+		CIDR:    cidr,
+	})
+	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Update(f.ctx, nnc, metav1.UpdateOptions{}); err != nil {
+		f.t.Fatalf("failed to add releasable CIDR %s: %v", cidr, err)
+	}
+}
+
+// setAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network.
+func (f *fixture) setAllocationsPods(pods int32) {
+	f.t.Helper()
+	nnc := f.nnc().DeepCopy()
+	found := false
+	for i, a := range nnc.Spec.Allocations {
+		if a.Network == network {
+			nnc.Spec.Allocations[i].Pods = pods
+			found = true
+			break
 		}
-		kept = append(kept, r)
 	}
-	iface.AliasIpRanges = kept
-	iface.Fingerprint = fmt.Sprintf("fingerprint-%d", f.fingerprintSeq.Add(1))
-	f.mockInstances.Objects[*instanceKey] = &gcloud.MockInstancesObj{Obj: instance}
-	f.mockInstances.Lock.Unlock()
-	if !removed {
-		f.t.Fatalf("alias range %s was not attached to the fake GCE instance", cidr)
+	if !found {
+		nnc.Spec.Allocations = append(nnc.Spec.Allocations, nncv1.Allocation{
+			Network: network,
+			Pods:    pods,
+		})
 	}
-	f.statusTrigger.EnqueueNode(nodeName)
+	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Update(f.ctx, nnc, metav1.UpdateOptions{}); err != nil {
+		f.t.Fatalf("failed to set allocations pods to %d: %v", pods, err)
+	}
 }
 
 // nodeEvents returns the messages of the Events recorded against the node with
@@ -492,20 +564,16 @@ func releasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 
 // --- SQLite ------------------------------------------------------------------
 
-// blockState returns the state of a non-Deleting block, or "" if the block is
-// absent or Deleting.
+// blockState returns the state of a block in SQLite, or "" if the block is
+// absent.
 func (f *fixture) blockState(cidr string) store.CidrBlockState {
 	f.t.Helper()
-	blocks, err := f.store.GetNonDeletingCIDRBlocks(f.ctx, network, store.IPv4)
+	var state string
+	err := f.store.DB().QueryRowContext(f.ctx, "SELECT state FROM cidr_blocks WHERE cidr = ? AND network = ?", cidr, network).Scan(&state)
 	if err != nil {
-		f.t.Fatalf("GetNonDeletingCIDRBlocks failed: %v", err)
+		return ""
 	}
-	for _, b := range blocks {
-		if b.CIDR == cidr {
-			return b.State
-		}
-	}
-	return ""
+	return store.CidrBlockState(state)
 }
 
 func (f *fixture) blockExists(cidr string) bool {
