@@ -3,8 +3,7 @@ updates:
 - package-ecosystem: "github-actions"
   directory: "/"
   schedule:
-    interval: "weekly"
-    day: "sunday"
+    interval: "daily"
   labels:
   - "ok-to-test"
   - 'area/dependency'
@@ -16,7 +15,7 @@ updates:
   - "/metis"
   - "/test/e2e"
   schedule:
-    interval: weekly
+    interval: daily
   labels:
   - 'area/dependency'
   - 'release-note-none'
@@ -37,7 +36,7 @@ updates:
   - "/"
   - "/metis"
   schedule:
-    interval: "weekly"
+    interval: "daily"
   labels:
   - "ok-to-test"
   - 'area/dependency'
@@ -46,8 +45,7 @@ updates:
   directory: "/"
   target-branch: "release-1.37"
   schedule:
-    interval: "weekly"
-    day: "sunday"
+    interval: "daily"
   labels:
   - "ok-to-test"
   - 'area/dependency'
@@ -60,7 +58,7 @@ updates:
   - "/test/e2e"
   target-branch: "release-1.37"
   schedule:
-    interval: weekly
+    interval: daily
   labels:
   - 'area/dependency'
   - 'release-note-none'
@@ -82,7 +80,7 @@ updates:
   - "/metis"
   target-branch: "release-1.37"
   schedule:
-    interval: "weekly"
+    interval: "daily"
   labels:
   - "ok-to-test"
   - 'area/dependency'
