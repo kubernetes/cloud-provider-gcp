@@ -30,6 +30,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -111,6 +112,12 @@ type fixture struct {
 	// the fake GCE for, so dynamically added ranges are predictable.
 	aliasSeq       atomic.Int32
 	fingerprintSeq atomic.Int64
+
+	daemonConfig daemon.Config
+	daemonCtx    context.Context
+	daemonCancel context.CancelFunc
+	daemonDone   chan struct{}
+	daemonConn   io.Closer
 }
 
 type fixtureConfig struct {
@@ -247,11 +254,19 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 		cfg.daemonConfigModifier(&dConfig)
 	}
 
+	daemonCtx, daemonCancel := context.WithCancel(ctx)
+	daemonDone := make(chan struct{})
+	f.daemonConfig = dConfig
+	f.daemonCtx = daemonCtx
+	f.daemonCancel = daemonCancel
+	f.daemonDone = daemonDone
+
 	d := daemon.NewDaemon(dConfig)
 	d.NNCClient = f.nncClient
 	d.KubeClient = f.kubeClient
 	go func() {
-		if err := d.Run(ctx); err != nil && ctx.Err() == nil {
+		defer close(daemonDone)
+		if err := d.Run(daemonCtx); err != nil && daemonCtx.Err() == nil {
 			t.Errorf("daemon exited with error: %v", err)
 		}
 	}()
@@ -264,7 +279,15 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	if err != nil {
 		t.Fatalf("failed to connect to daemon socket: %v", err)
 	}
-	t.Cleanup(func() { _ = conn.Close() })
+	f.daemonConn = conn
+	t.Cleanup(func() {
+		if f.daemonCancel != nil {
+			f.daemonCancel()
+		}
+		if f.daemonConn != nil {
+			_ = f.daemonConn.Close()
+		}
+	})
 	f.ipam = pb.NewAdaptiveIpamClient(conn)
 
 	s, err := store.NewStore(ctx, logr.Discard(), dbPath)
@@ -552,6 +575,60 @@ func (f *fixture) nodeEvents(reason string) []string {
 		}
 	}
 	return messages
+}
+
+// restartDaemon stops the running daemon process, closes its gRPC connection,
+// starts a fresh daemon against the existing SQLite DB and NNC, and reconnects.
+func (f *fixture) restartDaemon() {
+	f.t.Helper()
+	if f.daemonCancel != nil {
+		f.daemonCancel()
+	}
+	if f.daemonDone != nil {
+		<-f.daemonDone
+	}
+	if f.daemonConn != nil {
+		_ = f.daemonConn.Close()
+	}
+
+	daemonCtx, daemonCancel := context.WithCancel(f.ctx)
+	daemonDone := make(chan struct{})
+	f.daemonCtx = daemonCtx
+	f.daemonCancel = daemonCancel
+	f.daemonDone = daemonDone
+
+	d := daemon.NewDaemon(f.daemonConfig)
+	d.NNCClient = f.nncClient
+	d.KubeClient = f.kubeClient
+	go func() {
+		defer close(daemonDone)
+		if err := d.Run(daemonCtx); err != nil && daemonCtx.Err() == nil {
+			f.t.Errorf("restarted daemon exited with error: %v", err)
+		}
+	}()
+
+	f.eventually("restarted daemon socket is ready", func() (bool, string) {
+		_, err := os.Stat(f.daemonConfig.SocketPath)
+		return err == nil, fmt.Sprintf("stat %s: %v", f.daemonConfig.SocketPath, err)
+	})
+
+	conn, err := metispkg.NewLocalGrpcConnection(f.daemonConfig.SocketPath)
+	if err != nil {
+		f.t.Fatalf("failed to connect to restarted daemon socket: %v", err)
+	}
+	f.daemonConn = conn
+	f.ipam = pb.NewAdaptiveIpamClient(conn)
+}
+
+// blockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block.
+func (f *fixture) blockAllocatedIPs(cidr string) int {
+	f.t.Helper()
+	var allocated int
+	row := f.store.DB().QueryRowContext(f.ctx, "SELECT allocated_ips FROM cidr_blocks WHERE cidr = ?", cidr)
+	if err := row.Scan(&allocated); err != nil {
+		f.t.Fatalf("failed to query allocated_ips for cidr %s: %v", cidr, err)
+	}
+	return allocated
 }
 
 // --- NodeNetworkConfig -------------------------------------------------------
