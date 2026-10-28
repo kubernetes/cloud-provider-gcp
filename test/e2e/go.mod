@@ -1,6 +1,6 @@
 module k8s.io/cloud-provider-gcp/test/e2e
 
-go 1.26.3
+go 1.27.3
 
 toolchain go1.27.3
 
