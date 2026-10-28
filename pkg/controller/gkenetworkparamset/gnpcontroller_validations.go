@@ -93,19 +93,10 @@ func (c *Controller) validateFieldCombinations(ctx context.Context, params *netw
 	}
 
 	// Network attachment is not specified.
-	// check if deviceMode and secondary ranges are unspecified
-	// The associated Network CRs are implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
-	isDefaultGNP := params.Name == c.defaultGNPName
-	canHaveIpv6OnlyNetworksOnly := c.isIPv6OnlyCluster && isDefaultGNP
-
-	// we skip this check for IPv6-only clusters because their default network inherently does not have IPv4 secondary ranges
-	if !canHaveIpv6OnlyNetworksOnly && !hasSecondaryRanges && !hasDeviceMode {
-		return &gnpValidation{
-			IsValid:      false,
-			ErrorReason:  networkv1.SecondaryRangeAndDeviceModeUnspecified,
-			ErrorMessage: "One of PodIPV4Ranges or DeviceMode must be specified.",
-		}
-	}
+	// Whether one of PodIPv4Ranges or DeviceMode is required depends on the
+	// subnet's stack type (an IPV6_ONLY subnet has no IPv4 secondary ranges), so
+	// that check is done in validateGKENetworkParamSet once the subnet has been
+	// fetched.
 
 	// Check if deviceMode is specified at the same time as secondary range.
 	if hasSecondaryRanges && hasDeviceMode {
@@ -179,11 +170,13 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 	}
 
 	// check if both deviceMode and secondary ranges are unspecified.
-	// The associated Network CRs are implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
+	// This is allowed for the default network on an IPv6-only cluster and for
+	// any network on an IPV6_ONLY subnet: neither has IPv4 secondary ranges and
+	// Pod IPs come from the node interface's IPv6 range.
 	isSecondaryRangeSpecified := hasRangeNames(params)
 	isDeviceModeSpecified := params.Spec.DeviceMode != ""
 	isDefaultGNP := params.Name == c.defaultGNPName
-	canHaveIpv6OnlyNetworksOnly := c.isIPv6OnlyCluster && isDefaultGNP
+	canHaveIpv6OnlyNetworksOnly := (c.isIPv6OnlyCluster && isDefaultGNP) || isIPv6OnlySubnet(subnet)
 
 	if !canHaveIpv6OnlyNetworksOnly && !isSecondaryRangeSpecified && !isDeviceModeSpecified {
 		return &gnpValidation{
@@ -291,9 +284,11 @@ func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GK
 	isVPCSubnetSpecified := params.Spec.VPCSubnet != ""
 	isNetworkAttachmentSpecified := params.Spec.NetworkAttachment != ""
 
-	// The associated Network CRs are implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
+	// L3 networks normally need IPv4 secondary ranges. The exceptions are the
+	// default network on an IPv6-only cluster and any network on an IPV6_ONLY
+	// subnet, whose Pod IPs come from the node interface's IPv6 range.
 	isDefaultGNP := params.Name == defaultGNPName
-	canHaveIpv6OnlyNetworksOnly := isIPv6OnlyCluster && isDefaultGNP
+	canHaveIpv6OnlyNetworksOnly := (isIPv6OnlyCluster && isDefaultGNP) || isIPv6OnlySubnet(subnet)
 	if network.Spec.Type == networkv1.L3NetworkType {
 		if !canHaveIpv6OnlyNetworksOnly && isVPCSpecified && isVPCSubnetSpecified && !isSecondaryRangeSpecified {
 			return &gnpNetworkCrossValidation{
@@ -320,22 +315,26 @@ func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GK
 		}
 	}
 
-	// Network CR is implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
-	if subnet != nil && subnet.StackType == "IPV6_ONLY" {
-		isAllowedContext := isDefaultGNP && isIPv6OnlyCluster
-
-		if !isAllowedContext {
-			return &gnpNetworkCrossValidation{
-				IsValid:      false,
-				ErrorReason:  networkv1.GNPNetworkParamsReadyConditionReason("SubnetStackTypeIncompatible"),
-				ErrorMessage: "Network CR is not compatible with the subnet's StackType",
-			}
+	// The default network can only use an IPV6_ONLY subnet on an IPv6-only
+	// cluster. Additional L3 networks follow their own subnet's stack type and
+	// may be IPv6-only regardless of the cluster's stack type. Device networks
+	// are not supported on IPV6_ONLY subnets.
+	if isIPv6OnlySubnet(subnet) && ((isDefaultGNP && !isIPv6OnlyCluster) || network.Spec.Type != networkv1.L3NetworkType) {
+		return &gnpNetworkCrossValidation{
+			IsValid:      false,
+			ErrorReason:  networkv1.GNPNetworkParamsReadyConditionReason("SubnetStackTypeIncompatible"),
+			ErrorMessage: "Network CR is not compatible with the subnet's StackType",
 		}
 	}
 
 	return &gnpNetworkCrossValidation{
 		IsValid: true,
 	}
+}
+
+// isIPv6OnlySubnet returns true if the subnet has the IPV6_ONLY stack type.
+func isIPv6OnlySubnet(subnet *compute.Subnetwork) bool {
+	return subnet != nil && subnet.StackType == "IPV6_ONLY"
 }
 
 // nonDefaultParamsPodRanges returns true if the node has new Pod range that's not in the "default" params
