@@ -44,6 +44,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	"github.com/go-logr/logr"
 	computebeta "google.golang.org/api/compute/v0.beta"
+	computepreview "google.golang.org/api/compute/v1.preview"
 	compute "google.golang.org/api/compute/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
@@ -114,6 +115,7 @@ type fixture struct {
 
 type fixtureConfig struct {
 	nodeProviderID       string
+	backendType          dynamicpodip.BackendType
 	daemonConfigModifier func(*daemon.Config)
 	nncReactors          []customReactor
 }
@@ -129,6 +131,12 @@ type fixtureOption func(*fixtureConfig)
 func withNodeProviderID(id string) fixtureOption {
 	return func(cfg *fixtureConfig) {
 		cfg.nodeProviderID = id
+	}
+}
+
+func withBackend(backend dynamicpodip.BackendType) fixtureOption {
+	return func(cfg *fixtureConfig) {
+		cfg.backendType = backend
 	}
 }
 
@@ -211,6 +219,7 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 
 	statusTrigger, _, started, err := dynamicpodip.StartControllers(ctx, dynamicpodip.Options{
 		EnableDynamicPodIPController: true,
+		PodIPBackend:                 cfg.backendType,
 		// A static candidate range keeps the spec controller off the Container API.
 		MultiSecondaryRanges: []string{"pods-range=ACTIVE"},
 	}, f.kubeClient, f.nncClient, nodeInformer, f.gce)
@@ -448,6 +457,31 @@ func (f *fixture) gceAliasRanges() []string {
 	var ranges []string
 	for _, r := range obj.ToBeta().NetworkInterfaces[0].AliasIpRanges {
 		ranges = append(ranges, r.IpCidrRange)
+	}
+	return ranges
+}
+
+// gceANEs returns all active AliasNetworkEndpoint resources attached to this instance.
+func (f *fixture) gceANEs() []*computepreview.AliasNetworkEndpoint {
+	f.t.Helper()
+	anes, err := f.gce.ListAliasNetworkEndpoints(f.ctx, providerID)
+	if err != nil {
+		f.t.Fatalf("failed to list ANEs: %v", err)
+	}
+	return anes
+}
+
+// gceCIDRs returns all active pod CIDRs attached to the instance across both
+// VM alias IP ranges and AliasNetworkEndpoints.
+func (f *fixture) gceCIDRs() []string {
+	f.t.Helper()
+	ranges := f.gceAliasRanges()
+	for _, ane := range f.gceANEs() {
+		for _, alias := range ane.Aliases {
+			if alias.EffectiveIpAddress != "" {
+				ranges = append(ranges, alias.EffectiveIpAddress+"/32")
+			}
+		}
 	}
 	return ranges
 }

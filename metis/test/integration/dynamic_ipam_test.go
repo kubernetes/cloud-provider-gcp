@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgotesting "k8s.io/client-go/testing"
+	"k8s.io/cloud-provider-gcp/pkg/controller/dynamicpodip"
 	"k8s.io/metis/pkg/store"
 )
 
@@ -299,5 +300,73 @@ func TestNotReadyNodeHandling(t *testing.T) {
 		currentNNC := f.nnc()
 		return statusReady(currentNNC) && equalSets(statusCIDRs(currentNNC), []string{initialPodCIDR}),
 			fmt.Sprintf("ready=%v status=%v", statusReady(currentNNC), statusCIDRs(currentNNC))
+	})
+}
+
+// TestScaleUp_ANE exercises dynamic scale-up using the Alias Network Endpoint
+// (ANE) backend. The daemon does not know about ANEs specifically, but receives
+// them as /32 CIDR allocations with a NonReusable policy.
+func TestScaleUp_ANE(t *testing.T) {
+	f := newFixture(t, withBackend(dynamicpodip.BackendTypeANE))
+
+	// Bootstrap: allocate pods to exhaust the CNI-provided initial block.
+	for i := 1; i <= initialUsableIPs; i++ {
+		f.allocatePod(fmt.Sprintf("pod-ane-init-%d", i))
+	}
+
+	// ANE scale-up demand: an overflow pod triggers the daemon to request additional capacity.
+	_, dynamicCIDR := f.allocatePod("pod-ane-overflow")
+	if dynamicCIDR == initialPodCIDR {
+		t.Fatalf("overflow pod allocated from initial range; expected an ANE /32 allocation")
+	}
+
+	// Verification of ANE allocation: GCE creates /32 ANE, status publishes /32 with NonReusable policy.
+	f.eventually("GCE creates ANE and status publishes /32 with NonReusable policy", func() (bool, string) {
+		currentNNC := f.nnc()
+		anes := f.gceANEs()
+		hasANE := len(anes) > 0
+		hasStatus32 := false
+		for _, pc := range currentNNC.Status.PodCIDRs {
+			if pc.CIDR == dynamicCIDR && pc.ReusePolicy == nncv1.PodCIDRTypeNonReusable {
+				hasStatus32 = true
+				break
+			}
+		}
+		return hasANE && hasStatus32 && statusReady(currentNNC) && f.blockState(dynamicCIDR) == store.StateReady,
+			fmt.Sprintf("anes=%d hasStatus32=%v ready=%v blockState=%q", len(anes), hasStatus32, statusReady(currentNNC), f.blockState(dynamicCIDR))
+	})
+}
+
+// TestScaleDown_ANE exercises dynamic scale-down and release of /32 NonReusable
+// allocations. Skipped pending follow-up PR for /32 scale-down rounding and pruning stabilization.
+func TestScaleDown_ANE(t *testing.T) {
+	t.Skip("Skipping ANE /32 scale-down test pending follow-up PR for /32 rounding and pruning stabilization")
+
+	f := newFixture(t, withBackend(dynamicpodip.BackendTypeANE))
+
+	// Bootstrap: allocate pods to exhaust the CNI-provided initial block.
+	for i := 1; i <= initialUsableIPs; i++ {
+		f.allocatePod(fmt.Sprintf("pod-ane-init-%d", i))
+	}
+
+	// ANE scale-up demand: an overflow pod triggers the daemon to request additional capacity.
+	_, dynamicCIDR := f.allocatePod("pod-ane-overflow")
+	if dynamicCIDR == initialPodCIDR {
+		t.Fatalf("overflow pod allocated from initial range; expected an ANE /32 allocation")
+	}
+
+	// Workload reduction: delete all pods to trigger scale-down of the idle /32 ANE.
+	for i := 1; i <= initialUsableIPs; i++ {
+		f.deletePod(fmt.Sprintf("pod-ane-init-%d", i))
+	}
+	f.deletePod("pod-ane-overflow")
+
+	// Infrastructure release: CCM detaches the ANE from GCE and prunes releasableCIDRs.
+	f.eventually("GCE removes ANE and CCM prunes releasableCIDRs", func() (bool, string) {
+		anes := f.gceANEs()
+		currentNNC := f.nnc()
+		rel := releasableCIDRs(currentNNC)
+		return len(anes) == 0 && len(rel) == 0 && equalSets(statusCIDRs(currentNNC), []string{initialPodCIDR}),
+			fmt.Sprintf("anes=%d releasable=%v status=%v", len(anes), rel, statusCIDRs(currentNNC))
 	})
 }
