@@ -27,7 +27,7 @@ golangci-lint:
 	fi; \
 	echo "Installing golangci-lint $(GOLANGCI_LINT_VERSION)..."; \
 	mkdir -p $(LOCAL_BIN); \
-	GOBIN=$(LOCAL_BIN) GO111MODULE=on go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	GOTOOLCHAIN=go$$(awk '/^go / { print $$2; exit }' go.mod) GOBIN=$(LOCAL_BIN) GO111MODULE=on go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 .PHONY: install-test-cluster-deps
 install-test-cluster-deps: ## Install kubetest2 and other dependencies.

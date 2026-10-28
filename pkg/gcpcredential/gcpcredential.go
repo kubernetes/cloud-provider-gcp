@@ -98,6 +98,7 @@ type ContainerRegistryProvider struct {
 	ServiceAccountAnnotations map[string]string
 	IdentityProvider          string
 	ProjectID                 string
+	STSAudience               string
 }
 
 // Returns true if it finds a local GCE VM.
@@ -195,6 +196,9 @@ func runWithBackoff(f func() ([]byte, error)) []byte {
 // and "http://metadata.google.internal./computeMetadata/v1/instance/service-accounts/default/scopes" will also return `200`.
 // More information on metadata service can be found here - https://cloud.google.com/compute/docs/storing-retrieving-metadata
 func (g *ContainerRegistryProvider) Enabled() bool {
+	if g.STSAudience != "" {
+		return true
+	}
 	// Given that we are on GCE, we should keep retrying until the metadata server responds.
 	value := runWithBackoff(func() ([]byte, error) {
 		value, err := credentialconfig.ReadURL(serviceAccounts, g.Client, metadataHeader)
@@ -265,7 +269,7 @@ type stsTokenExchangeResponse struct {
 
 // Provide implements DockerConfigProvider
 func (g *ContainerRegistryProvider) Provide(image string) credentialconfig.DockerConfig {
-	if g.IdentityProvider == "" || g.ServiceAccountAnnotations[EnableWIImagePullAnnotation] != "true" {
+	if g.STSAudience == "" && (g.IdentityProvider == "" || g.ServiceAccountAnnotations[EnableWIImagePullAnnotation] != "true") {
 		klog.V(4).Infof("Standard flow active: Workload Identity is disabled, using Node Service Account for image: %s", image)
 		return g.provideNodeSACredentials(image)
 	}
@@ -341,13 +345,13 @@ func (g *ContainerRegistryProvider) populateConfig(cfg credentialconfig.DockerCo
 
 // executeWorkloadIdentityExchange handles the direct workload identity token exchange
 func (g *ContainerRegistryProvider) executeWorkloadIdentityExchange(ctx context.Context, image string) (string, error) {
-	if g.ProjectID == "" {
+	if g.STSAudience == "" && g.ProjectID == "" {
 		return "", fmt.Errorf("project-id must be configured for Workload Identity exchange")
 	}
 
 	// Trade KSA token for a Google Federated Token via STS
-	klog.V(4).Infof("auth-provider-gcp: Executing STS exchange for Project ID: %s", g.ProjectID)
-	federatedToken, err := g.exchangeKSATokenForFederated(ctx, g.ProjectID)
+	klog.V(4).Infof("auth-provider-gcp: Executing STS exchange")
+	federatedToken, err := g.exchangeKSATokenForFederated(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed KSA->Federated STS exchange: %w", err)
 	}
@@ -356,18 +360,23 @@ func (g *ContainerRegistryProvider) executeWorkloadIdentityExchange(ctx context.
 	return federatedToken, nil
 }
 
-func (g *ContainerRegistryProvider) exchangeKSATokenForFederated(ctx context.Context, projectID string) (string, error) {
-	// Audience format: identitynamespace:<POOL_ID>:<PROVIDER_URL>
-	audience := fmt.Sprintf("identitynamespace:%s.svc.id.goog:%s", projectID, g.IdentityProvider)
-	klog.V(4).Infof("auth-provider-gcp: Constructed STS Full Audience: %s", audience)
-
+func (g *ContainerRegistryProvider) exchangeKSATokenForFederated(ctx context.Context) (string, error) {
 	payload := stsTokenExchangeRequest{
-		Audience:           audience,
 		GrantType:          "urn:ietf:params:oauth:grant-type:token-exchange",
 		RequestedTokenType: "urn:ietf:params:oauth:token-type:access_token",
 		Scope:              "https://www.googleapis.com/auth/cloud-platform",
 		SubjectToken:       g.KSAToken,
 		SubjectTokenType:   "urn:ietf:params:oauth:token-type:jwt",
+	}
+
+	if g.STSAudience != "" {
+		klog.V(4).Infof("auth-provider-gcp: Constructed STS Full Audience: %s", g.STSAudience)
+		payload.Audience = g.STSAudience
+	} else {
+		// Audience format: identitynamespace:<POOL_ID>:<PROVIDER_URL>
+		audience := fmt.Sprintf("identitynamespace:%s.svc.id.goog:%s", g.ProjectID, g.IdentityProvider)
+		klog.V(4).Infof("auth-provider-gcp: Constructed STS Full Audience: %s", audience)
+		payload.Audience = audience
 	}
 
 	return g.callSTSEndpoint(ctx, payload)
