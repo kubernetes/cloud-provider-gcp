@@ -129,32 +129,20 @@ func (n *NodeHandle) NNC() *nncv1.NodeNetworkConfig {
 	return nnc
 }
 
-func (n *NodeHandle) nnc() *nncv1.NodeNetworkConfig {
-	return n.NNC()
-}
-
 // NNC fetches the current NodeNetworkConfig object from the fake clientset.
 func (f *Fixture) NNC() *nncv1.NodeNetworkConfig {
-	return f.nodes[nodeName].NNC()
-}
-
-func (f *Fixture) nnc() *nncv1.NodeNetworkConfig {
-	return f.NNC()
+	return f.nodes[NodeName].NNC()
 }
 
 // StatusCIDRs extracts the CIDRs from NodeNetworkConfig.status.podCIDRs for the default network.
 func StatusCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	var cidrs []string
 	for _, pc := range nnc.Status.PodCIDRs {
-		if pc.Network == network {
+		if pc.Network == Network {
 			cidrs = append(cidrs, pc.CIDR)
 		}
 	}
 	return cidrs
-}
-
-func statusCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
-	return StatusCIDRs(nnc)
 }
 
 // StatusReady checks if the NodeNetworkConfig has Condition Ready=True.
@@ -162,22 +150,14 @@ func StatusReady(nnc *nncv1.NodeNetworkConfig) bool {
 	return apimeta.IsStatusConditionTrue(nnc.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
 }
 
-func statusReady(nnc *nncv1.NodeNetworkConfig) bool {
-	return StatusReady(nnc)
-}
-
 // SpecPods returns the requested pod capacity for the default network in NNC spec.
 func SpecPods(nnc *nncv1.NodeNetworkConfig) int32 {
 	for _, a := range nnc.Spec.Allocations {
-		if a.Network == network {
+		if a.Network == Network {
 			return a.Pods
 		}
 	}
 	return 0
-}
-
-func specPods(nnc *nncv1.NodeNetworkConfig) int32 {
-	return SpecPods(nnc)
 }
 
 // SettledSpecPods polls until spec.allocations stops changing, then returns the settled value.
@@ -198,32 +178,20 @@ func (n *NodeHandle) SettledSpecPods() int32 {
 	return last
 }
 
-func (n *NodeHandle) settledSpecPods() int32 {
-	return n.SettledSpecPods()
-}
-
 // SettledSpecPods polls until spec.allocations stops changing on primary node, then returns the settled value.
 func (f *Fixture) SettledSpecPods() int32 {
-	return f.nodes[nodeName].SettledSpecPods()
-}
-
-func (f *Fixture) settledSpecPods() int32 {
-	return f.SettledSpecPods()
+	return f.nodes[NodeName].SettledSpecPods()
 }
 
 // ReleasableCIDRs extracts CIDRs from NodeNetworkConfig.spec.releasableCIDRs for the default network.
 func ReleasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	var cidrs []string
 	for _, r := range nnc.Spec.ReleasableCIDRs {
-		if r.Network == network {
+		if r.Network == Network {
 			cidrs = append(cidrs, r.CIDR)
 		}
 	}
 	return cidrs
-}
-
-func releasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
-	return ReleasableCIDRs(nnc)
 }
 
 // AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs for this node.
@@ -231,7 +199,7 @@ func (n *NodeHandle) AddReleasableCIDR(cidr string) {
 	n.fixture.t.Helper()
 	nnc := n.NNC().DeepCopy()
 	nnc.Spec.ReleasableCIDRs = append(nnc.Spec.ReleasableCIDRs, nncv1.PodCIDR{
-		Network: network,
+		Network: Network,
 		CIDR:    cidr,
 	})
 	if _, err := n.fixture.nncClient.NetworkingV1().NodeNetworkConfigs().Update(n.fixture.ctx, nnc, metav1.UpdateOptions{}); err != nil {
@@ -239,17 +207,9 @@ func (n *NodeHandle) AddReleasableCIDR(cidr string) {
 	}
 }
 
-func (n *NodeHandle) addReleasableCIDR(cidr string) {
-	n.AddReleasableCIDR(cidr)
-}
-
 // AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs on the primary node.
 func (f *Fixture) AddReleasableCIDR(cidr string) {
-	f.nodes[nodeName].AddReleasableCIDR(cidr)
-}
-
-func (f *Fixture) addReleasableCIDR(cidr string) {
-	f.AddReleasableCIDR(cidr)
+	f.nodes[NodeName].AddReleasableCIDR(cidr)
 }
 
 // SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on this node.
@@ -258,7 +218,7 @@ func (n *NodeHandle) SetAllocationsPods(pods int32) {
 	nnc := n.NNC().DeepCopy()
 	found := false
 	for i, a := range nnc.Spec.Allocations {
-		if a.Network == network {
+		if a.Network == Network {
 			nnc.Spec.Allocations[i].Pods = pods
 			found = true
 			break
@@ -266,7 +226,7 @@ func (n *NodeHandle) SetAllocationsPods(pods int32) {
 	}
 	if !found {
 		nnc.Spec.Allocations = append(nnc.Spec.Allocations, nncv1.Allocation{
-			Network: network,
+			Network: Network,
 			Pods:    pods,
 		})
 	}
@@ -275,17 +235,9 @@ func (n *NodeHandle) SetAllocationsPods(pods int32) {
 	}
 }
 
-func (n *NodeHandle) setAllocationsPods(pods int32) {
-	n.SetAllocationsPods(pods)
-}
-
 // SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on the primary node.
 func (f *Fixture) SetAllocationsPods(pods int32) {
-	f.nodes[nodeName].SetAllocationsPods(pods)
-}
-
-func (f *Fixture) setAllocationsPods(pods int32) {
-	f.SetAllocationsPods(pods)
+	f.nodes[NodeName].SetAllocationsPods(pods)
 }
 
 // NodeEvents returns the messages of the Events recorded against the node with the given reason.
@@ -297,13 +249,9 @@ func (f *Fixture) NodeEvents(reason string) []string {
 	}
 	var messages []string
 	for _, ev := range list.Items {
-		if ev.Reason == reason && ev.InvolvedObject.Kind == "Node" && ev.InvolvedObject.Name == nodeName {
+		if ev.Reason == reason && ev.InvolvedObject.Kind == "Node" && ev.InvolvedObject.Name == NodeName {
 			messages = append(messages, ev.Message)
 		}
 	}
 	return messages
-}
-
-func (f *Fixture) nodeEvents(reason string) []string {
-	return f.NodeEvents(reason)
 }
