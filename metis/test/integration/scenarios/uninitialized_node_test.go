@@ -14,12 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"fmt"
 	"testing"
 	"time"
+
+	"k8s.io/metis/test/integration"
 )
 
 // TestNotReadyNodeHandling tests controller behavior during early node registration
@@ -29,22 +31,22 @@ import (
 // is assigned.
 func TestNotReadyNodeHandling(t *testing.T) {
 	// Uninitialized node startup: launch controllers with a node lacking ProviderID.
-	f := newFixture(t, withNodeProviderID(""))
+	f := integration.NewFixture(t, integration.WithNodeProviderID(""))
 
 	// Initial check: status is not yet ready because node has empty ProviderID.
 	time.Sleep(500 * time.Millisecond)
-	nnc := f.nnc()
-	if statusReady(nnc) {
+	nnc := f.NNC()
+	if integration.StatusReady(nnc) {
 		t.Fatalf("expected status not ready while node is uninitialized")
 	}
 
 	// Node readiness: cloud-node-controller assigns ProviderID to the Node.
-	f.updateNodeProviderID(providerID)
+	f.UpdateNodeProviderID(integration.ProviderID)
 
 	// Successful reconciliation: controllers proceed with reconciliation once Node is ready.
-	f.eventually("CCM publishes Ready status after ProviderID is set", func() (bool, string) {
-		currentNNC := f.nnc()
-		return statusReady(currentNNC) && equalSets(statusCIDRs(currentNNC), []string{initialPodCIDR}),
-			fmt.Sprintf("ready=%v status=%v", statusReady(currentNNC), statusCIDRs(currentNNC))
+	f.Eventually("CCM publishes Ready status after ProviderID is set", func() (bool, string) {
+		currentNNC := f.NNC()
+		return integration.StatusReady(currentNNC) && integration.EqualSets(integration.StatusCIDRs(currentNNC), []string{integration.InitialPodCIDR}),
+			fmt.Sprintf("ready=%v status=%v", integration.StatusReady(currentNNC), integration.StatusCIDRs(currentNNC))
 	})
 }

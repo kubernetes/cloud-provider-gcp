@@ -119,8 +119,8 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 	})
 }
 
-// nnc fetches the current NodeNetworkConfig object for this node from the fake clientset.
-func (n *nodeHandle) nnc() *nncv1.NodeNetworkConfig {
+// NNC fetches the current NodeNetworkConfig object for this node from the fake clientset.
+func (n *NodeHandle) NNC() *nncv1.NodeNetworkConfig {
 	n.fixture.t.Helper()
 	nnc, err := n.fixture.nncClient.NetworkingV1().NodeNetworkConfigs().Get(n.fixture.ctx, n.name, metav1.GetOptions{})
 	if err != nil {
@@ -129,13 +129,21 @@ func (n *nodeHandle) nnc() *nncv1.NodeNetworkConfig {
 	return nnc
 }
 
-// nnc fetches the current NodeNetworkConfig object from the fake clientset.
-func (f *fixture) nnc() *nncv1.NodeNetworkConfig {
-	return f.nodes[nodeName].nnc()
+func (n *NodeHandle) nnc() *nncv1.NodeNetworkConfig {
+	return n.NNC()
 }
 
-// statusCIDRs extracts the CIDRs from NodeNetworkConfig.status.podCIDRs for the default network.
-func statusCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
+// NNC fetches the current NodeNetworkConfig object from the fake clientset.
+func (f *Fixture) NNC() *nncv1.NodeNetworkConfig {
+	return f.nodes[nodeName].NNC()
+}
+
+func (f *Fixture) nnc() *nncv1.NodeNetworkConfig {
+	return f.NNC()
+}
+
+// StatusCIDRs extracts the CIDRs from NodeNetworkConfig.status.podCIDRs for the default network.
+func StatusCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	var cidrs []string
 	for _, pc := range nnc.Status.PodCIDRs {
 		if pc.Network == network {
@@ -145,13 +153,21 @@ func statusCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	return cidrs
 }
 
-// statusReady checks if the NodeNetworkConfig has Condition Ready=True.
-func statusReady(nnc *nncv1.NodeNetworkConfig) bool {
+func statusCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
+	return StatusCIDRs(nnc)
+}
+
+// StatusReady checks if the NodeNetworkConfig has Condition Ready=True.
+func StatusReady(nnc *nncv1.NodeNetworkConfig) bool {
 	return apimeta.IsStatusConditionTrue(nnc.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
 }
 
-// specPods returns the requested pod capacity for the default network in NNC spec.
-func specPods(nnc *nncv1.NodeNetworkConfig) int32 {
+func statusReady(nnc *nncv1.NodeNetworkConfig) bool {
+	return StatusReady(nnc)
+}
+
+// SpecPods returns the requested pod capacity for the default network in NNC spec.
+func SpecPods(nnc *nncv1.NodeNetworkConfig) int32 {
 	for _, a := range nnc.Spec.Allocations {
 		if a.Network == network {
 			return a.Pods
@@ -160,31 +176,43 @@ func specPods(nnc *nncv1.NodeNetworkConfig) int32 {
 	return 0
 }
 
-// settledSpecPods polls until spec.allocations stops changing, then returns the settled value.
-func (n *nodeHandle) settledSpecPods() int32 {
+func specPods(nnc *nncv1.NodeNetworkConfig) int32 {
+	return SpecPods(nnc)
+}
+
+// SettledSpecPods polls until spec.allocations stops changing, then returns the settled value.
+func (n *NodeHandle) SettledSpecPods() int32 {
 	n.fixture.t.Helper()
 	var last int32 = -1
-	n.fixture.eventually(fmt.Sprintf("spec.allocations settles on %s", n.name), func() (bool, string) {
-		current := specPods(n.nnc())
+	n.fixture.Eventually(fmt.Sprintf("spec.allocations settles on %s", n.name), func() (bool, string) {
+		current := SpecPods(n.NNC())
 		if current == last && current > 0 {
 			return true, fmt.Sprintf("settled at %d", current)
 		}
 		last = current
 		return false, fmt.Sprintf("still changing: %d", current)
 	})
-	n.fixture.consistently(fmt.Sprintf("spec.allocations stays at settled value on %s", n.name), 200*time.Millisecond, func() (bool, string) {
-		return specPods(n.nnc()) == last, fmt.Sprintf("spec=%d want=%d", specPods(n.nnc()), last)
+	n.fixture.Consistently(fmt.Sprintf("spec.allocations stays at settled value on %s", n.name), 200*time.Millisecond, func() (bool, string) {
+		return SpecPods(n.NNC()) == last, fmt.Sprintf("spec=%d want=%d", SpecPods(n.NNC()), last)
 	})
 	return last
 }
 
-// settledSpecPods polls until spec.allocations stops changing on primary node, then returns the settled value.
-func (f *fixture) settledSpecPods() int32 {
-	return f.nodes[nodeName].settledSpecPods()
+func (n *NodeHandle) settledSpecPods() int32 {
+	return n.SettledSpecPods()
 }
 
-// releasableCIDRs extracts CIDRs from NodeNetworkConfig.spec.releasableCIDRs for the default network.
-func releasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
+// SettledSpecPods polls until spec.allocations stops changing on primary node, then returns the settled value.
+func (f *Fixture) SettledSpecPods() int32 {
+	return f.nodes[nodeName].SettledSpecPods()
+}
+
+func (f *Fixture) settledSpecPods() int32 {
+	return f.SettledSpecPods()
+}
+
+// ReleasableCIDRs extracts CIDRs from NodeNetworkConfig.spec.releasableCIDRs for the default network.
+func ReleasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	var cidrs []string
 	for _, r := range nnc.Spec.ReleasableCIDRs {
 		if r.Network == network {
@@ -194,10 +222,14 @@ func releasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	return cidrs
 }
 
-// addReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs for this node.
-func (n *nodeHandle) addReleasableCIDR(cidr string) {
+func releasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
+	return ReleasableCIDRs(nnc)
+}
+
+// AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs for this node.
+func (n *NodeHandle) AddReleasableCIDR(cidr string) {
 	n.fixture.t.Helper()
-	nnc := n.nnc().DeepCopy()
+	nnc := n.NNC().DeepCopy()
 	nnc.Spec.ReleasableCIDRs = append(nnc.Spec.ReleasableCIDRs, nncv1.PodCIDR{
 		Network: network,
 		CIDR:    cidr,
@@ -207,15 +239,23 @@ func (n *nodeHandle) addReleasableCIDR(cidr string) {
 	}
 }
 
-// addReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs on the primary node.
-func (f *fixture) addReleasableCIDR(cidr string) {
-	f.nodes[nodeName].addReleasableCIDR(cidr)
+func (n *NodeHandle) addReleasableCIDR(cidr string) {
+	n.AddReleasableCIDR(cidr)
 }
 
-// setAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on this node.
-func (n *nodeHandle) setAllocationsPods(pods int32) {
+// AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs on the primary node.
+func (f *Fixture) AddReleasableCIDR(cidr string) {
+	f.nodes[nodeName].AddReleasableCIDR(cidr)
+}
+
+func (f *Fixture) addReleasableCIDR(cidr string) {
+	f.AddReleasableCIDR(cidr)
+}
+
+// SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on this node.
+func (n *NodeHandle) SetAllocationsPods(pods int32) {
 	n.fixture.t.Helper()
-	nnc := n.nnc().DeepCopy()
+	nnc := n.NNC().DeepCopy()
 	found := false
 	for i, a := range nnc.Spec.Allocations {
 		if a.Network == network {
@@ -235,13 +275,21 @@ func (n *nodeHandle) setAllocationsPods(pods int32) {
 	}
 }
 
-// setAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on the primary node.
-func (f *fixture) setAllocationsPods(pods int32) {
-	f.nodes[nodeName].setAllocationsPods(pods)
+func (n *NodeHandle) setAllocationsPods(pods int32) {
+	n.SetAllocationsPods(pods)
 }
 
-// nodeEvents returns the messages of the Events recorded against the node with the given reason.
-func (f *fixture) nodeEvents(reason string) []string {
+// SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on the primary node.
+func (f *Fixture) SetAllocationsPods(pods int32) {
+	f.nodes[nodeName].SetAllocationsPods(pods)
+}
+
+func (f *Fixture) setAllocationsPods(pods int32) {
+	f.SetAllocationsPods(pods)
+}
+
+// NodeEvents returns the messages of the Events recorded against the node with the given reason.
+func (f *Fixture) NodeEvents(reason string) []string {
 	f.t.Helper()
 	list, err := f.kubeClient.CoreV1().Events("").List(f.ctx, metav1.ListOptions{})
 	if err != nil {
@@ -254,4 +302,8 @@ func (f *fixture) nodeEvents(reason string) []string {
 		}
 	}
 	return messages
+}
+
+func (f *Fixture) nodeEvents(reason string) []string {
+	return f.NodeEvents(reason)
 }

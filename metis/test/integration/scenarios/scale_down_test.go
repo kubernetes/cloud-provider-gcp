@@ -14,11 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"fmt"
 	"testing"
+
+	"k8s.io/metis/test/integration"
 )
 
 // TestScaleDownAndReleaseLoop tests dynamic scale-down and resource reclamation
@@ -27,50 +29,50 @@ import (
 // controller detaches the alias range from the GCE instance and prunes the release
 // request from NodeNetworkConfig spec.
 func TestScaleDownAndReleaseLoop(t *testing.T) {
-	f := newFixture(t)
+	f := integration.NewFixture(t)
 
 	// Capacity expansion: scale up to two blocks so an expansion block exists.
-	for i := 1; i <= initialUsableIPs; i++ {
-		f.allocatePod(fmt.Sprintf("pod-scale-%d", i))
+	for i := 1; i <= integration.InitialUsableIPs; i++ {
+		f.AllocatePod(fmt.Sprintf("pod-scale-%d", i))
 	}
-	_, dynamicCIDR := f.allocatePod("pod-drain-target")
-	if dynamicCIDR == initialPodCIDR {
+	_, dynamicCIDR := f.AllocatePod("pod-drain-target")
+	if dynamicCIDR == integration.InitialPodCIDR {
 		t.Fatalf("overflow pod allocated from initial range; expected a dynamically added range")
 	}
 
-	f.eventually("dynamic block is active in GCE and status", func() (bool, string) {
-		nnc := f.nnc()
-		want := []string{initialPodCIDR, dynamicCIDR}
-		return equalSets(f.gceAliasRanges(), want) && equalSets(statusCIDRs(nnc), want) && statusReady(nnc),
-			fmt.Sprintf("gce=%v status=%v", f.gceAliasRanges(), statusCIDRs(nnc))
+	f.Eventually("dynamic block is active in GCE and status", func() (bool, string) {
+		nnc := f.NNC()
+		want := []string{integration.InitialPodCIDR, dynamicCIDR}
+		return integration.EqualSets(f.GCEAliasRanges(), want) && integration.EqualSets(integration.StatusCIDRs(nnc), want) && integration.StatusReady(nnc),
+			fmt.Sprintf("gce=%v status=%v", f.GCEAliasRanges(), integration.StatusCIDRs(nnc))
 	})
 
 	// Workload reduction: delete all pods so utilization drops and idle capacity can be released.
-	for i := 1; i <= initialUsableIPs; i++ {
-		f.deletePod(fmt.Sprintf("pod-scale-%d", i))
+	for i := 1; i <= integration.InitialUsableIPs; i++ {
+		f.DeletePod(fmt.Sprintf("pod-scale-%d", i))
 	}
-	f.deletePod("pod-drain-target")
+	f.DeletePod("pod-drain-target")
 
 	// Drain and release initiation: mark the idle block for release and reduce desired pods.
-	f.setAllocationsPods(16)
-	f.addReleasableCIDR(dynamicCIDR)
+	f.SetAllocationsPods(16)
+	f.AddReleasableCIDR(dynamicCIDR)
 
 	// Infrastructure release: CCM detaches the released alias range from GCE VM.
-	f.eventually("GCE instance removes the released alias range", func() (bool, string) {
-		ranges := f.gceAliasRanges()
-		return equalSets(ranges, []string{initialPodCIDR}), fmt.Sprintf("gce=%v", ranges)
+	f.Eventually("GCE instance removes the released alias range", func() (bool, string) {
+		ranges := f.GCEAliasRanges()
+		return integration.EqualSets(ranges, []string{integration.InitialPodCIDR}), fmt.Sprintf("gce=%v", ranges)
 	})
 
 	// Spec hygiene: CCM spec controller prunes the released range from spec.releasableCIDRs.
-	f.eventually("CCM prunes releasableCIDRs from NNC spec", func() (bool, string) {
-		rel := releasableCIDRs(f.nnc())
+	f.Eventually("CCM prunes releasableCIDRs from NNC spec", func() (bool, string) {
+		rel := integration.ReleasableCIDRs(f.NNC())
 		return len(rel) == 0, fmt.Sprintf("releasableCIDRs=%v", rel)
 	})
 
 	// Status reconciliation: CCM status controller updates status to reflect only the retained block.
-	f.eventually("status reflects only the retained initial range with Ready=True", func() (bool, string) {
-		nnc := f.nnc()
-		return equalSets(statusCIDRs(nnc), []string{initialPodCIDR}) && statusReady(nnc),
-			fmt.Sprintf("status=%v ready=%v", statusCIDRs(nnc), statusReady(nnc))
+	f.Eventually("status reflects only the retained initial range with Ready=True", func() (bool, string) {
+		nnc := f.NNC()
+		return integration.EqualSets(integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}) && integration.StatusReady(nnc),
+			fmt.Sprintf("status=%v ready=%v", integration.StatusCIDRs(nnc), integration.StatusReady(nnc))
 	})
 }

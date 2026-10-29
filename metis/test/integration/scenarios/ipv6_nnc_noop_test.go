@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"fmt"
@@ -23,6 +23,7 @@ import (
 
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/metis/test/integration"
 )
 
 // TestIPv6_NNCStatusCIDRIgnoredByMetis verifies that when an IPv6 CIDR is published
@@ -30,25 +31,25 @@ import (
 // entry as a no-op and does not ingest it into its local database, preserving local-only
 // IPv6 management.
 func TestIPv6_NNCStatusCIDRIgnoredByMetis(t *testing.T) {
-	f := newFixture(t)
+	f := integration.NewFixture(t)
 
 	// Ensure daemon is active with initial pod allocation.
-	f.allocatePod("pod-init")
+	f.AllocatePod("pod-init")
 
 	// Inject an external IPv6 CIDR into NodeNetworkConfig status.
 	ignoredIPv6CIDR := "2001:db8:99::/112"
-	nnc := f.nnc().DeepCopy()
+	nnc := f.NNC().DeepCopy()
 	nnc.Status.PodCIDRs = append(nnc.Status.PodCIDRs, nncv1.PodCIDR{
-		Network: network,
+		Network: integration.Network,
 		CIDR:    ignoredIPv6CIDR,
 	})
-	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().UpdateStatus(f.ctx, nnc, metav1.UpdateOptions{}); err != nil {
+	if _, err := f.NNCClient().NetworkingV1().NodeNetworkConfigs().UpdateStatus(f.Ctx(), nnc, metav1.UpdateOptions{}); err != nil {
 		t.Fatalf("failed to inject IPv6 CIDR into NNC status: %v", err)
 	}
 
 	// Verification of daemon watcher no-op: assert the IPv6 block is never created in SQLite.
-	f.consistently("injected IPv6 CIDR is ignored by Metis watcher and absent from SQLite store", 300*time.Millisecond, func() (bool, string) {
-		exists := f.blockExists(ignoredIPv6CIDR)
+	f.Consistently("injected IPv6 CIDR is ignored by Metis watcher and absent from SQLite store", 300*time.Millisecond, func() (bool, string) {
+		exists := f.BlockExists(ignoredIPv6CIDR)
 		return !exists, fmt.Sprintf("blockExists(%s)=%v", ignoredIPv6CIDR, exists)
 	})
 }

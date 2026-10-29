@@ -14,33 +14,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"testing"
 
 	"k8s.io/metis/pkg/daemon"
+	"k8s.io/metis/test/integration"
 )
 
 // TestIPReuseAndChurn verifies that when a pod is deleted, its IP address is
 // returned to the local pool and reused for subsequent allocations within the
 // same block without triggering scale-up.
 func TestIPReuseAndChurn(t *testing.T) {
-	f := newFixture(t, withDaemonConfig(func(cfg *daemon.Config) {
+	f := integration.NewFixture(t, integration.WithDaemonConfig(func(cfg *daemon.Config) {
 		cfg.ReleaseCooldown = 0
 	}))
 
 	// Initial pod allocation: allocate a pod and record its assigned IP.
-	ip1, cidr1 := f.allocatePod("pod-churn-1")
-	if cidr1 != initialPodCIDR {
+	ip1, cidr1 := f.AllocatePod("pod-churn-1")
+	if cidr1 != integration.InitialPodCIDR {
 		t.Fatalf("expected allocation from initial range, got %s", cidr1)
 	}
 
 	// Pod release: delete the pod to return the IP to the local store.
-	f.deletePod("pod-churn-1")
+	f.DeletePod("pod-churn-1")
 
 	// Local IP reuse: allocate a new pod and verify it receives the freed IP.
-	ip2, cidr2 := f.allocatePod("pod-churn-2")
+	ip2, cidr2 := f.AllocatePod("pod-churn-2")
 	if ip2 != ip1 {
 		t.Fatalf("expected IP reuse of %s, got %s", ip1, ip2)
 	}
@@ -49,8 +50,8 @@ func TestIPReuseAndChurn(t *testing.T) {
 	}
 
 	// Verification of zero cloud provider churn: GCE ranges and NNC spec unchanged.
-	aliasRanges := f.gceAliasRanges()
-	if len(aliasRanges) != 1 || aliasRanges[0] != initialPodCIDR {
+	aliasRanges := f.GCEAliasRanges()
+	if len(aliasRanges) != 1 || aliasRanges[0] != integration.InitialPodCIDR {
 		t.Fatalf("unexpected GCE alias ranges: %v", aliasRanges)
 	}
 }

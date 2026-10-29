@@ -14,13 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"fmt"
 	"testing"
 
 	"k8s.io/metis/pkg/store"
+	"k8s.io/metis/test/integration"
 )
 
 // TestScaleUpLoop tests the dynamic scale-up cycle when pod demand exhausts the
@@ -30,30 +31,30 @@ import (
 // instance, the status controller publishes the range, and the waiting pod
 // allocation completes.
 func TestScaleUpLoop(t *testing.T) {
-	f := newFixture(t)
+	f := integration.NewFixture(t)
 
 	// Initial saturation: allocate pods until the initial block is fully exhausted.
-	for i := 1; i <= initialUsableIPs; i++ {
-		f.allocatePod(fmt.Sprintf("pod-init-%d", i))
+	for i := 1; i <= integration.InitialUsableIPs; i++ {
+		f.AllocatePod(fmt.Sprintf("pod-init-%d", i))
 	}
 
 	// Scale-up demand: an overflow pod triggers the daemon to request additional capacity.
-	_, dynamicCIDR := f.allocatePod("pod-overflow")
-	if dynamicCIDR == initialPodCIDR {
+	_, dynamicCIDR := f.AllocatePod("pod-overflow")
+	if dynamicCIDR == integration.InitialPodCIDR {
 		t.Fatalf("overflow pod allocated from initial range; expected a dynamically added range")
 	}
 
 	// Infrastructure expansion: GCE, status, and SQLite converge on the expanded capacity.
-	f.eventually("GCE, status, and SQLite converge on two ranges", func() (bool, string) {
-		nnc := f.nnc()
-		want := []string{initialPodCIDR, dynamicCIDR}
-		ok := equalSets(f.gceAliasRanges(), want) &&
-			equalSets(statusCIDRs(nnc), want) && statusReady(nnc) &&
-			f.blockState(dynamicCIDR) == store.StateReady
-		return ok, fmt.Sprintf("gce=%v status=%v ready=%v block=%q", f.gceAliasRanges(), statusCIDRs(nnc), statusReady(nnc), f.blockState(dynamicCIDR))
+	f.Eventually("GCE, status, and SQLite converge on two ranges", func() (bool, string) {
+		nnc := f.NNC()
+		want := []string{integration.InitialPodCIDR, dynamicCIDR}
+		ok := integration.EqualSets(f.GCEAliasRanges(), want) &&
+			integration.EqualSets(integration.StatusCIDRs(nnc), want) && integration.StatusReady(nnc) &&
+			f.BlockState(dynamicCIDR) == store.StateReady
+		return ok, fmt.Sprintf("gce=%v status=%v ready=%v block=%q", f.GCEAliasRanges(), integration.StatusCIDRs(nnc), integration.StatusReady(nnc), f.BlockState(dynamicCIDR))
 	})
 
-	if u := f.usage(); u.Total != 32 {
+	if u := f.Usage(); u.Total != 32 {
 		t.Fatalf("usage.Total after scale-up = %d, want 32", u.Total)
 	}
 }

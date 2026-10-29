@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"fmt"
@@ -22,6 +22,7 @@ import (
 
 	"k8s.io/cloud-provider-gcp/pkg/controller/dynamicpodip"
 	"k8s.io/metis/pkg/daemon"
+	"k8s.io/metis/test/integration"
 )
 
 // TestScaleDown_ANE_RoundingBoundary exercises the fractional threshold boundary
@@ -34,22 +35,22 @@ import (
 func TestScaleDown_ANE_RoundingBoundary(t *testing.T) {
 	t.Skip("Skipping pending Issue #1429 fix in metis/pkg/daemon/monitor.go for /32 rounding threshold truncation")
 
-	f := newFixture(t, withBackend(dynamicpodip.BackendTypeANE), withDaemonConfig(func(cfg *daemon.Config) {
+	f := integration.NewFixture(t, integration.WithBackend(dynamicpodip.BackendTypeANE), integration.WithDaemonConfig(func(cfg *daemon.Config) {
 		cfg.LowUtilizationThreshold = 0.50
 	}))
 
 	// Bootstrap block saturation: allocate pods to exhaust initial block.
-	for i := 1; i <= initialUsableIPs; i++ {
-		f.allocatePod(fmt.Sprintf("pod-ane-init-%d", i))
+	for i := 1; i <= integration.InitialUsableIPs; i++ {
+		f.AllocatePod(fmt.Sprintf("pod-ane-init-%d", i))
 	}
 
 	// ANE scale-up: trigger dynamic allocation of /32 ANEs.
-	_, dynamicCIDR := f.allocatePod("pod-ane-overflow")
-	if dynamicCIDR == initialPodCIDR {
+	_, dynamicCIDR := f.AllocatePod("pod-ane-overflow")
+	if dynamicCIDR == integration.InitialPodCIDR {
 		t.Fatalf("overflow pod allocated from initial range; expected an ANE /32 allocation")
 	}
-	f.eventually("ANEs are attached to GCE", func() (bool, string) {
-		return len(f.gceANEs()) > 0, fmt.Sprintf("anes=%d", len(f.gceANEs()))
+	f.Eventually("ANEs are attached to GCE", func() (bool, string) {
+		return len(f.GCEANEs()) > 0, fmt.Sprintf("anes=%d", len(f.GCEANEs()))
 	})
 
 	// Pod deletion to reach the fractional threshold boundary:
@@ -58,14 +59,14 @@ func TestScaleDown_ANE_RoundingBoundary(t *testing.T) {
 	// 11 / 23 = 47.8% < 50%.
 	// Without math.Ceil: targetUsedIPs = int(0.50 * 23) = 11, so 11 >= 11 breaks early.
 	// With math.Ceil: targetUsedIPs = ceil(11.5) = 12, allowing the idle ANEs to drain.
-	f.deletePod("pod-ane-overflow")
+	f.DeletePod("pod-ane-overflow")
 	for i := 1; i <= 5; i++ {
-		f.deletePod(fmt.Sprintf("pod-ane-init-%d", i))
+		f.DeletePod(fmt.Sprintf("pod-ane-init-%d", i))
 	}
 
 	// Boundary release verification: idle ANEs should be drained and detached from GCE.
-	f.eventually("idle ANEs are drained and removed from GCE", func() (bool, string) {
-		anes := f.gceANEs()
+	f.Eventually("idle ANEs are drained and removed from GCE", func() (bool, string) {
+		anes := f.GCEANEs()
 		return len(anes) == 0, fmt.Sprintf("anes remaining: %d", len(anes))
 	})
 }

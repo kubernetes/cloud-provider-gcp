@@ -14,59 +14,60 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"fmt"
 	"testing"
 
 	"k8s.io/metis/pkg/store"
+	"k8s.io/metis/test/integration"
 )
 
 // TestSequentialMultiBlockScaleUp verifies that the system progressively scales
 // up across multiple dynamic blocks as pod capacity fills each preceding block.
 func TestSequentialMultiBlockScaleUp(t *testing.T) {
-	f := newFixture(t)
+	f := integration.NewFixture(t)
 
 	// Bootstrap block saturation: allocate pods to exhaust initial block capacity.
-	for i := 1; i <= initialUsableIPs; i++ {
-		f.allocatePod(fmt.Sprintf("pod-seq-init-%d", i))
+	for i := 1; i <= integration.InitialUsableIPs; i++ {
+		f.AllocatePod(fmt.Sprintf("pod-seq-init-%d", i))
 	}
 
 	// First dynamic block trigger: overflow pod triggers the first scale-up.
-	_, dynCIDR1 := f.allocatePod("pod-seq-dyn1-overflow")
-	if dynCIDR1 == initialPodCIDR {
+	_, dynCIDR1 := f.AllocatePod("pod-seq-dyn1-overflow")
+	if dynCIDR1 == integration.InitialPodCIDR {
 		t.Fatalf("overflow pod allocated from initial range; expected dynamic range")
 	}
 
 	// First dynamic block verification: wait for range to attach and status to publish.
-	f.eventually("first dynamic range is attached and ready", func() (bool, string) {
-		currentNNC := f.nnc()
-		ranges := f.gceAliasRanges()
-		return len(ranges) == 2 && len(statusCIDRs(currentNNC)) == 2 && f.blockState(dynCIDR1) == store.StateReady,
-			fmt.Sprintf("ranges=%v status=%v blockState=%q", ranges, statusCIDRs(currentNNC), f.blockState(dynCIDR1))
+	f.Eventually("first dynamic range is attached and ready", func() (bool, string) {
+		currentNNC := f.NNC()
+		ranges := f.GCEAliasRanges()
+		return len(ranges) == 2 && len(integration.StatusCIDRs(currentNNC)) == 2 && f.BlockState(dynCIDR1) == store.StateReady,
+			fmt.Sprintf("ranges=%v status=%v blockState=%q", ranges, integration.StatusCIDRs(currentNNC), f.BlockState(dynCIDR1))
 	})
 
 	// First dynamic block saturation: fill remaining capacity of the first dynamic block.
 	// For secondary blocks, 0 IPs are reserved, so 15 additional pods can be allocated.
 	for i := 1; i <= 15; i++ {
-		_, c := f.allocatePod(fmt.Sprintf("pod-seq-dyn1-%d", i))
+		_, c := f.AllocatePod(fmt.Sprintf("pod-seq-dyn1-%d", i))
 		if c != dynCIDR1 {
 			t.Fatalf("expected allocation from first dynamic block %s, got %s", dynCIDR1, c)
 		}
 	}
 
 	// Second dynamic block trigger: second overflow pod triggers another scale-up.
-	_, dynCIDR2 := f.allocatePod("pod-seq-dyn2-overflow")
-	if dynCIDR2 == initialPodCIDR || dynCIDR2 == dynCIDR1 {
+	_, dynCIDR2 := f.AllocatePod("pod-seq-dyn2-overflow")
+	if dynCIDR2 == integration.InitialPodCIDR || dynCIDR2 == dynCIDR1 {
 		t.Fatalf("expected allocation from second dynamic block, got %s", dynCIDR2)
 	}
 
 	// Progressive watermarking verification: wait for second dynamic range to attach.
-	f.eventually("second dynamic range is attached and ready", func() (bool, string) {
-		currentNNC := f.nnc()
-		ranges := f.gceAliasRanges()
-		return len(ranges) == 3 && len(statusCIDRs(currentNNC)) == 3 && f.blockState(dynCIDR2) == store.StateReady,
-			fmt.Sprintf("ranges=%v status=%v blockState=%q", ranges, statusCIDRs(currentNNC), f.blockState(dynCIDR2))
+	f.Eventually("second dynamic range is attached and ready", func() (bool, string) {
+		currentNNC := f.NNC()
+		ranges := f.GCEAliasRanges()
+		return len(ranges) == 3 && len(integration.StatusCIDRs(currentNNC)) == 3 && f.BlockState(dynCIDR2) == store.StateReady,
+			fmt.Sprintf("ranges=%v status=%v blockState=%q", ranges, integration.StatusCIDRs(currentNNC), f.BlockState(dynCIDR2))
 	})
 }

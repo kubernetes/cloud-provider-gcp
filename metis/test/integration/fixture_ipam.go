@@ -27,9 +27,9 @@ import (
 	"k8s.io/metis/pkg/store"
 )
 
-// allocatePod invokes the Metis CNI plugin's CmdAdd workflow to allocate an IP for
+// AllocatePod invokes the Metis CNI plugin's CmdAdd workflow to allocate an IP for
 // a pod, returning the assigned IP address and its associated CIDR block.
-func (n *nodeHandle) allocatePod(id string) (ip, cidr string) {
+func (n *NodeHandle) AllocatePod(id string) (ip, cidr string) {
 	n.fixture.t.Helper()
 
 	args := &skel.CmdArgs{
@@ -71,13 +71,21 @@ func (n *nodeHandle) allocatePod(id string) (ip, cidr string) {
 	return "", ""
 }
 
-// allocatePod calls the Metis CNI plugin's CmdAdd workflow on the primary node.
-func (f *fixture) allocatePod(id string) (ip, cidr string) {
-	return f.nodes[nodeName].allocatePod(id)
+func (n *NodeHandle) allocatePod(id string) (ip, cidr string) {
+	return n.AllocatePod(id)
 }
 
-// allocateDualStackPod calls CNI CmdAdd explicitly returning both IPv4 and IPv6 addresses.
-func (n *nodeHandle) allocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6 string) {
+// AllocatePod calls the Metis CNI plugin's CmdAdd workflow on the primary node.
+func (f *Fixture) AllocatePod(id string) (ip, cidr string) {
+	return f.nodes[nodeName].AllocatePod(id)
+}
+
+func (f *Fixture) allocatePod(id string) (ip, cidr string) {
+	return f.AllocatePod(id)
+}
+
+// AllocateDualStackPod calls CNI CmdAdd explicitly returning both IPv4 and IPv6 addresses.
+func (n *NodeHandle) AllocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6 string) {
 	n.fixture.t.Helper()
 
 	args := &skel.CmdArgs{
@@ -108,14 +116,22 @@ func (n *nodeHandle) allocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6
 	return ipv4, cidrv4, ipv6, cidrv6
 }
 
-// allocateDualStackPod calls CNI CmdAdd on the primary node returning both IPv4 and IPv6 addresses.
-func (f *fixture) allocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6 string) {
-	return f.nodes[nodeName].allocateDualStackPod(id)
+func (n *NodeHandle) allocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6 string) {
+	return n.AllocateDualStackPod(id)
 }
 
-// tryAllocatePod calls the CNI plugin's CmdAdd workflow and returns the error
+// AllocateDualStackPod calls CNI CmdAdd on the primary node returning both IPv4 and IPv6 addresses.
+func (f *Fixture) AllocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6 string) {
+	return f.nodes[nodeName].AllocateDualStackPod(id)
+}
+
+func (f *Fixture) allocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6 string) {
+	return f.AllocateDualStackPod(id)
+}
+
+// TryAllocatePod calls the CNI plugin's CmdAdd workflow and returns the error
 // rather than failing the test. Used to assert that unready states block allocations.
-func (n *nodeHandle) tryAllocatePod(id string) (cidr string, err error) {
+func (n *NodeHandle) TryAllocatePod(id string) (cidr string, err error) {
 	args := &skel.CmdArgs{
 		ContainerID: id,
 		Netns:       "/var/run/netns/" + id,
@@ -148,13 +164,21 @@ func (n *nodeHandle) tryAllocatePod(id string) (cidr string, err error) {
 	return "", fmt.Errorf("no matching IP found in CNI result")
 }
 
-// tryAllocatePod calls the CNI plugin's CmdAdd workflow on the primary node.
-func (f *fixture) tryAllocatePod(id string) (cidr string, err error) {
-	return f.nodes[nodeName].tryAllocatePod(id)
+func (n *NodeHandle) tryAllocatePod(id string) (cidr string, err error) {
+	return n.TryAllocatePod(id)
 }
 
-// deletePod invokes the CNI plugin's CmdDel workflow to deallocate a pod's IP.
-func (n *nodeHandle) deletePod(id string) {
+// TryAllocatePod calls the CNI plugin's CmdAdd workflow on the primary node.
+func (f *Fixture) TryAllocatePod(id string) (cidr string, err error) {
+	return f.nodes[nodeName].TryAllocatePod(id)
+}
+
+func (f *Fixture) tryAllocatePod(id string) (cidr string, err error) {
+	return f.TryAllocatePod(id)
+}
+
+// DeletePod invokes the CNI plugin's CmdDel workflow to deallocate a pod's IP.
+func (n *NodeHandle) DeletePod(id string) {
 	n.fixture.t.Helper()
 
 	args := &skel.CmdArgs{
@@ -170,13 +194,21 @@ func (n *nodeHandle) deletePod(id string) {
 	}
 }
 
-// deletePod invokes the CNI plugin's CmdDel workflow on the primary node.
-func (f *fixture) deletePod(id string) {
-	f.nodes[nodeName].deletePod(id)
+func (n *NodeHandle) deletePod(id string) {
+	n.DeletePod(id)
 }
 
-// blockState queries this node's SQLite database directly for the state of a CIDR block.
-func (n *nodeHandle) blockState(cidr string) store.CidrBlockState {
+// DeletePod invokes the CNI plugin's CmdDel workflow on the primary node.
+func (f *Fixture) DeletePod(id string) {
+	f.nodes[nodeName].DeletePod(id)
+}
+
+func (f *Fixture) deletePod(id string) {
+	f.DeletePod(id)
+}
+
+// BlockState queries this node's SQLite database directly for the state of a CIDR block.
+func (n *NodeHandle) BlockState(cidr string) store.CidrBlockState {
 	n.fixture.t.Helper()
 	var state string
 	row := n.store.DB().QueryRowContext(n.fixture.ctx, "SELECT state FROM cidr_blocks WHERE cidr = ?", cidr)
@@ -189,13 +221,21 @@ func (n *nodeHandle) blockState(cidr string) store.CidrBlockState {
 	return store.CidrBlockState(state)
 }
 
-// blockState queries the primary daemon's SQLite database directly for the state of a CIDR block.
-func (f *fixture) blockState(cidr string) store.CidrBlockState {
-	return f.nodes[nodeName].blockState(cidr)
+func (n *NodeHandle) blockState(cidr string) store.CidrBlockState {
+	return n.BlockState(cidr)
 }
 
-// ipv6BlockState queries this node's SQLite database for an IPv6 block's state.
-func (n *nodeHandle) ipv6BlockState(cidr string) store.CidrBlockState {
+// BlockState queries the primary daemon's SQLite database directly for the state of a CIDR block.
+func (f *Fixture) BlockState(cidr string) store.CidrBlockState {
+	return f.nodes[nodeName].BlockState(cidr)
+}
+
+func (f *Fixture) blockState(cidr string) store.CidrBlockState {
+	return f.BlockState(cidr)
+}
+
+// IPv6BlockState queries this node's SQLite database for an IPv6 block's state.
+func (n *NodeHandle) IPv6BlockState(cidr string) store.CidrBlockState {
 	n.fixture.t.Helper()
 	var state string
 	row := n.store.DB().QueryRowContext(n.fixture.ctx, "SELECT state FROM cidr_blocks WHERE cidr = ? AND ip_family = 'ipv6'", cidr)
@@ -208,13 +248,21 @@ func (n *nodeHandle) ipv6BlockState(cidr string) store.CidrBlockState {
 	return store.CidrBlockState(state)
 }
 
-// ipv6BlockState queries the primary daemon's SQLite database for an IPv6 block's state.
-func (f *fixture) ipv6BlockState(cidr string) store.CidrBlockState {
-	return f.nodes[nodeName].ipv6BlockState(cidr)
+func (n *NodeHandle) ipv6BlockState(cidr string) store.CidrBlockState {
+	return n.IPv6BlockState(cidr)
 }
 
-// blockExists checks whether a CIDR block is present in this node's SQLite store.
-func (n *nodeHandle) blockExists(cidr string) bool {
+// IPv6BlockState queries the primary daemon's SQLite database for an IPv6 block's state.
+func (f *Fixture) IPv6BlockState(cidr string) store.CidrBlockState {
+	return f.nodes[nodeName].IPv6BlockState(cidr)
+}
+
+func (f *Fixture) ipv6BlockState(cidr string) store.CidrBlockState {
+	return f.IPv6BlockState(cidr)
+}
+
+// BlockExists checks whether a CIDR block is present in this node's SQLite store.
+func (n *NodeHandle) BlockExists(cidr string) bool {
 	n.fixture.t.Helper()
 	var exists bool
 	row := n.store.DB().QueryRowContext(n.fixture.ctx, "SELECT EXISTS(SELECT 1 FROM cidr_blocks WHERE cidr = ?)", cidr)
@@ -224,13 +272,21 @@ func (n *nodeHandle) blockExists(cidr string) bool {
 	return exists
 }
 
-// blockExists checks whether a CIDR block is present in the primary daemon's SQLite store.
-func (f *fixture) blockExists(cidr string) bool {
-	return f.nodes[nodeName].blockExists(cidr)
+func (n *NodeHandle) blockExists(cidr string) bool {
+	return n.BlockExists(cidr)
 }
 
-// blockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block on this node.
-func (n *nodeHandle) blockAllocatedIPs(cidr string) int {
+// BlockExists checks whether a CIDR block is present in the primary daemon's SQLite store.
+func (f *Fixture) BlockExists(cidr string) bool {
+	return f.nodes[nodeName].BlockExists(cidr)
+}
+
+func (f *Fixture) blockExists(cidr string) bool {
+	return f.BlockExists(cidr)
+}
+
+// BlockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block on this node.
+func (n *NodeHandle) BlockAllocatedIPs(cidr string) int {
 	n.fixture.t.Helper()
 	var allocated int
 	row := n.store.DB().QueryRowContext(n.fixture.ctx, "SELECT allocated_ips FROM cidr_blocks WHERE cidr = ?", cidr)
@@ -240,13 +296,21 @@ func (n *nodeHandle) blockAllocatedIPs(cidr string) int {
 	return allocated
 }
 
-// blockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block on the primary node.
-func (f *fixture) blockAllocatedIPs(cidr string) int {
-	return f.nodes[nodeName].blockAllocatedIPs(cidr)
+func (n *NodeHandle) blockAllocatedIPs(cidr string) int {
+	return n.BlockAllocatedIPs(cidr)
 }
 
-// usage returns the current IPv4 IP usage for the default network on this node.
-func (n *nodeHandle) usage() store.NetworkIPUsage {
+// BlockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block on the primary node.
+func (f *Fixture) BlockAllocatedIPs(cidr string) int {
+	return f.nodes[nodeName].BlockAllocatedIPs(cidr)
+}
+
+func (f *Fixture) blockAllocatedIPs(cidr string) int {
+	return f.BlockAllocatedIPs(cidr)
+}
+
+// Usage returns the current IPv4 IP usage for the default network on this node.
+func (n *NodeHandle) Usage() store.NetworkIPUsage {
 	n.fixture.t.Helper()
 	u, err := n.store.GetIPUsage(n.fixture.ctx, network, store.IPv4)
 	if err != nil {
@@ -255,13 +319,21 @@ func (n *nodeHandle) usage() store.NetworkIPUsage {
 	return u
 }
 
-// usage returns the current IPv4 IP usage for the default network on the primary node.
-func (f *fixture) usage() store.NetworkIPUsage {
-	return f.nodes[nodeName].usage()
+func (n *NodeHandle) usage() store.NetworkIPUsage {
+	return n.Usage()
 }
 
-// ipv6Usage returns current IPv6 IP usage for the default network on this node.
-func (n *nodeHandle) ipv6Usage() store.NetworkIPUsage {
+// Usage returns the current IPv4 IP usage for the default network on the primary node.
+func (f *Fixture) Usage() store.NetworkIPUsage {
+	return f.nodes[nodeName].Usage()
+}
+
+func (f *Fixture) usage() store.NetworkIPUsage {
+	return f.Usage()
+}
+
+// IPv6Usage returns current IPv6 IP usage for the default network on this node.
+func (n *NodeHandle) IPv6Usage() store.NetworkIPUsage {
 	n.fixture.t.Helper()
 	u, err := n.store.GetIPUsage(n.fixture.ctx, network, store.IPv6)
 	if err != nil {
@@ -270,13 +342,21 @@ func (n *nodeHandle) ipv6Usage() store.NetworkIPUsage {
 	return u
 }
 
-// ipv6Usage returns current IPv6 IP usage for the default network on the primary node.
-func (f *fixture) ipv6Usage() store.NetworkIPUsage {
-	return f.nodes[nodeName].ipv6Usage()
+func (n *NodeHandle) ipv6Usage() store.NetworkIPUsage {
+	return n.IPv6Usage()
 }
 
-// equalSets checks if two string slices contain the same elements, regardless of order.
-func equalSets(a, b []string) bool {
+// IPv6Usage returns current IPv6 IP usage for the default network on the primary node.
+func (f *Fixture) IPv6Usage() store.NetworkIPUsage {
+	return f.nodes[nodeName].IPv6Usage()
+}
+
+func (f *Fixture) ipv6Usage() store.NetworkIPUsage {
+	return f.IPv6Usage()
+}
+
+// EqualSets checks if two string slices contain the same elements, regardless of order.
+func EqualSets(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -285,4 +365,8 @@ func equalSets(a, b []string) bool {
 	slices.Sort(aCopy)
 	slices.Sort(bCopy)
 	return slices.Equal(aCopy, bCopy)
+}
+
+func equalSets(a, b []string) bool {
+	return EqualSets(a, b)
 }

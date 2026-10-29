@@ -14,12 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"fmt"
 	"testing"
 	"time"
+
+	"k8s.io/metis/test/integration"
 )
 
 // TestIPv6_LocalExpansionWithoutCloudCall verifies that when IPv6 pod demand exceeds
@@ -27,44 +29,44 @@ import (
 // the block directly in its SQLite store without issuing cloud scale-up requests in
 // NodeNetworkConfig spec or invoking GCE APIs.
 func TestIPv6_LocalExpansionWithoutCloudCall(t *testing.T) {
-	f := newFixture(t, withStackType(StackTypeIPv6Only))
+	f := integration.NewFixture(t, integration.WithStackType(integration.StackTypeIPv6Only))
 
 	// Initial batch saturation: allocate 64 pods to exhaust the store's initial populated batch.
 	for i := 1; i <= 64; i++ {
-		ip, cidr := f.allocatePod(fmt.Sprintf("pod-ipv6-%d", i))
+		ip, cidr := f.AllocatePod(fmt.Sprintf("pod-ipv6-%d", i))
 		if ip == "" {
 			t.Fatalf("allocated empty IP for pod %d", i)
 		}
-		if cidr != initialPodCIDRv6 {
-			t.Fatalf("pod %d allocated from %s, want %s", i, cidr, initialPodCIDRv6)
+		if cidr != integration.InitialPodCIDRv6 {
+			t.Fatalf("pod %d allocated from %s, want %s", i, cidr, integration.InitialPodCIDRv6)
 		}
 	}
 
 	// Local batch expansion trigger: allocate the 65th pod to trigger expandIPv6Block in SQLite.
-	ip65, cidr65 := f.allocatePod("pod-ipv6-65-overflow")
+	ip65, cidr65 := f.AllocatePod("pod-ipv6-65-overflow")
 	if ip65 == "" {
 		t.Fatalf("overflow pod allocated empty IP")
 	}
-	if cidr65 != initialPodCIDRv6 {
-		t.Fatalf("overflow pod allocated from %s, want %s", cidr65, initialPodCIDRv6)
+	if cidr65 != integration.InitialPodCIDRv6 {
+		t.Fatalf("overflow pod allocated from %s, want %s", cidr65, integration.InitialPodCIDRv6)
 	}
 
 	// Cloud provider quiescence verification: assert NNC spec allocations remain untouched.
-	f.consistently("NNC spec allocations remains empty with zero cloud scale-up calls", 300*time.Millisecond, func() (bool, string) {
-		currentNNC := f.nnc()
+	f.Consistently("NNC spec allocations remains empty with zero cloud scale-up calls", 300*time.Millisecond, func() (bool, string) {
+		currentNNC := f.NNC()
 		hasCloudScaleUp := false
 		for _, a := range currentNNC.Spec.Allocations {
 			if a.Pods > 0 {
 				hasCloudScaleUp = true
 			}
 		}
-		ranges := f.gceAliasRanges()
+		ranges := f.GCEAliasRanges()
 		return !hasCloudScaleUp && len(ranges) == 0,
 			fmt.Sprintf("hasCloudScaleUp=%v gceRanges=%v", hasCloudScaleUp, ranges)
 	})
 
 	// Store verification: assert IPv6 usage in SQLite reflects 65 allocated addresses.
-	usage := f.ipv6Usage()
+	usage := f.IPv6Usage()
 	if usage.Allocated != 65 {
 		t.Fatalf("expected 65 allocated IPv6 addresses in store, got %d", usage.Allocated)
 	}

@@ -14,13 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"fmt"
 	"testing"
 
 	"k8s.io/metis/pkg/store"
+	"k8s.io/metis/test/integration"
 )
 
 // TestBootstrapAllocation tests node bootstrap where the initial pod is allocated
@@ -29,26 +30,26 @@ import (
 // and the CCM status controller discovers the existing instance alias range,
 // publishes it to NodeNetworkConfig status, and marks the node Ready.
 func TestBootstrapAllocation(t *testing.T) {
-	f := newFixture(t)
+	f := integration.NewFixture(t)
 
 	// Bootstrap: allocate the first pod from the CNI-provided initial CIDR.
-	_, cidr := f.allocatePod("pod-bootstrap")
-	if cidr != initialPodCIDR {
-		t.Fatalf("pod allocated from %s, want initial range %s", cidr, initialPodCIDR)
+	_, cidr := f.AllocatePod("pod-bootstrap")
+	if cidr != integration.InitialPodCIDR {
+		t.Fatalf("pod allocated from %s, want initial range %s", cidr, integration.InitialPodCIDR)
 	}
 
 	// Convergence: CCM discovers the initial range on the VM and publishes Ready status.
-	f.eventually("CCM publishes initial range with Ready=True", func() (bool, string) {
-		nnc := f.nnc()
-		return equalSets(statusCIDRs(nnc), []string{initialPodCIDR}) && statusReady(nnc),
-			fmt.Sprintf("status=%v ready=%v", statusCIDRs(nnc), statusReady(nnc))
+	f.Eventually("CCM publishes initial range with Ready=True", func() (bool, string) {
+		nnc := f.NNC()
+		return integration.EqualSets(integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}) && integration.StatusReady(nnc),
+			fmt.Sprintf("status=%v ready=%v", integration.StatusCIDRs(nnc), integration.StatusReady(nnc))
 	})
 
 	// Store verification: daemon watcher sets the block state to Ready in SQLite.
-	if got := f.blockState(initialPodCIDR); got != store.StateReady {
+	if got := f.BlockState(integration.InitialPodCIDR); got != store.StateReady {
 		t.Fatalf("initial block state after bootstrap = %q, want Ready", got)
 	}
-	if got := f.gceAliasRanges(); !equalSets(got, []string{initialPodCIDR}) {
-		t.Fatalf("GCE alias ranges = %v, want exactly %v", got, []string{initialPodCIDR})
+	if got := f.GCEAliasRanges(); !integration.EqualSets(got, []string{integration.InitialPodCIDR}) {
+		t.Fatalf("GCE alias ranges = %v, want exactly %v", got, []string{integration.InitialPodCIDR})
 	}
 }

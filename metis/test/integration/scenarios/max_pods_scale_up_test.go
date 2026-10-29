@@ -14,11 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"fmt"
 	"testing"
+
+	"k8s.io/metis/test/integration"
 )
 
 // TestMaxPodsScaleUp_512Pods tests dynamic scale-up up to GKE's maximum supported
@@ -27,34 +29,34 @@ import (
 // blocks (32 x /28 alias ranges) to the GCE instance, the status controller publishes
 // all 32 ranges, and Metis ingests the blocks to achieve 512 total IP capacity.
 func TestMaxPodsScaleUp_512Pods(t *testing.T) {
-	f := newFixture(t)
+	f := integration.NewFixture(t)
 
 	// Ensure bootstrap: allocate the initial pod.
-	f.allocatePod("pod-bootstrap")
+	f.AllocatePod("pod-bootstrap")
 
 	// Max pods scale-up trigger: request 512 pods in NodeNetworkConfig spec.
 	const targetMaxPods = 512
-	f.setAllocationsPods(targetMaxPods)
+	f.SetAllocationsPods(targetMaxPods)
 
 	// Multi-block expansion verification: 512 total IPs requires 32 blocks of /28 (16 IPs each).
 	const expectedTotalBlocks = 32
-	f.eventually("GCE and NNC status expand to 32 alias ranges (512 total IPs)", func() (bool, string) {
-		nnc := f.nnc()
-		ranges := f.gceAliasRanges()
-		cidrs := statusCIDRs(nnc)
-		ok := len(ranges) == expectedTotalBlocks && len(cidrs) == expectedTotalBlocks && statusReady(nnc)
-		return ok, fmt.Sprintf("gceRanges=%d statusCIDRs=%d ready=%v", len(ranges), len(cidrs), statusReady(nnc))
+	f.Eventually("GCE and NNC status expand to 32 alias ranges (512 total IPs)", func() (bool, string) {
+		nnc := f.NNC()
+		ranges := f.GCEAliasRanges()
+		cidrs := integration.StatusCIDRs(nnc)
+		ok := len(ranges) == expectedTotalBlocks && len(cidrs) == expectedTotalBlocks && integration.StatusReady(nnc)
+		return ok, fmt.Sprintf("gceRanges=%d statusCIDRs=%d ready=%v", len(ranges), len(cidrs), integration.StatusReady(nnc))
 	})
 
 	// Store capacity verification: Metis SQLite store reflects 512 total IP capacity.
-	f.eventually("Metis SQLite store registers full 512 IP capacity", func() (bool, string) {
-		u := f.usage()
+	f.Eventually("Metis SQLite store registers full 512 IP capacity", func() (bool, string) {
+		u := f.Usage()
 		return u.Total == targetMaxPods, fmt.Sprintf("usage.Total=%d (want %d)", u.Total, targetMaxPods)
 	})
 
 	// Allocation verification at scale: allocate pods across the expanded capacity.
 	for i := 1; i <= 10; i++ {
-		ip, cidr := f.allocatePod(fmt.Sprintf("pod-scaled-%d", i))
+		ip, cidr := f.AllocatePod(fmt.Sprintf("pod-scaled-%d", i))
 		if ip == "" || cidr == "" {
 			t.Fatalf("failed to allocate pod %d at high capacity", i)
 		}

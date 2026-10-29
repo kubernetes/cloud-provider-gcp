@@ -63,35 +63,52 @@ import (
 )
 
 const (
-	nodeName = "test-node"
-	zone     = "us-central1-a"
-	project  = "test-project"
-	network  = networkv1.DefaultPodNetworkName
+	NodeName = "test-node"
+	Zone     = "us-central1-a"
+	Project  = "test-project"
+	Network  = networkv1.DefaultPodNetworkName
 
-	// initialPodCIDR is the primary alias range the node boots with. It reaches
+	// InitialPodCIDR is the primary alias range the node boots with. It reaches
 	// the daemon through the CNI config (pb.IPConfig.InitialPodCidr), not through
 	// CCM, which is what makes bootstrap interesting.
-	initialPodCIDR = "10.0.0.0/28"
+	InitialPodCIDR = "10.0.0.0/28"
 
-	// initialPodCIDRv6 is the default initial IPv6 prefix used for DualStack and IPv6Only modes.
-	initialPodCIDRv6 = "2001:db8:1::/112"
+	// InitialPodCIDRv6 is the default initial IPv6 prefix used for DualStack and IPv6Only modes.
+	InitialPodCIDRv6 = "2001:db8:1::/112"
 
-	// The daemon reserves the first two and the last IP of the first block of a
+	// InitialUsableIPs: the daemon reserves the first two and the last IP of the first block of a
 	// network, so a /28 initial block yields 13 allocatable IPs.
-	initialUsableIPs = 13
+	InitialUsableIPs = 13
 
-	monitorInterval = 200 * time.Millisecond
-	eventuallyTick  = 50 * time.Millisecond
-	eventuallyMax   = 15 * time.Second
-	// allocateTimeout must exceed the daemon's scale-up wait (9s) so a blocked
+	MonitorInterval = 200 * time.Millisecond
+	EventuallyTick  = 50 * time.Millisecond
+	EventuallyMax   = 15 * time.Second
+	// AllocateTimeout must exceed the daemon's scale-up wait (9s) so a blocked
 	// allocation surfaces as the daemon's own error rather than a client timeout.
-	allocateTimeout = 20 * time.Second
+	AllocateTimeout = 20 * time.Second
+
+	// Internal aliases
+	nodeName         = NodeName
+	zone             = Zone
+	project          = Project
+	network          = Network
+	initialPodCIDR   = InitialPodCIDR
+	initialPodCIDRv6 = InitialPodCIDRv6
+	initialUsableIPs = InitialUsableIPs
+	monitorInterval  = MonitorInterval
+	eventuallyTick   = EventuallyTick
+	eventuallyMax    = EventuallyMax
+	allocateTimeout  = AllocateTimeout
 )
 
 var (
-	providerID  = fmt.Sprintf("gce://%s/%s/%s", project, zone, nodeName)
-	networkURL  = fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/default", project)
-	instanceKey = meta.ZonalKey(nodeName, zone)
+	ProviderID  = fmt.Sprintf("gce://%s/%s/%s", Project, Zone, NodeName)
+	NetworkURL  = fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/default", Project)
+	InstanceKey = meta.ZonalKey(NodeName, Zone)
+
+	providerID  = ProviderID
+	networkURL  = NetworkURL
+	instanceKey = InstanceKey
 )
 
 // StackType defines the IP address family configuration of the cluster and node.
@@ -106,8 +123,8 @@ const (
 	StackTypeIPv6Only StackType = "IPv6Only"
 )
 
-// nodeHandle encapsulates node-specific clients, store, and daemon lifecycle for a node.
-type nodeHandle struct {
+// NodeHandle encapsulates node-specific clients, store, and daemon lifecycle for a node.
+type NodeHandle struct {
 	name            string
 	providerID      string
 	instanceKey     *meta.Key
@@ -122,8 +139,26 @@ type nodeHandle struct {
 	initialIPv4CIDR string
 	initialIPv6CIDR string
 	store           *store.Store
-	fixture         *fixture
+	fixture         *Fixture
 }
+
+// Name returns the node's name.
+func (n *NodeHandle) Name() string { return n.name }
+
+// ProviderID returns the node's GCE ProviderID.
+func (n *NodeHandle) ProviderID() string { return n.providerID }
+
+// Store returns the SQLite store handle for this node.
+func (n *NodeHandle) Store() *store.Store { return n.store }
+
+// DaemonConfig returns the daemon's runtime configuration.
+func (n *NodeHandle) DaemonConfig() daemon.Config { return n.daemonConfig }
+
+// Fixture returns the parent test fixture.
+func (n *NodeHandle) Fixture() *Fixture { return n.fixture }
+
+// nodeHandle is an internal type alias for backward compatibility across fixture files.
+type nodeHandle = NodeHandle
 
 // initCNI initializes the node's CNI plugin instance and serializes its standard CNI network config JSON.
 func (n *nodeHandle) initCNI() {
@@ -176,12 +211,12 @@ func (n *nodeHandle) initCNI() {
 	n.cniNetConf = data
 }
 
-// fixture orchestrates an integration test environment, coupling simulated K8s
+// Fixture orchestrates an integration test environment, coupling simulated K8s
 // and GCE backends with live CCM controllers and a running Metis daemon instance.
-type fixture struct {
+type Fixture struct {
 	t   *testing.T
 	ctx context.Context
-	cfg fixtureConfig
+	cfg FixtureConfig
 
 	kubeClient    *k8sfake.Clientset
 	nncClient     *nncfake.Clientset
@@ -204,11 +239,26 @@ type fixture struct {
 	daemonDone   chan struct{}
 	daemonConn   io.Closer
 
-	nodes map[string]*nodeHandle
+	nodes map[string]*NodeHandle
 }
 
-// fixtureConfig stores configuration options for initializing a test fixture.
-type fixtureConfig struct {
+// fixture is an internal alias for Fixture across fixture files.
+type fixture = Fixture
+
+// Ctx returns the test fixture's execution context.
+func (f *Fixture) Ctx() context.Context { return f.ctx }
+
+// KubeClient returns the fake Kubernetes clientset.
+func (f *Fixture) KubeClient() *k8sfake.Clientset { return f.kubeClient }
+
+// NNCClient returns the fake NodeNetworkConfig clientset.
+func (f *Fixture) NNCClient() *nncfake.Clientset { return f.nncClient }
+
+// GCE returns the fake GCE Cloud instance.
+func (f *Fixture) GCE() *gce.Cloud { return f.gce }
+
+// FixtureConfig stores configuration options for initializing a test fixture.
+type FixtureConfig struct {
 	nodeProviderID       string
 	backendType          dynamicpodip.BackendType
 	stackType            StackType
@@ -218,58 +268,64 @@ type fixtureConfig struct {
 	nncReactors          []customReactor
 }
 
-// fixtureOption configures a fixtureConfig during test fixture initialization.
-type fixtureOption func(*fixtureConfig)
+// fixtureConfig is an internal alias for FixtureConfig.
+type fixtureConfig = FixtureConfig
 
-// withStackType sets the cluster stack configuration (IPv4, DualStack, or IPv6Only).
-func withStackType(st StackType) fixtureOption {
-	return func(cfg *fixtureConfig) {
+// FixtureOption configures a FixtureConfig during test fixture initialization.
+type FixtureOption func(*FixtureConfig)
+
+// fixtureOption is an internal alias for FixtureOption.
+type fixtureOption = FixtureOption
+
+// WithStackType sets the cluster stack configuration (IPv4, DualStack, or IPv6Only).
+func WithStackType(st StackType) FixtureOption {
+	return func(cfg *FixtureConfig) {
 		cfg.stackType = st
 	}
 }
 
-// withInitialAliasIP configures a custom initial IPv4 alias IP range on the primary interface.
-func withInitialAliasIP(cidr string) fixtureOption {
-	return func(cfg *fixtureConfig) {
+// WithInitialAliasIP configures a custom initial IPv4 alias IP range on the primary interface.
+func WithInitialAliasIP(cidr string) FixtureOption {
+	return func(cfg *FixtureConfig) {
 		cfg.initialIPv4CIDR = cidr
 	}
 }
 
-// withInitialPodCIDRv6 configures a custom initial IPv6 CIDR prefix for dual-stack or IPv6-only modes.
-func withInitialPodCIDRv6(cidr string) fixtureOption {
-	return func(cfg *fixtureConfig) {
+// WithInitialPodCIDRv6 configures a custom initial IPv6 CIDR prefix for dual-stack or IPv6-only modes.
+func WithInitialPodCIDRv6(cidr string) FixtureOption {
+	return func(cfg *FixtureConfig) {
 		cfg.initialIPv6CIDR = cidr
 	}
 }
 
-// withNodeProviderID sets the ProviderID on the simulated Node object.
+// WithNodeProviderID sets the ProviderID on the simulated Node object.
 // Passing an empty string simulates an uninitialized or NotReady node.
-func withNodeProviderID(id string) fixtureOption {
-	return func(cfg *fixtureConfig) {
+func WithNodeProviderID(id string) FixtureOption {
+	return func(cfg *FixtureConfig) {
 		cfg.nodeProviderID = id
 	}
 }
 
-// withBackend configures whether the dynamic pod IP controllers run in
+// WithBackend configures whether the dynamic pod IP controllers run in
 // Alias IP or Alias Network Endpoint (ANE) mode.
-func withBackend(backend dynamicpodip.BackendType) fixtureOption {
-	return func(cfg *fixtureConfig) {
+func WithBackend(backend dynamicpodip.BackendType) FixtureOption {
+	return func(cfg *FixtureConfig) {
 		cfg.backendType = backend
 	}
 }
 
-// withDaemonConfig allows caller tests to customize Metis daemon configuration
+// WithDaemonConfig allows caller tests to customize Metis daemon configuration
 // parameters (such as release cooldowns, monitor intervals, and thresholds).
-func withDaemonConfig(modifier func(*daemon.Config)) fixtureOption {
-	return func(cfg *fixtureConfig) {
+func WithDaemonConfig(modifier func(*daemon.Config)) FixtureOption {
+	return func(cfg *FixtureConfig) {
 		cfg.daemonConfigModifier = modifier
 	}
 }
 
-// withPrependReactor registers a custom client-go reactor on the fake NNC clientset,
+// WithPrependReactor registers a custom client-go reactor on the fake NNC clientset,
 // allowing tests to inject specific API errors (such as 409 Conflict) or intercept actions.
-func withPrependReactor(verb, resource string, reaction clientgotesting.ReactionFunc) fixtureOption {
-	return func(cfg *fixtureConfig) {
+func WithPrependReactor(verb, resource string, reaction clientgotesting.ReactionFunc) FixtureOption {
+	return func(cfg *FixtureConfig) {
 		cfg.nncReactors = append(cfg.nncReactors, customReactor{
 			verb:     verb,
 			resource: resource,
@@ -278,13 +334,24 @@ func withPrependReactor(verb, resource string, reaction clientgotesting.Reaction
 	}
 }
 
-// newFixture constructs and boots an isolated integration test environment containing
+var (
+	withStackType       = WithStackType
+	withInitialAliasIP  = WithInitialAliasIP
+	withInitialPodCIDRv6 = WithInitialPodCIDRv6
+	withNodeProviderID  = WithNodeProviderID
+	withBackend         = WithBackend
+	withDaemonConfig    = WithDaemonConfig
+	withPrependReactor  = WithPrependReactor
+	newFixture          = NewFixture
+)
+
+// NewFixture constructs and boots an isolated integration test environment containing
 // a simulated K8s cluster with fake core and NNC clientsets, a simulated GCE compute
 // environment with mock instance network interfaces, live CCM NodeNetworkConfig spec
 // and status controllers, and a live Metis daemon backed by a real SQLite store and
 // gRPC server. All background routines, sockets, and temporary files are automatically
 // cleaned up when the test finishes.
-func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
+func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -454,19 +521,27 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	return f
 }
 
-// primaryNode returns the handle for the cluster's primary node.
-func (f *fixture) primaryNode() *nodeHandle {
+// PrimaryNode returns the handle for the cluster's primary node.
+func (f *Fixture) PrimaryNode() *NodeHandle {
 	return f.nodes[nodeName]
 }
 
-// node returns the handle for a specific node in the cluster by name.
-func (f *fixture) node(name string) *nodeHandle {
+func (f *Fixture) primaryNode() *NodeHandle {
+	return f.PrimaryNode()
+}
+
+// Node returns the handle for a specific node in the cluster by name.
+func (f *Fixture) Node(name string) *NodeHandle {
 	return f.nodes[name]
 }
 
-// addNode spins up an additional simulated Node in the cluster with its own GCE
+func (f *Fixture) node(name string) *NodeHandle {
+	return f.Node(name)
+}
+
+// AddNode spins up an additional simulated Node in the cluster with its own GCE
 // instance, its own Metis daemon instance, its own SQLite database, and gRPC client.
-func (f *fixture) addNode(name string, initialCIDR ...string) *nodeHandle {
+func (f *Fixture) AddNode(name string, initialCIDR ...string) *NodeHandle {
 	f.t.Helper()
 	nodeProviderID := fmt.Sprintf("gce://%s/%s/%s", project, zone, name)
 	nodeInstanceKey := meta.ZonalKey(name, zone)
@@ -533,7 +608,7 @@ func (f *fixture) addNode(name string, initialCIDR ...string) *nodeHandle {
 		}
 	}()
 
-	f.eventually(fmt.Sprintf("daemon socket for node %s is ready", name), func() (bool, string) {
+	f.Eventually(fmt.Sprintf("daemon socket for node %s is ready", name), func() (bool, string) {
 		_, err := os.Stat(socketPath)
 		return err == nil, fmt.Sprintf("stat %s: %v", socketPath, err)
 	})
@@ -581,9 +656,13 @@ func (f *fixture) addNode(name string, initialCIDR ...string) *nodeHandle {
 	return nh
 }
 
-// restartDaemon stops the running daemon process, closes its gRPC connection,
+func (f *Fixture) addNode(name string, initialCIDR ...string) *NodeHandle {
+	return f.AddNode(name, initialCIDR...)
+}
+
+// RestartDaemon stops the running daemon process, closes its gRPC connection,
 // starts a fresh daemon against the existing SQLite DB and NNC, and reconnects.
-func (f *fixture) restartDaemon() {
+func (f *Fixture) RestartDaemon() {
 	f.t.Helper()
 	if f.daemonCancel != nil {
 		f.daemonCancel()
@@ -611,7 +690,7 @@ func (f *fixture) restartDaemon() {
 		}
 	}()
 
-	f.eventually("restarted daemon socket is ready", func() (bool, string) {
+	f.Eventually("restarted daemon socket is ready", func() (bool, string) {
 		_, err := os.Stat(f.daemonConfig.SocketPath)
 		return err == nil, fmt.Sprintf("stat %s: %v", f.daemonConfig.SocketPath, err)
 	})
@@ -631,9 +710,13 @@ func (f *fixture) restartDaemon() {
 	}
 }
 
-// eventually polls cond until it returns true or eventuallyMax elapses.
+func (f *Fixture) restartDaemon() {
+	f.RestartDaemon()
+}
+
+// Eventually polls cond until it returns true or eventuallyMax elapses.
 // If the deadline expires, the test fails with the last non-empty detail.
-func (f *fixture) eventually(desc string, cond func() (bool, string)) {
+func (f *Fixture) Eventually(desc string, cond func() (bool, string)) {
 	f.t.Helper()
 	var lastDetail string
 	err := wait.PollUntilContextTimeout(f.ctx, eventuallyTick, eventuallyMax, true, func(ctx context.Context) (bool, error) {
@@ -649,9 +732,13 @@ func (f *fixture) eventually(desc string, cond func() (bool, string)) {
 	}
 }
 
-// consistently asserts that cond remains true for the full duration d, sampled
+func (f *Fixture) eventually(desc string, cond func() (bool, string)) {
+	f.Eventually(desc, cond)
+}
+
+// Consistently asserts that cond remains true for the full duration d, sampled
 // every eventuallyTick. Useful for verifying that a quiescent state does not leak.
-func (f *fixture) consistently(desc string, d time.Duration, cond func() (bool, string)) {
+func (f *Fixture) Consistently(desc string, d time.Duration, cond func() (bool, string)) {
 	f.t.Helper()
 	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
@@ -665,4 +752,8 @@ func (f *fixture) consistently(desc string, d time.Duration, cond func() (bool, 
 		case <-time.After(eventuallyTick):
 		}
 	}
+}
+
+func (f *Fixture) consistently(desc string, d time.Duration, cond func() (bool, string)) {
+	f.Consistently(desc, d, cond)
 }

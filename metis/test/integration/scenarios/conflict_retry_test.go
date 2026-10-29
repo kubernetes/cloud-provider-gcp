@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"fmt"
@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgotesting "k8s.io/client-go/testing"
+	"k8s.io/metis/test/integration"
 )
 
 // TestConflictRetryOnStatusUpdate tests optimistic concurrency handling during status
@@ -35,7 +36,7 @@ func TestConflictRetryOnStatusUpdate(t *testing.T) {
 	conflictResolved := false
 
 	// Conflict injection: fail the first status write with 409 Conflict.
-	f := newFixture(t, withPrependReactor("update", "nodenetworkconfigs", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+	f := integration.NewFixture(t, integration.WithPrependReactor("update", "nodenetworkconfigs", func(action clientgotesting.Action) (bool, runtime.Object, error) {
 		if action.GetSubresource() != "status" {
 			return false, nil, nil
 		}
@@ -43,19 +44,19 @@ func TestConflictRetryOnStatusUpdate(t *testing.T) {
 			conflictInjected = true
 			return true, nil, apierrors.NewConflict(
 				schema.GroupResource{Group: "networking.gke.io", Resource: "nodenetworkconfigs"},
-				nodeName, fmt.Errorf("simulated status conflict error"))
+				integration.NodeName, fmt.Errorf("simulated status conflict error"))
 		}
 		conflictResolved = true
 		return false, nil, nil
 	}))
 
 	// Initial pod allocation triggers status reconciliation.
-	f.allocatePod("pod-conflict-test")
+	f.AllocatePod("pod-conflict-test")
 
 	// Reconcile resilience: status controller retries on conflict and completes status publish.
-	f.eventually("status publish succeeds despite initial 409 conflict", func() (bool, string) {
-		nnc := f.nnc()
-		return conflictResolved && statusReady(nnc) && len(statusCIDRs(nnc)) == 1,
-			fmt.Sprintf("conflictResolved=%v ready=%v status=%v", conflictResolved, statusReady(nnc), statusCIDRs(nnc))
+	f.Eventually("status publish succeeds despite initial 409 conflict", func() (bool, string) {
+		nnc := f.NNC()
+		return conflictResolved && integration.StatusReady(nnc) && len(integration.StatusCIDRs(nnc)) == 1,
+			fmt.Sprintf("conflictResolved=%v ready=%v status=%v", conflictResolved, integration.StatusReady(nnc), integration.StatusCIDRs(nnc))
 	})
 }

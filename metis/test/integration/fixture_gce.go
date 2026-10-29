@@ -68,9 +68,9 @@ func (f *fixture) resolveAliasRanges(ranges []*computebeta.AliasIpRange) []*comp
 	return resolved
 }
 
-// gceAliasRanges returns the CIDRs of all alias IP ranges currently attached
+// GCEAliasRanges returns the CIDRs of all alias IP ranges currently attached
 // to this node's GCE instance primary interface.
-func (n *nodeHandle) gceAliasRanges() []string {
+func (n *NodeHandle) GCEAliasRanges() []string {
 	n.fixture.t.Helper()
 	inst, err := n.fixture.gce.Compute().BetaInstances().Get(n.fixture.ctx, n.instanceKey)
 	if err != nil {
@@ -88,14 +88,22 @@ func (n *nodeHandle) gceAliasRanges() []string {
 	return nil
 }
 
-// gceAliasRanges returns the CIDRs of all alias IP ranges currently attached
-// to the fake GCE instance's primary interface.
-func (f *fixture) gceAliasRanges() []string {
-	return f.nodes[nodeName].gceAliasRanges()
+func (n *NodeHandle) gceAliasRanges() []string {
+	return n.GCEAliasRanges()
 }
 
-// gceANEs returns all active AliasNetworkEndpoint resources attached to this node.
-func (n *nodeHandle) gceANEs() []*computepreview.AliasNetworkEndpoint {
+// GCEAliasRanges returns the CIDRs of all alias IP ranges currently attached
+// to the fake GCE instance's primary interface.
+func (f *Fixture) GCEAliasRanges() []string {
+	return f.nodes[nodeName].GCEAliasRanges()
+}
+
+func (f *Fixture) gceAliasRanges() []string {
+	return f.GCEAliasRanges()
+}
+
+// GCEANEs returns all active AliasNetworkEndpoint resources attached to this node.
+func (n *NodeHandle) GCEANEs() []*computepreview.AliasNetworkEndpoint {
 	n.fixture.t.Helper()
 	anes, err := n.fixture.gce.ListAliasNetworkEndpoints(n.fixture.ctx, n.providerID)
 	if err != nil {
@@ -104,16 +112,24 @@ func (n *nodeHandle) gceANEs() []*computepreview.AliasNetworkEndpoint {
 	return anes
 }
 
-// gceANEs returns all active AliasNetworkEndpoint resources attached to the primary instance.
-func (f *fixture) gceANEs() []*computepreview.AliasNetworkEndpoint {
-	return f.nodes[nodeName].gceANEs()
+func (n *NodeHandle) gceANEs() []*computepreview.AliasNetworkEndpoint {
+	return n.GCEANEs()
 }
 
-// gceCIDRs returns all active pod CIDRs attached to this node across both
+// GCEANEs returns all active AliasNetworkEndpoint resources attached to the primary instance.
+func (f *Fixture) GCEANEs() []*computepreview.AliasNetworkEndpoint {
+	return f.nodes[nodeName].GCEANEs()
+}
+
+func (f *Fixture) gceANEs() []*computepreview.AliasNetworkEndpoint {
+	return f.GCEANEs()
+}
+
+// GCECIDRs returns all active pod CIDRs attached to this node across both
 // VM alias IP ranges and AliasNetworkEndpoints.
-func (n *nodeHandle) gceCIDRs() []string {
-	ranges := n.gceAliasRanges()
-	for _, ane := range n.gceANEs() {
+func (n *NodeHandle) GCECIDRs() []string {
+	ranges := n.GCEAliasRanges()
+	for _, ane := range n.GCEANEs() {
 		for _, alias := range ane.Aliases {
 			if alias.EffectiveIpAddress != "" {
 				ranges = append(ranges, alias.EffectiveIpAddress+"/32")
@@ -123,14 +139,22 @@ func (n *nodeHandle) gceCIDRs() []string {
 	return ranges
 }
 
-// gceCIDRs returns all active pod CIDRs attached to the primary instance across both
-// VM alias IP ranges and AliasNetworkEndpoints.
-func (f *fixture) gceCIDRs() []string {
-	return f.nodes[nodeName].gceCIDRs()
+func (n *NodeHandle) gceCIDRs() []string {
+	return n.GCECIDRs()
 }
 
-// updateNodeProviderID updates the Node's Spec.ProviderID in the fake kube client.
-func (f *fixture) updateNodeProviderID(id string) {
+// GCECIDRs returns all active pod CIDRs attached to the primary instance across both
+// VM alias IP ranges and AliasNetworkEndpoints.
+func (f *Fixture) GCECIDRs() []string {
+	return f.nodes[nodeName].GCECIDRs()
+}
+
+func (f *Fixture) gceCIDRs() []string {
+	return f.GCECIDRs()
+}
+
+// UpdateNodeProviderID updates the Node's Spec.ProviderID in the fake kube client.
+func (f *Fixture) UpdateNodeProviderID(id string) {
 	f.t.Helper()
 	node, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
@@ -141,4 +165,8 @@ func (f *fixture) updateNodeProviderID(id string) {
 	if _, err := f.kubeClient.CoreV1().Nodes().Update(f.ctx, node, metav1.UpdateOptions{}); err != nil {
 		f.t.Fatalf("failed to update node providerID: %v", err)
 	}
+}
+
+func (f *Fixture) updateNodeProviderID(id string) {
+	f.UpdateNodeProviderID(id)
 }

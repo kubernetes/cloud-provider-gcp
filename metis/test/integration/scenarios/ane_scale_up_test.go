@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package scenarios
 
 import (
 	"fmt"
@@ -23,29 +23,30 @@ import (
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	"k8s.io/cloud-provider-gcp/pkg/controller/dynamicpodip"
 	"k8s.io/metis/pkg/store"
+	"k8s.io/metis/test/integration"
 )
 
 // TestScaleUp_ANE exercises dynamic scale-up using the Alias Network Endpoint
 // (ANE) backend. The daemon does not know about ANEs specifically, but receives
 // them as /32 CIDR allocations with a NonReusable policy.
 func TestScaleUp_ANE(t *testing.T) {
-	f := newFixture(t, withBackend(dynamicpodip.BackendTypeANE))
+	f := integration.NewFixture(t, integration.WithBackend(dynamicpodip.BackendTypeANE))
 
 	// Bootstrap: allocate pods to exhaust the CNI-provided initial block.
-	for i := 1; i <= initialUsableIPs; i++ {
-		f.allocatePod(fmt.Sprintf("pod-ane-init-%d", i))
+	for i := 1; i <= integration.InitialUsableIPs; i++ {
+		f.AllocatePod(fmt.Sprintf("pod-ane-init-%d", i))
 	}
 
 	// ANE scale-up demand: an overflow pod triggers the daemon to request additional capacity.
-	_, dynamicCIDR := f.allocatePod("pod-ane-overflow")
-	if dynamicCIDR == initialPodCIDR {
+	_, dynamicCIDR := f.AllocatePod("pod-ane-overflow")
+	if dynamicCIDR == integration.InitialPodCIDR {
 		t.Fatalf("overflow pod allocated from initial range; expected an ANE /32 allocation")
 	}
 
 	// Verification of ANE allocation: GCE creates /32 ANE, status publishes /32 with NonReusable policy.
-	f.eventually("GCE creates ANE and status publishes /32 with NonReusable policy", func() (bool, string) {
-		currentNNC := f.nnc()
-		anes := f.gceANEs()
+	f.Eventually("GCE creates ANE and status publishes /32 with NonReusable policy", func() (bool, string) {
+		currentNNC := f.NNC()
+		anes := f.GCEANEs()
 		hasANE := len(anes) > 0
 		hasStatus32 := false
 		for _, pc := range currentNNC.Status.PodCIDRs {
@@ -54,7 +55,7 @@ func TestScaleUp_ANE(t *testing.T) {
 				break
 			}
 		}
-		return hasANE && hasStatus32 && statusReady(currentNNC) && f.blockState(dynamicCIDR) == store.StateReady,
-			fmt.Sprintf("anes=%d hasStatus32=%v ready=%v blockState=%q", len(anes), hasStatus32, statusReady(currentNNC), f.blockState(dynamicCIDR))
+		return hasANE && hasStatus32 && integration.StatusReady(currentNNC) && f.BlockState(dynamicCIDR) == store.StateReady,
+			fmt.Sprintf("anes=%d hasStatus32=%v ready=%v blockState=%q", len(anes), hasStatus32, integration.StatusReady(currentNNC), f.BlockState(dynamicCIDR))
 	})
 }
