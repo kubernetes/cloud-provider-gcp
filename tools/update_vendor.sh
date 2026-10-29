@@ -24,6 +24,7 @@ cd "$(pwd -P)"
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 
 # rebuild go.work
+echo "Rewriting go.work"
 grep -E '^(go|toolchain) ' go.mod > go.work
 go work use .
 go work use ./providers
@@ -31,14 +32,20 @@ go work use ./test/e2e
 go work use ./metis
 
 # Copy over replace directives from go.mod to go.work
-echo -e "\nreplace (" >> go.work
-cat go.mod | grep '=>' | sort | uniq | grep -v "k8s.io/cloud-provider-gcp/providers" >> go.work
-echo -e ")" >> go.work
+REPLACE_DIRECTIVES=$(cat go.mod | grep '=>' | sort | uniq | grep -v "k8s.io/cloud-provider-gcp/providers") || echo "No replace directives found"
+echo "Replace directives ${REPLACE_DIRECTIVES}"
+if [[ -n "${REPLACE_DIRECTIVES}" ]]; then
+  echo -e "\nreplace (" >> go.work
+  cat go.mod | grep '=>' | sort | uniq | grep -v "k8s.io/cloud-provider-gcp/providers" >> go.work
+  echo -e ")" >> go.work
+fi
 
 # sync go.md of providers
+echo "Calling go work sync"
 go work sync
 
 # clean up unused dependencies
+echo "Cleaning up unused dependencies"
 (cd providers && go mod tidy)
 (cd test/e2e && go mod tidy)
 (cd metis && go mod tidy)
@@ -46,4 +53,5 @@ go work sync
 go mod tidy
 
 # update vendor/
+echo "Calling go work on vendor"
 go work vendor
