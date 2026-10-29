@@ -15,8 +15,13 @@ limitations under the License.
 */
 
 // Subsystem: Kubernetes NodeNetworkConfig CRD operations and API server semantics.
-// This file implements NNC reactors, CRD inspection helpers, and node-scoped
-// NodeNetworkConfig mutations for nodeHandle.
+//
+// Scope & Architecture:
+// This file owns the simulated Kubernetes API server environment for
+// NodeNetworkConfig (NNC) custom resources. It manages client-go reaction rules,
+// API server generation auto-increment semantics, and NNC spec/status queries.
+// Any custom API server reactions or NNC object inspection helpers belong in
+// this file.
 
 package integration
 
@@ -184,16 +189,15 @@ func SpecPods(nnc *nncv1.NodeNetworkConfig) int32 {
 func (n *nodeHandle) SettledSpecPods() int32 {
 	n.fixture.t.Helper()
 	var last int32 = -1
-	n.fixture.Eventually(fmt.Sprintf("spec.allocations settles on %s", n.name), func() (bool, string) {
+	n.fixture.Eventually(fmt.Sprintf("spec.allocations settles on %s", n.name), func(a *Assert) {
 		current := SpecPods(n.NNC())
-		if current == last && current > 0 {
-			return true, fmt.Sprintf("settled at %d", current)
+		if a.Check(current == last && current > 0, "spec.allocations still changing: %d", current) {
+			return
 		}
 		last = current
-		return false, fmt.Sprintf("still changing: %d", current)
 	})
-	n.fixture.Consistently(fmt.Sprintf("spec.allocations stays at settled value on %s", n.name), 200*time.Millisecond, func() (bool, string) {
-		return SpecPods(n.NNC()) == last, fmt.Sprintf("spec=%d want=%d", SpecPods(n.NNC()), last)
+	n.fixture.Consistently(fmt.Sprintf("spec.allocations stays at settled value on %s", n.name), 200*time.Millisecond, func(a *Assert) {
+		a.Equal("spec.allocations", SpecPods(n.NNC()), last)
 	})
 	return last
 }

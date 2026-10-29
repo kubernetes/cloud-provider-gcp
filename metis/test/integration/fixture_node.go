@@ -14,6 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Subsystem: Node abstraction and multi-node lifecycle orchestration.
+//
+// Scope & Architecture:
+// This file defines the Node interface and its concrete implementation
+// (nodeHandle). It coordinates node-scoped lifecycle operations, including
+// daemon startup/shutdown, local SQLite paths, CNI socket isolation, and
+// per-node state. All new node-level capabilities should be added to the Node
+// interface and implemented here.
+
 package integration
 
 import (
@@ -240,9 +249,9 @@ func (n *nodeHandle) RestartDaemon() {
 		}
 	}()
 
-	n.fixture.Eventually(fmt.Sprintf("restarted daemon socket for node %s is ready", n.name), func() (bool, string) {
+	n.fixture.Eventually(fmt.Sprintf("restarted daemon socket for node %s is ready", n.name), func(a *Assert) {
 		_, err := os.Stat(n.daemonConfig.SocketPath)
-		return err == nil, fmt.Sprintf("stat %s: %v", n.daemonConfig.SocketPath, err)
+		a.Check(err == nil, "stat %s: %v", n.daemonConfig.SocketPath, err)
 	})
 
 	conn, err := metispkg.NewLocalGrpcConnection(n.daemonConfig.SocketPath)
@@ -364,9 +373,9 @@ func (f *Fixture) bootNode(
 		}
 	}()
 
-	f.Eventually(fmt.Sprintf("daemon socket for node %s is ready", name), func() (bool, string) {
+	f.Eventually(fmt.Sprintf("daemon socket for node %s is ready", name), func(a *Assert) {
 		_, err := os.Stat(socketPath)
-		return err == nil, fmt.Sprintf("stat %s: %v", socketPath, err)
+		a.Check(err == nil, "stat %s: %v", socketPath, err)
 	})
 
 	conn, err := metispkg.NewLocalGrpcConnection(socketPath)

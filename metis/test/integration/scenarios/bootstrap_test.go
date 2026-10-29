@@ -17,7 +17,6 @@ limitations under the License.
 package scenarios
 
 import (
-	"fmt"
 	"testing"
 
 	"k8s.io/metis/pkg/store"
@@ -41,16 +40,10 @@ func TestBootstrapAllocation(t *testing.T) {
 
 	// Convergence: CCM discovers the initial range on the VM and publishes
 	// Ready status.
-	f.Eventually("CCM publishes initial range with Ready=True", func() (bool, string) {
+	f.Eventually("CCM publishes initial range with Ready=True", func(a *integration.Assert) {
 		nnc := f.NNC()
-		var unmet []string
-		if !integration.EqualSets(integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}) {
-			unmet = append(unmet, fmt.Sprintf("NNC status CIDRs: got %v, want %v", integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}))
-		}
-		if !integration.StatusReady(nnc) {
-			unmet = append(unmet, "NNC Ready condition is false")
-		}
-		return integration.FormatUnmet(unmet)
+		a.EqualSets("NNC status CIDRs", integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR})
+		a.True("NNC Ready condition", integration.StatusReady(nnc))
 	})
 
 	// Store verification: daemon watcher sets the block state to Ready in SQLite.

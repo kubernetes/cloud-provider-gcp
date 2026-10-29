@@ -15,8 +15,13 @@ limitations under the License.
 */
 
 // Subsystem: Pod lifecycle and Metis CNI IPAM plugin operations.
-// This file implements in-process CNI CmdAdd/CmdDel execution and SQLite
-// lease/block inspection for nodeHandle.
+//
+// Scope & Architecture:
+// This file owns the pod IPAM lifecycle and node-local data store inspection.
+// All pod allocations and deallocations execute through the in-process Metis CNI
+// plugin (CmdAdd / CmdDel) rather than bypassing CNI, exercising real config
+// serialization and IP selection. All SQLite lease and CIDR block state queries
+// belong in this file.
 
 package integration
 

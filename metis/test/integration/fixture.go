@@ -14,6 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Subsystem: Test harness orchestrator and cluster-level test environment.
+//
+// Scope & Architecture:
+// This file owns cluster-wide infrastructure initialization, fake clientset
+// lifecycle, asynchronous polling primitives (Eventually, Consistently), and
+// common assertion utilities. Single-node scenarios interact with this file
+// directly via the embedded Node interface.
+//
 // Package integration tests the Metis CNI IPAM plugin, the Metis daemon, and
 // the CCM dynamic pod IP controllers end-to-end against fake GCE and fake
 // Kubernetes apiservers.
@@ -360,15 +368,17 @@ func (f *Fixture) DefaultNetworkName() string {
 	return defaultNetwork
 }
 
-// Eventually polls cond until it returns true or EventuallyMax elapses.
-// If the deadline expires, the test fails with the last non-empty detail.
-func (f *Fixture) Eventually(desc string, cond func() (bool, string)) {
+// Eventually polls cond until all assertions pass or EventuallyMax elapses.
+// If the deadline expires, the test fails with an indented list of the last
+// observed unmet conditions.
+func (f *Fixture) Eventually(desc string, cond func(a *Assert)) {
 	f.t.Helper()
 	var lastDetail string
 	err := wait.PollUntilContextTimeout(f.ctx, EventuallyTick, EventuallyMax, true, func(ctx context.Context) (bool, error) {
-		ok, detail := cond()
-		if !ok {
-			lastDetail = detail
+		a := &Assert{}
+		cond(a)
+		if len(a.unmet) > 0 {
+			lastDetail = formatUnmet(a.unmet)
 			return false, nil
 		}
 		return true, nil
@@ -378,16 +388,17 @@ func (f *Fixture) Eventually(desc string, cond func() (bool, string)) {
 	}
 }
 
-// Consistently asserts that cond remains true for the full duration d,
-// sampled every EventuallyTick. Useful for verifying that a quiescent state
-// does not leak.
-func (f *Fixture) Consistently(desc string, d time.Duration, cond func() (bool, string)) {
+// Consistently asserts that all assertions in cond remain passing for the full
+// duration d, sampled every EventuallyTick. Useful for verifying that a quiescent
+// state does not leak.
+func (f *Fixture) Consistently(desc string, d time.Duration, cond func(a *Assert)) {
 	f.t.Helper()
 	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
-		ok, detail := cond()
-		if !ok {
-			f.t.Fatalf("consistently failed for %s: %s", desc, detail)
+		a := &Assert{}
+		cond(a)
+		if len(a.unmet) > 0 {
+			f.t.Fatalf("consistently failed for %s: %s", desc, formatUnmet(a.unmet))
 		}
 		select {
 		case <-f.ctx.Done():
@@ -397,14 +408,64 @@ func (f *Fixture) Consistently(desc string, d time.Duration, cond func() (bool, 
 	}
 }
 
+// Assert collects condition failures during an Eventually or Consistently tick.
+type Assert struct {
+	unmet []string
+}
+
+// Check records an unmet condition if ok is false. It returns ok so it can be
+// used as a guard clause (e.g. if !a.Check(obj != nil, "obj is nil") { return }).
+func (a *Assert) Check(ok bool, format string, args ...any) bool {
+	if !ok {
+		a.unmet = append(a.unmet, fmt.Sprintf(format, args...))
+	}
+	return ok
+}
+
+// True asserts that condition is true.
+func (a *Assert) True(desc string, condition bool) bool {
+	return a.Check(condition, "%s is false", desc)
+}
+
+// False asserts that condition is false.
+func (a *Assert) False(desc string, condition bool) bool {
+	return a.Check(!condition, "%s is true", desc)
+}
+
+// Equal asserts that got equals want.
+func (a *Assert) Equal(desc string, got, want any) bool {
+	return a.Check(got == want, "%s: got %v, want %v", desc, got, want)
+}
+
+// EqualSets asserts that got and want contain the same elements regardless of order.
+func (a *Assert) EqualSets(desc string, got, want []string) bool {
+	return a.Check(EqualSets(got, want), "%s: got %v, want %v", desc, got, want)
+}
+
+// Fail unconditionally records a failure message.
+func (a *Assert) Fail(format string, args ...any) {
+	a.unmet = append(a.unmet, fmt.Sprintf(format, args...))
+}
+
+// Unmet returns the list of recorded unmet conditions.
+func (a *Assert) Unmet() []string {
+	return a.unmet
+}
+
 // FormatUnmet formats a list of unmet condition messages as an indented bulleted
-// list for Eventually and Consistently. If unmet is empty, it returns
-// (true, "all conditions satisfied").
+// list. If unmet is empty, it returns (true, "all conditions satisfied").
 func FormatUnmet(unmet []string) (bool, string) {
 	if len(unmet) == 0 {
 		return true, "all conditions satisfied"
 	}
-	return false, "\n  - " + strings.Join(unmet, "\n  - ")
+	return false, formatUnmet(unmet)
+}
+
+func formatUnmet(unmet []string) string {
+	if len(unmet) == 0 {
+		return "all conditions satisfied"
+	}
+	return "\n  - " + strings.Join(unmet, "\n  - ")
 }
 
 // EqualSets checks if two string slices contain the same elements, regardless

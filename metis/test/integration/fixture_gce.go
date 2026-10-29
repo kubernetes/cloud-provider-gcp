@@ -15,8 +15,12 @@ limitations under the License.
 */
 
 // Subsystem: Simulated Google Compute Engine (GCE) cloud provider operations.
-// This file implements mock GCE interface update hooks, alias IP range
-// resolution, and GCE network resource queries for nodeHandle.
+//
+// Scope & Architecture:
+// This file owns all interactions with the mock GCE cloud provider, including
+// network interface mutations, alias IP range lifecycle, Secondary Interfaces
+// / ANEs, and cloud resource URL resolution. Any mock GCE provider hooks or
+// cloud-layer node assertions belong in this file.
 
 package integration
 

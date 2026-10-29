@@ -48,23 +48,14 @@ func TestScaleUpLoop(t *testing.T) {
 
 	// Infrastructure expansion: GCE, status, and SQLite converge on the
 	// expanded capacity.
-	f.Eventually("GCE, status, and SQLite converge on two ranges", func() (bool, string) {
+	f.Eventually("GCE, status, and SQLite converge on two ranges", func(a *integration.Assert) {
 		nnc := f.NNC()
 		want := []string{integration.InitialPodCIDR, dynamicCIDR}
-		var unmet []string
-		if !integration.EqualSets(f.GCEAliasRanges(), want) {
-			unmet = append(unmet, fmt.Sprintf("GCE alias ranges: got %v, want %v", f.GCEAliasRanges(), want))
-		}
-		if !integration.EqualSets(integration.StatusCIDRs(nnc), want) {
-			unmet = append(unmet, fmt.Sprintf("NNC status CIDRs: got %v, want %v", integration.StatusCIDRs(nnc), want))
-		}
-		if !integration.StatusReady(nnc) {
-			unmet = append(unmet, "NNC Ready condition is false")
-		}
-		if state := f.BlockState(dynamicCIDR); state != store.StateReady {
-			unmet = append(unmet, fmt.Sprintf("DB block state: got %s, want %s", state, store.StateReady))
-		}
-		return integration.FormatUnmet(unmet)
+
+		a.EqualSets("GCE alias ranges", f.GCEAliasRanges(), want)
+		a.EqualSets("NNC status CIDRs", integration.StatusCIDRs(nnc), want)
+		a.True("NNC Ready condition", integration.StatusReady(nnc))
+		a.Equal("DB block state", f.BlockState(dynamicCIDR), store.StateReady)
 	})
 
 	if u := f.Usage(); u.Total != 32 {

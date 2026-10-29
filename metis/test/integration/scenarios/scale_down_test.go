@@ -40,20 +40,12 @@ func TestScaleDownAndReleaseLoop(t *testing.T) {
 		t.Fatalf("overflow pod allocated from initial range; expected a dynamically added range")
 	}
 
-	f.Eventually("dynamic block is active in GCE and status", func() (bool, string) {
+	f.Eventually("dynamic block is active in GCE and status", func(a *integration.Assert) {
 		nnc := f.NNC()
 		want := []string{integration.InitialPodCIDR, dynamicCIDR}
-		var unmet []string
-		if !integration.EqualSets(f.GCEAliasRanges(), want) {
-			unmet = append(unmet, fmt.Sprintf("GCE alias ranges: got %v, want %v", f.GCEAliasRanges(), want))
-		}
-		if !integration.EqualSets(integration.StatusCIDRs(nnc), want) {
-			unmet = append(unmet, fmt.Sprintf("NNC status CIDRs: got %v, want %v", integration.StatusCIDRs(nnc), want))
-		}
-		if !integration.StatusReady(nnc) {
-			unmet = append(unmet, "NNC Ready condition is false")
-		}
-		return integration.FormatUnmet(unmet)
+		a.EqualSets("GCE alias ranges", f.GCEAliasRanges(), want)
+		a.EqualSets("NNC status CIDRs", integration.StatusCIDRs(nnc), want)
+		a.True("NNC Ready condition", integration.StatusReady(nnc))
 	})
 
 	// Workload reduction: delete all pods so utilization drops and idle
@@ -69,29 +61,21 @@ func TestScaleDownAndReleaseLoop(t *testing.T) {
 	f.AddReleasableCIDR(dynamicCIDR)
 
 	// Infrastructure release: CCM detaches the released alias range from GCE VM.
-	f.Eventually("GCE instance removes the released alias range", func() (bool, string) {
-		ranges := f.GCEAliasRanges()
-		return integration.EqualSets(ranges, []string{integration.InitialPodCIDR}), fmt.Sprintf("gce=%v", ranges)
+	f.Eventually("GCE instance removes the released alias range", func(a *integration.Assert) {
+		a.EqualSets("GCE alias ranges", f.GCEAliasRanges(), []string{integration.InitialPodCIDR})
 	})
 
 	// Spec hygiene: CCM spec controller prunes the released range from
 	// spec.releasableCIDRs.
-	f.Eventually("CCM prunes releasableCIDRs from NNC spec", func() (bool, string) {
-		rel := integration.ReleasableCIDRs(f.NNC())
-		return len(rel) == 0, fmt.Sprintf("releasableCIDRs=%v", rel)
+	f.Eventually("CCM prunes releasableCIDRs from NNC spec", func(a *integration.Assert) {
+		a.Equal("releasableCIDRs length", len(integration.ReleasableCIDRs(f.NNC())), 0)
 	})
 
 	// Status reconciliation: CCM status controller updates status to
 	// reflect only the retained block.
-	f.Eventually("status reflects only the retained initial range with Ready=True", func() (bool, string) {
+	f.Eventually("status reflects only the retained initial range with Ready=True", func(a *integration.Assert) {
 		nnc := f.NNC()
-		var unmet []string
-		if !integration.EqualSets(integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}) {
-			unmet = append(unmet, fmt.Sprintf("NNC status CIDRs: got %v, want %v", integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}))
-		}
-		if !integration.StatusReady(nnc) {
-			unmet = append(unmet, "NNC Ready condition is false")
-		}
-		return integration.FormatUnmet(unmet)
+		a.EqualSets("NNC status CIDRs", integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR})
+		a.True("NNC Ready condition", integration.StatusReady(nnc))
 	})
 }
