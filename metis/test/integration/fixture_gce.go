@@ -14,6 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Subsystem: Simulated Google Compute Engine (GCE) cloud provider operations.
+// This file implements mock GCE interface update hooks, alias IP range
+// resolution, and GCE network resource queries for nodeHandle.
+
 package integration
 
 import (
@@ -71,7 +75,7 @@ func (f *Fixture) resolveAliasRanges(ranges []*computebeta.AliasIpRange) []*comp
 
 // GCEAliasRanges returns the CIDRs of all alias IP ranges currently attached
 // to this node's GCE instance primary interface.
-func (n *NodeHandle) GCEAliasRanges() []string {
+func (n *nodeHandle) GCEAliasRanges() []string {
 	n.fixture.t.Helper()
 	inst, err := n.fixture.gce.Compute().BetaInstances().Get(n.fixture.ctx, n.instanceKey)
 	if err != nil {
@@ -89,15 +93,9 @@ func (n *NodeHandle) GCEAliasRanges() []string {
 	return nil
 }
 
-// GCEAliasRanges returns the CIDRs of all alias IP ranges currently attached
-// to the fake GCE instance's primary interface.
-func (f *Fixture) GCEAliasRanges() []string {
-	return f.DefaultNode().GCEAliasRanges()
-}
-
 // GCEANEs returns all active AliasNetworkEndpoint resources attached to this
 // node.
-func (n *NodeHandle) GCEANEs() []*computepreview.AliasNetworkEndpoint {
+func (n *nodeHandle) GCEANEs() []*computepreview.AliasNetworkEndpoint {
 	n.fixture.t.Helper()
 	anes, err := n.fixture.gce.ListAliasNetworkEndpoints(n.fixture.ctx, n.providerID)
 	if err != nil {
@@ -106,15 +104,9 @@ func (n *NodeHandle) GCEANEs() []*computepreview.AliasNetworkEndpoint {
 	return anes
 }
 
-// GCEANEs returns all active AliasNetworkEndpoint resources attached to the
-// primary instance.
-func (f *Fixture) GCEANEs() []*computepreview.AliasNetworkEndpoint {
-	return f.DefaultNode().GCEANEs()
-}
-
 // GCECIDRs returns all active pod CIDRs attached to this node across both
 // VM alias IP ranges and AliasNetworkEndpoints.
-func (n *NodeHandle) GCECIDRs() []string {
+func (n *nodeHandle) GCECIDRs() []string {
 	ranges := n.GCEAliasRanges()
 	for _, ane := range n.GCEANEs() {
 		for _, alias := range ane.Aliases {
@@ -126,17 +118,11 @@ func (n *NodeHandle) GCECIDRs() []string {
 	return ranges
 }
 
-// GCECIDRs returns all active pod CIDRs attached to the primary instance across
-// both VM alias IP ranges and AliasNetworkEndpoints.
-func (f *Fixture) GCECIDRs() []string {
-	return f.DefaultNode().GCECIDRs()
-}
-
-// UpdateNodeProviderID updates the default Node's Spec.ProviderID in the fake
+// UpdateNodeProviderID updates the first Node's Spec.ProviderID in the fake
 // kube client.
 func (f *Fixture) UpdateNodeProviderID(id string) {
 	f.t.Helper()
-	node, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, defaultNodeName, metav1.GetOptions{})
+	node, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, firstNodeName, metav1.GetOptions{})
 	if err != nil {
 		f.t.Fatalf("failed to get node: %v", err)
 	}

@@ -43,8 +43,14 @@ func TestBootstrapAllocation(t *testing.T) {
 	// Ready status.
 	f.Eventually("CCM publishes initial range with Ready=True", func() (bool, string) {
 		nnc := f.NNC()
-		return integration.EqualSets(integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}) && integration.StatusReady(nnc),
-			fmt.Sprintf("status=%v ready=%v", integration.StatusCIDRs(nnc), integration.StatusReady(nnc))
+		var unmet []string
+		if !integration.EqualSets(integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}) {
+			unmet = append(unmet, fmt.Sprintf("NNC status CIDRs: got %v, want %v", integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}))
+		}
+		if !integration.StatusReady(nnc) {
+			unmet = append(unmet, "NNC Ready condition is false")
+		}
+		return integration.FormatUnmet(unmet)
 	})
 
 	// Store verification: daemon watcher sets the block state to Ready in SQLite.

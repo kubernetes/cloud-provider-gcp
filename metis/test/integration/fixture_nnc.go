@@ -14,6 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Subsystem: Kubernetes NodeNetworkConfig CRD operations and API server semantics.
+// This file implements NNC reactors, CRD inspection helpers, and node-scoped
+// NodeNetworkConfig mutations for nodeHandle.
+
 package integration
 
 import (
@@ -38,6 +42,24 @@ type customReactor struct {
 	reaction clientgotesting.ReactionFunc
 }
 
+// extractTargetName returns the target NodeNetworkConfig resource name from a
+// client-go action.
+func extractTargetName(action clientgotesting.Action) string {
+	switch a := action.(type) {
+	case clientgotesting.CreateAction:
+		if obj, ok := a.GetObject().(*nncv1.NodeNetworkConfig); ok {
+			return obj.Name
+		}
+	case clientgotesting.UpdateAction:
+		if obj, ok := a.GetObject().(*nncv1.NodeNetworkConfig); ok {
+			return obj.Name
+		}
+	case clientgotesting.PatchAction:
+		return a.GetName()
+	}
+	return ""
+}
+
 // emulateAPIServerSemantics installs a reactor on the fake NodeNetworkConfig
 // clientset that reproduces the three apiserver behaviours the controllers
 // depend on and the fake tracker does not implement:
@@ -55,52 +77,28 @@ type customReactor struct {
 func emulateAPIServerSemantics(c *nncfake.Clientset) {
 	defaultReaction := clientgotesting.ObjectReaction(c.Tracker())
 	c.PrependReactor("*", "nodenetworkconfigs", func(action clientgotesting.Action) (bool, runtime.Object, error) {
-		var name string
-		switch action.GetVerb() {
-		case "create":
-			ca, ok := action.(clientgotesting.CreateAction)
-			if !ok {
-				return false, nil, nil
-			}
-			obj, ok := ca.GetObject().(*nncv1.NodeNetworkConfig)
-			if !ok {
-				return false, nil, nil
-			}
-			name = obj.Name
-		case "update":
-			ua, ok := action.(clientgotesting.UpdateAction)
-			if !ok {
-				return false, nil, nil
-			}
-			obj, ok := ua.GetObject().(*nncv1.NodeNetworkConfig)
-			if !ok {
-				return false, nil, nil
-			}
-			name = obj.Name
-		case "patch":
-			pa, ok := action.(clientgotesting.PatchAction)
-			if !ok {
-				return false, nil, nil
-			}
-			name = pa.GetName()
-		default:
+		name := extractTargetName(action)
+		if name == "" {
 			return false, nil, nil
 		}
 		gvr := action.GetResource()
 		ns := action.GetNamespace()
 
+		// Retrieve current stored state to compare against.
 		var before *nncv1.NodeNetworkConfig
 		if existing, err := c.Tracker().Get(gvr, ns, name); err == nil {
 			before, _ = existing.(*nncv1.NodeNetworkConfig)
 		}
 
+		// Apply mutation with subresource isolation.
+		// A write to /status updates status while preserving the stored spec,
+		// preventing concurrent daemon spec updates from being clobbered by CCM.
 		var after *nncv1.NodeNetworkConfig
 		if action.GetVerb() == "update" && action.GetSubresource() == "status" && before != nil {
 			update, ok := action.(clientgotesting.UpdateAction)
 			if !ok {
 				return false, nil, nil
 			}
-			// Status subresource: keep the stored spec, take the incoming status.
 			after = update.GetObject().(*nncv1.NodeNetworkConfig).DeepCopy()
 			after.Spec = *before.Spec.DeepCopy()
 		} else {
@@ -115,12 +113,17 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 			after = stored.DeepCopy()
 		}
 
+		// ResourceVersion: increment on every write to simulate etcd mod_revision
+		// (the Metis watcher drops updates whose resourceVersion did not change).
 		prevRV, prevGen := 0, int64(0)
 		if before != nil {
 			prevRV, _ = strconv.Atoi(before.ResourceVersion)
 			prevGen = before.Generation
 		}
 		after.ResourceVersion = strconv.Itoa(prevRV + 1)
+
+		// Generation: increment only when a non-status write modifies the spec
+		// (the CCM spec controller drops updates whose generation did not change).
 		if before == nil {
 			after.Generation = 1
 		} else if action.GetSubresource() == "" && !apiequality.Semantic.DeepEqual(before.Spec, after.Spec) {
@@ -129,6 +132,7 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 			after.Generation = prevGen
 		}
 
+		// Commit updated object with synthesized metadata back to the tracker.
 		if err := c.Tracker().Update(gvr, after, ns); err != nil {
 			return true, nil, err
 		}
@@ -138,19 +142,13 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 
 // NNC fetches the current NodeNetworkConfig object for this node from the fake
 // clientset.
-func (n *NodeHandle) NNC() *nncv1.NodeNetworkConfig {
+func (n *nodeHandle) NNC() *nncv1.NodeNetworkConfig {
 	n.fixture.t.Helper()
 	nnc, err := n.fixture.nncClient.NetworkingV1().NodeNetworkConfigs().Get(n.fixture.ctx, n.name, metav1.GetOptions{})
 	if err != nil {
 		n.fixture.t.Fatalf("failed to get NodeNetworkConfig for %s: %v", n.name, err)
 	}
 	return nnc
-}
-
-// NNC fetches the current NodeNetworkConfig object from the fake clientset for
-// the default node.
-func (f *Fixture) NNC() *nncv1.NodeNetworkConfig {
-	return f.DefaultNode().NNC()
 }
 
 // StatusCIDRs extracts the CIDRs from NodeNetworkConfig.status.podCIDRs for
@@ -183,7 +181,7 @@ func SpecPods(nnc *nncv1.NodeNetworkConfig) int32 {
 
 // SettledSpecPods polls until spec.allocations stops changing, then returns
 // the settled value.
-func (n *NodeHandle) SettledSpecPods() int32 {
+func (n *nodeHandle) SettledSpecPods() int32 {
 	n.fixture.t.Helper()
 	var last int32 = -1
 	n.fixture.Eventually(fmt.Sprintf("spec.allocations settles on %s", n.name), func() (bool, string) {
@@ -200,12 +198,6 @@ func (n *NodeHandle) SettledSpecPods() int32 {
 	return last
 }
 
-// SettledSpecPods polls until spec.allocations stops changing on default node,
-// then returns the settled value.
-func (f *Fixture) SettledSpecPods() int32 {
-	return f.DefaultNode().SettledSpecPods()
-}
-
 // ReleasableCIDRs extracts CIDRs from NodeNetworkConfig.spec.releasableCIDRs
 // for the default network.
 func ReleasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
@@ -220,7 +212,7 @@ func ReleasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 
 // AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs
 // for this node.
-func (n *NodeHandle) AddReleasableCIDR(cidr string) {
+func (n *nodeHandle) AddReleasableCIDR(cidr string) {
 	n.fixture.t.Helper()
 	nnc := n.NNC().DeepCopy()
 	nnc.Spec.ReleasableCIDRs = append(nnc.Spec.ReleasableCIDRs, nncv1.PodCIDR{
@@ -232,15 +224,9 @@ func (n *NodeHandle) AddReleasableCIDR(cidr string) {
 	}
 }
 
-// AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs
-// on the default node.
-func (f *Fixture) AddReleasableCIDR(cidr string) {
-	f.DefaultNode().AddReleasableCIDR(cidr)
-}
-
 // SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the
 // default network on this node.
-func (n *NodeHandle) SetAllocationsPods(pods int32) {
+func (n *nodeHandle) SetAllocationsPods(pods int32) {
 	n.fixture.t.Helper()
 	nnc := n.NNC().DeepCopy()
 	found := false
@@ -262,15 +248,9 @@ func (n *NodeHandle) SetAllocationsPods(pods int32) {
 	}
 }
 
-// SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the
-// default network on the default node.
-func (f *Fixture) SetAllocationsPods(pods int32) {
-	f.DefaultNode().SetAllocationsPods(pods)
-}
-
 // NodeEvents returns the messages of the Events recorded against this node
 // with the given reason.
-func (n *NodeHandle) NodeEvents(reason string) []string {
+func (n *nodeHandle) NodeEvents(reason string) []string {
 	n.fixture.t.Helper()
 	list, err := n.fixture.kubeClient.CoreV1().Events("").List(n.fixture.ctx, metav1.ListOptions{})
 	if err != nil {
@@ -283,10 +263,4 @@ func (n *NodeHandle) NodeEvents(reason string) []string {
 		}
 	}
 	return messages
-}
-
-// NodeEvents returns the messages of the Events recorded against the default
-// node with the given reason.
-func (f *Fixture) NodeEvents(reason string) []string {
-	return f.DefaultNode().NodeEvents(reason)
 }

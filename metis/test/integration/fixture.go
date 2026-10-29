@@ -40,6 +40,8 @@ package integration
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -62,10 +64,12 @@ import (
 
 // Default test environment topology constants.
 const (
-	defaultNodeName = "test-node"
-	defaultZone     = "us-central1-a"
-	defaultProject  = "test-project"
-	defaultNetwork  = networkv1.DefaultPodNetworkName
+	// firstNodeName is the default node name provisioned automatically during
+	// fixture initialization.
+	firstNodeName  = "test-node"
+	defaultZone    = "us-central1-a"
+	defaultProject = "test-project"
+	defaultNetwork = networkv1.DefaultPodNetworkName
 
 	// InitialPodCIDR is the primary alias range the node boots with. It reaches
 	// the daemon through the CNI config (pb.IPConfig.InitialPodCidr), not through
@@ -127,7 +131,12 @@ const (
 
 // Fixture orchestrates an integration test environment, coupling simulated
 // K8s and GCE backends with live CCM controllers and running Metis daemons.
+// Fixture embeds the Node interface for the cluster's first node, promoting all
+// node-scoped operations (AllocatePod, NNC, GCEAliasRanges, Usage, etc.) directly
+// onto the fixture.
 type Fixture struct {
+	Node
+
 	t   *testing.T
 	ctx context.Context
 	cfg FixtureConfig
@@ -143,7 +152,7 @@ type Fixture struct {
 	aliasSeq       atomic.Int32
 	fingerprintSeq atomic.Int64
 
-	nodes map[string]*NodeHandle
+	nodes map[string]Node
 }
 
 // Ctx returns the test fixture's execution context.
@@ -159,6 +168,13 @@ func (f *Fixture) NNCClient() *nncfake.Clientset { return f.nncClient }
 func (f *Fixture) GCE() *gce.Cloud { return f.gce }
 
 // FixtureConfig stores configuration options for initializing a test fixture.
+//
+// Note on future Shared VPC (XPN) extension:
+// In standard single-project testing, GCE VM instances and the VPC network reside
+// in the same project (defaultProject). When cross-project / Shared VPC scenarios
+// are introduced, this config can be extended with a networkProjectID field and
+// WithSharedVPC(hostProject string) option, allowing instances to run in a service
+// project while network resources resolve against the host project.
 type FixtureConfig struct {
 	nodeProviderID       string
 	backendType          dynamicpodip.BackendType
@@ -247,7 +263,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 	t.Cleanup(cancel)
 
 	cfg := FixtureConfig{
-		nodeProviderID:  NodeProviderID(defaultNodeName),
+		nodeProviderID:  NodeProviderID(firstNodeName),
 		stackType:       StackTypeIPv4,
 		initialIPv4CIDR: InitialPodCIDR,
 		initialIPv6CIDR: InitialPodCIDRv6,
@@ -262,7 +278,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 		cfg:        cfg,
 		kubeClient: k8sfake.NewSimpleClientset(),
 		nncClient:  nncfake.NewSimpleClientset(),
-		nodes:      make(map[string]*NodeHandle),
+		nodes:      make(map[string]Node),
 	}
 
 	emulateAPIServerSemantics(f.nncClient)
@@ -270,9 +286,9 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 		f.nncClient.PrependReactor(r.verb, r.resource, r.reaction)
 	}
 
-	// --- Default Node in Kubernetes -------------------------------------------
+	// --- First Node in Kubernetes ---------------------------------------------
 	if _, err := f.kubeClient.CoreV1().Nodes().Create(ctx, &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: defaultNodeName},
+		ObjectMeta: metav1.ObjectMeta{Name: firstNodeName},
 		Spec:       corev1.NodeSpec{ProviderID: cfg.nodeProviderID},
 	}, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("failed to create fake Node: %v", err)
@@ -297,8 +313,8 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 		initialAliasRanges = []*compute.AliasIpRange{{IpCidrRange: cfg.initialIPv4CIDR}}
 	}
 
-	if err := f.gce.Compute().Instances().Insert(ctx, NodeInstanceKey(defaultNodeName), &compute.Instance{
-		Name: defaultNodeName,
+	if err := f.gce.Compute().Instances().Insert(ctx, NodeInstanceKey(firstNodeName), &compute.Instance{
+		Name: firstNodeName,
 		Zone: defaultZone,
 		NetworkInterfaces: []*compute.NetworkInterface{{
 			Name:          "nic0",
@@ -328,9 +344,9 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 	}
 	f.statusTrigger = statusTrigger
 
-	// --- Default Node & Daemon ------------------------------------------------
-	f.bootNode(
-		defaultNodeName,
+	// --- First Node & Daemon --------------------------------------------------
+	f.Node = f.bootNode(
+		firstNodeName,
 		cfg.initialIPv4CIDR,
 		cfg.initialIPv6CIDR,
 		cfg.daemonConfigModifier,
@@ -344,7 +360,7 @@ func (f *Fixture) DefaultNetworkName() string {
 	return defaultNetwork
 }
 
-// Eventually polls cond until it returns true or eventuallyMax elapses.
+// Eventually polls cond until it returns true or EventuallyMax elapses.
 // If the deadline expires, the test fails with the last non-empty detail.
 func (f *Fixture) Eventually(desc string, cond func() (bool, string)) {
 	f.t.Helper()
@@ -363,7 +379,7 @@ func (f *Fixture) Eventually(desc string, cond func() (bool, string)) {
 }
 
 // Consistently asserts that cond remains true for the full duration d,
-// sampled every eventuallyTick. Useful for verifying that a quiescent state
+// sampled every EventuallyTick. Useful for verifying that a quiescent state
 // does not leak.
 func (f *Fixture) Consistently(desc string, d time.Duration, cond func() (bool, string)) {
 	f.t.Helper()
@@ -379,4 +395,27 @@ func (f *Fixture) Consistently(desc string, d time.Duration, cond func() (bool, 
 		case <-time.After(EventuallyTick):
 		}
 	}
+}
+
+// FormatUnmet formats a list of unmet condition messages as an indented bulleted
+// list for Eventually and Consistently. If unmet is empty, it returns
+// (true, "all conditions satisfied").
+func FormatUnmet(unmet []string) (bool, string) {
+	if len(unmet) == 0 {
+		return true, "all conditions satisfied"
+	}
+	return false, "\n  - " + strings.Join(unmet, "\n  - ")
+}
+
+// EqualSets checks if two string slices contain the same elements, regardless
+// of order.
+func EqualSets(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	aCopy := slices.Clone(a)
+	bCopy := slices.Clone(b)
+	slices.Sort(aCopy)
+	slices.Sort(bCopy)
+	return slices.Equal(aCopy, bCopy)
 }

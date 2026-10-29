@@ -26,10 +26,12 @@ import (
 	"path/filepath"
 	"time"
 
+	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
 	"github.com/go-logr/logr"
 	compute "google.golang.org/api/compute/v1"
+	computepreview "google.golang.org/api/compute/v1.preview"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	pb "k8s.io/metis/api/adaptiveipam/v1"
@@ -39,9 +41,50 @@ import (
 	"k8s.io/metis/pkg/store"
 )
 
-// NodeHandle encapsulates node-specific clients, store, and daemon lifecycle
-// for a simulated node in the integration cluster.
-type NodeHandle struct {
+// Node defines operations available on any simulated cluster node.
+type Node interface {
+	// Identity and metadata (fixture_node.go)
+	Name() string
+	ProviderID() string
+	InstanceKey() *meta.Key
+	Fixture() *Fixture
+
+	// Node lifecycle and runtime handles (fixture_node.go)
+	Store() *store.Store
+	IPAMClient() pb.AdaptiveIpamClient
+	CNIPlugin() *cni.Plugin
+	CNINetConf() []byte
+	DaemonConfig() daemon.Config
+	RestartDaemon()
+	Close()
+
+	// Pod and IPAM operations (fixture_ipam.go)
+	AllocatePod(id string) (ip, cidr string)
+	AllocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6 string)
+	TryAllocatePod(id string) (cidr string, err error)
+	DeletePod(id string)
+	Usage() store.NetworkIPUsage
+	IPv6Usage() store.NetworkIPUsage
+	BlockState(cidr string) store.CidrBlockState
+	IPv6BlockState(cidr string) store.CidrBlockState
+	BlockExists(cidr string) bool
+	BlockAllocatedIPs(cidr string) int
+
+	// Kubernetes NodeNetworkConfig operations (fixture_nnc.go)
+	NNC() *nncv1.NodeNetworkConfig
+	SettledSpecPods() int32
+	AddReleasableCIDR(cidr string)
+	SetAllocationsPods(pods int32)
+	NodeEvents(reason string) []string
+
+	// Cloud provider operations (fixture_gce.go)
+	GCEAliasRanges() []string
+	GCEANEs() []*computepreview.AliasNetworkEndpoint
+	GCECIDRs() []string
+}
+
+// nodeHandle implements Node for a simulated node in the integration cluster.
+type nodeHandle struct {
 	name            string
 	providerID      string
 	instanceKey     *meta.Key
@@ -59,36 +102,43 @@ type NodeHandle struct {
 	fixture         *Fixture
 }
 
+// Compile-time interface check:
+// Because nodeHandle methods are implemented across domain-specific files
+// (fixture_node.go, fixture_ipam.go, fixture_nnc.go, fixture_gce.go), this
+// compile-time assertion ensures that any additions or changes to the Node
+// interface remain fully implemented across all files.
+var _ Node = (*nodeHandle)(nil)
+
 // Name returns the node's name.
-func (n *NodeHandle) Name() string { return n.name }
+func (n *nodeHandle) Name() string { return n.name }
 
 // ProviderID returns the node's GCE ProviderID.
-func (n *NodeHandle) ProviderID() string { return n.providerID }
+func (n *nodeHandle) ProviderID() string { return n.providerID }
 
 // InstanceKey returns the zonal compute metadata key for this node.
-func (n *NodeHandle) InstanceKey() *meta.Key { return n.instanceKey }
+func (n *nodeHandle) InstanceKey() *meta.Key { return n.instanceKey }
 
 // Store returns the SQLite store handle for this node.
-func (n *NodeHandle) Store() *store.Store { return n.store }
+func (n *nodeHandle) Store() *store.Store { return n.store }
 
 // IPAMClient returns the gRPC client connection to this node's Metis daemon.
-func (n *NodeHandle) IPAMClient() pb.AdaptiveIpamClient { return n.ipam }
+func (n *nodeHandle) IPAMClient() pb.AdaptiveIpamClient { return n.ipam }
 
 // CNIPlugin returns the CNI plugin instance wired for this node.
-func (n *NodeHandle) CNIPlugin() *cni.Plugin { return n.cniPlugin }
+func (n *nodeHandle) CNIPlugin() *cni.Plugin { return n.cniPlugin }
 
 // CNINetConf returns the serialized CNI network configuration JSON.
-func (n *NodeHandle) CNINetConf() []byte { return n.cniNetConf }
+func (n *nodeHandle) CNINetConf() []byte { return n.cniNetConf }
 
 // DaemonConfig returns the daemon's runtime configuration.
-func (n *NodeHandle) DaemonConfig() daemon.Config { return n.daemonConfig }
+func (n *nodeHandle) DaemonConfig() daemon.Config { return n.daemonConfig }
 
 // Fixture returns the parent test fixture.
-func (n *NodeHandle) Fixture() *Fixture { return n.fixture }
+func (n *nodeHandle) Fixture() *Fixture { return n.fixture }
 
 // initCNI initializes the node's CNI plugin instance and serializes its
 // standard CNI network config JSON.
-func (n *NodeHandle) initCNI() {
+func (n *nodeHandle) initCNI() {
 	logPath := filepath.Join(filepath.Dir(n.daemonConfig.DBPath), "metis-cni.log")
 	n.cniPlugin = cni.NewPlugin(
 		cni.WithSocketPath(n.daemonConfig.SocketPath),
@@ -140,7 +190,7 @@ func (n *NodeHandle) initCNI() {
 
 // Close terminates the node's daemon goroutine, closes its gRPC connection,
 // and releases its SQLite store handle.
-func (n *NodeHandle) Close() {
+func (n *nodeHandle) Close() {
 	if n.daemonCancel != nil {
 		n.daemonCancel()
 		n.daemonCancel = nil
@@ -162,7 +212,7 @@ func (n *NodeHandle) Close() {
 // RestartDaemon stops the node's running daemon, closes its gRPC connection,
 // starts a fresh daemon process against the existing SQLite DB and NNC, and
 // reconnects.
-func (n *NodeHandle) RestartDaemon() {
+func (n *nodeHandle) RestartDaemon() {
 	n.fixture.t.Helper()
 	if n.daemonCancel != nil {
 		n.daemonCancel()
@@ -203,20 +253,20 @@ func (n *NodeHandle) RestartDaemon() {
 	n.ipam = pb.NewAdaptiveIpamClient(conn)
 }
 
-// DefaultNode returns the handle for the cluster's default node.
-func (f *Fixture) DefaultNode() *NodeHandle {
-	return f.nodes[defaultNodeName]
+// FirstNode returns the handle for the cluster's first (initial) node.
+func (f *Fixture) FirstNode() Node {
+	return f.Node
 }
 
-// Node returns the handle for a specific node in the cluster by name.
-func (f *Fixture) Node(name string) *NodeHandle {
+// NodeNamed returns the handle for a specific node in the cluster by name.
+func (f *Fixture) NodeNamed(name string) Node {
 	return f.nodes[name]
 }
 
 // AddNode spins up an additional simulated Node in the cluster with its own
 // GCE instance, its own Metis daemon instance, its own SQLite database, and
 // gRPC client.
-func (f *Fixture) AddNode(name string, initialCIDR ...string) *NodeHandle {
+func (f *Fixture) AddNode(name string, initialCIDR ...string) Node {
 	f.t.Helper()
 	cidr := fmt.Sprintf("10.0.%d.0/28", len(f.nodes))
 	if len(initialCIDR) > 0 && initialCIDR[0] != "" {
@@ -224,13 +274,6 @@ func (f *Fixture) AddNode(name string, initialCIDR ...string) *NodeHandle {
 	}
 
 	return f.bootNode(name, cidr, f.cfg.initialIPv6CIDR, nil)
-}
-
-// RestartDaemon stops the default node's running daemon process, starts a
-// fresh daemon against the existing SQLite DB, and reconnects.
-func (f *Fixture) RestartDaemon() {
-	f.t.Helper()
-	f.DefaultNode().RestartDaemon()
 }
 
 // bootNode initializes and boots a node in the test environment: creates the
@@ -243,7 +286,7 @@ func (f *Fixture) RestartDaemon() {
 // interface (nic0 attached to GCENetworkURL("default")). When end-to-end
 // multi-networking test scenarios are introduced, this harness can be
 // extended with a NetworkInterfaceConfig descriptor on FixtureConfig and
-// NodeHandle, allowing nodes to bind multiple network interfaces (nic0,
+// Node, allowing nodes to bind multiple network interfaces (nic0,
 // nic1, etc.) across distinct VPC networks, and parameterizing
 // GCEAliasRanges(iface...) and Usage(network...).
 func (f *Fixture) bootNode(
@@ -251,7 +294,7 @@ func (f *Fixture) bootNode(
 	initialIPv4 string,
 	initialIPv6 string,
 	dConfigModifier func(*daemon.Config),
-) *NodeHandle {
+) *nodeHandle {
 	f.t.Helper()
 
 	instanceKey := NodeInstanceKey(name)
@@ -336,7 +379,7 @@ func (f *Fixture) bootNode(
 		f.t.Fatalf("failed to open store handle for node %s: %v", name, err)
 	}
 
-	nh := &NodeHandle{
+	nh := &nodeHandle{
 		name:            name,
 		providerID:      providerID,
 		instanceKey:     instanceKey,

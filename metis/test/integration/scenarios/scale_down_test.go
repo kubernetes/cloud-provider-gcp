@@ -43,8 +43,17 @@ func TestScaleDownAndReleaseLoop(t *testing.T) {
 	f.Eventually("dynamic block is active in GCE and status", func() (bool, string) {
 		nnc := f.NNC()
 		want := []string{integration.InitialPodCIDR, dynamicCIDR}
-		return integration.EqualSets(f.GCEAliasRanges(), want) && integration.EqualSets(integration.StatusCIDRs(nnc), want) && integration.StatusReady(nnc),
-			fmt.Sprintf("gce=%v status=%v", f.GCEAliasRanges(), integration.StatusCIDRs(nnc))
+		var unmet []string
+		if !integration.EqualSets(f.GCEAliasRanges(), want) {
+			unmet = append(unmet, fmt.Sprintf("GCE alias ranges: got %v, want %v", f.GCEAliasRanges(), want))
+		}
+		if !integration.EqualSets(integration.StatusCIDRs(nnc), want) {
+			unmet = append(unmet, fmt.Sprintf("NNC status CIDRs: got %v, want %v", integration.StatusCIDRs(nnc), want))
+		}
+		if !integration.StatusReady(nnc) {
+			unmet = append(unmet, "NNC Ready condition is false")
+		}
+		return integration.FormatUnmet(unmet)
 	})
 
 	// Workload reduction: delete all pods so utilization drops and idle
@@ -76,7 +85,13 @@ func TestScaleDownAndReleaseLoop(t *testing.T) {
 	// reflect only the retained block.
 	f.Eventually("status reflects only the retained initial range with Ready=True", func() (bool, string) {
 		nnc := f.NNC()
-		return integration.EqualSets(integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}) && integration.StatusReady(nnc),
-			fmt.Sprintf("status=%v ready=%v", integration.StatusCIDRs(nnc), integration.StatusReady(nnc))
+		var unmet []string
+		if !integration.EqualSets(integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}) {
+			unmet = append(unmet, fmt.Sprintf("NNC status CIDRs: got %v, want %v", integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}))
+		}
+		if !integration.StatusReady(nnc) {
+			unmet = append(unmet, "NNC Ready condition is false")
+		}
+		return integration.FormatUnmet(unmet)
 	})
 }
