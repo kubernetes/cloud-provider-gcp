@@ -21,9 +21,15 @@ set -o pipefail
 KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 cd $KUBE_ROOT
 
+echo "Calling tools/update-gofmt.sh"
 tools/update-gofmt.sh
+echo "Result of tools/update-gofmt.sh is $?"
+echo "Calling tools/update_vendor.sh"
 tools/update_vendor.sh
+echo "Result of tools/update-vendor.sh is $?"
+echo "Calliong tools/update-proto.sh"
 tools/update-proto.sh
+echo "Result of tools/update-proto.sh is $?"
 
 source tools/version.sh
 get_version_vars
