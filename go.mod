@@ -34,7 +34,6 @@ require (
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kube-controller-manager v0.37.2
 	k8s.io/kubelet v0.37.2
-	k8s.io/kubernetes v1.37.1
 	k8s.io/metrics v0.37.2
 	k8s.io/utils v0.0.0-20260626114624-be93311217bd
 	sigs.k8s.io/controller-tools v0.17.2
