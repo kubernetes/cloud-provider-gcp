@@ -57,12 +57,22 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 	c.PrependReactor("*", "nodenetworkconfigs", func(action clientgotesting.Action) (bool, runtime.Object, error) {
 		var name string
 		switch action.GetVerb() {
-		case "create", "update":
+		case "create":
 			ca, ok := action.(clientgotesting.CreateAction)
 			if !ok {
 				return false, nil, nil
 			}
 			obj, ok := ca.GetObject().(*nncv1.NodeNetworkConfig)
+			if !ok {
+				return false, nil, nil
+			}
+			name = obj.Name
+		case "update":
+			ua, ok := action.(clientgotesting.UpdateAction)
+			if !ok {
+				return false, nil, nil
+			}
+			obj, ok := ua.GetObject().(*nncv1.NodeNetworkConfig)
 			if !ok {
 				return false, nil, nil
 			}
