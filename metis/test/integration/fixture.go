@@ -70,10 +70,10 @@ import (
 )
 
 const (
-	NodeName = "test-node"
-	Zone     = "us-central1-a"
-	Project  = "test-project"
-	Network  = networkv1.DefaultPodNetworkName
+	PrimaryNodeName = "test-node"
+	Zone            = "us-central1-a"
+	Project         = "test-project"
+	Network         = networkv1.DefaultPodNetworkName
 
 	// InitialPodCIDR is the primary alias range the node boots with. It reaches
 	// the daemon through the CNI config (pb.IPConfig.InitialPodCidr), not through
@@ -96,9 +96,9 @@ const (
 )
 
 var (
-	ProviderID  = fmt.Sprintf("gce://%s/%s/%s", Project, Zone, NodeName)
+	ProviderID  = fmt.Sprintf("gce://%s/%s/%s", Project, Zone, PrimaryNodeName)
 	NetworkURL  = fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/default", Project)
-	InstanceKey = meta.ZonalKey(NodeName, Zone)
+	InstanceKey = meta.ZonalKey(PrimaryNodeName, Zone)
 )
 
 // StackType defines the IP address family configuration of the cluster and node.
@@ -350,7 +350,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 
 	// --- Node -------------------------------------------------------------------
 	if _, err := f.kubeClient.CoreV1().Nodes().Create(ctx, &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: NodeName},
+		ObjectMeta: metav1.ObjectMeta{Name: PrimaryNodeName},
 		Spec:       corev1.NodeSpec{ProviderID: cfg.nodeProviderID},
 	}, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("failed to create fake Node: %v", err)
@@ -376,7 +376,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 	}
 
 	if err := f.gce.Compute().Instances().Insert(ctx, InstanceKey, &compute.Instance{
-		Name: NodeName,
+		Name: PrimaryNodeName,
 		Zone: Zone,
 		NetworkInterfaces: []*compute.NetworkInterface{{
 			Name:          "nic0",
@@ -410,7 +410,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "metis.sqlite")
 	socketPath := filepath.Join(dir, "metis.sock")
-	t.Setenv("NODE_NAME", NodeName)
+	t.Setenv("NODE_NAME", PrimaryNodeName)
 
 	dConfig := daemon.Config{
 		DBPath:                          dbPath,
@@ -469,7 +469,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 	f.store = s
 
 	primaryHandle := &NodeHandle{
-		name:            NodeName,
+		name:            PrimaryNodeName,
 		providerID:      ProviderID,
 		instanceKey:     InstanceKey,
 		daemonConfig:    dConfig,
@@ -484,14 +484,14 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 		fixture:         f,
 	}
 	primaryHandle.initCNI()
-	f.nodes[NodeName] = primaryHandle
+	f.nodes[PrimaryNodeName] = primaryHandle
 
 	return f
 }
 
 // PrimaryNode returns the handle for the cluster's primary node.
 func (f *Fixture) PrimaryNode() *NodeHandle {
-	return f.nodes[NodeName]
+	return f.nodes[PrimaryNodeName]
 }
 
 // Node returns the handle for a specific node in the cluster by name.
@@ -657,7 +657,7 @@ func (f *Fixture) RestartDaemon() {
 	}
 	f.daemonConn = conn
 	f.ipam = pb.NewAdaptiveIpamClient(conn)
-	if pNode, ok := f.nodes[NodeName]; ok {
+	if pNode, ok := f.nodes[PrimaryNodeName]; ok {
 		pNode.daemonCtx = daemonCtx
 		pNode.daemonCancel = daemonCancel
 		pNode.daemonDone = daemonDone

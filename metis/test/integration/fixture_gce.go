@@ -91,7 +91,7 @@ func (n *NodeHandle) GCEAliasRanges() []string {
 // GCEAliasRanges returns the CIDRs of all alias IP ranges currently attached
 // to the fake GCE instance's primary interface.
 func (f *Fixture) GCEAliasRanges() []string {
-	return f.nodes[NodeName].GCEAliasRanges()
+	return f.nodes[PrimaryNodeName].GCEAliasRanges()
 }
 
 // GCEANEs returns all active AliasNetworkEndpoint resources attached to this node.
@@ -106,7 +106,7 @@ func (n *NodeHandle) GCEANEs() []*computepreview.AliasNetworkEndpoint {
 
 // GCEANEs returns all active AliasNetworkEndpoint resources attached to the primary instance.
 func (f *Fixture) GCEANEs() []*computepreview.AliasNetworkEndpoint {
-	return f.nodes[NodeName].GCEANEs()
+	return f.nodes[PrimaryNodeName].GCEANEs()
 }
 
 // GCECIDRs returns all active pod CIDRs attached to this node across both
@@ -126,13 +126,13 @@ func (n *NodeHandle) GCECIDRs() []string {
 // GCECIDRs returns all active pod CIDRs attached to the primary instance across both
 // VM alias IP ranges and AliasNetworkEndpoints.
 func (f *Fixture) GCECIDRs() []string {
-	return f.nodes[NodeName].GCECIDRs()
+	return f.nodes[PrimaryNodeName].GCECIDRs()
 }
 
 // UpdateNodeProviderID updates the Node's Spec.ProviderID in the fake kube client.
 func (f *Fixture) UpdateNodeProviderID(id string) {
 	f.t.Helper()
-	node, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, NodeName, metav1.GetOptions{})
+	node, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, PrimaryNodeName, metav1.GetOptions{})
 	if err != nil {
 		f.t.Fatalf("failed to get node: %v", err)
 	}

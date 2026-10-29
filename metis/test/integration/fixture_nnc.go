@@ -131,7 +131,7 @@ func (n *NodeHandle) NNC() *nncv1.NodeNetworkConfig {
 
 // NNC fetches the current NodeNetworkConfig object from the fake clientset.
 func (f *Fixture) NNC() *nncv1.NodeNetworkConfig {
-	return f.nodes[NodeName].NNC()
+	return f.nodes[PrimaryNodeName].NNC()
 }
 
 // StatusCIDRs extracts the CIDRs from NodeNetworkConfig.status.podCIDRs for the default network.
@@ -180,7 +180,7 @@ func (n *NodeHandle) SettledSpecPods() int32 {
 
 // SettledSpecPods polls until spec.allocations stops changing on primary node, then returns the settled value.
 func (f *Fixture) SettledSpecPods() int32 {
-	return f.nodes[NodeName].SettledSpecPods()
+	return f.nodes[PrimaryNodeName].SettledSpecPods()
 }
 
 // ReleasableCIDRs extracts CIDRs from NodeNetworkConfig.spec.releasableCIDRs for the default network.
@@ -209,7 +209,7 @@ func (n *NodeHandle) AddReleasableCIDR(cidr string) {
 
 // AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs on the primary node.
 func (f *Fixture) AddReleasableCIDR(cidr string) {
-	f.nodes[NodeName].AddReleasableCIDR(cidr)
+	f.nodes[PrimaryNodeName].AddReleasableCIDR(cidr)
 }
 
 // SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on this node.
@@ -237,7 +237,7 @@ func (n *NodeHandle) SetAllocationsPods(pods int32) {
 
 // SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on the primary node.
 func (f *Fixture) SetAllocationsPods(pods int32) {
-	f.nodes[NodeName].SetAllocationsPods(pods)
+	f.nodes[PrimaryNodeName].SetAllocationsPods(pods)
 }
 
 // NodeEvents returns the messages of the Events recorded against the node with the given reason.
@@ -249,7 +249,7 @@ func (f *Fixture) NodeEvents(reason string) []string {
 	}
 	var messages []string
 	for _, ev := range list.Items {
-		if ev.Reason == reason && ev.InvolvedObject.Kind == "Node" && ev.InvolvedObject.Name == NodeName {
+		if ev.Reason == reason && ev.InvolvedObject.Kind == "Node" && ev.InvolvedObject.Name == PrimaryNodeName {
 			messages = append(messages, ev.Message)
 		}
 	}

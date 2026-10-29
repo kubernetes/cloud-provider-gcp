@@ -79,7 +79,7 @@ func (n *NodeHandle) AllocatePod(id string) (ip, cidr string) {
 
 // AllocatePod calls the Metis CNI plugin's CmdAdd workflow on the primary node.
 func (f *Fixture) AllocatePod(id string) (ip, cidr string) {
-	return f.nodes[NodeName].AllocatePod(id)
+	return f.nodes[PrimaryNodeName].AllocatePod(id)
 }
 
 // AllocateDualStackPod calls CNI CmdAdd explicitly returning both IPv4 and IPv6 addresses.
@@ -116,7 +116,7 @@ func (n *NodeHandle) AllocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6
 
 // AllocateDualStackPod calls CNI CmdAdd on the primary node returning both IPv4 and IPv6 addresses.
 func (f *Fixture) AllocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6 string) {
-	return f.nodes[NodeName].AllocateDualStackPod(id)
+	return f.nodes[PrimaryNodeName].AllocateDualStackPod(id)
 }
 
 // TryAllocatePod calls the CNI plugin's CmdAdd workflow and returns the error
@@ -156,7 +156,7 @@ func (n *NodeHandle) TryAllocatePod(id string) (cidr string, err error) {
 
 // TryAllocatePod calls the CNI plugin's CmdAdd workflow on the primary node.
 func (f *Fixture) TryAllocatePod(id string) (cidr string, err error) {
-	return f.nodes[NodeName].TryAllocatePod(id)
+	return f.nodes[PrimaryNodeName].TryAllocatePod(id)
 }
 
 // DeletePod invokes the CNI plugin's CmdDel workflow to deallocate a pod's IP.
@@ -178,7 +178,7 @@ func (n *NodeHandle) DeletePod(id string) {
 
 // DeletePod invokes the CNI plugin's CmdDel workflow on the primary node.
 func (f *Fixture) DeletePod(id string) {
-	f.nodes[NodeName].DeletePod(id)
+	f.nodes[PrimaryNodeName].DeletePod(id)
 }
 
 // BlockState queries this node's SQLite database directly for the state of a CIDR block.
@@ -197,7 +197,7 @@ func (n *NodeHandle) BlockState(cidr string) store.CidrBlockState {
 
 // BlockState queries the primary daemon's SQLite database directly for the state of a CIDR block.
 func (f *Fixture) BlockState(cidr string) store.CidrBlockState {
-	return f.nodes[NodeName].BlockState(cidr)
+	return f.nodes[PrimaryNodeName].BlockState(cidr)
 }
 
 // IPv6BlockState queries this node's SQLite database for an IPv6 block's state.
@@ -216,7 +216,7 @@ func (n *NodeHandle) IPv6BlockState(cidr string) store.CidrBlockState {
 
 // IPv6BlockState queries the primary daemon's SQLite database for an IPv6 block's state.
 func (f *Fixture) IPv6BlockState(cidr string) store.CidrBlockState {
-	return f.nodes[NodeName].IPv6BlockState(cidr)
+	return f.nodes[PrimaryNodeName].IPv6BlockState(cidr)
 }
 
 // BlockExists checks whether a CIDR block is present in this node's SQLite store.
@@ -232,7 +232,7 @@ func (n *NodeHandle) BlockExists(cidr string) bool {
 
 // BlockExists checks whether a CIDR block is present in the primary daemon's SQLite store.
 func (f *Fixture) BlockExists(cidr string) bool {
-	return f.nodes[NodeName].BlockExists(cidr)
+	return f.nodes[PrimaryNodeName].BlockExists(cidr)
 }
 
 // BlockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block on this node.
@@ -248,7 +248,7 @@ func (n *NodeHandle) BlockAllocatedIPs(cidr string) int {
 
 // BlockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block on the primary node.
 func (f *Fixture) BlockAllocatedIPs(cidr string) int {
-	return f.nodes[NodeName].BlockAllocatedIPs(cidr)
+	return f.nodes[PrimaryNodeName].BlockAllocatedIPs(cidr)
 }
 
 // Usage returns the current IPv4 IP usage for the default network on this node.
@@ -263,7 +263,7 @@ func (n *NodeHandle) Usage() store.NetworkIPUsage {
 
 // Usage returns the current IPv4 IP usage for the default network on the primary node.
 func (f *Fixture) Usage() store.NetworkIPUsage {
-	return f.nodes[NodeName].Usage()
+	return f.nodes[PrimaryNodeName].Usage()
 }
 
 // IPv6Usage returns current IPv6 IP usage for the default network on this node.
@@ -278,7 +278,7 @@ func (n *NodeHandle) IPv6Usage() store.NetworkIPUsage {
 
 // IPv6Usage returns current IPv6 IP usage for the default network on the primary node.
 func (f *Fixture) IPv6Usage() store.NetworkIPUsage {
-	return f.nodes[NodeName].IPv6Usage()
+	return f.nodes[PrimaryNodeName].IPv6Usage()
 }
 
 // EqualSets checks if two string slices contain the same elements, regardless of order.
