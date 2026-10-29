@@ -1,0 +1,356 @@
+/*
+Copyright 2026 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package integration
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	cnitypes "github.com/containernetworking/cni/pkg/types"
+	"github.com/go-logr/logr"
+	compute "google.golang.org/api/compute/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	pb "k8s.io/metis/api/adaptiveipam/v1"
+	metispkg "k8s.io/metis/pkg"
+	"k8s.io/metis/pkg/cni"
+	"k8s.io/metis/pkg/daemon"
+	"k8s.io/metis/pkg/store"
+)
+
+// NodeHandle encapsulates node-specific clients, store, and daemon lifecycle
+// for a simulated node in the integration cluster.
+type NodeHandle struct {
+	name            string
+	providerID      string
+	instanceKey     *meta.Key
+	daemonConfig    daemon.Config
+	daemonCtx       context.Context
+	daemonCancel    context.CancelFunc
+	daemonDone      chan struct{}
+	daemonConn      io.Closer
+	ipam            pb.AdaptiveIpamClient
+	cniPlugin       *cni.Plugin
+	cniNetConf      []byte
+	initialIPv4CIDR string
+	initialIPv6CIDR string
+	store           *store.Store
+	fixture         *Fixture
+}
+
+// Name returns the node's name.
+func (n *NodeHandle) Name() string { return n.name }
+
+// ProviderID returns the node's GCE ProviderID.
+func (n *NodeHandle) ProviderID() string { return n.providerID }
+
+// InstanceKey returns the zonal compute metadata key for this node.
+func (n *NodeHandle) InstanceKey() *meta.Key { return n.instanceKey }
+
+// Store returns the SQLite store handle for this node.
+func (n *NodeHandle) Store() *store.Store { return n.store }
+
+// IPAMClient returns the gRPC client connection to this node's Metis daemon.
+func (n *NodeHandle) IPAMClient() pb.AdaptiveIpamClient { return n.ipam }
+
+// CNIPlugin returns the CNI plugin instance wired for this node.
+func (n *NodeHandle) CNIPlugin() *cni.Plugin { return n.cniPlugin }
+
+// CNINetConf returns the serialized CNI network configuration JSON.
+func (n *NodeHandle) CNINetConf() []byte { return n.cniNetConf }
+
+// DaemonConfig returns the daemon's runtime configuration.
+func (n *NodeHandle) DaemonConfig() daemon.Config { return n.daemonConfig }
+
+// Fixture returns the parent test fixture.
+func (n *NodeHandle) Fixture() *Fixture { return n.fixture }
+
+// initCNI initializes the node's CNI plugin instance and serializes its
+// standard CNI network config JSON.
+func (n *NodeHandle) initCNI() {
+	logPath := filepath.Join(filepath.Dir(n.daemonConfig.DBPath), "metis-cni.log")
+	n.cniPlugin = cni.NewPlugin(
+		cni.WithSocketPath(n.daemonConfig.SocketPath),
+		cni.WithDBPath(n.daemonConfig.DBPath),
+		cni.WithLogFile(logPath),
+	)
+
+	var ranges [][]cni.SubnetRange
+	var routes []cni.Route
+
+	if n.fixture.cfg.stackType != StackTypeIPv6Only && n.initialIPv4CIDR != "" {
+		_, v4Net, err := net.ParseCIDR(n.initialIPv4CIDR)
+		if err != nil {
+			n.fixture.t.Fatalf("invalid initial IPv4 CIDR %s on node %s: %v", n.initialIPv4CIDR, n.name, err)
+		}
+		ranges = append(ranges, []cni.SubnetRange{{Subnet: cnitypes.IPNet(*v4Net)}})
+		routes = append(routes, cni.Route{Dst: "0.0.0.0/0"})
+	}
+	if (n.fixture.cfg.stackType == StackTypeDualStack || n.fixture.cfg.stackType == StackTypeIPv6Only) && n.initialIPv6CIDR != "" {
+		_, v6Net, err := net.ParseCIDR(n.initialIPv6CIDR)
+		if err != nil {
+			n.fixture.t.Fatalf("invalid initial IPv6 CIDR %s on node %s: %v", n.initialIPv6CIDR, n.name, err)
+		}
+		ranges = append(ranges, []cni.SubnetRange{{Subnet: cnitypes.IPNet(*v6Net)}})
+		routes = append(routes, cni.Route{Dst: "::/0"})
+	}
+
+	conf := cni.PluginConf{
+		PluginConf: cnitypes.PluginConf{
+			CNIVersion: "0.3.1",
+			Name:       "gke-pod-network",
+			Type:       "metis",
+		},
+		DaemonSocket: n.daemonConfig.SocketPath,
+		DBPath:       n.daemonConfig.DBPath,
+		LogFile:      logPath,
+		IPAM: cni.IPAM{
+			Ranges: ranges,
+			Routes: routes,
+		},
+	}
+
+	data, err := json.Marshal(conf)
+	if err != nil {
+		n.fixture.t.Fatalf("failed to marshal CNI config for node %s: %v", n.name, err)
+	}
+	n.cniNetConf = data
+}
+
+// Close terminates the node's daemon goroutine, closes its gRPC connection,
+// and releases its SQLite store handle.
+func (n *NodeHandle) Close() {
+	if n.daemonCancel != nil {
+		n.daemonCancel()
+		n.daemonCancel = nil
+	}
+	if n.daemonDone != nil {
+		<-n.daemonDone
+		n.daemonDone = nil
+	}
+	if n.daemonConn != nil {
+		_ = n.daemonConn.Close()
+		n.daemonConn = nil
+	}
+	if n.store != nil {
+		_ = n.store.Close()
+		n.store = nil
+	}
+}
+
+// RestartDaemon stops the node's running daemon, closes its gRPC connection,
+// starts a fresh daemon process against the existing SQLite DB and NNC, and
+// reconnects.
+func (n *NodeHandle) RestartDaemon() {
+	n.fixture.t.Helper()
+	if n.daemonCancel != nil {
+		n.daemonCancel()
+	}
+	if n.daemonDone != nil {
+		<-n.daemonDone
+	}
+	if n.daemonConn != nil {
+		_ = n.daemonConn.Close()
+	}
+
+	daemonCtx, daemonCancel := context.WithCancel(n.fixture.ctx)
+	daemonDone := make(chan struct{})
+	n.daemonCtx = daemonCtx
+	n.daemonCancel = daemonCancel
+	n.daemonDone = daemonDone
+
+	d := daemon.NewDaemon(n.daemonConfig)
+	d.NNCClient = n.fixture.nncClient
+	d.KubeClient = n.fixture.kubeClient
+	go func() {
+		defer close(daemonDone)
+		if err := d.Run(daemonCtx); err != nil && daemonCtx.Err() == nil {
+			n.fixture.t.Errorf("restarted daemon for node %s exited with error: %v", n.name, err)
+		}
+	}()
+
+	n.fixture.Eventually(fmt.Sprintf("restarted daemon socket for node %s is ready", n.name), func() (bool, string) {
+		_, err := os.Stat(n.daemonConfig.SocketPath)
+		return err == nil, fmt.Sprintf("stat %s: %v", n.daemonConfig.SocketPath, err)
+	})
+
+	conn, err := metispkg.NewLocalGrpcConnection(n.daemonConfig.SocketPath)
+	if err != nil {
+		n.fixture.t.Fatalf("failed to connect to restarted daemon socket for node %s: %v", n.name, err)
+	}
+	n.daemonConn = conn
+	n.ipam = pb.NewAdaptiveIpamClient(conn)
+}
+
+// DefaultNode returns the handle for the cluster's default node.
+func (f *Fixture) DefaultNode() *NodeHandle {
+	return f.nodes[DefaultNodeName]
+}
+
+// PrimaryNode returns the handle for the cluster's primary (default) node.
+// Maintained as an alias for DefaultNode for compatibility.
+func (f *Fixture) PrimaryNode() *NodeHandle {
+	return f.DefaultNode()
+}
+
+// Node returns the handle for a specific node in the cluster by name.
+func (f *Fixture) Node(name string) *NodeHandle {
+	return f.nodes[name]
+}
+
+// AddNode spins up an additional simulated Node in the cluster with its own
+// GCE instance, its own Metis daemon instance, its own SQLite database, and
+// gRPC client.
+func (f *Fixture) AddNode(name string, initialCIDR ...string) *NodeHandle {
+	f.t.Helper()
+	nodeProviderID := fmt.Sprintf("gce://%s/%s/%s", Project, Zone, name)
+	nodeInstanceKey := meta.ZonalKey(name, Zone)
+
+	cidr := fmt.Sprintf("10.0.%d.0/28", len(f.nodes))
+	if len(initialCIDR) > 0 && initialCIDR[0] != "" {
+		cidr = initialCIDR[0]
+	}
+
+	return f.bootNode(name, nodeProviderID, nodeInstanceKey, cidr, f.cfg.initialIPv6CIDR, nil)
+}
+
+// RestartDaemon stops the default node's running daemon process, starts a
+// fresh daemon against the existing SQLite DB, and reconnects.
+func (f *Fixture) RestartDaemon() {
+	f.t.Helper()
+	f.DefaultNode().RestartDaemon()
+}
+
+// bootNode initializes and boots a node in the test environment: creates the
+// K8s Node and GCE Instance resources if needed, launches its Metis daemon
+// with dedicated storage and socket, connects via gRPC, initializes CNI
+// config, and registers cleanup hooks.
+func (f *Fixture) bootNode(
+	name string,
+	providerID string,
+	instanceKey *meta.Key,
+	initialIPv4 string,
+	initialIPv6 string,
+	dConfigModifier func(*daemon.Config),
+) *NodeHandle {
+	f.t.Helper()
+
+	// Ensure fake Node exists in Kubernetes.
+	if _, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, name, metav1.GetOptions{}); err != nil {
+		if _, err := f.kubeClient.CoreV1().Nodes().Create(f.ctx, &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec:       corev1.NodeSpec{ProviderID: providerID},
+		}, metav1.CreateOptions{}); err != nil {
+			f.t.Fatalf("failed to create fake Node %s: %v", name, err)
+		}
+	}
+
+	// Ensure fake GCE Instance exists.
+	var aliasRanges []*compute.AliasIpRange
+	if f.cfg.stackType != StackTypeIPv6Only && initialIPv4 != "" {
+		aliasRanges = []*compute.AliasIpRange{{IpCidrRange: initialIPv4}}
+	}
+	if _, err := f.gce.Compute().Instances().Get(f.ctx, instanceKey); err != nil {
+		if err := f.gce.Compute().Instances().Insert(f.ctx, instanceKey, &compute.Instance{
+			Name: name,
+			Zone: Zone,
+			NetworkInterfaces: []*compute.NetworkInterface{{
+				Name:          "nic0",
+				Network:       NetworkURL,
+				Subnetwork:    "default",
+				AliasIpRanges: aliasRanges,
+			}},
+		}); err != nil {
+			f.t.Fatalf("failed to insert fake GCE instance for %s: %v", name, err)
+		}
+	}
+
+	// Provision isolated node storage and socket.
+	dir := f.t.TempDir()
+	dbPath := filepath.Join(dir, "metis.sqlite")
+	socketPath := filepath.Join(dir, "metis.sock")
+	f.t.Setenv("NODE_NAME", name)
+
+	dConfig := daemon.Config{
+		DBPath:                          dbPath,
+		SocketPath:                      socketPath,
+		MonitorInterval:                 MonitorInterval,
+		ReleaseCooldown:                 100 * time.Millisecond,
+		DrainingExpiration:              200 * time.Millisecond,
+		SustainedLowUtilizationDuration: 100 * time.Millisecond,
+		LowUtilizationThreshold:         0.3,
+	}
+	if dConfigModifier != nil {
+		dConfigModifier(&dConfig)
+	}
+
+	daemonCtx, daemonCancel := context.WithCancel(f.ctx)
+	daemonDone := make(chan struct{})
+
+	d := daemon.NewDaemon(dConfig)
+	d.NNCClient = f.nncClient
+	d.KubeClient = f.kubeClient
+	go func() {
+		defer close(daemonDone)
+		if err := d.Run(daemonCtx); err != nil && daemonCtx.Err() == nil {
+			f.t.Errorf("daemon for node %s exited with error: %v", name, err)
+		}
+	}()
+
+	f.Eventually(fmt.Sprintf("daemon socket for node %s is ready", name), func() (bool, string) {
+		_, err := os.Stat(socketPath)
+		return err == nil, fmt.Sprintf("stat %s: %v", socketPath, err)
+	})
+
+	conn, err := metispkg.NewLocalGrpcConnection(socketPath)
+	if err != nil {
+		f.t.Fatalf("failed to connect to daemon socket for node %s: %v", name, err)
+	}
+
+	s, err := store.NewStore(f.ctx, logr.Discard(), dbPath)
+	if err != nil {
+		f.t.Fatalf("failed to open store handle for node %s: %v", name, err)
+	}
+
+	nh := &NodeHandle{
+		name:            name,
+		providerID:      providerID,
+		instanceKey:     instanceKey,
+		daemonConfig:    dConfig,
+		daemonCtx:       daemonCtx,
+		daemonCancel:    daemonCancel,
+		daemonDone:      daemonDone,
+		daemonConn:      conn,
+		ipam:            pb.NewAdaptiveIpamClient(conn),
+		initialIPv4CIDR: initialIPv4,
+		initialIPv6CIDR: initialIPv6,
+		store:           s,
+		fixture:         f,
+	}
+	nh.initCNI()
+
+	f.t.Cleanup(nh.Close)
+	f.nodes[name] = nh
+	return nh
+}

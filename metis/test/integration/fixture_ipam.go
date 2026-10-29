@@ -34,6 +34,15 @@ import (
 // its local daemon socket and SQLite database path, exercising the complete
 // CNI network configuration and IPAM allocation path end-to-end.
 
+// cidrFromIPNet constructs a canonical CIDR notation string from an IP address
+// and its network mask.
+func cidrFromIPNet(ip net.IP, mask net.IPMask) string {
+	return (&net.IPNet{
+		IP:   ip.Mask(mask),
+		Mask: mask,
+	}).String()
+}
+
 // AllocatePod invokes the Metis CNI plugin's CmdAdd workflow to allocate an IP
 // for a pod, returning the assigned IP address and its associated CIDR block.
 func (n *NodeHandle) AllocatePod(id string) (ip, cidr string) {
@@ -60,7 +69,7 @@ func (n *NodeHandle) AllocatePod(id string) (ip, cidr string) {
 		for _, ipConf := range result.IPs {
 			if ipConf.Address.IP.To4() == nil {
 				ip = ipConf.Address.IP.String()
-				cidr = (&net.IPNet{IP: ipConf.Address.IP.Mask(ipConf.Address.Mask), Mask: ipConf.Address.Mask}).String()
+				cidr = cidrFromIPNet(ipConf.Address.IP, ipConf.Address.Mask)
 				return ip, cidr
 			}
 		}
@@ -70,7 +79,7 @@ func (n *NodeHandle) AllocatePod(id string) (ip, cidr string) {
 	for _, ipConf := range result.IPs {
 		if ipConf.Address.IP.To4() != nil {
 			ip = ipConf.Address.IP.String()
-			cidr = (&net.IPNet{IP: ipConf.Address.IP.Mask(ipConf.Address.Mask), Mask: ipConf.Address.Mask}).String()
+			cidr = cidrFromIPNet(ipConf.Address.IP, ipConf.Address.Mask)
 			return ip, cidr
 		}
 	}
@@ -78,9 +87,9 @@ func (n *NodeHandle) AllocatePod(id string) (ip, cidr string) {
 	return "", ""
 }
 
-// AllocatePod calls the Metis CNI plugin's CmdAdd workflow on the primary node.
+// AllocatePod calls the Metis CNI plugin's CmdAdd workflow on the default node.
 func (f *Fixture) AllocatePod(id string) (ip, cidr string) {
-	return f.nodes[PrimaryNodeName].AllocatePod(id)
+	return f.DefaultNode().AllocatePod(id)
 }
 
 // AllocateDualStackPod calls CNI CmdAdd explicitly returning both IPv4 and
@@ -104,10 +113,10 @@ func (n *NodeHandle) AllocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6
 	for _, ipConf := range result.IPs {
 		if ipConf.Address.IP.To4() != nil {
 			ipv4 = ipConf.Address.IP.String()
-			cidrv4 = (&net.IPNet{IP: ipConf.Address.IP.Mask(ipConf.Address.Mask), Mask: ipConf.Address.Mask}).String()
+			cidrv4 = cidrFromIPNet(ipConf.Address.IP, ipConf.Address.Mask)
 		} else {
 			ipv6 = ipConf.Address.IP.String()
-			cidrv6 = (&net.IPNet{IP: ipConf.Address.IP.Mask(ipConf.Address.Mask), Mask: ipConf.Address.Mask}).String()
+			cidrv6 = cidrFromIPNet(ipConf.Address.IP, ipConf.Address.Mask)
 		}
 	}
 	if ipv4 == "" || ipv6 == "" {
@@ -116,10 +125,10 @@ func (n *NodeHandle) AllocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6
 	return ipv4, cidrv4, ipv6, cidrv6
 }
 
-// AllocateDualStackPod calls CNI CmdAdd on the primary node returning both
+// AllocateDualStackPod calls CNI CmdAdd on the default node returning both
 // IPv4 and IPv6 addresses.
 func (f *Fixture) AllocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6 string) {
-	return f.nodes[PrimaryNodeName].AllocateDualStackPod(id)
+	return f.DefaultNode().AllocateDualStackPod(id)
 }
 
 // TryAllocatePod calls the CNI plugin's CmdAdd workflow and returns the error
@@ -142,7 +151,7 @@ func (n *NodeHandle) TryAllocatePod(id string) (cidr string, err error) {
 	if n.fixture.cfg.stackType == StackTypeIPv6Only {
 		for _, ipConf := range result.IPs {
 			if ipConf.Address.IP.To4() == nil {
-				cidr = (&net.IPNet{IP: ipConf.Address.IP.Mask(ipConf.Address.Mask), Mask: ipConf.Address.Mask}).String()
+				cidr = cidrFromIPNet(ipConf.Address.IP, ipConf.Address.Mask)
 				return cidr, nil
 			}
 		}
@@ -151,16 +160,16 @@ func (n *NodeHandle) TryAllocatePod(id string) (cidr string, err error) {
 
 	for _, ipConf := range result.IPs {
 		if ipConf.Address.IP.To4() != nil {
-			cidr = (&net.IPNet{IP: ipConf.Address.IP.Mask(ipConf.Address.Mask), Mask: ipConf.Address.Mask}).String()
+			cidr = cidrFromIPNet(ipConf.Address.IP, ipConf.Address.Mask)
 			return cidr, nil
 		}
 	}
 	return "", fmt.Errorf("no matching IP found in CNI result")
 }
 
-// TryAllocatePod calls the CNI plugin's CmdAdd workflow on the primary node.
+// TryAllocatePod calls the CNI plugin's CmdAdd workflow on the default node.
 func (f *Fixture) TryAllocatePod(id string) (cidr string, err error) {
-	return f.nodes[PrimaryNodeName].TryAllocatePod(id)
+	return f.DefaultNode().TryAllocatePod(id)
 }
 
 // DeletePod invokes the CNI plugin's CmdDel workflow to deallocate a pod's IP.
@@ -180,9 +189,9 @@ func (n *NodeHandle) DeletePod(id string) {
 	}
 }
 
-// DeletePod invokes the CNI plugin's CmdDel workflow on the primary node.
+// DeletePod invokes the CNI plugin's CmdDel workflow on the default node.
 func (f *Fixture) DeletePod(id string) {
-	f.nodes[PrimaryNodeName].DeletePod(id)
+	f.DefaultNode().DeletePod(id)
 }
 
 // BlockState queries this node's SQLite database directly for the state of a
@@ -200,10 +209,10 @@ func (n *NodeHandle) BlockState(cidr string) store.CidrBlockState {
 	return store.CidrBlockState(state)
 }
 
-// BlockState queries the primary daemon's SQLite database directly for the
+// BlockState queries the default daemon's SQLite database directly for the
 // state of a CIDR block.
 func (f *Fixture) BlockState(cidr string) store.CidrBlockState {
-	return f.nodes[PrimaryNodeName].BlockState(cidr)
+	return f.DefaultNode().BlockState(cidr)
 }
 
 // IPv6BlockState queries this node's SQLite database for an IPv6 block's state.
@@ -220,10 +229,10 @@ func (n *NodeHandle) IPv6BlockState(cidr string) store.CidrBlockState {
 	return store.CidrBlockState(state)
 }
 
-// IPv6BlockState queries the primary daemon's SQLite database for an IPv6
+// IPv6BlockState queries the default daemon's SQLite database for an IPv6
 // block's state.
 func (f *Fixture) IPv6BlockState(cidr string) store.CidrBlockState {
-	return f.nodes[PrimaryNodeName].IPv6BlockState(cidr)
+	return f.DefaultNode().IPv6BlockState(cidr)
 }
 
 // BlockExists checks whether a CIDR block is present in this node's SQLite
@@ -238,10 +247,10 @@ func (n *NodeHandle) BlockExists(cidr string) bool {
 	return exists
 }
 
-// BlockExists checks whether a CIDR block is present in the primary daemon's
+// BlockExists checks whether a CIDR block is present in the default daemon's
 // SQLite store.
 func (f *Fixture) BlockExists(cidr string) bool {
-	return f.nodes[PrimaryNodeName].BlockExists(cidr)
+	return f.DefaultNode().BlockExists(cidr)
 }
 
 // BlockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block
@@ -257,9 +266,9 @@ func (n *NodeHandle) BlockAllocatedIPs(cidr string) int {
 }
 
 // BlockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block
-// on the primary node.
+// on the default node.
 func (f *Fixture) BlockAllocatedIPs(cidr string) int {
-	return f.nodes[PrimaryNodeName].BlockAllocatedIPs(cidr)
+	return f.DefaultNode().BlockAllocatedIPs(cidr)
 }
 
 // Usage returns the current IPv4 IP usage for the default network on this node.
@@ -273,9 +282,9 @@ func (n *NodeHandle) Usage() store.NetworkIPUsage {
 }
 
 // Usage returns the current IPv4 IP usage for the default network on the
-// primary node.
+// default node.
 func (f *Fixture) Usage() store.NetworkIPUsage {
-	return f.nodes[PrimaryNodeName].Usage()
+	return f.DefaultNode().Usage()
 }
 
 // IPv6Usage returns current IPv6 IP usage for the default network on this node.
@@ -289,9 +298,9 @@ func (n *NodeHandle) IPv6Usage() store.NetworkIPUsage {
 }
 
 // IPv6Usage returns current IPv6 IP usage for the default network on the
-// primary node.
+// default node.
 func (f *Fixture) IPv6Usage() store.NetworkIPUsage {
-	return f.nodes[PrimaryNodeName].IPv6Usage()
+	return f.DefaultNode().IPv6Usage()
 }
 
 // EqualSets checks if two string slices contain the same elements, regardless

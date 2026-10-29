@@ -131,9 +131,10 @@ func (n *NodeHandle) NNC() *nncv1.NodeNetworkConfig {
 	return nnc
 }
 
-// NNC fetches the current NodeNetworkConfig object from the fake clientset.
+// NNC fetches the current NodeNetworkConfig object from the fake clientset for
+// the default node.
 func (f *Fixture) NNC() *nncv1.NodeNetworkConfig {
-	return f.nodes[PrimaryNodeName].NNC()
+	return f.DefaultNode().NNC()
 }
 
 // StatusCIDRs extracts the CIDRs from NodeNetworkConfig.status.podCIDRs for
@@ -183,10 +184,10 @@ func (n *NodeHandle) SettledSpecPods() int32 {
 	return last
 }
 
-// SettledSpecPods polls until spec.allocations stops changing on primary node,
+// SettledSpecPods polls until spec.allocations stops changing on default node,
 // then returns the settled value.
 func (f *Fixture) SettledSpecPods() int32 {
-	return f.nodes[PrimaryNodeName].SettledSpecPods()
+	return f.DefaultNode().SettledSpecPods()
 }
 
 // ReleasableCIDRs extracts CIDRs from NodeNetworkConfig.spec.releasableCIDRs
@@ -216,9 +217,9 @@ func (n *NodeHandle) AddReleasableCIDR(cidr string) {
 }
 
 // AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs
-// on the primary node.
+// on the default node.
 func (f *Fixture) AddReleasableCIDR(cidr string) {
-	f.nodes[PrimaryNodeName].AddReleasableCIDR(cidr)
+	f.DefaultNode().AddReleasableCIDR(cidr)
 }
 
 // SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the
@@ -246,24 +247,30 @@ func (n *NodeHandle) SetAllocationsPods(pods int32) {
 }
 
 // SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the
-// default network on the primary node.
+// default network on the default node.
 func (f *Fixture) SetAllocationsPods(pods int32) {
-	f.nodes[PrimaryNodeName].SetAllocationsPods(pods)
+	f.DefaultNode().SetAllocationsPods(pods)
 }
 
-// NodeEvents returns the messages of the Events recorded against the node
+// NodeEvents returns the messages of the Events recorded against this node
 // with the given reason.
-func (f *Fixture) NodeEvents(reason string) []string {
-	f.t.Helper()
-	list, err := f.kubeClient.CoreV1().Events("").List(f.ctx, metav1.ListOptions{})
+func (n *NodeHandle) NodeEvents(reason string) []string {
+	n.fixture.t.Helper()
+	list, err := n.fixture.kubeClient.CoreV1().Events("").List(n.fixture.ctx, metav1.ListOptions{})
 	if err != nil {
-		f.t.Fatalf("failed to list events: %v", err)
+		n.fixture.t.Fatalf("failed to list events: %v", err)
 	}
 	var messages []string
 	for _, ev := range list.Items {
-		if ev.Reason == reason && ev.InvolvedObject.Kind == "Node" && ev.InvolvedObject.Name == PrimaryNodeName {
+		if ev.Reason == reason && ev.InvolvedObject.Kind == "Node" && ev.InvolvedObject.Name == n.name {
 			messages = append(messages, ev.Message)
 		}
 	}
 	return messages
+}
+
+// NodeEvents returns the messages of the Events recorded against the default
+// node with the given reason.
+func (f *Fixture) NodeEvents(reason string) []string {
+	return f.DefaultNode().NodeEvents(reason)
 }
