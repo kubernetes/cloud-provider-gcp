@@ -224,15 +224,12 @@ func (f *Fixture) Node(name string) *NodeHandle {
 // gRPC client.
 func (f *Fixture) AddNode(name string, initialCIDR ...string) *NodeHandle {
 	f.t.Helper()
-	nodeProviderID := fmt.Sprintf("gce://%s/%s/%s", Project, Zone, name)
-	nodeInstanceKey := meta.ZonalKey(name, Zone)
-
 	cidr := fmt.Sprintf("10.0.%d.0/28", len(f.nodes))
 	if len(initialCIDR) > 0 && initialCIDR[0] != "" {
 		cidr = initialCIDR[0]
 	}
 
-	return f.bootNode(name, nodeProviderID, nodeInstanceKey, cidr, f.cfg.initialIPv6CIDR, nil)
+	return f.bootNode(name, cidr, f.cfg.initialIPv6CIDR, nil)
 }
 
 // RestartDaemon stops the default node's running daemon process, starts a
@@ -246,25 +243,37 @@ func (f *Fixture) RestartDaemon() {
 // K8s Node and GCE Instance resources if needed, launches its Metis daemon
 // with dedicated storage and socket, connects via gRPC, initializes CNI
 // config, and registers cleanup hooks.
+//
+// Note on future multi-networking extension:
+// The integration harness currently provisions a single primary network
+// interface (nic0 attached to GCENetworkURL("default")). When end-to-end
+// multi-networking test scenarios are introduced, this harness can be
+// extended with a NetworkInterfaceConfig descriptor on FixtureConfig and
+// NodeHandle, allowing nodes to bind multiple network interfaces (nic0,
+// nic1, etc.) across distinct VPC networks, and parameterizing
+// GCEAliasRanges(iface...) and Usage(network...).
 func (f *Fixture) bootNode(
 	name string,
-	providerID string,
-	instanceKey *meta.Key,
 	initialIPv4 string,
 	initialIPv6 string,
 	dConfigModifier func(*daemon.Config),
 ) *NodeHandle {
 	f.t.Helper()
 
+	instanceKey := NodeInstanceKey(name)
+
 	// Ensure fake Node exists in Kubernetes.
-	if _, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, name, metav1.GetOptions{}); err != nil {
-		if _, err := f.kubeClient.CoreV1().Nodes().Create(f.ctx, &corev1.Node{
+	node, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, name, metav1.GetOptions{})
+	if err != nil {
+		node = &corev1.Node{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec:       corev1.NodeSpec{ProviderID: providerID},
-		}, metav1.CreateOptions{}); err != nil {
+			Spec:       corev1.NodeSpec{ProviderID: NodeProviderID(name)},
+		}
+		if _, err := f.kubeClient.CoreV1().Nodes().Create(f.ctx, node, metav1.CreateOptions{}); err != nil {
 			f.t.Fatalf("failed to create fake Node %s: %v", name, err)
 		}
 	}
+	providerID := node.Spec.ProviderID
 
 	// Ensure fake GCE Instance exists.
 	var aliasRanges []*compute.AliasIpRange
@@ -277,7 +286,7 @@ func (f *Fixture) bootNode(
 			Zone: Zone,
 			NetworkInterfaces: []*compute.NetworkInterface{{
 				Name:          "nic0",
-				Network:       NetworkURL,
+				Network:       DefaultNetworkURL,
 				Subnetwork:    "default",
 				AliasIpRanges: aliasRanges,
 			}},

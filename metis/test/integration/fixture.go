@@ -103,15 +103,45 @@ const (
 	AllocateTimeout = 20 * time.Second
 )
 
-// Default GCE identifiers derived from topology constants.
+// Default GCE identifiers and generator functions.
 var (
+	// DefaultNetworkURL is the fully-qualified resource URL of the default
+	// network.
+	DefaultNetworkURL = GCENetworkURL("default")
+
+	// NetworkURL is an alias for DefaultNetworkURL for backwards compatibility.
+	//
+	// Deprecated: prefer GCENetworkURL(networkName) or DefaultNetworkURL.
+	NetworkURL = DefaultNetworkURL
+
 	// ProviderID is the GCE provider ID of the default node.
-	ProviderID = fmt.Sprintf("gce://%s/%s/%s", Project, Zone, DefaultNodeName)
-	// NetworkURL is the fully-qualified resource URL of the default network.
-	NetworkURL = fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/default", Project)
+	//
+	// Deprecated: prefer NodeProviderID(nodeName) or node.ProviderID().
+	ProviderID = NodeProviderID(DefaultNodeName)
+
 	// InstanceKey is the zonal compute metadata key for the default node.
-	InstanceKey = meta.ZonalKey(DefaultNodeName, Zone)
+	//
+	// Deprecated: prefer NodeInstanceKey(nodeName) or node.InstanceKey().
+	InstanceKey = NodeInstanceKey(DefaultNodeName)
 )
+
+// NodeProviderID returns the canonical GCE provider ID for any node in the
+// test cluster.
+func NodeProviderID(nodeName string) string {
+	return fmt.Sprintf("gce://%s/%s/%s", Project, Zone, nodeName)
+}
+
+// NodeInstanceKey returns the GCE compute metadata key for any node in the
+// test cluster.
+func NodeInstanceKey(nodeName string) *meta.Key {
+	return meta.ZonalKey(nodeName, Zone)
+}
+
+// GCENetworkURL returns the fully-qualified GCE resource URL for any VPC
+// network in the test project.
+func GCENetworkURL(networkName string) string {
+	return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s", Project, networkName)
+}
 
 // StackType defines the IP address family configuration of the cluster and
 // node.
@@ -249,7 +279,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 	t.Cleanup(cancel)
 
 	cfg := FixtureConfig{
-		nodeProviderID:  ProviderID,
+		nodeProviderID:  NodeProviderID(DefaultNodeName),
 		stackType:       StackTypeIPv4,
 		initialIPv4CIDR: InitialPodCIDR,
 		initialIPv6CIDR: InitialPodCIDRv6,
@@ -284,7 +314,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 	values := gce.DefaultTestClusterValues()
 	values.ProjectID = Project
 	values.ZoneName = Zone
-	values.NetworkURL = NetworkURL
+	values.NetworkURL = DefaultNetworkURL
 	f.gce = gce.NewFakeGCECloud(values)
 
 	mockInstances, ok := f.gce.Compute().BetaInstances().(*gcloud.MockBetaInstances)
@@ -299,12 +329,12 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 		initialAliasRanges = []*compute.AliasIpRange{{IpCidrRange: cfg.initialIPv4CIDR}}
 	}
 
-	if err := f.gce.Compute().Instances().Insert(ctx, InstanceKey, &compute.Instance{
+	if err := f.gce.Compute().Instances().Insert(ctx, NodeInstanceKey(DefaultNodeName), &compute.Instance{
 		Name: DefaultNodeName,
 		Zone: Zone,
 		NetworkInterfaces: []*compute.NetworkInterface{{
 			Name:          "nic0",
-			Network:       NetworkURL,
+			Network:       DefaultNetworkURL,
 			Subnetwork:    "default",
 			AliasIpRanges: initialAliasRanges,
 		}},
@@ -333,8 +363,6 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 	// --- Default Node & Daemon ------------------------------------------------
 	f.bootNode(
 		DefaultNodeName,
-		cfg.nodeProviderID,
-		InstanceKey,
 		cfg.initialIPv4CIDR,
 		cfg.initialIPv6CIDR,
 		cfg.daemonConfigModifier,
