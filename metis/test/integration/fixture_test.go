@@ -30,8 +30,10 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -42,6 +44,7 @@ import (
 	nncfake "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned/fake"
 	gcloud "github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	cnitypes "github.com/containernetworking/cni/pkg/types"
 	"github.com/go-logr/logr"
 	compute "google.golang.org/api/compute/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -54,6 +57,7 @@ import (
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	pb "k8s.io/metis/api/adaptiveipam/v1"
 	metispkg "k8s.io/metis/pkg"
+	"k8s.io/metis/pkg/cni"
 	"k8s.io/metis/pkg/daemon"
 	"k8s.io/metis/pkg/store"
 )
@@ -104,17 +108,72 @@ const (
 
 // nodeHandle encapsulates node-specific clients, store, and daemon lifecycle for a node.
 type nodeHandle struct {
-	name         string
-	providerID   string
-	instanceKey  *meta.Key
-	daemonConfig daemon.Config
-	daemonCtx    context.Context
-	daemonCancel context.CancelFunc
-	daemonDone   chan struct{}
-	daemonConn   io.Closer
-	ipam         pb.AdaptiveIpamClient
-	store        *store.Store
-	fixture      *fixture
+	name            string
+	providerID      string
+	instanceKey     *meta.Key
+	daemonConfig    daemon.Config
+	daemonCtx       context.Context
+	daemonCancel    context.CancelFunc
+	daemonDone      chan struct{}
+	daemonConn      io.Closer
+	ipam            pb.AdaptiveIpamClient
+	cniPlugin       *cni.Plugin
+	cniNetConf      []byte
+	initialIPv4CIDR string
+	initialIPv6CIDR string
+	store           *store.Store
+	fixture         *fixture
+}
+
+// initCNI initializes the node's CNI plugin instance and serializes its standard CNI network config JSON.
+func (n *nodeHandle) initCNI() {
+	logPath := filepath.Join(filepath.Dir(n.daemonConfig.DBPath), "metis-cni.log")
+	n.cniPlugin = cni.NewPlugin(
+		cni.WithSocketPath(n.daemonConfig.SocketPath),
+		cni.WithDBPath(n.daemonConfig.DBPath),
+		cni.WithLogFile(logPath),
+	)
+
+	var ranges [][]cni.SubnetRange
+	var routes []cni.Route
+
+	if n.fixture.cfg.stackType != StackTypeIPv6Only && n.initialIPv4CIDR != "" {
+		_, v4Net, err := net.ParseCIDR(n.initialIPv4CIDR)
+		if err != nil {
+			n.fixture.t.Fatalf("invalid initial IPv4 CIDR %s on node %s: %v", n.initialIPv4CIDR, n.name, err)
+		}
+		ranges = append(ranges, []cni.SubnetRange{{Subnet: cnitypes.IPNet(*v4Net)}})
+		routes = append(routes, cni.Route{Dst: "0.0.0.0/0"})
+	}
+	if (n.fixture.cfg.stackType == StackTypeDualStack || n.fixture.cfg.stackType == StackTypeIPv6Only) && n.initialIPv6CIDR != "" {
+		_, v6Net, err := net.ParseCIDR(n.initialIPv6CIDR)
+		if err != nil {
+			n.fixture.t.Fatalf("invalid initial IPv6 CIDR %s on node %s: %v", n.initialIPv6CIDR, n.name, err)
+		}
+		ranges = append(ranges, []cni.SubnetRange{{Subnet: cnitypes.IPNet(*v6Net)}})
+		routes = append(routes, cni.Route{Dst: "::/0"})
+	}
+
+	conf := cni.PluginConf{
+		PluginConf: cnitypes.PluginConf{
+			CNIVersion: "0.3.1",
+			Name:       "gke-pod-network",
+			Type:       "metis",
+		},
+		DaemonSocket: n.daemonConfig.SocketPath,
+		DBPath:       n.daemonConfig.DBPath,
+		LogFile:      logPath,
+		IPAM: cni.IPAM{
+			Ranges: ranges,
+			Routes: routes,
+		},
+	}
+
+	data, err := json.Marshal(conf)
+	if err != nil {
+		n.fixture.t.Fatalf("failed to marshal CNI config for node %s: %v", n.name, err)
+	}
+	n.cniNetConf = data
 }
 
 // fixture orchestrates an integration test environment, coupling simulated K8s
@@ -375,18 +434,21 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	f.store = s
 
 	primaryHandle := &nodeHandle{
-		name:         nodeName,
-		providerID:   providerID,
-		instanceKey:  instanceKey,
-		daemonConfig: dConfig,
-		daemonCtx:    daemonCtx,
-		daemonCancel: daemonCancel,
-		daemonDone:   daemonDone,
-		daemonConn:   conn,
-		ipam:         f.ipam,
-		store:        s,
-		fixture:      f,
+		name:            nodeName,
+		providerID:      providerID,
+		instanceKey:     instanceKey,
+		daemonConfig:    dConfig,
+		daemonCtx:       daemonCtx,
+		daemonCancel:    daemonCancel,
+		daemonDone:      daemonDone,
+		daemonConn:      conn,
+		ipam:            f.ipam,
+		initialIPv4CIDR: f.cfg.initialIPv4CIDR,
+		initialIPv6CIDR: f.cfg.initialIPv6CIDR,
+		store:           s,
+		fixture:         f,
 	}
+	primaryHandle.initCNI()
 	f.nodes[nodeName] = primaryHandle
 
 	return f
@@ -487,18 +549,21 @@ func (f *fixture) addNode(name string, initialCIDR ...string) *nodeHandle {
 	}
 
 	nh := &nodeHandle{
-		name:         name,
-		providerID:   nodeProviderID,
-		instanceKey:  nodeInstanceKey,
-		daemonConfig: dConfig,
-		daemonCtx:    daemonCtx,
-		daemonCancel: daemonCancel,
-		daemonDone:   daemonDone,
-		daemonConn:   conn,
-		ipam:         pb.NewAdaptiveIpamClient(conn),
-		store:        s,
-		fixture:      f,
+		name:            name,
+		providerID:      nodeProviderID,
+		instanceKey:     nodeInstanceKey,
+		daemonConfig:    dConfig,
+		daemonCtx:       daemonCtx,
+		daemonCancel:    daemonCancel,
+		daemonDone:      daemonDone,
+		daemonConn:      conn,
+		ipam:            pb.NewAdaptiveIpamClient(conn),
+		initialIPv4CIDR: cidr,
+		initialIPv6CIDR: f.cfg.initialIPv6CIDR,
+		store:           s,
+		fixture:         f,
 	}
+	nh.initCNI()
 
 	f.t.Cleanup(func() {
 		if nh.daemonCancel != nil {
