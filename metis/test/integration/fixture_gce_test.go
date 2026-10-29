@@ -69,12 +69,12 @@ func (f *fixture) resolveAliasRanges(ranges []*computebeta.AliasIpRange) []*comp
 }
 
 // gceAliasRanges returns the CIDRs of all alias IP ranges currently attached
-// to the fake GCE instance's primary interface.
-func (f *fixture) gceAliasRanges() []string {
-	f.t.Helper()
-	inst, err := f.gce.Compute().BetaInstances().Get(f.ctx, instanceKey)
+// to this node's GCE instance primary interface.
+func (n *nodeHandle) gceAliasRanges() []string {
+	n.fixture.t.Helper()
+	inst, err := n.fixture.gce.Compute().BetaInstances().Get(n.fixture.ctx, n.instanceKey)
 	if err != nil {
-		f.t.Fatalf("failed to get fake GCE instance: %v", err)
+		n.fixture.t.Fatalf("failed to get fake GCE instance for %s: %v", n.name, err)
 	}
 	for _, iface := range inst.NetworkInterfaces {
 		if iface.Name == "nic0" {
@@ -88,22 +88,32 @@ func (f *fixture) gceAliasRanges() []string {
 	return nil
 }
 
-// gceANEs returns all active AliasNetworkEndpoint resources attached to this instance.
-func (f *fixture) gceANEs() []*computepreview.AliasNetworkEndpoint {
-	f.t.Helper()
-	anes, err := f.gce.ListAliasNetworkEndpoints(f.ctx, providerID)
+// gceAliasRanges returns the CIDRs of all alias IP ranges currently attached
+// to the fake GCE instance's primary interface.
+func (f *fixture) gceAliasRanges() []string {
+	return f.nodes[nodeName].gceAliasRanges()
+}
+
+// gceANEs returns all active AliasNetworkEndpoint resources attached to this node.
+func (n *nodeHandle) gceANEs() []*computepreview.AliasNetworkEndpoint {
+	n.fixture.t.Helper()
+	anes, err := n.fixture.gce.ListAliasNetworkEndpoints(n.fixture.ctx, n.providerID)
 	if err != nil {
-		f.t.Fatalf("failed to list ANEs: %v", err)
+		n.fixture.t.Fatalf("failed to list ANEs for %s: %v", n.name, err)
 	}
 	return anes
 }
 
-// gceCIDRs returns all active pod CIDRs attached to the instance across both
+// gceANEs returns all active AliasNetworkEndpoint resources attached to the primary instance.
+func (f *fixture) gceANEs() []*computepreview.AliasNetworkEndpoint {
+	return f.nodes[nodeName].gceANEs()
+}
+
+// gceCIDRs returns all active pod CIDRs attached to this node across both
 // VM alias IP ranges and AliasNetworkEndpoints.
-func (f *fixture) gceCIDRs() []string {
-	f.t.Helper()
-	ranges := f.gceAliasRanges()
-	for _, ane := range f.gceANEs() {
+func (n *nodeHandle) gceCIDRs() []string {
+	ranges := n.gceAliasRanges()
+	for _, ane := range n.gceANEs() {
 		for _, alias := range ane.Aliases {
 			if alias.EffectiveIpAddress != "" {
 				ranges = append(ranges, alias.EffectiveIpAddress+"/32")
@@ -111,6 +121,12 @@ func (f *fixture) gceCIDRs() []string {
 		}
 	}
 	return ranges
+}
+
+// gceCIDRs returns all active pod CIDRs attached to the primary instance across both
+// VM alias IP ranges and AliasNetworkEndpoints.
+func (f *fixture) gceCIDRs() []string {
+	return f.nodes[nodeName].gceCIDRs()
 }
 
 // updateNodeProviderID updates the Node's Spec.ProviderID in the fake kube client.

@@ -119,14 +119,19 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 	})
 }
 
-// nnc fetches the current NodeNetworkConfig object from the fake clientset.
-func (f *fixture) nnc() *nncv1.NodeNetworkConfig {
-	f.t.Helper()
-	nnc, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Get(f.ctx, nodeName, metav1.GetOptions{})
+// nnc fetches the current NodeNetworkConfig object for this node from the fake clientset.
+func (n *nodeHandle) nnc() *nncv1.NodeNetworkConfig {
+	n.fixture.t.Helper()
+	nnc, err := n.fixture.nncClient.NetworkingV1().NodeNetworkConfigs().Get(n.fixture.ctx, n.name, metav1.GetOptions{})
 	if err != nil {
-		f.t.Fatalf("failed to get NodeNetworkConfig: %v", err)
+		n.fixture.t.Fatalf("failed to get NodeNetworkConfig for %s: %v", n.name, err)
 	}
 	return nnc
+}
+
+// nnc fetches the current NodeNetworkConfig object from the fake clientset.
+func (f *fixture) nnc() *nncv1.NodeNetworkConfig {
+	return f.nodes[nodeName].nnc()
 }
 
 // statusCIDRs extracts the CIDRs from NodeNetworkConfig.status.podCIDRs for the default network.
@@ -156,21 +161,26 @@ func specPods(nnc *nncv1.NodeNetworkConfig) int32 {
 }
 
 // settledSpecPods polls until spec.allocations stops changing, then returns the settled value.
-func (f *fixture) settledSpecPods() int32 {
-	f.t.Helper()
+func (n *nodeHandle) settledSpecPods() int32 {
+	n.fixture.t.Helper()
 	var last int32 = -1
-	f.eventually("spec.allocations settles", func() (bool, string) {
-		current := specPods(f.nnc())
+	n.fixture.eventually(fmt.Sprintf("spec.allocations settles on %s", n.name), func() (bool, string) {
+		current := specPods(n.nnc())
 		if current == last && current > 0 {
 			return true, fmt.Sprintf("settled at %d", current)
 		}
 		last = current
 		return false, fmt.Sprintf("still changing: %d", current)
 	})
-	f.consistently("spec.allocations stays at settled value", 200*time.Millisecond, func() (bool, string) {
-		return specPods(f.nnc()) == last, fmt.Sprintf("spec=%d want=%d", specPods(f.nnc()), last)
+	n.fixture.consistently(fmt.Sprintf("spec.allocations stays at settled value on %s", n.name), 200*time.Millisecond, func() (bool, string) {
+		return specPods(n.nnc()) == last, fmt.Sprintf("spec=%d want=%d", specPods(n.nnc()), last)
 	})
 	return last
+}
+
+// settledSpecPods polls until spec.allocations stops changing on primary node, then returns the settled value.
+func (f *fixture) settledSpecPods() int32 {
+	return f.nodes[nodeName].settledSpecPods()
 }
 
 // releasableCIDRs extracts CIDRs from NodeNetworkConfig.spec.releasableCIDRs for the default network.
@@ -184,23 +194,28 @@ func releasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	return cidrs
 }
 
-// addReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs.
-func (f *fixture) addReleasableCIDR(cidr string) {
-	f.t.Helper()
-	nnc := f.nnc().DeepCopy()
+// addReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs for this node.
+func (n *nodeHandle) addReleasableCIDR(cidr string) {
+	n.fixture.t.Helper()
+	nnc := n.nnc().DeepCopy()
 	nnc.Spec.ReleasableCIDRs = append(nnc.Spec.ReleasableCIDRs, nncv1.PodCIDR{
 		Network: network,
 		CIDR:    cidr,
 	})
-	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Update(f.ctx, nnc, metav1.UpdateOptions{}); err != nil {
-		f.t.Fatalf("failed to add releasable CIDR %s: %v", cidr, err)
+	if _, err := n.fixture.nncClient.NetworkingV1().NodeNetworkConfigs().Update(n.fixture.ctx, nnc, metav1.UpdateOptions{}); err != nil {
+		n.fixture.t.Fatalf("failed to add releasable CIDR %s on %s: %v", cidr, n.name, err)
 	}
 }
 
-// setAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network.
-func (f *fixture) setAllocationsPods(pods int32) {
-	f.t.Helper()
-	nnc := f.nnc().DeepCopy()
+// addReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs on the primary node.
+func (f *fixture) addReleasableCIDR(cidr string) {
+	f.nodes[nodeName].addReleasableCIDR(cidr)
+}
+
+// setAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on this node.
+func (n *nodeHandle) setAllocationsPods(pods int32) {
+	n.fixture.t.Helper()
+	nnc := n.nnc().DeepCopy()
 	found := false
 	for i, a := range nnc.Spec.Allocations {
 		if a.Network == network {
@@ -215,9 +230,14 @@ func (f *fixture) setAllocationsPods(pods int32) {
 			Pods:    pods,
 		})
 	}
-	if _, err := f.nncClient.NetworkingV1().NodeNetworkConfigs().Update(f.ctx, nnc, metav1.UpdateOptions{}); err != nil {
-		f.t.Fatalf("failed to set allocations pods to %d: %v", pods, err)
+	if _, err := n.fixture.nncClient.NetworkingV1().NodeNetworkConfigs().Update(n.fixture.ctx, nnc, metav1.UpdateOptions{}); err != nil {
+		n.fixture.t.Fatalf("failed to set allocations pods to %d on %s: %v", pods, n.name, err)
 	}
+}
+
+// setAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on the primary node.
+func (f *fixture) setAllocationsPods(pods int32) {
+	f.nodes[nodeName].setAllocationsPods(pods)
 }
 
 // nodeEvents returns the messages of the Events recorded against the node with the given reason.

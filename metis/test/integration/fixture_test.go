@@ -69,6 +69,9 @@ const (
 	// CCM, which is what makes bootstrap interesting.
 	initialPodCIDR = "10.0.0.0/28"
 
+	// initialPodCIDRv6 is the default initial IPv6 prefix used for DualStack and IPv6Only modes.
+	initialPodCIDRv6 = "2001:db8:1::/112"
+
 	// The daemon reserves the first two and the last IP of the first block of a
 	// network, so a /28 initial block yields 13 allocatable IPs.
 	initialUsableIPs = 13
@@ -87,11 +90,39 @@ var (
 	instanceKey = meta.ZonalKey(nodeName, zone)
 )
 
+// StackType defines the IP address family configuration of the cluster and node.
+type StackType string
+
+const (
+	// StackTypeIPv4 allocates and manages only IPv4 addresses.
+	StackTypeIPv4 StackType = "IPv4"
+	// StackTypeDualStack allocates and manages both IPv4 and IPv6 addresses.
+	StackTypeDualStack StackType = "DualStack"
+	// StackTypeIPv6Only allocates and manages only IPv6 addresses.
+	StackTypeIPv6Only StackType = "IPv6Only"
+)
+
+// nodeHandle encapsulates node-specific clients, store, and daemon lifecycle for a node.
+type nodeHandle struct {
+	name         string
+	providerID   string
+	instanceKey  *meta.Key
+	daemonConfig daemon.Config
+	daemonCtx    context.Context
+	daemonCancel context.CancelFunc
+	daemonDone   chan struct{}
+	daemonConn   io.Closer
+	ipam         pb.AdaptiveIpamClient
+	store        *store.Store
+	fixture      *fixture
+}
+
 // fixture orchestrates an integration test environment, coupling simulated K8s
 // and GCE backends with live CCM controllers and a running Metis daemon instance.
 type fixture struct {
 	t   *testing.T
 	ctx context.Context
+	cfg fixtureConfig
 
 	kubeClient    *k8sfake.Clientset
 	nncClient     *nncfake.Clientset
@@ -113,18 +144,44 @@ type fixture struct {
 	daemonCancel context.CancelFunc
 	daemonDone   chan struct{}
 	daemonConn   io.Closer
+
+	nodes map[string]*nodeHandle
 }
 
 // fixtureConfig stores configuration options for initializing a test fixture.
 type fixtureConfig struct {
 	nodeProviderID       string
 	backendType          dynamicpodip.BackendType
+	stackType            StackType
+	initialIPv4CIDR      string
+	initialIPv6CIDR      string
 	daemonConfigModifier func(*daemon.Config)
 	nncReactors          []customReactor
 }
 
 // fixtureOption configures a fixtureConfig during test fixture initialization.
 type fixtureOption func(*fixtureConfig)
+
+// withStackType sets the cluster stack configuration (IPv4, DualStack, or IPv6Only).
+func withStackType(st StackType) fixtureOption {
+	return func(cfg *fixtureConfig) {
+		cfg.stackType = st
+	}
+}
+
+// withInitialAliasIP configures a custom initial IPv4 alias IP range on the primary interface.
+func withInitialAliasIP(cidr string) fixtureOption {
+	return func(cfg *fixtureConfig) {
+		cfg.initialIPv4CIDR = cidr
+	}
+}
+
+// withInitialPodCIDRv6 configures a custom initial IPv6 CIDR prefix for dual-stack or IPv6-only modes.
+func withInitialPodCIDRv6(cidr string) fixtureOption {
+	return func(cfg *fixtureConfig) {
+		cfg.initialIPv6CIDR = cidr
+	}
+}
 
 // withNodeProviderID sets the ProviderID on the simulated Node object.
 // Passing an empty string simulates an uninitialized or NotReady node.
@@ -174,7 +231,10 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	t.Cleanup(cancel)
 
 	cfg := fixtureConfig{
-		nodeProviderID: providerID,
+		nodeProviderID:  providerID,
+		stackType:       StackTypeIPv4,
+		initialIPv4CIDR: initialPodCIDR,
+		initialIPv6CIDR: initialPodCIDRv6,
 	}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -183,8 +243,10 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	f := &fixture{
 		t:          t,
 		ctx:        ctx,
+		cfg:        cfg,
 		kubeClient: k8sfake.NewSimpleClientset(),
 		nncClient:  nncfake.NewSimpleClientset(),
+		nodes:      make(map[string]*nodeHandle),
 	}
 
 	emulateAPIServerSemantics(f.nncClient)
@@ -214,6 +276,11 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	f.mockInstances = mockInstances
 	mockInstances.UpdateNetworkInterfaceHook = f.updateNetworkInterfaceHook
 
+	var initialAliasRanges []*compute.AliasIpRange
+	if cfg.stackType != StackTypeIPv6Only && cfg.initialIPv4CIDR != "" {
+		initialAliasRanges = []*compute.AliasIpRange{{IpCidrRange: cfg.initialIPv4CIDR}}
+	}
+
 	if err := f.gce.Compute().Instances().Insert(ctx, instanceKey, &compute.Instance{
 		Name: nodeName,
 		Zone: zone,
@@ -221,7 +288,7 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 			Name:          "nic0",
 			Network:       networkURL,
 			Subnetwork:    "default",
-			AliasIpRanges: []*compute.AliasIpRange{{IpCidrRange: initialPodCIDR}},
+			AliasIpRanges: initialAliasRanges,
 		}},
 	}); err != nil {
 		t.Fatalf("failed to insert fake GCE instance: %v", err)
@@ -307,7 +374,146 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	t.Cleanup(func() { _ = s.Close() })
 	f.store = s
 
+	primaryHandle := &nodeHandle{
+		name:         nodeName,
+		providerID:   providerID,
+		instanceKey:  instanceKey,
+		daemonConfig: dConfig,
+		daemonCtx:    daemonCtx,
+		daemonCancel: daemonCancel,
+		daemonDone:   daemonDone,
+		daemonConn:   conn,
+		ipam:         f.ipam,
+		store:        s,
+		fixture:      f,
+	}
+	f.nodes[nodeName] = primaryHandle
+
 	return f
+}
+
+// primaryNode returns the handle for the cluster's primary node.
+func (f *fixture) primaryNode() *nodeHandle {
+	return f.nodes[nodeName]
+}
+
+// node returns the handle for a specific node in the cluster by name.
+func (f *fixture) node(name string) *nodeHandle {
+	return f.nodes[name]
+}
+
+// addNode spins up an additional simulated Node in the cluster with its own GCE
+// instance, its own Metis daemon instance, its own SQLite database, and gRPC client.
+func (f *fixture) addNode(name string, initialCIDR ...string) *nodeHandle {
+	f.t.Helper()
+	nodeProviderID := fmt.Sprintf("gce://%s/%s/%s", project, zone, name)
+	nodeInstanceKey := meta.ZonalKey(name, zone)
+
+	// Create Node in Kubernetes
+	if _, err := f.kubeClient.CoreV1().Nodes().Create(f.ctx, &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec:       corev1.NodeSpec{ProviderID: nodeProviderID},
+	}, metav1.CreateOptions{}); err != nil {
+		f.t.Fatalf("failed to create node %s: %v", name, err)
+	}
+
+	cidr := fmt.Sprintf("10.0.%d.0/28", len(f.nodes))
+	if len(initialCIDR) > 0 && initialCIDR[0] != "" {
+		cidr = initialCIDR[0]
+	}
+
+	var aliasRanges []*compute.AliasIpRange
+	if f.cfg.stackType != StackTypeIPv6Only && cidr != "" {
+		aliasRanges = []*compute.AliasIpRange{{IpCidrRange: cidr}}
+	}
+
+	if err := f.gce.Compute().Instances().Insert(f.ctx, nodeInstanceKey, &compute.Instance{
+		Name: name,
+		Zone: zone,
+		NetworkInterfaces: []*compute.NetworkInterface{{
+			Name:          "nic0",
+			Network:       networkURL,
+			Subnetwork:    "default",
+			AliasIpRanges: aliasRanges,
+		}},
+	}); err != nil {
+		f.t.Fatalf("failed to insert GCE instance for node %s: %v", name, err)
+	}
+
+	nodeDir := f.t.TempDir()
+	dbPath := filepath.Join(nodeDir, "metis.sqlite")
+	socketPath := filepath.Join(nodeDir, "metis.sock")
+
+	dConfig := daemon.Config{
+		DBPath:                          dbPath,
+		SocketPath:                      socketPath,
+		MonitorInterval:                 monitorInterval,
+		ReleaseCooldown:                 100 * time.Millisecond,
+		DrainingExpiration:              200 * time.Millisecond,
+		SustainedLowUtilizationDuration: 100 * time.Millisecond,
+		LowUtilizationThreshold:         0.3,
+	}
+
+	daemonCtx, daemonCancel := context.WithCancel(f.ctx)
+	daemonDone := make(chan struct{})
+
+	// Set NODE_NAME temporarily so the daemon initializes with this node's name
+	f.t.Setenv("NODE_NAME", name)
+
+	d := daemon.NewDaemon(dConfig)
+	d.NNCClient = f.nncClient
+	d.KubeClient = f.kubeClient
+
+	go func() {
+		defer close(daemonDone)
+		if err := d.Run(daemonCtx); err != nil && daemonCtx.Err() == nil {
+			f.t.Errorf("daemon for node %s exited with error: %v", name, err)
+		}
+	}()
+
+	f.eventually(fmt.Sprintf("daemon socket for node %s is ready", name), func() (bool, string) {
+		_, err := os.Stat(socketPath)
+		return err == nil, fmt.Sprintf("stat %s: %v", socketPath, err)
+	})
+
+	conn, err := metispkg.NewLocalGrpcConnection(socketPath)
+	if err != nil {
+		f.t.Fatalf("failed to connect to daemon socket for node %s: %v", name, err)
+	}
+
+	s, err := store.NewStore(f.ctx, logr.Discard(), dbPath)
+	if err != nil {
+		f.t.Fatalf("failed to open store handle for node %s: %v", name, err)
+	}
+
+	nh := &nodeHandle{
+		name:         name,
+		providerID:   nodeProviderID,
+		instanceKey:  nodeInstanceKey,
+		daemonConfig: dConfig,
+		daemonCtx:    daemonCtx,
+		daemonCancel: daemonCancel,
+		daemonDone:   daemonDone,
+		daemonConn:   conn,
+		ipam:         pb.NewAdaptiveIpamClient(conn),
+		store:        s,
+		fixture:      f,
+	}
+
+	f.t.Cleanup(func() {
+		if nh.daemonCancel != nil {
+			nh.daemonCancel()
+		}
+		if nh.daemonConn != nil {
+			_ = nh.daemonConn.Close()
+		}
+		if nh.store != nil {
+			_ = nh.store.Close()
+		}
+	})
+
+	f.nodes[name] = nh
+	return nh
 }
 
 // restartDaemon stops the running daemon process, closes its gRPC connection,
@@ -351,6 +557,13 @@ func (f *fixture) restartDaemon() {
 	}
 	f.daemonConn = conn
 	f.ipam = pb.NewAdaptiveIpamClient(conn)
+	if pNode, ok := f.nodes[nodeName]; ok {
+		pNode.daemonCtx = daemonCtx
+		pNode.daemonCancel = daemonCancel
+		pNode.daemonDone = daemonDone
+		pNode.daemonConn = conn
+		pNode.ipam = f.ipam
+	}
 }
 
 // eventually polls cond until it returns true or eventuallyMax elapses.
