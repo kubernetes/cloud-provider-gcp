@@ -30,6 +30,7 @@ import (
 	clientgotesting "k8s.io/client-go/testing"
 )
 
+// customReactor stores a client-go reaction rule to prepend to the fake NNC clientset.
 type customReactor struct {
 	verb     string
 	resource string

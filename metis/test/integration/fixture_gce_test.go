@@ -54,6 +54,8 @@ func (f *fixture) updateNetworkInterfaceHook(_ context.Context, key *meta.Key, i
 	return fmt.Errorf("network interface %q not found on mock instance %v", ifaceName, key)
 }
 
+// resolveAliasRanges translates netmask-only placeholders (e.g. "/28") into
+// concrete mock IP ranges (e.g. "10.100.0.0/28") to simulate GCE IPAM allocation.
 func (f *fixture) resolveAliasRanges(ranges []*computebeta.AliasIpRange) []*computebeta.AliasIpRange {
 	resolved := make([]*computebeta.AliasIpRange, 0, len(ranges))
 	for _, r := range ranges {

@@ -87,6 +87,8 @@ var (
 	instanceKey = meta.ZonalKey(nodeName, zone)
 )
 
+// fixture orchestrates an integration test environment, coupling simulated K8s
+// and GCE backends with live CCM controllers and a running Metis daemon instance.
 type fixture struct {
 	t   *testing.T
 	ctx context.Context
@@ -113,6 +115,7 @@ type fixture struct {
 	daemonConn   io.Closer
 }
 
+// fixtureConfig stores configuration options for initializing a test fixture.
 type fixtureConfig struct {
 	nodeProviderID       string
 	backendType          dynamicpodip.BackendType
@@ -120,26 +123,35 @@ type fixtureConfig struct {
 	nncReactors          []customReactor
 }
 
+// fixtureOption configures a fixtureConfig during test fixture initialization.
 type fixtureOption func(*fixtureConfig)
 
+// withNodeProviderID sets the ProviderID on the simulated Node object.
+// Passing an empty string simulates an uninitialized or NotReady node.
 func withNodeProviderID(id string) fixtureOption {
 	return func(cfg *fixtureConfig) {
 		cfg.nodeProviderID = id
 	}
 }
 
+// withBackend configures whether the dynamic pod IP controllers run in
+// Alias IP or Alias Network Endpoint (ANE) mode.
 func withBackend(backend dynamicpodip.BackendType) fixtureOption {
 	return func(cfg *fixtureConfig) {
 		cfg.backendType = backend
 	}
 }
 
+// withDaemonConfig allows caller tests to customize Metis daemon configuration
+// parameters (such as release cooldowns, monitor intervals, and thresholds).
 func withDaemonConfig(modifier func(*daemon.Config)) fixtureOption {
 	return func(cfg *fixtureConfig) {
 		cfg.daemonConfigModifier = modifier
 	}
 }
 
+// withPrependReactor registers a custom client-go reactor on the fake NNC clientset,
+// allowing tests to inject specific API errors (such as 409 Conflict) or intercept actions.
 func withPrependReactor(verb, resource string, reaction clientgotesting.ReactionFunc) fixtureOption {
 	return func(cfg *fixtureConfig) {
 		cfg.nncReactors = append(cfg.nncReactors, customReactor{
@@ -150,6 +162,12 @@ func withPrependReactor(verb, resource string, reaction clientgotesting.Reaction
 	}
 }
 
+// newFixture constructs and boots an isolated integration test environment containing
+// a simulated K8s cluster with fake core and NNC clientsets, a simulated GCE compute
+// environment with mock instance network interfaces, live CCM NodeNetworkConfig spec
+// and status controllers, and a live Metis daemon backed by a real SQLite store and
+// gRPC server. All background routines, sockets, and temporary files are automatically
+// cleaned up when the test finishes.
 func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
