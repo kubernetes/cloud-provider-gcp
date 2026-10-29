@@ -47,24 +47,6 @@ type customReactor struct {
 	reaction clientgotesting.ReactionFunc
 }
 
-// extractTargetName returns the target NodeNetworkConfig resource name from a
-// client-go action.
-func extractTargetName(action clientgotesting.Action) string {
-	switch a := action.(type) {
-	case clientgotesting.CreateAction:
-		if obj, ok := a.GetObject().(*nncv1.NodeNetworkConfig); ok {
-			return obj.Name
-		}
-	case clientgotesting.UpdateAction:
-		if obj, ok := a.GetObject().(*nncv1.NodeNetworkConfig); ok {
-			return obj.Name
-		}
-	case clientgotesting.PatchAction:
-		return a.GetName()
-	}
-	return ""
-}
-
 // emulateAPIServerSemantics installs a reactor on the fake NodeNetworkConfig
 // clientset that reproduces the three apiserver behaviours the controllers
 // depend on and the fake tracker does not implement:
@@ -80,34 +62,42 @@ func extractTargetName(action clientgotesting.Action) string {
 // Writes go through the tracker rather than back through the clientset, because
 // the clientset lock is held while a reactor runs.
 func emulateAPIServerSemantics(c *nncfake.Clientset) {
-	defaultReaction := clientgotesting.ObjectReaction(c.Tracker())
 	c.PrependReactor("*", "nodenetworkconfigs", func(action clientgotesting.Action) (bool, runtime.Object, error) {
-		name := extractTargetName(action)
-		if name == "" {
-			return false, nil, nil
-		}
-		gvr := action.GetResource()
-		ns := action.GetNamespace()
+		var (
+			gvr    = action.GetResource()
+			ns     = action.GetNamespace()
+			before *nncv1.NodeNetworkConfig
+			after  *nncv1.NodeNetworkConfig
+		)
 
-		// Retrieve current stored state to compare against.
-		var before *nncv1.NodeNetworkConfig
-		if existing, err := c.Tracker().Get(gvr, ns, name); err == nil {
-			before, _ = existing.(*nncv1.NodeNetworkConfig)
-		}
-
-		// Apply mutation with subresource isolation.
-		// A write to /status updates status while preserving the stored spec,
-		// preventing concurrent daemon spec updates from being clobbered by CCM.
-		var after *nncv1.NodeNetworkConfig
-		if action.GetVerb() == "update" && action.GetSubresource() == "status" && before != nil {
-			update, ok := action.(clientgotesting.UpdateAction)
+		switch action.GetVerb() {
+		case "create", "update":
+			objAct, ok := action.(interface{ GetObject() runtime.Object })
 			if !ok {
 				return false, nil, nil
 			}
-			after = update.GetObject().(*nncv1.NodeNetworkConfig).DeepCopy()
-			after.Spec = *before.Spec.DeepCopy()
-		} else {
-			handled, obj, err := defaultReaction(action)
+			obj, ok := objAct.GetObject().(*nncv1.NodeNetworkConfig)
+			if !ok {
+				return false, nil, nil
+			}
+			if existing, err := c.Tracker().Get(gvr, ns, obj.Name); err == nil {
+				before, _ = existing.(*nncv1.NodeNetworkConfig)
+			}
+			after = obj.DeepCopy()
+			// Status subresource isolation: a write to /status must preserve the stored spec.
+			if action.GetSubresource() == "status" && before != nil {
+				after.Spec = *before.Spec.DeepCopy()
+			}
+
+		case "patch":
+			patch, ok := action.(clientgotesting.PatchAction)
+			if !ok {
+				return false, nil, nil
+			}
+			if existing, err := c.Tracker().Get(gvr, ns, patch.GetName()); err == nil {
+				before, _ = existing.(*nncv1.NodeNetworkConfig)
+			}
+			handled, obj, err := clientgotesting.ObjectReaction(c.Tracker())(action)
 			if !handled || err != nil {
 				return handled, obj, err
 			}
@@ -116,10 +106,14 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 				return true, obj, nil
 			}
 			after = stored.DeepCopy()
+
+		default:
+			// Let client-go handle Get, List, Watch, Delete, etc.
+			return false, nil, nil
 		}
 
-		// ResourceVersion: increment on every write to simulate etcd mod_revision
-		// (the Metis watcher drops updates whose resourceVersion did not change).
+		// Metadata synthesis: resourceVersion changes on every write,
+		// and generation increments only when a non-status write modifies the spec.
 		prevRV, prevGen := 0, int64(0)
 		if before != nil {
 			prevRV, _ = strconv.Atoi(before.ResourceVersion)
@@ -127,8 +121,6 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 		}
 		after.ResourceVersion = strconv.Itoa(prevRV + 1)
 
-		// Generation: increment only when a non-status write modifies the spec
-		// (the CCM spec controller drops updates whose generation did not change).
 		if before == nil {
 			after.Generation = 1
 		} else if action.GetSubresource() == "" && !apiequality.Semantic.DeepEqual(before.Spec, after.Spec) {
@@ -137,8 +129,14 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 			after.Generation = prevGen
 		}
 
-		// Commit updated object with synthesized metadata back to the tracker.
-		if err := c.Tracker().Update(gvr, after, ns); err != nil {
+		// Persist the synthesized object to the tracker.
+		var err error
+		if before == nil {
+			err = c.Tracker().Create(gvr, after, ns)
+		} else {
+			err = c.Tracker().Update(gvr, after, ns)
+		}
+		if err != nil {
 			return true, nil, err
 		}
 		return true, after, nil
