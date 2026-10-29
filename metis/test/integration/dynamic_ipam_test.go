@@ -33,9 +33,11 @@ import (
 	"k8s.io/metis/pkg/store"
 )
 
-// TestBootstrapAllocation exercises Base Case 1: the first pod is served from
-// the CNI-provided initial range before CCM has published anything, and CCM
-// subsequently discovers and publishes the range with Ready=True.
+// TestBootstrapAllocation tests node bootstrap where the initial pod is allocated
+// from the CNI-provided initial CIDR before cloud controllers have published
+// status. It verifies that the daemon serves the local allocation immediately,
+// and the CCM status controller discovers the existing instance alias range,
+// publishes it to NodeNetworkConfig status, and marks the node Ready.
 func TestBootstrapAllocation(t *testing.T) {
 	f := newFixture(t)
 
@@ -61,10 +63,12 @@ func TestBootstrapAllocation(t *testing.T) {
 	}
 }
 
-// TestScaleUpLoop exercises Base Case 2: pod allocations exhaust the initial
-// block, the daemon requests more capacity in NNC spec, the CCM spec controller
-// attaches a new alias range in GCE, the CCM status controller publishes it,
-// and the daemon watcher activates the new block to serve the overflow pod.
+// TestScaleUpLoop tests the dynamic scale-up cycle when pod demand exhausts the
+// bootstrap CIDR block. It verifies that pod exhaustion triggers the daemon's
+// background monitor to request additional capacity in NodeNetworkConfig spec,
+// the CCM spec controller attaches a new dynamic /28 alias range to the GCE
+// instance, the status controller publishes the range, and the waiting pod
+// allocation completes.
 func TestScaleUpLoop(t *testing.T) {
 	f := newFixture(t)
 
@@ -94,10 +98,11 @@ func TestScaleUpLoop(t *testing.T) {
 	}
 }
 
-// TestScaleDownAndReleaseLoop exercises Base Case 3: pods terminate, an idle
-// block is marked in spec.releasableCIDRs, the CCM spec controller detaches the
-// alias range from GCE, prunes releasableCIDRs, and the status controller reflects
-// only the remaining ranges.
+// TestScaleDownAndReleaseLoop tests dynamic scale-down and resource reclamation
+// when workload drops. It verifies that when active pods are deleted, the daemon
+// stages the idle dynamic block in spec.releasableCIDRs, and the CCM spec
+// controller detaches the alias range from the GCE instance and prunes the release
+// request from NodeNetworkConfig spec.
 func TestScaleDownAndReleaseLoop(t *testing.T) {
 	f := newFixture(t)
 
@@ -147,8 +152,10 @@ func TestScaleDownAndReleaseLoop(t *testing.T) {
 	})
 }
 
-// TestMixedAddAndRemove exercises the Edge Case where a single reconcile pass
-// handles both an allocation expansion and a CIDR release concurrently.
+// TestMixedAddAndRemove tests concurrent capacity expansion and release in a single
+// reconcile cycle. It simulates simultaneous workload growth on one network interface
+// while an idle CIDR block on another is marked for release, verifying that the CCM
+// spec controller processes additions and removals together without dropping either.
 func TestMixedAddAndRemove(t *testing.T) {
 	f := newFixture(t)
 
@@ -205,9 +212,10 @@ func TestMixedAddAndRemove(t *testing.T) {
 	}
 }
 
-// TestPartialReleaseWithActivePods exercises the Edge Case where multiple dynamic
-// blocks exist, but only an idle block is released while blocks with running pods
-// remain active and untouched.
+// TestPartialReleaseWithActivePods tests selective scale-down when an instance has
+// multiple dynamic blocks allocated. It verifies that an idle dynamic block is drained
+// and released to GCE while sibling blocks with active pods remain untouched and
+// operational.
 func TestPartialReleaseWithActivePods(t *testing.T) {
 	f := newFixture(t)
 
@@ -247,9 +255,10 @@ func TestPartialReleaseWithActivePods(t *testing.T) {
 	})
 }
 
-// TestConflictRetryOnStatusUpdate exercises the Edge Case where a 409 Conflict
-// is returned during status synchronization (PR #1410). The status update retry
-// must re-fetch live NNC and converge without dropping state.
+// TestConflictRetryOnStatusUpdate tests optimistic concurrency handling during status
+// reconciliation. It injects 409 Conflict errors into NodeNetworkConfig status update
+// calls to verify that the status controller retries updates on conflict and converges
+// successfully without dropping state (PR #1410 resilience).
 func TestConflictRetryOnStatusUpdate(t *testing.T) {
 	conflictInjected := false
 	conflictResolved := false
@@ -280,9 +289,11 @@ func TestConflictRetryOnStatusUpdate(t *testing.T) {
 	})
 }
 
-// TestNotReadyNodeHandling exercises the Edge Case where a NodeNetworkConfig exists
-// but the backing Node is uninitialized (empty ProviderID). The controllers must
-// defer reconciliation with nodeNotReadyError until ProviderID is set.
+// TestNotReadyNodeHandling tests controller behavior during early node registration
+// before ProviderID is initialized. It verifies that the controllers safely defer
+// reconciliation with nodeNotReadyError while ProviderID is empty, emit appropriate
+// warning events, and automatically resume reconciliation once the node's ProviderID
+// is assigned.
 func TestNotReadyNodeHandling(t *testing.T) {
 	// Uninitialized node startup: launch controllers with a node lacking ProviderID.
 	f := newFixture(t, withNodeProviderID(""))
