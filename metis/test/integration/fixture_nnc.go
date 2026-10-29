@@ -56,21 +56,23 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 	defaultReaction := clientgotesting.ObjectReaction(c.Tracker())
 	c.PrependReactor("*", "nodenetworkconfigs", func(action clientgotesting.Action) (bool, runtime.Object, error) {
 		var name string
-		switch a := action.(type) {
-		case clientgotesting.CreateAction:
-			obj, ok := a.GetObject().(*nncv1.NodeNetworkConfig)
+		switch action.GetVerb() {
+		case "create", "update":
+			ca, ok := action.(clientgotesting.CreateAction)
+			if !ok {
+				return false, nil, nil
+			}
+			obj, ok := ca.GetObject().(*nncv1.NodeNetworkConfig)
 			if !ok {
 				return false, nil, nil
 			}
 			name = obj.Name
-		case clientgotesting.UpdateAction:
-			obj, ok := a.GetObject().(*nncv1.NodeNetworkConfig)
+		case "patch":
+			pa, ok := action.(clientgotesting.PatchAction)
 			if !ok {
 				return false, nil, nil
 			}
-			name = obj.Name
-		case clientgotesting.PatchAction:
-			name = a.GetName()
+			name = pa.GetName()
 		default:
 			return false, nil, nil
 		}
@@ -83,7 +85,11 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 		}
 
 		var after *nncv1.NodeNetworkConfig
-		if update, ok := action.(clientgotesting.UpdateAction); ok && action.GetSubresource() == "status" && before != nil {
+		if action.GetVerb() == "update" && action.GetSubresource() == "status" && before != nil {
+			update, ok := action.(clientgotesting.UpdateAction)
+			if !ok {
+				return false, nil, nil
+			}
 			// Status subresource: keep the stored spec, take the incoming status.
 			after = update.GetObject().(*nncv1.NodeNetworkConfig).DeepCopy()
 			after.Spec = *before.Spec.DeepCopy()
