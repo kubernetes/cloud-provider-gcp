@@ -142,7 +142,7 @@ func (f *Fixture) NNC() *nncv1.NodeNetworkConfig {
 func StatusCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	var cidrs []string
 	for _, pc := range nnc.Status.PodCIDRs {
-		if pc.Network == Network {
+		if pc.Network == defaultNetwork {
 			cidrs = append(cidrs, pc.CIDR)
 		}
 	}
@@ -158,7 +158,7 @@ func StatusReady(nnc *nncv1.NodeNetworkConfig) bool {
 // spec.
 func SpecPods(nnc *nncv1.NodeNetworkConfig) int32 {
 	for _, a := range nnc.Spec.Allocations {
-		if a.Network == Network {
+		if a.Network == defaultNetwork {
 			return a.Pods
 		}
 	}
@@ -195,7 +195,7 @@ func (f *Fixture) SettledSpecPods() int32 {
 func ReleasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	var cidrs []string
 	for _, r := range nnc.Spec.ReleasableCIDRs {
-		if r.Network == Network {
+		if r.Network == defaultNetwork {
 			cidrs = append(cidrs, r.CIDR)
 		}
 	}
@@ -208,7 +208,7 @@ func (n *NodeHandle) AddReleasableCIDR(cidr string) {
 	n.fixture.t.Helper()
 	nnc := n.NNC().DeepCopy()
 	nnc.Spec.ReleasableCIDRs = append(nnc.Spec.ReleasableCIDRs, nncv1.PodCIDR{
-		Network: Network,
+		Network: defaultNetwork,
 		CIDR:    cidr,
 	})
 	if _, err := n.fixture.nncClient.NetworkingV1().NodeNetworkConfigs().Update(n.fixture.ctx, nnc, metav1.UpdateOptions{}); err != nil {
@@ -229,7 +229,7 @@ func (n *NodeHandle) SetAllocationsPods(pods int32) {
 	nnc := n.NNC().DeepCopy()
 	found := false
 	for i, a := range nnc.Spec.Allocations {
-		if a.Network == Network {
+		if a.Network == defaultNetwork {
 			nnc.Spec.Allocations[i].Pods = pods
 			found = true
 			break
@@ -237,7 +237,7 @@ func (n *NodeHandle) SetAllocationsPods(pods int32) {
 	}
 	if !found {
 		nnc.Spec.Allocations = append(nnc.Spec.Allocations, nncv1.Allocation{
-			Network: Network,
+			Network: defaultNetwork,
 			Pods:    pods,
 		})
 	}

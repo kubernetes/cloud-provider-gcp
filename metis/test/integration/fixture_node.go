@@ -205,13 +205,7 @@ func (n *NodeHandle) RestartDaemon() {
 
 // DefaultNode returns the handle for the cluster's default node.
 func (f *Fixture) DefaultNode() *NodeHandle {
-	return f.nodes[DefaultNodeName]
-}
-
-// PrimaryNode returns the handle for the cluster's primary (default) node.
-// Maintained as an alias for DefaultNode for compatibility.
-func (f *Fixture) PrimaryNode() *NodeHandle {
-	return f.DefaultNode()
+	return f.nodes[defaultNodeName]
 }
 
 // Node returns the handle for a specific node in the cluster by name.
@@ -283,10 +277,10 @@ func (f *Fixture) bootNode(
 	if _, err := f.gce.Compute().Instances().Get(f.ctx, instanceKey); err != nil {
 		if err := f.gce.Compute().Instances().Insert(f.ctx, instanceKey, &compute.Instance{
 			Name: name,
-			Zone: Zone,
+			Zone: defaultZone,
 			NetworkInterfaces: []*compute.NetworkInterface{{
 				Name:          "nic0",
-				Network:       DefaultNetworkURL,
+				Network:       GCENetworkURL("default"),
 				Subnetwork:    "default",
 				AliasIpRanges: aliasRanges,
 			}},

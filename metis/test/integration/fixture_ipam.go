@@ -274,7 +274,7 @@ func (f *Fixture) BlockAllocatedIPs(cidr string) int {
 // Usage returns the current IPv4 IP usage for the default network on this node.
 func (n *NodeHandle) Usage() store.NetworkIPUsage {
 	n.fixture.t.Helper()
-	u, err := n.store.GetIPUsage(n.fixture.ctx, Network, store.IPv4)
+	u, err := n.store.GetIPUsage(n.fixture.ctx, defaultNetwork, store.IPv4)
 	if err != nil {
 		n.fixture.t.Fatalf("GetIPUsage(IPv4) failed on %s: %v", n.name, err)
 	}
@@ -290,7 +290,7 @@ func (f *Fixture) Usage() store.NetworkIPUsage {
 // IPv6Usage returns current IPv6 IP usage for the default network on this node.
 func (n *NodeHandle) IPv6Usage() store.NetworkIPUsage {
 	n.fixture.t.Helper()
-	u, err := n.store.GetIPUsage(n.fixture.ctx, Network, store.IPv6)
+	u, err := n.store.GetIPUsage(n.fixture.ctx, defaultNetwork, store.IPv6)
 	if err != nil {
 		n.fixture.t.Fatalf("GetIPUsage(IPv6) failed on %s: %v", n.name, err)
 	}

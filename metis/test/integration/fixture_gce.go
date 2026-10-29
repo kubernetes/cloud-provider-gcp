@@ -132,11 +132,11 @@ func (f *Fixture) GCECIDRs() []string {
 	return f.DefaultNode().GCECIDRs()
 }
 
-// UpdateNodeProviderID updates the Node's Spec.ProviderID in the fake kube
-// client.
+// UpdateNodeProviderID updates the default Node's Spec.ProviderID in the fake
+// kube client.
 func (f *Fixture) UpdateNodeProviderID(id string) {
 	f.t.Helper()
-	node, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, DefaultNodeName, metav1.GetOptions{})
+	node, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, defaultNodeName, metav1.GetOptions{})
 	if err != nil {
 		f.t.Fatalf("failed to get node: %v", err)
 	}
