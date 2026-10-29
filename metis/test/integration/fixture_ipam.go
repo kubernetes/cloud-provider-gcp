@@ -27,6 +27,12 @@ import (
 	"k8s.io/metis/pkg/store"
 )
 
+// Pod lifecycle operations in the integration test suite execute through the Metis CNI IPAM
+// plugin (k8s.io/metis/pkg/cni) via CmdAddResult and CmdDelResult rather than bypassing CNI
+// to talk directly to the daemon. Each node handle maintains an isolated CNI plugin instance
+// configured with its local daemon socket and SQLite database path, exercising the complete
+// CNI network configuration and IPAM allocation path end-to-end.
+
 // AllocatePod invokes the Metis CNI plugin's CmdAdd workflow to allocate an IP for
 // a pod, returning the assigned IP address and its associated CIDR block.
 func (n *NodeHandle) AllocatePod(id string) (ip, cidr string) {

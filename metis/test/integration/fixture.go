@@ -14,18 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package integration tests the metis daemon and the CCM dynamic pod IP
-// controllers end-to-end against fake GCE and fake Kubernetes apiservers.
+// Package integration tests the Metis CNI IPAM plugin, the Metis daemon, and
+// the CCM dynamic pod IP controllers end-to-end against fake GCE and fake Kubernetes apiservers.
 //
-// The harness exercises the full loop:
+// The harness exercises the full end-to-end loop:
 //
-//	pod ADD/DEL -> metis daemon -> NodeNetworkConfig spec
-//	  -> CCM spec controller -> (fake) GCE alias IP ranges
+//	pod ADD/DEL via Metis CNI IPAM plugin (CmdAdd/CmdDel)
+//	  -> Metis daemon (gRPC / direct DB fallback)
+//	  -> NodeNetworkConfig spec
+//	  -> CCM spec controller -> (fake) GCE alias IP ranges / ANEs
 //	  -> CCM status controller -> NodeNetworkConfig status
-//	  -> metis watcher/monitor -> SQLite
+//	  -> Metis watcher/monitor -> SQLite
 //
-// Both sides share the same fake NodeNetworkConfig clientset, which plays the
-// role of the API server.
+// Rather than calling the gRPC daemon directly, all pod lifecycle operations
+// (allocatePod, deletePod) run through the real Metis CNI IPAM plugin in-process,
+// exercising full CNI config parsing, stdin/args serialization, IP selection,
+// routes, and deallocation workflows.
+//
+// Both the Metis daemon and CCM controllers share the same fake NodeNetworkConfig
+// clientset, which plays the role of the Kubernetes API server.
 package integration
 
 import (
@@ -348,7 +355,8 @@ var (
 // NewFixture constructs and boots an isolated integration test environment containing
 // a simulated K8s cluster with fake core and NNC clientsets, a simulated GCE compute
 // environment with mock instance network interfaces, live CCM NodeNetworkConfig spec
-// and status controllers, and a live Metis daemon backed by a real SQLite store and
+// and status controllers, an in-process Metis CNI IPAM plugin instance wired to standard
+// CNI network configurations, and a live Metis daemon backed by a real SQLite store and
 // gRPC server. All background routines, sockets, and temporary files are automatically
 // cleaned up when the test finishes.
 func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
