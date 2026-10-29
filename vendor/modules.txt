@@ -1814,7 +1814,6 @@ k8s.io/kubelet/pkg/apis/credentialprovider
 k8s.io/kubelet/pkg/apis/credentialprovider/v1
 # k8s.io/kubernetes v1.37.1
 ## explicit; go 1.26.0
-k8s.io/kubernetes/cmd/kube-controller-manager/names
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
 k8s.io/kubernetes/pkg/api/v1/pod
