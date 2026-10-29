@@ -24,9 +24,9 @@ import (
 )
 
 // TestScaleDown_ANE exercises dynamic scale-down and release of /32 NonReusable
-// allocations. Skipped pending follow-up PR for /32 scale-down rounding and pruning stabilization.
+// allocations. Skipped pending Issue #1429 for /32 scale-down rounding and pruning stabilization.
 func TestScaleDown_ANE(t *testing.T) {
-	t.Skip("Skipping ANE /32 scale-down test pending follow-up PR for /32 rounding and pruning stabilization")
+	t.Skip("Skipping ANE /32 scale-down test pending Issue #1429 for /32 rounding and pruning stabilization")
 
 	f := newFixture(t, withBackend(dynamicpodip.BackendTypeANE))
 

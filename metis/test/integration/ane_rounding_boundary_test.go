@@ -27,12 +27,12 @@ import (
 // TestScaleDown_ANE_RoundingBoundary exercises the fractional threshold boundary
 // during scale-down of /32 ANE allocations.
 //
-// Skipped pending fix in metis/pkg/daemon/monitor.go where
+// Skipped pending fix for Issue #1429 (metis/pkg/daemon/monitor.go) where
 // targetUsedIPs := int(m.lowUtilizationThreshold * float64(totalPods)) truncates
 // fractional targets, causing totalUsedIPs >= targetUsedIPs to break early and
 // freeze idle /32 ANEs when usedIPs sits right on the boundary.
 func TestScaleDown_ANE_RoundingBoundary(t *testing.T) {
-	t.Skip("Skipping pending fix in metis/pkg/daemon/monitor.go for /32 rounding threshold truncation")
+	t.Skip("Skipping pending Issue #1429 fix in metis/pkg/daemon/monitor.go for /32 rounding threshold truncation")
 
 	f := newFixture(t, withBackend(dynamicpodip.BackendTypeANE), withDaemonConfig(func(cfg *daemon.Config) {
 		cfg.LowUtilizationThreshold = 0.50
