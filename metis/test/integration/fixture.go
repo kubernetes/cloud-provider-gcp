@@ -15,7 +15,8 @@ limitations under the License.
 */
 
 // Package integration tests the Metis CNI IPAM plugin, the Metis daemon, and
-// the CCM dynamic pod IP controllers end-to-end against fake GCE and fake Kubernetes apiservers.
+// the CCM dynamic pod IP controllers end-to-end against fake GCE and fake
+// Kubernetes apiservers.
 //
 // The harness exercises the full end-to-end loop:
 //
@@ -27,12 +28,13 @@ limitations under the License.
 //	  -> Metis watcher/monitor -> SQLite
 //
 // Rather than calling the gRPC daemon directly, all pod lifecycle operations
-// (allocatePod, deletePod) run through the real Metis CNI IPAM plugin in-process,
-// exercising full CNI config parsing, stdin/args serialization, IP selection,
-// routes, and deallocation workflows.
+// (allocatePod, deletePod) run through the real Metis CNI IPAM plugin
+// in-process, exercising full CNI config parsing, stdin/args serialization,
+// IP selection, routes, and deallocation workflows.
 //
-// Both the Metis daemon and CCM controllers share the same fake NodeNetworkConfig
-// clientset, which plays the role of the Kubernetes API server.
+// Both the Metis daemon and CCM controllers share the same fake
+// NodeNetworkConfig clientset, which plays the role of the Kubernetes API
+// server.
 package integration
 
 import (
@@ -69,41 +71,59 @@ import (
 	"k8s.io/metis/pkg/store"
 )
 
+// Default test environment topology constants.
 const (
+	// PrimaryNodeName is the default node name provisioned during fixture
+	// initialization.
 	PrimaryNodeName = "test-node"
-	Zone            = "us-central1-a"
-	Project         = "test-project"
-	Network         = networkv1.DefaultPodNetworkName
+	// Zone is the default GCE compute zone used in test fixtures.
+	Zone = "us-central1-a"
+	// Project is the default Google Cloud project ID used in test fixtures.
+	Project = "test-project"
+	// Network is the default Pod network name.
+	Network = networkv1.DefaultPodNetworkName
 
 	// InitialPodCIDR is the primary alias range the node boots with. It reaches
 	// the daemon through the CNI config (pb.IPConfig.InitialPodCidr), not through
 	// CCM, which is what makes bootstrap interesting.
 	InitialPodCIDR = "10.0.0.0/28"
 
-	// InitialPodCIDRv6 is the default initial IPv6 prefix used for DualStack and IPv6Only modes.
+	// InitialPodCIDRv6 is the default initial IPv6 prefix used for DualStack and
+	// IPv6Only modes.
 	InitialPodCIDRv6 = "2001:db8:1::/112"
 
-	// InitialUsableIPs: the daemon reserves the first two and the last IP of the first block of a
-	// network, so a /28 initial block yields 13 allocatable IPs.
+	// InitialUsableIPs: the daemon reserves the first two and the last IP of the
+	// first block of a network, so a /28 initial block yields 13 allocatable
+	// IPs.
 	InitialUsableIPs = 13
 
+	// MonitorInterval is the polling interval for the Metis daemon monitor.
 	MonitorInterval = 200 * time.Millisecond
-	EventuallyTick  = 50 * time.Millisecond
-	EventuallyMax   = 15 * time.Second
+	// EventuallyTick is the polling interval for Eventually and Consistently.
+	EventuallyTick = 50 * time.Millisecond
+	// EventuallyMax is the default timeout for Eventually assertions.
+	EventuallyMax = 15 * time.Second
 	// AllocateTimeout must exceed the daemon's scale-up wait (9s) so a blocked
-	// allocation surfaces as the daemon's own error rather than a client timeout.
+	// allocation surfaces as the daemon's own error rather than a client
+	// timeout.
 	AllocateTimeout = 20 * time.Second
 )
 
+// Default GCE identifiers derived from topology constants.
 var (
-	ProviderID  = fmt.Sprintf("gce://%s/%s/%s", Project, Zone, PrimaryNodeName)
-	NetworkURL  = fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/default", Project)
+	// ProviderID is the GCE provider ID of the primary node.
+	ProviderID = fmt.Sprintf("gce://%s/%s/%s", Project, Zone, PrimaryNodeName)
+	// NetworkURL is the fully-qualified resource URL of the default network.
+	NetworkURL = fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/networks/default", Project)
+	// InstanceKey is the zonal compute metadata key for the primary node.
 	InstanceKey = meta.ZonalKey(PrimaryNodeName, Zone)
 )
 
-// StackType defines the IP address family configuration of the cluster and node.
+// StackType defines the IP address family configuration of the cluster and
+// node.
 type StackType string
 
+// Supported StackType configurations.
 const (
 	// StackTypeIPv4 allocates and manages only IPv4 addresses.
 	StackTypeIPv4 StackType = "IPv4"
@@ -113,7 +133,8 @@ const (
 	StackTypeIPv6Only StackType = "IPv6Only"
 )
 
-// NodeHandle encapsulates node-specific clients, store, and daemon lifecycle for a node.
+// NodeHandle encapsulates node-specific clients, store, and daemon lifecycle
+// for a simulated node.
 type NodeHandle struct {
 	name            string
 	providerID      string
@@ -147,7 +168,8 @@ func (n *NodeHandle) DaemonConfig() daemon.Config { return n.daemonConfig }
 // Fixture returns the parent test fixture.
 func (n *NodeHandle) Fixture() *Fixture { return n.fixture }
 
-// initCNI initializes the node's CNI plugin instance and serializes its standard CNI network config JSON.
+// initCNI initializes the node's CNI plugin instance and serializes its
+// standard CNI network config JSON.
 func (n *NodeHandle) initCNI() {
 	logPath := filepath.Join(filepath.Dir(n.daemonConfig.DBPath), "metis-cni.log")
 	n.cniPlugin = cni.NewPlugin(
@@ -198,8 +220,8 @@ func (n *NodeHandle) initCNI() {
 	n.cniNetConf = data
 }
 
-// Fixture orchestrates an integration test environment, coupling simulated K8s
-// and GCE backends with live CCM controllers and a running Metis daemon instance.
+// Fixture orchestrates an integration test environment, coupling simulated
+// K8s and GCE backends with live CCM controllers and a running Metis daemon.
 type Fixture struct {
 	t   *testing.T
 	ctx context.Context
@@ -255,21 +277,24 @@ type FixtureConfig struct {
 // FixtureOption configures a FixtureConfig during test fixture initialization.
 type FixtureOption func(*FixtureConfig)
 
-// WithStackType sets the cluster stack configuration (IPv4, DualStack, or IPv6Only).
+// WithStackType sets the cluster stack configuration (IPv4, DualStack, or
+// IPv6Only).
 func WithStackType(st StackType) FixtureOption {
 	return func(cfg *FixtureConfig) {
 		cfg.stackType = st
 	}
 }
 
-// WithInitialAliasIP configures a custom initial IPv4 alias IP range on the primary interface.
+// WithInitialAliasIP configures a custom initial IPv4 alias IP range on the
+// primary interface.
 func WithInitialAliasIP(cidr string) FixtureOption {
 	return func(cfg *FixtureConfig) {
 		cfg.initialIPv4CIDR = cidr
 	}
 }
 
-// WithInitialPodCIDRv6 configures a custom initial IPv6 CIDR prefix for dual-stack or IPv6-only modes.
+// WithInitialPodCIDRv6 configures a custom initial IPv6 CIDR prefix for
+// dual-stack or IPv6-only modes.
 func WithInitialPodCIDRv6(cidr string) FixtureOption {
 	return func(cfg *FixtureConfig) {
 		cfg.initialIPv6CIDR = cidr
@@ -300,8 +325,9 @@ func WithDaemonConfig(modifier func(*daemon.Config)) FixtureOption {
 	}
 }
 
-// WithPrependReactor registers a custom client-go reactor on the fake NNC clientset,
-// allowing tests to inject specific API errors (such as 409 Conflict) or intercept actions.
+// WithPrependReactor registers a custom client-go reactor on the fake NNC
+// clientset, allowing tests to inject specific API errors (such as 409
+// Conflict) or intercept actions.
 func WithPrependReactor(verb, resource string, reaction clientgotesting.ReactionFunc) FixtureOption {
 	return func(cfg *FixtureConfig) {
 		cfg.nncReactors = append(cfg.nncReactors, customReactor{
@@ -312,13 +338,14 @@ func WithPrependReactor(verb, resource string, reaction clientgotesting.Reaction
 	}
 }
 
-// NewFixture constructs and boots an isolated integration test environment containing
-// a simulated K8s cluster with fake core and NNC clientsets, a simulated GCE compute
-// environment with mock instance network interfaces, live CCM NodeNetworkConfig spec
-// and status controllers, an in-process Metis CNI IPAM plugin instance wired to standard
-// CNI network configurations, and a live Metis daemon backed by a real SQLite store and
-// gRPC server. All background routines, sockets, and temporary files are automatically
-// cleaned up when the test finishes.
+// NewFixture constructs and boots an isolated integration test environment
+// containing a simulated K8s cluster with fake core and NNC clientsets, a
+// simulated GCE compute environment with mock instance network interfaces,
+// live CCM NodeNetworkConfig spec and status controllers, an in-process Metis
+// CNI IPAM plugin instance wired to standard CNI network configurations, and a
+// live Metis daemon backed by a real SQLite store and gRPC server. All
+// background routines, sockets, and temporary files are automatically cleaned
+// up when the test finishes.
 func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -356,7 +383,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 		t.Fatalf("failed to create fake Node: %v", err)
 	}
 
-	// --- Fake GCE ----------------------------------------------------------------
+	// --- Fake GCE -------------------------------------------------------------
 	values := gce.DefaultTestClusterValues()
 	values.ProjectID = Project
 	values.ZoneName = Zone
@@ -388,7 +415,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 		t.Fatalf("failed to insert fake GCE instance: %v", err)
 	}
 
-	// --- CCM dynamic pod IP controllers -----------------------------------------
+	// --- CCM dynamic pod IP controllers ---------------------------------------
 	nodeInformerFactory := informers.NewSharedInformerFactory(f.kubeClient, 0)
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
 	nodeInformer.Informer() // register before Start
@@ -406,7 +433,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 	}
 	f.statusTrigger = statusTrigger
 
-	// --- metis daemon ------------------------------------------------------------
+	// --- metis daemon ---------------------------------------------------------
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "metis.sqlite")
 	socketPath := filepath.Join(dir, "metis.sock")
@@ -499,8 +526,9 @@ func (f *Fixture) Node(name string) *NodeHandle {
 	return f.nodes[name]
 }
 
-// AddNode spins up an additional simulated Node in the cluster with its own GCE
-// instance, its own Metis daemon instance, its own SQLite database, and gRPC client.
+// AddNode spins up an additional simulated Node in the cluster with its own
+// GCE instance, its own Metis daemon instance, its own SQLite database, and
+// gRPC client.
 func (f *Fixture) AddNode(name string, initialCIDR ...string) *NodeHandle {
 	f.t.Helper()
 	nodeProviderID := fmt.Sprintf("gce://%s/%s/%s", Project, Zone, name)
@@ -684,8 +712,9 @@ func (f *Fixture) Eventually(desc string, cond func() (bool, string)) {
 	}
 }
 
-// Consistently asserts that cond remains true for the full duration d, sampled
-// every eventuallyTick. Useful for verifying that a quiescent state does not leak.
+// Consistently asserts that cond remains true for the full duration d,
+// sampled every eventuallyTick. Useful for verifying that a quiescent state
+// does not leak.
 func (f *Fixture) Consistently(desc string, d time.Duration, cond func() (bool, string)) {
 	f.t.Helper()
 	deadline := time.Now().Add(d)

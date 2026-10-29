@@ -55,7 +55,8 @@ func (f *Fixture) updateNetworkInterfaceHook(_ context.Context, key *meta.Key, i
 }
 
 // resolveAliasRanges translates netmask-only placeholders (e.g. "/28") into
-// concrete mock IP ranges (e.g. "10.100.0.0/28") to simulate GCE IPAM allocation.
+// concrete mock IP ranges (e.g. "10.100.0.0/28") to simulate GCE IPAM
+// allocation.
 func (f *Fixture) resolveAliasRanges(ranges []*computebeta.AliasIpRange) []*computebeta.AliasIpRange {
 	resolved := make([]*computebeta.AliasIpRange, 0, len(ranges))
 	for _, r := range ranges {
@@ -94,7 +95,8 @@ func (f *Fixture) GCEAliasRanges() []string {
 	return f.nodes[PrimaryNodeName].GCEAliasRanges()
 }
 
-// GCEANEs returns all active AliasNetworkEndpoint resources attached to this node.
+// GCEANEs returns all active AliasNetworkEndpoint resources attached to this
+// node.
 func (n *NodeHandle) GCEANEs() []*computepreview.AliasNetworkEndpoint {
 	n.fixture.t.Helper()
 	anes, err := n.fixture.gce.ListAliasNetworkEndpoints(n.fixture.ctx, n.providerID)
@@ -104,7 +106,8 @@ func (n *NodeHandle) GCEANEs() []*computepreview.AliasNetworkEndpoint {
 	return anes
 }
 
-// GCEANEs returns all active AliasNetworkEndpoint resources attached to the primary instance.
+// GCEANEs returns all active AliasNetworkEndpoint resources attached to the
+// primary instance.
 func (f *Fixture) GCEANEs() []*computepreview.AliasNetworkEndpoint {
 	return f.nodes[PrimaryNodeName].GCEANEs()
 }
@@ -123,13 +126,14 @@ func (n *NodeHandle) GCECIDRs() []string {
 	return ranges
 }
 
-// GCECIDRs returns all active pod CIDRs attached to the primary instance across both
-// VM alias IP ranges and AliasNetworkEndpoints.
+// GCECIDRs returns all active pod CIDRs attached to the primary instance across
+// both VM alias IP ranges and AliasNetworkEndpoints.
 func (f *Fixture) GCECIDRs() []string {
 	return f.nodes[PrimaryNodeName].GCECIDRs()
 }
 
-// UpdateNodeProviderID updates the Node's Spec.ProviderID in the fake kube client.
+// UpdateNodeProviderID updates the Node's Spec.ProviderID in the fake kube
+// client.
 func (f *Fixture) UpdateNodeProviderID(id string) {
 	f.t.Helper()
 	node, err := f.kubeClient.CoreV1().Nodes().Get(f.ctx, PrimaryNodeName, metav1.GetOptions{})

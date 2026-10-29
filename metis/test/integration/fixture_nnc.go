@@ -30,7 +30,8 @@ import (
 	clientgotesting "k8s.io/client-go/testing"
 )
 
-// customReactor stores a client-go reaction rule to prepend to the fake NNC clientset.
+// customReactor stores a client-go reaction rule to prepend to the fake NNC
+// clientset.
 type customReactor struct {
 	verb     string
 	resource string
@@ -119,7 +120,8 @@ func emulateAPIServerSemantics(c *nncfake.Clientset) {
 	})
 }
 
-// NNC fetches the current NodeNetworkConfig object for this node from the fake clientset.
+// NNC fetches the current NodeNetworkConfig object for this node from the fake
+// clientset.
 func (n *NodeHandle) NNC() *nncv1.NodeNetworkConfig {
 	n.fixture.t.Helper()
 	nnc, err := n.fixture.nncClient.NetworkingV1().NodeNetworkConfigs().Get(n.fixture.ctx, n.name, metav1.GetOptions{})
@@ -134,7 +136,8 @@ func (f *Fixture) NNC() *nncv1.NodeNetworkConfig {
 	return f.nodes[PrimaryNodeName].NNC()
 }
 
-// StatusCIDRs extracts the CIDRs from NodeNetworkConfig.status.podCIDRs for the default network.
+// StatusCIDRs extracts the CIDRs from NodeNetworkConfig.status.podCIDRs for
+// the default network.
 func StatusCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	var cidrs []string
 	for _, pc := range nnc.Status.PodCIDRs {
@@ -150,7 +153,8 @@ func StatusReady(nnc *nncv1.NodeNetworkConfig) bool {
 	return apimeta.IsStatusConditionTrue(nnc.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
 }
 
-// SpecPods returns the requested pod capacity for the default network in NNC spec.
+// SpecPods returns the requested pod capacity for the default network in NNC
+// spec.
 func SpecPods(nnc *nncv1.NodeNetworkConfig) int32 {
 	for _, a := range nnc.Spec.Allocations {
 		if a.Network == Network {
@@ -160,7 +164,8 @@ func SpecPods(nnc *nncv1.NodeNetworkConfig) int32 {
 	return 0
 }
 
-// SettledSpecPods polls until spec.allocations stops changing, then returns the settled value.
+// SettledSpecPods polls until spec.allocations stops changing, then returns
+// the settled value.
 func (n *NodeHandle) SettledSpecPods() int32 {
 	n.fixture.t.Helper()
 	var last int32 = -1
@@ -178,12 +183,14 @@ func (n *NodeHandle) SettledSpecPods() int32 {
 	return last
 }
 
-// SettledSpecPods polls until spec.allocations stops changing on primary node, then returns the settled value.
+// SettledSpecPods polls until spec.allocations stops changing on primary node,
+// then returns the settled value.
 func (f *Fixture) SettledSpecPods() int32 {
 	return f.nodes[PrimaryNodeName].SettledSpecPods()
 }
 
-// ReleasableCIDRs extracts CIDRs from NodeNetworkConfig.spec.releasableCIDRs for the default network.
+// ReleasableCIDRs extracts CIDRs from NodeNetworkConfig.spec.releasableCIDRs
+// for the default network.
 func ReleasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	var cidrs []string
 	for _, r := range nnc.Spec.ReleasableCIDRs {
@@ -194,7 +201,8 @@ func ReleasableCIDRs(nnc *nncv1.NodeNetworkConfig) []string {
 	return cidrs
 }
 
-// AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs for this node.
+// AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs
+// for this node.
 func (n *NodeHandle) AddReleasableCIDR(cidr string) {
 	n.fixture.t.Helper()
 	nnc := n.NNC().DeepCopy()
@@ -207,12 +215,14 @@ func (n *NodeHandle) AddReleasableCIDR(cidr string) {
 	}
 }
 
-// AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs on the primary node.
+// AddReleasableCIDR appends a CIDR to NodeNetworkConfig.spec.releasableCIDRs
+// on the primary node.
 func (f *Fixture) AddReleasableCIDR(cidr string) {
 	f.nodes[PrimaryNodeName].AddReleasableCIDR(cidr)
 }
 
-// SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on this node.
+// SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the
+// default network on this node.
 func (n *NodeHandle) SetAllocationsPods(pods int32) {
 	n.fixture.t.Helper()
 	nnc := n.NNC().DeepCopy()
@@ -235,12 +245,14 @@ func (n *NodeHandle) SetAllocationsPods(pods int32) {
 	}
 }
 
-// SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the default network on the primary node.
+// SetAllocationsPods updates NodeNetworkConfig.spec.allocations for the
+// default network on the primary node.
 func (f *Fixture) SetAllocationsPods(pods int32) {
 	f.nodes[PrimaryNodeName].SetAllocationsPods(pods)
 }
 
-// NodeEvents returns the messages of the Events recorded against the node with the given reason.
+// NodeEvents returns the messages of the Events recorded against the node
+// with the given reason.
 func (f *Fixture) NodeEvents(reason string) []string {
 	f.t.Helper()
 	list, err := f.kubeClient.CoreV1().Events("").List(f.ctx, metav1.ListOptions{})

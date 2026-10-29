@@ -23,11 +23,11 @@ import (
 	"k8s.io/metis/test/integration"
 )
 
-// TestScaleDownAndReleaseLoop tests dynamic scale-down and resource reclamation
-// when workload drops. It verifies that when active pods are deleted, the daemon
-// stages the idle dynamic block in spec.releasableCIDRs, and the CCM spec
-// controller detaches the alias range from the GCE instance and prunes the release
-// request from NodeNetworkConfig spec.
+// TestScaleDownAndReleaseLoop tests dynamic scale-down and resource
+// reclamation when workload drops. It verifies that when active pods are
+// deleted, the daemon stages the idle dynamic block in spec.releasableCIDRs,
+// and the CCM spec controller detaches the alias range from the GCE instance
+// and prunes the release request from NodeNetworkConfig spec.
 func TestScaleDownAndReleaseLoop(t *testing.T) {
 	f := integration.NewFixture(t)
 
@@ -47,13 +47,15 @@ func TestScaleDownAndReleaseLoop(t *testing.T) {
 			fmt.Sprintf("gce=%v status=%v", f.GCEAliasRanges(), integration.StatusCIDRs(nnc))
 	})
 
-	// Workload reduction: delete all pods so utilization drops and idle capacity can be released.
+	// Workload reduction: delete all pods so utilization drops and idle
+	// capacity can be released.
 	for i := 1; i <= integration.InitialUsableIPs; i++ {
 		f.DeletePod(fmt.Sprintf("pod-scale-%d", i))
 	}
 	f.DeletePod("pod-drain-target")
 
-	// Drain and release initiation: mark the idle block for release and reduce desired pods.
+	// Drain and release initiation: mark the idle block for release and
+	// reduce desired pods.
 	f.SetAllocationsPods(16)
 	f.AddReleasableCIDR(dynamicCIDR)
 
@@ -63,13 +65,15 @@ func TestScaleDownAndReleaseLoop(t *testing.T) {
 		return integration.EqualSets(ranges, []string{integration.InitialPodCIDR}), fmt.Sprintf("gce=%v", ranges)
 	})
 
-	// Spec hygiene: CCM spec controller prunes the released range from spec.releasableCIDRs.
+	// Spec hygiene: CCM spec controller prunes the released range from
+	// spec.releasableCIDRs.
 	f.Eventually("CCM prunes releasableCIDRs from NNC spec", func() (bool, string) {
 		rel := integration.ReleasableCIDRs(f.NNC())
 		return len(rel) == 0, fmt.Sprintf("releasableCIDRs=%v", rel)
 	})
 
-	// Status reconciliation: CCM status controller updates status to reflect only the retained block.
+	// Status reconciliation: CCM status controller updates status to
+	// reflect only the retained block.
 	f.Eventually("status reflects only the retained initial range with Ready=True", func() (bool, string) {
 		nnc := f.NNC()
 		return integration.EqualSets(integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}) && integration.StatusReady(nnc),

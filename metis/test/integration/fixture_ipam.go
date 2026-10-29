@@ -27,14 +27,15 @@ import (
 	"k8s.io/metis/pkg/store"
 )
 
-// Pod lifecycle operations in the integration test suite execute through the Metis CNI IPAM
-// plugin (k8s.io/metis/pkg/cni) via CmdAddResult and CmdDelResult rather than bypassing CNI
-// to talk directly to the daemon. Each node handle maintains an isolated CNI plugin instance
-// configured with its local daemon socket and SQLite database path, exercising the complete
+// Pod lifecycle operations in the integration test suite execute through the
+// Metis CNI IPAM plugin (k8s.io/metis/pkg/cni) via CmdAddResult and
+// CmdDelResult rather than bypassing CNI to talk directly to the daemon.
+// Each node handle maintains an isolated CNI plugin instance configured with
+// its local daemon socket and SQLite database path, exercising the complete
 // CNI network configuration and IPAM allocation path end-to-end.
 
-// AllocatePod invokes the Metis CNI plugin's CmdAdd workflow to allocate an IP for
-// a pod, returning the assigned IP address and its associated CIDR block.
+// AllocatePod invokes the Metis CNI plugin's CmdAdd workflow to allocate an IP
+// for a pod, returning the assigned IP address and its associated CIDR block.
 func (n *NodeHandle) AllocatePod(id string) (ip, cidr string) {
 	n.fixture.t.Helper()
 
@@ -82,7 +83,8 @@ func (f *Fixture) AllocatePod(id string) (ip, cidr string) {
 	return f.nodes[PrimaryNodeName].AllocatePod(id)
 }
 
-// AllocateDualStackPod calls CNI CmdAdd explicitly returning both IPv4 and IPv6 addresses.
+// AllocateDualStackPod calls CNI CmdAdd explicitly returning both IPv4 and
+// IPv6 addresses.
 func (n *NodeHandle) AllocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6 string) {
 	n.fixture.t.Helper()
 
@@ -114,13 +116,15 @@ func (n *NodeHandle) AllocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6
 	return ipv4, cidrv4, ipv6, cidrv6
 }
 
-// AllocateDualStackPod calls CNI CmdAdd on the primary node returning both IPv4 and IPv6 addresses.
+// AllocateDualStackPod calls CNI CmdAdd on the primary node returning both
+// IPv4 and IPv6 addresses.
 func (f *Fixture) AllocateDualStackPod(id string) (ipv4, cidrv4, ipv6, cidrv6 string) {
 	return f.nodes[PrimaryNodeName].AllocateDualStackPod(id)
 }
 
 // TryAllocatePod calls the CNI plugin's CmdAdd workflow and returns the error
-// rather than failing the test. Used to assert that unready states block allocations.
+// rather than failing the test. Used to assert that unready states block
+// allocations.
 func (n *NodeHandle) TryAllocatePod(id string) (cidr string, err error) {
 	args := &skel.CmdArgs{
 		ContainerID: id,
@@ -181,7 +185,8 @@ func (f *Fixture) DeletePod(id string) {
 	f.nodes[PrimaryNodeName].DeletePod(id)
 }
 
-// BlockState queries this node's SQLite database directly for the state of a CIDR block.
+// BlockState queries this node's SQLite database directly for the state of a
+// CIDR block.
 func (n *NodeHandle) BlockState(cidr string) store.CidrBlockState {
 	n.fixture.t.Helper()
 	var state string
@@ -195,7 +200,8 @@ func (n *NodeHandle) BlockState(cidr string) store.CidrBlockState {
 	return store.CidrBlockState(state)
 }
 
-// BlockState queries the primary daemon's SQLite database directly for the state of a CIDR block.
+// BlockState queries the primary daemon's SQLite database directly for the
+// state of a CIDR block.
 func (f *Fixture) BlockState(cidr string) store.CidrBlockState {
 	return f.nodes[PrimaryNodeName].BlockState(cidr)
 }
@@ -214,12 +220,14 @@ func (n *NodeHandle) IPv6BlockState(cidr string) store.CidrBlockState {
 	return store.CidrBlockState(state)
 }
 
-// IPv6BlockState queries the primary daemon's SQLite database for an IPv6 block's state.
+// IPv6BlockState queries the primary daemon's SQLite database for an IPv6
+// block's state.
 func (f *Fixture) IPv6BlockState(cidr string) store.CidrBlockState {
 	return f.nodes[PrimaryNodeName].IPv6BlockState(cidr)
 }
 
-// BlockExists checks whether a CIDR block is present in this node's SQLite store.
+// BlockExists checks whether a CIDR block is present in this node's SQLite
+// store.
 func (n *NodeHandle) BlockExists(cidr string) bool {
 	n.fixture.t.Helper()
 	var exists bool
@@ -230,12 +238,14 @@ func (n *NodeHandle) BlockExists(cidr string) bool {
 	return exists
 }
 
-// BlockExists checks whether a CIDR block is present in the primary daemon's SQLite store.
+// BlockExists checks whether a CIDR block is present in the primary daemon's
+// SQLite store.
 func (f *Fixture) BlockExists(cidr string) bool {
 	return f.nodes[PrimaryNodeName].BlockExists(cidr)
 }
 
-// BlockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block on this node.
+// BlockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block
+// on this node.
 func (n *NodeHandle) BlockAllocatedIPs(cidr string) int {
 	n.fixture.t.Helper()
 	var allocated int
@@ -246,7 +256,8 @@ func (n *NodeHandle) BlockAllocatedIPs(cidr string) int {
 	return allocated
 }
 
-// BlockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block on the primary node.
+// BlockAllocatedIPs queries SQLite for the allocated_ips count of a CIDR block
+// on the primary node.
 func (f *Fixture) BlockAllocatedIPs(cidr string) int {
 	return f.nodes[PrimaryNodeName].BlockAllocatedIPs(cidr)
 }
@@ -261,7 +272,8 @@ func (n *NodeHandle) Usage() store.NetworkIPUsage {
 	return u
 }
 
-// Usage returns the current IPv4 IP usage for the default network on the primary node.
+// Usage returns the current IPv4 IP usage for the default network on the
+// primary node.
 func (f *Fixture) Usage() store.NetworkIPUsage {
 	return f.nodes[PrimaryNodeName].Usage()
 }
@@ -276,12 +288,14 @@ func (n *NodeHandle) IPv6Usage() store.NetworkIPUsage {
 	return u
 }
 
-// IPv6Usage returns current IPv6 IP usage for the default network on the primary node.
+// IPv6Usage returns current IPv6 IP usage for the default network on the
+// primary node.
 func (f *Fixture) IPv6Usage() store.NetworkIPUsage {
 	return f.nodes[PrimaryNodeName].IPv6Usage()
 }
 
-// EqualSets checks if two string slices contain the same elements, regardless of order.
+// EqualSets checks if two string slices contain the same elements, regardless
+// of order.
 func EqualSets(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

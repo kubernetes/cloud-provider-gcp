@@ -33,18 +33,21 @@ import (
 func TestScaleUpLoop(t *testing.T) {
 	f := integration.NewFixture(t)
 
-	// Initial saturation: allocate pods until the initial block is fully exhausted.
+	// Initial saturation: allocate pods until the initial block is fully
+	// exhausted.
 	for i := 1; i <= integration.InitialUsableIPs; i++ {
 		f.AllocatePod(fmt.Sprintf("pod-init-%d", i))
 	}
 
-	// Scale-up demand: an overflow pod triggers the daemon to request additional capacity.
+	// Scale-up demand: an overflow pod triggers the daemon to request
+	// additional capacity.
 	_, dynamicCIDR := f.AllocatePod("pod-overflow")
 	if dynamicCIDR == integration.InitialPodCIDR {
 		t.Fatalf("overflow pod allocated from initial range; expected a dynamically added range")
 	}
 
-	// Infrastructure expansion: GCE, status, and SQLite converge on the expanded capacity.
+	// Infrastructure expansion: GCE, status, and SQLite converge on the
+	// expanded capacity.
 	f.Eventually("GCE, status, and SQLite converge on two ranges", func() (bool, string) {
 		nnc := f.NNC()
 		want := []string{integration.InitialPodCIDR, dynamicCIDR}

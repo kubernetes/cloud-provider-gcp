@@ -24,11 +24,12 @@ import (
 	"k8s.io/metis/test/integration"
 )
 
-// TestBootstrapAllocation tests node bootstrap where the initial pod is allocated
-// from the CNI-provided initial CIDR before cloud controllers have published
-// status. It verifies that the daemon serves the local allocation immediately,
-// and the CCM status controller discovers the existing instance alias range,
-// publishes it to NodeNetworkConfig status, and marks the node Ready.
+// TestBootstrapAllocation tests node bootstrap where the initial pod is
+// allocated from the CNI-provided initial CIDR before cloud controllers have
+// published status. It verifies that the daemon serves the local allocation
+// immediately, and the CCM status controller discovers the existing instance
+// alias range, publishes it to NodeNetworkConfig status, and marks the node
+// Ready.
 func TestBootstrapAllocation(t *testing.T) {
 	f := integration.NewFixture(t)
 
@@ -38,7 +39,8 @@ func TestBootstrapAllocation(t *testing.T) {
 		t.Fatalf("pod allocated from %s, want initial range %s", cidr, integration.InitialPodCIDR)
 	}
 
-	// Convergence: CCM discovers the initial range on the VM and publishes Ready status.
+	// Convergence: CCM discovers the initial range on the VM and publishes
+	// Ready status.
 	f.Eventually("CCM publishes initial range with Ready=True", func() (bool, string) {
 		nnc := f.NNC()
 		return integration.EqualSets(integration.StatusCIDRs(nnc), []string{integration.InitialPodCIDR}) && integration.StatusReady(nnc),
