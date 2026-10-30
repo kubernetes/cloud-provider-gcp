@@ -725,7 +725,7 @@ golang.org/x/tools/internal/pkgbits
 golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
-# google.golang.org/api v0.308.0
+# google.golang.org/api v0.309.0
 ## explicit; go 1.26.0
 google.golang.org/api/compute/v0.alpha
 google.golang.org/api/compute/v0.beta
