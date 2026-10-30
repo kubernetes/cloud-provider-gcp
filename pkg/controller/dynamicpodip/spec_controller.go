@@ -170,6 +170,19 @@ func (c *NodeNetworkConfigSpecController) enqueueNodeNetworkConfig(obj interface
 	c.queue.Add(key)
 }
 
+// EnqueueNode requests an asynchronous spec reconcile for the specified node.
+// It implements SpecTrigger for the status controller, which uses it to force a
+// re-evaluation of spec.allocations after it has published a changed GCE state;
+// see SpecTrigger for why the generation filter above would otherwise hide
+// that. NodeNetworkConfig is cluster-scoped and named after the node, so the
+// node name is the workqueue key.
+func (c *NodeNetworkConfigSpecController) EnqueueNode(nodeName string) {
+	if c == nil || c.queue == nil {
+		return
+	}
+	c.queue.Add(nodeName)
+}
+
 // Run starts the spec controller workers.
 func (c *NodeNetworkConfigSpecController) Run(workers int, stopCh <-chan struct{}) {
 	runNodeWorkers(c.name, c.queue, workers, stopCh, c.runWorker, c.nncSynced, c.nodeSynced)

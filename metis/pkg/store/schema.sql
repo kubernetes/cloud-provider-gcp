@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS cidr_blocks (
     allocated_ips INTEGER DEFAULT 0,
 
     -- The current operational state of the block. 
-    -- Expected values: 'Ready', 'Draining', 'Deleting'
+    -- Expected values: 'Ready', 'Draining', 'Deleting', 'Unknown'
     state TEXT NOT NULL DEFAULT 'Ready',
 
     -- Represents whether this CIDR block can be reused or should be directly deleted upon release.

@@ -59,6 +59,12 @@ const (
 	// to be removed from the local store once it is removed from the NodeNetworkConfig CRD status.
 	// This state is part of the dynamic allocation lifecycle and is only applicable to IPv4.
 	StateDeleting CidrBlockState = "Deleting"
+
+	// StateUnknown indicates the CIDR block exists in the local store with active allocations
+	// but is missing from the NodeNetworkConfig CRD status (e.g., deleted out-of-band in GCE).
+	// No new allocations or undraining are allowed, and it is excluded from active IP usage
+	// calculations. Once its active allocations reach 0, it is removed from the local store.
+	StateUnknown CidrBlockState = "Unknown"
 )
 
 // CIDROptions holds configuration options for adding a CIDR block to the store.
