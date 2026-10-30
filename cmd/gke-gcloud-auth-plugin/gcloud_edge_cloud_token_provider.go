@@ -33,6 +33,10 @@ func (p *gcloudEdgeCloudTokenProvider) token() (string, *time.Time, error) {
 		return "", nil, fmt.Errorf("error parsing gcloud output: %w", err)
 	}
 
+	if tok.AccessToken == "" {
+		return "", nil, fmt.Errorf("gcloud edge-cloud container clusters print-access-token returned an empty access token")
+	}
+
 	return tok.AccessToken, &tok.TokenExpiry, nil
 }
 
