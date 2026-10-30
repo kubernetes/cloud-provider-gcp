@@ -316,10 +316,9 @@ func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GK
 	}
 
 	// The default network can only use an IPV6_ONLY subnet on an IPv6-only
-	// cluster. Additional L3 networks follow their own subnet's stack type and
-	// may be IPv6-only regardless of the cluster's stack type. Device networks
-	// are not supported on IPV6_ONLY subnets.
-	if isIPv6OnlySubnet(subnet) && ((isDefaultGNP && !isIPv6OnlyCluster) || network.Spec.Type != networkv1.L3NetworkType) {
+	// cluster. Additional networks (L3 or Device) follow their own subnet's
+	// stack type and may be IPv6-only regardless of the cluster's stack type.
+	if isIPv6OnlySubnet(subnet) && isDefaultGNP && !isIPv6OnlyCluster {
 		return &gnpNetworkCrossValidation{
 			IsValid:      false,
 			ErrorReason:  networkv1.GNPNetworkParamsReadyConditionReason("SubnetStackTypeIncompatible"),
