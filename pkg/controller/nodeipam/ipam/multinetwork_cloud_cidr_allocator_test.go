@@ -478,7 +478,7 @@ func TestDefaultNetworkCIDRs_IPv4Only(t *testing.T) {
 	k8sInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	nodeInformer := k8sInformerFactory.Core().V1().Nodes()
 
-	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), false, true, nodeInformer, CIDRAllocatorParams{})
+	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), nil, false, true, false, nodeInformer, CIDRAllocatorParams{})
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
 	node := &v1.Node{
@@ -567,7 +567,7 @@ func TestDefaultNetworkCIDRs_DualStack_NoLabels(t *testing.T) {
 	k8sInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	nodeInformer := k8sInformerFactory.Core().V1().Nodes()
 
-	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), false, true, nodeInformer, CIDRAllocatorParams{})
+	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), nil, false, true, false, nodeInformer, CIDRAllocatorParams{})
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
 	node := &v1.Node{
@@ -658,7 +658,7 @@ func TestDefaultNetworkCIDRs_DualStack_WithLabels(t *testing.T) {
 	k8sInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	nodeInformer := k8sInformerFactory.Core().V1().Nodes()
 
-	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), false, true, nodeInformer, CIDRAllocatorParams{})
+	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), nil, false, true, false, nodeInformer, CIDRAllocatorParams{})
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
 	node := &v1.Node{
@@ -750,7 +750,7 @@ func TestDefaultNetworkCIDRs_IPv6Only(t *testing.T) {
 	k8sInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	nodeInformer := k8sInformerFactory.Core().V1().Nodes()
 
-	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), false, true, nodeInformer, CIDRAllocatorParams{})
+	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), nil, false, true, false, nodeInformer, CIDRAllocatorParams{})
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
 	node := &v1.Node{
@@ -929,7 +929,7 @@ func TestDefaultNetworkCIDRs_DefaultNetworkNotUp(t *testing.T) {
 	k8sInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	nodeInformer := k8sInformerFactory.Core().V1().Nodes()
 
-	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), false, true, nodeInformer, CIDRAllocatorParams{})
+	ca, _ := NewCloudCIDRAllocator(kubeClient, fakeGCE, nwInfFactory.V1().Networks(), nwInfFactory.V1().GKENetworkParamSets(), ntfakeclient.NewSimpleClientset(), nil, false, true, false, nodeInformer, CIDRAllocatorParams{})
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
 	node := &v1.Node{
