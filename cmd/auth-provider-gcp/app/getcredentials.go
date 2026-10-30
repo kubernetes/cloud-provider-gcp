@@ -35,6 +35,7 @@ import (
 
 const (
 	gcrAuthFlow             = "gcr"
+	adcAuthFlow             = "adc"
 	dockerConfigAuthFlow    = "dockercfg"
 	dockerConfigURLAuthFlow = "dockercfg-url"
 )
@@ -56,7 +57,7 @@ type AuthFlowFlagError struct {
 
 // Error implements error.Error.
 func (a *AuthFlowFlagError) Error() string {
-	return fmt.Sprintf("invalid value %q for authFlow (must be one of %q, %q, or %q)", a.flagValue, gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
+	return fmt.Sprintf("invalid value %q for authFlow (must be one of %q, %q, %q, or %q)", a.flagValue, gcrAuthFlow, adcAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow)
 }
 
 // Is implements the Is function that errors.Is checks for.
@@ -103,6 +104,8 @@ func providerFromFlow(flow string, req credentialproviderapi.CredentialProviderR
 	switch flow {
 	case gcrAuthFlow:
 		return provider.MakeRegistryProvider(transport, req.ServiceAccountToken, req.ServiceAccountAnnotations, options.IdentityProvider, options.ProjectID), nil
+	case adcAuthFlow:
+		return provider.MakeApplicationDefaultCredentialsProvider(transport), nil
 	case dockerConfigAuthFlow:
 		return provider.MakeDockerConfigProvider(transport), nil
 	case dockerConfigURLAuthFlow:
@@ -145,13 +148,13 @@ func getCredentials(options CredentialOptions) error {
 }
 
 func defineFlags(credCmd *cobra.Command, options *CredentialOptions) {
-	credCmd.Flags().StringVarP(&options.AuthFlow, "authFlow", "a", gcrAuthFlow, fmt.Sprintf("authentication flow (valid values are %q, %q, and %q)", gcrAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow))
+	credCmd.Flags().StringVarP(&options.AuthFlow, "authFlow", "a", gcrAuthFlow, fmt.Sprintf("authentication flow (valid values are %q, %q, %q, and %q). %q uses Google Application Default Credentials, e.g. the credentials file named by GOOGLE_APPLICATION_CREDENTIALS.", gcrAuthFlow, adcAuthFlow, dockerConfigAuthFlow, dockerConfigURLAuthFlow, adcAuthFlow))
 	credCmd.Flags().StringVar(&options.IdentityProvider, "identity-provider", "", "Target Identity Provider URL to request federated tokens from. Only takes effect when --authFlow=gcr. If configured, it enables Workload Identity flow.")
 	credCmd.Flags().StringVar(&options.ProjectID, "project-id", "", "The GCP Project ID. Required when --identity-provider is configured.")
 }
 
 func validateFlags(options *CredentialOptions) error {
-	if options.AuthFlow != gcrAuthFlow && options.AuthFlow != dockerConfigAuthFlow && options.AuthFlow != dockerConfigURLAuthFlow {
+	if options.AuthFlow != gcrAuthFlow && options.AuthFlow != adcAuthFlow && options.AuthFlow != dockerConfigAuthFlow && options.AuthFlow != dockerConfigURLAuthFlow {
 		return &AuthFlowFlagError{flagValue: options.AuthFlow}
 	}
 	if options.IdentityProvider != "" && options.AuthFlow != gcrAuthFlow {
