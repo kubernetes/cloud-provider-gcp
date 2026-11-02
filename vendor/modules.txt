@@ -1812,7 +1812,7 @@ k8s.io/kubectl/pkg/validation
 k8s.io/kubelet/pkg/apis
 k8s.io/kubelet/pkg/apis/credentialprovider
 k8s.io/kubelet/pkg/apis/credentialprovider/v1
-# k8s.io/kubernetes v1.37.1
+# k8s.io/kubernetes v1.37.2
 ## explicit; go 1.26.0
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
@@ -1874,7 +1874,7 @@ k8s.io/metrics/pkg/apis/metrics/v1
 k8s.io/metrics/pkg/apis/metrics/v1alpha1
 k8s.io/metrics/pkg/apis/metrics/v1beta1
 k8s.io/metrics/pkg/client/clientset/versioned/scheme
-# k8s.io/pod-security-admission v0.37.1
+# k8s.io/pod-security-admission v0.37.2
 ## explicit; go 1.26.0
 k8s.io/pod-security-admission/api
 k8s.io/pod-security-admission/policy
