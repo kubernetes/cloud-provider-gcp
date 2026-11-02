@@ -14,8 +14,8 @@ require (
 	k8s.io/client-go v0.37.2
 	k8s.io/cloud-provider v0.37.2
 	k8s.io/cloud-provider-gcp/providers v0.0.0-00010101000000-000000000000
-	k8s.io/kubernetes v1.37.1
-	k8s.io/pod-security-admission v0.37.1
+	k8s.io/kubernetes v1.37.2
+	k8s.io/pod-security-admission v0.37.2
 )
 
 require (
