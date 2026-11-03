@@ -16,8 +16,8 @@ limitations under the License.
 package kops
 
 import (
+	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -112,18 +112,18 @@ func TestConfigFinalize(t *testing.T) {
 
 func TestRunWithRetry(t *testing.T) {
 	t.Run("success on first try", func(t *testing.T) {
-		err := runWithRetry(func() *exec.Cmd {
-			return exec.Command("true")
-		}, "test command", 3, 10*time.Millisecond)
+		err := runWithRetry(func() error {
+			return nil
+		}, "test operation", 3, 10*time.Millisecond)
 		if err != nil {
 			t.Errorf("expected success, got %v", err)
 		}
 	})
 
 	t.Run("fail after retries", func(t *testing.T) {
-		err := runWithRetry(func() *exec.Cmd {
-			return exec.Command("false")
-		}, "failing command", 2, 10*time.Millisecond)
+		err := runWithRetry(func() error {
+			return errors.New("boom")
+		}, "failing operation", 2, 10*time.Millisecond)
 		if err == nil {
 			t.Errorf("expected error, got nil")
 		}
