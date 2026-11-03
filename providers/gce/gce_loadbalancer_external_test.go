@@ -29,9 +29,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	compute "google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 	v1 "k8s.io/api/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
 	netutils "k8s.io/utils/net"
+	"net/http"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -2963,5 +2965,168 @@ func TestEnsureExternalLoadBalancerLocalNoOpUpdate(t *testing.T) {
 	assert.True(t, isNotFound(err))
 
 	_, err = gce.GetFirewall(sharedHcSwName)
+	assert.True(t, isNotFound(err))
+}
+
+// TestEnsureExternalLoadBalancerDeletedLocalCleansUpSharedNodeHealthCheckFirewall ensures that deleting
+// an etp=Local service also cleans up any orphaned shared node health check and firewall rule when
+// no other target pool is using them.
+func TestEnsureExternalLoadBalancerDeletedLocalCleansUpSharedNodeHealthCheckFirewall(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	nodeNames := []string{"test-node-1"}
+
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	_, err = createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+	require.NoError(t, err)
+
+	hosts, err := gce.getInstancesByNames(nodeNames)
+	require.NoError(t, err)
+
+	// Simulate an existing shared node health check and firewall rule in the cluster.
+	sharedHcName := MakeNodesHealthCheckName(vals.ClusterID)
+	sharedHcFwName := MakeHealthCheckFirewallName(vals.ClusterID, sharedHcName, true)
+
+	hc := makeHTTPHealthCheck(sharedHcName, GetNodesHealthCheckPath(), GetNodesHealthCheckPort())
+	err = gce.CreateHTTPHealthCheck(hc)
+	require.NoError(t, err)
+
+	err = gce.ensureHTTPHealthCheckFirewall(fakeLoadbalancerService(""), "shared-hc", "1.2.3.4", vals.Region, vals.ClusterID, hosts, sharedHcName, int32(GetNodesHealthCheckPort()), true)
+	require.NoError(t, err)
+
+	_, err = gce.GetFirewall(sharedHcFwName)
+	require.NoError(t, err)
+
+	// Create an etp=Local service.
+	svc := fakeLoadbalancerService("")
+	svc.UID = "local-svc-uid"
+	svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
+	svc.Spec.HealthCheckNodePort = int32(10101)
+	svc.Spec.Type = v1.ServiceTypeLoadBalancer
+
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	_, err = createExternalLoadBalancer(gce, svc, nodeNames, vals.ClusterName, vals.ClusterID, vals.ZoneName)
+	assert.NoError(t, err)
+
+	loadBalancerName := gce.GetLoadBalancerName(context.TODO(), "", svc)
+	localHcFwName := MakeHealthCheckFirewallName(vals.ClusterID, loadBalancerName, false)
+
+	_, err = gce.GetFirewall(localHcFwName)
+	require.NoError(t, err)
+
+	// Delete the etp=Local service.
+	err = gce.ensureExternalLoadBalancerDeleted(vals.ClusterName, vals.ClusterID, svc)
+	assert.NoError(t, err)
+
+	// Verify that local health check and firewall are deleted.
+	_, err = gce.GetHTTPHealthCheck(loadBalancerName)
+	assert.True(t, isNotFound(err))
+
+	_, err = gce.GetFirewall(localHcFwName)
+	assert.True(t, isNotFound(err))
+
+	// Verify that the shared node health check and firewall are ALSO deleted.
+	_, err = gce.GetHTTPHealthCheck(sharedHcName)
+	assert.True(t, isNotFound(err))
+
+	_, err = gce.GetFirewall(sharedHcFwName)
+	assert.True(t, isNotFound(err))
+}
+
+// TestEnsureExternalLoadBalancerDeletedLocalPreservesSharedNodeHealthCheckInUse ensures that deleting
+// an etp=Local service does NOT delete the shared node health check and firewall rule if another
+// service's target pool is still using them.
+func TestEnsureExternalLoadBalancerDeletedLocalPreservesSharedNodeHealthCheckInUse(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	nodeNames := []string{"test-node-1"}
+
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+	require.NoError(t, err)
+
+	hosts, err := gce.getInstancesByNames(nodeNames)
+	require.NoError(t, err)
+
+	sharedHcName := MakeNodesHealthCheckName(vals.ClusterID)
+	sharedHcFwName := MakeHealthCheckFirewallName(vals.ClusterID, sharedHcName, true)
+
+	hc := makeHTTPHealthCheck(sharedHcName, GetNodesHealthCheckPath(), GetNodesHealthCheckPort())
+	err = gce.CreateHTTPHealthCheck(hc)
+	require.NoError(t, err)
+
+	err = gce.ensureHTTPHealthCheckFirewall(fakeLoadbalancerService(""), "shared-hc", "1.2.3.4", vals.Region, vals.ClusterID, hosts, sharedHcName, int32(GetNodesHealthCheckPort()), true)
+	require.NoError(t, err)
+
+	// Simulate GCE in-use error when deleting shared health check while another target pool references it.
+	mockGCE := gce.c.(*cloud.MockGCE)
+	inUse := true
+	mockGCE.MockHttpHealthChecks.DeleteHook = func(ctx context.Context, key *meta.Key, m *cloud.MockHttpHealthChecks, options ...cloud.Option) (bool, error) {
+		if inUse && key.Name == sharedHcName {
+			return true, &googleapi.Error{
+				Code:    http.StatusBadRequest,
+				Message: fmt.Sprintf("The resource %s is being used by another target pool", sharedHcName),
+			}
+		}
+		return false, nil
+	}
+
+	// Create an etp=Local service.
+	svcLocal := fakeLoadbalancerService("")
+	svcLocal.Name = "local-svc"
+	svcLocal.UID = "local-svc-uid"
+	svcLocal.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
+	svcLocal.Spec.HealthCheckNodePort = int32(10101)
+	svcLocal.Spec.Type = v1.ServiceTypeLoadBalancer
+
+	svcLocal, err = gce.client.CoreV1().Services(svcLocal.Namespace).Create(context.TODO(), svcLocal, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svcLocal, nil, nodes)
+	assert.NoError(t, err)
+
+	localLbName := gce.GetLoadBalancerName(context.TODO(), "", svcLocal)
+	localHcFwName := MakeHealthCheckFirewallName(vals.ClusterID, localLbName, false)
+
+	_, err = gce.GetFirewall(localHcFwName)
+	require.NoError(t, err)
+
+	// Delete the etp=Local service.
+	err = gce.ensureExternalLoadBalancerDeleted(vals.ClusterName, vals.ClusterID, svcLocal)
+	assert.NoError(t, err)
+
+	// Verify that local health check and firewall are deleted.
+	_, err = gce.GetHTTPHealthCheck(localLbName)
+	assert.True(t, isNotFound(err))
+
+	_, err = gce.GetFirewall(localHcFwName)
+	assert.True(t, isNotFound(err))
+
+	// Verify that the shared node health check and firewall are PRESERVED because it was reported in-use.
+	_, err = gce.GetHTTPHealthCheck(sharedHcName)
+	assert.NoError(t, err)
+
+	_, err = gce.GetFirewall(sharedHcFwName)
+	assert.NoError(t, err)
+
+	// Now simulate that other services are deleted and shared health check is no longer in use.
+	inUse = false
+	// Attempt delete on shared health check and its firewall.
+	err = gce.DeleteExternalTargetPoolAndChecks(fakeLoadbalancerService(""), "cluster-svc", vals.Region, vals.ClusterID, sharedHcName)
+	assert.NoError(t, err)
+
+	// Verify that the shared node health check and firewall are now deleted.
+	_, err = gce.GetHTTPHealthCheck(sharedHcName)
+	assert.True(t, isNotFound(err))
+
+	_, err = gce.GetFirewall(sharedHcFwName)
 	assert.True(t, isNotFound(err))
 }

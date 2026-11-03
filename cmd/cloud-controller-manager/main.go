@@ -34,13 +34,14 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/clientgo" // load all the prometheus client-go plugins
 	_ "k8s.io/component-base/metrics/prometheus/version"  // for version metric registration
 	"k8s.io/klog/v2"
-	kcmnames "k8s.io/kubernetes/cmd/kube-controller-manager/names"
 
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	_ "k8s.io/cloud-provider-gcp/providers/gce"
 )
 
 const (
+	// nodeIpamControllerName matches NodeIpamController in k8s.io/kubernetes/cmd/kube-controller-manager/names.
+	nodeIpamControllerName          = "node-ipam-controller"
 	gkeServiceLBControllerName      = "gke-service-lb-controller"
 	gkeServiceControllerClientName  = "gke-service-controller"
 	gkeServiceAlias                 = "gke-service"
@@ -152,7 +153,7 @@ func main() {
 	nodeIpamController := nodeIPAMController{}
 	nodeIpamController.nodeIPAMControllerOptions.NodeIPAMControllerConfiguration = &nodeIpamController.nodeIPAMControllerConfiguration
 	nodeIpamController.nodeIPAMControllerOptions.AddFlags(fss.FlagSet("nodeipam controller"))
-	controllerInitializers[kcmnames.NodeIpamController] = app.ControllerInitFuncConstructor{
+	controllerInitializers[nodeIpamControllerName] = app.ControllerInitFuncConstructor{
 		Constructor: nodeIpamController.startNodeIpamControllerWrapper,
 	}
 
@@ -201,7 +202,7 @@ func main() {
 	app.ControllersDisabledByDefault.Insert("dynamicpodip")
 
 	aliasMap := names.CCMControllerAliases()
-	aliasMap["nodeipam"] = kcmnames.NodeIpamController
+	aliasMap["nodeipam"] = nodeIpamControllerName
 	aliasMap[gkeServiceAlias] = gkeServiceLBControllerName
 	aliasMap[gkeTenantControllerManagerAlias] = gkeTenantControllerManagerName
 
