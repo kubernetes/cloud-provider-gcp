@@ -4,6 +4,7 @@ toolchain go1.27.3
 
 use (
 	.
+	./gce-metadata-proxy
 	./metis
 	./providers
 	./test/e2e

@@ -55,6 +55,12 @@ if [[ "${VERIFY_METIS:-true}" == "true" ]]; then
   cd "${KUBE_ROOT}"
 fi
 
+if [[ "${VERIFY_GCE_METADATA_PROXY:-true}" == "true" ]]; then
+  echo "[*] Verifying gce-metadata-proxy..."
+  make -C gce-metadata-proxy verify || res=1
+  cd "${KUBE_ROOT}"
+fi
+
 # exit based on verify scripts
 if [[ "${res}" = 0 ]]; then
   echo ""
