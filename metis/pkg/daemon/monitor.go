@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/netip"
 	"reflect"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	nncinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions/nodenetworkconfig/v1"
 	nnclisters "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/listers/nodenetworkconfig/v1"
 	"github.com/go-logr/logr"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -308,6 +310,10 @@ func (m *Monitor) syncAll(ctx context.Context) error {
 
 	// Reconcile capacity and release state for each network individually.
 	for _, network := range networks {
+		if err := m.reconcileOutOfSyncBlocks(ctx, network, nncCopy); err != nil {
+			return err
+		}
+
 		info, err := m.getUtilizationInfo(ctx, network, nncCopy)
 		if err != nil {
 			return err
@@ -648,13 +654,117 @@ func (m *Monitor) reconcileDeletingBlocks(
 		}
 	}
 
-	// TODO: detect out of sync items that does not exist in status but exist in local DB. Emit metrics or log. This should never happen. If this happens, consider add another CIDR block state "unknown" so it won't be reused.
+	// Note: Out-of-sync CIDR blocks that do not exist in status are reconciled in
+	// reconcileOutOfSyncBlocks before IP usage calculation.
 
 	if reducePods > 0 {
 		m.logger.Info("Releasing capacity: blocks are fully drained and marked as releasable", "network", network, "capacityReducedBy", reducePods)
 	}
 
 	return newReleasables, reducePods, nil
+}
+
+// nncStatusReady reports whether the NodeNetworkConfig carries the Ready=True
+// condition.
+//
+// This is the daemon's signal that nnc.Status.PodCIDRs is a complete, current
+// snapshot of the VM's alias IP ranges. CCM's status controller
+// (pkg/controller/dynamicpodip/status_controller.go, syncStatusToGCE) rebuilds
+// Status.PodCIDRs wholesale from GCE and sets Ready=True in the same status
+// write; it is the only writer of Status.PodCIDRs. CCM's spec controller flips
+// Ready to False (reason Updating / InvalidParameters) around GCE mutations but
+// never touches Status.PodCIDRs. Hence:
+//   - Ready absent: the status controller has never published a snapshot (node
+//     bootstrap).
+//   - Ready=False: a mutation is in flight or failed; Status.PodCIDRs is the
+//     last published snapshot, which may be empty if nothing was ever
+//     published.
+//   - Ready=True: Status.PodCIDRs matches GCE as of the last sync, even when it
+//     is empty.
+func nncStatusReady(nnc *nncv1.NodeNetworkConfig) bool {
+	return apimeta.IsStatusConditionTrue(nnc.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
+}
+
+// reconcileOutOfSyncBlocks reconciles local SQLite CIDR blocks against NNC
+// status. It detects local SQLite CIDR blocks (Ready/Draining/Unknown) missing
+// from nnc.Status.PodCIDRs:
+//   - If allocated_ips == 0: immediately deletes the out-of-sync block from
+//     SQLite (without adding it to spec.releasableCIDRs or incrementing
+//     reducePods) so it cannot be assigned to new pods and no longer inflates
+//     info.Usage.Total.
+//   - If allocated_ips > 0: marks the block as Unknown and logs an error so no
+//     new pods are scheduled onto it, it cannot be undrained, and it is
+//     excluded from GetIPUsage; once existing pods exit (allocated_ips == 0),
+//     it will be deleted on subsequent reconciliation.
+//
+// When the status lists no IPv4 pod CIDRs for the network, the NNC Ready
+// condition decides whether that emptiness is trustworthy (see nncStatusReady):
+// an unpublished status (bootstrap, where the initial block comes from the CNI
+// config rather than from CCM) is skipped, whereas a Ready status that is
+// genuinely empty means GCE holds no ranges for the node and every local block
+// is reconciled as out of sync.
+func (m *Monitor) reconcileOutOfSyncBlocks(ctx context.Context, network string, nncCopy *nncv1.NodeNetworkConfig) error {
+	statusMap := map[string]bool{}
+	for _, podCIDR := range nncCopy.Status.PodCIDRs {
+		if podCIDR.Network != network {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(podCIDR.CIDR)
+		if err != nil {
+			continue
+		}
+		if prefix.Addr().Is4() {
+			statusMap[podCIDR.CIDR] = true
+		}
+	}
+	if len(statusMap) == 0 {
+		if !nncStatusReady(nncCopy) {
+			m.logger.V(4).Info("NNC status lists no pod CIDRs for network and is not Ready; skipping out-of-sync reconciliation",
+				"network", network)
+			return nil
+		}
+		// Every local block is out of sync; the per-block transitions below report each one.
+		m.logger.V(2).Info("NNC status is Ready but lists no pod CIDRs for network", "network", network)
+	}
+
+	blocks, err := m.store.GetNonDeletingCIDRBlocks(ctx, network, store.IPv4)
+	if err != nil {
+		return fmt.Errorf("failed to get non-deleting CIDR blocks: %w", err)
+	}
+
+	for _, block := range blocks {
+		if statusMap[block.CIDR] {
+			if block.State == store.StateUnknown {
+				if err := m.store.MarkCIDRBlockReady(ctx, block.ID); err != nil {
+					return fmt.Errorf("failed to restore Unknown CIDR block %d to Ready: %w", block.ID, err)
+				}
+				m.logger.Info("Restored CIDR block from Unknown to Ready as it reappeared in NNC status",
+					"network", network, "cidr", block.CIDR, "cidrBlockID", block.ID)
+			}
+			continue
+		}
+
+		if block.AllocatedIPs == 0 {
+			if err := m.store.DeleteCIDRBlockImmediately(ctx, block.ID); err != nil {
+				return fmt.Errorf("failed to delete out-of-sync CIDR block %d from store: %w", block.ID, err)
+			}
+			m.logger.Info("Deleted out-of-sync CIDR block from local DB as it was removed from NNC status and has 0 allocated IPs",
+				"network", network, "cidr", block.CIDR, "cidrBlockID", block.ID)
+		} else {
+			if block.State == store.StateUnknown {
+				// Already quarantined; nothing to do until its pods exit.
+				m.logger.V(4).Info("Out-of-sync CIDR block remains Unknown while pods still hold IPs from it",
+					"network", network, "cidr", block.CIDR, "cidrBlockID", block.ID, "allocatedIPs", block.AllocatedIPs)
+				continue
+			}
+			if err := m.store.MarkCIDRBlockUnknown(ctx, block.ID); err != nil {
+				return fmt.Errorf("failed to mark out-of-sync CIDR block %d as Unknown: %w", block.ID, err)
+			}
+			m.logger.Error(nil, "Out-of-sync CIDR block missing from NNC status has active pod allocations; marked as Unknown",
+				"network", network, "cidr", block.CIDR, "cidrBlockID", block.ID, "allocatedIPs", block.AllocatedIPs)
+		}
+	}
+	return nil
 }
 
 func getAllocationForNetwork(nnc *nncv1.NodeNetworkConfig, network string) *nncv1.Allocation {

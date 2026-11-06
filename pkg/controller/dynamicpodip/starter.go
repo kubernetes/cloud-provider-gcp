@@ -24,8 +24,12 @@ import (
 
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nncinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions"
+	v1 "k8s.io/api/core/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/record"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/controller-manager/controller"
 	"k8s.io/klog/v2"
@@ -115,6 +119,19 @@ func StartControllers(
 
 	gceCache := NewGCECache(loader, 10*time.Second, clock.RealClock{})
 
+	// One broadcaster for the package; each controller gets its own recorder so
+	// the event's source.component names the controller that emitted it.
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartStructuredLogging(0)
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
+	go func() {
+		<-ctx.Done()
+		eventBroadcaster.Shutdown()
+	}()
+	newRecorder := func(component string) record.EventRecorder {
+		return eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: component})
+	}
+
 	var statusTrigger StatusTrigger = &NoopStatusTrigger{}
 	var statusCtrl *NodeNetworkConfigStatusController
 
@@ -127,6 +144,7 @@ func StartControllers(
 			nodeInformer,
 			gceCloud,
 			gceCache,
+			newRecorder(statusControllerName),
 			clock.RealClock{},
 		)
 		statusTrigger = statusCtrl
@@ -169,6 +187,7 @@ func StartControllers(
 			rangeProvider,
 			backend,
 		)
+		statusCtrl.SetSpecTrigger(specCtrl)
 		go specCtrl.Run(DefaultSpecControllerWorkers, ctx.Done())
 	}
 

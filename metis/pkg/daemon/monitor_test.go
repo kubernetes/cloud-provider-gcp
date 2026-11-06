@@ -676,7 +676,10 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 					},
 				},
 				Status: nncv1.NodeNetworkConfigStatus{
-					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.1.0/28", Network: network}},
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.0.0/28", Network: network},
+						{CIDR: "10.0.1.0/28", Network: network},
+					},
 				},
 			},
 			expectedReleasableCIDRs: []string{"10.0.1.0/28"},
@@ -700,7 +703,10 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 					},
 				},
 				Status: nncv1.NodeNetworkConfigStatus{
-					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.2.0/28", Network: network}},
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.0.0/28", Network: network},
+						{CIDR: "10.0.2.0/28", Network: network},
+					},
 				},
 			},
 			expectedReleasableCIDRs: []string{"10.0.2.0/28"},
@@ -732,6 +738,7 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 				},
 				Status: nncv1.NodeNetworkConfigStatus{
 					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.2.0/28", Network: network},
 						{CIDR: "10.0.3.0/28", Network: network},
 						{CIDR: "10.0.4.0/28", Network: network},
 					},
@@ -758,7 +765,10 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 					},
 				},
 				Status: nncv1.NodeNetworkConfigStatus{
-					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.5.0/28", Network: network}},
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.0.0/28", Network: network},
+						{CIDR: "10.0.5.0/28", Network: network},
+					},
 				},
 			},
 			expectedReleasableCIDRs: []string{},
@@ -783,7 +793,10 @@ func TestMonitor_syncDeletingBlocks(t *testing.T) {
 					ReleasableCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.6.0/28", Network: network}},
 				},
 				Status: nncv1.NodeNetworkConfigStatus{
-					PodCIDRs: []nncv1.PodCIDR{{CIDR: "10.0.6.0/28", Network: network}},
+					PodCIDRs: []nncv1.PodCIDR{
+						{CIDR: "10.0.0.0/28", Network: network},
+						{CIDR: "10.0.6.0/28", Network: network},
+					},
 				},
 			},
 			expectedReleasableCIDRs: []string{"10.0.6.0/28"},
@@ -1282,4 +1295,814 @@ func TestMonitorRun(t *testing.T) {
 
 func ptrInt32(v int32) *int32 {
 	return &v
+}
+
+// TestMonitor_OutOfSyncCIDR_AllocatedZero covers a block that is deleted out of
+// band in GCE while it has no pods on it: CCM has already dropped it from NNC
+// status, and the next sync must delete it from SQLite on the spot. Capacity
+// shrinks on the same tick, the block is not offered back through
+// spec.releasableCIDRs, and the spec is not bumped because of it.
+func TestMonitor_OutOfSyncCIDR_AllocatedZero(t *testing.T) {
+	ctx := context.Background()
+	logger := logr.Discard()
+	network := "test-network"
+	nodeName := "test-node"
+
+	dbPath := filepath.Join(t.TempDir(), "test.sqlite")
+	storeInstance, err := store.NewStore(ctx, logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	// Add Block 1 (initial: has 3 reserved IPs) and Block 2 (0 allocated IPs)
+	if err := storeInstance.AddCIDR(ctx, network, "10.0.1.0/28"); err != nil {
+		t.Fatalf("Failed to add block 1: %v", err)
+	}
+	if err := storeInstance.AddCIDR(ctx, network, "10.0.2.0/28"); err != nil {
+		t.Fatalf("Failed to add block 2: %v", err)
+	}
+
+	// Allocate 5 IPs from block 1
+	for i := 0; i < 5; i++ {
+		_, _, err := storeInstance.AllocateIP(ctx, store.AllocateIPParams{
+			Network:       network,
+			InterfaceName: "eth0",
+			ContainerID:   fmt.Sprintf("container-b1-%d", i),
+			IPFamily:      store.IPv4,
+		})
+		if err != nil {
+			t.Fatalf("Failed to allocate IP: %v", err)
+		}
+	}
+
+	// Block 2 has 0 allocated IPs.
+	// Out-of-band deletion in GCE: Block 2 was deleted from GCE and CCM removed it from NNC.status.podCIDRs.
+	// So NNC.status.podCIDRs only contains block 1 ("10.0.1.0/28").
+	// NNC.spec.allocations currently has Pods: 32.
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: nodeName, ResourceVersion: "1"},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{Network: network, Pods: 32},
+			},
+		},
+		Status: nncv1.NodeNetworkConfigStatus{
+			PodCIDRs: []nncv1.PodCIDR{
+				{Network: network, CIDR: "10.0.1.0/28"},
+			},
+		},
+	}
+
+	patchCalled := false
+	var patchedData []byte
+	mockInterface := &mockNodeNetworkConfigInterface{
+		getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+			return nnc, nil
+		},
+		patchFunc: func(_ context.Context, _ string, _ types.PatchType, data []byte, _ metav1.PatchOptions, _ ...string) (*nncv1.NodeNetworkConfig, error) {
+			patchCalled = true
+			patchedData = data
+			return nnc, nil
+		},
+	}
+	mockClient := &mockClientset{networkingV1: &mockNetworkingV1{nncInterface: mockInterface}}
+
+	m := NewMonitor(MonitorConfig{
+		Logger:                  logger,
+		NNCClient:               mockClient,
+		Store:                   storeInstance,
+		NodeName:                nodeName,
+		GetPendingRequestsCount: func(_ string) int { return 0 },
+	})
+
+	if err := m.syncAll(ctx); err != nil {
+		t.Fatalf("syncAll failed: %v", err)
+	}
+
+	// Block 2 is deleted from SQLite immediately.
+	_, exists, err := storeInstance.GetCIDRBlock(ctx, "10.0.2.0/28", network)
+	if err != nil {
+		t.Fatalf("GetCIDRBlock failed: %v", err)
+	}
+	if exists {
+		t.Errorf("Expected out-of-sync block 10.0.2.0/28 to be immediately deleted from DB, but it still exists")
+	}
+
+	// Block 1 is untouched.
+	_, exists, err = storeInstance.GetCIDRBlock(ctx, "10.0.1.0/28", network)
+	if err != nil || !exists {
+		t.Fatalf("Expected block 10.0.1.0/28 to still exist in DB, exists: %v, err: %v", exists, err)
+	}
+
+	// Usage total reflects the cleanup on the same tick (16, not 32).
+	usage, err := storeInstance.GetIPUsage(ctx, network, store.IPv4)
+	if err != nil {
+		t.Fatalf("GetIPUsage failed: %v", err)
+	}
+	if usage.Total != 16 {
+		t.Errorf("Expected usage.Total to be 16 after deleting out-of-sync block, got %d", usage.Total)
+	}
+
+	// Block 2 was neither offered back via releasableCIDRs nor did it trigger a scale-up.
+	if patchCalled {
+		var patch struct {
+			Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
+		}
+		if err := json.Unmarshal(patchedData, &patch); err != nil {
+			t.Fatalf("Failed to unmarshal patch: %v", err)
+		}
+		for _, r := range patch.Spec.ReleasableCIDRs {
+			if r.CIDR == "10.0.2.0/28" {
+				t.Errorf("Out-of-sync block should NOT be added to releasableCIDRs")
+			}
+		}
+		if len(patch.Spec.Allocations) > 0 && patch.Spec.Allocations[0].Pods > 32 {
+			t.Errorf("Expected no scale-up beyond currentPods 32, got %d", patch.Spec.Allocations[0].Pods)
+		}
+	}
+}
+
+// TestMonitor_OutOfSyncCIDR_AllocatedNonZero covers a block that is deleted out
+// of band in GCE while pods still hold IPs from it. It cannot simply be
+// dropped, so it is quarantined as Unknown: excluded from usage (so no scale-up
+// loop), closed to new allocations, and kept until its last pod exits, at which
+// point a later sync deletes it.
+func TestMonitor_OutOfSyncCIDR_AllocatedNonZero(t *testing.T) {
+	ctx := context.Background()
+	logger := logr.Discard()
+	network := "test-network"
+	nodeName := "test-node"
+
+	dbPath := filepath.Join(t.TempDir(), "test.sqlite")
+	storeInstance, err := store.NewStore(ctx, logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	if err := storeInstance.AddCIDR(ctx, network, "10.0.1.0/28"); err != nil {
+		t.Fatalf("Failed to add block 1: %v", err)
+	}
+	if err := storeInstance.AddCIDR(ctx, network, "10.0.2.0/28"); err != nil {
+		t.Fatalf("Failed to add block 2: %v", err)
+	}
+
+	// Allocate 13 IPs on block 1, so block 1 is full (3 reserved + 13 allocated = 16)
+	for i := 0; i < 13; i++ {
+		_, _, err := storeInstance.AllocateIP(ctx, store.AllocateIPParams{
+			Network:       network,
+			InterfaceName: "eth0",
+			ContainerID:   fmt.Sprintf("container-b1-%d", i),
+			IPFamily:      store.IPv4,
+		})
+		if err != nil {
+			t.Fatalf("Failed to allocate IP on block 1: %v", err)
+		}
+	}
+
+	// Allocate 2 IPs which go to block 2
+	var b2Containers []string
+	for i := 0; i < 2; i++ {
+		cID := fmt.Sprintf("container-b2-%d", i)
+		ip, cidr, err := storeInstance.AllocateIP(ctx, store.AllocateIPParams{
+			Network:       network,
+			InterfaceName: "eth0",
+			ContainerID:   cID,
+			IPFamily:      store.IPv4,
+		})
+		if err != nil {
+			t.Fatalf("Failed to allocate IP on block 2: %v", err)
+		}
+		if cidr != "10.0.2.0/28" {
+			t.Fatalf("Expected allocation from block 2, got %s for IP %s", cidr, ip)
+		}
+		b2Containers = append(b2Containers, cID)
+	}
+
+	// Block 2 is deleted out of band in GCE and removed from NNC status
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: nodeName, ResourceVersion: "1"},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{Network: network, Pods: 32},
+			},
+		},
+		Status: nncv1.NodeNetworkConfigStatus{
+			PodCIDRs: []nncv1.PodCIDR{
+				{Network: network, CIDR: "10.0.1.0/28"},
+			},
+		},
+	}
+
+	patchCalled := false
+	var patchedData []byte
+	mockInterface := &mockNodeNetworkConfigInterface{
+		getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+			return nnc, nil
+		},
+		patchFunc: func(_ context.Context, _ string, _ types.PatchType, data []byte, _ metav1.PatchOptions, _ ...string) (*nncv1.NodeNetworkConfig, error) {
+			patchCalled = true
+			patchedData = data
+			return nnc, nil
+		},
+	}
+	mockClient := &mockClientset{networkingV1: &mockNetworkingV1{nncInterface: mockInterface}}
+
+	m := NewMonitor(MonitorConfig{
+		Logger:                  logger,
+		NNCClient:               mockClient,
+		Store:                   storeInstance,
+		NodeName:                nodeName,
+		GetPendingRequestsCount: func(_ string) int { return 0 },
+	})
+
+	// First sync loop: Block 2 has 2 active pod allocations
+	if err := m.syncAll(ctx); err != nil {
+		t.Fatalf("syncAll failed: %v", err)
+	}
+
+	// Block 2 still has a pod, so it is marked Unknown rather than deleted.
+	b2ID, exists, err := storeInstance.GetCIDRBlock(ctx, "10.0.2.0/28", network)
+	if err != nil || !exists {
+		t.Fatalf("Expected block 2 to still exist in DB, exists: %v, err: %v", exists, err)
+	}
+	blocks, err := storeInstance.GetNonDeletingCIDRBlocks(ctx, network, store.IPv4)
+	if err != nil {
+		t.Fatalf("GetNonDeletingCIDRBlocks failed: %v", err)
+	}
+	var b2State store.CidrBlockState
+	for _, b := range blocks {
+		if b.ID == b2ID {
+			b2State = b.State
+		}
+	}
+	if b2State != store.StateUnknown {
+		t.Errorf("Expected block 2 state to be Unknown, got %q", b2State)
+	}
+
+	// GetIPUsage excludes the Unknown block from Total and Allocated right away.
+	usage, err := storeInstance.GetIPUsage(ctx, network, store.IPv4)
+	if err != nil {
+		t.Fatalf("GetIPUsage failed: %v", err)
+	}
+	if usage.Total != 16 {
+		t.Errorf("Expected usage.Total to be 16 (excluding Unknown block 2), got %d", usage.Total)
+	}
+	if usage.Allocated != 16 {
+		t.Errorf("Expected usage.Allocated to be 16 (excluding Unknown block 2), got %d", usage.Allocated)
+	}
+
+	// No scale-up loop: spec pods must not have been bumped beyond 32.
+	if patchCalled {
+		var patch struct {
+			Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
+		}
+		if err := json.Unmarshal(patchedData, &patch); err != nil {
+			t.Fatalf("Failed to unmarshal patch: %v", err)
+		}
+		if len(patch.Spec.Allocations) > 0 && patch.Spec.Allocations[0].Pods > 32 {
+			t.Errorf("Scale-up loop detected: target pods was bumped to %d", patch.Spec.Allocations[0].Pods)
+		}
+	}
+
+	// The pod on block 2 exits.
+	for _, cID := range b2Containers {
+		_, err := storeInstance.ReleaseIPByOwner(ctx, network, cID, "eth0", 0)
+		if err != nil {
+			t.Fatalf("Failed to release IP for %s: %v", cID, err)
+		}
+	}
+
+	// Reset patchCalled
+	patchCalled = false
+
+	// Second sync loop: Now block 2 has 0 allocated IPs and is out of sync with status
+	if err := m.syncAll(ctx); err != nil {
+		t.Fatalf("syncAll second run failed: %v", err)
+	}
+
+	// With no pods left, block 2 is deleted from SQLite.
+	_, exists, err = storeInstance.GetCIDRBlock(ctx, "10.0.2.0/28", network)
+	if err != nil {
+		t.Fatalf("GetCIDRBlock failed: %v", err)
+	}
+	if exists {
+		t.Errorf("Expected block 2 to be deleted after active pods exited, but it still exists")
+	}
+}
+
+// TestMonitor_OutOfSyncCIDR_RestoredToReady covers a false alarm: a block
+// disappears from NNC status for one sync (e.g. a transient status rewrite) and
+// comes back on the next. The block goes Ready -> Unknown -> Ready, counts
+// towards usage again, and accepts new allocations again, without ever having
+// been deleted.
+func TestMonitor_OutOfSyncCIDR_RestoredToReady(t *testing.T) {
+	ctx := context.Background()
+	logger := logr.Discard()
+	network := "test-network"
+	nodeName := "test-node"
+
+	dbPath := filepath.Join(t.TempDir(), "test.sqlite")
+	storeInstance, err := store.NewStore(ctx, logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	if err := storeInstance.AddCIDR(ctx, network, "10.0.1.0/28"); err != nil {
+		t.Fatalf("Failed to add block 1: %v", err)
+	}
+	if err := storeInstance.AddCIDR(ctx, network, "10.0.2.0/28"); err != nil {
+		t.Fatalf("Failed to add block 2: %v", err)
+	}
+
+	// Exhaust block 1 (13 allocations + 3 reserved = 16)
+	for i := 0; i < 13; i++ {
+		_, _, err := storeInstance.AllocateIP(ctx, store.AllocateIPParams{
+			Network:       network,
+			InterfaceName: "eth0",
+			ContainerID:   fmt.Sprintf("container-b1-%d", i),
+			IPFamily:      store.IPv4,
+		})
+		if err != nil {
+			t.Fatalf("Failed to allocate IP on block 1: %v", err)
+		}
+	}
+
+	// Allocate 1 IP on block 2
+	_, cidr, err := storeInstance.AllocateIP(ctx, store.AllocateIPParams{
+		Network:       network,
+		InterfaceName: "eth0",
+		ContainerID:   "container-b2-1",
+		IPFamily:      store.IPv4,
+	})
+	if err != nil || cidr != "10.0.2.0/28" {
+		t.Fatalf("Expected allocation on block 2, got cidr=%s, err=%v", cidr, err)
+	}
+
+	// CCM transiently omits block 2 from NNC.Status.PodCIDRs.
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: nodeName, ResourceVersion: "1"},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{Network: network, Pods: 32},
+			},
+		},
+		Status: nncv1.NodeNetworkConfigStatus{
+			PodCIDRs: []nncv1.PodCIDR{
+				{Network: network, CIDR: "10.0.1.0/28"},
+			},
+		},
+	}
+
+	mockInterface := &mockNodeNetworkConfigInterface{
+		getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+			return nnc, nil
+		},
+		patchFunc: func(_ context.Context, _ string, _ types.PatchType, _ []byte, _ metav1.PatchOptions, _ ...string) (*nncv1.NodeNetworkConfig, error) {
+			return nnc, nil
+		},
+	}
+	mockClient := &mockClientset{networkingV1: &mockNetworkingV1{nncInterface: mockInterface}}
+
+	m := NewMonitor(MonitorConfig{
+		Logger:                  logger,
+		NNCClient:               mockClient,
+		Store:                   storeInstance,
+		NodeName:                nodeName,
+		GetPendingRequestsCount: func(_ string) int { return 0 },
+	})
+
+	if err := m.syncAll(ctx); err != nil {
+		t.Fatalf("First syncAll failed: %v", err)
+	}
+
+	// Verify block 2 is now Unknown
+	b2ID, _, _ := storeInstance.GetCIDRBlock(ctx, "10.0.2.0/28", network)
+	blocks, err := storeInstance.GetNonDeletingCIDRBlocks(ctx, network, store.IPv4)
+	if err != nil {
+		t.Fatalf("GetNonDeletingCIDRBlocks failed: %v", err)
+	}
+	for _, b := range blocks {
+		if b.ID == b2ID && b.State != store.StateUnknown {
+			t.Fatalf("Expected block 2 state to be Unknown, got %q", b.State)
+		}
+	}
+
+	// CCM restores block 2 to NNC.Status.PodCIDRs.
+	nnc.Status.PodCIDRs = append(nnc.Status.PodCIDRs, nncv1.PodCIDR{
+		Network: network,
+		CIDR:    "10.0.2.0/28",
+	})
+
+	if err := m.syncAll(ctx); err != nil {
+		t.Fatalf("Second syncAll failed: %v", err)
+	}
+
+	// Verify block 2 is restored to Ready
+	blocks, err = storeInstance.GetNonDeletingCIDRBlocks(ctx, network, store.IPv4)
+	if err != nil {
+		t.Fatalf("GetNonDeletingCIDRBlocks failed: %v", err)
+	}
+	for _, b := range blocks {
+		if b.ID == b2ID && b.State != store.StateReady {
+			t.Errorf("Expected block 2 state to be restored to Ready, got %q", b.State)
+		}
+	}
+
+	// Verify usage includes block 2 again (Total = 32, Allocated = 17)
+	usage, err := storeInstance.GetIPUsage(ctx, network, store.IPv4)
+	if err != nil {
+		t.Fatalf("GetIPUsage failed: %v", err)
+	}
+	if usage.Total != 32 || usage.Allocated != 17 {
+		t.Errorf("Expected usage Total=32, Allocated=17 after restoring to Ready, got Total=%d, Allocated=%d", usage.Total, usage.Allocated)
+	}
+
+	// Verify new pods can allocate from block 2 again
+	_, cidr, err = storeInstance.AllocateIP(ctx, store.AllocateIPParams{
+		Network:       network,
+		InterfaceName: "eth0",
+		ContainerID:   "container-b2-2",
+		IPFamily:      store.IPv4,
+	})
+	if err != nil || cidr != "10.0.2.0/28" {
+		t.Errorf("Expected new allocation on restored block 2 to succeed, got cidr=%s, err=%v", cidr, err)
+	}
+}
+
+// TestMonitor_OutOfSyncCIDR_NonReusable is the out-of-band deletion scenario
+// for non-reusable /32 ANE blocks, where some of the deleted ANEs are empty and
+// some still back a pod, and CCM has already published replacements. Empty ones
+// are deleted immediately, occupied ones become Unknown, the replacements count
+// towards capacity, and nothing is added to spec.releasableCIDRs or triggers a
+// spec patch -- including when the occupied one is finally released by its pod
+// (non-reusable blocks go straight to Deleting).
+func TestMonitor_OutOfSyncCIDR_NonReusable(t *testing.T) {
+	ctx := context.Background()
+	logger := logr.Discard()
+	network := "test-network"
+	nodeName := "test-node"
+
+	dbPath := filepath.Join(t.TempDir(), "test.sqlite")
+	storeInstance, err := store.NewStore(ctx, logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	// Add 3 non-reusable /32 ANE blocks
+	for _, cidr := range []string{"10.0.1.1/32", "10.0.1.2/32", "10.0.1.3/32"} {
+		if err := storeInstance.AddCIDR(ctx, network, cidr, store.WithReusable(false)); err != nil {
+			t.Fatalf("Failed to add non-reusable CIDR %s: %v", cidr, err)
+		}
+	}
+
+	// Allocate pods on 10.0.1.1/32 and 10.0.1.2/32; leave 10.0.1.3/32 unallocated (0 allocated IPs)
+	for i, expectedCIDR := range []string{"10.0.1.1/32", "10.0.1.2/32"} {
+		_, cidr, err := storeInstance.AllocateIP(ctx, store.AllocateIPParams{
+			Network:       network,
+			InterfaceName: "eth0",
+			ContainerID:   fmt.Sprintf("ane-pod-%d", i+1),
+			IPFamily:      store.IPv4,
+		})
+		if err != nil || cidr != expectedCIDR {
+			t.Fatalf("Expected allocation on %s, got cidr=%s, err=%v", expectedCIDR, cidr, err)
+		}
+	}
+
+	// Out-of-band GCE deletion: both 10.0.1.2/32 (1 allocated IP) and 10.0.1.3/32 (0 allocated IPs)
+	// were deleted in GCE and replaced by 10.0.1.4/32 and 10.0.1.5/32.
+	for _, cidr := range []string{"10.0.1.4/32", "10.0.1.5/32"} {
+		if err := storeInstance.AddCIDR(ctx, network, cidr, store.WithReusable(false)); err != nil {
+			t.Fatalf("Failed to add replacement CIDR %s: %v", cidr, err)
+		}
+	}
+
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: nodeName, ResourceVersion: "1"},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{Network: network, Pods: 3},
+			},
+		},
+		Status: nncv1.NodeNetworkConfigStatus{
+			PodCIDRs: []nncv1.PodCIDR{
+				{Network: network, CIDR: "10.0.1.1/32", ReusePolicy: nncv1.PodCIDRTypeNonReusable},
+				{Network: network, CIDR: "10.0.1.4/32", ReusePolicy: nncv1.PodCIDRTypeNonReusable},
+				{Network: network, CIDR: "10.0.1.5/32", ReusePolicy: nncv1.PodCIDRTypeNonReusable},
+			},
+		},
+	}
+
+	patchCalled := false
+	var patchedData []byte
+	mockInterface := &mockNodeNetworkConfigInterface{
+		getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+			return nnc, nil
+		},
+		patchFunc: func(_ context.Context, _ string, _ types.PatchType, data []byte, _ metav1.PatchOptions, _ ...string) (*nncv1.NodeNetworkConfig, error) {
+			patchCalled = true
+			patchedData = data
+			return nnc, nil
+		},
+	}
+	mockClient := &mockClientset{networkingV1: &mockNetworkingV1{nncInterface: mockInterface}}
+
+	m := NewMonitor(MonitorConfig{
+		Logger:                  logger,
+		NNCClient:               mockClient,
+		Store:                   storeInstance,
+		NodeName:                nodeName,
+		GetPendingRequestsCount: func(_ string) int { return 0 },
+	})
+
+	// First sync:
+	// - 10.0.1.3/32 (allocated_ips == 0) should be immediately deleted
+	// - 10.0.1.2/32 (allocated_ips == 1) should be marked Unknown
+	if err := m.syncAll(ctx); err != nil {
+		t.Fatalf("syncAll failed: %v", err)
+	}
+
+	_, exists, err := storeInstance.GetCIDRBlock(ctx, "10.0.1.3/32", network)
+	if err != nil || exists {
+		t.Errorf("Expected unallocated out-of-sync non-reusable block 10.0.1.3/32 to be deleted immediately, exists=%v, err=%v", exists, err)
+	}
+
+	b2ID, exists, err := storeInstance.GetCIDRBlock(ctx, "10.0.1.2/32", network)
+	if err != nil || !exists {
+		t.Fatalf("Expected allocated out-of-sync non-reusable block 10.0.1.2/32 to remain while pod is active, exists=%v, err=%v", exists, err)
+	}
+	blocks, err := storeInstance.GetNonDeletingCIDRBlocks(ctx, network, store.IPv4)
+	if err != nil {
+		t.Fatalf("GetNonDeletingCIDRBlocks failed: %v", err)
+	}
+	var b2State store.CidrBlockState
+	for _, b := range blocks {
+		if b.ID == b2ID {
+			b2State = b.State
+		}
+	}
+	if b2State != store.StateUnknown {
+		t.Errorf("Expected 10.0.1.2/32 state to be Unknown, got %q", b2State)
+	}
+
+	// Usage total should be 3 (only counting 10.0.1.1/32, 10.0.1.4/32, 10.0.1.5/32), and no scale-up triggered
+	usage, err := storeInstance.GetIPUsage(ctx, network, store.IPv4)
+	if err != nil {
+		t.Fatalf("GetIPUsage failed: %v", err)
+	}
+	if usage.Total != 3 || usage.Allocated != 1 {
+		t.Errorf("Expected usage Total=3, Allocated=1, got Total=%d, Allocated=%d", usage.Total, usage.Allocated)
+	}
+	if patchCalled {
+		t.Errorf("Expected no NNC patch on first sync, but patchCalled=true with %s", string(patchedData))
+	}
+
+	// Now pod on 10.0.1.2/32 exits -> ReleaseIPByOwner transitions non-reusable block to Deleting
+	if _, err := storeInstance.ReleaseIPByOwner(ctx, network, "ane-pod-2", "eth0", 0); err != nil {
+		t.Fatalf("ReleaseIPByOwner failed: %v", err)
+	}
+
+	// Second sync: reconcileDeletingBlocks (Case A: !inStatus) deletes 10.0.1.2/32 from SQLite
+	// without adding to releasableCIDRs or reducing Pods below 3.
+	if err := m.syncAll(ctx); err != nil {
+		t.Fatalf("syncAll second run failed: %v", err)
+	}
+
+	_, exists, err = storeInstance.GetCIDRBlock(ctx, "10.0.1.2/32", network)
+	if err != nil || exists {
+		t.Errorf("Expected 10.0.1.2/32 to be deleted from DB after pod exited, exists=%v, err=%v", exists, err)
+	}
+	if patchCalled {
+		t.Errorf("Expected no NNC patch when deleting out-of-sync non-reusable block, but patchCalled=true with %s", string(patchedData))
+	}
+}
+
+// TestMonitor_OutOfSyncCIDR_InitialBootstrap guards node bootstrap: the initial
+// block comes from the CNI config and exists in SQLite before CCM has published
+// any status at all. An empty, never-published status must not be read as
+// "every local block is gone"; the initial block stays and the first capacity
+// request still goes out.
+func TestMonitor_OutOfSyncCIDR_InitialBootstrap(t *testing.T) {
+	ctx := context.Background()
+	logger := logr.Discard()
+	network := "test-network"
+	nodeName := "test-node"
+
+	dbPath := filepath.Join(t.TempDir(), "test.sqlite")
+	storeInstance, err := store.NewStore(ctx, logger, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer storeInstance.Close()
+
+	// Initial CIDR block added by CNI/IPAM engine during node bootstrap
+	if err := storeInstance.AddCIDR(ctx, network, "10.0.1.0/28"); err != nil {
+		t.Fatalf("Failed to add initial CIDR: %v", err)
+	}
+
+	// Status is empty during initial bootstrap
+	nnc := &nncv1.NodeNetworkConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: nodeName, ResourceVersion: "1"},
+		Spec: nncv1.NodeNetworkConfigSpec{
+			Allocations: []nncv1.Allocation{
+				{Network: network, Pods: 0},
+			},
+		},
+		Status: nncv1.NodeNetworkConfigStatus{
+			PodCIDRs: []nncv1.PodCIDR{},
+		},
+	}
+
+	patchCalled := false
+	var patchedData []byte
+	mockInterface := &mockNodeNetworkConfigInterface{
+		getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+			return nnc, nil
+		},
+		patchFunc: func(_ context.Context, _ string, _ types.PatchType, data []byte, _ metav1.PatchOptions, _ ...string) (*nncv1.NodeNetworkConfig, error) {
+			patchCalled = true
+			patchedData = data
+			return nnc, nil
+		},
+	}
+	mockClient := &mockClientset{networkingV1: &mockNetworkingV1{nncInterface: mockInterface}}
+
+	m := NewMonitor(MonitorConfig{
+		Logger:                  logger,
+		NNCClient:               mockClient,
+		Store:                   storeInstance,
+		NodeName:                nodeName,
+		GetPendingRequestsCount: func(_ string) int { return 0 },
+	})
+
+	if err := m.syncAll(ctx); err != nil {
+		t.Fatalf("syncAll failed: %v", err)
+	}
+
+	// The initial CIDR must not be deleted.
+	_, exists, err := storeInstance.GetCIDRBlock(ctx, "10.0.1.0/28", network)
+	if err != nil || !exists {
+		t.Fatalf("Initial bootstrap CIDR must not be deleted when status is empty, exists: %v, err: %v", exists, err)
+	}
+
+	// Initial capacity is bootstrapped to 16 pods.
+	if !patchCalled {
+		t.Fatal("Expected NNC patch to be called for bootstrap allocation")
+	}
+	var patch struct {
+		Spec nncv1.NodeNetworkConfigSpec `json:"spec"`
+	}
+	if err := json.Unmarshal(patchedData, &patch); err != nil {
+		t.Fatalf("Failed to unmarshal patch: %v", err)
+	}
+	if len(patch.Spec.Allocations) == 0 || patch.Spec.Allocations[0].Pods != 16 {
+		t.Errorf("Expected bootstrap allocations pods to be 16, got %+v", patch.Spec.Allocations)
+	}
+}
+
+// TestMonitor_OutOfSyncCIDR_EmptyStatus verifies how an NNC status with no pod
+// CIDRs for the network is interpreted, based on the NNC Ready condition
+// written by CCM's status controller:
+//   - no Ready condition: status never published (bootstrap) -> local blocks
+//     are left alone.
+//   - Ready=False: a GCE mutation is in flight or failed -> local blocks are
+//     left alone.
+//   - Ready=True: CCM has synced GCE and it holds no ranges -> every local
+//     block is out of sync.
+func TestMonitor_OutOfSyncCIDR_EmptyStatus(t *testing.T) {
+	network := "test-network"
+	nodeName := "test-node"
+
+	tests := []struct {
+		name             string
+		conditions       []metav1.Condition
+		expectReconciled bool
+	}{
+		{
+			name:       "no Ready condition: bootstrap, blocks untouched",
+			conditions: nil,
+		},
+		{
+			name: "Ready=False (Updating): mutation in flight, blocks untouched",
+			conditions: []metav1.Condition{{
+				Type:   string(nncv1.NodeNetworkConfigConditionReady),
+				Status: metav1.ConditionFalse,
+				Reason: "Updating",
+			}},
+		},
+		{
+			name: "Ready=True: GCE holds no ranges, blocks reconciled as out of sync",
+			conditions: []metav1.Condition{{
+				Type:   string(nncv1.NodeNetworkConfigConditionReady),
+				Status: metav1.ConditionTrue,
+				Reason: string(nncv1.NodeNetworkConfigReadyReason),
+			}},
+			expectReconciled: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			logger := logr.Discard()
+
+			dbPath := filepath.Join(t.TempDir(), "test.sqlite")
+			storeInstance, err := store.NewStore(ctx, logger, dbPath)
+			if err != nil {
+				t.Fatalf("Failed to create store: %v", err)
+			}
+			defer storeInstance.Close()
+
+			// One block with a pod on it, one block without.
+			for _, cidr := range []string{"10.0.1.0/28", "10.0.2.0/28"} {
+				if err := storeInstance.AddCIDR(ctx, network, cidr); err != nil {
+					t.Fatalf("Failed to add CIDR %s: %v", cidr, err)
+				}
+			}
+			if _, cidr, err := storeInstance.AllocateIP(ctx, store.AllocateIPParams{
+				Network: network, InterfaceName: "eth0", ContainerID: "pod-1", IPFamily: store.IPv4,
+			}); err != nil || cidr != "10.0.1.0/28" {
+				t.Fatalf("Expected allocation on 10.0.1.0/28, got cidr=%s, err=%v", cidr, err)
+			}
+			allocatedID, _, err := storeInstance.GetCIDRBlock(ctx, "10.0.1.0/28", network)
+			if err != nil {
+				t.Fatalf("GetCIDRBlock failed: %v", err)
+			}
+
+			nnc := &nncv1.NodeNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: nodeName, ResourceVersion: "1"},
+				Spec: nncv1.NodeNetworkConfigSpec{
+					Allocations: []nncv1.Allocation{{Network: network, Pods: 32}},
+				},
+				Status: nncv1.NodeNetworkConfigStatus{
+					PodCIDRs:   []nncv1.PodCIDR{},
+					Conditions: tt.conditions,
+				},
+			}
+			mockInterface := &mockNodeNetworkConfigInterface{
+				getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*nncv1.NodeNetworkConfig, error) {
+					return nnc, nil
+				},
+				patchFunc: func(_ context.Context, _ string, _ types.PatchType, _ []byte, _ metav1.PatchOptions, _ ...string) (*nncv1.NodeNetworkConfig, error) {
+					return nnc, nil
+				},
+			}
+			mockClient := &mockClientset{networkingV1: &mockNetworkingV1{nncInterface: mockInterface}}
+
+			m := NewMonitor(MonitorConfig{
+				Logger:                  logger,
+				NNCClient:               mockClient,
+				Store:                   storeInstance,
+				NodeName:                nodeName,
+				GetPendingRequestsCount: func(_ string) int { return 0 },
+			})
+			if err := m.syncAll(ctx); err != nil {
+				t.Fatalf("syncAll failed: %v", err)
+			}
+
+			_, emptyExists, err := storeInstance.GetCIDRBlock(ctx, "10.0.2.0/28", network)
+			if err != nil {
+				t.Fatalf("GetCIDRBlock failed: %v", err)
+			}
+			blocks, err := storeInstance.GetNonDeletingCIDRBlocks(ctx, network, store.IPv4)
+			if err != nil {
+				t.Fatalf("GetNonDeletingCIDRBlocks failed: %v", err)
+			}
+			var allocatedState store.CidrBlockState
+			for _, b := range blocks {
+				if b.ID == allocatedID {
+					allocatedState = b.State
+				}
+			}
+			usage, err := storeInstance.GetIPUsage(ctx, network, store.IPv4)
+			if err != nil {
+				t.Fatalf("GetIPUsage failed: %v", err)
+			}
+
+			if tt.expectReconciled {
+				if emptyExists {
+					t.Errorf("Expected empty out-of-sync block 10.0.2.0/28 to be deleted")
+				}
+				if allocatedState != store.StateUnknown {
+					t.Errorf("Expected allocated out-of-sync block 10.0.1.0/28 to be Unknown, got %q", allocatedState)
+				}
+				if usage.Total != 0 {
+					t.Errorf("Expected usage.Total = 0 once all blocks are out of sync, got %d", usage.Total)
+				}
+				return
+			}
+			if !emptyExists {
+				t.Errorf("Expected 10.0.2.0/28 to be retained while status is unpublished")
+			}
+			if allocatedState != store.StateReady {
+				t.Errorf("Expected 10.0.1.0/28 to remain Ready while status is unpublished, got %q", allocatedState)
+			}
+			if usage.Total != 32 {
+				t.Errorf("Expected usage.Total = 32 while status is unpublished, got %d", usage.Total)
+			}
+		})
+	}
 }
