@@ -276,6 +276,12 @@ func (g *Cloud) GetLoadBalancerName(ctx context.Context, clusterName string, svc
 
 // EnsureLoadBalancer is an implementation of LoadBalancer.EnsureLoadBalancer.
 func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
+	// Run before the ImplementedElsewhere skips. Those returns happen prior to
+	// processMixedProtocolCheck, so a condition this controller wrote would
+	// otherwise stay True after the ports are no longer mixed.
+	if err := g.reconcileLoadBalancerPortsError(ctx, svc); err != nil {
+		return nil, err
+	}
 	// Ignore services with LoadBalancerClass different than "networking.gke.io/l4-regional-external-legacy" or
 	// "networking.gke.io/l4-regional-internal-legacy" used for these controllers.
 	// LoadBalancerClass can't be updated (see the field API doc) so we don't need to clean any resources.
@@ -388,6 +394,9 @@ func servicePatchBytes(oldSvc, newSvc *v1.Service) ([]byte, error) {
 
 // UpdateLoadBalancer is an implementation of LoadBalancer.UpdateLoadBalancer.
 func (g *Cloud) UpdateLoadBalancer(ctx context.Context, clusterName string, svc *v1.Service, nodes []*v1.Node) error {
+	if err := g.reconcileLoadBalancerPortsError(ctx, svc); err != nil {
+		return err
+	}
 	// Ignore services with LoadBalancerClass different than "networking.gke.io/l4-regional-external-legacy" or
 	// "networking.gke.io/l4-regional-internal-legacy" used for these controllers.
 	// LoadBalancerClass can't be updated (see the field API doc) so we don't need to clean any resources.
@@ -481,6 +490,84 @@ func hasLoadBalancerPortsError(service *v1.Service) bool {
 	return false
 }
 
+const (
+	loadBalancerPortsErrorMessage        = "LoadBalancer with multiple protocols are not supported"
+	loadBalancerPortsErrorClearedReason  = "LoadBalancerSingleProtocol"
+	loadBalancerPortsErrorClearedMessage = "LoadBalancer ports use a single protocol"
+)
+
+// loadBalancerPortsErrorNeedsTimestamp reports a True condition written before
+// lastTransitionTime was set. The API serves that field as null.
+func loadBalancerPortsErrorNeedsTimestamp(service *v1.Service) bool {
+	if service == nil {
+		return false
+	}
+	for _, cond := range service.Status.Conditions {
+		if cond.Type == v1.LoadBalancerPortsError && cond.Status == metav1.ConditionTrue && cond.LastTransitionTime.IsZero() {
+			return true
+		}
+	}
+	return false
+}
+
+func rememberLoadBalancerPortsError(svc *v1.Service, status metav1.ConditionStatus, reason, message string, now metav1.Time) {
+	updated := metav1.Condition{
+		Type:               v1.LoadBalancerPortsError,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		LastTransitionTime: now,
+	}
+	for i := range svc.Status.Conditions {
+		if svc.Status.Conditions[i].Type == v1.LoadBalancerPortsError {
+			svc.Status.Conditions[i] = updated
+			return
+		}
+	}
+	svc.Status.Conditions = append(svc.Status.Conditions, updated)
+}
+
+func (g *Cloud) applyLoadBalancerPortsError(ctx context.Context, svc *v1.Service, status metav1.ConditionStatus) error {
+	reason := v1.LoadBalancerPortsErrorReason
+	message := loadBalancerPortsErrorMessage
+	if status == metav1.ConditionFalse {
+		reason = loadBalancerPortsErrorClearedReason
+		message = loadBalancerPortsErrorClearedMessage
+	}
+	now := metav1.Now()
+	svcApplyStatus := corev1apply.ServiceStatus().WithConditions(
+		metav1apply.Condition().
+			WithType(v1.LoadBalancerPortsError).
+			WithStatus(status).
+			WithReason(reason).
+			WithLastTransitionTime(now).
+			WithMessage(message))
+	svcApply := corev1apply.Service(svc.Name, svc.Namespace).WithStatus(svcApplyStatus)
+	if _, err := g.client.CoreV1().Services(svc.Namespace).ApplyStatus(ctx, svcApply, metav1.ApplyOptions{FieldManager: "gce-cloud-controller", Force: true}); err != nil {
+		return err
+	}
+	rememberLoadBalancerPortsError(svc, status, reason, message, now)
+	return nil
+}
+
+// reconcileLoadBalancerPortsError clears a stale mixed-protocol condition once
+// the ports agree, and fills in a missing lastTransitionTime. Ensure and Update
+// both call this before skipping services another controller owns.
+func (g *Cloud) reconcileLoadBalancerPortsError(ctx context.Context, svc *v1.Service) error {
+	if svc == nil || !hasLoadBalancerPortsError(svc) {
+		return nil
+	}
+	if checkMixedProtocol(svc.Spec.Ports) == nil {
+		klog.V(2).Infof("Clearing LoadBalancerPortsError on %s/%s; ports use one protocol", svc.Namespace, svc.Name)
+		return g.applyLoadBalancerPortsError(ctx, svc, metav1.ConditionFalse)
+	}
+	if loadBalancerPortsErrorNeedsTimestamp(svc) {
+		klog.V(2).Infof("Repairing LoadBalancerPortsError lastTransitionTime on %s/%s", svc.Namespace, svc.Name)
+		return g.applyLoadBalancerPortsError(ctx, svc, metav1.ConditionTrue)
+	}
+	return nil
+}
+
 // computeNewAnnotationsIfNeeded checks if new annotations should be added to service.
 // If needed creates new service meta object.
 // This function is used by L4 LB controllers.
@@ -506,31 +593,25 @@ func computeNewAnnotationsIfNeeded(svc *v1.Service, newAnnotations map[string]st
 func (g *Cloud) processMixedProtocolCheck(ctx context.Context, svc *v1.Service, isUpdate bool) error {
 	err := checkMixedProtocol(svc.Spec.Ports)
 	if err == nil {
+		// Stale True conditions are cleared by reconcileLoadBalancerPortsError
+		// before this runs. Nothing else to do once the ports agree.
 		return nil
 	}
-	if hasLoadBalancerPortsError(svc) {
+	if hasLoadBalancerPortsError(svc) && !loadBalancerPortsErrorNeedsTimestamp(svc) {
 		if isUpdate {
 			return nil
 		}
 		return err
 	}
 
-	klog.Warningf("Ignoring %s/%s using different ports protocols, isUpdate: %t", svc.Namespace, svc.Name, isUpdate)
-
-	if g.eventRecorder != nil {
-		g.eventRecorder.Event(svc, v1.EventTypeWarning, v1.LoadBalancerPortsErrorReason, "LoadBalancer with multiple protocols are not supported.")
+	if !hasLoadBalancerPortsError(svc) {
+		klog.Warningf("Ignoring %s/%s using different ports protocols, isUpdate: %t", svc.Namespace, svc.Name, isUpdate)
+		if g.eventRecorder != nil {
+			g.eventRecorder.Event(svc, v1.EventTypeWarning, v1.LoadBalancerPortsErrorReason, "LoadBalancer with multiple protocols are not supported.")
+		}
 	}
 
-	svcApplyStatus := corev1apply.ServiceStatus().WithConditions(
-		metav1apply.Condition().
-			WithType(v1.LoadBalancerPortsError).
-			WithStatus(metav1.ConditionTrue).
-			WithReason(v1.LoadBalancerPortsErrorReason).
-			WithLastTransitionTime(metav1.Now()).
-			WithMessage("LoadBalancer with multiple protocols are not supported"))
-	svcApply := corev1apply.Service(svc.Name, svc.Namespace).WithStatus(svcApplyStatus)
-
-	if _, errApply := g.client.CoreV1().Services(svc.Namespace).ApplyStatus(ctx, svcApply, metav1.ApplyOptions{FieldManager: "gce-cloud-controller", Force: true}); errApply != nil {
+	if errApply := g.applyLoadBalancerPortsError(ctx, svc, metav1.ConditionTrue); errApply != nil {
 		return errApply
 	}
 
