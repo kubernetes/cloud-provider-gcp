@@ -71,6 +71,10 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	if err := g.processMixedProtocolCheck(context.TODO(), apiService, false); err != nil {
 		return nil, err
 	}
+	labels, labelsPresent, err := GetLoadBalancerAnnotationResourceLabels(apiService)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse forwarding rule resource labels: %w", err)
+	}
 
 	nm := types.NamespacedName{Namespace: apiService.Namespace, Name: apiService.Name}
 	metricsState := L4NetLBServiceState{
@@ -298,11 +302,19 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		isSafeToReleaseIP = true
 		klog.Infof("ensureExternalLoadBalancer(%s): Created forwarding rule, IP %s.", lbRefStr, ipAddressToUse)
 	}
-
 	// We can create deny firewall rule only after making sure that the allow firewalls for nodes and healthchecks are created/updated to 999 priority
 	if g.enableL4DenyFirewallRule {
 		if err := g.ensureDenyNodeFirewall(apiService, loadBalancerName, ipAddressToUse, lbRefStr, hosts); err != nil {
 			return nil, fmt.Errorf("failed to ensure deny firewall rule for load balancer(%s): %v", lbRefStr, err)
+		}
+	}
+	if labelsPresent {
+		fwdRule, err := g.GetRegionForwardingRule(loadBalancerName, g.region)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get forwarding rule labels for load balancer (%s): %w", lbRefStr, err)
+		}
+		if err := g.SetRegionForwardingRuleLabels(fwdRule, g.region, labels); err != nil {
+			return nil, fmt.Errorf("failed to reconcile forwarding rule labels for load balancer (%s): %w", lbRefStr, err)
 		}
 	}
 
