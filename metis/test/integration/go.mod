@@ -3,7 +3,7 @@ module k8s.io/metis/test/integration
 go 1.27
 
 require (
-	github.com/GoogleCloudPlatform/gke-networking-api v0.2.10
+	github.com/GoogleCloudPlatform/gke-networking-api v0.2.11
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.1-0.20261020180100-7d497f3cc90c
 	github.com/containernetworking/cni v1.3.1
 	github.com/go-logr/logr v1.4.4
