@@ -6,7 +6,7 @@ toolchain go1.27.3
 
 require (
 	github.com/GoogleCloudPlatform/gke-enterprise-mt v1.37.2
-	github.com/GoogleCloudPlatform/gke-networking-api v0.2.10
+	github.com/GoogleCloudPlatform/gke-networking-api v0.2.11
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.35.1-0.20261020180100-7d497f3cc90c
 	github.com/evanphx/json-patch v5.9.0+incompatible
 	github.com/google/go-cmp v0.7.0

@@ -39,7 +39,7 @@ github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/mtcontext
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/framework/taskqueue
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/mtmetrics
 github.com/GoogleCloudPlatform/gke-enterprise-mt/pkg/providerconfigcr
-# github.com/GoogleCloudPlatform/gke-networking-api v0.2.10
+# github.com/GoogleCloudPlatform/gke-networking-api v0.2.11
 ## explicit; go 1.25.0
 github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1
 github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1
@@ -377,7 +377,7 @@ github.com/munnerz/goautoneg
 # github.com/natefinch/atomic v1.0.1
 ## explicit; go 1.12
 github.com/natefinch/atomic
-# github.com/onsi/ginkgo/v2 v2.33.1
+# github.com/onsi/ginkgo/v2 v2.34.0
 ## explicit; go 1.25.0
 github.com/onsi/ginkgo/v2
 github.com/onsi/ginkgo/v2/config
