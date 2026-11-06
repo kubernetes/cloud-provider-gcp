@@ -192,7 +192,7 @@ func TestNodeTopologyQueuePeriodicSync(t *testing.T) {
 	allocatorParams := CIDRAllocatorParams{}
 
 	KuberntesClientSet := fake.NewSimpleClientset()
-	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, true, false, fakeNodeInformer, allocatorParams)
+	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, nil, true, false, false, fakeNodeInformer, allocatorParams)
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 	cloudAllocator.nodeTopologyQueue.Run()
 
@@ -282,7 +282,7 @@ func TestNodeTopologyCR_AddOrUpdateNode(t *testing.T) {
 	allocatorParams := CIDRAllocatorParams{}
 
 	KuberntesClientSet := fake.NewSimpleClientset()
-	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, true, false, fakeNodeInformer, allocatorParams)
+	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, nil, true, false, false, fakeNodeInformer, allocatorParams)
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
 	stopCh := make(chan struct{})
@@ -376,7 +376,7 @@ func TestNodeTopologyCR_DeleteNode(t *testing.T) {
 	allocatorParams := CIDRAllocatorParams{}
 
 	KuberntesClientSet := fake.NewSimpleClientset()
-	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, true, false, fakeNodeInformer, allocatorParams)
+	ca, _ := NewCloudCIDRAllocator(KuberntesClientSet, fakeGCE, nwInformer, gnpInformer, nodeTopologyClient, nil, true, false, false, fakeNodeInformer, allocatorParams)
 	cloudAllocator, _ := ca.(*cloudCIDRAllocator)
 
 	stopCh := make(chan struct{})
