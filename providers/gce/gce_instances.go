@@ -375,13 +375,16 @@ func (g *Cloud) InstanceExistsByProviderID(ctx context.Context, providerID strin
 func (g *Cloud) InstanceExists(ctx context.Context, node *v1.Node) (bool, error) {
 	providerID := node.Spec.ProviderID
 	if providerID == "" {
-		var err error
-		if providerID, err = cloudprovider.GetInstanceProviderID(ctx, g, types.NodeName(node.Name)); err != nil {
+		// The node has no provider ID yet. One lookup by name answers the
+		// question; a second get by the resulting provider ID is redundant.
+		_, _, err := g.lookupInstanceByName(mapNodeNameToInstanceName(types.NodeName(node.Name)), nodeZoneHints(node))
+		if err != nil {
 			if err == cloudprovider.InstanceNotFound {
 				return false, nil
 			}
 			return false, err
 		}
+		return true, nil
 	}
 	return g.InstanceExistsByProviderID(ctx, providerID)
 }
@@ -391,12 +394,18 @@ func (g *Cloud) InstanceMetadata(ctx context.Context, node *v1.Node) (*cloudprov
 	timeoutCtx, cancel := context.WithTimeout(ctx, 1*time.Hour)
 	defer cancel()
 
+	var instance *compute.Instance
 	providerID := node.Spec.ProviderID
 	if providerID == "" {
-		var err error
-		if providerID, err = cloudprovider.GetInstanceProviderID(ctx, g, types.NodeName(node.Name)); err != nil {
+		// The kubelet registered the node without a provider ID. The lookup
+		// by name returns the instance together with its zone, so the
+		// provider ID and the instance details come from the same call.
+		found, zone, err := g.lookupInstanceByName(mapNodeNameToInstanceName(types.NodeName(node.Name)), nodeZoneHints(node))
+		if err != nil {
 			return nil, err
 		}
+		instance = found
+		providerID = ProviderName + "://" + g.projectID + "/" + zone + "/" + instance.Name
 	}
 
 	project, zone, name, err := splitProviderID(providerID)
@@ -411,14 +420,20 @@ func (g *Cloud) InstanceMetadata(ctx context.Context, node *v1.Node) (*cloudprov
 
 	var addresses []v1.NodeAddress
 	var instanceType string
-	var instance *compute.Instance
-	if g.projectFromNodeProviderID {
-		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
-	} else {
-		instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
-	}
-	if err != nil {
-		return nil, fmt.Errorf("error while querying for providerID %q: %v", providerID, err)
+	if instance == nil {
+		if g.projectFromNodeProviderID {
+			instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone), cloud.ForceProjectID(project))
+		} else {
+			instance, err = g.c.Instances().Get(timeoutCtx, meta.ZonalKey(canonicalizeInstanceName(name), zone))
+		}
+		if err != nil {
+			return nil, fmt.Errorf("error while querying for providerID %q: %v", providerID, err)
+		}
+		if project == g.projectID {
+			// Warm the zone hints for the nodes of the same managed instance
+			// group that register without a provider ID later.
+			g.rememberInstanceZone(canonicalizeInstanceName(name), zone)
+		}
 	}
 
 	addresses, err = g.nodeAddressesFromInstance(instance)
@@ -851,50 +866,183 @@ func (g *Cloud) getFoundInstanceByNames(names []string) ([]*gceInstance, error) 
 	return ret, nil
 }
 
-func (g *Cloud) findInstanceInZones(name string, zones []string) (*gceInstance, error) {
+// findInstanceInZones gets the instance from the zones, in order, and stops at
+// the first zone that has it. It returns the instance and that zone, or
+// (nil, "", nil) when no zone has the instance.
+func (g *Cloud) findInstanceInZones(name string, zones []string) (*compute.Instance, string, error) {
 	for _, zone := range zones {
-		instance, err := g.getInstanceFromProjectInZoneByName(g.projectID, zone, name)
+		instance, err := g.getComputeInstanceFromProjectInZoneByName(g.projectID, zone, name)
 		if err != nil {
 			if isHTTPErrorCode(err, http.StatusNotFound) {
 				continue
 			}
 			klog.Errorf("getInstanceByName: failed to get instance %s in zone %s; err: %v", name, zone, err)
-			return nil, err
+			return nil, "", err
 		}
-		return instance, nil
+		return instance, zone, nil
 	}
-	return nil, nil
+	return nil, "", nil
 }
 
 // Gets the named instance, returning cloudprovider.InstanceNotFound if the instance is not found
 func (g *Cloud) getInstanceByName(name string) (*gceInstance, error) {
-	initialZones := g.getManagedZones()
-	klog.Infof("Searching node %s in managed zones %v", name, initialZones)
-
-	if instance, err := g.findInstanceInZones(name, initialZones); err != nil || instance != nil {
-		return instance, err
+	instance, zone, err := g.lookupInstanceByName(name, nil)
+	if err != nil {
+		return nil, err
 	}
+	return toGCEInstance(instance, zone), nil
+}
 
-	if g.dynamicZones {
-		klog.Infof("Node %s not found in managed zones %v; attempting dynamic zone refresh", name, initialZones)
+// maxInstanceZoneHints bounds instanceZoneHints. GKE node names share one
+// prefix per managed instance group, so the map stays far below the bound;
+// the bound only protects against unbounded growth with other naming schemes.
+const maxInstanceZoneHints = 10000
+
+// instanceNamePrefix returns the instance name without its last "-" separated
+// component, or "" when the name has no "-". GKE names an instance
+// "<managed instance group name>-<4 random characters>", for example
+// "gke-cluster-pool-8192bc18-26hg", so the prefix identifies the zonal
+// managed instance group of the instance.
+func instanceNamePrefix(name string) string {
+	i := strings.LastIndex(name, "-")
+	if i <= 0 {
+		return ""
+	}
+	return name[:i]
+}
+
+// cachedInstanceZone returns the zone in which an instance with the same
+// name prefix was last found.
+func (g *Cloud) cachedInstanceZone(name string) (string, bool) {
+	prefix := instanceNamePrefix(name)
+	if prefix == "" {
+		return "", false
+	}
+	g.instanceZoneHintsLock.RLock()
+	defer g.instanceZoneHintsLock.RUnlock()
+	zone, ok := g.instanceZoneHints[prefix]
+	return zone, ok
+}
+
+// rememberInstanceZone records the zone of an instance found by name for the
+// lookups of instances with the same name prefix.
+func (g *Cloud) rememberInstanceZone(name, zone string) {
+	prefix := instanceNamePrefix(name)
+	if prefix == "" || zone == "" {
+		return
+	}
+	g.instanceZoneHintsLock.Lock()
+	defer g.instanceZoneHintsLock.Unlock()
+	if g.instanceZoneHints == nil || len(g.instanceZoneHints) >= maxInstanceZoneHints {
+		g.instanceZoneHints = make(map[string]string)
+	}
+	g.instanceZoneHints[prefix] = zone
+}
+
+// nodeZoneHints returns the zone the node object itself names, from the
+// topology labels. It is empty for a node the kubelet has just registered
+// with an external cloud provider.
+func nodeZoneHints(node *v1.Node) []string {
+	var hints []string
+	for _, key := range []string{v1.LabelTopologyZone, v1.LabelFailureDomainBetaZone} {
+		if zone := node.Labels[key]; zone != "" {
+			hints = append(hints, zone)
+		}
+	}
+	return hints
+}
+
+// zonesForLookup orders the zones to probe for an instance: the zone hints
+// that are managed zones, then the cached zone of the instance name prefix
+// when it is a managed zone, then the remaining managed zones. Every zone
+// appears once, and no zone outside the managed zones is probed.
+func (g *Cloud) zonesForLookup(name string, zoneHints, managedZones []string) []string {
+	ordered := make([]string, 0, len(managedZones)+1)
+	seen := sets.New[string]()
+	add := func(zone string) {
+		if zone == "" || seen.Has(zone) {
+			return
+		}
+		seen.Insert(zone)
+		ordered = append(ordered, zone)
+	}
+	managed := sets.New(managedZones...)
+	for _, zone := range zoneHints {
+		if managed.Has(zone) {
+			add(zone)
+		}
+	}
+	if zone, ok := g.cachedInstanceZone(name); ok && managed.Has(zone) {
+		add(zone)
+	}
+	for _, zone := range managedZones {
+		add(zone)
+	}
+	return ordered
+}
+
+// lookupInstanceByName finds the instance with the given name and returns it
+// with its zone. It probes the zone hints and the cached zone of the name
+// prefix before the other managed zones (zonesForLookup) and, with dynamic
+// zones, refreshes the managed zones once when no zone has the instance. It
+// returns cloudprovider.InstanceNotFound when the instance does not exist.
+func (g *Cloud) lookupInstanceByName(name string, zoneHints []string) (*compute.Instance, string, error) {
+	name = canonicalizeInstanceName(name)
+	initialZones := g.getManagedZones()
+	zones := g.zonesForLookup(name, zoneHints, initialZones)
+	klog.Infof("Searching node %s in zones %v (managed zones %v, zone hints %v)", name, zones, initialZones, zoneHints)
+
+	instance, zone, err := g.findInstanceInZones(name, zones)
+	if err != nil {
+		return nil, "", err
+	}
+	if instance == nil && g.dynamicZones {
+		klog.Infof("Node %s not found in zones %v; attempting dynamic zone refresh", name, zones)
 		if err := g.refreshManagedZones(); err != nil {
 			klog.Errorf("Failed to refresh GCE managed zones: %v", err)
 		} else {
 			refreshedZones := g.getManagedZones()
-			newZones := sets.NewString(refreshedZones...).Difference(sets.NewString(initialZones...)).List()
+			newZones := sets.NewString(refreshedZones...).Difference(sets.NewString(zones...)).List()
 			if len(newZones) > 0 {
 				klog.Infof("Searching node %s in newly discovered zones %v", name, newZones)
-				if instance, err := g.findInstanceInZones(name, newZones); err != nil || instance != nil {
-					return instance, err
+				instance, zone, err = g.findInstanceInZones(name, newZones)
+				if err != nil {
+					return nil, "", err
 				}
 			}
 		}
 	}
+	if instance == nil {
+		return nil, "", cloudprovider.InstanceNotFound
+	}
+	g.rememberInstanceZone(name, zone)
+	return instance, zone, nil
+}
 
-	return nil, cloudprovider.InstanceNotFound
+func toGCEInstance(res *compute.Instance, zone string) *gceInstance {
+	if zone == "" {
+		zone = lastComponent(res.Zone)
+	}
+	return &gceInstance{
+		Zone:  zone,
+		Name:  res.Name,
+		ID:    res.Id,
+		Disks: res.Disks,
+		Type:  lastComponent(res.MachineType),
+	}
 }
 
 func (g *Cloud) getInstanceFromProjectInZoneByName(project, zone, name string) (*gceInstance, error) {
+	res, err := g.getComputeInstanceFromProjectInZoneByName(project, zone, name)
+	if err != nil {
+		return nil, err
+	}
+	return toGCEInstance(res, ""), nil
+}
+
+// getComputeInstanceFromProjectInZoneByName gets the instance from the
+// Compute API and returns the full API object.
+func (g *Cloud) getComputeInstanceFromProjectInZoneByName(project, zone, name string) (*compute.Instance, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
 
@@ -911,13 +1059,7 @@ func (g *Cloud) getInstanceFromProjectInZoneByName(project, zone, name string) (
 	if err != nil {
 		return nil, err
 	}
-	return &gceInstance{
-		Zone:  lastComponent(res.Zone),
-		Name:  res.Name,
-		ID:    res.Id,
-		Disks: res.Disks,
-		Type:  lastComponent(res.MachineType),
-	}, nil
+	return res, nil
 }
 
 func getInstanceIDViaMetadata() (string, error) {

@@ -197,6 +197,16 @@ type Cloud struct {
 	nodeZones          map[string]sets.String
 	nodeInformerSynced cache.InformerSynced
 
+	// instanceZoneHintsLock guards instanceZoneHints.
+	instanceZoneHintsLock sync.RWMutex
+	// instanceZoneHints maps an instance name prefix (the name without its
+	// last "-" component, which is the managed instance group name for GKE
+	// nodes) to the zone in which an instance with that prefix was last
+	// found. Lookups by instance name probe that zone first, so a node that
+	// registers without a provider ID costs one instances.get call instead
+	// of one call per managed zone. See lookupInstanceByName.
+	instanceZoneHints map[string]string
+
 	// sharedResourceLock is used to serialize GCE operations that may mutate shared state to
 	// prevent inconsistencies. For example, load balancers manipulation methods will take the
 	// lock to prevent shared resources from being prematurely deleted while the operation is
