@@ -286,7 +286,7 @@ func NewFixture(t *testing.T, opts ...FixtureOption) *Fixture {
 		cfg:        cfg,
 		kubeClient: k8sfake.NewSimpleClientset(),
 		nncClient:  nncfake.NewSimpleClientset(),
-		nodes:      make(map[string]Node),
+		nodes:      map[string]Node{},
 	}
 
 	emulateAPIServerSemantics(f.nncClient)
@@ -374,7 +374,7 @@ func (f *Fixture) DefaultNetworkName() string {
 func (f *Fixture) Eventually(desc string, cond func(a *Assert)) {
 	f.t.Helper()
 	var lastDetail string
-	err := wait.PollUntilContextTimeout(f.ctx, EventuallyTick, EventuallyMax, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(f.ctx, EventuallyTick, EventuallyMax, true, func(_ context.Context) (bool, error) {
 		a := &Assert{}
 		cond(a)
 		if len(a.unmet) > 0 {
