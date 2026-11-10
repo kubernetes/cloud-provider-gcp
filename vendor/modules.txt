@@ -20,7 +20,7 @@ cloud.google.com/go/auth/internal/retry
 cloud.google.com/go/auth/internal/transport
 cloud.google.com/go/auth/internal/transport/cert
 cloud.google.com/go/auth/internal/transport/headers
-# cloud.google.com/go/auth/oauth2adapt v0.3.0
+# cloud.google.com/go/auth/oauth2adapt v0.3.1
 ## explicit; go 1.26.0
 cloud.google.com/go/auth/oauth2adapt
 # cloud.google.com/go/compute/metadata v0.10.0
@@ -348,7 +348,7 @@ github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.20
 ## explicit; go 1.15
 github.com/mattn/go-isatty
-# github.com/mattn/go-sqlite3 v1.14.52
+# github.com/mattn/go-sqlite3 v1.14.53
 ## explicit; go 1.21
 github.com/mattn/go-sqlite3
 # github.com/mitchellh/go-wordwrap v1.0.1
@@ -460,7 +460,7 @@ github.com/russross/blackfriday/v2
 # github.com/spf13/cobra v1.10.2
 ## explicit; go 1.15
 github.com/spf13/cobra
-# github.com/spf13/pflag v1.0.10
+# github.com/spf13/pflag v1.1.0
 ## explicit; go 1.12
 github.com/spf13/pflag
 # github.com/stretchr/testify v1.12.1
@@ -629,7 +629,7 @@ golang.org/x/exp/slices
 golang.org/x/mod/internal/lazyregexp
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.61.0
+# golang.org/x/net v0.62.0
 ## explicit; go 1.26.0
 golang.org/x/net/html
 golang.org/x/net/html/atom
@@ -645,7 +645,7 @@ golang.org/x/net/internal/timeseries
 golang.org/x/net/proxy
 golang.org/x/net/trace
 golang.org/x/net/websocket
-# golang.org/x/oauth2 v0.37.0
+# golang.org/x/oauth2 v0.38.0
 ## explicit; go 1.26.0
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler
@@ -657,7 +657,7 @@ golang.org/x/oauth2/google/internal/stsexchange
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sync v0.24.0
+# golang.org/x/sync v0.25.0
 ## explicit; go 1.26.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/singleflight
@@ -730,7 +730,7 @@ golang.org/x/tools/internal/pkgbits
 golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
-# google.golang.org/api v0.310.0
+# google.golang.org/api v0.311.0
 ## explicit; go 1.26.0
 google.golang.org/api/compute/v0.alpha
 google.golang.org/api/compute/v0.beta
@@ -757,7 +757,7 @@ google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/api/expr/v1alpha1
 google.golang.org/genproto/googleapis/api/httpbody
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20261026165753-2ffab32bce7e
 ## explicit; go 1.26.0
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
