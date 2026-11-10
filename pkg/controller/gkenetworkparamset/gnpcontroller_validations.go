@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -407,4 +408,105 @@ func sameStringSlice(x, y []string) bool {
 		}
 	}
 	return len(diff) == 0
+}
+
+// allowedNodePoolPodRanges returns the secondary range names on subnet that are not
+// already claimed by another GKENetworkParamSet on the same (VPC, VPCSubnet).
+func (c *Controller) allowedNodePoolPodRanges(params *networkv1.GKENetworkParamSet, subnet *compute.Subnetwork) (map[string]bool, error) {
+	allowed := make(map[string]bool)
+	if subnet == nil {
+		return allowed, nil
+	}
+	for _, sr := range subnet.SecondaryIpRanges {
+		if sr != nil && sr.RangeName != "" {
+			allowed[sr.RangeName] = true
+		}
+	}
+
+	gnpList, err := c.gkeNetworkParamsInformer.Lister().List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list GKENetworkParamSets from cache: %w", err)
+	}
+	for _, otherGNP := range gnpList {
+		if otherGNP == nil || otherGNP.Name == params.Name || otherGNP.Spec.PodIPv4Ranges == nil {
+			continue
+		}
+		if resourceName(otherGNP.Spec.VPC) == resourceName(params.Spec.VPC) &&
+			resourceName(otherGNP.Spec.VPCSubnet) == resourceName(params.Spec.VPCSubnet) {
+			for _, rn := range otherGNP.Spec.PodIPv4Ranges.RangeNames {
+				delete(allowed, rn)
+			}
+		}
+	}
+	return allowed, nil
+}
+
+const gceInstanceDefaultPodRangeLabel = "default-pod-range"
+
+// nodeHasPodRangeOnDefaultNIC verifies via GCE that the node's underlying VM matches
+// the node name and carries rangeName as an alias IP range on its default NIC (nic0)
+// attached to params' (VPC, VPCSubnet).
+func (c *Controller) nodeHasPodRangeOnDefaultNIC(node *v1.Node, params *networkv1.GKENetworkParamSet, rangeName string) bool {
+	if node == nil || node.Spec.ProviderID == "" || c.gceCloud == nil {
+		return false
+	}
+	expectedVPC := resourceName(params.Spec.VPC)
+	expectedSubnet := resourceName(params.Spec.VPCSubnet)
+	if nodeSubnet, ok := node.Labels[utilnode.DefaultSubnetLabelPrefix]; ok && nodeSubnet != "" && resourceName(nodeSubnet) != expectedSubnet {
+		return false
+	}
+
+	cacheKey := fmt.Sprintf("%s/%s/%s/%s", node.Spec.ProviderID, expectedVPC, expectedSubnet, rangeName)
+	if v, ok := c.verifiedPodRanges.Load(node.Name); ok && v == cacheKey {
+		return true
+	}
+
+	instance, err := c.gceCloud.InstanceByProviderID(node.Spec.ProviderID)
+	if err != nil || instance == nil || !strings.EqualFold(instance.Name, canonicalNodeName(node.Name)) {
+		return false
+	}
+	if gceRange, ok := instance.Labels[gceInstanceDefaultPodRangeLabel]; ok && gceRange != "" && gceRange != rangeName {
+		return false
+	}
+	defaultNIC := defaultNetworkInterface(instance)
+	if defaultNIC == nil {
+		return false
+	}
+	if resourceName(defaultNIC.Network) != expectedVPC || resourceName(defaultNIC.Subnetwork) != expectedSubnet {
+		return false
+	}
+	for _, alias := range defaultNIC.AliasIpRanges {
+		if alias != nil && alias.SubnetworkRangeName == rangeName {
+			c.verifiedPodRanges.Store(node.Name, cacheKey)
+			return true
+		}
+	}
+	return false
+}
+
+func defaultNetworkInterface(instance *compute.Instance) *compute.NetworkInterface {
+	if len(instance.NetworkInterfaces) == 0 {
+		return nil
+	}
+	for _, nic := range instance.NetworkInterfaces {
+		if nic != nil && nic.Name == "nic0" {
+			return nic
+		}
+	}
+	if first := instance.NetworkInterfaces[0]; first != nil && first.Name == "" {
+		return first
+	}
+	return nil
+}
+
+func resourceName(name string) string {
+	parts := strings.Split(name, "/")
+	return parts[len(parts)-1]
+}
+
+func canonicalNodeName(name string) string {
+	if ix := strings.Index(name, "."); ix != -1 {
+		return name[:ix]
+	}
+	return name
 }

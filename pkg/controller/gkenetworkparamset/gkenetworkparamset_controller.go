@@ -24,6 +24,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -82,6 +83,7 @@ type Controller struct {
 	clusterDefaultIPv4PodCIDR string
 	defaultGNPName            string
 	isIPv6OnlyCluster         bool
+	verifiedPodRanges         sync.Map
 }
 
 // NewGKENetworkParamSetController returns a new
@@ -180,8 +182,26 @@ func NewGKENetworkParamSetController(
 				c.queue.Add(c.defaultGNPName)
 			}
 		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			oldNode, okOld := oldObj.(*v1.Node)
+			newNode, okNew := newObj.(*v1.Node)
+			if okOld && okNew && oldNode.Spec.ProviderID == "" && newNode.Spec.ProviderID != "" && c.nonDefaultParamsPodRanges(newNode) {
+				c.queue.Add(c.defaultGNPName)
+			}
+		},
 		DeleteFunc: func(obj interface{}) {
-			node := obj.(*v1.Node)
+			node, ok := obj.(*v1.Node)
+			if !ok {
+				tombstone, isTombstone := obj.(cache.DeletedFinalStateUnknown)
+				if !isTombstone {
+					return
+				}
+				node, ok = tombstone.Obj.(*v1.Node)
+				if !ok {
+					return
+				}
+			}
+			c.verifiedPodRanges.Delete(node.Name)
 			if v, ok := node.Labels[utilnode.NodePoolPodRangeLabelPrefix]; ok && v != "" {
 				c.queue.Add(c.defaultGNPName)
 			}
@@ -471,7 +491,7 @@ func (c *Controller) syncGNP(ctx context.Context, params *networkv1.GKENetworkPa
 	// when the paramset is EnsureExists mode
 	if params.Name == c.defaultGNPName && params.Spec.PodIPv4Ranges != nil {
 		if mode, ok := params.Labels[labelsAddonManagerMode]; ok && mode == ensureExistsMode {
-			if err = c.syncPodRanges(ctx, params); err != nil {
+			if err = c.syncPodRanges(ctx, params, subnet); err != nil {
 				return err
 			}
 		}
@@ -651,9 +671,14 @@ func (c *Controller) updateGKENetworkParamSetStatus(ctx context.Context, params 
 }
 
 // syncPodRanges updates the params PodIPv4Ranges by reading the node pod range label
-// from the current node cache
-func (c *Controller) syncPodRanges(ctx context.Context, params *networkv1.GKENetworkParamSet) error {
+// from the current node cache and verifying each range against the cluster subnet,
+// other GKENetworkParamSets, and the node's GCE default network interface.
+func (c *Controller) syncPodRanges(ctx context.Context, params *networkv1.GKENetworkParamSet, subnet *compute.Subnetwork) error {
 	rangeNames := params.Spec.PodIPv4Ranges.RangeNames
+	allowedRanges, err := c.allowedNodePoolPodRanges(params, subnet)
+	if err != nil {
+		return err
+	}
 
 	selector, err := labels.Parse(utilnode.NodePoolPodRangeLabelPrefix)
 	if err != nil {
@@ -665,9 +690,14 @@ func (c *Controller) syncPodRanges(ctx context.Context, params *networkv1.GKENet
 	}
 	for _, n := range nodesWithLabel {
 		rn, ok := n.Labels[utilnode.NodePoolPodRangeLabelPrefix]
-		if ok && rn != "" && !slices.Contains(rangeNames, rn) {
-			rangeNames = append(rangeNames, rn)
+		if !ok || rn == "" || slices.Contains(rangeNames, rn) {
+			continue
 		}
+		if !allowedRanges[rn] || !c.nodeHasPodRangeOnDefaultNIC(n, params, rn) {
+			klog.Warningf("Ignoring unverified pod range %q from node %q label %s", rn, n.Name, utilnode.NodePoolPodRangeLabelPrefix)
+			continue
+		}
+		rangeNames = append(rangeNames, rn)
 	}
 
 	params.Spec.PodIPv4Ranges.RangeNames = rangeNames
