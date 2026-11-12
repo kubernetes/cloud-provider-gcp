@@ -22,7 +22,9 @@ package gce
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -31,9 +33,11 @@ import (
 	"github.com/stretchr/testify/require"
 	computebeta "google.golang.org/api/compute/v0.beta"
 	ga "google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/utils/ptr"
 )
 
@@ -947,6 +951,236 @@ func TestGetZoneProviderIDFallback(t *testing.T) {
 		},
 	}
 	assert.Equal(t, emptyZone, getZone(nodeWithoutZone))
+}
+
+func TestInstanceNamePrefix(t *testing.T) {
+	for name, want := range map[string]string{
+		"gke-nap-ccc-host-por-nap-e2-medium-1e-8192bc18-26hg": "gke-nap-ccc-host-por-nap-e2-medium-1e-8192bc18",
+		"gke-pool-8192bc18-26hg":                              "gke-pool-8192bc18",
+		"a-b":                                                 "a",
+		"node":                                                "",
+		"-x":                                                  "",
+		"":                                                    "",
+	} {
+		assert.Equal(t, want, instanceNamePrefix(name), "instanceNamePrefix(%q)", name)
+	}
+}
+
+// countInstanceGets counts the Instances().Get calls of the fake cloud per
+// zone. The returned function reports the counts since the previous report
+// and resets them.
+func countInstanceGets(gce *Cloud) func() map[string]int {
+	mi := gce.c.(*cloud.MockGCE).Instances().(*cloud.MockInstances)
+	var mu sync.Mutex
+	calls := map[string]int{}
+	mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls[key.Zone]++
+		return false, nil, nil
+	}
+	return func() map[string]int {
+		mu.Lock()
+		defer mu.Unlock()
+		got := calls
+		calls = map[string]int{}
+		return got
+	}
+}
+
+// TestLookupByNameZoneHints covers the lookups of nodes that register without
+// a provider ID (VIA_KUBELET registration) in a multi-zone cluster: the zone
+// hints from the node labels and from the instance name prefix cache replace
+// the sequential probe of every managed zone, and InstanceMetadata and
+// InstanceExists issue no second instances.get for the instance they found.
+//
+// The subtests run in order and share one Cloud, so each subtest sees the
+// prefix cache the previous subtests left behind; subtests that depend on a
+// cache entry set it explicitly with rememberInstanceZone.
+func TestLookupByNameZoneHints(t *testing.T) {
+	gce, err := fakeGCECloud(DefaultTestClusterValues())
+	require.NoError(t, err)
+	gce.managedZones = []string{"us-central1-c", "us-central1-a", "us-central1-f", "us-central1-b", "us-central1-d"}
+
+	insert := func(zone, name string) {
+		t.Helper()
+		require.NoError(t, gce.InsertInstance(gce.ProjectID(), zone, &ga.Instance{
+			Name:              name,
+			MachineType:       "zones/" + zone + "/machineTypes/e2-medium",
+			NetworkInterfaces: []*ga.NetworkInterface{{NetworkIP: "10.0.0.2"}},
+		}))
+	}
+	insert("us-central1-b", "gke-pool-8192bc18-aaaa")
+	insert("us-central1-b", "gke-pool-8192bc18-bbbb")
+	insert("us-central1-f", "gke-pool-5e6f7a8b-cccc")
+	insert("us-central1-a", "gke-pool-1234abcd-dddd")
+	gets := countInstanceGets(gce)
+
+	t.Run("first instance of a group probes the managed zones in order", func(t *testing.T) {
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "gke-pool-8192bc18-aaaa"}}
+		metadata, err := gce.InstanceMetadata(context.Background(), node)
+		require.NoError(t, err)
+		assert.Equal(t, "gce://"+gce.ProjectID()+"/us-central1-b/gke-pool-8192bc18-aaaa", metadata.ProviderID)
+		assert.Equal(t, "us-central1-b", metadata.Zone)
+		assert.Equal(t, "us-central1", metadata.Region)
+		assert.Equal(t, "e2-medium", metadata.InstanceType)
+		assert.Equal(t, []v1.NodeAddress{{Type: v1.NodeInternalIP, Address: "10.0.0.2"}}, metadata.NodeAddresses)
+		// 3 misses (c, a, f) and 1 hit (b); no second get of the found instance.
+		assert.Equal(t, map[string]int{"us-central1-c": 1, "us-central1-a": 1, "us-central1-f": 1, "us-central1-b": 1}, gets())
+		zone, ok := gce.cachedInstanceZone("gke-pool-8192bc18-bbbb")
+		assert.True(t, ok)
+		assert.Equal(t, "us-central1-b", zone)
+	})
+
+	t.Run("next instance of the group uses the cached zone", func(t *testing.T) {
+		gce.rememberInstanceZone("gke-pool-8192bc18-aaaa", "us-central1-b")
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "gke-pool-8192bc18-bbbb"}}
+		metadata, err := gce.InstanceMetadata(context.Background(), node)
+		require.NoError(t, err)
+		assert.Equal(t, "gce://"+gce.ProjectID()+"/us-central1-b/gke-pool-8192bc18-bbbb", metadata.ProviderID)
+		assert.Equal(t, map[string]int{"us-central1-b": 1}, gets())
+	})
+
+	t.Run("zone label of the node wins over the probe order", func(t *testing.T) {
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{
+			Name:   "gke-pool-5e6f7a8b-cccc",
+			Labels: map[string]string{v1.LabelTopologyZone: "us-central1-f"},
+		}}
+		metadata, err := gce.InstanceMetadata(context.Background(), node)
+		require.NoError(t, err)
+		assert.Equal(t, "us-central1-f", metadata.Zone)
+		assert.Equal(t, map[string]int{"us-central1-f": 1}, gets())
+	})
+
+	t.Run("zone label outside the managed zones is ignored", func(t *testing.T) {
+		gce.rememberInstanceZone("gke-pool-5e6f7a8b-cccc", "us-central1-f")
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{
+			Name:   "gke-pool-5e6f7a8b-cccc",
+			Labels: map[string]string{v1.LabelFailureDomainBetaZone: "europe-west1-b"},
+		}}
+		metadata, err := gce.InstanceMetadata(context.Background(), node)
+		require.NoError(t, err)
+		assert.Equal(t, "us-central1-f", metadata.Zone)
+		// The cached zone of the prefix answers the lookup.
+		assert.Equal(t, map[string]int{"us-central1-f": 1}, gets())
+	})
+
+	t.Run("InstanceExists needs one get for a node without provider ID", func(t *testing.T) {
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "gke-pool-8192bc18-aaaa"}}
+		exists, err := gce.InstanceExists(context.Background(), node)
+		require.NoError(t, err)
+		assert.True(t, exists)
+		assert.Equal(t, map[string]int{"us-central1-b": 1}, gets())
+	})
+
+	t.Run("missing instance probes every zone once", func(t *testing.T) {
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "gke-pool-8192bc18-gone"}}
+		exists, err := gce.InstanceExists(context.Background(), node)
+		require.NoError(t, err)
+		assert.False(t, exists)
+		assert.Equal(t, map[string]int{"us-central1-c": 1, "us-central1-a": 1, "us-central1-f": 1, "us-central1-b": 1, "us-central1-d": 1}, gets())
+
+		_, err = gce.InstanceMetadata(context.Background(), node)
+		assert.Equal(t, cloudprovider.InstanceNotFound, err)
+		assert.Equal(t, map[string]int{"us-central1-c": 1, "us-central1-a": 1, "us-central1-f": 1, "us-central1-b": 1, "us-central1-d": 1}, gets())
+	})
+
+	t.Run("stale cached zone falls back to the other zones without a repeat", func(t *testing.T) {
+		// Same prefix as the instances in us-central1-b, but placed in us-central1-a.
+		insert("us-central1-a", "gke-pool-8192bc18-eeee")
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "gke-pool-8192bc18-eeee"}}
+		metadata, err := gce.InstanceMetadata(context.Background(), node)
+		require.NoError(t, err)
+		assert.Equal(t, "us-central1-a", metadata.Zone)
+		assert.Equal(t, map[string]int{"us-central1-b": 1, "us-central1-c": 1, "us-central1-a": 1}, gets())
+		zone, ok := gce.cachedInstanceZone("gke-pool-8192bc18-ffff")
+		assert.True(t, ok)
+		assert.Equal(t, "us-central1-a", zone)
+	})
+
+	t.Run("InstanceMetadata by provider ID warms the cache", func(t *testing.T) {
+		withProviderID := &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{Name: "gke-pool-1234abcd-dddd"},
+			Spec:       v1.NodeSpec{ProviderID: "gce://" + gce.ProjectID() + "/us-central1-a/gke-pool-1234abcd-dddd"},
+		}
+		_, err := gce.InstanceMetadata(context.Background(), withProviderID)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]int{"us-central1-a": 1}, gets())
+
+		insert("us-central1-a", "gke-pool-1234abcd-ffff")
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "gke-pool-1234abcd-ffff"}}
+		metadata, err := gce.InstanceMetadata(context.Background(), node)
+		require.NoError(t, err)
+		assert.Equal(t, "us-central1-a", metadata.Zone)
+		assert.Equal(t, map[string]int{"us-central1-a": 1}, gets())
+	})
+
+	t.Run("getInstanceByName reports the zone of the probe that found the instance", func(t *testing.T) {
+		gce.rememberInstanceZone("gke-pool-8192bc18-eeee", "us-central1-a")
+		instance, err := gce.getInstanceByName("gke-pool-8192bc18-bbbb.c.test-project.internal")
+		require.NoError(t, err)
+		assert.Equal(t, "gke-pool-8192bc18-bbbb", instance.Name)
+		assert.Equal(t, "us-central1-b", instance.Zone)
+		// The stale cache entry (us-central1-a) is tried first and misses.
+		assert.Equal(t, map[string]int{"us-central1-a": 1, "us-central1-c": 1, "us-central1-f": 1, "us-central1-b": 1}, gets())
+	})
+
+	t.Run("cached zone outside the managed zones is ignored", func(t *testing.T) {
+		insert("us-central1-d", "gke-pool-9999ffff-aaaa")
+		// A node of the group was seen by provider ID in a zone that is not
+		// a managed zone, for example after the managed zones changed.
+		gce.rememberInstanceZone("gke-pool-9999ffff-zzzz", "europe-west1-b")
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "gke-pool-9999ffff-aaaa"}}
+		metadata, err := gce.InstanceMetadata(context.Background(), node)
+		require.NoError(t, err)
+		assert.Equal(t, "us-central1-d", metadata.Zone)
+		// Only the managed zones are probed, in their order.
+		assert.Equal(t, map[string]int{"us-central1-c": 1, "us-central1-a": 1, "us-central1-f": 1, "us-central1-b": 1, "us-central1-d": 1}, gets())
+		zone, ok := gce.cachedInstanceZone("gke-pool-9999ffff-zzzz")
+		assert.True(t, ok)
+		assert.Equal(t, "us-central1-d", zone)
+	})
+
+	t.Run("an error other than not found from the hinted zone is returned after one get", func(t *testing.T) {
+		mi := gce.c.(*cloud.MockGCE).Instances().(*cloud.MockInstances)
+		counting := mi.GetHook
+		defer func() { mi.GetHook = counting }()
+		mi.GetHook = func(ctx context.Context, key *meta.Key, m *cloud.MockInstances, options ...cloud.Option) (bool, *ga.Instance, error) {
+			counting(ctx, key, m, options...)
+			if key.Zone == "us-central1-b" {
+				return true, nil, &googleapi.Error{Code: http.StatusInternalServerError, Message: "backend error"}
+			}
+			return false, nil, nil
+		}
+		gce.rememberInstanceZone("gke-pool-8192bc18-aaaa", "us-central1-b")
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "gke-pool-8192bc18-bbbb"}}
+
+		_, err := gce.InstanceMetadata(context.Background(), node)
+		require.Error(t, err)
+		assert.NotEqual(t, cloudprovider.InstanceNotFound, err)
+		assert.Equal(t, map[string]int{"us-central1-b": 1}, gets())
+
+		exists, err := gce.InstanceExists(context.Background(), node)
+		require.Error(t, err)
+		assert.False(t, exists)
+		assert.Equal(t, map[string]int{"us-central1-b": 1}, gets())
+	})
+}
+
+func TestRememberInstanceZoneBound(t *testing.T) {
+	gce, err := fakeGCECloud(DefaultTestClusterValues())
+	require.NoError(t, err)
+	for i := 0; i < maxInstanceZoneHints; i++ {
+		gce.rememberInstanceZone(fmt.Sprintf("prefix-%d-abcd", i), "us-central1-b")
+	}
+	assert.Len(t, gce.instanceZoneHints, maxInstanceZoneHints)
+	gce.rememberInstanceZone("one-more-abcd", "us-central1-c")
+	assert.Len(t, gce.instanceZoneHints, 1)
+	zone, ok := gce.cachedInstanceZone("one-more-wxyz")
+	assert.True(t, ok)
+	assert.Equal(t, "us-central1-c", zone)
+	_, ok = gce.cachedInstanceZone("noprefix")
+	assert.False(t, ok)
 }
 
 func TestGetFoundInstanceByNamesDynamicRefresh(t *testing.T) {
