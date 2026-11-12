@@ -99,10 +99,15 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 			if network.Spec.Type == networkv1.DeviceNetworkType {
 				processedNetworks[network.Name] = struct{}{}
 				northInterfaces = append(northInterfaces, ca.northInterfaceFor(network, inf))
-				if _, ok := upStatusNetworks[network.Name]; ok {
-					additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{inf.NetworkIP + "/32"}})
-				} else {
+				if _, ok := upStatusNetworks[network.Name]; !ok {
 					klog.V(2).Infof("skipping network %s on node %s in networking.gke.io/networks annotation due to missing network-status", network.Name, node.Name)
+				} else if inf.NetworkIP == "" {
+					// IPv6-only interface: there is no IPv4 address to publish. The
+					// device network's IPv6 address is not published in the networks
+					// annotation.
+					klog.V(2).Infof("skipping network %s on node %s in networking.gke.io/networks annotation: interface %s has no IPv4 address", network.Name, node.Name, inf.Name)
+				} else {
+					additionalNodeNetworks = append(additionalNodeNetworks, networkv1.NodeNetwork{Name: network.Name, Scope: "host-local", Cidrs: []string{inf.NetworkIP + "/32"}})
 				}
 				continue
 			}
@@ -143,12 +148,11 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 				}
 				break
 			}
-			// IPv6-only L3 additional network: the GNP has no secondary ranges and
-			// the interface has no IPv4 address, so the alias-range loop above
-			// never matched. Publish the interface in north-interfaces so that
-			// consumers such as the L4 LB controller can find the node's address
-			// on this network. The network's Pod range is intentionally not
-			// published in the networks annotation: for IPv6 multi-networking
+			// The GNP has no secondary ranges and the interface has no IPv4
+			// address, so the alias-range loop above never matched. Publish the
+			// interface in north-interfaces so that consumers can find the node's
+			// address on this network. The network's Pod range is intentionally
+			// not published in the networks annotation: for IPv6 multi-networking
 			// that is owned by the NodeNetworkConfig status controller.
 			if _, ok := processedNetworks[network.Name]; !ok && !ca.isDefaultNetwork(network.Name) && len(podRangeNames) == 0 && inf.NetworkIP == "" {
 				if ipv6Addr := ca.cloud.InterfaceIPv6Address(inf); ipv6Addr != "" {
