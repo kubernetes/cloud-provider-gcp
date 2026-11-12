@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -793,6 +794,56 @@ func TestExecCredential(t *testing.T) {
 				if diff := cmp.Diff(tc.wantGcloudArgs, tc.p.tokenProvider.getGcloudArgs()); diff != "" {
 					t.Errorf("unexpected gcloud args (-want +got): %s", diff)
 				}
+			}
+		})
+	}
+}
+
+func TestEdgeCloudRejectsEmptyAccessToken(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		output string
+	}{
+		{
+			name:   "empty access token",
+			output: `{"accessToken":"","expireTime":"2022-01-01T00:00:00Z"}`,
+		},
+		{
+			name:   "missing access token",
+			output: `{"expireTime":"2022-01-01T00:00:00Z"}`,
+		},
+		{
+			name:   "null access token",
+			output: `{"accessToken":null,"expireTime":"2022-01-01T00:00:00Z"}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cacheWritten := false
+			p := &plugin{
+				k8sStartingConfig: fakeK8sStartingConfig,
+				getCacheFilePath:  fakeGetCacheFilePath,
+				readFile:          fakeReadFile,
+				timeNow:           fakeTimeNow,
+				writeCacheFile: func(content string) error {
+					cacheWritten = true
+					return nil
+				},
+				tokenProvider: &gcloudEdgeCloudTokenProvider{
+					getTokenRaw: func(args []string) ([]byte, error) {
+						return []byte(tc.output), nil
+					},
+				},
+			}
+
+			ec, err := p.execCredential()
+			if err == nil || !strings.Contains(err.Error(), "gcloud edge-cloud container clusters print-access-token returned an empty access token") {
+				t.Errorf("execCredential() error = %v, want empty access token error", err)
+			}
+			if ec != nil {
+				t.Errorf("execCredential() = %v, want nil", ec)
+			}
+			if cacheWritten {
+				t.Error("empty access token was written to cache")
 			}
 		})
 	}
