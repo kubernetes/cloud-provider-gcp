@@ -71,6 +71,10 @@ build: ## Build the Metis binary locally using workspace dependencies.
 test: ## Run the Go tests.
 	go test ./...
 
+.PHONY: integration-test
+integration-test: ## Run the daemon + CCM dynamic pod IP controller integration tests (separate module).
+	cd test/integration && go test ./...
+
 .PHONY: proto
 proto: ## Generate code from proto files.
 	../tools/update-proto.sh
