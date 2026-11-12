@@ -31,6 +31,7 @@ import (
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/klog/v2"
@@ -57,6 +58,20 @@ type NoopStatusTrigger struct{}
 // EnqueueNode performs a no-op when status population is disabled.
 func (n *NoopStatusTrigger) EnqueueNode(nodeName string) {}
 
+// SpecTrigger requests an asynchronous spec reconcile for a node.
+//
+// The status controller pokes it after publishing a *changed* status so that
+// the spec controller re-evaluates spec.allocations against the GCE state that
+// was just observed. This is what restores capacity after an alias range
+// disappears from the VM out of band (i.e. not through spec.releasableCIDRs):
+// the spec controller only reconciles on spec generation changes, which a
+// status write never produces, so without this nudge spec > capacity would
+// persist until the daemon happened to change its ask.
+type SpecTrigger interface {
+	// EnqueueNode requests an asynchronous spec reconcile for the specified node.
+	EnqueueNode(nodeName string)
+}
+
 // NodeNetworkConfigStatusController reconciles the status section of NodeNetworkConfig CRDs to
 // match actual GCE VM alias IP range state.
 //
@@ -70,9 +85,13 @@ type NodeNetworkConfigStatusController struct {
 	nodeSynced cache.InformerSynced
 	queue      workqueue.TypedRateLimitingInterface[string]
 	clock      clock.Clock
+
+	// specTrigger, when set, is poked after every changed status publish. See SpecTrigger.
+	specTrigger SpecTrigger
 }
 
 // NewStatusController constructs a new NodeNetworkConfigStatusController.
+// recorder may be nil, in which case no events are emitted.
 func NewStatusController(
 	kubeClient kubernetes.Interface,
 	nncClient nncclientset.Interface,
@@ -80,6 +99,7 @@ func NewStatusController(
 	nodeInformer coreinformers.NodeInformer,
 	gceCloud *gce.Cloud,
 	gceCache *GCECache,
+	recorder record.EventRecorder,
 	clk clock.Clock,
 ) *NodeNetworkConfigStatusController {
 	if clk == nil {
@@ -95,6 +115,7 @@ func NewStatusController(
 			nodeLister: nodeInformer.Lister(),
 			gceCloud:   gceCloud,
 			gceCache:   gceCache,
+			recorder:   recorder,
 		},
 		nodeSynced: nodeInformer.Informer().HasSynced,
 		queue:      newNodeWorkqueue("nnc-status-populator"),
@@ -109,6 +130,14 @@ func NewStatusController(
 	})
 
 	return c
+}
+
+// SetSpecTrigger registers the trigger poked after every changed status
+// publish. It is set after construction because the spec controller, which
+// implements it, is itself constructed with this status controller as its
+// StatusTrigger.
+func (c *NodeNetworkConfigStatusController) SetSpecTrigger(t SpecTrigger) {
+	c.specTrigger = t
 }
 
 // EnqueueNode requests an asynchronous status sync for the specified node name.
@@ -242,12 +271,51 @@ func (c *NodeNetworkConfigStatusController) reconcile(ctx context.Context, nnc *
 		return &transientANEError{nodeName: nnc.Name}
 	}
 
-	// Sync status if needed
-	if c.statusNeedsSync(nnc, ifaces) {
-		return c.syncStatusToGCE(ctx, nnc, ifaces)
+	if !c.statusNeedsSync(nnc, ifaces) {
+		return nil
 	}
 
+	// Compute drift before the status is rewritten: ranges that were published
+	// and are gone from the VM without the daemon having asked for their release.
+	removedOutOfBand := outOfBandRemovals(nnc, ifaces)
+
+	if err := c.syncStatusToGCE(ctx, nnc, ifaces); err != nil {
+		return err
+	}
+
+	for _, removed := range removedOutOfBand {
+		klog.Warningf("Pod CIDR %s (network %q) on node %q was removed from the VM out of band (not via spec.releasableCIDRs)", removed.CIDR, removed.Network, nnc.Name)
+		c.recordNodeEvent(ctx, nnc.Name, v1.EventTypeWarning, PodCIDRRemovedOutOfBandReason,
+			"Pod CIDR %s (network %q) was removed from the VM without being released via NodeNetworkConfig spec.releasableCIDRs; pods with IPs in it are unreachable",
+			removed.CIDR, removed.Network)
+	}
+
+	// GCE drifted from what was published. The spec controller filters NNC updates
+	// on generation, which a status write never changes, so tell it explicitly to
+	// re-evaluate spec.allocations against the state we just observed. This cannot
+	// ping-pong: the spec controller re-enqueues us after reconciling, but we only
+	// get here again if GCE changed once more.
+	if c.specTrigger != nil {
+		c.specTrigger.EnqueueNode(nnc.Name)
+	}
 	return nil
+}
+
+// outOfBandRemovals returns the published pod CIDRs that are no longer attached
+// to the instance and were not listed in Spec.ReleasableCIDRs -- i.e. removed
+// by something other than this controller acting on the daemon's request.
+func outOfBandRemovals(nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) []nncv1.PodCIDR {
+	present := gceCIDRSet(ifaces)
+	requested := releasableCIDRSet(nnc)
+	var removed []nncv1.PodCIDR
+	for _, pc := range nnc.Status.PodCIDRs {
+		key := cidrKey(pc.Network, pc.CIDR)
+		if present.Has(key) || requested.Has(key) {
+			continue
+		}
+		removed = append(removed, pc)
+	}
+	return removed
 }
 
 // statusNeedsSync checks if the NNC Status PodCIDRs set differs from the actual GCE alias IP ranges.
