@@ -33,6 +33,7 @@ func TestValidateAuthFlow(t *testing.T) {
 	}
 	tests := []FlagResult{
 		{Name: "validate gcr auth flow", Options: CredentialOptions{AuthFlow: gcrAuthFlow}},
+		{Name: "validate adc auth flow option", Options: CredentialOptions{AuthFlow: adcAuthFlow}},
 		{Name: "validate docker-cfg auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigAuthFlow}},
 		{Name: "validate docker-cfg-url auth flow option", Options: CredentialOptions{AuthFlow: dockerConfigURLAuthFlow}},
 		{Name: "bad auth flow option", Options: CredentialOptions{AuthFlow: "bad-flow"}, Error: &AuthFlowFlagError{flagValue: "bad-flow"}},
@@ -73,6 +74,7 @@ func TestProviderFromFlow(t *testing.T) {
 	}
 	tests := []ProviderResult{
 		{Name: "gcr auth provider selection", Flow: gcrAuthFlow, Type: "ContainerRegistryProvider"},
+		{Name: "adc auth provider selection", Flow: adcAuthFlow, Type: "ApplicationDefaultCredentialsProvider"},
 		{Name: "docker-cfg auth provider selection", Flow: dockerConfigAuthFlow, Type: "DockerConfigKeyProvider"},
 		{Name: "docker-cfg-url auth provider selection", Flow: dockerConfigURLAuthFlow, Type: "DockerConfigURLKeyProvider"},
 		{Name: "non-existent auth provider request", Flow: "bad-flow", Type: "", Error: &AuthFlowTypeError{requestedFlow: "bad-flow"}},

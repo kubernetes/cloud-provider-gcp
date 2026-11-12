@@ -326,9 +326,14 @@ func (g *ContainerRegistryProvider) provideNodeSACredentials(image string) crede
 }
 
 func (g *ContainerRegistryProvider) populateConfig(cfg credentialconfig.DockerConfig, image string, entry credentialconfig.DockerConfigEntry) {
-	// If UseRegistryFromImage is true, we will directly give the credential to the registry of the image.
+	populateRegistryConfig(cfg, image, entry, g.UseRegistryFromImage)
+}
+
+// populateRegistryConfig adds the given entry for each of the supported container registry URLs.
+func populateRegistryConfig(cfg credentialconfig.DockerConfig, image string, entry credentialconfig.DockerConfigEntry, useRegistryFromImage bool) {
+	// If useRegistryFromImage is true, we will directly give the credential to the registry of the image.
 	// Currently, this is only used by auth-provider-gcp.
-	if g.UseRegistryFromImage {
+	if useRegistryFromImage {
 		if registry, _, found := strings.Cut(image, "/"); found {
 			cfg[registry] = entry
 		}
