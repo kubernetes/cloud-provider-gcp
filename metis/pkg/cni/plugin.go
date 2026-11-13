@@ -35,7 +35,22 @@ import (
 )
 
 const (
-	defaultRPCTimeout = 10 * time.Second
+	// defaultRPCTimeout is the client-side deadline for a single daemon RPC
+	// (AllocatePodIP, DeallocatePodIP, ...).
+	//
+	// An AllocatePodIP that hits local IP exhaustion blocks server-side until a
+	// dynamic scale-up completes: the daemon bumps NodeNetworkConfig.Spec, the
+	// CCM reconciles it against GCE, publishes Status.PodCIDRs, and the daemon
+	// watcher adds the new CIDR to the store. The CCM bounds a single reconcile
+	// at 60s, so this must comfortably exceed that.
+	//
+	// It must also stay well under kubelet's RunPodSandbox deadline
+	// (2 x --runtime-request-timeout, 4m by default) so a slow allocation
+	// fails cleanly via gRPC rather than being cancelled from above.
+	//
+	// The server-side ceiling (ipam.scaleUpWaitTimeout) is kept a few seconds
+	// below this value; keep the two in sync.
+	defaultRPCTimeout = 90 * time.Second
 	// num of retries before CNI plugin fallback to direct mode
 	maxRetries = 3
 )
