@@ -38,9 +38,11 @@ const (
 
 	defaultPollInterval = 50 * time.Millisecond
 	// scaleUpWaitTimeout is the maximum time to wait for a dynamic scale-up operation.
-	// It must be smaller than the CNI client-side RPC timeout (defaultRPCTimeout = 10s)
+	// It must be smaller than the CNI client-side RPC timeout (cni.defaultRPCTimeout = 90s)
 	// to allow the server to return a clean error response before the client times out.
-	scaleUpWaitTimeout = 9 * time.Second
+	// The wait covers a full scale-up round trip (daemon -> CCM -> GCE -> Status.PodCIDRs
+	// -> daemon); the CCM bounds one reconcile at 60s.
+	scaleUpWaitTimeout = 85 * time.Second
 )
 
 type cniClient struct {
