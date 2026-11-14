@@ -20593,7 +20593,7 @@ type FolderGlobalVmExtensionPoliciesGetVmExtensionCall struct {
 
 // GetVmExtension: Retrieves details of a specific VM extension.
 //
-// - extensionName: .
+// - extensionName: Name of the VM extension for this request.
 // - folder: Folder ID for this request.
 func (r *FolderGlobalVmExtensionPoliciesService) GetVmExtension(folder string, extensionName string) *FolderGlobalVmExtensionPoliciesGetVmExtensionCall {
 	c := &FolderGlobalVmExtensionPoliciesGetVmExtensionCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -21728,7 +21728,7 @@ type FolderZoneVmExtensionPoliciesGetVmExtensionCall struct {
 // GetVmExtension: Retrieves details of a specific VM extension within a
 // folder.
 //
-// - extensionName: .
+// - extensionName: Name of the VM extension for this request.
 // - folder: Folder ID for this request.
 // - zone: Name of the zone for this request.
 func (r *FolderZoneVmExtensionPoliciesService) GetVmExtension(folder string, zone string, extensionName string) *FolderZoneVmExtensionPoliciesGetVmExtensionCall {
@@ -27899,7 +27899,7 @@ type GlobalFrontendSettingsGetCall struct {
 
 // Get: Gets the Global Frontend Billing Bundle Settings for a project.
 //
-// - project: .
+// - project: Project ID for this request.
 func (r *GlobalFrontendSettingsService) Get(project string) *GlobalFrontendSettingsGetCall {
 	c := &GlobalFrontendSettingsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.project = project
@@ -28009,7 +28009,7 @@ type GlobalFrontendSettingsPatchCall struct {
 
 // Patch: Updates the Global Frontend Billing Bundle Settings for a project.
 //
-// - project: .
+// - project: Project ID for this request.
 func (r *GlobalFrontendSettingsService) Patch(project string, globalfrontendsettings *GlobalFrontendSettings) *GlobalFrontendSettingsPatchCall {
 	c := &GlobalFrontendSettingsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.project = project
@@ -28017,13 +28017,15 @@ func (r *GlobalFrontendSettingsService) Patch(project string, globalfrontendsett
 	return c
 }
 
-// RequestId sets the optional parameter "requestId":
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests.
 func (c *GlobalFrontendSettingsPatchCall) RequestId(requestId string) *GlobalFrontendSettingsPatchCall {
 	c.urlParams_.Set("requestId", requestId)
 	return c
 }
 
-// UpdateMask sets the optional parameter "updateMask": e.g., "type"
+// UpdateMask sets the optional parameter "updateMask": Field mask to support
+// patch. E.g., "type".
 func (c *GlobalFrontendSettingsPatchCall) UpdateMask(updateMask string) *GlobalFrontendSettingsPatchCall {
 	c.urlParams_.Set("updateMask", updateMask)
 	return c
@@ -31927,7 +31929,7 @@ type GlobalVmExtensionPoliciesGetVmExtensionCall struct {
 
 // GetVmExtension: Retrieves details of a specific VM extension.
 //
-// - extensionName: .
+// - extensionName: Name of the VM extension for this request.
 // - project: Project ID for this request.
 func (r *GlobalVmExtensionPoliciesService) GetVmExtension(project string, extensionName string) *GlobalVmExtensionPoliciesGetVmExtensionCall {
 	c := &GlobalVmExtensionPoliciesGetVmExtensionCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -56369,6 +56371,10 @@ func (c *InstancesUpdateCall) DiscardLocalSsd(discardLocalSsd bool) *InstancesUp
 //	"NO_EFFECT" - No changes can be made to the instance.
 //	"REFRESH" - The instance will not restart.
 //	"RESTART" - The instance will restart, potentially on a different host.
+//	"RESTART_IN_PLACE" - The instance will restart on the same host. Data on
+//
+// all local SSDs
+// will be preserved.
 func (c *InstancesUpdateCall) MinimalAction(minimalAction string) *InstancesUpdateCall {
 	c.urlParams_.Set("minimalAction", minimalAction)
 	return c
@@ -56388,6 +56394,10 @@ func (c *InstancesUpdateCall) MinimalAction(minimalAction string) *InstancesUpda
 //	"NO_EFFECT" - No changes can be made to the instance.
 //	"REFRESH" - The instance will not restart.
 //	"RESTART" - The instance will restart, potentially on a different host.
+//	"RESTART_IN_PLACE" - The instance will restart on the same host. Data on
+//
+// all local SSDs
+// will be preserved.
 func (c *InstancesUpdateCall) MostDisruptiveAllowedAction(mostDisruptiveAllowedAction string) *InstancesUpdateCall {
 	c.urlParams_.Set("mostDisruptiveAllowedAction", mostDisruptiveAllowedAction)
 	return c
@@ -84208,133 +84218,6 @@ func (c *NodeTypesListCall) Pages(ctx context.Context, f func(*NodeTypeList) err
 	}
 }
 
-type OrgVmExtensionPoliciesDeleteCall struct {
-	s                 *Service
-	organization      string
-	zone              string
-	vmExtensionPolicy string
-	urlParams_        gensupport.URLParams
-	ctx_              context.Context
-	header_           http.Header
-}
-
-// Delete: Deletes a specified zone VM extension policy within an organization.
-//
-// - organization: Organization ID for this request.
-// - vmExtensionPolicy: Name of the zone VM extension policy to delete.
-// - zone: Name of the zone for this request.
-func (r *OrgVmExtensionPoliciesService) Delete(organization string, zone string, vmExtensionPolicy string) *OrgVmExtensionPoliciesDeleteCall {
-	c := &OrgVmExtensionPoliciesDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.organization = organization
-	c.zone = zone
-	c.vmExtensionPolicy = vmExtensionPolicy
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so
-// that if you must retry your request, the server will know to ignore
-// the
-// request if it has already been completed.
-//
-// For example, consider a situation where you make an initial request and
-// the request times out. If you make the request again with the same
-// request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request.
-// This
-// prevents clients from accidentally creating duplicate commitments.
-//
-// The request ID must be
-// a valid UUID with the exception that zero UUID is not
-// supported
-// (00000000-0000-0000-0000-000000000000).
-func (c *OrgVmExtensionPoliciesDeleteCall) RequestId(requestId string) *OrgVmExtensionPoliciesDeleteCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *OrgVmExtensionPoliciesDeleteCall) Fields(s ...googleapi.Field) *OrgVmExtensionPoliciesDeleteCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *OrgVmExtensionPoliciesDeleteCall) Context(ctx context.Context) *OrgVmExtensionPoliciesDeleteCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *OrgVmExtensionPoliciesDeleteCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *OrgVmExtensionPoliciesDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "{+organization}/zones/{zone}/vmExtensionPolicies/{vmExtensionPolicy}")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"organization":      c.organization,
-		"zone":              c.zone,
-		"vmExtensionPolicy": c.vmExtensionPolicy,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.orgVmExtensionPolicies.delete", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.orgVmExtensionPolicies.delete" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *OrgVmExtensionPoliciesDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.orgVmExtensionPolicies.delete", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
 type OrganizationGlobalVmExtensionPoliciesAggregatedListCall struct {
 	s            *Service
 	organization string
@@ -84891,7 +84774,7 @@ type OrganizationGlobalVmExtensionPoliciesGetVmExtensionCall struct {
 
 // GetVmExtension: Retrieves details of a specific VM extension.
 //
-// - extensionName: .
+// - extensionName: Name of the VM extension for this request.
 // - organization: Organization ID for this request.
 func (r *OrganizationGlobalVmExtensionPoliciesService) GetVmExtension(organization string, extensionName string) *OrganizationGlobalVmExtensionPoliciesGetVmExtensionCall {
 	c := &OrganizationGlobalVmExtensionPoliciesGetVmExtensionCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -89995,6 +89878,133 @@ func (c *OrganizationSnapshotRecycleBinPolicyPatchCall) Do(opts ...googleapi.Cal
 	return ret, nil
 }
 
+type OrganizationZoneVmExtensionPoliciesDeleteCall struct {
+	s                 *Service
+	organization      string
+	zone              string
+	vmExtensionPolicy string
+	urlParams_        gensupport.URLParams
+	ctx_              context.Context
+	header_           http.Header
+}
+
+// Delete: Deletes a specified zone VM extension policy within an organization.
+//
+// - organization: Organization ID for this request.
+// - vmExtensionPolicy: Name of the zone VM extension policy to delete.
+// - zone: Name of the zone for this request.
+func (r *OrganizationZoneVmExtensionPoliciesService) Delete(organization string, zone string, vmExtensionPolicy string) *OrganizationZoneVmExtensionPoliciesDeleteCall {
+	c := &OrganizationZoneVmExtensionPoliciesDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.organization = organization
+	c.zone = zone
+	c.vmExtensionPolicy = vmExtensionPolicy
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so
+// that if you must retry your request, the server will know to ignore
+// the
+// request if it has already been completed.
+//
+// For example, consider a situation where you make an initial request and
+// the request times out. If you make the request again with the same
+// request ID, the server can check if original operation with the same
+// request ID was received, and if so, will ignore the second request.
+// This
+// prevents clients from accidentally creating duplicate commitments.
+//
+// The request ID must be
+// a valid UUID with the exception that zero UUID is not
+// supported
+// (00000000-0000-0000-0000-000000000000).
+func (c *OrganizationZoneVmExtensionPoliciesDeleteCall) RequestId(requestId string) *OrganizationZoneVmExtensionPoliciesDeleteCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *OrganizationZoneVmExtensionPoliciesDeleteCall) Fields(s ...googleapi.Field) *OrganizationZoneVmExtensionPoliciesDeleteCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *OrganizationZoneVmExtensionPoliciesDeleteCall) Context(ctx context.Context) *OrganizationZoneVmExtensionPoliciesDeleteCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *OrganizationZoneVmExtensionPoliciesDeleteCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *OrganizationZoneVmExtensionPoliciesDeleteCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "{+organization}/zones/{zone}/vmExtensionPolicies/{vmExtensionPolicy}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("DELETE", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"organization":      c.organization,
+		"zone":              c.zone,
+		"vmExtensionPolicy": c.vmExtensionPolicy,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.organizationZoneVmExtensionPolicies.delete", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.organizationZoneVmExtensionPolicies.delete" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *OrganizationZoneVmExtensionPoliciesDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "compute.organizationZoneVmExtensionPolicies.delete", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
 type OrganizationZoneVmExtensionPoliciesGetCall struct {
 	s                 *Service
 	organization      string
@@ -90129,7 +90139,7 @@ type OrganizationZoneVmExtensionPoliciesGetVmExtensionCall struct {
 // GetVmExtension: Retrieves details of a specific VM extension within an
 // organization.
 //
-// - extensionName: .
+// - extensionName: Name of the VM extension for this request.
 // - organization: Organization ID for this request.
 // - zone: Name of the zone for this request.
 func (r *OrganizationZoneVmExtensionPoliciesService) GetVmExtension(organization string, zone string, extensionName string) *OrganizationZoneVmExtensionPoliciesGetVmExtensionCall {

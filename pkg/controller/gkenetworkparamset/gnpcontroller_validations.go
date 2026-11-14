@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -93,19 +94,10 @@ func (c *Controller) validateFieldCombinations(ctx context.Context, params *netw
 	}
 
 	// Network attachment is not specified.
-	// check if deviceMode and secondary ranges are unspecified
-	// The associated Network CRs are implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
-	isDefaultGNP := params.Name == c.defaultGNPName
-	canHaveIpv6OnlyNetworksOnly := c.isIPv6OnlyCluster && isDefaultGNP
-
-	// we skip this check for IPv6-only clusters because their default network inherently does not have IPv4 secondary ranges
-	if !canHaveIpv6OnlyNetworksOnly && !hasSecondaryRanges && !hasDeviceMode {
-		return &gnpValidation{
-			IsValid:      false,
-			ErrorReason:  networkv1.SecondaryRangeAndDeviceModeUnspecified,
-			ErrorMessage: "One of PodIPV4Ranges or DeviceMode must be specified.",
-		}
-	}
+	// Whether one of PodIPv4Ranges or DeviceMode is required depends on the
+	// subnet's stack type (an IPV6_ONLY subnet has no IPv4 secondary ranges), so
+	// that check is done in validateGKENetworkParamSet once the subnet has been
+	// fetched.
 
 	// Check if deviceMode is specified at the same time as secondary range.
 	if hasSecondaryRanges && hasDeviceMode {
@@ -179,11 +171,13 @@ func (c *Controller) validateGKENetworkParamSet(ctx context.Context, params *net
 	}
 
 	// check if both deviceMode and secondary ranges are unspecified.
-	// The associated Network CRs are implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
+	// This is allowed for the default network on an IPv6-only cluster and for
+	// any network on an IPV6_ONLY subnet: neither has IPv4 secondary ranges and
+	// Pod IPs come from the node interface's IPv6 range.
 	isSecondaryRangeSpecified := hasRangeNames(params)
 	isDeviceModeSpecified := params.Spec.DeviceMode != ""
 	isDefaultGNP := params.Name == c.defaultGNPName
-	canHaveIpv6OnlyNetworksOnly := c.isIPv6OnlyCluster && isDefaultGNP
+	canHaveIpv6OnlyNetworksOnly := (c.isIPv6OnlyCluster && isDefaultGNP) || isIPv6OnlySubnet(subnet)
 
 	if !canHaveIpv6OnlyNetworksOnly && !isSecondaryRangeSpecified && !isDeviceModeSpecified {
 		return &gnpValidation{
@@ -291,9 +285,11 @@ func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GK
 	isVPCSubnetSpecified := params.Spec.VPCSubnet != ""
 	isNetworkAttachmentSpecified := params.Spec.NetworkAttachment != ""
 
-	// The associated Network CRs are implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
+	// L3 networks normally need IPv4 secondary ranges. The exceptions are the
+	// default network on an IPv6-only cluster and any network on an IPV6_ONLY
+	// subnet, whose Pod IPs come from the node interface's IPv6 range.
 	isDefaultGNP := params.Name == defaultGNPName
-	canHaveIpv6OnlyNetworksOnly := isIPv6OnlyCluster && isDefaultGNP
+	canHaveIpv6OnlyNetworksOnly := (isIPv6OnlyCluster && isDefaultGNP) || isIPv6OnlySubnet(subnet)
 	if network.Spec.Type == networkv1.L3NetworkType {
 		if !canHaveIpv6OnlyNetworksOnly && isVPCSpecified && isVPCSubnetSpecified && !isSecondaryRangeSpecified {
 			return &gnpNetworkCrossValidation{
@@ -320,22 +316,26 @@ func crossValidateNetworkAndGnp(network *networkv1.Network, params *networkv1.GK
 		}
 	}
 
-	// Network CR is implicitly IPv4-only, apart from the default network on an IPv6-only cluster.
-	if subnet != nil && subnet.StackType == "IPV6_ONLY" {
-		isAllowedContext := isDefaultGNP && isIPv6OnlyCluster
-
-		if !isAllowedContext {
-			return &gnpNetworkCrossValidation{
-				IsValid:      false,
-				ErrorReason:  networkv1.GNPNetworkParamsReadyConditionReason("SubnetStackTypeIncompatible"),
-				ErrorMessage: "Network CR is not compatible with the subnet's StackType",
-			}
+	// The default network can only use an IPV6_ONLY subnet on an IPv6-only
+	// cluster. Additional L3 networks follow their own subnet's stack type and
+	// may be IPv6-only regardless of the cluster's stack type. Device networks
+	// are not supported on IPV6_ONLY subnets.
+	if isIPv6OnlySubnet(subnet) && ((isDefaultGNP && !isIPv6OnlyCluster) || network.Spec.Type != networkv1.L3NetworkType) {
+		return &gnpNetworkCrossValidation{
+			IsValid:      false,
+			ErrorReason:  networkv1.GNPNetworkParamsReadyConditionReason("SubnetStackTypeIncompatible"),
+			ErrorMessage: "Network CR is not compatible with the subnet's StackType",
 		}
 	}
 
 	return &gnpNetworkCrossValidation{
 		IsValid: true,
 	}
+}
+
+// isIPv6OnlySubnet returns true if the subnet has the IPV6_ONLY stack type.
+func isIPv6OnlySubnet(subnet *compute.Subnetwork) bool {
+	return subnet != nil && subnet.StackType == "IPV6_ONLY"
 }
 
 // nonDefaultParamsPodRanges returns true if the node has new Pod range that's not in the "default" params
@@ -408,4 +408,105 @@ func sameStringSlice(x, y []string) bool {
 		}
 	}
 	return len(diff) == 0
+}
+
+// allowedNodePoolPodRanges returns the secondary range names on subnet that are not
+// already claimed by another GKENetworkParamSet on the same (VPC, VPCSubnet).
+func (c *Controller) allowedNodePoolPodRanges(params *networkv1.GKENetworkParamSet, subnet *compute.Subnetwork) (map[string]bool, error) {
+	allowed := make(map[string]bool)
+	if subnet == nil {
+		return allowed, nil
+	}
+	for _, sr := range subnet.SecondaryIpRanges {
+		if sr != nil && sr.RangeName != "" {
+			allowed[sr.RangeName] = true
+		}
+	}
+
+	gnpList, err := c.gkeNetworkParamsInformer.Lister().List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list GKENetworkParamSets from cache: %w", err)
+	}
+	for _, otherGNP := range gnpList {
+		if otherGNP == nil || otherGNP.Name == params.Name || otherGNP.Spec.PodIPv4Ranges == nil {
+			continue
+		}
+		if resourceName(otherGNP.Spec.VPC) == resourceName(params.Spec.VPC) &&
+			resourceName(otherGNP.Spec.VPCSubnet) == resourceName(params.Spec.VPCSubnet) {
+			for _, rn := range otherGNP.Spec.PodIPv4Ranges.RangeNames {
+				delete(allowed, rn)
+			}
+		}
+	}
+	return allowed, nil
+}
+
+const gceInstanceDefaultPodRangeLabel = "default-pod-range"
+
+// nodeHasPodRangeOnDefaultNIC verifies via GCE that the node's underlying VM matches
+// the node name and carries rangeName as an alias IP range on its default NIC (nic0)
+// attached to params' (VPC, VPCSubnet).
+func (c *Controller) nodeHasPodRangeOnDefaultNIC(node *v1.Node, params *networkv1.GKENetworkParamSet, rangeName string) bool {
+	if node == nil || node.Spec.ProviderID == "" || c.gceCloud == nil {
+		return false
+	}
+	expectedVPC := resourceName(params.Spec.VPC)
+	expectedSubnet := resourceName(params.Spec.VPCSubnet)
+	if nodeSubnet, ok := node.Labels[utilnode.DefaultSubnetLabelPrefix]; ok && nodeSubnet != "" && resourceName(nodeSubnet) != expectedSubnet {
+		return false
+	}
+
+	cacheKey := fmt.Sprintf("%s/%s/%s/%s", node.Spec.ProviderID, expectedVPC, expectedSubnet, rangeName)
+	if v, ok := c.verifiedPodRanges.Load(node.Name); ok && v == cacheKey {
+		return true
+	}
+
+	instance, err := c.gceCloud.InstanceByProviderID(node.Spec.ProviderID)
+	if err != nil || instance == nil || !strings.EqualFold(instance.Name, canonicalNodeName(node.Name)) {
+		return false
+	}
+	if gceRange, ok := instance.Labels[gceInstanceDefaultPodRangeLabel]; ok && gceRange != "" && gceRange != rangeName {
+		return false
+	}
+	defaultNIC := defaultNetworkInterface(instance)
+	if defaultNIC == nil {
+		return false
+	}
+	if resourceName(defaultNIC.Network) != expectedVPC || resourceName(defaultNIC.Subnetwork) != expectedSubnet {
+		return false
+	}
+	for _, alias := range defaultNIC.AliasIpRanges {
+		if alias != nil && alias.SubnetworkRangeName == rangeName {
+			c.verifiedPodRanges.Store(node.Name, cacheKey)
+			return true
+		}
+	}
+	return false
+}
+
+func defaultNetworkInterface(instance *compute.Instance) *compute.NetworkInterface {
+	if len(instance.NetworkInterfaces) == 0 {
+		return nil
+	}
+	for _, nic := range instance.NetworkInterfaces {
+		if nic != nil && nic.Name == "nic0" {
+			return nic
+		}
+	}
+	if first := instance.NetworkInterfaces[0]; first != nil && first.Name == "" {
+		return first
+	}
+	return nil
+}
+
+func resourceName(name string) string {
+	parts := strings.Split(name, "/")
+	return parts[len(parts)-1]
+}
+
+func canonicalNodeName(name string) string {
+	if ix := strings.Index(name, "."); ix != -1 {
+		return name[:ix]
+	}
+	return name
 }

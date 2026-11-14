@@ -40,10 +40,13 @@ const (
 // networkInterface is a controller-internal, lightweight representation
 // of a GCE network interface.
 type networkInterface struct {
-	Name          string
-	Network       string
-	Subnetwork    string
-	AliasIPRanges []string
+	Name            string
+	Network         string
+	Subnetwork      string
+	AliasIPRanges   []string
+	ANECIDRs        []string
+	ANENames        map[string]string
+	HasTransientANE bool
 }
 
 // toNetworkInterfaces converts a slice of GCE API computebeta.NetworkInterface
@@ -84,12 +87,22 @@ func deepCopyInterfaces(ifaces []*networkInterface) []*networkInterface {
 			continue
 		}
 		niCopy := &networkInterface{
-			Name:       ni.Name,
-			Network:    ni.Network,
-			Subnetwork: ni.Subnetwork,
+			Name:            ni.Name,
+			Network:         ni.Network,
+			Subnetwork:      ni.Subnetwork,
+			HasTransientANE: ni.HasTransientANE,
 		}
 		if ni.AliasIPRanges != nil {
 			niCopy.AliasIPRanges = append([]string(nil), ni.AliasIPRanges...)
+		}
+		if ni.ANECIDRs != nil {
+			niCopy.ANECIDRs = append([]string(nil), ni.ANECIDRs...)
+		}
+		if ni.ANENames != nil {
+			niCopy.ANENames = make(map[string]string, len(ni.ANENames))
+			for k, v := range ni.ANENames {
+				niCopy.ANENames[k] = v
+			}
 		}
 		copy[i] = niCopy
 	}
@@ -293,6 +306,24 @@ func (c *GCECache) Get(ctx context.Context, nodeName string, providerID string) 
 // ForceGet bypasses the TTL check, forces a fresh load from GCE, updates the cache, and returns the state.
 func (c *GCECache) ForceGet(ctx context.Context, nodeName string, providerID string) ([]*networkInterface, error) {
 	return c.get(ctx, nodeName, providerID, true)
+}
+
+// Invalidate marks the cached observation for nodeName as stale so that the
+// next Get reloads fresh state from GCE instead of serving a pre-mutation
+// cached snapshot within the TTL window.
+func (c *GCECache) Invalidate(nodeName string) {
+	c.mapLock.Lock()
+	entry, ok := c.entries[nodeName]
+	if !ok {
+		c.mapLock.Unlock()
+		return
+	}
+	inst := entry.inst
+	c.mapLock.Unlock()
+
+	inst.mu.Lock()
+	inst.lastUpdated = time.Time{}
+	inst.mu.Unlock()
 }
 
 func (c *GCECache) get(ctx context.Context, nodeName string, providerID string, force bool) ([]*networkInterface, error) {

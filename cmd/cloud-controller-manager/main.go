@@ -34,13 +34,14 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/clientgo" // load all the prometheus client-go plugins
 	_ "k8s.io/component-base/metrics/prometheus/version"  // for version metric registration
 	"k8s.io/klog/v2"
-	kcmnames "k8s.io/kubernetes/cmd/kube-controller-manager/names"
 
 	"k8s.io/cloud-provider-gcp/providers/gce"
 	_ "k8s.io/cloud-provider-gcp/providers/gce"
 )
 
 const (
+	// nodeIpamControllerName matches NodeIpamController in k8s.io/kubernetes/cmd/kube-controller-manager/names.
+	nodeIpamControllerName          = "node-ipam-controller"
 	gkeServiceLBControllerName      = "gke-service-lb-controller"
 	gkeServiceControllerClientName  = "gke-service-controller"
 	gkeServiceAlias                 = "gke-service"
@@ -85,6 +86,12 @@ var (
 	// enableL4ILBFineGrainedLocks enables resource-specific locking for L4 ILB.
 	enableL4ILBFineGrainedLocks bool
 
+	// enableExternalIPv6NodeAddress makes the cloud provider additionally report
+	// a node's external IPv6 address as a NodeExternalIP node address. The
+	// address keeps being reported as NodeInternalIP regardless of this flag.
+	// See b/259716190.
+	enableExternalIPv6NodeAddress bool
+
 	// overrideL4ILBHealthCheckSourceCIDRs overrides the default source IPv4 ranges
 	// used when configuring firewall rules to allow health check probes for L4 ILB
 	// load balancers. Provide the ranges as a comma-separated list of CIDRs.
@@ -108,6 +115,10 @@ var (
 	// (e.g. [subnetwork/]range1=ACTIVE,range2=DRAINING), for pod IP
 	// allocations in Adaptive Cluster IPAM mode.
 	multiSecondaryRanges []string
+
+	// dynamicPodIPBackend selects the backend for dynamic-pod-ip-controller
+	// (e.g. "alias-ranges" or "ane").
+	dynamicPodIPBackend string
 )
 
 func main() {
@@ -130,17 +141,19 @@ func main() {
 	cloudProviderFS.BoolVar(&enableL4DenyFirewallRollbackCleanup, "enable-l4-deny-firewall-rollback-cleanup", false, "Enable cleanup codepath of the deny firewalls for rollback. The reason for it not being enabled by default is the additional GCE API calls that are made for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.")
 	cloudProviderFS.BoolVar(&enableGKETenantController, "enable-gke-tenant-controller", false, "Enables the GKE Tenant Controller Manager for Multi-Tenancy.")
 	cloudProviderFS.BoolVar(&enableL4ILBFineGrainedLocks, "enable-l4-ilb-fine-grained-lock", false, "Enable resource-specific locking for L4 ILB")
+	cloudProviderFS.BoolVar(&enableExternalIPv6NodeAddress, "enable-external-ipv6-node-address", false, "Additionally report a node's external IPv6 address (ipv6AccessType EXTERNAL) as a NodeExternalIP node address. The address is always reported as NodeInternalIP.")
 	cloudProviderFS.StringVar(&overrideL4ILBHealthCheckSourceCIDRs, "override-l4-ilb-health-check-src-cidrs", "", "Overrides the default source IPv4 ranges used when configuring firewall rules to allow health check probes for L4 ILB load balancers. Provide the ranges as a comma-separated list of CIDRs. Example: --override-l4-ilb-health-check-src-cidrs=35.191.192.0/18")
 	cloudProviderFS.StringVar(&overrideL4NetLBHealthCheckSourceCIDRs, "override-l4-netlb-health-check-src-cidrs", "", "Overrides the default source IPv4 ranges used when configuring firewall rules to allow health check probes for L4 NetLB load balancers. Provide the ranges as a comma-separated list of CIDRs. Example: --override-l4-netlb-health-check-src-cidrs=209.85.204.0/22")
 	cloudProviderFS.BoolVar(&enableDynamicPodIPController, "enable-dynamic-pod-ip-controller", false, "Enables the GKE Dynamic Pod IP Controller.")
 	cloudProviderFS.BoolVar(&populateNodeNetworkConfig, "populate-node-network-config", false, "Enables population of NodeNetworkConfig status from GCE state.")
 	cloudProviderFS.StringSliceVar(&multiSecondaryRanges, "multi-secondary-ranges", nil, "Comma-separated list of secondary range names with optional subnetwork and lifecycle status (e.g. --multi-secondary-ranges=[subnetwork/]range1=ACTIVE,range2=DRAINING or range1=ACTIVE) for pod IP allocations in Adaptive Cluster IPAM mode. Active ranges are used as candidates for pod IP allocations. If set, disables automatic Container API discovery.")
+	cloudProviderFS.StringVar(&dynamicPodIPBackend, "dynamic-pod-ip-backend", "", "Selects the Pod IP allocation backend for the dynamic-pod-ip-controller ('alias-ranges' or 'ane'). Defaults to 'alias-ranges'. Requires --enable-dynamic-pod-ip-controller to be true.")
 
 	// add new controllers and initializers
 	nodeIpamController := nodeIPAMController{}
 	nodeIpamController.nodeIPAMControllerOptions.NodeIPAMControllerConfiguration = &nodeIpamController.nodeIPAMControllerConfiguration
 	nodeIpamController.nodeIPAMControllerOptions.AddFlags(fss.FlagSet("nodeipam controller"))
-	controllerInitializers[kcmnames.NodeIpamController] = app.ControllerInitFuncConstructor{
+	controllerInitializers[nodeIpamControllerName] = app.ControllerInitFuncConstructor{
 		Constructor: nodeIpamController.startNodeIpamControllerWrapper,
 	}
 
@@ -189,7 +202,7 @@ func main() {
 	app.ControllersDisabledByDefault.Insert("dynamicpodip")
 
 	aliasMap := names.CCMControllerAliases()
-	aliasMap["nodeipam"] = kcmnames.NodeIpamController
+	aliasMap["nodeipam"] = nodeIpamControllerName
 	aliasMap[gkeServiceAlias] = gkeServiceLBControllerName
 	aliasMap[gkeTenantControllerManagerAlias] = gkeTenantControllerManagerName
 
@@ -273,6 +286,14 @@ func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovid
 		gceCloud.SetEnableL4ILBFineGrainedLocks(true)
 	}
 
+	if enableExternalIPv6NodeAddress {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			klog.Fatalf("enable-external-ipv6-node-address requires GCE cloud provider, but got %T", cloud)
+		}
+		gceCloud.SetReportExternalIPv6NodeAddress(true)
+	}
+
 	// Record feature gate metrics
 	gce.RecordFeatureGateMetrics(enableL4ILBFineGrainedLocks)
 
@@ -281,6 +302,10 @@ func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovid
 	}
 	if overrideL4NetLBHealthCheckSourceCIDRs != "" {
 		gce.SetOverrideL4NetLBHealthCheckSourceCIDRs(overrideL4NetLBHealthCheckSourceCIDRs)
+	}
+
+	if dynamicPodIPBackend != "" && !enableDynamicPodIPController {
+		klog.Fatal("dynamic-pod-ip-backend requires enable-dynamic-pod-ip-controller to be true")
 	}
 
 	return cloud

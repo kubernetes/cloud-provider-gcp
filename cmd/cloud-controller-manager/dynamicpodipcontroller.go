@@ -68,6 +68,7 @@ func startDynamicPodIPController(
 			EnableDynamicPodIPController: enableDynamicPodIPController,
 			MultiSecondaryRanges:         multiSecondaryRanges,
 			ClusterName:                  ccmConfig.ComponentConfig.KubeCloudShared.ClusterName,
+			PodIPBackend:                 dynamicpodip.BackendType(dynamicPodIPBackend),
 		},
 		ccmConfig.ClientBuilder.ClientOrDie("dynamic-pod-ip-controller"),
 		nncClient,

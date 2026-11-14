@@ -3833,7 +3833,6 @@ func (g *GCEAddresses) AggregatedList(ctx context.Context, fl *filter.F, options
 	if fl != filter.None {
 		call.Filter(fl.String())
 	}
-	call.ReturnPartialSuccess(opts.returnPartialSuccess)
 
 	all := map[string][]*computega.Address{}
 	f := func(l *computega.AddressAggregatedList) error {
@@ -6437,7 +6436,6 @@ func (g *GCEBackendServices) AggregatedList(ctx context.Context, fl *filter.F, o
 	if fl != filter.None {
 		call.Filter(fl.String())
 	}
-	call.ReturnPartialSuccess(opts.returnPartialSuccess)
 
 	all := map[string][]*computega.BackendService{}
 	f := func(l *computega.BackendServiceAggregatedList) error {
@@ -28919,7 +28917,6 @@ func (g *GCENetworkEndpointGroups) AggregatedList(ctx context.Context, fl *filte
 	if fl != filter.None {
 		call.Filter(fl.String())
 	}
-	call.ReturnPartialSuccess(opts.returnPartialSuccess)
 
 	all := map[string][]*computega.NetworkEndpointGroup{}
 	f := func(l *computega.NetworkEndpointGroupAggregatedList) error {
@@ -34433,7 +34430,6 @@ func (g *GCERouters) AggregatedList(ctx context.Context, fl *filter.F, options .
 	if fl != filter.None {
 		call.Filter(fl.String())
 	}
-	call.ReturnPartialSuccess(opts.returnPartialSuccess)
 
 	all := map[string][]*computega.Router{}
 	f := func(l *computega.RouterAggregatedList) error {

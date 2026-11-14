@@ -21,9 +21,12 @@ package gce
 
 import (
 	"context"
+	"fmt"
+	"sync"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	compute "google.golang.org/api/compute/v1"
+	computepreview "google.golang.org/api/compute/v1.preview"
 	option "google.golang.org/api/option"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
@@ -78,6 +81,10 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 	if err != nil {
 		panic(err)
 	}
+	servicePreview, err := computepreview.NewService(context.Background(), option.WithoutAuthentication())
+	if err != nil {
+		panic(err)
+	}
 	netProjID := vals.NetworkProjectID
 	if netProjID == "" {
 		netProjID = vals.ProjectID
@@ -85,6 +92,7 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 	gce := &Cloud{
 		region:                  vals.Region,
 		service:                 service,
+		servicePreview:          servicePreview,
 		managedZones:            []string{vals.ZoneName},
 		localZone:               vals.ZoneName,
 		projectID:               vals.ProjectID,
@@ -103,6 +111,7 @@ func NewFakeGCECloud(vals TestClusterValues) *Cloud {
 	}
 	c := cloud.NewMockGCE(&gceProjectRouter{gce})
 	gce.c = c
+	gce.aneService = newFakeANEService()
 	return gce
 }
 
@@ -114,4 +123,80 @@ func UpdateFakeGCECloud(g *Cloud, vals TestClusterValues) {
 // SetFakeStackType updates the fake GCE cloud with the specified stack type.
 func SetFakeStackType(g *Cloud, stackType StackType) {
 	g.stackType = stackType
+}
+
+type fakeANEService struct {
+	mu        sync.RWMutex
+	endpoints map[string]*computepreview.AliasNetworkEndpoint
+	nextIP    int
+}
+
+func newFakeANEService() *fakeANEService {
+	return &fakeANEService{
+		endpoints: make(map[string]*computepreview.AliasNetworkEndpoint),
+	}
+}
+
+func (f *fakeANEService) CreateAliasNetworkEndpoint(ctx context.Context, project, zone string, endpoint *computepreview.AliasNetworkEndpoint) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if _, exists := f.endpoints[endpoint.Name]; exists {
+		return fmt.Errorf("AliasNetworkEndpoint %q already exists", endpoint.Name)
+	}
+
+	epCopy := *endpoint
+	if len(endpoint.Aliases) > 0 {
+		epCopy.Aliases = make(map[string]computepreview.AliasNetworkEndpointAlias, len(endpoint.Aliases))
+		for k, v := range endpoint.Aliases {
+			epCopy.Aliases[k] = v
+		}
+	}
+	if epCopy.Status == nil {
+		epCopy.Status = &computepreview.AliasNetworkEndpointStatus{State: ANEStateActive}
+		for k, alias := range epCopy.Aliases {
+			if alias.EffectiveIpAddress == "" {
+				if alias.IpAddress != "" {
+					alias.EffectiveIpAddress = alias.IpAddress
+				} else {
+					f.nextIP++
+					alias.EffectiveIpAddress = fmt.Sprintf("10.128.0.%d", f.nextIP)
+				}
+				epCopy.Aliases[k] = alias
+			}
+		}
+	}
+	f.endpoints[endpoint.Name] = &epCopy
+	return nil
+}
+
+func (f *fakeANEService) DeleteAliasNetworkEndpoint(ctx context.Context, project, zone, name string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	delete(f.endpoints, name)
+	return nil
+}
+
+func (f *fakeANEService) ListAliasNetworkEndpoints(ctx context.Context, project, zone, instanceURL string) ([]*computepreview.AliasNetworkEndpoint, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	var result []*computepreview.AliasNetworkEndpoint
+	for _, ep := range f.endpoints {
+		if ep.Host != nil && EqualResourceURLs(ep.Host.Instance, instanceURL) {
+			epCopy := *ep
+			result = append(result, &epCopy)
+		}
+	}
+	return result, nil
 }

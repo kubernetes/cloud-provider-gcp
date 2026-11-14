@@ -143,6 +143,20 @@ func (ca *cloudCIDRAllocator) performMultiNetworkCIDRAllocation(node *v1.Node, i
 				}
 				break
 			}
+			// IPv6-only L3 additional network: the GNP has no secondary ranges and
+			// the interface has no IPv4 address, so the alias-range loop above
+			// never matched. Publish the interface in north-interfaces so that
+			// consumers such as the L4 LB controller can find the node's address
+			// on this network. The network's Pod range is intentionally not
+			// published in the networks annotation: for IPv6 multi-networking
+			// that is owned by the NodeNetworkConfig status controller.
+			if _, ok := processedNetworks[network.Name]; !ok && !ca.isDefaultNetwork(network.Name) && len(podRangeNames) == 0 && inf.NetworkIP == "" {
+				if ipv6Addr := ca.cloud.InterfaceIPv6Address(inf); ipv6Addr != "" {
+					klog.V(2).InfoS("found an IPv6-only interface on network", "nodeName", node.Name, "networkName", network.Name, "ipv6Address", ipv6Addr)
+					processedNetworks[network.Name] = struct{}{}
+					northInterfaces = append(northInterfaces, ca.northInterfaceFor(network, inf))
+				}
+			}
 			if ca.isDefaultNetwork(network.Name) && !hasNodeLabels {
 				ipv6Addr := ca.cloud.GetIPV6Address(inf)
 				if ipv6Addr != nil {
