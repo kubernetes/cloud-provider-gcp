@@ -30,7 +30,7 @@ export PATH="${GOBIN}:${PATH}"
 # golangci-lint must analyze the project with the Go version declared by the
 # module. Newer toolchains may emit export data that the pinned linter cannot
 # read yet.
-export GOTOOLCHAIN="go$(awk '/^go / { print $2; exit }' "${KUBE_ROOT_ABSOLUTE}/go.mod")"
+export GOTOOLCHAIN="$(awk '/^toolchain / { print $2; exit }' "${KUBE_ROOT_ABSOLUTE}/go.mod")"
 
 if ! command -v golangci-lint &>/dev/null; then
   echo "golangci-lint not found. Installing via make..."
