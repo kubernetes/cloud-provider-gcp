@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package app
 
 import (
 	"context"
@@ -23,38 +23,37 @@ import (
 	utilnode "k8s.io/cloud-provider-gcp/pkg/util/node"
 	"k8s.io/cloud-provider/app"
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
-	"k8s.io/cloud-provider/controllers/node"
+	"k8s.io/cloud-provider/controllers/nodelifecycle"
 	controllermanagerapp "k8s.io/controller-manager/app"
 	"k8s.io/controller-manager/controller"
 	"k8s.io/klog/v2"
 )
 
-func startCloudNodeControllerWrapper(initContext app.ControllerInitContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) app.InitFunc {
+func startCloudNodeLifecycleControllerWrapper(initContext app.ControllerInitContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) app.InitFunc {
 	return func(ctx context.Context, controllerContext controllermanagerapp.ControllerContext) (controller.Interface, bool, error) {
-		return startCloudNodeController(ctx, initContext, controllerContext, completedConfig, cloud)
+		return startCloudNodeLifecycleController(ctx, initContext, controllerContext, completedConfig, cloud)
 	}
 }
 
-func startCloudNodeController(ctx context.Context, initContext app.ControllerInitContext, controllerContext controllermanagerapp.ControllerContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) (controller.Interface, bool, error) {
+func startCloudNodeLifecycleController(ctx context.Context, initContext app.ControllerInitContext, controllerContext controllermanagerapp.ControllerContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) (controller.Interface, bool, error) {
 	// Wrap the informer to filter nodes
 	filteringInformer := &utilnode.GKEFilteringNodeInformer{NodeInformer: completedConfig.SharedInformers.Core().V1().Nodes()}
 
-	// Start the CloudNodeController
-	nodeController, err := node.NewCloudNodeController(
+	// Start the cloudNodeLifecycleController
+	cloudNodeLifecycleController, err := nodelifecycle.NewCloudNodeLifecycleController(
 		filteringInformer,
-		// cloud node controller uses existing cluster role from node-controller
+		// cloud node lifecycle controller uses existing cluster role from node-controller
 		completedConfig.ClientBuilder.ClientOrDie(initContext.ClientName),
 		cloud,
-		completedConfig.ComponentConfig.NodeStatusUpdateFrequency.Duration,
-		completedConfig.ComponentConfig.NodeController.ConcurrentNodeSyncs,
-		completedConfig.ComponentConfig.NodeController.ConcurrentNodeStatusUpdates,
+		completedConfig.ComponentConfig.NodeLifecycleController.NodeMonitorPeriod.Duration,
+		int(completedConfig.ComponentConfig.NodeLifecycleController.ConcurrentNodeLifecycleSyncs),
 	)
 	if err != nil {
-		klog.Warningf("failed to start cloud node controller: %s", err)
+		klog.Warningf("failed to start cloud node lifecycle controller: %s", err)
 		return nil, false, nil
 	}
 
-	go nodeController.Run(ctx.Done(), controllerContext.ControllerManagerMetrics)
+	go cloudNodeLifecycleController.Run(ctx, controllerContext.ControllerManagerMetrics)
 
 	return nil, true, nil
 }
