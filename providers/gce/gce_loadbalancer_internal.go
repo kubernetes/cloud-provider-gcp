@@ -108,7 +108,10 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 		return nil, fmt.Errorf("Invalid protocol %s, only TCP and UDP are supported", string(protocol))
 	}
 	scheme := cloud.SchemeInternal
-	options := getILBOptions(svc)
+	options, err := getILBOptions(svc)
+	if err != nil {
+		return nil, err
+	}
 	if g.IsLegacyNetwork() {
 		g.eventRecorder.Event(svc, v1.EventTypeWarning, "ILBOptionsIgnored", "Internal LoadBalancer options are not supported with Legacy Networks.")
 		options = ILBOptions{}
@@ -1100,10 +1103,15 @@ func ilbIPToUse(svc *v1.Service, fwdRule *compute.ForwardingRule, requestedSubne
 	return fwdRule.IPAddress
 }
 
-func getILBOptions(svc *v1.Service) ILBOptions {
-	return ILBOptions{AllowGlobalAccess: GetLoadBalancerAnnotationAllowGlobalAccess(svc),
-		SubnetName: GetLoadBalancerAnnotationSubnet(svc),
+func getILBOptions(svc *v1.Service) (ILBOptions, error) {
+	subnetName, err := GetLoadBalancerAnnotationSubnet(svc)
+	if err != nil {
+		return ILBOptions{}, err
 	}
+	return ILBOptions{
+		AllowGlobalAccess: GetLoadBalancerAnnotationAllowGlobalAccess(svc),
+		SubnetName:        subnetName,
+	}, nil
 }
 
 type forwardingRuleDescription struct {

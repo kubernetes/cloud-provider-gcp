@@ -30,6 +30,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -1986,6 +1987,39 @@ func TestEnsureInternalLoadBalancerCustomSubnet(t *testing.T) {
 		t.Errorf("Unexpected error %v", err)
 	}
 	assertInternalLbResourcesDeleted(t, gce, svc, vals, true)
+}
+
+// TestEnsureInternalLoadBalancerInvalidSubnet verifies that a malformed subnet
+// annotation fails the sync and leaves the existing load balancer untouched.
+func TestEnsureInternalLoadBalancerInvalidSubnet(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	nodes, err := createAndInsertNodes(gce, []string{"test-node-1"}, vals.ZoneName)
+	require.NoError(t, err)
+	svc := fakeLoadbalancerService(string(LBTypeInternal))
+	svc.Annotations[ServiceAnnotationILBSubnet] = "test-subnet"
+	svc, err = gce.client.CoreV1().Services(svc.Namespace).Create(t.Context(), svc, metav1.CreateOptions{})
+	require.NoError(t, err)
+	if _, err := gce.EnsureLoadBalancer(t.Context(), vals.ClusterName, svc, nodes); err != nil {
+		t.Fatalf("EnsureLoadBalancer() with subnet %q returned error: %v", svc.Annotations[ServiceAnnotationILBSubnet], err)
+	}
+	lbName := gce.GetLoadBalancerName(t.Context(), vals.ClusterName, svc)
+	want, err := gce.GetRegionForwardingRule(lbName, gce.region)
+	require.NoError(t, err)
+
+	svc.Annotations[ServiceAnnotationILBSubnet] = "Invalid_Subnet"
+	if _, err := gce.EnsureLoadBalancer(t.Context(), vals.ClusterName, svc, nodes); err == nil {
+		t.Errorf("EnsureLoadBalancer() with subnet %q returned nil error, want error", svc.Annotations[ServiceAnnotationILBSubnet])
+	}
+
+	got, err := gce.GetRegionForwardingRule(lbName, gce.region)
+	require.NoError(t, err)
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Forwarding rule changed after EnsureLoadBalancer() with subnet %q (-want +got):\n%s", svc.Annotations[ServiceAnnotationILBSubnet], diff)
+	}
 }
 
 func TestGetPortRanges(t *testing.T) {

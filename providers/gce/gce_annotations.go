@@ -21,8 +21,10 @@ package gce
 
 import (
 	"fmt"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/klog/v2"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
@@ -189,12 +191,25 @@ func GetLoadBalancerAnnotationAllowGlobalAccess(service *v1.Service) bool {
 	return service.Annotations[ServiceAnnotationILBAllowGlobalAccess] == "true"
 }
 
-// GetLoadBalancerAnnotationSubnet returns the configured subnet to assign LoadBalancer IP from.
-func GetLoadBalancerAnnotationSubnet(service *v1.Service) string {
-	if val, exists := service.Annotations[ServiceAnnotationILBSubnet]; exists {
-		return val
+// GetLoadBalancerAnnotationSubnet returns the name of the subnetwork to assign
+// the LoadBalancer IP from, or "" if the Service does not request one. It
+// returns an error if the requested name is not a valid GCE subnetwork name.
+func GetLoadBalancerAnnotationSubnet(service *v1.Service) (string, error) {
+	name := service.Annotations[ServiceAnnotationILBSubnet]
+	if name == "" {
+		return "", nil
 	}
-	return ""
+	// GCE resource names are RFC 1035 labels, see
+	// https://cloud.google.com/compute/docs/naming-resources.
+	if errs := validation.IsDNS1035Label(name); len(errs) > 0 {
+		// The value is arbitrary user input and the error is reported in a
+		// Service event, so quote at most the length of a valid name.
+		if len(name) > validation.DNS1035LabelMaxLength {
+			name = name[:validation.DNS1035LabelMaxLength] + "..."
+		}
+		return "", fmt.Errorf("annotation %q has invalid subnetwork name %q: %s", ServiceAnnotationILBSubnet, name, strings.Join(errs, "; "))
+	}
+	return name, nil
 }
 
 // mergeMap returns a new map containing the merged content of existing and update.
