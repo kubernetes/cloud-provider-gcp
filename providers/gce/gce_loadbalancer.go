@@ -303,6 +303,20 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 
 		// If the loadbalancer type changes between INTERNAL and EXTERNAL, the old load balancer should be deleted.
 		if existingScheme != desiredScheme {
+			// Validate before destructive teardown, but only for a replacement
+			// handled here. Evaluate ownership with nil, matching the rule passed
+			// to the scheme-specific ensure after deletion. Delegated replacements
+			// retain their existing cleanup and ImplementedElsewhere behavior.
+			handlesReplacement := shouldProcessNetLB(svc, nil, g.enableRBSDefaultForL4NetLB)
+			if desiredScheme == cloud.SchemeInternal {
+				handlesReplacement = g.shouldProcessILB(svc, nil)
+			}
+			if handlesReplacement {
+				if _, _, err := g.forwardingRuleLabels(svc); err != nil {
+					return nil, fmt.Errorf("failed to parse forwarding rule resource labels: %w", err)
+				}
+			}
+
 			klog.V(4).Infof("EnsureLoadBalancer(%v, %v, %v, %v, %v): deleting existing %v loadbalancer", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, existingScheme)
 			switch existingScheme {
 			case cloud.SchemeInternal:
