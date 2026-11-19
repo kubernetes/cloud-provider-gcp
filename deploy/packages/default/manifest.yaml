@@ -153,6 +153,12 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - services
+  verbs:
+  - patch # CCM forwarding-rule label ownership annotations
+- apiGroups:
+  - ""
+  resources:
   - nodes
   verbs:
   - get

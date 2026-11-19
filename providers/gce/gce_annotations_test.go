@@ -77,7 +77,7 @@ func TestServiceNetworkTierAnnotationKey(t *testing.T) {
 	}
 }
 
-func TestGetLoadBalancerAnnotationResourceLabels(t *testing.T) {
+func TestGetLoadBalancerAnnotationForwardingRuleLabels(t *testing.T) {
 	for name, tc := range map[string]struct {
 		annotation    string
 		expected      map[string]string
@@ -126,9 +126,9 @@ func TestGetLoadBalancerAnnotationResourceLabels(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			svc := &v1.Service{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}}
 			if tc.present {
-				svc.Annotations[ServiceAnnotationLoadBalancerResourceLabels] = tc.annotation
+				svc.Annotations[ServiceAnnotationLoadBalancerForwardingRuleLabels] = tc.annotation
 			}
-			labels, present, err := GetLoadBalancerAnnotationResourceLabels(svc)
+			labels, present, err := GetLoadBalancerAnnotationForwardingRuleLabels(svc)
 			assert.Equal(t, tc.present, present)
 			if tc.expectedCount > 0 {
 				assert.Len(t, labels, tc.expectedCount)

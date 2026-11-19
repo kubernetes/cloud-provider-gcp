@@ -237,6 +237,9 @@ type Cloud struct {
 	// enableL4LBAnnotations enable annotations related to provisioned resources in GCE
 	enableL4LBAnnotations bool
 
+	// enableForwardingRuleLabels enables opt-in per-key label ownership.
+	enableForwardingRuleLabels bool
+
 	// enableL4DenyFirewallRule creates an additional deny firewall rule at priority 1000
 	// and moves the allow rule to priority 999 to improve security posture.
 	enableL4DenyFirewallRule bool
@@ -1068,6 +1071,11 @@ func (g *Cloud) SetProjectFromNodeProviderID(enabled bool) {
 
 func (g *Cloud) SetEnableRBSDefaultForL4NetLB(enabled bool) {
 	g.enableRBSDefaultForL4NetLB = enabled
+}
+
+// SetEnableForwardingRuleLabels enables per-key forwarding-rule label reconciliation.
+func (g *Cloud) SetEnableForwardingRuleLabels(enabled bool) {
+	g.enableForwardingRuleLabels = enabled
 }
 
 func (g *Cloud) SetEnableL4LBAnnotations(enabled bool) {

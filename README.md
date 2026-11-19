@@ -112,3 +112,6 @@ go get -u && make update-vendor
 
 Note that this most likely won't work due to cross-dependency issues or repos
 not implementing modules correctly.
+
+For opt-in label management on regional LoadBalancer forwarding rules, see
+[Forwarding-rule labels](docs/forwarding-rule-labels.md).

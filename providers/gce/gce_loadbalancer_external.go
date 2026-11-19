@@ -71,7 +71,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 	if err := g.processMixedProtocolCheck(context.TODO(), apiService, false); err != nil {
 		return nil, err
 	}
-	labels, labelsPresent, err := GetLoadBalancerAnnotationResourceLabels(apiService)
+	labels, labelsPresent, err := g.forwardingRuleLabels(apiService)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse forwarding rule resource labels: %w", err)
 	}
@@ -313,7 +313,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		if err != nil {
 			return nil, fmt.Errorf("failed to get forwarding rule labels for load balancer (%s): %w", lbRefStr, err)
 		}
-		if err := g.SetRegionForwardingRuleLabels(fwdRule, g.region, labels); err != nil {
+		if err := g.reconcileForwardingRuleLabels(apiService, fwdRule, labels); err != nil {
 			return nil, fmt.Errorf("failed to reconcile forwarding rule labels for load balancer (%s): %w", lbRefStr, err)
 		}
 	}

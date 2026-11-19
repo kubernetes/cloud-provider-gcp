@@ -99,11 +99,11 @@ const (
 	// RBSEnabled is an annotation to indicate the Service is opt-in for RBS
 	RBSEnabled = "enabled"
 
-	// ServiceAnnotationLoadBalancerResourceLabels specifies the GCP resource labels to
+	// ServiceAnnotationLoadBalancerForwardingRuleLabels specifies the GCP resource labels to
 	// apply to forwarding rules managed for this LoadBalancer. Its value is a
-	// comma-separated list of key=value pairs. When present, the value replaces
-	// the forwarding rule's entire label set; an empty value removes all labels.
-	ServiceAnnotationLoadBalancerResourceLabels = "cloud.google.com/load-balancer-resource-labels"
+	// comma-separated list of key=value pairs. CCM owns these keys and preserves
+	// unrelated labels. Withdrawing a key removes it; original values are not restored.
+	ServiceAnnotationLoadBalancerForwardingRuleLabels = "cloud.google.com/load-balancer-forwarding-rule-labels"
 
 	// serviceStatusPrefix is the prefix used in annotations used to record
 	// debug information in the Service annotations. This is applicable to L4 LB services.
@@ -225,13 +225,12 @@ func GetLoadBalancerAnnotationSubnet(service *v1.Service) (string, error) {
 	return name, nil
 }
 
-// GetLoadBalancerAnnotationResourceLabels returns the resource labels requested for
+// GetLoadBalancerAnnotationForwardingRuleLabels returns the resource labels requested for
 // forwarding rules managed for the given LoadBalancer service, and whether the
-// resource-label annotation is present. A present annotation with an empty value
-// intentionally returns an empty map: it requests removal of all forwarding rule
-// labels. An absent annotation leaves forwarding rule labels unmanaged.
-func GetLoadBalancerAnnotationResourceLabels(service *v1.Service) (map[string]string, bool, error) {
-	value, present := service.Annotations[ServiceAnnotationLoadBalancerResourceLabels]
+// annotation is present. An empty or absent annotation returns no desired labels;
+// reconciliation uses CCM's managed-key annotation to clean up withdrawn keys.
+func GetLoadBalancerAnnotationForwardingRuleLabels(service *v1.Service) (map[string]string, bool, error) {
+	value, present := service.Annotations[ServiceAnnotationLoadBalancerForwardingRuleLabels]
 	if !present {
 		return nil, false, nil
 	}
@@ -242,20 +241,20 @@ func GetLoadBalancerAnnotationResourceLabels(service *v1.Service) (map[string]st
 	}
 	pairs := strings.Split(value, ",")
 	if len(pairs) > maxGCELabelsPerResource {
-		return nil, true, fmt.Errorf("invalid %s annotation: at most %d labels are allowed", ServiceAnnotationLoadBalancerResourceLabels, maxGCELabelsPerResource)
+		return nil, true, fmt.Errorf("invalid %s annotation: at most %d labels are allowed", ServiceAnnotationLoadBalancerForwardingRuleLabels, maxGCELabelsPerResource)
 	}
 	for _, pair := range pairs {
 		key, labelValue, found := strings.Cut(pair, "=")
 		if !found {
-			return nil, true, fmt.Errorf("invalid %s annotation: label %q must use key=value format", ServiceAnnotationLoadBalancerResourceLabels, pair)
+			return nil, true, fmt.Errorf("invalid %s annotation: label %q must use key=value format", ServiceAnnotationLoadBalancerForwardingRuleLabels, pair)
 		}
 		key = strings.TrimSpace(key)
 		labelValue = strings.TrimSpace(labelValue)
 		if err := validateGCELabel(key, labelValue); err != nil {
-			return nil, true, fmt.Errorf("invalid %s annotation: %w", ServiceAnnotationLoadBalancerResourceLabels, err)
+			return nil, true, fmt.Errorf("invalid %s annotation: %w", ServiceAnnotationLoadBalancerForwardingRuleLabels, err)
 		}
 		if _, exists := labels[key]; exists {
-			return nil, true, fmt.Errorf("invalid %s annotation: duplicate label key %q", ServiceAnnotationLoadBalancerResourceLabels, key)
+			return nil, true, fmt.Errorf("invalid %s annotation: duplicate label key %q", ServiceAnnotationLoadBalancerForwardingRuleLabels, key)
 		}
 		labels[key] = labelValue
 	}
