@@ -64,7 +64,7 @@ func createInternalLoadBalancer(gce *Cloud, svc *v1.Service, existingFwdRule *co
 		return nil, err
 	}
 
-	return gce.ensureInternalLoadBalancer(
+	return gce.ensureInternalLoadBalancer(context.Background(),
 		clusterName,
 		clusterID,
 		svc,
@@ -538,7 +538,7 @@ func TestEnsureInternalLoadBalancerReconcilesForwardingRuleLabelsAcrossNoopClear
 	}
 
 	// Initial reconciliation labels the newly created forwarding rule.
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, err = gce.ensureInternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	require.NoError(t, err)
 	require.Len(t, setLabelsRequests, 1)
 	assert.Equal(t, map[string]string{"a": "b"}, setLabelsRequests[0].Labels)
@@ -549,7 +549,7 @@ func TestEnsureInternalLoadBalancerReconcilesForwardingRuleLabelsAcrossNoopClear
 	require.NoError(t, err)
 
 	// An unchanged annotation must not issue a second setLabels request or recreate the rule.
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
+	_, err = gce.ensureInternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
 	require.NoError(t, err)
 	assert.Len(t, setLabelsRequests, 1)
 	assert.Equal(t, 1, insertCalls)
@@ -560,7 +560,7 @@ func TestEnsureInternalLoadBalancerReconcilesForwardingRuleLabelsAcrossNoopClear
 	persistDesiredForwardingRuleLabels(t, gce, svc)
 	existingFwdRule, err = gce.GetRegionForwardingRule(lbName, gce.region)
 	require.NoError(t, err)
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
+	_, err = gce.ensureInternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
 	require.NoError(t, err)
 	require.Len(t, setLabelsRequests, 2)
 	assert.Empty(t, setLabelsRequests[1].Labels)
@@ -572,7 +572,7 @@ func TestEnsureInternalLoadBalancerReconcilesForwardingRuleLabelsAcrossNoopClear
 	svc.Spec.Ports[0].Port++
 	existingFwdRule, err = gce.GetRegionForwardingRule(lbName, gce.region)
 	require.NoError(t, err)
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
+	_, err = gce.ensureInternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
 	require.NoError(t, err)
 	require.Len(t, setLabelsRequests, 3)
 	assert.Equal(t, map[string]string{"c": "d"}, setLabelsRequests[2].Labels)
@@ -639,7 +639,7 @@ func TestEnsureInternalLoadBalancerDoesNotSetForwardingRuleLabelsForNilLabelsAnd
 	}
 
 	// First create the forwarding rule with no label annotation, leaving labels nil.
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, err = gce.ensureInternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	require.NoError(t, err)
 	lbName := gce.GetLoadBalancerName(context.TODO(), vals.ClusterName, svc)
 	fwdRule, err := gce.GetRegionForwardingRule(lbName, gce.region)
@@ -649,7 +649,7 @@ func TestEnsureInternalLoadBalancerDoesNotSetForwardingRuleLabelsForNilLabelsAnd
 	// An empty annotation is equal to nil labels and must not update or recreate the rule.
 	svc.Annotations[ServiceAnnotationLoadBalancerForwardingRuleLabels] = ""
 	persistDesiredForwardingRuleLabels(t, gce, svc)
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, fwdRule, nodes)
+	_, err = gce.ensureInternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, fwdRule, nodes)
 	require.NoError(t, err)
 	assert.Zero(t, setLabelsCalls)
 	assert.Equal(t, 1, insertCalls)
@@ -925,7 +925,7 @@ func TestUpdateInternalLoadBalancerNodes(t *testing.T) {
 	nodes, err := createAndInsertNodes(gce, node1Name, vals.ZoneName)
 	require.NoError(t, err)
 
-	syncResult, err := gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	syncResult, err := gce.ensureInternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	assert.NoError(t, err)
 	assertILBSyncResultAnnotations(t, gce, svc, vals.ClusterID, syncResult)
 
@@ -995,7 +995,7 @@ func TestUpdateInternalLoadBalancerNodesWithEmptyZone(t *testing.T) {
 	nodes, err := createAndInsertNodes(gce, node1Name, vals.ZoneName)
 	require.NoError(t, err)
 
-	syncResult, err := gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	syncResult, err := gce.ensureInternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	assert.NoError(t, err)
 	assertILBSyncResultAnnotations(t, gce, svc, vals.ClusterID, syncResult)
 
@@ -1023,7 +1023,7 @@ func TestUpdateInternalLoadBalancerNodesWithEmptyZone(t *testing.T) {
 		Description:         fmt.Sprintf(`{"kubernetes.io/service-name":"%s"}`, types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}.String()),
 	}
 
-	_, err = gce.ensureInternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
+	_, err = gce.ensureInternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, existingFwdRule, nodes)
 	assert.NoError(t, err)
 
 	// Expect load balancer to not have deleted node test-node-1
@@ -1529,7 +1529,7 @@ func TestEnsureInternalLoadBalancerErrors(t *testing.T) {
 			}
 			_, err = gce.client.CoreV1().Services(params.service.Namespace).Create(context.TODO(), params.service, metav1.CreateOptions{})
 			require.NoError(t, err)
-			syncResult, err := gce.ensureInternalLoadBalancer(
+			syncResult, err := gce.ensureInternalLoadBalancer(context.Background(),
 				params.clusterName,
 				params.clusterID,
 				params.service,

@@ -23,17 +23,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"testing"
+	"time"
+
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
-	compute "google.golang.org/api/compute/v1"
-	"testing"
-
 	"github.com/stretchr/testify/require"
+	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	kubefake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 	ktesting "k8s.io/client-go/testing"
 )
 
@@ -94,11 +98,11 @@ func TestReconcileForwardingRuleLabelOwnership(t *testing.T) {
 		rule.Labels = request.Labels
 		return nil
 	}
-	require.ErrorContains(t, g.reconcileForwardingRuleLabels(svc, rule, map[string]string{"owned": "new"}), "cloud write failed")
+	require.ErrorContains(t, g.reconcileForwardingRuleLabels(context.Background(), svc, rule, map[string]string{"owned": "new"}), "cloud write failed")
 	require.NotContains(t, svc.Annotations, ServiceAnnotationManagedForwardingRuleLabelKeys, "caller/informer object must not be mutated")
 	// A failed write must not lose ownership; retries preserve unrelated labels.
 	failCloud = false
-	require.NoError(t, g.reconcileForwardingRuleLabels(svc, rule, map[string]string{"owned": "new"}))
+	require.NoError(t, g.reconcileForwardingRuleLabels(context.Background(), svc, rule, map[string]string{"owned": "new"}))
 	require.Equal(t, map[string]string{"external": "keep", "owned": "new"}, rule.Labels)
 	// Removing the desired annotation cleans up only owned keys.
 	_, err = g.client.CoreV1().Services(svc.Namespace).Patch(context.TODO(), svc.Name, types.MergePatchType, []byte(`{"metadata":{"annotations":{"cloud.google.com/load-balancer-forwarding-rule-labels":null}}}`), metav1.PatchOptions{})
@@ -108,7 +112,7 @@ func TestReconcileForwardingRuleLabelOwnership(t *testing.T) {
 	desired, present, err := g.forwardingRuleLabels(svc)
 	require.NoError(t, err)
 	require.True(t, present)
-	require.NoError(t, g.reconcileForwardingRuleLabels(svc, rule, desired))
+	require.NoError(t, g.reconcileForwardingRuleLabels(context.Background(), svc, rule, desired))
 	require.Equal(t, map[string]string{"external": "keep"}, rule.Labels)
 	stored, err := g.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -141,7 +145,7 @@ func TestForwardingRuleLabelOwnershipPatchFailures(t *testing.T) {
 				rule.Labels = request.Labels
 				return nil
 			}
-			require.ErrorContains(t, g.reconcileForwardingRuleLabels(svc, rule, map[string]string{"new": "value"}), "patch failed")
+			require.ErrorContains(t, g.reconcileForwardingRuleLabels(context.Background(), svc, rule, map[string]string{"new": "value"}), "patch failed")
 			stored, err := g.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
 			require.NoError(t, err)
 			if failAt == 1 {
@@ -152,11 +156,80 @@ func TestForwardingRuleLabelOwnershipPatchFailures(t *testing.T) {
 				require.Equal(t, "new,old", stored.Annotations[ServiceAnnotationManagedForwardingRuleLabelKeys])
 			}
 			// Retrying after either failure converges and then drops withdrawn keys.
-			require.NoError(t, g.reconcileForwardingRuleLabels(stored, rule, map[string]string{"new": "value"}))
+			require.NoError(t, g.reconcileForwardingRuleLabels(context.Background(), stored, rule, map[string]string{"new": "value"}))
 			require.Equal(t, map[string]string{"external": "keep", "new": "value"}, rule.Labels)
 			stored, err = g.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
 			require.NoError(t, err)
 			require.Equal(t, "new", stored.Annotations[ServiceAnnotationManagedForwardingRuleLabelKeys])
 		})
+	}
+}
+
+// labelRequestTransport inspects real client-go request contexts; fake-client
+// reactors do not exercise transport cancellation or request deadlines.
+type labelRequestTransport func(*http.Request) (*http.Response, error)
+
+func (f labelRequestTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestForwardingRuleLabelServiceRequestContexts(t *testing.T) {
+	for _, operation := range []string{"get", "patch"} {
+		for _, scenario := range []string{"bounded", "cancelled", "parent deadline"} {
+			t.Run(operation+"/"+scenario, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				if scenario == "parent deadline" {
+					var deadlineCancel context.CancelFunc
+					ctx, deadlineCancel = context.WithTimeout(ctx, time.Second)
+					defer deadlineCancel()
+				}
+				parentDeadline, _ := ctx.Deadline()
+				sentinel := fmt.Errorf("transport failure")
+				var requestCtx context.Context
+				client, err := kubernetes.NewForConfig(&rest.Config{
+					Host: "https://label-test.invalid",
+					Transport: labelRequestTransport(func(req *http.Request) (*http.Response, error) {
+						requestCtx = req.Context()
+						deadline, ok := requestCtx.Deadline()
+						require.True(t, ok, "all ownership requests must have a deadline")
+						if scenario != "parent deadline" {
+							require.WithinDuration(t, time.Now().Add(forwardingRuleLabelServiceAPITimeout), deadline, time.Second)
+						}
+						if scenario == "parent deadline" {
+							require.Equal(t, parentDeadline, deadline, "must preserve an earlier parent deadline")
+						}
+						if scenario == "bounded" {
+							return nil, sentinel
+						}
+						if scenario == "cancelled" {
+							cancel()
+						}
+						<-requestCtx.Done()
+						return nil, requestCtx.Err()
+					}),
+				})
+				require.NoError(t, err)
+				g := &Cloud{client: client}
+				svc := &v1.Service{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default", Annotations: map[string]string{ServiceAnnotationManagedForwardingRuleLabelKeys: "old"}}}
+				if operation == "get" {
+					err = g.reconcileForwardingRuleLabels(ctx, svc, &compute.ForwardingRule{Name: "rule"}, nil)
+				} else {
+					err = g.patchManagedForwardingRuleLabelKeys(ctx, svc, "new,old")
+				}
+				require.Error(t, err)
+				require.NotNil(t, requestCtx)
+				require.Error(t, requestCtx.Err(), "request context must be canceled on return")
+				switch scenario {
+				case "bounded":
+					require.ErrorIs(t, err, sentinel)
+				case "cancelled":
+					require.ErrorIs(t, err, context.Canceled)
+				case "parent deadline":
+					require.ErrorIs(t, err, context.DeadlineExceeded)
+				}
+				require.Equal(t, "old", svc.Annotations[ServiceAnnotationManagedForwardingRuleLabelKeys], "failed requests must not discard ownership state")
+			})
+		}
 	}
 }

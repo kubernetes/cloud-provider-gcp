@@ -57,7 +57,7 @@ const (
 )
 
 // ensureInternalLoadBalancer is the internal implementation of LoadBalancer.EnsureLoadBalancer.
-func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*lbSyncResult, error) {
+func (g *Cloud) ensureInternalLoadBalancer(ctx context.Context, clusterName, clusterID string, svc *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*lbSyncResult, error) {
 	syncResult := newLBSyncResult()
 
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-internal-legacy" used for this controller.
@@ -260,7 +260,7 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 		g.clearPreviousInternalResources(svc, loadBalancerName, clusterID, existingBackendService, backendServiceName, hcName)
 	}
 	if labelsPresent {
-		if err := g.reconcileForwardingRuleLabels(svc, updatedFwdRule, labels); err != nil {
+		if err := g.reconcileForwardingRuleLabels(ctx, svc, updatedFwdRule, labels); err != nil {
 			return nil, fmt.Errorf("failed to reconcile forwarding rule labels for load balancer (%s): %w", nm, err)
 		}
 	}

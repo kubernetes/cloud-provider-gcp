@@ -323,9 +323,9 @@ func (g *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, svc 
 	var syncResult *lbSyncResult
 	switch desiredScheme {
 	case cloud.SchemeInternal:
-		syncResult, err = g.ensureInternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
+		syncResult, err = g.ensureInternalLoadBalancer(ctx, clusterName, clusterID, svc, existingFwdRule, nodes)
 	default:
-		syncResult, err = g.ensureExternalLoadBalancer(clusterName, clusterID, svc, existingFwdRule, nodes)
+		syncResult, err = g.ensureExternalLoadBalancer(ctx, clusterName, clusterID, svc, existingFwdRule, nodes)
 	}
 	if err != nil {
 		klog.Errorf("Failed to EnsureLoadBalancer(%s, %s, %s, %s, %s), err: %v", clusterName, svc.Namespace, svc.Name, loadBalancerName, g.region, err)

@@ -56,7 +56,9 @@ keys until a successful cloud update, allowing retries after partial failures.
 Updates use the forwarding rule's label fingerprint. Concurrent cloud changes
 can cause reconciliation to fail and retry; labels are merged again on retry.
 The GCP limit of 64 labels applies to the combined managed and unrelated labels.
-Label errors are returned after required network/firewall reconciliation.
+Annotation validation errors are returned before resource reconciliation. Errors
+from the subsequent label-reconciliation step are returned after required
+network/firewall reconciliation.
 
 CCM requires permission to patch Service metadata and
 `compute.forwardingRules.setLabels` in addition to existing LB permissions.

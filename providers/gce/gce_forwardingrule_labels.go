@@ -26,6 +26,7 @@ import (
 	"maps"
 	"sort"
 	"strings"
+	"time"
 
 	compute "google.golang.org/api/compute/v1"
 	v1 "k8s.io/api/core/v1"
@@ -36,6 +37,10 @@ import (
 // ServiceAnnotationManagedForwardingRuleLabelKeys is CCM-owned recovery state.
 // Other controllers must not modify it when changing desired labels.
 const ServiceAnnotationManagedForwardingRuleLabelKeys = "cloud.google.com/managed-load-balancer-forwarding-rule-label-keys"
+
+// forwardingRuleLabelServiceAPITimeout bounds each ownership-bookkeeping API call.
+// These requests can run while the coarse ILB shared-resource lock is held.
+const forwardingRuleLabelServiceAPITimeout = 30 * time.Second
 
 func (g *Cloud) forwardingRuleLabels(svc *v1.Service) (map[string]string, bool, error) {
 	if !g.enableForwardingRuleLabels {
@@ -68,7 +73,7 @@ func mergeForwardingRuleLabels(existing, desired map[string]string, previous str
 	return labels
 }
 
-func (g *Cloud) patchManagedForwardingRuleLabelKeys(svc *v1.Service, value string) error {
+func (g *Cloud) patchManagedForwardingRuleLabelKeys(ctx context.Context, svc *v1.Service, value string) error {
 	if svc.Annotations[ServiceAnnotationManagedForwardingRuleLabelKeys] == value {
 		return nil
 	}
@@ -86,7 +91,9 @@ func (g *Cloud) patchManagedForwardingRuleLabelKeys(svc *v1.Service, value strin
 	if err != nil {
 		return err
 	}
-	updated, err := g.client.CoreV1().Services(svc.Namespace).Patch(context.TODO(), svc.Name, types.MergePatchType, patch, metav1.PatchOptions{})
+	callCtx, cancel := context.WithTimeout(ctx, forwardingRuleLabelServiceAPITimeout)
+	defer cancel()
+	updated, err := g.client.CoreV1().Services(svc.Namespace).Patch(callCtx, svc.Name, types.MergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		return fmt.Errorf("persist forwarding-rule label ownership: %w", err)
 	}
@@ -102,8 +109,10 @@ func (g *Cloud) patchManagedForwardingRuleLabelKeys(svc *v1.Service, value strin
 	return nil
 }
 
-func (g *Cloud) reconcileForwardingRuleLabels(svc *v1.Service, rule *compute.ForwardingRule, desired map[string]string) error {
-	current, err := g.client.CoreV1().Services(svc.Namespace).Get(context.TODO(), svc.Name, metav1.GetOptions{})
+func (g *Cloud) reconcileForwardingRuleLabels(ctx context.Context, svc *v1.Service, rule *compute.ForwardingRule, desired map[string]string) error {
+	callCtx, cancel := context.WithTimeout(ctx, forwardingRuleLabelServiceAPITimeout)
+	current, err := g.client.CoreV1().Services(svc.Namespace).Get(callCtx, svc.Name, metav1.GetOptions{})
+	cancel()
 	if err != nil {
 		return fmt.Errorf("get Service for label ownership: %w", err)
 	}
@@ -127,11 +136,11 @@ func (g *Cloud) reconcileForwardingRuleLabels(svc *v1.Service, rule *compute.For
 			pending[key] = ""
 		}
 	}
-	if err := g.patchManagedForwardingRuleLabelKeys(svc, labelKeysValue(pending)); err != nil {
+	if err := g.patchManagedForwardingRuleLabelKeys(ctx, svc, labelKeysValue(pending)); err != nil {
 		return err
 	}
 	if err := g.SetRegionForwardingRuleLabels(rule, g.region, labels); err != nil {
 		return err
 	}
-	return g.patchManagedForwardingRuleLabelKeys(svc, labelKeysValue(desired))
+	return g.patchManagedForwardingRuleLabelKeys(ctx, svc, labelKeysValue(desired))
 }

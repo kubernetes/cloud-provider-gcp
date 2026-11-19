@@ -58,7 +58,7 @@ const (
 // Due to an interesting series of design decisions, this handles both creating
 // new load balancers and updating existing load balancers, recognizing when
 // each is needed.
-func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*lbSyncResult, error) {
+func (g *Cloud) ensureExternalLoadBalancer(ctx context.Context, clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*lbSyncResult, error) {
 	syncResult := newLBSyncResult()
 
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
@@ -313,7 +313,7 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		if err != nil {
 			return nil, fmt.Errorf("failed to get forwarding rule labels for load balancer (%s): %w", lbRefStr, err)
 		}
-		if err := g.reconcileForwardingRuleLabels(apiService, fwdRule, labels); err != nil {
+		if err := g.reconcileForwardingRuleLabels(ctx, apiService, fwdRule, labels); err != nil {
 			return nil, fmt.Errorf("failed to reconcile forwarding rule labels for load balancer (%s): %w", lbRefStr, err)
 		}
 	}
