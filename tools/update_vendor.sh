@@ -30,6 +30,7 @@ go work use .
 go work use ./providers
 go work use ./test/e2e
 go work use ./metis
+go work use ./metis/test/integration
 
 # Copy over replace directives from go.mod to go.work
 REPLACE_DIRECTIVES=$(cat go.mod | grep '=>' | sort | uniq | grep -v "k8s.io/cloud-provider-gcp/providers") || echo "No replace directives found"
@@ -49,6 +50,7 @@ echo "Cleaning up unused dependencies"
 (cd providers && go mod tidy)
 (cd test/e2e && go mod tidy)
 (cd metis && go mod tidy)
+(cd metis/test/integration && go mod tidy)
 (cd metis/tools && GOFLAGS=-mod=mod go mod tidy)
 go mod tidy
 
