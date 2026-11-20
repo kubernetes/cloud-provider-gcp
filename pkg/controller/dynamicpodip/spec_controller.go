@@ -40,7 +40,15 @@ import (
 const (
 	// DefaultSpecControllerWorkers is the default number of worker goroutines
 	// for the spec controller.
-	DefaultSpecControllerWorkers = 4
+	//
+	// A worker is held for the whole duration of a node's mutation, which for
+	// the ANE backend is at least one GCE operation (~5-12s) and often more.
+	// With 4 workers a cluster-wide burst was processed at roughly 4 nodes
+	// per operation round trip, so at 100 nodes the last node's reconcile
+	// would start minutes after its spec changed. Mutations for different
+	// nodes are independent; the GCE API quota, not worker count, should be
+	// what bounds throughput.
+	DefaultSpecControllerWorkers = 32
 
 	specControllerName = "node-network-config-spec-controller"
 )

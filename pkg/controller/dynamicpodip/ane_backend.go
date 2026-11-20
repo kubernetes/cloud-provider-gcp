@@ -47,7 +47,14 @@ const (
 
 	// defaultANEMutationConcurrency is the maximum number of concurrent ANE
 	// creation or deletion operations executed in parallel per node.
-	defaultANEMutationConcurrency = 8
+	//
+	// Each ANE is one GCE operation of ~5.5s (p50) to ~12s (p90), and a
+	// single scale-up on a busy node routinely asks for 20-40 of them. With
+	// a limit of 8 those were serialized into 3-5 waves, so a pod waiting
+	// on the last wave saw 30-40s. 50 lets a typical burst complete in one
+	// wave; the effective ceiling is then the project's ANE operation
+	// quota rather than this constant.
+	defaultANEMutationConcurrency = 50
 
 	// aneTopUpPollInterval bounds how often an AdditionDemandFunc is
 	// consulted while creations are in flight and no additions are waiting
