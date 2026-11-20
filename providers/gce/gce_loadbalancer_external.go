@@ -58,7 +58,7 @@ const (
 // Due to an interesting series of design decisions, this handles both creating
 // new load balancers and updating existing load balancers, recognizing when
 // each is needed.
-func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*lbSyncResult, error) {
+func (g *Cloud) ensureExternalLoadBalancer(ctx context.Context, clusterName string, clusterID string, apiService *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*lbSyncResult, error) {
 	syncResult := newLBSyncResult()
 
 	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-external-legacy" used for this controller.
@@ -70,6 +70,10 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 
 	if err := g.processMixedProtocolCheck(context.TODO(), apiService, false); err != nil {
 		return nil, err
+	}
+	labels, labelsPresent, err := g.forwardingRuleLabels(apiService)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse forwarding rule resource labels: %w", err)
 	}
 
 	nm := types.NamespacedName{Namespace: apiService.Namespace, Name: apiService.Name}
@@ -298,11 +302,19 @@ func (g *Cloud) ensureExternalLoadBalancer(clusterName string, clusterID string,
 		isSafeToReleaseIP = true
 		klog.Infof("ensureExternalLoadBalancer(%s): Created forwarding rule, IP %s.", lbRefStr, ipAddressToUse)
 	}
-
 	// We can create deny firewall rule only after making sure that the allow firewalls for nodes and healthchecks are created/updated to 999 priority
 	if g.enableL4DenyFirewallRule {
 		if err := g.ensureDenyNodeFirewall(apiService, loadBalancerName, ipAddressToUse, lbRefStr, hosts); err != nil {
 			return nil, fmt.Errorf("failed to ensure deny firewall rule for load balancer(%s): %v", lbRefStr, err)
+		}
+	}
+	if labelsPresent {
+		fwdRule, err := g.GetRegionForwardingRule(loadBalancerName, g.region)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get forwarding rule labels for load balancer (%s): %w", lbRefStr, err)
+		}
+		if err := g.reconcileForwardingRuleLabels(ctx, apiService, fwdRule, labels); err != nil {
+			return nil, fmt.Errorf("failed to reconcile forwarding rule labels for load balancer (%s): %w", lbRefStr, err)
 		}
 	}
 

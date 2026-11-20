@@ -22,12 +22,19 @@ package gce
 import (
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/klog/v2"
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
+)
+
+const (
+	maxGCELabelsPerResource = 64
+	maxGCELabelLength       = 63
 )
 
 // LoadBalancerType defines a specific type for holding load balancer types (eg. Internal)
@@ -91,6 +98,14 @@ const (
 
 	// RBSEnabled is an annotation to indicate the Service is opt-in for RBS
 	RBSEnabled = "enabled"
+
+	// ServiceAnnotationLoadBalancerForwardingRuleLabels specifies the GCP resource labels to
+	// apply to forwarding rules managed for this LoadBalancer. Its value is a
+	// comma-separated list of key=value pairs. CCM owns these keys and preserves
+	// unrelated labels. Withdrawing a key removes it; original values are not restored.
+	// Labels are applied during full Service load-balancer reconciliation.
+	// Cloud-side label changes alone do not trigger reconciliation.
+	ServiceAnnotationLoadBalancerForwardingRuleLabels = "cloud.google.com/load-balancer-forwarding-rule-labels"
 
 	// serviceStatusPrefix is the prefix used in annotations used to record
 	// debug information in the Service annotations. This is applicable to L4 LB services.
@@ -210,6 +225,77 @@ func GetLoadBalancerAnnotationSubnet(service *v1.Service) (string, error) {
 		return "", fmt.Errorf("annotation %q has invalid subnetwork name %q: %s", ServiceAnnotationILBSubnet, name, strings.Join(errs, "; "))
 	}
 	return name, nil
+}
+
+// GetLoadBalancerAnnotationForwardingRuleLabels returns the resource labels requested for
+// forwarding rules managed for the given LoadBalancer service, and whether the
+// annotation is present. An empty or absent annotation returns no desired labels;
+// reconciliation uses CCM's managed-key annotation to clean up withdrawn keys.
+func GetLoadBalancerAnnotationForwardingRuleLabels(service *v1.Service) (map[string]string, bool, error) {
+	value, present := service.Annotations[ServiceAnnotationLoadBalancerForwardingRuleLabels]
+	if !present {
+		return nil, false, nil
+	}
+
+	labels := make(map[string]string)
+	if value == "" {
+		return labels, true, nil
+	}
+	pairs := strings.Split(value, ",")
+	if len(pairs) > maxGCELabelsPerResource {
+		return nil, true, fmt.Errorf("invalid %s annotation: at most %d labels are allowed", ServiceAnnotationLoadBalancerForwardingRuleLabels, maxGCELabelsPerResource)
+	}
+	for _, pair := range pairs {
+		key, labelValue, found := strings.Cut(pair, "=")
+		if !found {
+			return nil, true, fmt.Errorf("invalid %s annotation: label %q must use key=value format", ServiceAnnotationLoadBalancerForwardingRuleLabels, pair)
+		}
+		key = strings.TrimSpace(key)
+		labelValue = strings.TrimSpace(labelValue)
+		if err := validateGCELabel(key, labelValue); err != nil {
+			return nil, true, fmt.Errorf("invalid %s annotation: %w", ServiceAnnotationLoadBalancerForwardingRuleLabels, err)
+		}
+		if _, exists := labels[key]; exists {
+			return nil, true, fmt.Errorf("invalid %s annotation: duplicate label key %q", ServiceAnnotationLoadBalancerForwardingRuleLabels, key)
+		}
+		labels[key] = labelValue
+	}
+	return labels, true, nil
+}
+
+func validateGCELabel(key, value string) error {
+	if !utf8.ValidString(key) || !utf8.ValidString(value) {
+		return fmt.Errorf("label key and value must be valid UTF-8")
+	}
+	if utf8.RuneCountInString(key) == 0 || utf8.RuneCountInString(key) > maxGCELabelLength {
+		return fmt.Errorf("label key %q must contain 1 to %d characters", key, maxGCELabelLength)
+	}
+	if utf8.RuneCountInString(value) > maxGCELabelLength {
+		return fmt.Errorf("label value %q must contain at most %d characters", value, maxGCELabelLength)
+	}
+
+	for i, r := range key {
+		if i == 0 && !isGCELabelLetter(r) {
+			return fmt.Errorf("label key %q must start with a lowercase or international letter", key)
+		}
+		if !isGCELabelCharacter(r) {
+			return fmt.Errorf("label key %q contains invalid character %q", key, r)
+		}
+	}
+	for _, r := range value {
+		if !isGCELabelCharacter(r) {
+			return fmt.Errorf("label value %q contains invalid character %q", value, r)
+		}
+	}
+	return nil
+}
+
+func isGCELabelLetter(r rune) bool {
+	return unicode.IsLetter(r) && !unicode.IsUpper(r) && !unicode.IsTitle(r)
+}
+
+func isGCELabelCharacter(r rune) bool {
+	return isGCELabelLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-'
 }
 
 // mergeMap returns a new map containing the merged content of existing and update.

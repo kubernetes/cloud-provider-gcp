@@ -193,9 +193,9 @@ func TestDenyFirewall(t *testing.T) {
 	gce.enableL4DenyFirewallRule = true
 	gce.enableL4DenyFirewallRollbackCleanup = true
 
-	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, err = gce.ensureExternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	if err != nil {
-		t.Fatalf("ensureExternalLoadBalancer(deny=false) error: %v", err)
+		t.Fatalf("ensureExternalLoadBalancer(context.Background(), deny=false) error: %v", err)
 	}
 
 	// Verify health check firewall exists at 999
@@ -273,9 +273,9 @@ func TestDenyRollforwardDoesNotBlockTraffic(t *testing.T) {
 	gce.enableL4DenyFirewallRule = false
 	gce.enableL4DenyFirewallRollbackCleanup = true
 
-	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, err = gce.ensureExternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	if err != nil {
-		t.Fatalf("ensureExternalLoadBalancer(deny=false) error: %v", err)
+		t.Fatalf("ensureExternalLoadBalancer(context.Background(), deny=false) error: %v", err)
 	}
 
 	// Verify Allow exists at 1000
@@ -305,9 +305,9 @@ func TestDenyRollforwardDoesNotBlockTraffic(t *testing.T) {
 	// 2. Ensure with Deny Enabled (Rollforward)
 	gce.enableL4DenyFirewallRule = true
 
-	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, err = gce.ensureExternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	if err != nil {
-		t.Fatalf("ensureExternalLoadBalancer(deny=true) error: %v", err)
+		t.Fatalf("ensureExternalLoadBalancer(context.Background(), deny=true) error: %v", err)
 	}
 
 	// Verify Allow exists at 999
@@ -388,17 +388,17 @@ func TestDenyRollback(t *testing.T) {
 	gce.enableL4DenyFirewallRule = true
 	gce.enableL4DenyFirewallRollbackCleanup = true
 
-	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, err = gce.ensureExternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	if err != nil {
-		t.Fatalf("ensureExternalLoadBalancer(deny=true) error: %v", err)
+		t.Fatalf("ensureExternalLoadBalancer(context.Background(), deny=true) error: %v", err)
 	}
 
 	// 2. Ensure with Deny Disabled (Rollback)
 	gce.enableL4DenyFirewallRule = false
 
-	_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+	_, err = gce.ensureExternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 	if err != nil {
-		t.Fatalf("ensureExternalLoadBalancer(deny=false) error: %v", err)
+		t.Fatalf("ensureExternalLoadBalancer(context.Background(), deny=false) error: %v", err)
 	}
 
 	// Verify Allow exists at 1000
@@ -468,9 +468,9 @@ func TestDenyIsNotCreatedWhenPriorityUpdateFails(t *testing.T) {
 			gce.enableL4DenyFirewallRule = false
 			gce.enableL4DenyFirewallRollbackCleanup = false
 
-			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+			_, err = gce.ensureExternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 			if err != nil {
-				t.Fatalf("ensureExternalLoadBalancer(deny=false) error: %v", err)
+				t.Fatalf("ensureExternalLoadBalancer(context.Background(), deny=false) error: %v", err)
 			}
 
 			// 2. Inject error on Allow update
@@ -489,7 +489,7 @@ func TestDenyIsNotCreatedWhenPriorityUpdateFails(t *testing.T) {
 			gce.enableL4DenyFirewallRule = true
 			gce.enableL4DenyFirewallRollbackCleanup = true
 
-			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+			_, err = gce.ensureExternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 
 			// Assert error returned
 			if err == nil || !strings.Contains(err.Error(), injectedError.Error()) {
@@ -574,7 +574,7 @@ func TestContinueOnXPN403s(t *testing.T) {
 			mockGCE.MockFirewalls.UpdateHook = mockGCE.MockFirewalls.PatchHook
 
 			// Act: create load balancer
-			_, err = gce.ensureExternalLoadBalancer(vals.ClusterName, vals.ClusterID, svc, nil, nodes)
+			_, err = gce.ensureExternalLoadBalancer(context.Background(), vals.ClusterName, vals.ClusterID, svc, nil, nodes)
 
 			// Assert: we don't expect any errors to be returned
 			if err != nil {

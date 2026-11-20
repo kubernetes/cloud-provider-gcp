@@ -71,6 +71,9 @@ var (
 	// for L4 Load Balancers services
 	enableL4LBAnnotations bool
 
+	// enableForwardingRuleLabels is bound to the opt-in label-management flag.
+	enableForwardingRuleLabels bool
+
 	// enableL4DenyFirewall creates and manages an additional deny firewall rule
 	// at priority 1000 and moves the node and healthcheck firewall rule to priority 999.
 	enableL4DenyFirewall bool
@@ -136,6 +139,7 @@ func main() {
 	cloudProviderFS := fss.FlagSet("GCE Cloud Provider")
 	cloudProviderFS.BoolVar(&enableMultiProject, "enable-multi-project", false, "Enables project selection from Node providerID for GCE API calls. CAUTION: Only enable if Node providerID is configured by a trusted source.")
 	cloudProviderFS.BoolVar(&enableRBSDefaultForL4NetLB, "enable-rbs-default-l4-netlb", false, "Enables RBS defaulting for GCE L4 NetLB")
+	cloudProviderFS.BoolVar(&enableForwardingRuleLabels, "enable-forwarding-rule-labels", false, "Enable management of regional forwarding-rule labels through Service annotations")
 	cloudProviderFS.BoolVar(&enableL4LBAnnotations, "enable-l4-lb-annotations", false, "Enables Annotations for GCE L4 LB Services")
 	cloudProviderFS.BoolVar(&enableL4DenyFirewall, "enable-l4-deny-firewall", false, "Enable creation and updates of Deny VPC Firewall Rules for L4 external load balancers. Requires --enable-pinhole and --enable-l4-deny-firewall-rollback-cleanup to be true.")
 	cloudProviderFS.BoolVar(&enableL4DenyFirewallRollbackCleanup, "enable-l4-deny-firewall-rollback-cleanup", false, "Enable cleanup codepath of the deny firewalls for rollback. The reason for it not being enabled by default is the additional GCE API calls that are made for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.")
@@ -255,6 +259,14 @@ func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovid
 			klog.Fatalf("enable-rbs-default-l4-netlb requires GCE cloud provider, but got %T", cloud)
 		}
 		gceCloud.SetEnableRBSDefaultForL4NetLB(true)
+	}
+
+	if enableForwardingRuleLabels {
+		gceCloud, ok := cloud.(*gce.Cloud)
+		if !ok {
+			klog.Fatalf("enable-forwarding-rule-labels requires GCE cloud provider, but got %T", cloud)
+		}
+		gceCloud.SetEnableForwardingRuleLabels(true)
 	}
 
 	if enableL4LBAnnotations {

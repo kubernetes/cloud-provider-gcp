@@ -57,33 +57,19 @@ const (
 )
 
 // ensureInternalLoadBalancer is the internal implementation of LoadBalancer.EnsureLoadBalancer.
-func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*lbSyncResult, error) {
+func (g *Cloud) ensureInternalLoadBalancer(ctx context.Context, clusterName, clusterID string, svc *v1.Service, existingFwdRule *compute.ForwardingRule, nodes []*v1.Node) (*lbSyncResult, error) {
 	syncResult := newLBSyncResult()
 
-	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-internal-legacy" used for this controller.
-	// LoadBalancerClass can't be updated so we know this controller should process the ILB.
-	if existingFwdRule == nil && !hasFinalizer(svc, ILBFinalizerV1) && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
-		// Neither the forwarding rule nor the V1 finalizer exists. This is most likely a new service.
-		if svc.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
-			klog.V(2).Infof("Skipped ensureInternalLoadBalancer for service %s/%s, as service contains %q loadBalancerClass.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
-			return nil, cloudprovider.ImplementedElsewhere
-		}
-		if g.AlphaFeatureGate.Enabled(AlphaFeatureILBSubsets) {
-			// When ILBSubsets is enabled, new ILB services will not be processed here.
-			// Services that have existing GCE resources created by this controller or the v1 finalizer
-			// will continue to update.
-			klog.V(2).Infof("Skipped ensureInternalLoadBalancer for service %s/%s, since %s feature is enabled.", svc.Namespace, svc.Name, AlphaFeatureILBSubsets)
-			return nil, cloudprovider.ImplementedElsewhere
-		}
-		if hasFinalizer(svc, ILBFinalizerV2) {
-			// No V1 resources present - Another controller is handling the resources for this service.
-			klog.V(2).Infof("Skipped ensureInternalLoadBalancer for service %s/%s, as service contains %q finalizer.", svc.Namespace, svc.Name, ILBFinalizerV2)
-			return nil, cloudprovider.ImplementedElsewhere
-		}
+	if !g.shouldProcessILB(svc, existingFwdRule) {
+		return nil, cloudprovider.ImplementedElsewhere
 	}
 
 	if err := g.processMixedProtocolCheck(context.TODO(), svc, false); err != nil {
 		return nil, err
+	}
+	labels, labelsPresent, err := g.forwardingRuleLabels(svc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse forwarding rule resource labels: %w", err)
 	}
 
 	nm := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
@@ -243,9 +229,8 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	// Get the most recent forwarding rule for the address.
 	updatedFwdRule, err := g.GetRegionForwardingRule(loadBalancerName, g.region)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get forwarding rule for load balancer (%s): %w", nm, err)
 	}
-
 	ipToUse = updatedFwdRule.IPAddress
 	// Ensure firewall rules if necessary
 	if err = g.ensureInternalFirewalls(loadBalancerName, ipToUse, clusterID, nm, svc, strconv.Itoa(int(hcPort)), sharedHealthCheck, nodes); err != nil {
@@ -255,6 +240,11 @@ func (g *Cloud) ensureInternalLoadBalancer(clusterName, clusterID string, svc *v
 	// Delete the previous internal load balancer resources if necessary
 	if existingBackendService != nil {
 		g.clearPreviousInternalResources(svc, loadBalancerName, clusterID, existingBackendService, backendServiceName, hcName)
+	}
+	if labelsPresent {
+		if err := g.reconcileForwardingRuleLabels(ctx, svc, updatedFwdRule, labels); err != nil {
+			return nil, fmt.Errorf("failed to reconcile forwarding rule labels for load balancer (%s): %w", nm, err)
+		}
 	}
 
 	serviceState.InSuccess = true
@@ -1186,4 +1176,32 @@ func forwardingRulesEqual(old, new *compute.ForwardingRule) bool {
 		oldResourceID.Equal(newResourceID) &&
 		old.AllowGlobalAccess == new.AllowGlobalAccess &&
 		old.Subnetwork == new.Subnetwork
+}
+
+// shouldProcessILB reports whether the legacy controller owns the desired ILB.
+// Scheme-change preflight passes nil because the old rule will be deleted before
+// ensureInternalLoadBalancer is called.
+func (g *Cloud) shouldProcessILB(svc *v1.Service, existingFwdRule *compute.ForwardingRule) bool {
+	// Process services with LoadBalancerClass "networking.gke.io/l4-regional-internal-legacy" used for this controller.
+	// LoadBalancerClass can't be updated so we know this controller should process the ILB.
+	if existingFwdRule == nil && !hasFinalizer(svc, ILBFinalizerV1) && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
+		// Neither the forwarding rule nor the V1 finalizer exists. This is most likely a new service.
+		if svc.Spec.LoadBalancerClass != nil && !hasLoadBalancerClass(svc, LegacyRegionalInternalLoadBalancerClass) {
+			klog.V(2).Infof("Skipped ensureInternalLoadBalancer for service %s/%s, as service contains %q loadBalancerClass.", svc.Namespace, svc.Name, *svc.Spec.LoadBalancerClass)
+			return false
+		}
+		if g.AlphaFeatureGate.Enabled(AlphaFeatureILBSubsets) {
+			// When ILBSubsets is enabled, new ILB services will not be processed here.
+			// Services that have existing GCE resources created by this controller or the v1 finalizer
+			// will continue to update.
+			klog.V(2).Infof("Skipped ensureInternalLoadBalancer for service %s/%s, since %s feature is enabled.", svc.Namespace, svc.Name, AlphaFeatureILBSubsets)
+			return false
+		}
+		if hasFinalizer(svc, ILBFinalizerV2) {
+			// No V1 resources present - Another controller is handling the resources for this service.
+			klog.V(2).Infof("Skipped ensureInternalLoadBalancer for service %s/%s, as service contains %q finalizer.", svc.Namespace, svc.Name, ILBFinalizerV2)
+			return false
+		}
+	}
+	return true
 }

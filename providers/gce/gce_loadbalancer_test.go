@@ -32,6 +32,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
+	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/mock"
 	"google.golang.org/api/compute/v1"
 )
 
@@ -761,6 +762,153 @@ func TestGetHCFirewallSourceRanges(t *testing.T) {
 			// netutils.IPNetSet.StringSlice() sorts the results, so we can directly assert Equal
 			// but we need to make sure tc.expectedRanges is sorted too.
 			assert.ElementsMatch(t, tc.expectedRanges, res)
+		})
+	}
+}
+
+func TestEnsureLoadBalancerValidatesLabelsBeforeSchemeChange(t *testing.T) {
+	for _, fromInternal := range []bool{false, true} {
+		for _, enabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("fromInternal=%t/labelsEnabled=%t", fromInternal, enabled), func(t *testing.T) {
+				vals := DefaultTestClusterValues()
+				g, err := fakeGCECloud(vals)
+				require.NoError(t, err)
+				mockDefaultForwardingRuleScheme(g)
+				nodes, err := createAndInsertNodes(g, []string{"test-node-1"}, vals.ZoneName)
+				require.NoError(t, err)
+				initialType := ""
+				if fromInternal {
+					initialType = string(LBTypeInternal)
+				}
+				svc := fakeLoadbalancerService(initialType)
+				svc, err = g.client.CoreV1().Services(svc.Namespace).Create(context.Background(), svc, metav1.CreateOptions{})
+				require.NoError(t, err)
+				_, err = g.EnsureLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
+				require.NoError(t, err)
+				lbName := g.GetLoadBalancerName(context.Background(), vals.ClusterName, svc)
+				originalRule, err := g.GetRegionForwardingRule(lbName, g.region)
+				require.NoError(t, err)
+				g.SetEnableForwardingRuleLabels(enabled)
+				svc, err = g.client.CoreV1().Services(svc.Namespace).Get(context.Background(), svc.Name, metav1.GetOptions{})
+				require.NoError(t, err)
+				svc.Annotations[ServiceAnnotationLoadBalancerType] = ""
+				if !fromInternal {
+					svc.Annotations[ServiceAnnotationLoadBalancerType] = string(LBTypeInternal)
+				}
+				svc.Annotations[ServiceAnnotationLoadBalancerForwardingRuleLabels] = "malformed"
+				svc, err = g.client.CoreV1().Services(svc.Namespace).Update(context.Background(), svc, metav1.UpdateOptions{})
+				require.NoError(t, err)
+				deleteCalls := 0
+				g.c.(*cloud.MockGCE).MockForwardingRules.DeleteHook = func(_ context.Context, _ *meta.Key, _ *cloud.MockForwardingRules, _ ...cloud.Option) (bool, error) {
+					deleteCalls++
+					return false, nil
+				}
+				for attempt := 0; attempt < 2; attempt++ {
+					_, err = g.EnsureLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
+					if enabled {
+						require.ErrorContains(t, err, "failed to parse forwarding rule resource labels")
+					} else {
+						require.NoError(t, err)
+					}
+					rule, err := g.GetRegionForwardingRule(lbName, g.region)
+					require.NoError(t, err)
+					if enabled {
+						require.Equal(t, originalRule, rule, "invalid labels must preserve the working forwarding rule across retries")
+						require.Zero(t, deleteCalls)
+					} else {
+						require.Equal(t, string(getSvcScheme(svc)), rule.LoadBalancingScheme)
+						require.Equal(t, 1, deleteCalls)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestEnsureLoadBalancerSkipsLabelValidationForDelegatedServices(t *testing.T) {
+	for _, mode := range []string{"other-class", "external-rbs", "external-rbs-default", "internal-subsets", "internal-v2"} {
+		t.Run(mode, func(t *testing.T) {
+			g, err := fakeGCECloud(DefaultTestClusterValues())
+			require.NoError(t, err)
+			g.SetEnableForwardingRuleLabels(true)
+			svc := fakeLoadbalancerService("")
+			svc.Annotations[ServiceAnnotationLoadBalancerForwardingRuleLabels] = "malformed"
+			switch mode {
+			case "other-class":
+				class := "example.com/other"
+				svc.Spec.LoadBalancerClass = &class
+			case "external-rbs":
+				svc.Annotations[RBSAnnotationKey] = RBSEnabled
+			case "external-rbs-default":
+				g.SetEnableRBSDefaultForL4NetLB(true)
+			case "internal-subsets":
+				svc.Annotations[ServiceAnnotationLoadBalancerType] = string(LBTypeInternal)
+				g.AlphaFeatureGate = NewAlphaFeatureGate([]string{AlphaFeatureILBSubsets})
+			case "internal-v2":
+				svc.Annotations[ServiceAnnotationLoadBalancerType] = string(LBTypeInternal)
+				svc.Finalizers = []string{ILBFinalizerV2}
+			}
+			_, err = g.EnsureLoadBalancer(context.Background(), DefaultTestClusterValues().ClusterName, svc, nil)
+			require.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+		})
+	}
+}
+
+// Match the Compute API default: an omitted scheme is stored as EXTERNAL.
+func mockDefaultForwardingRuleScheme(g *Cloud) {
+	g.c.(*cloud.MockGCE).MockForwardingRules.InsertHook = func(ctx context.Context, key *meta.Key, rule *compute.ForwardingRule, rules *cloud.MockForwardingRules, options ...cloud.Option) (bool, error) {
+		if rule.LoadBalancingScheme == "" {
+			rule.LoadBalancingScheme = string(cloud.SchemeExternal)
+		}
+		return mock.InsertFwdRuleHook(ctx, key, rule, rules, options...)
+	}
+}
+
+func TestEnsureLoadBalancerSkipsLabelValidationForDelegatedSchemeChanges(t *testing.T) {
+	for _, mode := range []string{"external-rbs", "external-rbs-default", "internal-subsets", "internal-v2"} {
+		t.Run(mode, func(t *testing.T) {
+			vals := DefaultTestClusterValues()
+			g, err := fakeGCECloud(vals)
+			require.NoError(t, err)
+			mockDefaultForwardingRuleScheme(g)
+			nodes, err := createAndInsertNodes(g, []string{"test-node-1"}, vals.ZoneName)
+			require.NoError(t, err)
+			desiredInternal := mode == "internal-subsets" || mode == "internal-v2"
+			initialType := string(LBTypeInternal)
+			if desiredInternal {
+				initialType = ""
+			}
+			svc := fakeLoadbalancerService(initialType)
+			svc, err = g.client.CoreV1().Services(svc.Namespace).Create(context.Background(), svc, metav1.CreateOptions{})
+			require.NoError(t, err)
+			_, err = g.EnsureLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
+			require.NoError(t, err)
+			svc, err = g.client.CoreV1().Services(svc.Namespace).Get(context.Background(), svc.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			svc.Annotations[ServiceAnnotationLoadBalancerType] = ""
+			if desiredInternal {
+				svc.Annotations[ServiceAnnotationLoadBalancerType] = string(LBTypeInternal)
+			}
+			svc.Annotations[ServiceAnnotationLoadBalancerForwardingRuleLabels] = "malformed"
+			g.SetEnableForwardingRuleLabels(true)
+			switch mode {
+			case "external-rbs":
+				svc.Annotations[RBSAnnotationKey] = RBSEnabled
+			case "external-rbs-default":
+				g.SetEnableRBSDefaultForL4NetLB(true)
+			case "internal-subsets":
+				g.AlphaFeatureGate = NewAlphaFeatureGate([]string{AlphaFeatureILBSubsets})
+			case "internal-v2":
+				svc.Finalizers = append(svc.Finalizers, ILBFinalizerV2)
+			}
+			svc, err = g.client.CoreV1().Services(svc.Namespace).Update(context.Background(), svc, metav1.UpdateOptions{})
+			require.NoError(t, err)
+			_, err = g.EnsureLoadBalancer(context.Background(), vals.ClusterName, svc, nodes)
+			require.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+			// Preserve the existing handoff behavior: the old scheme is cleaned up,
+			// and the alternate controller is responsible for the replacement.
+			_, err = g.GetRegionForwardingRule(g.GetLoadBalancerName(context.Background(), vals.ClusterName, svc), g.region)
+			require.True(t, isNotFound(err), "old forwarding rule should be cleaned up on handoff: %v", err)
 		})
 	}
 }
