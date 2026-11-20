@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net"
 
+	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	nncv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/nodenetworkconfig/v1"
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nncinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/informers/externalversions/nodenetworkconfig/v1"
@@ -88,6 +89,9 @@ type NodeNetworkConfigSpecController struct {
 }
 
 // NewSpecController constructs a new NodeNetworkConfigSpecController.
+//
+// networkResolver may be nil, in which case only the default network is
+// supported.
 func NewSpecController(
 	kubeClient kubernetes.Interface,
 	nncClient nncclientset.Interface,
@@ -98,6 +102,7 @@ func NewSpecController(
 	statusTrigger StatusTrigger,
 	rangeProvider CandidateRangeProvider,
 	backend PodIPBackend,
+	networkResolver *NetworkResolver,
 ) *NodeNetworkConfigSpecController {
 	if statusTrigger == nil {
 		statusTrigger = &NoopStatusTrigger{}
@@ -111,13 +116,14 @@ func NewSpecController(
 
 	c := &NodeNetworkConfigSpecController{
 		nodeSyncBase: nodeSyncBase{
-			name:       specControllerName,
-			kubeClient: kubeClient,
-			nncClient:  nncClient,
-			nncLister:  nncInformer.Lister(),
-			nodeLister: nodeInformer.Lister(),
-			gceCloud:   gceCloud,
-			gceCache:   gceCache,
+			name:            specControllerName,
+			kubeClient:      kubeClient,
+			nncClient:       nncClient,
+			nncLister:       nncInformer.Lister(),
+			nodeLister:      nodeInformer.Lister(),
+			gceCloud:        gceCloud,
+			gceCache:        gceCache,
+			networkResolver: networkResolver,
 		},
 		nncSynced:     nncInformer.Informer().HasSynced,
 		nodeSynced:    nodeInformer.Informer().HasSynced,
@@ -172,7 +178,8 @@ func (c *NodeNetworkConfigSpecController) enqueueNodeNetworkConfig(obj interface
 
 // Run starts the spec controller workers.
 func (c *NodeNetworkConfigSpecController) Run(workers int, stopCh <-chan struct{}) {
-	runNodeWorkers(c.name, c.queue, workers, stopCh, c.runWorker, c.nncSynced, c.nodeSynced)
+	syncs := append([]cache.InformerSynced{c.nncSynced, c.nodeSynced}, c.networkResolver.Synced()...)
+	runNodeWorkers(c.name, c.queue, workers, stopCh, c.runWorker, syncs...)
 }
 
 func (c *NodeNetworkConfigSpecController) runWorker() {
@@ -229,7 +236,7 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 	if changes.Empty() {
 		klog.V(4).Infof("No GCE changes required for node %q", nnc.Name)
 		c.statusTrigger.EnqueueNode(nnc.Name)
-		return c.pruneReleasableCIDRs(ctx, nnc, gceCIDRSet(ifaces))
+		return c.pruneReleasableCIDRs(ctx, nnc, c.gceCIDRSet(ifaces))
 	}
 
 	// Set status condition to Updating before mutating GCE
@@ -241,7 +248,7 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 
 	// Execute GCE VM alias IP mutations
 	for _, network := range changes.Networks() {
-		networkURL, err := resolveGCENetworkURL(c.gceCloud, network)
+		networkURL, err := resolveGCENetworkURL(c.gceCloud, c.networkResolver, network, ifaces)
 		if err != nil {
 			klog.Errorf("Network %q is not supported for dynamic pod IP on node %q: %v", network, nnc.Name, err)
 			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("Network %q is not supported: %v", network, err))
@@ -249,33 +256,17 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		}
 		netChanges := changes.GetNetwork(network)
 
-		// Retrieve candidate secondary range names for alias IP allocation on
-		// this interface's subnetwork.
-		var candidateRanges []string
-		if c.rangeProvider != nil {
-			var targetSubnet string
-			for _, iface := range ifaces {
-				if gce.EqualResourceURLs(iface.Network, networkURL) {
-					targetSubnet = iface.Subnetwork
-					break
-				}
-			}
-			if subProvider, ok := c.rangeProvider.(SubnetworkCandidateRangeProvider); ok {
-				candidateRanges = subProvider.GetCandidateRangesForSubnetwork(targetSubnet)
-			} else {
-				ranges, err := c.rangeProvider.GetCandidateRanges()
-				if err != nil {
-					klog.Warningf("Failed to retrieve candidate pod secondary ranges for node %q: %v", nnc.Name, err)
-				} else {
-					candidateRanges = ranges
-				}
-			}
+		sel, err := c.rangeSelectionFor(network, networkURL, ifaces)
+		if err != nil {
+			klog.Errorf("Cannot allocate for network %q on node %q: %v", network, nnc.Name, err)
+			c.updateStatusError(ctx, nnc.DeepCopy(), string(nncv1.NodeNetworkConfigInvalidParametersReason), fmt.Sprintf("Network %q: %v", network, err))
+			return fmt.Errorf("cannot allocate for network %q: %w", network, err)
 		}
 
-		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v, candidateRanges=%v",
-			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
+		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v, range=%q, candidateRanges=%v",
+			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals, sel.Range, sel.Candidates)
 
-		err = c.backend.Mutate(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
+		err = c.backend.Mutate(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, sel)
 		// Invalidate the cached GCE observation for this node whenever a
 		// mutation is attempted so that subsequent spec reconciles or
 		// workqueue retries do not reuse pre-mutation state within the
@@ -296,7 +287,7 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 	// started with minus those. Derived rather than re-read: a fresh GCE read
 	// here would cost a round trip and could also observe ranges added by this
 	// pass, whose CIDRs we cannot know until the next reconcile anyway.
-	postMutation := gceCIDRSet(ifaces)
+	postMutation := c.gceCIDRSet(ifaces)
 	for _, network := range changes.Networks() {
 		for _, removed := range changes.GetNetwork(network).removals {
 			postMutation.Delete(cidrKey(network, removed))
@@ -304,6 +295,106 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 	}
 
 	return c.pruneReleasableCIDRs(ctx, nnc, postMutation)
+}
+
+// rangeSelectionFor decides which subnet secondary range(s) a new Pod CIDR
+// for network may be allocated from on this node. See rangeSelection for why
+// the two cases differ.
+//
+// Additional networks are pinned to the single range already on the node for
+// that network. The node pool's --additional-pod-network names exactly one
+// pod-ipv4-range per network and Cluster Server provisions the instance
+// template with it, so the range on the interface *is* the user's choice, and
+// it is read from there rather than from the GKENetworkParamSet: the GNP's
+// podIPv4Ranges is a membership set that may legitimately list more ranges
+// than this node pool uses, and nothing forces the two to agree. Finding no
+// such range, or more than one, means the node is not in the shape the
+// template guarantees, and allocation is refused rather than guessed.
+//
+// The default network takes candidates from the subnet-qualified
+// rangeProvider (the cluster's additionalPodRangesConfig, as Cluster Server
+// passes it in --multi-secondary-ranges). The default GNP is deliberately not
+// used: the GNP controller folds every node pool's gke-np-default-pod-range
+// label into it as a flat, cross-subnet union, so on a node outside the
+// cluster default subnet it names ranges nic0 cannot allocate from. If the
+// provider has nothing, the ranges already in use on the interface -- which
+// are in its subnet by construction -- are offered instead; failing that the
+// choice is left to GCE, as before multi-networking support.
+func (c *NodeNetworkConfigSpecController) rangeSelectionFor(network, networkURL string, ifaces []*networkInterface) (rangeSelection, error) {
+	inUse := c.rangeNamesInUse(network, ifaces)
+
+	if !networkv1.IsDefaultNetwork(network) {
+		switch len(inUse) {
+		case 1:
+			return rangeSelection{Range: inUse[0]}, nil
+		case 0:
+			return rangeSelection{}, fmt.Errorf("no secondary range for network %q is present on the node, so the node pool's range for it cannot be determined", network)
+		default:
+			return rangeSelection{}, fmt.Errorf("secondary ranges %v for network %q are present on the node; expected exactly one", inUse, network)
+		}
+	}
+
+	var fromProvider []string
+	if c.rangeProvider != nil {
+		if subProvider, ok := c.rangeProvider.(SubnetworkCandidateRangeProvider); ok {
+			fromProvider = subProvider.GetCandidateRangesForSubnetwork(subnetworkForURL(networkURL, ifaces))
+		} else if ranges, err := c.rangeProvider.GetCandidateRanges(); err != nil {
+			klog.Warningf("Failed to retrieve candidate pod secondary ranges for network %q: %v", network, err)
+		} else {
+			fromProvider = ranges
+		}
+	}
+	if len(fromProvider) > 0 {
+		return rangeSelection{Candidates: fromProvider}, nil
+	}
+	if len(inUse) > 0 {
+		return rangeSelection{Candidates: inUse}, nil
+	}
+	return rangeSelection{}, nil
+}
+
+// rangeNamesInUse returns, sorted and without duplicates, the subnet secondary
+// range names of the Pod CIDRs (alias IP ranges and AliasNetworkEndpoints) on
+// the node that are attributed to network. Pod CIDRs with no range name --
+// allocated from a subnet's primary range -- are not counted.
+func (c *NodeNetworkConfigSpecController) rangeNamesInUse(network string, ifaces []*networkInterface) []string {
+	names := sets.NewString()
+	for _, iface := range ifaces {
+		if iface == nil {
+			continue
+		}
+		for _, r := range iface.AliasIPRanges {
+			if r.SubnetworkRangeName == "" {
+				continue
+			}
+			if n, err := resolveKubernetesNetworkName(c.networkResolver, iface, r.SubnetworkRangeName); err == nil && n == network {
+				names.Insert(r.SubnetworkRangeName)
+			}
+		}
+		for _, ane := range iface.ANEs {
+			if ane.SubnetworkRangeName == "" {
+				continue
+			}
+			if n, err := resolveKubernetesNetworkName(c.networkResolver, iface, ane.SubnetworkRangeName); err == nil && n == network {
+				names.Insert(ane.SubnetworkRangeName)
+			}
+		}
+	}
+	return names.List()
+}
+
+// subnetworkForURL returns the subnetwork of the interface that
+// UpdateInstanceAliasIPRanges will select for networkURL, or "" if none.
+func subnetworkForURL(networkURL string, ifaces []*networkInterface) string {
+	for _, iface := range ifaces {
+		if iface == nil {
+			continue
+		}
+		if gce.EqualResourceURLs(iface.Network, networkURL) || (iface.NetworkAttachment != "" && gce.EqualResourceURLs(iface.NetworkAttachment, networkURL)) {
+			return iface.Subnetwork
+		}
+	}
+	return ""
 }
 
 func cidrCapacity(cidrStr string) (int, error) {
@@ -335,11 +426,11 @@ func releasableCIDRSet(nnc *nncv1.NodeNetworkConfig) sets.String {
 func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) (nodeNetworkChanges, error) {
 	changes := make(nodeNetworkChanges)
 	currentCapacity := make(map[string]int)
-	activeCIDRs := gceCIDRSet(ifaces)
+	activeCIDRs := c.gceCIDRSet(ifaces)
 	releasable := releasableCIDRSet(nnc)
 
 	var capErr error
-	forEachPodCIDR(ifaces, func(netName, cidr string) {
+	c.forEachPodCIDR(ifaces, func(netName, cidr string) {
 		if capErr != nil {
 			return
 		}
@@ -428,6 +519,13 @@ func (c *NodeNetworkConfigSpecController) pruneReleasableCIDRs(ctx context.Conte
 	// taken, and prune them on the basis of a read that predates them.
 	stale := sets.NewString()
 	for _, rel := range nnc.Spec.ReleasableCIDRs {
+		// presentInGCE omits ranges on Networks that are not Ready, because
+		// forEachAliasRange cannot attribute them. Absence there says nothing
+		// about GCE for such an entry, so leave it for the daemon to act on
+		// once the Network is Ready again; pruning it would leak the range.
+		if params, ok := c.networkResolver.LookupNetworkParams(rel.Network); ok && !params.Ready {
+			continue
+		}
 		key := cidrKey(rel.Network, rel.CIDR)
 		if !presentInGCE.Has(key) {
 			stale.Insert(key)

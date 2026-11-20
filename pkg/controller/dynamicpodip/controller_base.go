@@ -35,6 +35,7 @@ import (
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nnclisters "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/listers/nodenetworkconfig/v1"
 	"golang.org/x/time/rate"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -80,12 +81,13 @@ type nodeSyncBase struct {
 	// name identifies the controller in logs and requeue messages.
 	name string
 
-	kubeClient kubernetes.Interface
-	nncClient  nncclientset.Interface
-	nncLister  nnclisters.NodeNetworkConfigLister
-	nodeLister corelisters.NodeLister
-	gceCloud   *gce.Cloud
-	gceCache   *GCECache
+	kubeClient      kubernetes.Interface
+	nncClient       nncclientset.Interface
+	nncLister       nnclisters.NodeNetworkConfigLister
+	nodeLister      corelisters.NodeLister
+	gceCloud        *gce.Cloud
+	gceCache        *GCECache
+	networkResolver *NetworkResolver
 }
 
 // Name returns the name of the controller.
@@ -96,11 +98,6 @@ func (b *nodeSyncBase) Name() string {
 // resolveNode turns a workqueue key into the NodeNetworkConfig to reconcile and
 // the provider ID of its backing Node.
 //
-// Both lookups consult the lister first and fall back to a live read, because a
-// key can be enqueued before the informer has caught up -- most often by the
-// spec controller triggering the status controller immediately after its own
-// write.
-//
 // A nil NodeNetworkConfig with a nil error means the object is gone and the key
 // should be dropped. A *nodeNotReadyError means the Node has not finished
 // bootstrapping and the key should be requeued with backoff.
@@ -108,40 +105,67 @@ func (b *nodeSyncBase) Name() string {
 // The returned object is a deep copy, so callers may mutate it freely without
 // corrupting the informer cache.
 func (b *nodeSyncBase) resolveNode(ctx context.Context, key string) (*nncv1.NodeNetworkConfig, string, error) {
-	nnc, err := b.nncLister.Get(key)
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return nil, "", err
-		}
-		nnc, err = b.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, key, metav1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				klog.V(4).Infof("%s: NodeNetworkConfig %q not found, skipping sync", b.name, key)
-				return nil, "", nil
-			}
-			return nil, "", err
-		}
+	nnc, err := b.getNodeNetworkConfig(ctx, key)
+	if err != nil || nnc == nil {
+		return nil, "", err
 	}
+	node, err := b.getReadyNode(ctx, key)
+	if err != nil {
+		return nil, "", err
+	}
+	return nnc, node.Spec.ProviderID, nil
+}
 
-	node, err := b.nodeLister.Get(nnc.Name)
+// getNodeNetworkConfig returns a deep copy of the named NodeNetworkConfig, or
+// nil with a nil error if it does not exist.
+//
+// The lister is consulted first with a fall back to a live read, because a key
+// can be enqueued before the informer has caught up -- most often by the spec
+// controller triggering the status controller immediately after its own write,
+// or by the status controller having just created the object itself.
+func (b *nodeSyncBase) getNodeNetworkConfig(ctx context.Context, name string) (*nncv1.NodeNetworkConfig, error) {
+	nnc, err := b.nncLister.Get(name)
+	if err == nil {
+		return nnc.DeepCopy(), nil
+	}
+	if !errors.IsNotFound(err) {
+		return nil, err
+	}
+	klog.V(4).Infof("%s: NodeNetworkConfig %q not in informer cache (%v), falling back to a live read", b.name, name, err)
+	nnc, err = b.nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			klog.V(4).Infof("%s: NodeNetworkConfig %q not found", b.name, name)
+			return nil, nil
+		}
+		return nil, err
+	}
+	return nnc.DeepCopy(), nil
+}
+
+// getReadyNode returns the named Node once it is far enough through bootstrap
+// to be reconciled, i.e. it exists and has a ProviderID. Otherwise it returns a
+// *nodeNotReadyError so the caller requeues with backoff.
+//
+// As with getNodeNetworkConfig, the lister is tried first and a live read
+// second.
+func (b *nodeSyncBase) getReadyNode(ctx context.Context, name string) (*v1.Node, error) {
+	node, err := b.nodeLister.Get(name)
 	if err != nil {
 		if errors.IsNotFound(err) && b.kubeClient != nil {
-			node, err = b.kubeClient.CoreV1().Nodes().Get(ctx, nnc.Name, metav1.GetOptions{})
+			node, err = b.kubeClient.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
 		}
 		if err != nil {
 			if errors.IsNotFound(err) {
-				return nil, "", &nodeNotReadyError{nodeName: nnc.Name, reason: "node not found"}
+				return nil, &nodeNotReadyError{nodeName: name, reason: "node not found"}
 			}
-			return nil, "", fmt.Errorf("failed to get node %q: %w", nnc.Name, err)
+			return nil, fmt.Errorf("failed to get node %q: %w", name, err)
 		}
 	}
-
-	providerID := node.Spec.ProviderID
-	if providerID == "" {
-		return nil, "", &nodeNotReadyError{nodeName: nnc.Name, reason: "node has empty Spec.ProviderID"}
+	if node.Spec.ProviderID == "" {
+		return nil, &nodeNotReadyError{nodeName: name, reason: "node has empty Spec.ProviderID"}
 	}
-
-	return nnc.DeepCopy(), providerID, nil
+	return node, nil
 }
 
 // updateNNCStatus writes the status subresource, retrying on 409 Conflict by
@@ -268,10 +292,10 @@ func cidrKey(network, cidr string) string {
 // forEachPodCIDR invokes fn for every (network name, CIDR) pair attached to
 // the instance, across both VM alias IP ranges and AliasNetworkEndpoints.
 //
-// Interfaces that cannot be resolved to a valid Kubernetes network name are
-// skipped with a warning.
-func forEachPodCIDR(ifaces []*networkInterface, fn func(network, cidr string)) {
-	forEachPodCIDREntry(ifaces, func(network, _, cidr string, _ nncv1.PodCIDRType) {
+// Pod CIDRs that cannot be attributed to a Kubernetes network are skipped with
+// a warning.
+func (b *nodeSyncBase) forEachPodCIDR(ifaces []*networkInterface, fn func(network, cidr string)) {
+	b.forEachPodCIDREntry(ifaces, func(network, _, cidr string, _ nncv1.PodCIDRType) {
 		fn(network, cidr)
 	})
 }
@@ -279,27 +303,36 @@ func forEachPodCIDR(ifaces []*networkInterface, fn func(network, cidr string)) {
 // forEachPodCIDREntry invokes fn for every Pod CIDR attached to the instance,
 // providing its Kubernetes network name, PodCIDR ID (the CIDR itself for VM
 // alias IP ranges, or the ANE resource name for AliasNetworkEndpoints), CIDR
-// string, and reuse policy (Reusable for alias IP ranges, NonReusable for
-// ANEs).
-func forEachPodCIDREntry(ifaces []*networkInterface, fn func(network, id, cidr string, reusePolicy nncv1.PodCIDRType)) {
+// string, and reuse policy.
+//
+// The reuse policy says only what kind of GCE resource backs the CIDR: alias
+// IP ranges are Reusable, AliasNetworkEndpoints are NonReusable. Alias ranges
+// and ANEs are attributed to Kubernetes networks the same way, through the
+// subnet secondary range each came from (see resolveKubernetesNetworkName).
+func (b *nodeSyncBase) forEachPodCIDREntry(ifaces []*networkInterface, fn func(network, id, cidr string, reusePolicy nncv1.PodCIDRType)) {
 	for _, iface := range ifaces {
 		if iface == nil {
 			continue
 		}
-		netName, err := resolveKubernetesNetworkName(iface)
-		if err != nil {
-			klog.Warningf("Skipping interface %q: %v", iface.Name, err)
-			continue
-		}
-		for _, cidr := range iface.AliasIPRanges {
-			fn(netName, cidr, cidr, nncv1.PodCIDRTypeReusable)
-		}
-		for _, cidr := range iface.ANECIDRs {
-			id := cidr
-			if name := iface.ANENames[cidr]; name != "" {
-				id = name
+		for _, r := range iface.AliasIPRanges {
+			netName, err := resolveKubernetesNetworkName(b.networkResolver, iface, r.SubnetworkRangeName)
+			if err != nil {
+				klog.Warningf("Skipping alias range %q (subnetworkRangeName=%q) on interface %q: %v", r.IPCIDRRange, r.SubnetworkRangeName, iface.Name, err)
+				continue
 			}
-			fn(netName, id, cidr, nncv1.PodCIDRTypeNonReusable)
+			fn(netName, r.IPCIDRRange, r.IPCIDRRange, nncv1.PodCIDRTypeReusable)
+		}
+		for _, ane := range iface.ANEs {
+			netName, err := resolveKubernetesNetworkName(b.networkResolver, iface, ane.SubnetworkRangeName)
+			if err != nil {
+				klog.Warningf("Skipping AliasNetworkEndpoint %q (%s, subnetworkRangeName=%q) on interface %q: %v", ane.Name, ane.IPCIDRRange, ane.SubnetworkRangeName, iface.Name, err)
+				continue
+			}
+			id := ane.Name
+			if id == "" {
+				id = ane.IPCIDRRange
+			}
+			fn(netName, id, ane.IPCIDRRange, nncv1.PodCIDRTypeNonReusable)
 		}
 	}
 }
@@ -316,9 +349,9 @@ func hasTransientANE(ifaces []*networkInterface) bool {
 }
 
 // gceCIDRSet returns the cidrKeys of every Pod CIDR attached to the instance.
-func gceCIDRSet(ifaces []*networkInterface) sets.String {
+func (b *nodeSyncBase) gceCIDRSet(ifaces []*networkInterface) sets.String {
 	active := sets.NewString()
-	forEachPodCIDR(ifaces, func(network, cidr string) {
+	b.forEachPodCIDR(ifaces, func(network, cidr string) {
 		active.Insert(cidrKey(network, cidr))
 	})
 	return active

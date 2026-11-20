@@ -42,8 +42,8 @@ func (b *aliasRangesBackend) GetNetworkInterfaces(ctx context.Context, providerI
 	return toNetworkInterfaces(gceIfaces), nil
 }
 
-func (b *aliasRangesBackend) Mutate(ctx context.Context, providerID, networkURL string, additions []string, removals []string, candidateRanges []string) error {
-	return b.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, networkURL, additions, removals, candidateRanges)
+func (b *aliasRangesBackend) Mutate(ctx context.Context, providerID, networkURL string, additions []string, removals []string, sel rangeSelection) error {
+	return b.gceCloud.UpdateInstanceAliasIPRanges(ctx, providerID, networkURL, additions, removals, sel.Range, sel.Candidates)
 }
 
 func (b *aliasRangesBackend) CalculateAdditions(network string, neededIPs int, currentIfaces []*networkInterface) []string {

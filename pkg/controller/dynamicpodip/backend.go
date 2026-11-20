@@ -37,6 +37,40 @@ const (
 	BackendTypeANE BackendType = "ane"
 )
 
+// rangeSelection says which subnet secondary range(s) GCE may allocate a new
+// Pod CIDR from on an interface. At most one field is set; the zero value
+// leaves the choice to GCE.
+//
+// The two forms are not interchangeable, because they encode different user
+// intent:
+//
+//   - Range pins the allocation to one named range
+//     (AliasIpRange.subnetworkRangeName). This is what additional networks
+//     use. A node pool's --additional-pod-network names exactly one
+//     pod-ipv4-range for the network, Cluster Server puts that range on the
+//     interface in the instance template, and the CCM must allocate from the
+//     same range and no other. (Letting the user omit the range, and so opt
+//     into several, would be a new node pool API; today its omission is
+//     rejected.)
+//   - Candidates lets GCE choose among several
+//     (AliasIpRange.candidateSubnetworkRangeNames). This is what the default
+//     network uses under Adaptive Cluster IPAM, where the cluster-level
+//     additionalPodRangesConfig is the user's statement that any of those
+//     ranges may be used, and Cluster Server itself provisions the template
+//     with candidates rather than a single range.
+type rangeSelection struct {
+	Range      string
+	Candidates []string
+}
+
+// names returns the selection as a list, for APIs that only take a list.
+func (s rangeSelection) names() []string {
+	if s.Range != "" {
+		return []string{s.Range}
+	}
+	return s.Candidates
+}
+
 // PodIPBackend abstracts the cloud IP allocation operations (such as GCE Alias
 // IP ranges, Alias Network Endpoints, or a hybrid combination of both).
 type PodIPBackend interface {
@@ -44,8 +78,8 @@ type PodIPBackend interface {
 	// Pod CIDRs.
 	GetNetworkInterfaces(ctx context.Context, providerID string) ([]*networkInterface, error)
 	// Mutate applies additions and removals of Pod IPs on the cloud
-	// provider.
-	Mutate(ctx context.Context, providerID, networkURL string, additions []string, removals []string, candidateRanges []string) error
+	// provider. New allocations are drawn from the ranges in sel.
+	Mutate(ctx context.Context, providerID, networkURL string, additions []string, removals []string, sel rangeSelection) error
 	// CalculateAdditions determines the CIDR allocations needed to satisfy
 	// the demand for neededIPs given the current interface allocations.
 	CalculateAdditions(network string, neededIPs int, currentIfaces []*networkInterface) []string
