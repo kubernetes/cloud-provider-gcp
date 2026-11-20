@@ -275,7 +275,12 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 		klog.Infof("Applying GCE mutations for node %q, network %q (URL=%q): additions=%v, removals=%v, candidateRanges=%v",
 			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
 
-		err = c.backend.Mutate(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
+		if tb, ok := c.backend.(TopUpBackend); ok && len(netChanges.additions) > 0 {
+			err = tb.MutateWithTopUp(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges,
+				c.additionDemandFunc(nnc, network, ifaces))
+		} else {
+			err = c.backend.Mutate(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
+		}
 		// Invalidate the cached GCE observation for this node whenever a
 		// mutation is attempted so that subsequent spec reconciles or
 		// workqueue retries do not reuse pre-mutation state within the
@@ -332,10 +337,17 @@ func releasableCIDRSet(nnc *nncv1.NodeNetworkConfig) sets.String {
 	return releasable
 }
 
-func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) (nodeNetworkChanges, error) {
-	changes := make(nodeNetworkChanges)
+// capacityByNetwork returns, per network, the number of Pod IPs the instance
+// currently provides that count toward satisfying spec.allocations.
+//
+// A range the daemon has asked us to release must not count toward
+// satisfying demand. The daemon stops using it the moment it adds the entry
+// and reduces its own Allocations[].Pods ask by the same capacity, so
+// counting it here would make a scale-up that coincides with a release
+// under-allocate by exactly that much -- and nothing re-enqueues us
+// afterwards to correct it.
+func capacityByNetwork(nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) (map[string]int, error) {
 	currentCapacity := make(map[string]int)
-	activeCIDRs := gceCIDRSet(ifaces)
 	releasable := releasableCIDRSet(nnc)
 
 	var capErr error
@@ -343,12 +355,6 @@ func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetwor
 		if capErr != nil {
 			return
 		}
-		// A range the daemon has asked us to release must not count toward
-		// satisfying demand. The daemon stops using it the moment it adds
-		// the entry and reduces its own Allocations[].Pods ask by the same
-		// capacity, so counting it here would make a scale-up that
-		// coincides with a release under-allocate by exactly that much --
-		// and nothing re-enqueues us afterwards to correct it.
 		if releasable.Has(cidrKey(netName, cidr)) {
 			return
 		}
@@ -361,6 +367,26 @@ func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetwor
 	})
 	if capErr != nil {
 		return nil, capErr
+	}
+	return currentCapacity, nil
+}
+
+// desiredPodsByNetwork sums spec.allocations[].pods per network.
+func desiredPodsByNetwork(nnc *nncv1.NodeNetworkConfig) map[string]int {
+	desired := make(map[string]int, len(nnc.Spec.Allocations))
+	for _, alloc := range nnc.Spec.Allocations {
+		desired[alloc.Network] += int(alloc.Pods)
+	}
+	return desired
+}
+
+func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) (nodeNetworkChanges, error) {
+	changes := make(nodeNetworkChanges)
+	activeCIDRs := gceCIDRSet(ifaces)
+
+	currentCapacity, err := capacityByNetwork(nnc, ifaces)
+	if err != nil {
+		return nil, err
 	}
 
 	// Additions
@@ -400,6 +426,56 @@ func (c *NodeNetworkConfigSpecController) calculateChanges(nnc *nncv1.NodeNetwor
 	}
 
 	return changes, nil
+}
+
+// additionDemandFunc returns an AdditionDemandFunc for one network of one
+// reconcile. It is consulted by a TopUpBackend while the mutation computed
+// from snapshot is in flight, and reports how much the daemon has raised its
+// ask for network since then, as backend additions.
+//
+// The baseline is max(snapshot ask, capacity): the mutation already covers
+// everything up to the snapshot ask, and anything below capacity needs no
+// additions. Each call hands out only the increment beyond what previous
+// calls returned, so the backend can simply create whatever it receives.
+//
+// The live object comes from the informer cache. That is deliberate: this is
+// called at up to 2 Hz for the duration of a mutation, and the daemon's bumps
+// reach the cache within milliseconds. A cache miss or a lagging cache just
+// means the demand is picked up by the next reconcile, which is the
+// pre-top-up behaviour, so errors are reported but never fatal.
+func (c *NodeNetworkConfigSpecController) additionDemandFunc(snapshot *nncv1.NodeNetworkConfig, network string, ifaces []*networkInterface) AdditionDemandFunc {
+	capacity, err := capacityByNetwork(snapshot, ifaces)
+	if err != nil {
+		// calculateChanges already rejected this case; never top up.
+		return func(context.Context) ([]string, error) { return nil, nil }
+	}
+	baseline := desiredPodsByNetwork(snapshot)[network]
+	if cap := capacity[network]; cap > baseline {
+		baseline = cap
+	}
+	seenGeneration := snapshot.Generation
+	handedOut := 0
+
+	return func(ctx context.Context) ([]string, error) {
+		live, err := c.nncLister.Get(snapshot.Name)
+		if err != nil {
+			return nil, err
+		}
+		if live.Generation == seenGeneration {
+			return nil, nil
+		}
+		seenGeneration = live.Generation
+
+		need := desiredPodsByNetwork(live)[network] - baseline - handedOut
+		if need <= 0 {
+			return nil, nil
+		}
+		handedOut += need
+		additions := c.backend.CalculateAdditions(network, need, ifaces)
+		klog.V(2).Infof("Node %q network %q raised its ask by %d IP(s) (generation %d) during mutation; topping up with %v",
+			snapshot.Name, network, need, live.Generation, additions)
+		return additions, nil
+	}
 }
 
 // pruneReleasableCIDRs removes entries from Spec.ReleasableCIDRs whose range is
