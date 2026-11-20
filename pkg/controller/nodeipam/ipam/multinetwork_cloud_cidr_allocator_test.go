@@ -807,14 +807,15 @@ func TestDefaultNetworkCIDRs_IPv6Only(t *testing.T) {
 	}
 }
 
-// TestAdditionalNetwork_IPv6OnlyL3 verifies that an L3 additional network on an
-// IPv6-only interface (GNP without secondary ranges, NIC without an IPv4
-// address) is published in north-interfaces with the interface's IPv6 address,
-// so that consumers such as the L4 LB controller can find the node on that
-// network. Its Pod range is intentionally not published in the networks
-// annotation (that is owned by the NodeNetworkConfig status controller for
-// IPv6 multi-networking), regardless of the network-status on the node.
-func TestAdditionalNetwork_IPv6OnlyL3(t *testing.T) {
+// TestAdditionalNetwork_IPv6Only verifies that additional networks on an
+// IPv6-only interface (NIC without an IPv4 address) are published in
+// north-interfaces with the interface's IPv6 address, so that consumers such as
+// the L4 LB controller can find the node on that network. This covers both an
+// L3 network (GNP without secondary ranges) and a Device network. Neither gets
+// an entry in the networks annotation: for L3 the IPv6 Pod range is owned by
+// the NodeNetworkConfig status controller, and for Device there is no IPv4
+// interface address to publish.
+func TestAdditionalNetwork_IPv6Only(t *testing.T) {
 	fakeGCE := gce.NewFakeGCECloud(gce.DefaultTestClusterValues())
 	clientSet := clSetFake.NewSimpleClientset()
 	nwInfFactory := networkinformers.NewSharedInformerFactory(clientSet, 0).Networking()
@@ -829,6 +830,13 @@ func TestAdditionalNetwork_IPv6OnlyL3(t *testing.T) {
 	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondaryV6)
 	secV6GNP := gkeNetworkParams("secondary-v6-params", "projects/testProject/global/networks/v6-vpc", "projects/testProject/regions/us-central1/subnetworks/v6-subnet", []string{})
 	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(secV6GNP)
+
+	// IPv6-only Device network.
+	secondaryV6Dev := networkAll("secondary-v6-dev", "secondary-v6-dev-params", networkv1.DeviceNetworkType, true)
+	nwInfFactory.V1().Networks().Informer().GetIndexer().Add(secondaryV6Dev)
+	secV6DevGNP := gkeNetworkParams("secondary-v6-dev-params", "projects/testProject/global/networks/v6-dev-vpc", "projects/testProject/regions/us-central1/subnetworks/v6-dev-subnet", []string{})
+	secV6DevGNP.Spec.DeviceMode = networkv1.NetDevice
+	nwInfFactory.V1().GKENetworkParamSets().Informer().GetIndexer().Add(secV6DevGNP)
 
 	// L3 network without ranges on a dual-stack interface: must not be matched.
 	secondaryDS := networkAll("secondary-ds", "secondary-ds-params", networkv1.L3NetworkType, true)
@@ -856,8 +864,14 @@ func TestAdditionalNetwork_IPv6OnlyL3(t *testing.T) {
 			NetworkIP:   "10.0.3.1",
 			Ipv6Address: "2001:db9:1::110",
 		},
+		{
+			Name:        "nic3",
+			Network:     "projects/testProject/global/networks/v6-dev-vpc",
+			Subnetwork:  "projects/testProject/regions/us-central1/subnetworks/v6-dev-subnet",
+			Ipv6Address: "fd20:fb0:588c:0:0:3::",
+		},
 	}
-	wantNorthIntf, _ := networkv1.ParseNorthInterfacesAnnotation(`[{"network":"secondary-v6","ipv6Address":"fd20:fb0:588b:0:0:2::"}]`)
+	wantNorthIntf, _ := networkv1.ParseNorthInterfacesAnnotation(`[{"network":"secondary-v6","ipv6Address":"fd20:fb0:588b:0:0:2::"},{"network":"secondary-v6-dev","ipv6Address":"fd20:fb0:588c:0:0:3::"}]`)
 
 	for _, tc := range []struct {
 		desc          string
@@ -865,7 +879,7 @@ func TestAdditionalNetwork_IPv6OnlyL3(t *testing.T) {
 	}{
 		{
 			desc:          "network up on node",
-			networkStatus: `[{"name":"default"}, {"name":"secondary-v6"}, {"name":"secondary-ds"}]`,
+			networkStatus: `[{"name":"default"}, {"name":"secondary-v6"}, {"name":"secondary-v6-dev"}, {"name":"secondary-ds"}]`,
 		},
 		{
 			desc:          "network not up on node",
@@ -908,7 +922,7 @@ func TestAdditionalNetwork_IPv6OnlyL3(t *testing.T) {
 				t.Fatalf("failed to parse networks annotation %q: %v", node.Annotations[networkv1.MultiNetworkAnnotationKey], err)
 			}
 			if len(gotNodeNetworks) != 0 {
-				t.Errorf("networks annotation = %v, want no entries (IPv6 Pod ranges are published via NodeNetworkConfig)", gotNodeNetworks)
+				t.Errorf("networks annotation = %v, want no entries", gotNodeNetworks)
 			}
 			for name := range node.Status.Capacity {
 				if strings.HasPrefix(name.String(), networkv1.NetworkResourceKeyPrefix) {
