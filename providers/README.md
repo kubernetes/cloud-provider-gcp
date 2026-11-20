@@ -33,9 +33,11 @@ requirements. Empty label values (`key=`) are valid.
 ### Ownership and conflicts
 
 CCM preserves unrelated labels already on the forwarding rule. Adding a key to
-the desired annotation claims ownership of that key: the configured value wins
-over any existing or externally changed value. External systems must not manage
-the same keys concurrently. CCM does not save or restore overwritten values.
+the desired annotation claims ownership of that key. During full Service
+load-balancer reconciliation, CCM applies the configured value, overwriting any
+existing or externally changed value for that key. External systems should not
+manage the same keys concurrently. CCM does not save or restore overwritten
+values.
 
 Removing a key removes that label from GCP. An empty desired annotation, or
 removing the desired annotation entirely, removes only CCM-managed labels and
@@ -62,3 +64,14 @@ network/firewall reconciliation.
 
 CCM requires permission to patch Service metadata and
 `compute.forwardingRules.setLabels` in addition to existing LB permissions.
+
+### Reconciliation triggers
+
+Labels are reconciled during full Service load-balancer reconciliation, triggered
+by initial Service discovery (including CCM startup), relevant Service updates
+such as annotation changes, and retries after reconciliation failures.
+
+CCM does not periodically poll forwarding-rule labels for cloud-side drift. A
+label changed or deleted directly in GCP does not itself trigger reconciliation;
+the configured value is restored only when another full reconciliation occurs.
+Node-driven backend updates do not reconcile labels.

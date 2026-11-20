@@ -103,6 +103,8 @@ const (
 	// apply to forwarding rules managed for this LoadBalancer. Its value is a
 	// comma-separated list of key=value pairs. CCM owns these keys and preserves
 	// unrelated labels. Withdrawing a key removes it; original values are not restored.
+	// Labels are applied during full Service load-balancer reconciliation.
+	// Cloud-side label changes alone do not trigger reconciliation.
 	ServiceAnnotationLoadBalancerForwardingRuleLabels = "cloud.google.com/load-balancer-forwarding-rule-labels"
 
 	// serviceStatusPrefix is the prefix used in annotations used to record
