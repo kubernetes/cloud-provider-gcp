@@ -1,0 +1,317 @@
+/*
+Copyright 2016 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// The external controller manager is responsible for running controller loops that
+// are cloud provider dependent. It uses the API to listen to new events on resources.
+
+// Package app assembles the GKE cloud-controller-manager command: the GCE
+// cloud provider flags, the GKE-specific controllers and their initializers,
+// on top of the generic k8s.io/cloud-provider command.
+//
+// It is a library so that the same command can be embedded in other binaries
+// (for example a multicall binary that also contains kube-controller-manager
+// and kube-scheduler); cmd/cloud-controller-manager/main.go is a thin wrapper.
+package app
+
+import (
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/util/wait"
+	cloudprovider "k8s.io/cloud-provider"
+	"k8s.io/cloud-provider/app"
+	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
+	"k8s.io/cloud-provider/names"
+	"k8s.io/cloud-provider/options"
+	cliflag "k8s.io/component-base/cli/flag"
+	"k8s.io/klog/v2"
+
+	"k8s.io/cloud-provider-gcp/providers/gce"
+	_ "k8s.io/cloud-provider-gcp/providers/gce"
+)
+
+const (
+	// nodeIpamControllerName matches NodeIpamController in k8s.io/kubernetes/cmd/kube-controller-manager/names.
+	nodeIpamControllerName          = "node-ipam-controller"
+	gkeServiceLBControllerName      = "gke-service-lb-controller"
+	gkeServiceControllerClientName  = "gke-service-controller"
+	gkeServiceAlias                 = "gke-service"
+	gkeTenantControllerManagerName  = "gke-tenant-controller-manager"
+	gkeTenantControllerClientName   = "gke-tenant-controller-manager"
+	gkeTenantControllerManagerAlias = "gke-tenant"
+)
+
+var (
+	// enableMultiProject is bound to a command-line flag. When true, it enables the
+	// projectFromNodeProviderID option of the GCE cloud provider, instructing it to
+	// use the project specified in the Node's providerID for GCE API calls.
+	//
+	// This flag should only be enabled when the Node's providerID can be fully
+	// trusted.
+	//
+	// Flag binding occurs in NewCommand()
+	enableMultiProject bool
+
+	// enableRBSDefaultForGCEL4NetLB is bound to a command-line flag. It enables
+	// the option to default L4 NetLB to RBS, only controlling NetLB services with
+	// LoadBalancerClass
+	enableRBSDefaultForL4NetLB bool
+
+	// enableL4LBAnnotations is bound to a command-line flag. It enables
+	// the controller to write annotations related to the provisioned resources
+	// for L4 Load Balancers services
+	enableL4LBAnnotations bool
+
+	// enableL4DenyFirewall creates and manages an additional deny firewall rule
+	// at priority 1000 and moves the node and healthcheck firewall rule to priority 999.
+	enableL4DenyFirewall bool
+
+	// enableL4DenyFirewallRollbackCleanup enable cleanup codepath of the deny firewalls for rollback.
+	// The reason for it not being enabled by default is the additional GCE API calls that are made
+	// for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.
+	enableL4DenyFirewallRollbackCleanup bool
+
+	// enableGKETenantController enables the gke-tenant-controller-manager.
+	enableGKETenantController bool
+
+	// enableL4ILBFineGrainedLocks enables resource-specific locking for L4 ILB.
+	enableL4ILBFineGrainedLocks bool
+
+	// enableExternalIPv6NodeAddress makes the cloud provider additionally report
+	// a node's external IPv6 address as a NodeExternalIP node address. The
+	// address keeps being reported as NodeInternalIP regardless of this flag.
+	// See b/259716190.
+	enableExternalIPv6NodeAddress bool
+
+	// overrideL4ILBHealthCheckSourceCIDRs overrides the default source IPv4 ranges
+	// used when configuring firewall rules to allow health check probes for L4 ILB
+	// load balancers. Provide the ranges as a comma-separated list of CIDRs.
+	// Example: --override-l4-ilb-health-check-src-cidrs=35.191.192.0/18
+	overrideL4ILBHealthCheckSourceCIDRs string
+
+	// overrideL4NetLBHealthCheckSourceCIDRs overrides the default source IPv4 ranges
+	// used when configuring firewall rules to allow health check probes for L4 NetLB
+	// load balancers. Provide the ranges as a comma-separated list of CIDRs.
+	// Example: --override-l4-netlb-health-check-src-cidrs=209.85.204.0/22
+	overrideL4NetLBHealthCheckSourceCIDRs string
+
+	// enableDynamicPodIPController enables the dynamic-pod-ip-controller.
+	enableDynamicPodIPController bool
+
+	// populateNodeNetworkConfig enables the node-network-config-status-controller.
+	populateNodeNetworkConfig bool
+
+	// multiSecondaryRanges specifies secondary IP range names, with optional
+	// subnetwork qualification and lifecycle statuses
+	// (e.g. [subnetwork/]range1=ACTIVE,range2=DRAINING), for pod IP
+	// allocations in Adaptive Cluster IPAM mode.
+	multiSecondaryRanges []string
+
+	// dynamicPodIPBackend selects the backend for dynamic-pod-ip-controller
+	// (e.g. "alias-ranges" or "ane").
+	dynamicPodIPBackend string
+)
+
+// NewCommand returns the cloud-controller-manager cobra command with the GCE
+// cloud provider flags and the GKE controllers registered. Callers are
+// expected to initialize logging (logs.InitLogs/FlushLogs) around Execute, as
+// main.go does.
+//
+// NewCommand mutates process-global state exactly as the former main() did:
+// pflag.CommandLine's normalize function and the k8s.io/cloud-provider
+// ControllersDisabledByDefault set. It must therefore be called at most once
+// per process.
+func NewCommand() *cobra.Command {
+	pflag.CommandLine.SetNormalizeFunc(cliflag.WordSepNormalizeFunc)
+
+	ccmOptions, err := options.NewCloudControllerManagerOptions()
+	if err != nil {
+		klog.Fatalf("unable to initialize command options: %v", err)
+	}
+
+	controllerInitializers := app.DefaultInitFuncConstructors
+
+	fss := cliflag.NamedFlagSets{}
+
+	cloudProviderFS := fss.FlagSet("GCE Cloud Provider")
+	cloudProviderFS.BoolVar(&enableMultiProject, "enable-multi-project", false, "Enables project selection from Node providerID for GCE API calls. CAUTION: Only enable if Node providerID is configured by a trusted source.")
+	cloudProviderFS.BoolVar(&enableRBSDefaultForL4NetLB, "enable-rbs-default-l4-netlb", false, "Enables RBS defaulting for GCE L4 NetLB")
+	cloudProviderFS.BoolVar(&enableL4LBAnnotations, "enable-l4-lb-annotations", false, "Enables Annotations for GCE L4 LB Services")
+	cloudProviderFS.BoolVar(&enableL4DenyFirewall, "enable-l4-deny-firewall", false, "Enable creation and updates of Deny VPC Firewall Rules for L4 external load balancers. Requires --enable-pinhole and --enable-l4-deny-firewall-rollback-cleanup to be true.")
+	cloudProviderFS.BoolVar(&enableL4DenyFirewallRollbackCleanup, "enable-l4-deny-firewall-rollback-cleanup", false, "Enable cleanup codepath of the deny firewalls for rollback. The reason for it not being enabled by default is the additional GCE API calls that are made for checking if the deny firewalls exist/deletion which will eat up the quota unnecessarily.")
+	cloudProviderFS.BoolVar(&enableGKETenantController, "enable-gke-tenant-controller", false, "Enables the GKE Tenant Controller Manager for Multi-Tenancy.")
+	cloudProviderFS.BoolVar(&enableL4ILBFineGrainedLocks, "enable-l4-ilb-fine-grained-lock", false, "Enable resource-specific locking for L4 ILB")
+	cloudProviderFS.BoolVar(&enableExternalIPv6NodeAddress, "enable-external-ipv6-node-address", false, "Additionally report a node's external IPv6 address (ipv6AccessType EXTERNAL) as a NodeExternalIP node address. The address is always reported as NodeInternalIP.")
+	cloudProviderFS.StringVar(&overrideL4ILBHealthCheckSourceCIDRs, "override-l4-ilb-health-check-src-cidrs", "", "Overrides the default source IPv4 ranges used when configuring firewall rules to allow health check probes for L4 ILB load balancers. Provide the ranges as a comma-separated list of CIDRs. Example: --override-l4-ilb-health-check-src-cidrs=35.191.192.0/18")
+	cloudProviderFS.StringVar(&overrideL4NetLBHealthCheckSourceCIDRs, "override-l4-netlb-health-check-src-cidrs", "", "Overrides the default source IPv4 ranges used when configuring firewall rules to allow health check probes for L4 NetLB load balancers. Provide the ranges as a comma-separated list of CIDRs. Example: --override-l4-netlb-health-check-src-cidrs=209.85.204.0/22")
+	cloudProviderFS.BoolVar(&enableDynamicPodIPController, "enable-dynamic-pod-ip-controller", false, "Enables the GKE Dynamic Pod IP Controller.")
+	cloudProviderFS.BoolVar(&populateNodeNetworkConfig, "populate-node-network-config", false, "Enables population of NodeNetworkConfig status from GCE state.")
+	cloudProviderFS.StringSliceVar(&multiSecondaryRanges, "multi-secondary-ranges", nil, "Comma-separated list of secondary range names with optional subnetwork and lifecycle status (e.g. --multi-secondary-ranges=[subnetwork/]range1=ACTIVE,range2=DRAINING or range1=ACTIVE) for pod IP allocations in Adaptive Cluster IPAM mode. Active ranges are used as candidates for pod IP allocations. If set, disables automatic Container API discovery.")
+	cloudProviderFS.StringVar(&dynamicPodIPBackend, "dynamic-pod-ip-backend", "", "Selects the Pod IP allocation backend for the dynamic-pod-ip-controller ('alias-ranges' or 'ane'). Defaults to 'alias-ranges'. Requires --enable-dynamic-pod-ip-controller to be true.")
+
+	// add new controllers and initializers
+	nodeIpamController := nodeIPAMController{}
+	nodeIpamController.nodeIPAMControllerOptions.NodeIPAMControllerConfiguration = &nodeIpamController.nodeIPAMControllerConfiguration
+	nodeIpamController.nodeIPAMControllerOptions.AddFlags(fss.FlagSet("nodeipam controller"))
+	controllerInitializers[nodeIpamControllerName] = app.ControllerInitFuncConstructor{
+		Constructor: nodeIpamController.startNodeIpamControllerWrapper,
+	}
+
+	controllerInitializers[names.CloudNodeController] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: "node-controller",
+		},
+		Constructor: startCloudNodeControllerWrapper,
+	}
+
+	controllerInitializers[names.CloudNodeLifecycleController] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: "node-controller",
+		},
+		Constructor: startCloudNodeLifecycleControllerWrapper,
+	}
+
+	controllerInitializers["gkenetworkparamset"] = app.ControllerInitFuncConstructor{
+		Constructor: startGkeNetworkParamSetControllerWrapper,
+	}
+
+	controllerInitializers["dynamicpodip"] = app.ControllerInitFuncConstructor{
+		Constructor: startDynamicPodIPControllerWrapper,
+	}
+
+	controllerInitializers[gkeServiceLBControllerName] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: gkeServiceControllerClientName,
+		},
+		Constructor: startGkeServiceControllerWrapper,
+	}
+
+	controllerInitializers[gkeTenantControllerManagerName] = app.ControllerInitFuncConstructor{
+		InitContext: app.ControllerInitContext{
+			ClientName: gkeTenantControllerClientName,
+		},
+		Constructor: func(initContext app.ControllerInitContext, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) app.InitFunc {
+			return startGKETenantControllerManagerWrapper(initContext, completedConfig, cloud, nodeIpamController.nodeIPAMControllerOptions)
+		},
+	}
+
+	// add controllers disabled by default
+	app.ControllersDisabledByDefault.Insert("gkenetworkparamset")
+	app.ControllersDisabledByDefault.Insert(gkeServiceLBControllerName)
+	app.ControllersDisabledByDefault.Insert(gkeTenantControllerManagerName)
+	app.ControllersDisabledByDefault.Insert("dynamicpodip")
+
+	aliasMap := names.CCMControllerAliases()
+	aliasMap["nodeipam"] = nodeIpamControllerName
+	aliasMap[gkeServiceAlias] = gkeServiceLBControllerName
+	aliasMap[gkeTenantControllerManagerAlias] = gkeTenantControllerManagerName
+
+	return app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, controllerInitializers, aliasMap, fss, wait.NeverStop)
+}
+
+func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovider.Interface {
+	cloudConfig := config.ComponentConfig.KubeCloudShared.CloudProvider
+
+	// initialize cloud provider with the cloud provider name and config file provided
+	cloud, err := cloudprovider.InitCloudProvider(cloudConfig.Name, cloudConfig.CloudConfigFile)
+	if err != nil {
+		klog.Fatalf("Cloud provider with name: %v and configFile: %v could not be initialized: %v", cloudConfig.Name, cloudConfig.CloudConfigFile, err)
+	}
+	if cloud == nil {
+		klog.Fatalf("Cloud provider with name: %v and configFile: %v is nil", cloudConfig.Name, cloudConfig.CloudConfigFile)
+	}
+
+	if !cloud.HasClusterID() {
+		if config.ComponentConfig.KubeCloudShared.AllowUntaggedCloud {
+			klog.Warning("detected a cluster without a ClusterID.  A ClusterID will be required in the future.  Please tag your cluster to avoid any future issues")
+		} else {
+			klog.Fatalf("no ClusterID found.  A ClusterID is required for the cloud provider to function properly.  This check can be bypassed by setting the allow-untagged-cloud option")
+		}
+	}
+
+	if !enableGKETenantController && enableMultiProject {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			// Fail-fast: If enableMultiProject is set, the cloud provider MUST be GCE.
+			// A non-GCE provider indicates a misconfiguration.
+			// Ideally, we never expect this to be executed.
+			klog.Fatalf("multi-project mode requires GCE cloud provider, but got %T", cloud)
+		}
+		gceCloud.SetProjectFromNodeProviderID(true)
+	}
+
+	if enableRBSDefaultForL4NetLB {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			// Fail-fast: If enableRBSDefaultForL4NetLB is set, the cloud
+			// provider MUST be GCE.
+			klog.Fatalf("enable-rbs-default-l4-netlb requires GCE cloud provider, but got %T", cloud)
+		}
+		gceCloud.SetEnableRBSDefaultForL4NetLB(true)
+	}
+
+	if enableL4LBAnnotations {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			// Fail-fast: If enableL4LBAnnotations is set, the cloud
+			// provider MUST be GCE.
+			klog.Fatalf("enable-l4-lb-annotations requires GCE cloud provider, but got %T", cloud)
+		}
+		gceCloud.SetEnableL4LBAnnotations(true)
+	}
+
+	if enableL4DenyFirewall || enableL4DenyFirewallRollbackCleanup {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			klog.Fatalf("enable-l4-deny-firewall and enable-l4-deny-firewall-rollback-cleanup require GCE cloud provider, but got %T", cloud)
+		}
+		if enableL4DenyFirewall && !enableL4DenyFirewallRollbackCleanup {
+			klog.Fatal("enable-l4-deny-firewall requires enable-l4-deny-firewall-rollback-cleanup to be true")
+		}
+		gceCloud.SetEnableL4DenyFirewallRule(enableL4DenyFirewall, enableL4DenyFirewallRollbackCleanup)
+	}
+
+	if enableL4ILBFineGrainedLocks {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			klog.Fatalf("enable-l4-ilb-fine-grained-lock requires GCE cloud provider, but got %T", cloud)
+		}
+		gceCloud.SetEnableL4ILBFineGrainedLocks(true)
+	}
+
+	if enableExternalIPv6NodeAddress {
+		gceCloud, ok := (cloud).(*gce.Cloud)
+		if !ok {
+			klog.Fatalf("enable-external-ipv6-node-address requires GCE cloud provider, but got %T", cloud)
+		}
+		gceCloud.SetReportExternalIPv6NodeAddress(true)
+	}
+
+	// Record feature gate metrics
+	gce.RecordFeatureGateMetrics(enableL4ILBFineGrainedLocks)
+
+	if overrideL4ILBHealthCheckSourceCIDRs != "" {
+		gce.SetOverrideL4ILBHealthCheckSourceCIDRs(overrideL4ILBHealthCheckSourceCIDRs)
+	}
+	if overrideL4NetLBHealthCheckSourceCIDRs != "" {
+		gce.SetOverrideL4NetLBHealthCheckSourceCIDRs(overrideL4NetLBHealthCheckSourceCIDRs)
+	}
+
+	if dynamicPodIPBackend != "" && !enableDynamicPodIPController {
+		klog.Fatal("dynamic-pod-ip-backend requires enable-dynamic-pod-ip-controller to be true")
+	}
+
+	return cloud
+}

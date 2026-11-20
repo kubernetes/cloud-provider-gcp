@@ -1,7 +1,7 @@
 /*
 Copyright 2026 The Kubernetes Authors.
 */
-package main
+package app
 
 import (
 	"context"
