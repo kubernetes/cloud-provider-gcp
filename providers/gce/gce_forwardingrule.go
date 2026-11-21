@@ -20,6 +20,9 @@ limitations under the License.
 package gce
 
 import (
+	"context"
+	"time"
+
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/filter"
 	"github.com/GoogleCloudPlatform/k8s-cloud-provider/pkg/cloud/meta"
@@ -27,6 +30,8 @@ import (
 	computebeta "google.golang.org/api/compute/v0.beta"
 	compute "google.golang.org/api/compute/v1"
 )
+
+const forwardingRuleTimeout = 10 * time.Minute
 
 func newForwardingRuleMetricContext(request, region string) *metricContext {
 	return newForwardingRuleMetricContextWithVersion(request, region, computeV1Version)
@@ -37,7 +42,7 @@ func newForwardingRuleMetricContextWithVersion(request, region, version string) 
 
 // CreateGlobalForwardingRule creates the passed GlobalForwardingRule
 func (g *Cloud) CreateGlobalForwardingRule(rule *compute.ForwardingRule) error {
-	ctx, cancel := cloud.ContextWithCallTimeout()
+	ctx, cancel := context.WithTimeout(context.Background(), forwardingRuleTimeout)
 	defer cancel()
 
 	mc := newForwardingRuleMetricContext("create", "")
@@ -147,7 +152,7 @@ func (g *Cloud) ListBetaRegionForwardingRules(region string) ([]*computebeta.For
 // CreateRegionForwardingRule creates and returns a
 // RegionalForwardingRule that points to the given BackendService
 func (g *Cloud) CreateRegionForwardingRule(rule *compute.ForwardingRule, region string) error {
-	ctx, cancel := cloud.ContextWithCallTimeout()
+	ctx, cancel := context.WithTimeout(context.Background(), forwardingRuleTimeout)
 	defer cancel()
 
 	mc := newForwardingRuleMetricContext("create", region)
@@ -157,7 +162,7 @@ func (g *Cloud) CreateRegionForwardingRule(rule *compute.ForwardingRule, region 
 // CreateAlphaRegionForwardingRule creates and returns an Alpha
 // forwarding rule in the given region.
 func (g *Cloud) CreateAlphaRegionForwardingRule(rule *computealpha.ForwardingRule, region string) error {
-	ctx, cancel := cloud.ContextWithCallTimeout()
+	ctx, cancel := context.WithTimeout(context.Background(), forwardingRuleTimeout)
 	defer cancel()
 
 	mc := newForwardingRuleMetricContextWithVersion("create", region, computeAlphaVersion)
@@ -167,7 +172,7 @@ func (g *Cloud) CreateAlphaRegionForwardingRule(rule *computealpha.ForwardingRul
 // CreateBetaRegionForwardingRule creates and returns a Beta
 // forwarding rule in the given region.
 func (g *Cloud) CreateBetaRegionForwardingRule(rule *computebeta.ForwardingRule, region string) error {
-	ctx, cancel := cloud.ContextWithCallTimeout()
+	ctx, cancel := context.WithTimeout(context.Background(), forwardingRuleTimeout)
 	defer cancel()
 
 	mc := newForwardingRuleMetricContextWithVersion("create", region, computeBetaVersion)
