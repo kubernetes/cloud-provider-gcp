@@ -39,7 +39,12 @@ import (
 
 const (
 	// DefaultStatusControllerWorkers is the default number of worker goroutines for the status controller.
-	DefaultStatusControllerWorkers = 4
+	//
+	// Each sync is an uncached instances.get plus an ANE list (~0.5-1s). It
+	// is raised together with DefaultSpecControllerWorkers so that status
+	// publication does not become the bottleneck once spec reconciles
+	// complete in parallel for many nodes.
+	DefaultStatusControllerWorkers = 16
 
 	statusControllerName = "node-network-config-status-controller"
 )
