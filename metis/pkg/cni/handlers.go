@@ -36,6 +36,12 @@ func (p *Plugin) CmdAdd(args *skel.CmdArgs) error {
 	return types.PrintResult(result, result.CNIVersion)
 }
 
+// CmdAddResult executes the CNI ADD workflow and returns the parsed Result object
+// without printing to os.Stdout, enabling programmatic in-process invocation.
+func (p *Plugin) CmdAddResult(args *skel.CmdArgs) (*current.Result, error) {
+	return p.cmdAdd(args)
+}
+
 func (p *Plugin) cmdAdd(args *skel.CmdArgs) (*current.Result, error) {
 	session, err := p.prepare(args, "ADD")
 	if err != nil {
@@ -105,6 +111,12 @@ func (p *Plugin) CmdDel(args *skel.CmdArgs) error {
 	return p.cmdDel(args)
 }
 
+// CmdDelResult executes the CNI DEL workflow without stdout formatting,
+// enabling programmatic in-process invocation.
+func (p *Plugin) CmdDelResult(args *skel.CmdArgs) error {
+	return p.cmdDel(args)
+}
+
 func (p *Plugin) cmdDel(args *skel.CmdArgs) error {
 	session, err := p.prepare(args, "DEL")
 	if err != nil {
@@ -138,6 +150,11 @@ func (p *Plugin) cmdDel(args *skel.CmdArgs) error {
 }
 
 func (p *Plugin) CmdCheck(args *skel.CmdArgs) error {
+	return p.cmdCheck(args)
+}
+
+// CmdCheckResult executes the CNI CHECK workflow, enabling programmatic in-process invocation.
+func (p *Plugin) CmdCheckResult(args *skel.CmdArgs) error {
 	return p.cmdCheck(args)
 }
 
