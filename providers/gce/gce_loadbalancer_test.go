@@ -346,6 +346,140 @@ func TestUpdateLoadBalancerMixedProtocols(t *testing.T) {
 	}
 }
 
+func TestEnsureLoadBalancerClearsMixedProtocolCondition(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodeNames := []string{"test-node-1"}
+	nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+	require.NoError(t, err)
+
+	apiService := fakeLoadbalancerService("")
+	apiService.Spec.Ports = append(apiService.Spec.Ports, v1.ServicePort{
+		Protocol: v1.ProtocolUDP,
+		Port:     int32(8080),
+	})
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
+	if err == nil || err.Error() != "mixed protocol is not supported for LoadBalancer" {
+		t.Fatalf("expected mixed protocol error, got %v", err)
+	}
+
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Get(context.TODO(), apiService.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	var ports []v1.ServicePort
+	for _, port := range apiService.Spec.Ports {
+		if port.Protocol != v1.ProtocolUDP {
+			ports = append(ports, port)
+		}
+	}
+	apiService.Spec.Ports = ports
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Update(context.TODO(), apiService, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	_, err = gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
+	require.NoError(t, err)
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Get(context.TODO(), apiService.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	cond := findLoadBalancerPortsError(apiService)
+	if cond == nil || cond.Status != metav1.ConditionFalse {
+		t.Fatalf("expected LoadBalancerPortsError False, got %#v", apiService.Status.Conditions)
+	}
+	if cond.LastTransitionTime.IsZero() || cond.Reason != loadBalancerPortsErrorClearedReason {
+		t.Fatalf("expected a cleared condition with a transition time, got %#v", cond)
+	}
+}
+
+func TestEnsureLoadBalancerRepairsZeroPortsErrorTime(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+
+	nodeNames := []string{"test-node-1"}
+	nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+	require.NoError(t, err)
+
+	apiService := fakeLoadbalancerService("")
+	apiService.Spec.Ports = append(apiService.Spec.Ports, v1.ServicePort{
+		Protocol: v1.ProtocolUDP,
+		Port:     int32(8080),
+	})
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+	apiService.Status.Conditions = []metav1.Condition{{
+		Type:    v1.LoadBalancerPortsError,
+		Status:  metav1.ConditionTrue,
+		Reason:  v1.LoadBalancerPortsErrorReason,
+		Message: loadBalancerPortsErrorMessage,
+	}}
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).UpdateStatus(context.TODO(), apiService, metav1.UpdateOptions{})
+	require.NoError(t, err)
+	if !hasLoadBalancerPortsError(apiService) || !loadBalancerPortsErrorNeedsTimestamp(apiService) {
+		t.Fatalf("precondition failed: %#v", apiService.Status.Conditions)
+	}
+
+	_, err = gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
+	if err == nil || err.Error() != "mixed protocol is not supported for LoadBalancer" {
+		t.Fatalf("expected mixed protocol error, got %v", err)
+	}
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Get(context.TODO(), apiService.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	cond := findLoadBalancerPortsError(apiService)
+	if cond == nil || cond.Status != metav1.ConditionTrue || cond.LastTransitionTime.IsZero() {
+		t.Fatalf("expected True condition with a transition time, got %#v", apiService.Status.Conditions)
+	}
+}
+
+func TestEnsureLoadBalancerClearsPortsErrorWhenUnmanaged(t *testing.T) {
+	t.Parallel()
+
+	vals := DefaultTestClusterValues()
+	gce, err := fakeGCECloud(vals)
+	require.NoError(t, err)
+	gce.AlphaFeatureGate = NewAlphaFeatureGate([]string{AlphaFeatureILBSubsets})
+
+	nodeNames := []string{"test-node-1"}
+	nodes, err := createAndInsertNodes(gce, nodeNames, vals.ZoneName)
+	require.NoError(t, err)
+
+	apiService := fakeLoadbalancerService(string(LBTypeInternal))
+	apiService.Finalizers = []string{ILBFinalizerV2}
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Create(context.TODO(), apiService, metav1.CreateOptions{})
+	require.NoError(t, err)
+	apiService.Status.Conditions = []metav1.Condition{{
+		Type:    v1.LoadBalancerPortsError,
+		Status:  metav1.ConditionTrue,
+		Reason:  v1.LoadBalancerPortsErrorReason,
+		Message: loadBalancerPortsErrorMessage,
+	}}
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).UpdateStatus(context.TODO(), apiService, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	_, err = gce.EnsureLoadBalancer(context.Background(), vals.ClusterName, apiService, nodes)
+	require.ErrorIs(t, err, cloudprovider.ImplementedElsewhere)
+	apiService, err = gce.client.CoreV1().Services(apiService.Namespace).Get(context.TODO(), apiService.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	cond := findLoadBalancerPortsError(apiService)
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.LastTransitionTime.IsZero() {
+		t.Fatalf("expected cleared LoadBalancerPortsError, got %#v", apiService.Status.Conditions)
+	}
+}
+
+func findLoadBalancerPortsError(svc *v1.Service) *metav1.Condition {
+	for i := range svc.Status.Conditions {
+		if svc.Status.Conditions[i].Type == v1.LoadBalancerPortsError {
+			return &svc.Status.Conditions[i]
+		}
+	}
+	return nil
+}
+
 func TestCheckMixedProtocol(t *testing.T) {
 	tests := []struct {
 		name        string
