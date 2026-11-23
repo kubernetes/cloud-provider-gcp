@@ -37,13 +37,12 @@ export KOPS_STATE_STORE="gs://kops-state-${GCP_PROJECT}"
 
 # 2. Cluster Lifecycle Management
 export KOPS_CLUSTER_NAME="${CLUSTER_NAME:-kops-simple.k8s.local}"
-make test-cluster-up
 
 # 3. Define cleanup function
 function cleanup {
   local exit_status=$?
   if [[ "${DELETE_CLUSTER:-true}" == "true" ]]; then
-    make test-cluster-down
+    make test-cluster-down || echo "Warning: test-cluster-down failed"
   fi
   if [[ -n "${BOSKOS_HEARTBEAT_PID:-}" ]]; then
     source test/boskos.sh
@@ -52,6 +51,8 @@ function cleanup {
   exit "${exit_status}"
 }
 trap cleanup EXIT
+
+make test-cluster-up
 
 # 4. Test Execution
 export K8S_VERSION=$(make --silent print-k8s-version)
