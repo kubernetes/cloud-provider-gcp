@@ -36,6 +36,7 @@ const (
 	cacheTypeKey              = "KUBE_SIDECAR_CACHE_TYPE"
 	metadataHTTPClientTimeout = time.Second * 10
 	stsHTTPClientTimeout      = time.Second * 30
+	adcHTTPClientTimeout      = time.Second * 30
 	apiKind                   = "CredentialProviderResponse"
 	apiVersion                = "credentialprovider.kubelet.k8s.io/v1"
 )
@@ -57,6 +58,16 @@ func MakeRegistryProvider(transport *http.Transport, token string, annotations m
 		ServiceAccountAnnotations: annotations,
 		IdentityProvider:          identityProvider,
 		ProjectID:                 projectID,
+	}
+	return provider
+}
+
+// MakeApplicationDefaultCredentialsProvider returns an ApplicationDefaultCredentialsProvider with the given transport.
+func MakeApplicationDefaultCredentialsProvider(transport *http.Transport) *gcpcredential.ApplicationDefaultCredentialsProvider {
+	httpClient := makeHTTPClient(transport, adcHTTPClientTimeout)
+	provider := &gcpcredential.ApplicationDefaultCredentialsProvider{
+		Client:               httpClient,
+		UseRegistryFromImage: true,
 	}
 	return provider
 }
