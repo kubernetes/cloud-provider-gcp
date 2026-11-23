@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
 	"k8s.io/klog/v2"
+	netutils "k8s.io/utils/net"
 )
 
 const (
@@ -90,49 +91,86 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 		if endpoint == nil || endpoint.Status == nil {
 			continue
 		}
+		// Attribute the endpoint to the interface in its subnetwork. The API
+		// requires subnetwork on every AliasNetworkEndpoint, so one without
+		// it, or in a subnetwork no interface is in, is not something this
+		// node can account for.
+		var targetIface *networkInterface
+		for _, iface := range ifaces {
+			if iface != nil && endpoint.Subnetwork != "" && gce.EqualResourceURLs(iface.Subnetwork, endpoint.Subnetwork) {
+				targetIface = iface
+				break
+			}
+		}
 		if endpoint.Status.State != gce.ANEStateActive {
 			// Skip endpoints in transient states (CREATING,
 			// DELETING) and mark the interface so the spec and
-			// status controllers requeue until they settle.
+			// status controllers requeue until they settle. If the
+			// endpoint cannot be placed, flag the primary interface so
+			// the deferral still happens.
 			klog.Warningf("Skipping non-active ANE %q on %q (state=%q); will retry reconciliation", endpoint.Name, providerID, endpoint.Status.State)
-			ifaces[0].HasTransientANE = true
+			if targetIface == nil {
+				targetIface = ifaces[0]
+			}
+			targetIface.HasTransientANE = true
+			continue
+		}
+		if endpoint.Subnetwork == "" {
+			// Required by the API; its absence on an ACTIVE endpoint means
+			// the response was scrubbed. Fail fast rather than lose track of
+			// an allocated IP, as for the alias checks below.
+			return nil, fmt.Errorf("active ANE %q on %q has no subnetwork (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID)
+		}
+		if targetIface == nil {
+			klog.Warningf("Skipping ANE %q on %q: subnetwork %q does not match any network interface on instance", endpoint.Name, providerID, endpoint.Subnetwork)
 			continue
 		}
 		alias, ok := endpoint.Aliases[DefaultANEAliasNameIPv4]
 		if !ok {
+			// An endpoint carrying only an IPv6 alias is not one this
+			// controller creates or understands (GCE does not support IPv6
+			// ANEs today); leave it alone rather than fail the node.
+			if hasOnlyIPv6Aliases(endpoint.Aliases) {
+				klog.Warningf("Ignoring ANE %q on %q: IPv6 AliasNetworkEndpoints are not supported", endpoint.Name, providerID)
+				continue
+			}
 			return nil, fmt.Errorf("active ANE %q on %q has no alias %q (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID, DefaultANEAliasNameIPv4)
 		}
 		if alias.EffectiveIpAddress == "" {
 			return nil, fmt.Errorf("active ANE %q on %q has empty IP address (potential silent scrubbing or API version mismatch)", endpoint.Name, providerID)
 		}
+		if alias.IpVersion == gce.ANEIPVersionIPv6 || netutils.IsIPv6String(alias.EffectiveIpAddress) {
+			klog.Warningf("Ignoring ANE %q on %q: alias %q is IPv6 (%s), which is not supported", endpoint.Name, providerID, DefaultANEAliasNameIPv4, alias.EffectiveIpAddress)
+			continue
+		}
 
-		cidr := alias.EffectiveIpAddress + "/32"
-		targetIface := ifaces[0]
-		if endpoint.Subnetwork != "" {
-			var matched *networkInterface
-			for _, iface := range ifaces {
-				if iface != nil && gce.EqualResourceURLs(iface.Subnetwork, endpoint.Subnetwork) {
-					matched = iface
-					break
-				}
-			}
-			if matched == nil {
-				klog.Warningf("Skipping ANE %q on %q: subnetwork %q does not match any network interface on instance", endpoint.Name, providerID, endpoint.Subnetwork)
-				continue
-			}
-			targetIface = matched
-		}
-		targetIface.ANECIDRs = append(targetIface.ANECIDRs, cidr)
-		if targetIface.ANENames == nil {
-			targetIface.ANENames = make(map[string]string)
-		}
-		targetIface.ANENames[cidr] = endpoint.Name
+		targetIface.ANEs = append(targetIface.ANEs, aliasNetworkEndpoint{
+			Name:                endpoint.Name,
+			IPCIDRRange:         alias.EffectiveIpAddress + "/32",
+			SubnetworkRangeName: alias.EffectiveSubnetworkRangeName,
+		})
 	}
 
 	return ifaces, nil
 }
 
-func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, additions []string, removals []string, candidateRanges []string) error {
+// hasOnlyIPv6Aliases reports whether every alias on an endpoint is IPv6, by
+// declared version or by address family. Such endpoints are ignored: GCE does
+// not support IPv6 AliasNetworkEndpoints and this controller never creates
+// them.
+func hasOnlyIPv6Aliases(aliases map[string]computepreview.AliasNetworkEndpointAlias) bool {
+	if len(aliases) == 0 {
+		return false
+	}
+	for _, a := range aliases {
+		if a.IpVersion != gce.ANEIPVersionIPv6 && !netutils.IsIPv6String(a.EffectiveIpAddress) && !netutils.IsIPv6String(a.IpAddress) {
+			return false
+		}
+	}
+	return true
+}
+
+func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, additions []string, removals []string, sel rangeSelection) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -207,8 +245,10 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 				SecurityTagInheritance: gce.ANESecurityTagInheritanceInherited,
 				Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
 					DefaultANEAliasNameIPv4: {
-						IpVersion:            gce.ANEIPVersionIPv4,
-						SubnetworkRangeNames: candidateRanges,
+						IpVersion: gce.ANEIPVersionIPv4,
+						// The ANE API only takes a list; a pinned range is a
+						// one-element list.
+						SubnetworkRangeNames: sel.names(),
 					},
 				},
 			}
@@ -238,11 +278,16 @@ func (b *aneBackend) resolveSubnetworkURL(ctx context.Context, providerID, netwo
 	if err != nil {
 		return "", err
 	}
+	// networkURL is what resolveGCENetworkURL produced for the Kubernetes
+	// network: the interface's VPC network URL, or its network attachment
+	// URL for PSC interfaces, so match on either.
 	for _, iface := range gceIfaces {
-		if iface != nil && (networkURL == "" || gce.EqualResourceURLs(iface.Network, networkURL)) {
-			if iface.Subnetwork != "" {
-				return iface.Subnetwork, nil
-			}
+		if iface == nil || iface.Subnetwork == "" {
+			continue
+		}
+		if networkURL == "" || gce.EqualResourceURLs(iface.Network, networkURL) ||
+			(iface.NetworkAttachment != "" && gce.EqualResourceURLs(iface.NetworkAttachment, networkURL)) {
+			return iface.Subnetwork, nil
 		}
 	}
 	return "", fmt.Errorf("no subnetwork found on instance %q for network %q", providerID, networkURL)
