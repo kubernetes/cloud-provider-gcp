@@ -84,7 +84,7 @@ func TestContainerRegistry(t *testing.T) {
 			return url.Parse(server.URL + req.URL.Path)
 		},
 	})
-	provider := MakeRegistryProvider(transport, "", nil, "", "")
+	provider := MakeRegistryProvider(transport, "", nil, "", "", "", "")
 	response, err := GetResponse(credentialproviderapi.CredentialProviderRequest{Image: dummyImage}, provider)
 	if err != nil {
 		t.Fatalf("Unexpected error while getting response: %s", err.Error())
@@ -201,7 +201,7 @@ func TestContainerRegistry_WorkloadIdentity(t *testing.T) {
 
 	provider := MakeRegistryProvider(transport, ksaToken, map[string]string{
 		"iam.gke.io/enable-wi-image-pull": "true",
-	}, "https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster", "my-project")
+	}, "https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster", "my-project", "", "")
 
 	req := credentialproviderapi.CredentialProviderRequest{
 		Image: dummyImage,
@@ -223,6 +223,93 @@ func TestContainerRegistry_WorkloadIdentity(t *testing.T) {
 		if federatedToken != auth.Password {
 			t.Errorf("Expected federated token %s, got %s", federatedToken, auth.Password)
 		}
+	}
+}
+
+func TestContainerRegistry_WorkloadIdentity_NonDefaultUniverse(t *testing.T) {
+	universeImage := "docker.pkg.example-universe.goog/example-universe:my-project/repo/pause:latest"
+	universeRegistryURL := "docker.pkg.example-universe.goog"
+
+	ksaToken := "dummyHeader.eyJpc3MiOiAiaHR0cHM6Ly9jb250YWluZXIuZXhhbXBsZS11bml2ZXJzZS5nb29nL3YxL3Byb2plY3RzL2V4YW1wbGUtdW5pdmVyc2U6bXktcHJvamVjdC9sb2NhdGlvbnMvdXMtY2VudHJhbDEvY2x1c3RlcnMvbXktY2x1c3RlciJ9.dummySignature"
+	federatedToken := "federated-token-universe"
+
+	metadataServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/computeMetadata/v1/universe/universe-domain":
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "example-universe.goog\n")
+		default:
+			http.Error(w, fmt.Sprintf("unexpected metadata path %s", r.URL.Path), http.StatusNotFound)
+		}
+	}))
+	defer metadataServer.Close()
+
+	stsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/token" {
+			http.Error(w, fmt.Sprintf("unexpected STS path %s", r.URL.Path), http.StatusNotFound)
+			return
+		}
+		var reqPayload struct {
+			Audience     string `json:"audience"`
+			SubjectToken string `json:"subject_token"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&reqPayload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		expectedAudience := "identitynamespace:my-project.example-universe.svc.id.goog:https://container.example-universe.goog/v1/projects/example-universe:my-project/locations/us-central1/clusters/my-cluster"
+		if reqPayload.Audience != expectedAudience {
+			http.Error(w, fmt.Sprintf("unexpected audience %q", reqPayload.Audience), http.StatusBadRequest)
+			return
+		}
+		if reqPayload.SubjectToken != ksaToken {
+			http.Error(w, fmt.Sprintf("unexpected subject token %q", reqPayload.SubjectToken), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"access_token": %q, "expires_in": 3600, "token_type": "Bearer"}`, federatedToken)
+	}))
+	defer stsServer.Close()
+
+	_, metadataPort, _ := net.SplitHostPort(metadataServer.Listener.Addr().String())
+	_, stsPort, _ := net.SplitHostPort(stsServer.Listener.Addr().String())
+
+	transport := utilnet.SetTransportDefaults(&http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if addr == "metadata.google.internal.:80" || addr == "metadata.google.internal:80" {
+				return net.Dial(network, net.JoinHostPort("127.0.0.1", metadataPort))
+			}
+			if addr == "sts.example-universe.goog:443" {
+				return net.Dial(network, net.JoinHostPort("127.0.0.1", stsPort))
+			}
+			return nil, fmt.Errorf("unexpected outbound connection to %s", addr)
+		},
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	})
+
+	provider := MakeRegistryProvider(
+		transport,
+		ksaToken,
+		map[string]string{"iam.gke.io/enable-wi-image-pull": "true"},
+		"https://container.example-universe.goog/v1/projects/example-universe:my-project/locations/us-central1/clusters/my-cluster",
+		"",
+		"my-project.example-universe.svc.id.goog",
+		"",
+	)
+
+	response, err := GetResponse(credentialproviderapi.CredentialProviderRequest{Image: universeImage}, provider)
+	if err != nil {
+		t.Fatalf("Unexpected error while getting response: %v", err)
+	}
+	auth, ok := response.Auth[universeRegistryURL]
+	if !ok {
+		t.Fatalf("Expected registry %s in response.Auth, got %v", universeRegistryURL, response.Auth)
+	}
+	if auth.Username != expectedUsername || auth.Password != federatedToken {
+		t.Errorf("Unexpected auth config for %s: got %+v", universeRegistryURL, auth)
 	}
 }
 
@@ -343,7 +430,7 @@ func TestMakeRegistryProvider(t *testing.T) {
 		"test-annotation": "test-value",
 	}
 
-	provider := MakeRegistryProvider(transport, token, annotations, "test-provider", "test-project-123")
+	provider := MakeRegistryProvider(transport, token, annotations, "test-provider", "test-project-123", "test-project-123.example-universe.svc.id.goog", "https://sts.example-universe.goog/v1/token")
 
 	if provider.KSAToken != token {
 		t.Errorf("expected KSAToken to be %q, got %q", token, provider.KSAToken)
@@ -360,5 +447,13 @@ func TestMakeRegistryProvider(t *testing.T) {
 
 	if provider.ProjectID != "test-project-123" {
 		t.Errorf("expected ProjectID to be %q, got %q", "test-project-123", provider.ProjectID)
+	}
+
+	if provider.WorkloadPool != "test-project-123.example-universe.svc.id.goog" {
+		t.Errorf("expected WorkloadPool to be %q, got %q", "test-project-123.example-universe.svc.id.goog", provider.WorkloadPool)
+	}
+
+	if provider.STSEndpoint != "https://sts.example-universe.goog/v1/token" {
+		t.Errorf("expected STSEndpoint to be %q, got %q", "https://sts.example-universe.goog/v1/token", provider.STSEndpoint)
 	}
 }

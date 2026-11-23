@@ -20,9 +20,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -39,11 +41,12 @@ const (
 	// DockerConfigKey is the URL of the dockercfg metadata key used by DockerConfigKeyProvider.
 	DockerConfigKey = metadataAttributes + "google-dockercfg"
 	// DockerConfigURLKey is the URL of the dockercfg metadata key used by DockerConfigURLKeyProvider.
-	DockerConfigURLKey = metadataAttributes + "google-dockercfg-url"
-	serviceAccounts    = metadataURL + "instance/service-accounts/"
-	metadataScopes     = serviceAccounts + "default/scopes"
-	metadataToken      = serviceAccounts + "default/token"
-	metadataEmail      = serviceAccounts + "default/email"
+	DockerConfigURLKey     = metadataAttributes + "google-dockercfg-url"
+	serviceAccounts        = metadataURL + "instance/service-accounts/"
+	metadataScopes         = serviceAccounts + "default/scopes"
+	metadataToken          = serviceAccounts + "default/token"
+	metadataEmail          = serviceAccounts + "default/email"
+	metadataUniverseDomain = metadataURL + "universe/universe-domain"
 	// StorageScopePrefix is the prefix checked by ContainerRegistryProvider.Enabled.
 	StorageScopePrefix       = "https://www.googleapis.com/auth/devstorage"
 	cloudPlatformScopePrefix = "https://www.googleapis.com/auth/cloud-platform"
@@ -51,7 +54,8 @@ const (
 	// EnableWIImagePullAnnotation is the KSA annotation key to opt-in to Workload Identity image pulling
 	EnableWIImagePullAnnotation = "iam.gke.io/enable-wi-image-pull"
 	// googleSTSEndpoint is the GCP STS token exchange endpoint
-	googleSTSEndpoint = "https://sts.googleapis.com/v1/token"
+	googleSTSEndpoint     = "https://sts.googleapis.com/v1/token"
+	defaultUniverseDomain = "googleapis.com"
 )
 
 // GCEProductNameFile is the product file path that contains the cloud service name.
@@ -98,6 +102,8 @@ type ContainerRegistryProvider struct {
 	ServiceAccountAnnotations map[string]string
 	IdentityProvider          string
 	ProjectID                 string
+	WorkloadPool              string
+	STSEndpoint               string
 }
 
 // Returns true if it finds a local GCE VM.
@@ -341,13 +347,17 @@ func (g *ContainerRegistryProvider) populateConfig(cfg credentialconfig.DockerCo
 
 // executeWorkloadIdentityExchange handles the direct workload identity token exchange
 func (g *ContainerRegistryProvider) executeWorkloadIdentityExchange(ctx context.Context, image string) (string, error) {
-	if g.ProjectID == "" {
-		return "", fmt.Errorf("project-id must be configured for Workload Identity exchange")
+	workloadPool := g.WorkloadPool
+	if workloadPool == "" {
+		if g.ProjectID == "" {
+			return "", fmt.Errorf("either workload-pool or project-id must be configured for Workload Identity exchange")
+		}
+		workloadPool = fmt.Sprintf("%s.svc.id.goog", g.ProjectID)
 	}
 
 	// Trade KSA token for a Google Federated Token via STS
-	klog.V(4).Infof("auth-provider-gcp: Executing STS exchange for Project ID: %s", g.ProjectID)
-	federatedToken, err := g.exchangeKSATokenForFederated(ctx, g.ProjectID)
+	klog.V(4).Infof("auth-provider-gcp: Executing STS exchange for Workload Pool: %s", workloadPool)
+	federatedToken, err := g.exchangeKSATokenForFederated(ctx, workloadPool)
 	if err != nil {
 		return "", fmt.Errorf("failed KSA->Federated STS exchange: %w", err)
 	}
@@ -356,9 +366,9 @@ func (g *ContainerRegistryProvider) executeWorkloadIdentityExchange(ctx context.
 	return federatedToken, nil
 }
 
-func (g *ContainerRegistryProvider) exchangeKSATokenForFederated(ctx context.Context, projectID string) (string, error) {
+func (g *ContainerRegistryProvider) exchangeKSATokenForFederated(ctx context.Context, workloadPool string) (string, error) {
 	// Audience format: identitynamespace:<POOL_ID>:<PROVIDER_URL>
-	audience := fmt.Sprintf("identitynamespace:%s.svc.id.goog:%s", projectID, g.IdentityProvider)
+	audience := fmt.Sprintf("identitynamespace:%s:%s", workloadPool, g.IdentityProvider)
 	klog.V(4).Infof("auth-provider-gcp: Constructed STS Full Audience: %s", audience)
 
 	payload := stsTokenExchangeRequest{
@@ -373,13 +383,53 @@ func (g *ContainerRegistryProvider) exchangeKSATokenForFederated(ctx context.Con
 	return g.callSTSEndpoint(ctx, payload)
 }
 
+// NormalizeSTSEndpoint validates an STS endpoint URL override and defaults an empty or "/" path to "/v1/token".
+func NormalizeSTSEndpoint(rawURL string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid STS endpoint %q: %w", rawURL, err)
+	}
+	if u.Scheme != "https" || u.Host == "" {
+		return "", fmt.Errorf("invalid STS endpoint %q: must be an https URL with a non-empty host", rawURL)
+	}
+	if u.Path == "" || u.Path == "/" {
+		u.Path = "/v1/token"
+	}
+	return u.String(), nil
+}
+
+func (g *ContainerRegistryProvider) resolveSTSEndpoint() (string, error) {
+	if g.STSEndpoint != "" {
+		return NormalizeSTSEndpoint(g.STSEndpoint)
+	}
+	universeBytes, err := credentialconfig.ReadURL(metadataUniverseDomain, g.Client, metadataHeader)
+	if err != nil {
+		var httpErr *credentialconfig.HTTPError
+		if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
+			klog.V(4).Infof("auth-provider-gcp: universe-domain not defined in metadata (404), defaulting to %s", googleSTSEndpoint)
+			return googleSTSEndpoint, nil
+		}
+		return "", fmt.Errorf("failed to read universe-domain from metadata: %w", err)
+	}
+	universeDomain := strings.TrimSpace(string(universeBytes))
+	if universeDomain == "" || universeDomain == defaultUniverseDomain {
+		return googleSTSEndpoint, nil
+	}
+	return fmt.Sprintf("https://sts.%s/v1/token", universeDomain), nil
+}
+
 func (g *ContainerRegistryProvider) callSTSEndpoint(ctx context.Context, payload stsTokenExchangeRequest) (string, error) {
+	stsEndpoint, err := g.resolveSTSEndpoint()
+	if err != nil {
+		return "", err
+	}
+
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", googleSTSEndpoint, bytes.NewBuffer(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", stsEndpoint, bytes.NewBuffer(body))
 	if err != nil {
 		return "", err
 	}
