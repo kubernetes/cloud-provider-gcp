@@ -2,7 +2,7 @@ module k8s.io/metis
 
 go 1.27
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/GoogleCloudPlatform/gke-networking-api v0.2.11
