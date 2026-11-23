@@ -15,6 +15,7 @@ import (
 	networkv1 "github.com/GoogleCloudPlatform/gke-networking-api/apis/network/v1"
 	networkclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/network/clientset/versioned"
 	networkinformers "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions"
+	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	topologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -87,6 +88,11 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 	nodeTopologyClient, err := topologyclientset.NewForConfig(clientConfig)
 	if err != nil {
 		klog.Errorf("Failed to create topology client: %v", err)
+		return nil, nil, false, err
+	}
+	nncClient, err := nncclientset.NewForConfig(clientConfig)
+	if err != nil {
+		klog.Errorf("Failed to create nnc client: %v", err)
 		return nil, nil, false, err
 	}
 
@@ -173,6 +179,7 @@ func startGKETenantControllerManager(mgrCfg gkeTenantControllerManagerConfig) (c
 				networkInformer,
 				gnpInformer,
 				nodeTopologyClient,
+				nncClient,
 				ipam.CIDRAllocatorType(mgrCfg.completedConfig.ComponentConfig.KubeCloudShared.CIDRAllocatorType),
 				cfg.ControllerContext.ControllerManagerMetrics,
 				defaultNetworkName,

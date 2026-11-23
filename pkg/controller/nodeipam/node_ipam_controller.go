@@ -25,6 +25,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
 	networkinformer "github.com/GoogleCloudPlatform/gke-networking-api/client/network/informers/externalversions/network/v1"
+	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nodetopologyclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodetopology/clientset/versioned"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -84,8 +85,10 @@ func NewNodeIpamController(
 	nwInformer networkinformer.NetworkInformer,
 	gnpInformer networkinformer.GKENetworkParamSetInformer,
 	nodeTopologyClient nodetopologyclientset.Interface,
+	nncClient nncclientset.Interface,
 	enableMultiSubnetCluster bool,
 	enableMultiNetworking bool,
+	enableNodeNetworkConfig bool,
 	clusterCIDRs []*net.IPNet,
 	serviceCIDR *net.IPNet,
 	secondaryServiceCIDR *net.IPNet,
@@ -144,7 +147,7 @@ func NewNodeIpamController(
 			DefaultNetworkName:   defaultNetworkName,
 		}
 
-		ic.cidrAllocator, err = ipam.New(kubeClient, cloud, nodeInformer, nwInformer, gnpInformer, nodeTopologyClient, enableMultiSubnetCluster, enableMultiNetworking, ic.allocatorType, allocatorParams)
+		ic.cidrAllocator, err = ipam.New(kubeClient, cloud, nodeInformer, nwInformer, gnpInformer, nodeTopologyClient, nncClient, enableMultiSubnetCluster, enableMultiNetworking, enableNodeNetworkConfig, ic.allocatorType, allocatorParams)
 		if err != nil {
 			return nil, err
 		}

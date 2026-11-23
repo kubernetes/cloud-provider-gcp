@@ -40,4 +40,7 @@ type NodeIPAMControllerConfiguration struct {
 	// when the cluster-level "enable-multi-networking" flag is true to enable
 	// the multi-networking related logics such as multi-networking IPAM.
 	EnableMultiNetworking bool
+	// EnableNodeNetworkConfig is bound to a command-line flag. When true, it enables
+	// generating NodeNetworkConfig custom resource for each node.
+	EnableNodeNetworkConfig bool
 }
