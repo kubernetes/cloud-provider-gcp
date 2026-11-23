@@ -47,7 +47,27 @@ const (
 
 	// defaultANEMutationConcurrency is the maximum number of concurrent ANE
 	// creation or deletion operations executed in parallel per node.
-	defaultANEMutationConcurrency = 8
+	//
+	// Each ANE is one GCE operation of ~5.5s (p50) to ~12s (p90), and a
+	// single scale-up on a busy node routinely asks for 20-40 of them. With
+	// a limit of 8 those were serialized into 3-5 waves, so a pod waiting
+	// on the last wave saw 30-40s. 50 lets a typical burst complete in one
+	// wave; the effective ceiling is then the project's ANE operation
+	// quota rather than this constant.
+	defaultANEMutationConcurrency = 50
+
+	// aneTopUpPollInterval bounds how often an AdditionDemandFunc is
+	// consulted while creations are in flight and no additions are waiting
+	// to be launched. The demand function reads from an informer cache, so
+	// this is cheap; it mainly limits log noise.
+	aneTopUpPollInterval = 500 * time.Millisecond
+
+	// maxANETopUpPerMutate caps how many additions a single Mutate call may
+	// absorb from its demand function on top of the initial batch. It is a
+	// safety bound against a daemon that keeps raising its ask faster than
+	// endpoints can be created; anything beyond it is left to the next
+	// reconcile, which is exactly the pre-top-up behaviour.
+	maxANETopUpPerMutate = 256
 )
 
 // aneBackend implements PodIPBackend using GCE AliasNetworkEndpoints.
@@ -133,6 +153,11 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 }
 
 func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, additions []string, removals []string, candidateRanges []string) error {
+	return b.MutateWithTopUp(ctx, providerID, networkURL, additions, removals, candidateRanges, nil)
+}
+
+// MutateWithTopUp implements TopUpBackend.
+func (b *aneBackend) MutateWithTopUp(ctx context.Context, providerID, networkURL string, additions []string, removals []string, candidateRanges []string, more AdditionDemandFunc) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -188,49 +213,140 @@ func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, 
 		}
 	}
 
-	// Additions: create new ANEs for the instance concurrently.
+	// Additions: create new ANEs for the instance concurrently. Every
+	// addition is a /32, so the slice length is the number of endpoints.
 	if len(additions) > 0 {
 		subnetURL, err := b.resolveSubnetworkURL(ctx, providerID, networkURL)
 		if err != nil {
 			return err
 		}
-
-		g, gCtx := errgroup.WithContext(ctx)
-		g.SetLimit(defaultANEMutationConcurrency)
-
-		for i := range additions {
-			aneName := generateANEName(providerID, i)
-			endpoint := &computepreview.AliasNetworkEndpoint{
-				Name:                   aneName,
-				Description:            DefaultANEDescription,
-				Subnetwork:             subnetURL,
-				SecurityTagInheritance: gce.ANESecurityTagInheritanceInherited,
-				Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
-					DefaultANEAliasNameIPv4: {
-						IpVersion:            gce.ANEIPVersionIPv4,
-						SubnetworkRangeNames: candidateRanges,
-					},
-				},
-			}
-
-			g.Go(func() error {
-				if err := gCtx.Err(); err != nil {
-					return err
-				}
-				klog.Infof("Creating ANE %q on %q (subnetwork %q)", aneName, providerID, subnetURL)
-				if err := b.gceCloud.CreateAliasNetworkEndpoint(gCtx, providerID, endpoint); err != nil {
-					return fmt.Errorf("failed to create ANE %q: %w", aneName, err)
-				}
-				return nil
-			})
-		}
-
-		if err := g.Wait(); err != nil {
-			return err
-		}
+		return b.createANEs(ctx, providerID, subnetURL, candidateRanges, len(additions), more)
 	}
 
 	return nil
+}
+
+// newANEEndpoint builds the AliasNetworkEndpoint request body for the
+// index-th endpoint created for providerID in this mutation.
+func (b *aneBackend) newANEEndpoint(providerID, subnetURL string, candidateRanges []string, index int) *computepreview.AliasNetworkEndpoint {
+	return &computepreview.AliasNetworkEndpoint{
+		Name:                   generateANEName(providerID, index),
+		Description:            DefaultANEDescription,
+		Subnetwork:             subnetURL,
+		SecurityTagInheritance: gce.ANESecurityTagInheritanceInherited,
+		Aliases: map[string]computepreview.AliasNetworkEndpointAlias{
+			DefaultANEAliasNameIPv4: {
+				IpVersion:            gce.ANEIPVersionIPv4,
+				SubnetworkRangeNames: candidateRanges,
+			},
+		},
+	}
+}
+
+// createANEs creates initial endpoints for providerID with at most
+// defaultANEMutationConcurrency operations in flight, and, if more is
+// non-nil, keeps the slots busy with any further demand it reports.
+//
+// The dispatcher is a single goroutine that owns all the counters; workers
+// only report completion on a channel. It consults more when launching
+// would otherwise stall -- i.e. there is nothing left to launch but
+// operations are still in flight -- and once more after the last operation
+// completes, so demand that arrived during the final operation is served
+// here rather than by a follow-up reconcile.
+//
+// On the first failure the shared context is cancelled, which aborts the
+// remaining in-flight operations the same way the errgroup did; the
+// dispatcher then waits for them to report before returning the error.
+func (b *aneBackend) createANEs(ctx context.Context, providerID, subnetURL string, candidateRanges []string, initial int, more AdditionDemandFunc) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	results := make(chan error, defaultANEMutationConcurrency)
+	var (
+		pending  = initial // decided, not yet launched
+		inFlight int
+		launched int // also the next endpoint index
+		toppedUp int
+		firstErr error
+	)
+
+	launch := func() {
+		endpoint := b.newANEEndpoint(providerID, subnetURL, candidateRanges, launched)
+		launched++
+		pending--
+		inFlight++
+		go func() {
+			if err := ctx.Err(); err != nil {
+				results <- err
+				return
+			}
+			klog.Infof("Creating ANE %q on %q (subnetwork %q)", endpoint.Name, providerID, subnetURL)
+			if err := b.gceCloud.CreateAliasNetworkEndpoint(ctx, providerID, endpoint); err != nil {
+				results <- fmt.Errorf("failed to create ANE %q: %w", endpoint.Name, err)
+				return
+			}
+			results <- nil
+		}()
+	}
+
+	poll := func() {
+		if more == nil || firstErr != nil || ctx.Err() != nil || toppedUp >= maxANETopUpPerMutate {
+			return
+		}
+		// Do not start work that cannot finish within the reconcile budget.
+		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < gce.DefaultANEOperationTimeout {
+			return
+		}
+		extra, err := more(ctx)
+		if err != nil {
+			klog.Warningf("Failed to check for additional ANE demand on %q, leaving it to the next reconcile: %v", providerID, err)
+			return
+		}
+		n := len(extra)
+		if n > maxANETopUpPerMutate-toppedUp {
+			n = maxANETopUpPerMutate - toppedUp
+		}
+		if n <= 0 {
+			return
+		}
+		klog.Infof("Absorbing %d additional ANE(s) for %q into the in-flight batch (initial=%d, topped up so far=%d)", n, providerID, initial, toppedUp)
+		pending += n
+		toppedUp += n
+	}
+
+	ticker := time.NewTicker(aneTopUpPollInterval)
+	defer ticker.Stop()
+
+	for {
+		for firstErr == nil && pending > 0 && inFlight < defaultANEMutationConcurrency {
+			launch()
+		}
+		if inFlight == 0 {
+			if firstErr != nil {
+				return firstErr
+			}
+			// Nothing running and nothing queued: one last look for demand
+			// that arrived during the final operation.
+			poll()
+			if pending == 0 {
+				return nil
+			}
+			continue
+		}
+		select {
+		case err := <-results:
+			inFlight--
+			if err != nil && firstErr == nil {
+				firstErr = err
+				cancel()
+			}
+		case <-ticker.C:
+		}
+		// Only look for more work when the slots would otherwise go idle.
+		if pending == 0 {
+			poll()
+		}
+	}
 }
 
 func (b *aneBackend) resolveSubnetworkURL(ctx context.Context, providerID, networkURL string) (string, error) {

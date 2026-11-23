@@ -636,7 +636,7 @@ func TestANEBackendMutate_ConcurrentAdditionsAndRemovals(t *testing.T) {
 
 	backend := NewANEBackend(fakeGCE)
 
-	// Test concurrent addition of 16 ANEs (two batches under concurrency=8)
+	// Test concurrent addition of 16 ANEs (exceeds a single batch at the original concurrency of 8)
 	var additions []string
 	for i := 0; i < 16; i++ {
 		additions = append(additions, "/32")
