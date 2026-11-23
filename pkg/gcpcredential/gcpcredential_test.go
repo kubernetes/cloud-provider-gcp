@@ -25,10 +25,15 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 		serviceAccountToken       string
 		serviceAccountAnnotations map[string]string
 		metadataResponses         map[string]string
+		metadataStatusCodes       map[string]int
 		stsResponse               string
 		wantAudience              string
+		wantSTSHost               string
 		expectedToken             string
 		projectID                 string
+		workloadPool              string
+		stsEndpoint               string
+		image                     string
 	}{
 		{
 			name:                "Direct Access Mode (Success)",
@@ -40,7 +45,103 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 			projectID:     "my-project",
 			stsResponse:   `{"access_token": "federated-token-xyz", "expires_in": 3600, "token_type": "Bearer"}`,
 			wantAudience:  "identitynamespace:my-project.svc.id.goog:https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster",
+			wantSTSHost:   "sts.googleapis.com",
 			expectedToken: "federated-token-xyz",
+		},
+		{
+			name:                "Direct Access Mode - Non-Default Universe Workload Pool and Universe Domain Metadata (Success)",
+			identityProvider:    "https://container.example-universe.goog/v1/projects/example-universe:my-project/locations/us-central1/clusters/my-cluster",
+			serviceAccountToken: validToken,
+			serviceAccountAnnotations: map[string]string{
+				"iam.gke.io/enable-wi-image-pull": "true",
+			},
+			projectID:    "my-project",
+			workloadPool: "my-project.example-universe.svc.id.goog",
+			metadataResponses: map[string]string{
+				"universe/universe-domain": "example-universe.goog\n",
+			},
+			stsResponse:   `{"access_token": "federated-token-universe", "expires_in": 3600, "token_type": "Bearer"}`,
+			wantAudience:  "identitynamespace:my-project.example-universe.svc.id.goog:https://container.example-universe.goog/v1/projects/example-universe:my-project/locations/us-central1/clusters/my-cluster",
+			wantSTSHost:   "sts.example-universe.goog",
+			expectedToken: "federated-token-universe",
+		},
+		{
+			name:                "Direct Access Mode - Explicit STS Endpoint Override (Success)",
+			identityProvider:    "https://container.example-universe.goog/v1/projects/example-universe:my-project/locations/us-central1/clusters/my-cluster",
+			serviceAccountToken: validToken,
+			serviceAccountAnnotations: map[string]string{
+				"iam.gke.io/enable-wi-image-pull": "true",
+			},
+			workloadPool:  "my-project.example-universe.svc.id.goog",
+			stsEndpoint:   "https://sts.custom-universe.goog/v1/token",
+			stsResponse:   `{"access_token": "federated-token-override", "expires_in": 3600, "token_type": "Bearer"}`,
+			wantAudience:  "identitynamespace:my-project.example-universe.svc.id.goog:https://container.example-universe.goog/v1/projects/example-universe:my-project/locations/us-central1/clusters/my-cluster",
+			wantSTSHost:   "sts.custom-universe.goog",
+			expectedToken: "federated-token-override",
+			image:         "docker.pkg.example-universe.goog/example-universe:my-project/my-repo/my-image:latest",
+		},
+		{
+			name:                "Direct Access Mode - Base STS Endpoint Without Path Defaults to /v1/token (Success)",
+			identityProvider:    "https://container.example-universe.goog/v1/projects/example-universe:my-project/locations/us-central1/clusters/my-cluster",
+			serviceAccountToken: validToken,
+			serviceAccountAnnotations: map[string]string{
+				"iam.gke.io/enable-wi-image-pull": "true",
+			},
+			workloadPool:  "my-project.example-universe.svc.id.goog",
+			stsEndpoint:   "https://sts.example-universe.goog",
+			stsResponse:   `{"access_token": "federated-token-base-url", "expires_in": 3600, "token_type": "Bearer"}`,
+			wantAudience:  "identitynamespace:my-project.example-universe.svc.id.goog:https://container.example-universe.goog/v1/projects/example-universe:my-project/locations/us-central1/clusters/my-cluster",
+			wantSTSHost:   "sts.example-universe.goog",
+			expectedToken: "federated-token-base-url",
+			image:         "docker.pkg.example-universe.goog/example-universe:my-project/my-repo/my-image:latest",
+		},
+		{
+			name:                "Fail Fast - Non-404 Universe Domain Metadata Error Does Not Fallback to Default STS",
+			identityProvider:    "https://container.example-universe.goog/v1/projects/example-universe:my-project/locations/us-central1/clusters/my-cluster",
+			serviceAccountToken: validToken,
+			serviceAccountAnnotations: map[string]string{
+				"iam.gke.io/enable-wi-image-pull": "true",
+			},
+			workloadPool: "my-project.example-universe.svc.id.goog",
+			metadataStatusCodes: map[string]int{
+				"universe/universe-domain": http.StatusServiceUnavailable,
+			},
+			metadataResponses: map[string]string{
+				"instance/service-accounts/default/token": `{"access_token": "node-sa-token", "expires_in": 3600}`,
+			},
+			stsResponse:   `{"access_token": "should-not-hit-default-sts", "expires_in": 3600, "token_type": "Bearer"}`,
+			wantSTSHost:   "sts.googleapis.com",
+			expectedToken: "",
+			image:         "docker.pkg.example-universe.goog/example-universe:my-project/my-repo/my-image:latest",
+		},
+		{
+			name:                "Fail Fast - Non-HTTPS STS Endpoint Override Rejected",
+			identityProvider:    "https://container.example-universe.goog/v1/projects/example-universe:my-project/locations/us-central1/clusters/my-cluster",
+			serviceAccountToken: validToken,
+			serviceAccountAnnotations: map[string]string{
+				"iam.gke.io/enable-wi-image-pull": "true",
+			},
+			workloadPool:  "my-project.example-universe.svc.id.goog",
+			stsEndpoint:   "http://sts.example-universe.goog/v1/token",
+			stsResponse:   `{"access_token": "should-not-be-called", "expires_in": 3600, "token_type": "Bearer"}`,
+			wantSTSHost:   "sts.example-universe.goog",
+			expectedToken: "",
+		},
+		{
+			name:                "Direct Access Mode - Default Universe Domain Metadata (Success)",
+			identityProvider:    "https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster",
+			serviceAccountToken: validToken,
+			serviceAccountAnnotations: map[string]string{
+				"iam.gke.io/enable-wi-image-pull": "true",
+			},
+			workloadPool: "my-project.svc.id.goog",
+			metadataResponses: map[string]string{
+				"universe/universe-domain": "googleapis.com",
+			},
+			stsResponse:   `{"access_token": "federated-token-default-universe", "expires_in": 3600, "token_type": "Bearer"}`,
+			wantAudience:  "identitynamespace:my-project.svc.id.goog:https://container.googleapis.com/v1/projects/my-project/locations/us-central1/clusters/my-cluster",
+			wantSTSHost:   "sts.googleapis.com",
+			expectedToken: "federated-token-default-universe",
 		},
 		{
 			name:                "Fallback to Node SA (Unannotated SA, bypass STS)",
@@ -142,6 +243,13 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 					// Handle Metadata Server requests
 					if req.URL.Host == "metadata.google.internal." {
 						path := strings.TrimPrefix(req.URL.Path, "/computeMetadata/v1/")
+						if statusCode, ok := tc.metadataStatusCodes[path]; ok {
+							return &http.Response{
+								StatusCode: statusCode,
+								Body:       io.NopCloser(bytes.NewBufferString("metadata error")),
+								Header:     make(http.Header),
+							}, nil
+						}
 						if resp, ok := tc.metadataResponses[path]; ok {
 							return &http.Response{
 								StatusCode: http.StatusOK,
@@ -156,7 +264,11 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 					}
 
 					// Handle STS Requests
-					if req.URL.Host == "sts.googleapis.com" && req.URL.Path == "/v1/token" {
+					expectedSTSHost := tc.wantSTSHost
+					if expectedSTSHost == "" {
+						expectedSTSHost = "sts.googleapis.com"
+					}
+					if req.URL.Host == expectedSTSHost && req.URL.Path == "/v1/token" {
 						if tc.stsResponse == "error" {
 							return &http.Response{
 								StatusCode: http.StatusBadRequest,
@@ -206,8 +318,14 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 			provider.ServiceAccountAnnotations = tc.serviceAccountAnnotations
 			provider.IdentityProvider = tc.identityProvider
 			provider.ProjectID = tc.projectID
+			provider.WorkloadPool = tc.workloadPool
+			provider.STSEndpoint = tc.stsEndpoint
 
-			cfg := provider.Provide("us-central1-docker.pkg.dev/my-project/my-repo/my-image:latest")
+			image := tc.image
+			if image == "" {
+				image = "us-central1-docker.pkg.dev/my-project/my-repo/my-image:latest"
+			}
+			cfg := provider.Provide(image)
 
 			if tc.expectedToken == "" {
 				for _, entry := range cfg {
@@ -216,15 +334,9 @@ func TestProvide_WorkloadIdentity(t *testing.T) {
 					}
 				}
 			} else {
-				found := false
-				for _, entry := range cfg {
-					if entry.Password == tc.expectedToken {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("expected token %q not found in config: %+v", tc.expectedToken, cfg)
+				registry, _, _ := strings.Cut(image, "/")
+				if entry, ok := cfg[registry]; !ok || entry.Password != tc.expectedToken {
+					t.Errorf("expected token %q for registry %q in config: %+v", tc.expectedToken, registry, cfg)
 				}
 			}
 		})

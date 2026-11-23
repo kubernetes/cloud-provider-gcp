@@ -41,7 +41,7 @@ const (
 )
 
 // MakeRegistryProvider returns a ContainerRegistryProvider with the given transport.
-func MakeRegistryProvider(transport *http.Transport, token string, annotations map[string]string, identityProvider string, projectID string) *gcpcredential.ContainerRegistryProvider {
+func MakeRegistryProvider(transport *http.Transport, token string, annotations map[string]string, identityProvider string, projectID string, workloadPool string, stsEndpoint string) *gcpcredential.ContainerRegistryProvider {
 	isAnnotated := annotations[gcpcredential.EnableWIImagePullAnnotation] == "true"
 
 	timeout := metadataHTTPClientTimeout
@@ -57,6 +57,8 @@ func MakeRegistryProvider(transport *http.Transport, token string, annotations m
 		ServiceAccountAnnotations: annotations,
 		IdentityProvider:          identityProvider,
 		ProjectID:                 projectID,
+		WorkloadPool:              workloadPool,
+		STSEndpoint:               stsEndpoint,
 	}
 	return provider
 }
