@@ -57,6 +57,14 @@ const (
 	workqueueBurst     = 100
 )
 
+// nncReasonUpdating is the reason on the Ready=False condition while GCE
+// operations for a node are in flight; the API defines no constant for it.
+// It is shared because both controllers depend on the exact string: the spec
+// controller sets it before it mutates GCE, and the status controller looks
+// for it to tell a condition it should clear once the node has settled from
+// an error that it should leave in place.
+const nncReasonUpdating = "Updating"
+
 // newNodeWorkqueue builds the rate-limited workqueue both controllers use.
 //
 // name is the workqueue metrics name, which is deliberately distinct from the

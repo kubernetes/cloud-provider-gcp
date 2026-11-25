@@ -69,7 +69,7 @@ func TestANEBackendMutateWithTopUp_AbsorbsDemand(t *testing.T) {
 	backend := NewANEBackend(newFakeGCEWithDefaultInstance(t)).(TopUpBackend)
 
 	more, calls := scriptedDemand(5, 2)
-	err := backend.MutateWithTopUp(context.Background(), testProviderID, testNetworkURL, []string{"/32", "/32", "/32"}, nil, nil, more)
+	err := backend.MutateWithTopUp(context.Background(), testProviderID, testNetworkURL, []string{"/32", "/32", "/32"}, nil, nil, more, nil)
 	if err != nil {
 		t.Fatalf("MutateWithTopUp: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestANEBackendMutateWithTopUp_AbsorbsDemand(t *testing.T) {
 
 func TestANEBackendMutateWithTopUp_NilDemandMatchesMutate(t *testing.T) {
 	backend := NewANEBackend(newFakeGCEWithDefaultInstance(t)).(TopUpBackend)
-	if err := backend.MutateWithTopUp(context.Background(), testProviderID, testNetworkURL, []string{"/32", "/32"}, nil, nil, nil); err != nil {
+	if err := backend.MutateWithTopUp(context.Background(), testProviderID, testNetworkURL, []string{"/32", "/32"}, nil, nil, nil, nil); err != nil {
 		t.Fatalf("MutateWithTopUp(nil demand): %v", err)
 	}
 	if got := countANEs(t, backend); got != 2 {
@@ -94,7 +94,7 @@ func TestANEBackendMutateWithTopUp_NilDemandMatchesMutate(t *testing.T) {
 func TestANEBackendMutateWithTopUp_DemandErrorIsNotFatal(t *testing.T) {
 	backend := NewANEBackend(newFakeGCEWithDefaultInstance(t)).(TopUpBackend)
 	more := func(context.Context) ([]string, error) { return nil, errors.New("lister unavailable") }
-	if err := backend.MutateWithTopUp(context.Background(), testProviderID, testNetworkURL, []string{"/32"}, nil, nil, more); err != nil {
+	if err := backend.MutateWithTopUp(context.Background(), testProviderID, testNetworkURL, []string{"/32"}, nil, nil, more, nil); err != nil {
 		t.Fatalf("a failing demand function must not fail the mutation, got: %v", err)
 	}
 	if got := countANEs(t, backend); got != 1 {
@@ -106,7 +106,7 @@ func TestANEBackendMutateWithTopUp_CapsTopUp(t *testing.T) {
 	backend := NewANEBackend(newFakeGCEWithDefaultInstance(t)).(TopUpBackend)
 	// A demand function that never stops asking.
 	more := func(context.Context) ([]string, error) { return []string{"/32", "/32", "/32"}, nil }
-	if err := backend.MutateWithTopUp(context.Background(), testProviderID, testNetworkURL, []string{"/32"}, nil, nil, more); err != nil {
+	if err := backend.MutateWithTopUp(context.Background(), testProviderID, testNetworkURL, []string{"/32"}, nil, nil, more, nil); err != nil {
 		t.Fatalf("MutateWithTopUp: %v", err)
 	}
 	if got := countANEs(t, backend); got != 1+maxANETopUpPerMutate {
@@ -121,7 +121,7 @@ func TestANEBackendMutateWithTopUp_NoTopUpNearDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	more, calls := scriptedDemand(4)
-	if err := backend.MutateWithTopUp(ctx, testProviderID, testNetworkURL, []string{"/32", "/32"}, nil, nil, more); err != nil {
+	if err := backend.MutateWithTopUp(ctx, testProviderID, testNetworkURL, []string{"/32", "/32"}, nil, nil, more, nil); err != nil {
 		t.Fatalf("MutateWithTopUp: %v", err)
 	}
 	if got := countANEs(t, backend); got != 2 {
@@ -142,13 +142,13 @@ type bumpOnMutateBackend struct {
 	mutates int
 }
 
-func (b *bumpOnMutateBackend) MutateWithTopUp(ctx context.Context, providerID, networkURL string, additions, removals, candidateRanges []string, more AdditionDemandFunc) error {
+func (b *bumpOnMutateBackend) MutateWithTopUp(ctx context.Context, providerID, networkURL string, additions, removals, candidateRanges []string, more AdditionDemandFunc, onProgress ProgressFunc) error {
 	b.mutates++
 	if b.bumped != nil {
 		b.store(b.bumped)
 		b.bumped = nil
 	}
-	return b.TopUpBackend.MutateWithTopUp(ctx, providerID, networkURL, additions, removals, candidateRanges, more)
+	return b.TopUpBackend.MutateWithTopUp(ctx, providerID, networkURL, additions, removals, candidateRanges, more, onProgress)
 }
 
 func TestSpecControllerTopsUpOnSpecBumpDuringMutation(t *testing.T) {

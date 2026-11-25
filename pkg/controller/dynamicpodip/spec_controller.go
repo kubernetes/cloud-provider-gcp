@@ -242,7 +242,7 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 
 	// Set status condition to Updating before mutating GCE
 	if err := c.updateNNCStatus(ctx, nnc, func(target *nncv1.NodeNetworkConfig) {
-		setNNCCondition(target, string(nncv1.NodeNetworkConfigConditionReady), metav1.ConditionFalse, "Updating", "Updating GCE VM IP alias ranges")
+		setNNCCondition(target, string(nncv1.NodeNetworkConfigConditionReady), metav1.ConditionFalse, nncReasonUpdating, "Updating GCE VM IP alias ranges")
 	}); err != nil {
 		return fmt.Errorf("failed to update status condition to Updating: %w", err)
 	}
@@ -284,8 +284,13 @@ func (c *NodeNetworkConfigSpecController) reconcile(ctx context.Context, nnc *nn
 			nnc.Name, network, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
 
 		if tb, ok := c.backend.(TopUpBackend); ok && len(netChanges.additions) > 0 {
+			// Ask for a status sync as additions complete, not only once
+			// the whole batch has: with top-ups extending the batch, the
+			// Pods whose IPs were created first would otherwise wait for
+			// the one created last.
+			publishProgress := func() { c.statusTrigger.EnqueueNode(nnc.Name) }
 			err = tb.MutateWithTopUp(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges,
-				c.additionDemandFunc(nnc, network, ifaces))
+				c.additionDemandFunc(nnc, network, ifaces), publishProgress)
 		} else {
 			err = c.backend.Mutate(ctx, providerID, networkURL, netChanges.additions, netChanges.removals, candidateRanges)
 		}

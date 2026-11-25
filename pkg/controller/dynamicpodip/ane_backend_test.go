@@ -393,9 +393,9 @@ func TestANEControllerReconcileFlow(t *testing.T) {
 	}
 
 	// Verify transient ANE handling in status and spec controllers:
-	// 1. If an ANE is in CREATING/DELETING state, statusCtrl.syncNode returns
-	//    *transientANEError BEFORE calling syncStatusToGCE so Status.PodCIDRs
-	//    is never overwritten from a partial/transient snapshot.
+	// 1. If an ANE is in CREATING/DELETING state, statusCtrl.syncNode still
+	//    publishes the ANEs that are ACTIVE, and returns *transientANEError
+	//    so that the node is requeued for the rest (see ane_progress_test.go).
 	// 2. specCtrl.syncNode also returns *transientANEError, invalidates
 	//    gceCache, and does not allocate duplicate ANEs.
 	if err := fakeGCE.CreateAliasNetworkEndpoint(ctx, testProviderID, &computepreview.AliasNetworkEndpoint{
@@ -416,6 +416,13 @@ func TestANEControllerReconcileFlow(t *testing.T) {
 	}
 	if _, ok := statusErr.(*transientANEError); !ok {
 		t.Fatalf("expected *transientANEError from statusCtrl.syncNode, got %T: %v", statusErr, statusErr)
+	}
+	nncDuringTransient, err := nncClient.NetworkingV1().NodeNetworkConfigs().Get(ctx, testNodeName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Get NNC during transient: %v", err)
+	}
+	if len(nncDuringTransient.Status.PodCIDRs) != 2 {
+		t.Fatalf("expected the 2 ACTIVE PodCIDRs to stay published while another ANE is CREATING, got %d: %v", len(nncDuringTransient.Status.PodCIDRs), nncDuringTransient.Status.PodCIDRs)
 	}
 	specErr := specCtrl.syncNode(testNodeName)
 	if specErr == nil {

@@ -44,6 +44,11 @@ func (e *nodeNotReadyError) Error() string {
 // AliasNetworkEndpoints on the node are in a transient (non-ACTIVE) state
 // such as CREATING or DELETING. Callers requeue the key with backoff instead
 // of treating it as a controller error.
+//
+// The spec controller returns it without mutating GCE, because it must not
+// act on a node whose state is still moving. The status controller first
+// publishes the endpoints that are already ACTIVE, and returns it so that it
+// is requeued for the rest.
 type transientANEError struct {
 	nodeName string
 }

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+	computebeta "google.golang.org/api/compute/v0.beta"
 	computepreview "google.golang.org/api/compute/v1.preview"
 	"k8s.io/apimachinery/pkg/util/sets"
 	gce "k8s.io/cloud-provider-gcp/providers/gce"
@@ -68,11 +69,38 @@ const (
 	// endpoints can be created; anything beyond it is left to the next
 	// reconcile, which is exactly the pre-top-up behaviour.
 	maxANETopUpPerMutate = 256
+
+	// aneProgressInterval is the minimum time between two ProgressFunc
+	// calls made while one batch of endpoints is being created.
+	//
+	// Each call makes the status controller re-read the instance and list
+	// its ANEs, so this is what keeps a burst whose operations finish a few
+	// hundred milliseconds apart from costing one GCE read per endpoint.
+	// The first completion is reported immediately; whatever completes
+	// within the interval after a report is covered by one further report,
+	// sent on the dispatcher's next wake-up once the interval has passed,
+	// which is at most aneTopUpPollInterval later.
+	aneProgressInterval = 1 * time.Second
 )
+
+// aneCloud is the subset of *gce.Cloud that the ANE backend calls.
+//
+// It is here for tests only. Production code always supplies a *gce.Cloud
+// (see NewANEBackend); the only other implementation is a wrapper in the
+// tests. The fake cloud completes every endpoint operation instantly, so a
+// test that has to observe a batch while some of its endpoints are still
+// being created wraps the fake behind this interface and holds individual
+// creations open. See ane_progress_test.go.
+type aneCloud interface {
+	GetInstanceNetworkInterfaces(ctx context.Context, providerID string) ([]*computebeta.NetworkInterface, error)
+	ListAliasNetworkEndpoints(ctx context.Context, providerID string) ([]*computepreview.AliasNetworkEndpoint, error)
+	CreateAliasNetworkEndpoint(ctx context.Context, providerID string, endpoint *computepreview.AliasNetworkEndpoint) error
+	DeleteAliasNetworkEndpoint(ctx context.Context, providerID, name string) error
+}
 
 // aneBackend implements PodIPBackend using GCE AliasNetworkEndpoints.
 type aneBackend struct {
-	gceCloud *gce.Cloud
+	gceCloud aneCloud
 }
 
 // NewANEBackend constructs a PodIPBackend using GCE AliasNetworkEndpoints.
@@ -106,6 +134,8 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 		return nil, fmt.Errorf("failed to list ANEs for %q: %w", providerID, err)
 	}
 
+	// notActive counts, by state, the endpoints that are left out below.
+	notActive := map[string]int{}
 	for _, endpoint := range anes {
 		if endpoint == nil || endpoint.Status == nil {
 			continue
@@ -114,7 +144,7 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 			// Skip endpoints in transient states (CREATING,
 			// DELETING) and mark the interface so the spec and
 			// status controllers requeue until they settle.
-			klog.Warningf("Skipping non-active ANE %q on %q (state=%q); will retry reconciliation", endpoint.Name, providerID, endpoint.Status.State)
+			notActive[endpoint.Status.State]++
 			ifaces[0].HasTransientANE = true
 			continue
 		}
@@ -149,15 +179,22 @@ func (b *aneBackend) GetNetworkInterfaces(ctx context.Context, providerID string
 		targetIface.ANENames[cidr] = endpoint.Name
 	}
 
+	if len(notActive) > 0 {
+		// One line per read rather than one per endpoint: the status
+		// controller reads the instance while a batch is still being
+		// created, when most of its endpoints are expected to be here.
+		klog.V(2).Infof("Instance %q has ANEs that are not ACTIVE and are left out of its Pod CIDRs: %v", providerID, notActive)
+	}
+
 	return ifaces, nil
 }
 
 func (b *aneBackend) Mutate(ctx context.Context, providerID, networkURL string, additions []string, removals []string, candidateRanges []string) error {
-	return b.MutateWithTopUp(ctx, providerID, networkURL, additions, removals, candidateRanges, nil)
+	return b.MutateWithTopUp(ctx, providerID, networkURL, additions, removals, candidateRanges, nil, nil)
 }
 
 // MutateWithTopUp implements TopUpBackend.
-func (b *aneBackend) MutateWithTopUp(ctx context.Context, providerID, networkURL string, additions []string, removals []string, candidateRanges []string, more AdditionDemandFunc) error {
+func (b *aneBackend) MutateWithTopUp(ctx context.Context, providerID, networkURL string, additions []string, removals []string, candidateRanges []string, more AdditionDemandFunc, onProgress ProgressFunc) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -220,7 +257,7 @@ func (b *aneBackend) MutateWithTopUp(ctx context.Context, providerID, networkURL
 		if err != nil {
 			return err
 		}
-		return b.createANEs(ctx, providerID, subnetURL, candidateRanges, len(additions), more)
+		return b.createANEs(ctx, providerID, subnetURL, candidateRanges, len(additions), more, onProgress)
 	}
 
 	return nil
@@ -254,10 +291,17 @@ func (b *aneBackend) newANEEndpoint(providerID, subnetURL string, candidateRange
 // completes, so demand that arrived during the final operation is served
 // here rather than by a follow-up reconcile.
 //
+// If onProgress is non-nil it is called, at most once per
+// aneProgressInterval, when endpoints have completed while others are still
+// in flight. An endpoint is usable as soon as its own operation is done, so
+// this lets the caller publish it without waiting for the slowest operation
+// of a batch that top-ups may keep extending. Nothing is reported once the
+// last operation has completed: returning is what tells the caller that.
+//
 // On the first failure the shared context is cancelled, which aborts the
 // remaining in-flight operations the same way the errgroup did; the
 // dispatcher then waits for them to report before returning the error.
-func (b *aneBackend) createANEs(ctx context.Context, providerID, subnetURL string, candidateRanges []string, initial int, more AdditionDemandFunc) error {
+func (b *aneBackend) createANEs(ctx context.Context, providerID, subnetURL string, candidateRanges []string, initial int, more AdditionDemandFunc, onProgress ProgressFunc) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -269,6 +313,7 @@ func (b *aneBackend) createANEs(ctx context.Context, providerID, subnetURL strin
 		toppedUp int
 		firstErr error
 	)
+	progress := progressDebouncer{notify: onProgress, interval: aneProgressInterval}
 
 	launch := func() {
 		endpoint := b.newANEEndpoint(providerID, subnetURL, candidateRanges, launched)
@@ -314,6 +359,9 @@ func (b *aneBackend) createANEs(ctx context.Context, providerID, subnetURL strin
 		toppedUp += n
 	}
 
+	// The ticker bounds how long the dispatcher sleeps when nothing
+	// completes, so that it keeps looking for new demand and delivers a
+	// progress report that the debounce held back.
 	ticker := time.NewTicker(aneTopUpPollInterval)
 	defer ticker.Stop()
 
@@ -333,10 +381,18 @@ func (b *aneBackend) createANEs(ctx context.Context, providerID, subnetURL strin
 			}
 			continue
 		}
+		// Operations are still in flight, so whatever has completed would
+		// otherwise stay unpublished until they are done as well.
+		if n := progress.flush(time.Now()); n > 0 {
+			klog.V(2).Infof("Reported %d completed ANE(s) on %q while %d more are in flight", n, providerID, inFlight)
+		}
 		select {
 		case err := <-results:
 			inFlight--
-			if err != nil && firstErr == nil {
+			switch {
+			case err == nil:
+				progress.completed()
+			case firstErr == nil:
 				firstErr = err
 				cancel()
 			}
@@ -347,6 +403,43 @@ func (b *aneBackend) createANEs(ctx context.Context, providerID, subnetURL strin
 			poll()
 		}
 	}
+}
+
+// progressDebouncer turns the completions of one createANEs call into at
+// most one ProgressFunc call per interval.
+//
+// The first completion is reported straight away, so the earliest endpoint
+// is not held back at all; completions within interval of a report are
+// folded into one further report once the interval has passed. It is owned
+// by the dispatcher goroutine and is not safe for concurrent use.
+type progressDebouncer struct {
+	// notify may be nil, in which case nothing is ever reported.
+	notify   ProgressFunc
+	interval time.Duration
+
+	// unreported counts completions since notify was last called, which
+	// was at lastReport.
+	unreported int
+	lastReport time.Time
+}
+
+// completed records that one more endpoint has been created.
+func (d *progressDebouncer) completed() {
+	d.unreported++
+}
+
+// flush calls notify if there are completions it has not been told about
+// and the previous call was at least interval before now. It returns how
+// many completions the call covered, or 0 if it made none.
+func (d *progressDebouncer) flush(now time.Time) int {
+	if d.notify == nil || d.unreported == 0 || now.Sub(d.lastReport) < d.interval {
+		return 0
+	}
+	n := d.unreported
+	d.unreported = 0
+	d.lastReport = now
+	d.notify()
+	return n
 }
 
 func (b *aneBackend) resolveSubnetworkURL(ctx context.Context, providerID, networkURL string) (string, error) {
