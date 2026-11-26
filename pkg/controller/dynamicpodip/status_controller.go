@@ -26,6 +26,7 @@ import (
 	nncclientset "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/clientset/versioned"
 	nnclisters "github.com/GoogleCloudPlatform/gke-networking-api/client/nodenetworkconfig/listers/nodenetworkconfig/v1"
 	v1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -39,7 +40,12 @@ import (
 
 const (
 	// DefaultStatusControllerWorkers is the default number of worker goroutines for the status controller.
-	DefaultStatusControllerWorkers = 4
+	//
+	// Each sync is an uncached instances.get plus an ANE list (~0.5-1s). It
+	// is raised together with DefaultSpecControllerWorkers so that status
+	// publication does not become the bottleneck once spec reconciles
+	// complete in parallel for many nodes.
+	DefaultStatusControllerWorkers = 16
 
 	statusControllerName = "node-network-config-status-controller"
 )
@@ -238,21 +244,51 @@ func (c *NodeNetworkConfigStatusController) reconcile(ctx context.Context, nnc *
 		return err
 	}
 
-	if hasTransientANE(ifaces) {
-		return &transientANEError{nodeName: nnc.Name}
+	// Sync status if needed. This deliberately does not wait for ANEs that
+	// are still being created or deleted: ifaces only ever lists endpoints
+	// that are ACTIVE, and an ACTIVE endpoint is usable whatever the state
+	// of the others on the node. Holding it back until the whole node had
+	// settled made every Pod in a burst wait for the slowest operation.
+	if c.statusNeedsSync(nnc, ifaces) {
+		if err := c.syncStatusToGCE(ctx, nnc, ifaces); err != nil {
+			return err
+		}
 	}
 
-	// Sync status if needed
-	if c.statusNeedsSync(nnc, ifaces) {
-		return c.syncStatusToGCE(ctx, nnc, ifaces)
+	// Come back for the endpoints that are not ACTIVE yet. The spec
+	// controller asks for a sync as they complete, but it is not there to do
+	// so after a restart or a failed mutation, while the GCE operations it
+	// started carry on.
+	if hasTransientANE(ifaces) {
+		return &transientANEError{nodeName: nnc.Name}
 	}
 
 	return nil
 }
 
-// statusNeedsSync checks if the NNC Status PodCIDRs set differs from the actual GCE alias IP ranges.
+// statusNeedsSync reports whether the NNC status has to be rewritten to
+// reflect ifaces: either the published ranges are not the ones GCE reports,
+// or they are but the node has settled and Ready still reads Updating.
+//
+// The second case arises because ranges are published as soon as they are
+// ACTIVE and dropped as soon as they are not. By the time the last operation
+// on the node has finished there may be no range left to write, and nothing
+// else would report the node ready again.
 func (c *NodeNetworkConfigStatusController) statusNeedsSync(nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) bool {
-	return !gceCIDRSet(ifaces).Equal(statusCIDRSet(nnc))
+	if !gceCIDRSet(ifaces).Equal(statusCIDRSet(nnc)) {
+		return true
+	}
+	return !hasTransientANE(ifaces) && readyConditionIsUpdating(nnc)
+}
+
+// readyConditionIsUpdating reports whether the NNC is marked not ready for
+// no other reason than GCE operations having been in flight. That is the one
+// not-ready state that GCE having settled is enough to clear; any other
+// reason is an error reported by the spec controller, and is not dropped
+// just because the published ranges are up to date.
+func readyConditionIsUpdating(nnc *nncv1.NodeNetworkConfig) bool {
+	cond := apimeta.FindStatusCondition(nnc.Status.Conditions, string(nncv1.NodeNetworkConfigConditionReady))
+	return cond != nil && cond.Status == metav1.ConditionFalse && cond.Reason == nncReasonUpdating
 }
 
 // podCIDRReadySince indexes, by range, the time at which each currently
@@ -278,8 +314,13 @@ func podCIDRReadySince(nnc *nncv1.NodeNetworkConfig) map[string]metav1.Time {
 }
 
 // syncStatusToGCE updates the NNC Status PodCIDRs to match the actual GCE state.
+//
+// ifaces lists only the ANEs that are ACTIVE, so those are the ones that are
+// published. If others on the node are still being created or deleted, the
+// ranges are written all the same, but the node is not reported Ready.
 func (c *NodeNetworkConfigStatusController) syncStatusToGCE(ctx context.Context, nnc *nncv1.NodeNetworkConfig, ifaces []*networkInterface) error {
 	now := metav1.Now()
+	settled := !hasTransientANE(ifaces)
 	return c.updateNNCStatus(ctx, nnc, func(target *nncv1.NodeNetworkConfig) {
 		var allActualCIDRs []nncv1.PodCIDR
 		readySince := podCIDRReadySince(target)
@@ -305,7 +346,15 @@ func (c *NodeNetworkConfigStatusController) syncStatusToGCE(ctx context.Context,
 		})
 
 		target.Status.PodCIDRs = allActualCIDRs
-		_ = setNNCCondition(target, string(nncv1.NodeNetworkConfigConditionReady), metav1.ConditionTrue, string(nncv1.NodeNetworkConfigReadyReason), "Node network config is ready")
-		klog.Infof("Syncing NNC status to GCE state for %q (CIDRs: %d)", target.Name, len(allActualCIDRs))
+		readyType := string(nncv1.NodeNetworkConfigConditionReady)
+		if settled {
+			_ = setNNCCondition(target, readyType, metav1.ConditionTrue, string(nncv1.NodeNetworkConfigReadyReason), "Node network config is ready")
+		} else if !apimeta.IsStatusConditionFalse(target.Status.Conditions, readyType) {
+			// An existing not-ready condition is left alone: it is either
+			// the spec controller's Updating, which already says this, or
+			// its report of a failed mutation, which says more.
+			_ = setNNCCondition(target, readyType, metav1.ConditionFalse, nncReasonUpdating, "Waiting for AliasNetworkEndpoint operations to complete")
+		}
+		klog.Infof("Syncing NNC status to GCE state for %q (CIDRs: %d, ANE operations in flight: %t)", target.Name, len(allActualCIDRs), !settled)
 	})
 }

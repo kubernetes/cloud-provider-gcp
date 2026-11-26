@@ -51,6 +51,48 @@ type PodIPBackend interface {
 	CalculateAdditions(network string, neededIPs int, currentIfaces []*networkInterface) []string
 }
 
+// AdditionDemandFunc reports additions that have become necessary since a
+// Mutate call began -- typically because the node daemon raised
+// spec.allocations while the backend was still creating the original batch.
+//
+// Each call returns only the increment not previously returned; the
+// implementation tracks what it has already handed out. A nil, nil result
+// means there is no new demand.
+type AdditionDemandFunc func(ctx context.Context) ([]string, error)
+
+// ProgressFunc is called by a TopUpBackend while a mutation is in flight,
+// when some of its additions have completed and others are still being
+// created. It lets the caller publish the Pod IPs that are already usable
+// instead of holding all of them until the slowest operation has finished.
+//
+// It takes no arguments on purpose: the cloud provider stays the source of
+// truth for what exists, and the call is only a hint to go and look. The
+// backend debounces the calls, makes them from the goroutine that drives the
+// mutation, and expects them not to block. The end of a mutation is not
+// reported this way; the caller learns of it when the call returns.
+type ProgressFunc func()
+
+// TopUpBackend is implemented by backends whose additions are independent
+// units of work (one cloud operation each) and can therefore absorb new
+// demand into an in-flight batch instead of leaving it to a follow-up
+// reconcile.
+//
+// Without this, a spec bump that lands during a mutation waits for the whole
+// batch to finish and for the status to be republished, then pays a full
+// extra round of cloud operation latency on its own. With it, the extra
+// additions start as soon as a concurrency slot frees up.
+//
+// The same independence is what makes it meaningful to report additions as
+// they complete rather than only once the whole batch has: see ProgressFunc.
+type TopUpBackend interface {
+	PodIPBackend
+	// MutateWithTopUp behaves like Mutate, additionally consulting more
+	// while additions are in flight and creating whatever it returns, and
+	// calling onProgress as additions complete while others are still in
+	// flight. Either may be nil; with both nil it is equivalent to Mutate.
+	MutateWithTopUp(ctx context.Context, providerID, networkURL string, additions []string, removals []string, candidateRanges []string, more AdditionDemandFunc, onProgress ProgressFunc) error
+}
+
 // newPodIPBackend constructs the PodIPBackend corresponding to
 // opts.PodIPBackend. Future modes (such as a hybrid switchover mode) can be
 // added here by composing NewAliasRangesBackend and NewANEBackend.
